@@ -200,6 +200,10 @@ func summarizeDirection(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas 
 func interpret(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []string {
 	var lines []string
 
+	if hpa.Status.ObservedGeneration != nil && *hpa.Status.ObservedGeneration < hpa.Generation {
+		lines = append(lines, fmt.Sprintf("Warning: status.observedGeneration=%d is behind metadata.generation=%d; the status may not reflect the latest spec.", *hpa.Status.ObservedGeneration, hpa.Generation))
+	}
+
 	if condition := findCondition(hpa, "ScalingActive"); condition != nil && condition.Status != corev1.ConditionTrue {
 		lines = append(lines,
 			fmt.Sprintf("ScalingActive is %s: %s - %s", condition.Status, condition.Reason, condition.Message))
@@ -233,14 +237,17 @@ func interpret(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []
 		lines = append(lines, "desiredReplicas is less than currentReplicas, so the HPA is recommending scale down.")
 	} else {
 		lines = append(lines, "desiredReplicas equals currentReplicas, so no immediate replica change is visible from status.")
-		if hpa.Status.DesiredReplicas != hpa.Spec.MaxReplicas && hpa.Status.DesiredReplicas != minReplicas && hasMetricOutsideTarget(hpa) {
-			lines = append(lines, "A metric is outside its target while desiredReplicas is unchanged; this may be due to tolerance, rounding, stabilization, or conservative handling of missing metrics.")
-			lines = append(lines, "Existing HPA status does not expose the exact internal reason for this no-scale decision.")
+		if hpa.Status.DesiredReplicas != hpa.Spec.MaxReplicas && hpa.Status.DesiredReplicas != minReplicas {
+			if metric, ok := metricOutsideTarget(hpa); ok {
+				lines = append(lines, fmt.Sprintf("%s metric ratio is approximately %.3f, which is close to the target.", metric.name, metric.ratio))
+				lines = append(lines, "This is consistent with tolerance-based no-scale, but existing HPA status does not explicitly expose tolerance as the reason.")
+				lines = append(lines, "The plugin avoids claiming the exact internal reason because rounding, stabilization, or conservative metric handling may also affect the final result.")
+			}
 		}
 	}
 
 	if len(hpa.Status.CurrentMetrics) > 1 {
-		lines = append(lines, "Multiple current metrics are reported, but the API does not expose per-metric replica recommendations as structured status.")
+		lines = append(lines, "Multiple current metrics are reported, but the API does not expose per-metric replica recommendations or which metric would have selected the recommendation before replica limits were applied.")
 		lines = append(lines, "Events and human-readable messages can hint at the contributing metric, but they are not a stable decision record.")
 	}
 
@@ -334,7 +341,12 @@ func compareMetricToTarget(utilization *int32, target string) string {
 	}
 }
 
-func hasMetricOutsideTarget(hpa *autoscalingv2.HorizontalPodAutoscaler) bool {
+type outsideTargetMetric struct {
+	name  string
+	ratio float64
+}
+
+func metricOutsideTarget(hpa *autoscalingv2.HorizontalPodAutoscaler) (outsideTargetMetric, bool) {
 	for _, metric := range hpa.Status.CurrentMetrics {
 		if metric.Type != autoscalingv2.ResourceMetricSourceType || metric.Resource == nil {
 			continue
@@ -353,12 +365,15 @@ func hasMetricOutsideTarget(hpa *autoscalingv2.HorizontalPodAutoscaler) bool {
 		if _, err := fmt.Sscanf(targetValue, "%d", &targetUtilization); err != nil {
 			continue
 		}
-		if *utilization != targetUtilization {
-			return true
+		if targetUtilization != 0 && *utilization != targetUtilization {
+			return outsideTargetMetric{
+				name:  string(metric.Resource.Name),
+				ratio: float64(*utilization) / float64(targetUtilization),
+			}, true
 		}
 	}
 
-	return false
+	return outsideTargetMetric{}, false
 }
 
 func printRecentEvents(ctx context.Context, client *kubernetes.Clientset, hpa *autoscalingv2.HorizontalPodAutoscaler) {

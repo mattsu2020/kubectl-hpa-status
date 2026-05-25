@@ -6,6 +6,15 @@ POC for inspecting an HPA with the existing Kubernetes API:
 kubectl hpa status <hpa-name> -n <namespace>
 ```
 
+The binary name is `kubectl-hpa-status`. In this validation environment,
+`kubectl plugin list` reported the plugin and kubectl v1.36.1 invoked it as
+the nested command above. Plugin command parsing can vary by kubectl version,
+so validate the exact invocation with:
+
+```sh
+kubectl plugin list
+```
+
 The plugin reads:
 
 - `autoscaling/v2` `HorizontalPodAutoscaler`
@@ -13,6 +22,7 @@ The plugin reads:
 - `status.desiredReplicas`
 - `status.currentMetrics`
 - `status.conditions`
+- `status.observedGeneration`, when present
 - recent HPA Events
 
 It intentionally does not reimplement the HPA controller's internal decision logic.
@@ -20,10 +30,14 @@ It intentionally does not reimplement the HPA controller's internal decision log
 ## Environment
 
 - kind: v0.31.0
+- kind node image: `kindest/node:v1.35.0`
 - Kubernetes server: v1.35.0
 - kubectl: v1.36.1
 - metrics-server: v0.8.1
 - HPA API: `autoscaling/v2`
+
+metrics-server was installed from the upstream release manifest with the
+kind-specific `--kubelet-insecure-tls` option.
 
 ## Build
 
@@ -38,6 +52,7 @@ To make it visible to `kubectl plugin list`, put the binary on `PATH`.
 chmod +x ./kubectl-hpa-status
 sudo mv ./kubectl-hpa-status /usr/local/bin/
 kubectl plugin list
+kubectl hpa status <hpa-name> -n <namespace>
 ```
 
 ## Validation matrix
@@ -86,7 +101,7 @@ Metrics:
 
 Interpretation:
   - ScalingLimited reports that the visible desired replica count is constrained by maxReplicas.
-  - Multiple current metrics are reported, but the API does not expose per-metric replica recommendations as structured status.
+  - Multiple current metrics are reported, but the API does not expose per-metric replica recommendations or which metric would have selected the recommendation before the maxReplicas cap was applied.
   - Events and human-readable messages can hint at the contributing metric, but they are not a stable decision record.
 ```
 
@@ -103,8 +118,9 @@ Metrics:
 
 Interpretation:
   - desiredReplicas equals currentReplicas, so no immediate replica change is visible from status.
-  - A metric is outside its target while desiredReplicas is unchanged; this may be due to tolerance, rounding, stabilization, or conservative handling of missing metrics.
-  - Existing HPA status does not expose the exact internal reason for this no-scale decision.
+  - The metric ratio is approximately 1.043, which is close to the target.
+  - This is consistent with tolerance-based no-scale, but existing HPA status does not explicitly expose tolerance as the reason.
+  - The plugin avoids claiming the exact internal reason because rounding, stabilization, or conservative metric handling may also affect the final result.
 ```
 
 ## Findings
@@ -124,6 +140,11 @@ However, it also suggests that some explanations remain difficult to provide as 
 - the internal recommendation history used for stabilization
 
 Events and human-readable condition messages are useful diagnostic hints, but this POC does not treat them as a stable structured decision record.
+
+These results suggest that a tooling-first POC is useful before proposing new
+HPA API surface. The plugin can validate how far existing signals go, while
+keeping any future API discussion focused on concrete remaining ambiguities
+rather than exposing the controller's full decision trace.
 
 ## Limitation
 
