@@ -233,6 +233,15 @@ func interpret(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []
 		lines = append(lines, "desiredReplicas is less than currentReplicas, so the HPA is recommending scale down.")
 	} else {
 		lines = append(lines, "desiredReplicas equals currentReplicas, so no immediate replica change is visible from status.")
+		if hpa.Status.DesiredReplicas != hpa.Spec.MaxReplicas && hpa.Status.DesiredReplicas != minReplicas && hasMetricOutsideTarget(hpa) {
+			lines = append(lines, "A metric is outside its target while desiredReplicas is unchanged; this may be due to tolerance, rounding, stabilization, or conservative handling of missing metrics.")
+			lines = append(lines, "Existing HPA status does not expose the exact internal reason for this no-scale decision.")
+		}
+	}
+
+	if len(hpa.Status.CurrentMetrics) > 1 {
+		lines = append(lines, "Multiple current metrics are reported, but the API does not expose per-metric replica recommendations as structured status.")
+		lines = append(lines, "Events and condition messages can hint at the contributing metric, but they are not a stable decision record.")
 	}
 
 	lines = append(lines, "This plugin uses existing HPA status, conditions, metrics, and events. It does not expose internal controller calculations.")
@@ -323,6 +332,33 @@ func compareMetricToTarget(utilization *int32, target string) string {
 	default:
 		return "current value equals target"
 	}
+}
+
+func hasMetricOutsideTarget(hpa *autoscalingv2.HorizontalPodAutoscaler) bool {
+	for _, metric := range hpa.Status.CurrentMetrics {
+		if metric.Type != autoscalingv2.ResourceMetricSourceType || metric.Resource == nil {
+			continue
+		}
+		utilization := metric.Resource.Current.AverageUtilization
+		if utilization == nil {
+			continue
+		}
+		target := findResourceTarget(hpa, string(metric.Resource.Name))
+		if !strings.HasSuffix(target, "%") {
+			continue
+		}
+
+		targetValue := strings.TrimSuffix(target, "%")
+		var targetUtilization int32
+		if _, err := fmt.Sscanf(targetValue, "%d", &targetUtilization); err != nil {
+			continue
+		}
+		if *utilization != targetUtilization {
+			return true
+		}
+	}
+
+	return false
 }
 
 func printRecentEvents(ctx context.Context, client *kubernetes.Clientset, hpa *autoscalingv2.HorizontalPodAutoscaler) {
