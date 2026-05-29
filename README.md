@@ -1,9 +1,36 @@
 # kubectl-hpa-status
 
-POC for inspecting an HPA with the existing Kubernetes API:
+A kubectl plugin for inspecting HorizontalPodAutoscaler status with detailed
+scaling analysis using existing Kubernetes API signals.
+
+## Install
+
+### Krew (recommended)
 
 ```sh
+kubectl krew install hpa-status
 kubectl hpa status <hpa-name> -n <namespace>
+```
+
+### Manual
+
+```sh
+go mod tidy
+go build -o kubectl-hpa-status .
+chmod +x ./kubectl-hpa-status
+sudo mv ./kubectl-hpa-status /usr/local/bin/
+```
+
+To verify the plugin is visible:
+
+```sh
+kubectl plugin list
+```
+
+## Usage
+
+```sh
+kubectl hpa status <hpa-name> [-n namespace] [--context context] [--events=false]
 ```
 
 The binary name is `kubectl-hpa-status`. In this validation environment,
@@ -27,7 +54,7 @@ The plugin reads:
 
 It intentionally does not reimplement the HPA controller's internal decision logic.
 
-## Environment
+## Validated environment
 
 - kind: v0.31.0
 - kind node image: `kindest/node:v1.35.0`
@@ -38,22 +65,6 @@ It intentionally does not reimplement the HPA controller's internal decision log
 
 metrics-server was installed from the upstream release manifest with the
 kind-specific `--kubelet-insecure-tls` option.
-
-## Build
-
-```sh
-go mod tidy
-go build -o kubectl-hpa-status .
-```
-
-To make it visible to `kubectl plugin list`, put the binary on `PATH`.
-
-```sh
-chmod +x ./kubectl-hpa-status
-sudo mv ./kubectl-hpa-status /usr/local/bin/
-kubectl plugin list
-kubectl hpa status <hpa-name> -n <namespace>
-```
 
 ## Validation matrix
 
@@ -151,3 +162,7 @@ rather than exposing the controller's full decision trace.
 This plugin reports what can be inferred from existing HPA status, metrics,
 conditions, and events. It does not know the controller's internal intermediate
 calculations.
+
+## License
+
+Apache-2.0

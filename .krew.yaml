@@ -1,0 +1,46 @@
+apiVersion: krew.googlecontainertools.github.com/v1alpha2
+kind: Plugin
+metadata:
+  name: hpa-status
+spec:
+  version: {{ .TagName }}
+  homepage: https://github.com/mattsu2020/kubehpa_cli
+  shortDescription: Show detailed HPA status and scaling analysis
+  description: |
+    Displays detailed HorizontalPodAutoscaler status including current and
+    target utilization, replica counts, scaling conditions, metric analysis,
+    and interpretation of scaling decisions.
+    This plugin reads existing HPA status, metrics, conditions, and events
+    to provide human-readable analysis without reimplementing the HPA
+    controller's internal decision logic.
+  platforms:
+    - selector:
+        matchLabels:
+          os: darwin
+          arch: amd64
+      {{addURIAndSha "https://github.com/mattsu2020/kubehpa_cli/releases/download/{{ .TagName }}/kubectl-hpa-status_{{ .TagName }}_darwin_amd64.tar.gz" .TagName }}
+      bin: kubectl-hpa-status
+    - selector:
+        matchLabels:
+          os: darwin
+          arch: arm64
+      {{addURIAndSha "https://github.com/mattsu2020/kubehpa_cli/releases/download/{{ .TagName }}/kubectl-hpa-status_{{ .TagName }}_darwin_arm64.tar.gz" .TagName }}
+      bin: kubectl-hpa-status
+    - selector:
+        matchLabels:
+          os: linux
+          arch: amd64
+      {{addURIAndSha "https://github.com/mattsu2020/kubehpa_cli/releases/download/{{ .TagName }}/kubectl-hpa-status_{{ .TagName }}_linux_amd64.tar.gz" .TagName }}
+      bin: kubectl-hpa-status
+    - selector:
+        matchLabels:
+          os: linux
+          arch: arm64
+      {{addURIAndSha "https://github.com/mattsu2020/kubehpa_cli/releases/download/{{ .TagName }}/kubectl-hpa-status_{{ .TagName }}_linux_arm64.tar.gz" .TagName }}
+      bin: kubectl-hpa-status
+    - selector:
+        matchLabels:
+          os: windows
+          arch: amd64
+      {{addURIAndSha "https://github.com/mattsu2020/kubehpa_cli/releases/download/{{ .TagName }}/kubectl-hpa-status_{{ .TagName }}_windows_amd64.tar.gz" .TagName }}
+      bin: kubectl-hpa-status.exe
