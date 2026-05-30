@@ -6,12 +6,16 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
+	"text/template"
 	"time"
 
 	"github.com/mattsu2020/kubehpa_cli/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubehpa_cli/pkg/hpa"
 	"github.com/spf13/cobra"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/util/jsonpath"
 	"sigs.k8s.io/yaml"
 )
 
@@ -28,6 +32,7 @@ type options struct {
 	events        eventOption
 	interpret     bool
 	noInterpret   bool
+	explain       bool
 	watch         bool
 	watchInterval time.Duration
 }
@@ -54,10 +59,11 @@ func NewRootCommand() *cobra.Command {
 			if len(args) == 0 {
 				return cmd.Help()
 			}
+			includeInterpretation := (opts.interpret || opts.explain) && !opts.noInterpret
 			if opts.watch {
-				return runWatch(cmd.Context(), cmd.OutOrStdout(), opts, args[0], opts.interpret && !opts.noInterpret)
+				return runWatch(cmd.Context(), cmd.OutOrStdout(), opts, args[0], includeInterpretation)
 			}
-			return runStatus(cmd.Context(), cmd.OutOrStdout(), opts, args[0], opts.interpret && !opts.noInterpret)
+			return runStatus(cmd.Context(), cmd.OutOrStdout(), opts, args[0], includeInterpretation)
 		},
 	}
 
@@ -66,9 +72,10 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().StringVar(&opts.contextName, "context", "", "kubeconfig context")
 	root.PersistentFlags().StringVar(&opts.kubeconfig, "kubeconfig", "", "path to kubeconfig")
 	root.PersistentFlags().StringVar(&opts.cluster, "cluster", "", "kubeconfig cluster")
-	root.PersistentFlags().StringVarP(&opts.output, "output", "o", "", "output format: table, wide, json, yaml")
+	root.PersistentFlags().StringVarP(&opts.output, "output", "o", "", "output format: table, wide, json, yaml, jsonpath=..., template=...")
 	root.PersistentFlags().BoolVar(&opts.wide, "wide", false, "show additional columns in table output")
 	root.PersistentFlags().BoolVar(&opts.interpret, "interpret", false, "include interpretation in status output")
+	root.PersistentFlags().BoolVar(&opts.explain, "explain", false, "include detailed interpretation and recommended actions")
 	root.PersistentFlags().BoolVar(&opts.noInterpret, "no-interpret", false, "omit interpretation and show raw status-derived data")
 	root.PersistentFlags().Var(&opts.events, "events", "show recent HPA events: true, false, or a number")
 	root.PersistentFlags().BoolVar(&opts.watch, "watch", false, "watch one HPA from the main status command")
@@ -90,7 +97,7 @@ func newStatusCommand(opts *options) *cobra.Command {
 		Short: "Show concise status for one HPA",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			includeInterpretation := opts.interpret && !opts.noInterpret
+			includeInterpretation := (opts.interpret || opts.explain) && !opts.noInterpret
 			if opts.watch {
 				return runWatch(cmd.Context(), cmd.OutOrStdout(), opts, args[0], includeInterpretation)
 			}
@@ -116,9 +123,10 @@ func newAnalyzeCommand(opts *options) *cobra.Command {
 
 func newListCommand(opts *options) *cobra.Command {
 	return &cobra.Command{
-		Use:   "list",
-		Short: "List HPAs and highlight visible issues",
-		Args:  cobra.NoArgs,
+		Use:     "list",
+		Aliases: []string{"ls"},
+		Short:   "List HPAs and highlight visible issues",
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runList(cmd.Context(), cmd.OutOrStdout(), opts)
 		},
@@ -173,6 +181,9 @@ func runStatus(ctx context.Context, out io.Writer, opts *options, name string, i
 		HorizontalPodAutoscalers(client.Namespace).
 		Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return fmt.Errorf("HPA %q was not found in namespace %q; check the name, namespace, or use list -A to find it: %w", name, client.Namespace, err)
+		}
 		return fmt.Errorf("failed to get HPA %s/%s: %w", client.Namespace, name, err)
 	}
 
@@ -266,8 +277,45 @@ func writeOutput(out io.Writer, format string, value any, writeText func() error
 		_, err = out.Write(data)
 		return err
 	default:
+		if expression, ok := strings.CutPrefix(format, "jsonpath="); ok {
+			return writeJSONPath(out, expression, value)
+		}
+		if expression, ok := strings.CutPrefix(format, "jsonpath:"); ok {
+			return writeJSONPath(out, expression, value)
+		}
+		if expression, ok := strings.CutPrefix(format, "template="); ok {
+			return writeTemplate(out, expression, value)
+		}
+		if expression, ok := strings.CutPrefix(format, "template:"); ok {
+			return writeTemplate(out, expression, value)
+		}
 		return fmt.Errorf("unsupported output format %q", format)
 	}
+}
+
+func writeJSONPath(out io.Writer, expression string, value any) error {
+	parser := jsonpath.New("output")
+	parser.AllowMissingKeys(true)
+	if err := parser.Parse(expression); err != nil {
+		return fmt.Errorf("invalid jsonpath expression: %w", err)
+	}
+	if err := parser.Execute(out, value); err != nil {
+		return fmt.Errorf("failed to execute jsonpath expression: %w", err)
+	}
+	_, err := fmt.Fprintln(out)
+	return err
+}
+
+func writeTemplate(out io.Writer, expression string, value any) error {
+	tmpl, err := template.New("output").Parse(expression)
+	if err != nil {
+		return fmt.Errorf("invalid template expression: %w", err)
+	}
+	if err := tmpl.Execute(out, value); err != nil {
+		return fmt.Errorf("failed to execute template expression: %w", err)
+	}
+	_, err = fmt.Fprintln(out)
+	return err
 }
 
 type eventOption struct {

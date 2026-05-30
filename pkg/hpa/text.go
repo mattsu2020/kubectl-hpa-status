@@ -40,6 +40,22 @@ func WriteStatusText(w io.Writer, report StatusReport) error {
 		}
 	}
 
+	if len(a.Behavior) > 0 {
+		out = append(out, '\n')
+		out = append(out, "Behavior:\n"...)
+		for _, behavior := range a.Behavior {
+			out = fmt.Appendf(out, "  - %s\n", behavior.Text)
+		}
+	}
+
+	if len(a.Actions) > 0 {
+		out = append(out, '\n')
+		out = append(out, "Recommended actions:\n"...)
+		for _, action := range a.Actions {
+			out = fmt.Appendf(out, "  - %s\n", action)
+		}
+	}
+
 	if len(a.Interpretation) > 0 {
 		out = append(out, '\n')
 		out = append(out, "Interpretation:\n"...)

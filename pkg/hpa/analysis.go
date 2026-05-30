@@ -23,6 +23,8 @@ type Analysis struct {
 	Summary        string             `json:"summary" yaml:"summary"`
 	Conditions     []Condition        `json:"conditions" yaml:"conditions"`
 	Metrics        []Metric           `json:"metrics" yaml:"metrics"`
+	Behavior       []BehaviorRule     `json:"behavior,omitempty" yaml:"behavior,omitempty"`
+	Actions        []string           `json:"recommendedActions,omitempty" yaml:"recommendedActions,omitempty"`
 	Interpretation []string           `json:"interpretation,omitempty" yaml:"interpretation,omitempty"`
 	ImpactMetric   *MetricImpactGuess `json:"impactMetric,omitempty" yaml:"impactMetric,omitempty"`
 }
@@ -48,6 +50,14 @@ type MetricImpactGuess struct {
 	Name  string  `json:"name" yaml:"name"`
 	Ratio float64 `json:"ratio" yaml:"ratio"`
 	Note  string  `json:"note" yaml:"note"`
+}
+
+type BehaviorRule struct {
+	Direction                  string   `json:"direction" yaml:"direction"`
+	StabilizationWindowSeconds *int32   `json:"stabilizationWindowSeconds,omitempty" yaml:"stabilizationWindowSeconds,omitempty"`
+	SelectPolicy               string   `json:"selectPolicy,omitempty" yaml:"selectPolicy,omitempty"`
+	Policies                   []string `json:"policies,omitempty" yaml:"policies,omitempty"`
+	Text                       string   `json:"text" yaml:"text"`
 }
 
 func Analyze(src *autoscalingv2.HorizontalPodAutoscaler, includeInterpretation bool) Analysis {
@@ -80,11 +90,14 @@ func Analyze(src *autoscalingv2.HorizontalPodAutoscaler, includeInterpretation b
 		analysis.Metrics = append(analysis.Metrics, FormatMetricStatus(src, metric))
 	}
 
+	analysis.Behavior = FormatBehavior(src)
+
 	if guess, ok := MostInfluentialMetric(src); ok {
 		analysis.ImpactMetric = &guess
 	}
 
 	if includeInterpretation {
+		analysis.Actions = RecommendedActions(src, minReplicas)
 		analysis.Interpretation = Interpret(src, minReplicas)
 	}
 
@@ -214,10 +227,45 @@ func FormatMetricStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, metric autos
 			Note:    note,
 			Text:    text,
 		}
+	case autoscalingv2.ContainerResourceMetricSourceType:
+		if metric.ContainerResource == nil {
+			return Metric{Type: "ContainerResource", Text: "ContainerResource metric: <missing status>"}
+		}
+		target := FindContainerResourceTarget(hpa, string(metric.ContainerResource.Name), metric.ContainerResource.Container)
+		current := FormatMetricValueStatus(metric.ContainerResource.Current)
+		note := CompareMetricToTarget(metric.ContainerResource.Current.AverageUtilization, target)
+		ratio := utilizationRatio(metric.ContainerResource.Current.AverageUtilization, target)
+		text := fmt.Sprintf("ContainerResource %s/%s current=%s target=%s", metric.ContainerResource.Container, metric.ContainerResource.Name, current, target)
+		if note != "" {
+			text = fmt.Sprintf("%s note=%q", text, note)
+		}
+		return Metric{Type: "ContainerResource", Name: fmt.Sprintf("%s/%s", metric.ContainerResource.Container, metric.ContainerResource.Name), Current: current, Target: target, Ratio: ratio, Note: note, Text: text}
+	case autoscalingv2.PodsMetricSourceType:
+		if metric.Pods == nil {
+			return Metric{Type: "Pods", Text: "Pods metric: <missing status>"}
+		}
+		current := FormatMetricValueStatus(metric.Pods.Current)
+		target := FindPodsTarget(hpa, metric.Pods.Metric.Name)
+		return Metric{Type: "Pods", Name: metric.Pods.Metric.Name, Current: current, Target: target, Text: fmt.Sprintf("Pods %s current=%s target=%s", metric.Pods.Metric.Name, current, target)}
+	case autoscalingv2.ObjectMetricSourceType:
+		if metric.Object == nil {
+			return Metric{Type: "Object", Text: "Object metric: <missing status>"}
+		}
+		current := FormatMetricValueStatus(metric.Object.Current)
+		target := FindObjectTarget(hpa, metric.Object.Metric.Name)
+		name := fmt.Sprintf("%s/%s", metric.Object.DescribedObject.Kind, metric.Object.DescribedObject.Name)
+		return Metric{Type: "Object", Name: metric.Object.Metric.Name, Current: current, Target: target, Text: fmt.Sprintf("Object %s %s current=%s target=%s", name, metric.Object.Metric.Name, current, target)}
+	case autoscalingv2.ExternalMetricSourceType:
+		if metric.External == nil {
+			return Metric{Type: "External", Text: "External metric: <missing status>"}
+		}
+		current := FormatMetricValueStatus(metric.External.Current)
+		target := FindExternalTarget(hpa, metric.External.Metric.Name)
+		return Metric{Type: "External", Name: metric.External.Metric.Name, Current: current, Target: target, Text: fmt.Sprintf("External %s current=%s target=%s", metric.External.Metric.Name, current, target)}
 	default:
 		return Metric{
 			Type: string(metric.Type),
-			Text: fmt.Sprintf("%s metric is present, but this POC only formats Resource metrics in detail", metric.Type),
+			Text: fmt.Sprintf("%s metric is present, but this plugin does not know how to format it in detail", metric.Type),
 		}
 	}
 }
@@ -247,6 +295,69 @@ func FindResourceTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, name string)
 	return "<unknown>"
 }
 
+func FindContainerResourceTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, name, container string) string {
+	for _, spec := range hpa.Spec.Metrics {
+		if spec.Type == autoscalingv2.ContainerResourceMetricSourceType &&
+			spec.ContainerResource != nil &&
+			string(spec.ContainerResource.Name) == name &&
+			spec.ContainerResource.Container == container {
+			return FormatMetricTarget(spec.ContainerResource.Target)
+		}
+	}
+	return "<unknown>"
+}
+
+func FindPodsTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) string {
+	for _, spec := range hpa.Spec.Metrics {
+		if spec.Type == autoscalingv2.PodsMetricSourceType &&
+			spec.Pods != nil &&
+			spec.Pods.Metric.Name == name {
+			return FormatMetricTarget(spec.Pods.Target)
+		}
+	}
+	return "<unknown>"
+}
+
+func FindObjectTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) string {
+	for _, spec := range hpa.Spec.Metrics {
+		if spec.Type == autoscalingv2.ObjectMetricSourceType &&
+			spec.Object != nil &&
+			spec.Object.Metric.Name == name {
+			return FormatMetricTarget(spec.Object.Target)
+		}
+	}
+	return "<unknown>"
+}
+
+func FindExternalTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) string {
+	for _, spec := range hpa.Spec.Metrics {
+		if spec.Type == autoscalingv2.ExternalMetricSourceType &&
+			spec.External != nil &&
+			spec.External.Metric.Name == name {
+			return FormatMetricTarget(spec.External.Target)
+		}
+	}
+	return "<unknown>"
+}
+
+func FormatMetricTarget(target autoscalingv2.MetricTarget) string {
+	switch target.Type {
+	case autoscalingv2.UtilizationMetricType:
+		if target.AverageUtilization != nil {
+			return fmt.Sprintf("%d%%", *target.AverageUtilization)
+		}
+	case autoscalingv2.AverageValueMetricType:
+		if target.AverageValue != nil {
+			return target.AverageValue.String()
+		}
+	case autoscalingv2.ValueMetricType:
+		if target.Value != nil {
+			return target.Value.String()
+		}
+	}
+	return "<unknown>"
+}
+
 func FormatMetricValue(utilization *int32, averageValue *resource.Quantity) string {
 	if utilization != nil {
 		return fmt.Sprintf("%d%%", *utilization)
@@ -255,6 +366,104 @@ func FormatMetricValue(utilization *int32, averageValue *resource.Quantity) stri
 		return averageValue.String()
 	}
 	return "<unknown>"
+}
+
+func FormatMetricValueStatus(value autoscalingv2.MetricValueStatus) string {
+	if value.AverageUtilization != nil {
+		return fmt.Sprintf("%d%%", *value.AverageUtilization)
+	}
+	if value.AverageValue != nil && !value.AverageValue.IsZero() {
+		return value.AverageValue.String()
+	}
+	if value.Value != nil && !value.Value.IsZero() {
+		return value.Value.String()
+	}
+	return "<unknown>"
+}
+
+func FormatBehavior(hpa *autoscalingv2.HorizontalPodAutoscaler) []BehaviorRule {
+	if hpa.Spec.Behavior == nil {
+		return nil
+	}
+
+	var out []BehaviorRule
+	if rule := FormatBehaviorRule("scaleUp", hpa.Spec.Behavior.ScaleUp); rule != nil {
+		out = append(out, *rule)
+	}
+	if rule := FormatBehaviorRule("scaleDown", hpa.Spec.Behavior.ScaleDown); rule != nil {
+		out = append(out, *rule)
+	}
+	return out
+}
+
+func FormatBehaviorRule(direction string, rules *autoscalingv2.HPAScalingRules) *BehaviorRule {
+	if rules == nil {
+		return nil
+	}
+
+	rule := BehaviorRule{
+		Direction:                  direction,
+		StabilizationWindowSeconds: rules.StabilizationWindowSeconds,
+	}
+	if rules.SelectPolicy != nil {
+		rule.SelectPolicy = string(*rules.SelectPolicy)
+	}
+	for _, policy := range rules.Policies {
+		rule.Policies = append(rule.Policies, fmt.Sprintf("%s %d per %ds", policy.Type, policy.Value, policy.PeriodSeconds))
+	}
+
+	var parts []string
+	if rule.StabilizationWindowSeconds != nil {
+		parts = append(parts, fmt.Sprintf("stabilizationWindow=%ds", *rule.StabilizationWindowSeconds))
+	}
+	if rule.SelectPolicy != "" {
+		parts = append(parts, "selectPolicy="+rule.SelectPolicy)
+	}
+	if len(rule.Policies) > 0 {
+		parts = append(parts, "policies="+strings.Join(rule.Policies, ", "))
+	}
+	if len(parts) == 0 {
+		parts = append(parts, "custom behavior is present")
+	}
+	rule.Text = direction + ": " + strings.Join(parts, "; ")
+	return &rule
+}
+
+func RecommendedActions(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []string {
+	var actions []string
+	if hpa.Status.ObservedGeneration != nil && *hpa.Status.ObservedGeneration < hpa.Generation {
+		actions = append(actions, "Wait for the HPA controller to observe the latest spec generation before trusting this status.")
+	}
+	if condition := FindCondition(hpa, "ScalingActive"); condition != nil && condition.Status != corev1.ConditionTrue {
+		actions = append(actions, "Check metrics-server or custom/external metrics adapters; ScalingActive is not True.")
+		return actions
+	}
+	if condition := FindCondition(hpa, "AbleToScale"); condition != nil && condition.Reason == "ScaleDownStabilized" {
+		if window := scaleDownStabilizationWindow(hpa); window != nil {
+			actions = append(actions, fmt.Sprintf("CPU or memory may already be low, but scale-down is stabilized; wait up to about %ds or review spec.behavior.scaleDown.stabilizationWindowSeconds.", *window))
+		} else {
+			actions = append(actions, "CPU or memory may already be low, but scale-down is stabilized; review HPA behavior and recent recommendations.")
+		}
+	}
+	if condition := FindCondition(hpa, "ScalingLimited"); condition != nil && condition.Status == corev1.ConditionTrue {
+		switch hpa.Status.DesiredReplicas {
+		case hpa.Spec.MaxReplicas:
+			actions = append(actions, "HPA is capped at maxReplicas; raise maxReplicas or reduce load/target utilization if more capacity is expected.")
+		case minReplicas:
+			actions = append(actions, "HPA is capped at minReplicas; lower minReplicas if scale-down below this point is expected.")
+		}
+	}
+	if len(actions) == 0 && hpa.Status.DesiredReplicas == hpa.Status.CurrentReplicas {
+		actions = append(actions, "No immediate action is visible from HPA status; inspect metrics and recent Events if behavior is unexpected.")
+	}
+	return actions
+}
+
+func scaleDownStabilizationWindow(hpa *autoscalingv2.HorizontalPodAutoscaler) *int32 {
+	if hpa.Spec.Behavior == nil || hpa.Spec.Behavior.ScaleDown == nil {
+		return nil
+	}
+	return hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds
 }
 
 func CompareMetricToTarget(utilization *int32, target string) string {

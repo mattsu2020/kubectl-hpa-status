@@ -7,6 +7,7 @@ import (
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -143,6 +144,82 @@ func TestWriteListTextVisuallyHighlightsProblems(t *testing.T) {
 	}
 	if !strings.Contains(text, "! LIMITED") {
 		t.Fatalf("expected LIMITED marker in %q", text)
+	}
+}
+
+func TestAnalyzeFormatsNonResourceMetrics(t *testing.T) {
+	hpa := baseHPA()
+	target := resource.MustParse("10")
+	current := resource.MustParse("12")
+	averageTarget := resource.MustParse("100m")
+	averageCurrent := resource.MustParse("120m")
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{
+		{
+			Type: autoscalingv2.ExternalMetricSourceType,
+			External: &autoscalingv2.ExternalMetricSource{
+				Metric: autoscalingv2.MetricIdentifier{Name: "queue_depth"},
+				Target: autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType, Value: &target},
+			},
+		},
+		{
+			Type: autoscalingv2.PodsMetricSourceType,
+			Pods: &autoscalingv2.PodsMetricSource{
+				Metric: autoscalingv2.MetricIdentifier{Name: "requests_per_second"},
+				Target: autoscalingv2.MetricTarget{Type: autoscalingv2.AverageValueMetricType, AverageValue: &averageTarget},
+			},
+		},
+	}
+	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{
+		{
+			Type: autoscalingv2.ExternalMetricSourceType,
+			External: &autoscalingv2.ExternalMetricStatus{
+				Metric:  autoscalingv2.MetricIdentifier{Name: "queue_depth"},
+				Current: autoscalingv2.MetricValueStatus{Value: &current},
+			},
+		},
+		{
+			Type: autoscalingv2.PodsMetricSourceType,
+			Pods: &autoscalingv2.PodsMetricStatus{
+				Metric:  autoscalingv2.MetricIdentifier{Name: "requests_per_second"},
+				Current: autoscalingv2.MetricValueStatus{AverageValue: &averageCurrent},
+			},
+		},
+	}
+
+	got := Analyze(hpa, false)
+	if len(got.Metrics) != 2 {
+		t.Fatalf("expected 2 metrics, got %#v", got.Metrics)
+	}
+	if got.Metrics[0].Text != "External queue_depth current=12 target=10" {
+		t.Fatalf("unexpected external metric text: %s", got.Metrics[0].Text)
+	}
+	if got.Metrics[1].Text != "Pods requests_per_second current=120m target=100m" {
+		t.Fatalf("unexpected pods metric text: %s", got.Metrics[1].Text)
+	}
+}
+
+func TestAnalyzeBehaviorAddsRecommendedScaleDownAction(t *testing.T) {
+	window := int32(300)
+	hpa := baseHPA()
+	hpa.Spec.Behavior = &autoscalingv2.HorizontalPodAutoscalerBehavior{
+		ScaleDown: &autoscalingv2.HPAScalingRules{
+			StabilizationWindowSeconds: &window,
+		},
+	}
+	hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
+		{Type: "ScalingActive", Status: corev1.ConditionTrue, Reason: "ValidMetricFound"},
+		{Type: "AbleToScale", Status: corev1.ConditionTrue, Reason: "ScaleDownStabilized", Message: "recent recommendations were higher"},
+	}
+
+	got := Analyze(hpa, true)
+	if len(got.Behavior) != 1 {
+		t.Fatalf("expected behavior entry, got %#v", got.Behavior)
+	}
+	if !strings.Contains(got.Behavior[0].Text, "stabilizationWindow=300s") {
+		t.Fatalf("expected stabilization window text, got %s", got.Behavior[0].Text)
+	}
+	if !containsLine(got.Actions, "wait up to about 300s") {
+		t.Fatalf("expected scale-down action, got %#v", got.Actions)
 	}
 }
 

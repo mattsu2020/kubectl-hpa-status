@@ -3,6 +3,30 @@
 A kubectl plugin for inspecting HorizontalPodAutoscaler status with detailed
 scaling analysis using existing Kubernetes API signals.
 
+## Quick usage
+
+```sh
+kubectl hpa status <hpa-name> -n <namespace>
+kubectl hpa status <hpa-name> --explain
+kubectl hpa status list -A --wide
+kubectl hpa status ls -A -o json
+kubectl hpa status <hpa-name> -o 'jsonpath={.analysis.summary}'
+```
+
+How to read the output:
+
+- `Summary` is the visible state derived from HPA status.
+- `Recommended actions` are operational hints based on visible conditions and behavior settings.
+- `Interpretation` is diagnostic inference, not the controller's private decision trace.
+- `confidence: high` means the line is based on explicit status fields; `confidence: medium` means the status is consistent with the explanation but the API does not expose the exact internal reason.
+
+Common troubleshooting checks:
+
+- `ScalingActive=False`: check metrics-server, custom metrics adapters, or external metrics adapters.
+- `ScalingLimited=True`: check `minReplicas`, `maxReplicas`, and target utilization.
+- `ScaleDownStabilized`: check `spec.behavior.scaleDown.stabilizationWindowSeconds` and wait for the stabilization window.
+- missing or stale output: compare `status.observedGeneration` with `metadata.generation`.
+
 ## Install
 
 ### Krew (recommended)
@@ -36,9 +60,9 @@ kubectl plugin list
 
 The Go module path currently follows the repository import path
 `github.com/mattsu2020/kubehpa_cli`. The released plugin and binary keep the
-user-facing name `kubectl-hpa-status`. If the GitHub repository is renamed to
-`kubectl-hpa-status`, update `go.mod`, imports, and `.goreleaser.yml` ldflags in
-the same change.
+user-facing name `kubectl-hpa-status`. Keep `go.mod`, import paths, the GitHub
+repository owner/name, and `.goreleaser.yml` ldflags in one rename change if the
+repository moves to `kubectl-hpa-status` or an organization account.
 
 ## Usage
 
@@ -47,6 +71,7 @@ kubectl hpa status <hpa-name> [-n namespace] [--context context] [--events=false
 kubectl hpa status <hpa-name> --watch --interval 5s
 kubectl hpa status analyze <hpa-name>
 kubectl hpa status list [-A] [-o table|wide|json|yaml]
+kubectl hpa status ls [-A] --wide
 kubectl hpa status watch <hpa-name> --interval 5s
 ```
 
@@ -76,9 +101,10 @@ Common flags:
 - `-n, --namespace`: namespace
 - `-A, --all-namespaces`: list HPAs across all namespaces
 - `--context`, `--kubeconfig`, `--cluster`: explicit kubeconfig selection
-- `-o table|wide|json|yaml`: output format
+- `-o table|wide|json|yaml|jsonpath=...|template=...`: output format
 - `--wide`: show target, min, and max columns in table output
 - `--interpret`: include diagnostic interpretation in compact status output
+- `--explain`: include detailed interpretation and recommended actions
 - `--no-interpret`: omit interpretation and show status-derived data only
 - `--events=false`: omit recent Events
 - `--events=3`: show the latest 3 HPA Events
@@ -93,6 +119,7 @@ The plugin reads:
 - `status.currentMetrics`
 - `status.conditions`
 - `status.observedGeneration`, when present
+- `spec.behavior`, when present
 - recent HPA Events
 
 It intentionally does not reimplement the HPA controller's internal decision logic.
@@ -146,7 +173,7 @@ List view:
 ```text
 NAMESPACE            NAME                             CURRENT  DESIRED  HEALTH     ISSUE                            SUMMARY
 default              web                              3        5        OK                                          HPA currently wants to scale up.
-default              api                              2        2        ERROR      ERROR: FailedGetResourceMetric   HPA cannot currently compute a scaling recommendation from metrics.
+default              api                              2        2        ! ERROR    ERROR: FailedGetResourceMetric   HPA cannot currently compute a scaling recommendation from metrics.
 ```
 
 Multi-metric HPA:
@@ -161,10 +188,13 @@ Metrics:
   - Resource cpu current=0% target=80% note="current value is below target"
   - Resource memory current=68% target=50% note="current value is above target"
 
+Recommended actions:
+  - HPA is capped at maxReplicas; raise maxReplicas or reduce load/target utilization if more capacity is expected.
+
 Interpretation:
-  - ScalingLimited reports that the visible desired replica count is constrained by maxReplicas.
-  - Multiple current metrics are reported, but the API does not expose per-metric replica recommendations or which metric would have selected the recommendation before the maxReplicas cap was applied.
-  - Events and human-readable messages can hint at the contributing metric, but they are not a stable decision record.
+  - [confidence: high] ScalingLimited reports that the visible desired replica count is constrained by maxReplicas.
+  - [confidence: medium] Among visible resource utilization metrics, memory has the largest distance from target (ratio 1.360).
+  - [confidence: high] This is only an impact estimate; the API does not expose per-metric replica recommendations or the final metric winner.
 ```
 
 Tolerance-like no-scale:
@@ -179,10 +209,10 @@ Metrics:
   - Resource memory current=73% target=70% note="current value is above target"
 
 Interpretation:
-  - desiredReplicas equals currentReplicas, so no immediate replica change is visible from status.
-  - The metric ratio is approximately 1.043, which is close to the target.
-  - This is consistent with tolerance-based no-scale, but existing HPA status does not explicitly expose tolerance as the reason.
-  - The plugin avoids claiming the exact internal reason because rounding, stabilization, or conservative metric handling may also affect the final result.
+  - [confidence: high] desiredReplicas equals currentReplicas, so no immediate replica change is visible from status.
+  - [confidence: medium] memory metric ratio is approximately 1.043, which is close to the target.
+  - [confidence: medium] This is consistent with tolerance-based no-scale. Kubernetes commonly uses a tolerance band around the target, but HPA status does not expose tolerance as an explicit reason.
+  - [confidence: high] The plugin avoids claiming the exact internal reason because rounding, stabilization, or conservative metric handling may also affect the final result.
 ```
 
 ## Findings
