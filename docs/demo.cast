@@ -1,0 +1,7 @@
+{"version":2,"width":96,"height":28,"timestamp":1780070400,"env":{"SHELL":"/bin/zsh","TERM":"xterm-256color"}}
+[0.1,"o","$ kubectl hpa status list -A --wide\n"]
+[0.2,"o","NAMESPACE            NAME                             TARGET                       CURRENT  DESIRED  MIN      MAX      HEALTH              SCORE    METRICS              BEHAVIOR                     ISSUE                            CONDITIONS                           SUMMARY\n"]
+[0.3,"o","default              web                              Deployment/web               3        5        2        10       🟢 Healthy          100      cpu ███████░░░                                    ScalingActive=True                  HPA currently wants to scale up.\n"]
+[0.4,"o","default              api                              Deployment/api               10       10       2        10       🔴 ScalingLimited   75       cpu ██████████░                                  LIMITED: TooManyReplicas            ScalingActive=True;ScalingLimited=True HPA is at maxReplicas.\n"]
+[1.0,"o","\n$ kubectl hpa status api --suggest\n"]
+[1.1,"o","HPA default/api\nTarget: Deployment/api\nReplicas: current=10 desired=10 min=2 max=10\nHealth score: 🔴 ScalingLimited 75/100\n\nSummary: HPA is at maxReplicas.\n\nRecommended commands:\n  - Raise maxReplicas: The HPA is capped at maxReplicas=10. Raising it to 20 allows the controller to add capacity if metrics still require it. (risk: medium)\n    $ kubectl patch hpa api -n default --type=merge -p '{\"spec\":{\"maxReplicas\":20}}'\n"]

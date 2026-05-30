@@ -1,8 +1,19 @@
 # kubectl-hpa-status
 
+[![CI](https://github.com/mattsu2020/kubectl-hpa-status/actions/workflows/ci.yml/badge.svg)](https://github.com/mattsu2020/kubectl-hpa-status/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/mattsu2020/kubectl-hpa-status/actions/workflows/codeql.yml/badge.svg)](https://github.com/mattsu2020/kubectl-hpa-status/actions/workflows/codeql.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/mattsu2020/kubectl-hpa-status.svg)](https://pkg.go.dev/github.com/mattsu2020/kubectl-hpa-status)
+[![Krew](https://img.shields.io/badge/krew-hpa--status-blue)](https://krew.sigs.k8s.io/plugins/)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
 ![kubectl-hpa-status demo](images/demo.png)
 
 既存の Kubernetes API シグナルを活用し、詳細なスケーリング分析とともに HorizontalPodAutoscaler (HPA) の状態を調査するための kubectl プラグインです。
+
+## デモ
+
+- スクリーンショット: [images/demo.png](images/demo.png)
+- asciinema記録ソース: [docs/demo.cast](docs/demo.cast)
 
 ### なぜ `kubectl-hpa-status` を使うべきなのか？
 
@@ -44,6 +55,15 @@ kubectl hpa status <hpa-name> -o 'jsonpath={.analysis.summary}'
 ```sh
 kubectl krew install hpa-status
 kubectl hpa status <hpa-name> -n <namespace>
+kubectl hpa status list -A --wide
+kubectl hpa status <hpa-name> --suggest
+```
+
+### Homebrew
+
+```sh
+brew install mattsu2020/tap/kubectl-hpa-status
+kubectl-hpa-status list -A --wide
 ```
 
 ### 手動インストール
@@ -54,6 +74,24 @@ go build -o kubectl-hpa-status .
 chmod +x ./kubectl-hpa-status
 sudo mv ./kubectl-hpa-status /usr/local/bin/
 kubectl hpa status <hpa-name> -n <namespace>
+```
+
+## 開発
+
+```sh
+make build
+make test
+make coverage
+make lint
+make release-check
+```
+
+kindを使ったE2Eテスト:
+
+```sh
+kind create cluster --name hpa-status-dev
+make e2e
+kind delete cluster --name hpa-status-dev
 ```
 
 ## ロードマップ

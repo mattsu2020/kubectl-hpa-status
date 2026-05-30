@@ -1,9 +1,29 @@
 # kubectl-hpa-status
 
+[![CI](https://github.com/mattsu2020/kubectl-hpa-status/actions/workflows/ci.yml/badge.svg)](https://github.com/mattsu2020/kubectl-hpa-status/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/mattsu2020/kubectl-hpa-status/actions/workflows/codeql.yml/badge.svg)](https://github.com/mattsu2020/kubectl-hpa-status/actions/workflows/codeql.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/mattsu2020/kubectl-hpa-status.svg)](https://pkg.go.dev/github.com/mattsu2020/kubectl-hpa-status)
+[![Go Report Card](https://goreportcard.com/badge/github.com/mattsu2020/kubectl-hpa-status)](https://goreportcard.com/report/github.com/mattsu2020/kubectl-hpa-status)
+[![Krew](https://img.shields.io/badge/krew-hpa--status-blue)](https://krew.sigs.k8s.io/plugins/)
+[![Kubernetes](https://img.shields.io/badge/kubernetes-autoscaling%2Fv2-326ce5)](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/)
+[![Coverage](https://img.shields.io/badge/coverage-make%20coverage-informational)](#development)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
 ![kubectl-hpa-status demo](images/demo.png)
 
 A kubectl plugin for inspecting HorizontalPodAutoscaler status with detailed
 scaling analysis using existing Kubernetes API signals.
+
+## Demo
+
+- Screenshot: [images/demo.png](images/demo.png)
+- asciinema recording source: [docs/demo.cast](docs/demo.cast)
+
+```sh
+kubectl hpa status list -A --wide
+kubectl hpa status <hpa-name> --suggest
+kubectl hpa status <hpa-name> --fix --apply
+```
 
 ### Why use `kubectl-hpa-status`?
 
@@ -22,6 +42,8 @@ scaling analysis using existing Kubernetes API signals.
 ```sh
 kubectl hpa status <hpa-name> -n <namespace>
 kubectl hpa status <hpa-name> --explain
+kubectl hpa status <hpa-name> --suggest
+kubectl hpa status <hpa-name> --fix --apply
 kubectl hpa status list -A --wide --sort-by=desired --filter=scaling-limited
 kubectl hpa status ls -A -o json
 kubectl hpa status <hpa-name> --watch --timeout=2m --until-condition=scaling-limited
@@ -69,6 +91,8 @@ Common flags include -n/--namespace, -A/--all-namespaces, -o/--output,
 ```sh
 kubectl krew install hpa-status
 kubectl hpa status <hpa-name> -n <namespace>
+kubectl hpa status list -A --wide
+kubectl hpa status <hpa-name> --suggest
 ```
 
 Krew installs the plugin as `hpa-status`. For plugins whose names contain
@@ -76,6 +100,13 @@ dashes, Krew creates a kubectl-visible symlink using underscores, so
 `hpa-status` is discoverable by kubectl as the nested command
 `kubectl hpa status`. Depending on kubectl plugin discovery behavior,
 `kubectl hpa-status status <hpa-name>` may also work.
+
+### Homebrew
+
+```sh
+brew install mattsu2020/tap/kubectl-hpa-status
+kubectl-hpa-status list -A --wide
+```
 
 ### Manual
 
@@ -139,13 +170,13 @@ Common flags:
 - `--context`, `--kubeconfig`, `--cluster`: explicit kubeconfig selection
 - `-o table|wide|json|yaml|jsonpath=...|template=...`: output format
 - `--wide`: show target, min, and max columns in table output
-- `--sort-by namespace|name|current|desired|health|issue`: sort `list` output
+- `--sort-by namespace|name|current|desired|health|health-score|issue`: sort `list` output
 - `--filter all|ok|error|limited|scaling-limited|issue`: filter `list` output
 - `--color auto|always|never`: colorize table output
 - `--interpret`: include diagnostic interpretation in compact status output
 - `--explain`: include detailed interpretation and recommended actions
 - `--suggest`: include concrete `kubectl patch` commands when a safe HPA spec suggestion is visible
-- `--fix`: show a stronger fix plan with applyable patches
+- `--fix`: show a stronger fix plan with applicable patches
 - `--apply`: apply suggested HPA patches after confirmation; use `-y` to skip the prompt
 - `--lang=ja` or `-o ja`: show Japanese text labels
 - `--no-interpret`: omit interpretation and show status-derived data only
@@ -160,7 +191,7 @@ Supported Kubernetes versions:
 
 - Runtime target: clusters serving `autoscaling/v2` `HorizontalPodAutoscaler`
 - Validated cluster: Kubernetes v1.35.0 with metrics-server v0.8.1
-- Client libraries: `k8s.io/client-go` / `k8s.io/api` v0.34.2
+- Client libraries: `k8s.io/client-go` / `k8s.io/api` v0.35.0
 
 The plugin reads:
 
@@ -222,9 +253,9 @@ Validated on a local kind cluster named `hpa-status-poc`.
 List view:
 
 ```text
-NAMESPACE            NAME                             CURRENT  DESIRED  HEALTH     ISSUE                            SUMMARY
-default              web                              3        5        OK                                          HPA currently wants to scale up.
-default              api                              2        2        ! ERROR    ERROR: FailedGetResourceMetric   HPA cannot currently compute a scaling recommendation from metrics.
+NAMESPACE            NAME                             CURRENT  DESIRED  HEALTH              SCORE    ISSUE                            SUMMARY
+default              web                              3        5        🟢 Healthy          100                                       HPA currently wants to scale up.
+default              api                              2        2        🔴 ERROR            55       ERROR: FailedGetResourceMetric   HPA cannot currently compute a scaling recommendation from metrics.
 ```
 
 Multi-metric HPA:
@@ -233,6 +264,7 @@ Multi-metric HPA:
 HPA default/web-multi
 Target: Deployment/web-multi
 Replicas: current=5 desired=5 min=2 max=5
+Health score: 🔴 ScalingLimited 75/100
 Summary: HPA is at maxReplicas.
 
 Metrics:
@@ -241,6 +273,10 @@ Metrics:
 
 Recommended actions:
   - HPA is capped at maxReplicas; raise maxReplicas or reduce load/target utilization if more capacity is expected.
+
+Recommended commands:
+  - Raise maxReplicas: The HPA is capped at maxReplicas=5. Raising it to 10 allows the controller to add capacity if metrics still require it. (risk: medium)
+    $ kubectl patch hpa web-multi -n default --type=merge -p '{"spec":{"maxReplicas":10}}'
 
 Interpretation:
   - [confidence: high] ScalingLimited reports that the visible desired replica count is constrained by maxReplicas.
@@ -254,6 +290,7 @@ Tolerance-like no-scale:
 HPA default/web-tolerance
 Target: Deployment/web-tolerance
 Replicas: current=7 desired=7 min=2 max=10
+Health score: 🟢 Healthy 100/100
 Summary: HPA currently keeps the replica count unchanged.
 
 Metrics:
@@ -264,6 +301,39 @@ Interpretation:
   - [confidence: medium] memory metric ratio is approximately 1.043, which is close to the target.
   - [confidence: medium] This is consistent with tolerance-based no-scale. Kubernetes commonly uses a tolerance band around the target, but HPA status does not expose tolerance as an explicit reason.
   - [confidence: high] The plugin avoids claiming the exact internal reason because rounding, stabilization, or conservative metric handling may also affect the final result.
+```
+
+## Development
+
+Prerequisites:
+
+- Go version from [go.mod](go.mod)
+- `kubectl` for cluster-backed testing
+- `kind` for E2E tests
+- `goreleaser` for release checks
+
+Common commands:
+
+```sh
+make build
+make test
+make coverage
+make lint
+make release-check
+```
+
+Run E2E tests against the current kubeconfig context:
+
+```sh
+kind create cluster --name hpa-status-dev
+make e2e
+kind delete cluster --name hpa-status-dev
+```
+
+Release dry-run and Krew archive validation:
+
+```sh
+make krew
 ```
 
 ## Findings
