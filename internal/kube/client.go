@@ -20,7 +20,37 @@ type Client struct {
 	Namespace string
 }
 
-func NewClient(opts Options) (*Client, error) {
+// ClientOption is a functional option for configuring a Client.
+type ClientOption func(*Client)
+
+// WithInterface injects a pre-built kubernetes.Interface, skipping kubeconfig resolution.
+// Use this in tests to inject a fake client.
+func WithInterface(iface kubernetes.Interface) ClientOption {
+	return func(c *Client) { c.Interface = iface }
+}
+
+// WithNamespace sets an explicit namespace, skipping kubeconfig namespace resolution.
+func WithNamespace(ns string) ClientOption {
+	return func(c *Client) { c.Namespace = ns }
+}
+
+func NewClient(opts Options, extra ...ClientOption) (*Client, error) {
+	c := &Client{}
+	for _, opt := range extra {
+		opt(c)
+	}
+
+	if c.Interface != nil {
+		if c.Namespace == "" {
+			if opts.Namespace != "" {
+				c.Namespace = opts.Namespace
+			} else {
+				c.Namespace = "default"
+			}
+		}
+		return c, nil
+	}
+
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 	if opts.Kubeconfig != "" {
 		loadingRules.ExplicitPath = opts.Kubeconfig

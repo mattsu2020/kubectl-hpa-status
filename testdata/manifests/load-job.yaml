@@ -1,0 +1,17 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cpu-load
+  namespace: default
+spec:
+  template:
+    spec:
+      containers:
+        - name: load
+          image: busybox
+          command:
+            - sh
+            - -c
+            - "while true; do :; done"
+      restartPolicy: Never
+  backoffLimit: 0

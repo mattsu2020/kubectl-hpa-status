@@ -8,25 +8,27 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const limitation = "[confidence: high] This plugin uses existing HPA status, conditions, metrics, and events. It does not expose internal controller calculations."
 
 type Analysis struct {
-	Namespace      string             `json:"namespace" yaml:"namespace"`
-	Name           string             `json:"name" yaml:"name"`
-	Target         string             `json:"target" yaml:"target"`
-	Current        int32              `json:"currentReplicas" yaml:"currentReplicas"`
-	Desired        int32              `json:"desiredReplicas" yaml:"desiredReplicas"`
-	Min            int32              `json:"minReplicas" yaml:"minReplicas"`
-	Max            int32              `json:"maxReplicas" yaml:"maxReplicas"`
-	Summary        string             `json:"summary" yaml:"summary"`
-	Conditions     []Condition        `json:"conditions" yaml:"conditions"`
-	Metrics        []Metric           `json:"metrics" yaml:"metrics"`
-	Behavior       []BehaviorRule     `json:"behavior,omitempty" yaml:"behavior,omitempty"`
-	Actions        []string           `json:"recommendedActions,omitempty" yaml:"recommendedActions,omitempty"`
-	Interpretation []string           `json:"interpretation,omitempty" yaml:"interpretation,omitempty"`
-	ImpactMetric   *MetricImpactGuess `json:"impactMetric,omitempty" yaml:"impactMetric,omitempty"`
+	Namespace         string             `json:"namespace" yaml:"namespace"`
+	Name              string             `json:"name" yaml:"name"`
+	Target            string             `json:"target" yaml:"target"`
+	Current           int32              `json:"currentReplicas" yaml:"currentReplicas"`
+	Desired           int32              `json:"desiredReplicas" yaml:"desiredReplicas"`
+	Min               int32              `json:"minReplicas" yaml:"minReplicas"`
+	Max               int32              `json:"maxReplicas" yaml:"maxReplicas"`
+	Summary           string             `json:"summary" yaml:"summary"`
+	Conditions        []Condition        `json:"conditions" yaml:"conditions"`
+	Metrics           []Metric           `json:"metrics" yaml:"metrics"`
+	Behavior          []BehaviorRule     `json:"behavior,omitempty" yaml:"behavior,omitempty"`
+	Actions           []string           `json:"recommendedActions,omitempty" yaml:"recommendedActions,omitempty"`
+	Interpretation    []string           `json:"interpretation,omitempty" yaml:"interpretation,omitempty"`
+	ImpactMetric      *MetricImpactGuess `json:"impactMetric,omitempty" yaml:"impactMetric,omitempty"`
+	CreationTimestamp metav1.Time        `json:"creationTimestamp,omitempty" yaml:"creationTimestamp,omitempty"`
 }
 
 type Condition struct {
@@ -67,14 +69,15 @@ func Analyze(src *autoscalingv2.HorizontalPodAutoscaler, includeInterpretation b
 	}
 
 	analysis := Analysis{
-		Namespace: src.Namespace,
-		Name:      src.Name,
-		Target:    fmt.Sprintf("%s/%s", src.Spec.ScaleTargetRef.Kind, src.Spec.ScaleTargetRef.Name),
-		Current:   src.Status.CurrentReplicas,
-		Desired:   src.Status.DesiredReplicas,
-		Min:       minReplicas,
-		Max:       src.Spec.MaxReplicas,
-		Summary:   SummarizeDirection(src, minReplicas),
+		Namespace:         src.Namespace,
+		Name:              src.Name,
+		Target:            fmt.Sprintf("%s/%s", src.Spec.ScaleTargetRef.Kind, src.Spec.ScaleTargetRef.Name),
+		Current:           src.Status.CurrentReplicas,
+		Desired:           src.Status.DesiredReplicas,
+		Min:               minReplicas,
+		Max:               src.Spec.MaxReplicas,
+		Summary:           SummarizeDirection(src, minReplicas),
+		CreationTimestamp: src.CreationTimestamp,
 	}
 
 	for _, condition := range prioritizedConditions(src.Status.Conditions) {
@@ -202,6 +205,23 @@ func FindCondition(hpa *autoscalingv2.HorizontalPodAutoscaler, conditionType str
 	return nil
 }
 
+func calculateRatioAndNote(currentVal autoscalingv2.MetricValueStatus, targetVal autoscalingv2.MetricTarget, targetStr string) (*float64, string) {
+	var ratio *float64
+	var note string
+
+	if currentVal.AverageUtilization != nil {
+		ratio = utilizationRatio(currentVal.AverageUtilization, targetStr)
+		note = CompareMetricToTarget(currentVal.AverageUtilization, targetStr)
+	} else if currentVal.AverageValue != nil && targetVal.AverageValue != nil {
+		ratio = quantityRatio(currentVal.AverageValue, targetVal.AverageValue)
+		note = CompareQuantityToTarget(currentVal.AverageValue, targetVal.AverageValue)
+	} else if currentVal.Value != nil && targetVal.Value != nil {
+		ratio = quantityRatio(currentVal.Value, targetVal.Value)
+		note = CompareQuantityToTarget(currentVal.Value, targetVal.Value)
+	}
+	return ratio, note
+}
+
 func FormatMetricStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, metric autoscalingv2.MetricStatus) Metric {
 	switch metric.Type {
 	case "":
@@ -210,11 +230,14 @@ func FormatMetricStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, metric autos
 		if metric.Resource == nil {
 			return Metric{Type: "Resource", Text: "Resource metric: <missing status>"}
 		}
-		target := FindResourceTarget(hpa, string(metric.Resource.Name))
+		targetSpec := FindResourceTargetSpec(hpa, string(metric.Resource.Name))
+		target := FormatMetricTarget(targetSpec)
 		current := FormatMetricValue(metric.Resource.Current.AverageUtilization, metric.Resource.Current.AverageValue)
-		note := CompareMetricToTarget(metric.Resource.Current.AverageUtilization, target)
-		ratio := utilizationRatio(metric.Resource.Current.AverageUtilization, target)
+		ratio, note := calculateRatioAndNote(metric.Resource.Current, targetSpec, target)
 		text := fmt.Sprintf("Resource %s current=%s target=%s", metric.Resource.Name, current, target)
+		if ratio != nil {
+			text = fmt.Sprintf("%s ratio=%.3f", text, *ratio)
+		}
 		if note != "" {
 			text = fmt.Sprintf("%s note=%q", text, note)
 		}
@@ -231,37 +254,99 @@ func FormatMetricStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, metric autos
 		if metric.ContainerResource == nil {
 			return Metric{Type: "ContainerResource", Text: "ContainerResource metric: <missing status>"}
 		}
-		target := FindContainerResourceTarget(hpa, string(metric.ContainerResource.Name), metric.ContainerResource.Container)
+		targetSpec := FindContainerResourceTargetSpec(hpa, string(metric.ContainerResource.Name), metric.ContainerResource.Container)
+		target := FormatMetricTarget(targetSpec)
 		current := FormatMetricValueStatus(metric.ContainerResource.Current)
-		note := CompareMetricToTarget(metric.ContainerResource.Current.AverageUtilization, target)
-		ratio := utilizationRatio(metric.ContainerResource.Current.AverageUtilization, target)
+		ratio, note := calculateRatioAndNote(metric.ContainerResource.Current, targetSpec, target)
 		text := fmt.Sprintf("ContainerResource %s/%s current=%s target=%s", metric.ContainerResource.Container, metric.ContainerResource.Name, current, target)
+		if ratio != nil {
+			text = fmt.Sprintf("%s ratio=%.3f", text, *ratio)
+		}
 		if note != "" {
 			text = fmt.Sprintf("%s note=%q", text, note)
 		}
-		return Metric{Type: "ContainerResource", Name: fmt.Sprintf("%s/%s", metric.ContainerResource.Container, metric.ContainerResource.Name), Current: current, Target: target, Ratio: ratio, Note: note, Text: text}
+		return Metric{
+			Type:    "ContainerResource",
+			Name:    fmt.Sprintf("%s/%s", metric.ContainerResource.Container, metric.ContainerResource.Name),
+			Current: current,
+			Target:  target,
+			Ratio:   ratio,
+			Note:    note,
+			Text:    text,
+		}
 	case autoscalingv2.PodsMetricSourceType:
 		if metric.Pods == nil {
 			return Metric{Type: "Pods", Text: "Pods metric: <missing status>"}
 		}
+		targetSpec := FindPodsTargetSpec(hpa, metric.Pods.Metric.Name)
+		target := FormatMetricTarget(targetSpec)
 		current := FormatMetricValueStatus(metric.Pods.Current)
-		target := FindPodsTarget(hpa, metric.Pods.Metric.Name)
-		return Metric{Type: "Pods", Name: metric.Pods.Metric.Name, Current: current, Target: target, Text: fmt.Sprintf("Pods %s current=%s target=%s", metric.Pods.Metric.Name, current, target)}
+		ratio, note := calculateRatioAndNote(metric.Pods.Current, targetSpec, target)
+		text := fmt.Sprintf("Pods %s current=%s target=%s", metric.Pods.Metric.Name, current, target)
+		if ratio != nil {
+			text = fmt.Sprintf("%s ratio=%.3f", text, *ratio)
+		}
+		if note != "" {
+			text = fmt.Sprintf("%s note=%q", text, note)
+		}
+		return Metric{
+			Type:    "Pods",
+			Name:    metric.Pods.Metric.Name,
+			Current: current,
+			Target:  target,
+			Ratio:   ratio,
+			Note:    note,
+			Text:    text,
+		}
 	case autoscalingv2.ObjectMetricSourceType:
 		if metric.Object == nil {
 			return Metric{Type: "Object", Text: "Object metric: <missing status>"}
 		}
+		targetSpec := FindObjectTargetSpec(hpa, metric.Object.Metric.Name)
+		target := FormatMetricTarget(targetSpec)
 		current := FormatMetricValueStatus(metric.Object.Current)
-		target := FindObjectTarget(hpa, metric.Object.Metric.Name)
+		ratio, note := calculateRatioAndNote(metric.Object.Current, targetSpec, target)
 		name := fmt.Sprintf("%s/%s", metric.Object.DescribedObject.Kind, metric.Object.DescribedObject.Name)
-		return Metric{Type: "Object", Name: metric.Object.Metric.Name, Current: current, Target: target, Text: fmt.Sprintf("Object %s %s current=%s target=%s", name, metric.Object.Metric.Name, current, target)}
+		text := fmt.Sprintf("Object %s %s current=%s target=%s", name, metric.Object.Metric.Name, current, target)
+		if ratio != nil {
+			text = fmt.Sprintf("%s ratio=%.3f", text, *ratio)
+		}
+		if note != "" {
+			text = fmt.Sprintf("%s note=%q", text, note)
+		}
+		return Metric{
+			Type:    "Object",
+			Name:    metric.Object.Metric.Name,
+			Current: current,
+			Target:  target,
+			Ratio:   ratio,
+			Note:    note,
+			Text:    text,
+		}
 	case autoscalingv2.ExternalMetricSourceType:
 		if metric.External == nil {
 			return Metric{Type: "External", Text: "External metric: <missing status>"}
 		}
+		targetSpec := FindExternalTargetSpec(hpa, metric.External.Metric.Name)
+		target := FormatMetricTarget(targetSpec)
 		current := FormatMetricValueStatus(metric.External.Current)
-		target := FindExternalTarget(hpa, metric.External.Metric.Name)
-		return Metric{Type: "External", Name: metric.External.Metric.Name, Current: current, Target: target, Text: fmt.Sprintf("External %s current=%s target=%s", metric.External.Metric.Name, current, target)}
+		ratio, note := calculateRatioAndNote(metric.External.Current, targetSpec, target)
+		text := fmt.Sprintf("External %s current=%s target=%s", metric.External.Metric.Name, current, target)
+		if ratio != nil {
+			text = fmt.Sprintf("%s ratio=%.3f", text, *ratio)
+		}
+		if note != "" {
+			text = fmt.Sprintf("%s note=%q", text, note)
+		}
+		return Metric{
+			Type:    "External",
+			Name:    metric.External.Metric.Name,
+			Current: current,
+			Target:  target,
+			Ratio:   ratio,
+			Note:    note,
+			Text:    text,
+		}
 	default:
 		return Metric{
 			Type: string(metric.Type),
@@ -270,74 +355,80 @@ func FormatMetricStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, metric autos
 	}
 }
 
-func FindResourceTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) string {
+func FindResourceTargetSpec(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) autoscalingv2.MetricTarget {
 	for _, spec := range hpa.Spec.Metrics {
 		if spec.Type == autoscalingv2.ResourceMetricSourceType &&
 			spec.Resource != nil &&
 			string(spec.Resource.Name) == name {
-			target := spec.Resource.Target
-			switch target.Type {
-			case autoscalingv2.UtilizationMetricType:
-				if target.AverageUtilization != nil {
-					return fmt.Sprintf("%d%%", *target.AverageUtilization)
-				}
-			case autoscalingv2.AverageValueMetricType:
-				if target.AverageValue != nil {
-					return target.AverageValue.String()
-				}
-			case autoscalingv2.ValueMetricType:
-				if target.Value != nil {
-					return target.Value.String()
-				}
-			}
+			return spec.Resource.Target
 		}
 	}
-	return "<unknown>"
+	return autoscalingv2.MetricTarget{}
 }
 
-func FindContainerResourceTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, name, container string) string {
+func FindResourceTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) string {
+	return FormatMetricTarget(FindResourceTargetSpec(hpa, name))
+}
+
+func FindContainerResourceTargetSpec(hpa *autoscalingv2.HorizontalPodAutoscaler, name, container string) autoscalingv2.MetricTarget {
 	for _, spec := range hpa.Spec.Metrics {
 		if spec.Type == autoscalingv2.ContainerResourceMetricSourceType &&
 			spec.ContainerResource != nil &&
 			string(spec.ContainerResource.Name) == name &&
 			spec.ContainerResource.Container == container {
-			return FormatMetricTarget(spec.ContainerResource.Target)
+			return spec.ContainerResource.Target
 		}
 	}
-	return "<unknown>"
+	return autoscalingv2.MetricTarget{}
 }
 
-func FindPodsTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) string {
+func FindContainerResourceTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, name, container string) string {
+	return FormatMetricTarget(FindContainerResourceTargetSpec(hpa, name, container))
+}
+
+func FindPodsTargetSpec(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) autoscalingv2.MetricTarget {
 	for _, spec := range hpa.Spec.Metrics {
 		if spec.Type == autoscalingv2.PodsMetricSourceType &&
 			spec.Pods != nil &&
 			spec.Pods.Metric.Name == name {
-			return FormatMetricTarget(spec.Pods.Target)
+			return spec.Pods.Target
 		}
 	}
-	return "<unknown>"
+	return autoscalingv2.MetricTarget{}
 }
 
-func FindObjectTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) string {
+func FindPodsTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) string {
+	return FormatMetricTarget(FindPodsTargetSpec(hpa, name))
+}
+
+func FindObjectTargetSpec(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) autoscalingv2.MetricTarget {
 	for _, spec := range hpa.Spec.Metrics {
 		if spec.Type == autoscalingv2.ObjectMetricSourceType &&
 			spec.Object != nil &&
 			spec.Object.Metric.Name == name {
-			return FormatMetricTarget(spec.Object.Target)
+			return spec.Object.Target
 		}
 	}
-	return "<unknown>"
+	return autoscalingv2.MetricTarget{}
 }
 
-func FindExternalTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) string {
+func FindObjectTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) string {
+	return FormatMetricTarget(FindObjectTargetSpec(hpa, name))
+}
+
+func FindExternalTargetSpec(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) autoscalingv2.MetricTarget {
 	for _, spec := range hpa.Spec.Metrics {
 		if spec.Type == autoscalingv2.ExternalMetricSourceType &&
 			spec.External != nil &&
 			spec.External.Metric.Name == name {
-			return FormatMetricTarget(spec.External.Target)
+			return spec.External.Target
 		}
 	}
-	return "<unknown>"
+	return autoscalingv2.MetricTarget{}
+}
+
+func FindExternalTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) string {
+	return FormatMetricTarget(FindExternalTargetSpec(hpa, name))
 }
 
 func FormatMetricTarget(target autoscalingv2.MetricTarget) string {
@@ -571,4 +662,27 @@ func parsePercent(value string) (int32, bool) {
 		return 0, false
 	}
 	return percent, true
+}
+
+func quantityRatio(current, target *resource.Quantity) *float64 {
+	if current == nil || target == nil || target.IsZero() {
+		return nil
+	}
+	ratio := current.AsApproximateFloat64() / target.AsApproximateFloat64()
+	return &ratio
+}
+
+func CompareQuantityToTarget(current, target *resource.Quantity) string {
+	if current == nil || target == nil {
+		return ""
+	}
+	cmp := current.Cmp(*target)
+	switch {
+	case cmp > 0:
+		return "current value is above target"
+	case cmp < 0:
+		return "current value is below target"
+	default:
+		return "current value equals target"
+	}
 }

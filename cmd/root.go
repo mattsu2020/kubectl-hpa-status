@@ -13,11 +13,13 @@ import (
 	"time"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/style"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/util/jsonpath"
 	"sigs.k8s.io/yaml"
 )
@@ -31,6 +33,7 @@ type options struct {
 	kubeconfig     string
 	cluster        string
 	output         string
+	template       string
 	wide           bool
 	sortBy         string
 	filter         string
@@ -43,6 +46,20 @@ type options struct {
 	watchInterval  time.Duration
 	watchTimeout   time.Duration
 	untilCondition string
+	clientOverride kubernetes.Interface
+}
+
+func (o *options) newClient() (*kube.Client, error) {
+	kopts := kube.Options{
+		Namespace:  o.namespace,
+		Context:    o.contextName,
+		Kubeconfig: o.kubeconfig,
+		Cluster:    o.cluster,
+	}
+	if o.clientOverride != nil {
+		return kube.NewClient(kopts, kube.WithInterface(o.clientOverride))
+	}
+	return kube.NewClient(kopts)
 }
 
 func NewRootCommand() *cobra.Command {
@@ -82,13 +99,14 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().StringVar(&opts.kubeconfig, "kubeconfig", "", "path to kubeconfig")
 	root.PersistentFlags().StringVar(&opts.cluster, "cluster", "", "kubeconfig cluster")
 	root.PersistentFlags().StringVarP(&opts.output, "output", "o", "", "output format: table, wide, json, yaml, jsonpath=..., template=...")
+	root.PersistentFlags().StringVar(&opts.template, "template", "", "template string to use when -o jsonpath or -o go-template/template is specified")
 	root.PersistentFlags().BoolVar(&opts.wide, "wide", false, "show additional columns in table output")
 	root.PersistentFlags().StringVar(&opts.color, "color", opts.color, "colorize table output: auto, always, never")
 	root.PersistentFlags().BoolVar(&opts.interpret, "interpret", false, "include interpretation in status output")
 	root.PersistentFlags().BoolVar(&opts.explain, "explain", false, "include detailed interpretation and recommended actions")
 	root.PersistentFlags().BoolVar(&opts.noInterpret, "no-interpret", false, "omit interpretation and show raw status-derived data")
 	root.PersistentFlags().Var(&opts.events, "events", "show recent HPA events: true, false, or a number")
-	root.PersistentFlags().BoolVar(&opts.watch, "watch", false, "watch one HPA from the main status command")
+	root.PersistentFlags().BoolVarP(&opts.watch, "watch", "w", false, "watch HPA status periodically")
 	root.PersistentFlags().DurationVar(&opts.watchInterval, "interval", opts.watchInterval, "watch refresh interval")
 	root.PersistentFlags().DurationVar(&opts.watchTimeout, "timeout", 0, "stop watching after this duration")
 	root.PersistentFlags().StringVar(&opts.untilCondition, "until-condition", "", "stop watching once an HPA condition type is present, for example scaling-limited")
@@ -140,6 +158,9 @@ func newListCommand(opts *options) *cobra.Command {
 		Short:   "List HPAs and highlight visible issues",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if opts.watch {
+				return runWatchList(cmd.Context(), cmd.OutOrStdout(), opts)
+			}
 			return runList(cmd.Context(), cmd.OutOrStdout(), opts)
 		},
 	}
@@ -187,18 +208,13 @@ func runStatus(ctx context.Context, out io.Writer, opts *options, name string, i
 		return err
 	}
 
-	return writeOutput(out, opts.output, report, func() error {
-		return hpaanalysis.WriteStatusText(out, report)
+	return writeOutput(out, opts.output, opts.template, report, func() error {
+		return hpaanalysis.WriteStatusText(out, report, style.NewTheme(shouldColorize(opts.color, out)))
 	})
 }
 
 func buildStatusReport(ctx context.Context, opts *options, name string, includeInterpretation bool) (hpaanalysis.StatusReport, error) {
-	client, err := kube.NewClient(kube.Options{
-		Namespace:  opts.namespace,
-		Context:    opts.contextName,
-		Kubeconfig: opts.kubeconfig,
-		Cluster:    opts.cluster,
-	})
+	client, err := opts.newClient()
 	if err != nil {
 		return hpaanalysis.StatusReport{}, fmt.Errorf("failed to create Kubernetes client from kubeconfig/context flags: %w", err)
 	}
@@ -230,12 +246,7 @@ func buildStatusReport(ctx context.Context, opts *options, name string, includeI
 }
 
 func runList(ctx context.Context, out io.Writer, opts *options) error {
-	client, err := kube.NewClient(kube.Options{
-		Namespace:  opts.namespace,
-		Context:    opts.contextName,
-		Kubeconfig: opts.kubeconfig,
-		Cluster:    opts.cluster,
-	})
+	client, err := opts.newClient()
 	if err != nil {
 		return fmt.Errorf("failed to create Kubernetes client from kubeconfig/context flags: %w", err)
 	}
@@ -262,10 +273,11 @@ func runList(ctx context.Context, out io.Writer, opts *options) error {
 	sortListItems(report.Items, opts.sortBy)
 
 	wide := opts.wide || opts.output == "wide"
-	return writeOutput(out, opts.output, report, func() error {
+	return writeOutput(out, opts.output, opts.template, report, func() error {
 		return hpaanalysis.WriteListText(out, report, hpaanalysis.ListTextOptions{
 			Wide:  wide,
 			Color: shouldColorize(opts.color, out),
+			Theme: style.NewTheme(shouldColorize(opts.color, out)),
 		})
 	})
 }
@@ -277,26 +289,84 @@ func runWatch(ctx context.Context, out io.Writer, opts *options, name string, in
 		defer cancel()
 	}
 
+	theme := style.NewTheme(shouldColorize(opts.color, out))
 	ticker := time.NewTicker(opts.watchInterval)
 	defer ticker.Stop()
 
+	var previous *hpaanalysis.Analysis
 	for {
-		if _, err := fmt.Fprintf(out, "Updated: %s\n\n", time.Now().Format(time.RFC3339)); err != nil {
-			return err
+		// Clear screen when writing to a terminal (theme is enabled)
+		if clear := theme.ScreenClear(); clear != "" {
+			if _, err := out.Write([]byte(clear)); err != nil {
+				return err
+			}
+		} else {
+			// Append-only for piped output
+			if _, err := fmt.Fprintf(out, "Updated: %s\n\n", time.Now().Format(time.RFC3339)); err != nil {
+				return err
+			}
 		}
+
 		report, err := buildStatusReport(ctx, opts, name, includeInterpretation)
 		if err != nil {
 			return err
 		}
-		if err := writeOutput(out, opts.output, report, func() error {
-			return hpaanalysis.WriteStatusText(out, report)
+		if err := writeOutput(out, opts.output, opts.template, report, func() error {
+			if previous != nil {
+				return hpaanalysis.WriteStatusDiff(out, hpaanalysis.WatchState{
+					Previous: previous,
+					Current:  &report.Analysis,
+				}, theme)
+			}
+			return hpaanalysis.WriteStatusText(out, report, theme)
 		}); err != nil {
 			return err
 		}
+		previous = &report.Analysis
+
 		if opts.untilCondition != "" && reportHasCondition(report, opts.untilCondition) {
 			_, err := fmt.Fprintf(out, "\nStopped: condition %q is present.\n", opts.untilCondition)
 			return err
 		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			if _, err := fmt.Fprintln(out); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+func runWatchList(ctx context.Context, out io.Writer, opts *options) error {
+	if opts.watchTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, opts.watchTimeout)
+		defer cancel()
+	}
+
+	theme := style.NewTheme(shouldColorize(opts.color, out))
+	ticker := time.NewTicker(opts.watchInterval)
+	defer ticker.Stop()
+
+	for {
+		// Clear screen when writing to a terminal (theme is enabled)
+		if clear := theme.ScreenClear(); clear != "" {
+			if _, err := out.Write([]byte(clear)); err != nil {
+				return err
+			}
+		} else {
+			// Append-only for piped output
+			if _, err := fmt.Fprintf(out, "Updated: %s\n\n", time.Now().Format(time.RFC3339)); err != nil {
+				return err
+			}
+		}
+
+		if err := runList(ctx, out, opts); err != nil {
+			return err
+		}
+
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -338,10 +408,28 @@ func sortListItems(items []hpaanalysis.ListItem, sortBy string) {
 			return left.Current < right.Current
 		case "desired", "desiredreplicas":
 			return left.Desired < right.Desired
+		case "diff", "replicadiff", "difference":
+			diffLeft := left.Desired - left.Current
+			if diffLeft < 0 {
+				diffLeft = -diffLeft
+			}
+			diffRight := right.Desired - right.Current
+			if diffRight < 0 {
+				diffRight = -diffRight
+			}
+			return diffLeft > diffRight // Descending order (largest diff first)
+		case "age", "creationtimestamp":
+			return left.CreationTimestamp.Before(&right.CreationTimestamp)
 		case "health":
 			return left.Health < right.Health
 		case "issue":
 			return left.Issue < right.Issue
+		case "min", "minreplicas":
+			return left.Min < right.Min
+		case "max", "maxreplicas":
+			return left.Max < right.Max
+		case "target":
+			return left.Target < right.Target
 		default:
 			return left.Namespace+"/"+left.Name < right.Namespace+"/"+right.Name
 		}
@@ -380,7 +468,7 @@ func shouldColorize(mode string, out io.Writer) bool {
 	}
 }
 
-func writeOutput(out io.Writer, format string, value any, writeText func() error) error {
+func writeOutput(out io.Writer, format string, templateStr string, value any, writeText func() error) error {
 	switch format {
 	case "", "table", "wide":
 		return writeText()
@@ -395,6 +483,10 @@ func writeOutput(out io.Writer, format string, value any, writeText func() error
 		}
 		_, err = out.Write(data)
 		return err
+	case "jsonpath":
+		return writeJSONPath(out, templateStr, value)
+	case "go-template", "template":
+		return writeTemplate(out, templateStr, value)
 	default:
 		if expression, ok := strings.CutPrefix(format, "jsonpath="); ok {
 			return writeJSONPath(out, expression, value)
@@ -406,6 +498,12 @@ func writeOutput(out io.Writer, format string, value any, writeText func() error
 			return writeTemplate(out, expression, value)
 		}
 		if expression, ok := strings.CutPrefix(format, "template:"); ok {
+			return writeTemplate(out, expression, value)
+		}
+		if expression, ok := strings.CutPrefix(format, "go-template="); ok {
+			return writeTemplate(out, expression, value)
+		}
+		if expression, ok := strings.CutPrefix(format, "go-template:"); ok {
 			return writeTemplate(out, expression, value)
 		}
 		return fmt.Errorf("unsupported output format %q", format)

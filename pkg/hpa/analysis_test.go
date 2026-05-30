@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/style"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -153,11 +154,14 @@ func TestWriteListTextColorizesHealthWhenEnabled(t *testing.T) {
 	}}
 
 	var out bytes.Buffer
-	if err := WriteListText(&out, report, ListTextOptions{Color: true}); err != nil {
+	if err := WriteListText(&out, report, ListTextOptions{Theme: style.NewTheme(true)}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "\x1b[31m! ERROR\x1b[0m") {
-		t.Fatalf("expected red ERROR marker, got %q", out.String())
+	if !strings.Contains(out.String(), "! ERROR") {
+		t.Fatalf("expected ERROR marker, got %q", out.String())
+	}
+	if !strings.Contains(out.String(), "\x1b[") {
+		t.Fatalf("expected ANSI escape codes in colorized output, got %q", out.String())
 	}
 }
 
@@ -204,10 +208,10 @@ func TestAnalyzeFormatsNonResourceMetrics(t *testing.T) {
 	if len(got.Metrics) != 2 {
 		t.Fatalf("expected 2 metrics, got %#v", got.Metrics)
 	}
-	if got.Metrics[0].Text != "External queue_depth current=12 target=10" {
+	if got.Metrics[0].Text != "External queue_depth current=12 target=10 ratio=1.200 note=\"current value is above target\"" {
 		t.Fatalf("unexpected external metric text: %s", got.Metrics[0].Text)
 	}
-	if got.Metrics[1].Text != "Pods requests_per_second current=120m target=100m" {
+	if got.Metrics[1].Text != "Pods requests_per_second current=120m target=100m ratio=1.200 note=\"current value is above target\"" {
 		t.Fatalf("unexpected pods metric text: %s", got.Metrics[1].Text)
 	}
 }
@@ -288,4 +292,168 @@ func containsLine(lines []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func TestWriteStatusDiff_NoChanges(t *testing.T) {
+	analysis := Analyze(baseHPA(), false)
+	prev := analysis // copy
+	state := WatchState{Previous: &prev, Current: &analysis}
+
+	var buf bytes.Buffer
+	if err := WriteStatusDiff(&buf, state, style.NewTheme(false)); err != nil {
+		t.Fatal(err)
+	}
+	output := buf.String()
+	if !strings.Contains(output, "HPA default/web") {
+		t.Errorf("expected HPA header, got:\n%s", output)
+	}
+	// When unchanged, replicas should show without emphasis
+	if !strings.Contains(output, "current=2 desired=2") {
+		t.Errorf("expected plain replicas, got:\n%s", output)
+	}
+}
+
+func TestWriteStatusDiff_ReplicasChanged(t *testing.T) {
+	prev := Analyze(baseHPA(), false)
+	prev.Current = 3
+	prev.Desired = 3
+
+	curr := Analyze(baseHPA(), false)
+	curr.Current = 5
+	curr.Desired = 7
+
+	state := WatchState{Previous: &prev, Current: &curr}
+	var buf bytes.Buffer
+	if err := WriteStatusDiff(&buf, state, style.NewTheme(false)); err != nil {
+		t.Fatal(err)
+	}
+	output := buf.String()
+	if !strings.Contains(output, "current=5") {
+		t.Errorf("expected current=5, got:\n%s", output)
+	}
+	if !strings.Contains(output, "desired=7") {
+		t.Errorf("expected desired=7, got:\n%s", output)
+	}
+}
+
+func TestWriteStatusDiff_ConditionsChanged(t *testing.T) {
+	hpa := baseHPA()
+	prev := Analyze(hpa, false)
+
+	// Modify HPA to have ScalingLimited
+	hpa2 := baseHPA()
+	hpa2.Status.Conditions = append(hpa2.Status.Conditions,
+		autoscalingv2.HorizontalPodAutoscalerCondition{
+			Type: "ScalingLimited", Status: corev1.ConditionTrue, Reason: "TooManyReplicas",
+		},
+	)
+	curr := Analyze(hpa2, false)
+
+	state := WatchState{Previous: &prev, Current: &curr}
+	var buf bytes.Buffer
+	if err := WriteStatusDiff(&buf, state, style.NewTheme(false)); err != nil {
+		t.Fatal(err)
+	}
+	output := buf.String()
+	if !strings.Contains(output, "ScalingLimited") {
+		t.Errorf("expected ScalingLimited in diff, got:\n%s", output)
+	}
+}
+
+func TestWriteStatusDiff_NilPrevious(t *testing.T) {
+	// Diff with nil previous should not panic; the caller should use
+	// WriteStatusText for the first iteration, but WriteStatusDiff
+	// should handle nil gracefully.
+	curr := Analyze(baseHPA(), false)
+	state := WatchState{Previous: nil, Current: &curr}
+
+	var buf bytes.Buffer
+	// This should still work even without previous
+	err := WriteStatusDiff(&buf, state, style.NewTheme(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "HPA default/web") {
+		t.Errorf("expected HPA header in diff output, got:\n%s", buf.String())
+	}
+}
+
+func TestAnalyzeToleranceBoundaries(t *testing.T) {
+	// Case 1: Within tolerance (e.g. 73% vs 70% target -> ratio ~1.043, which is within 10% tolerance)
+	hpa := baseHPA()
+	hpa.Status.CurrentReplicas = 5
+	hpa.Status.DesiredReplicas = 5
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{resourceMetricSpec(corev1.ResourceCPU, 70)}
+	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{resourceMetricStatus(corev1.ResourceCPU, 73)}
+
+	got := Analyze(hpa, true)
+	if !containsLine(got.Interpretation, "consistent with tolerance-based no-scale") {
+		t.Fatalf("expected tolerance mention within 10%% margin, got %#v", got.Interpretation)
+	}
+
+	// Case 2: Outside tolerance (e.g. 90% vs 70% target -> ratio ~1.286)
+	hpa2 := baseHPA()
+	hpa2.Status.CurrentReplicas = 5
+	hpa2.Status.DesiredReplicas = 7
+	hpa2.Spec.Metrics = []autoscalingv2.MetricSpec{resourceMetricSpec(corev1.ResourceCPU, 70)}
+	hpa2.Status.CurrentMetrics = []autoscalingv2.MetricStatus{resourceMetricStatus(corev1.ResourceCPU, 90)}
+
+	got2 := Analyze(hpa2, true)
+	if containsLine(got2.Interpretation, "consistent with tolerance-based no-scale") {
+		t.Fatalf("did not expect tolerance mention for ratio outside margin, got %#v", got2.Interpretation)
+	}
+}
+
+func TestAnalyzeMultipleMetricsCappedByMaxReplicas(t *testing.T) {
+	hpa := baseHPA()
+	hpa.Status.CurrentReplicas = 10
+	hpa.Status.DesiredReplicas = 10
+	hpa.Spec.MaxReplicas = 10
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{
+		resourceMetricSpec(corev1.ResourceCPU, 50),
+		resourceMetricSpec(corev1.ResourceMemory, 100),
+	}
+	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{
+		resourceMetricStatus(corev1.ResourceCPU, 90),   // ratio 1.800
+		resourceMetricStatus(corev1.ResourceMemory, 80),  // ratio 0.800
+	}
+	hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
+		{Type: "ScalingActive", Status: corev1.ConditionTrue, Reason: "ValidMetricFound"},
+		{Type: "ScalingLimited", Status: corev1.ConditionTrue, Reason: "TooManyReplicas"},
+	}
+
+	got := Analyze(hpa, true)
+	if got.Summary != "HPA is at maxReplicas." {
+		t.Fatalf("expected HPA is at maxReplicas summary, got %s", got.Summary)
+	}
+	if got.ImpactMetric == nil || got.ImpactMetric.Name != "cpu" {
+		t.Fatalf("expected cpu as the most influential metric, got %#v", got.ImpactMetric)
+	}
+	if !containsLine(got.Interpretation, "memory has the largest distance from target") && !containsLine(got.Interpretation, "cpu has the largest distance from target") {
+		// Either cpu (ratio 1.8) or memory (ratio 0.8) could be evaluated.
+		// Ratio distance: CPU: 1.8-1 = 0.8. Memory: 0.8-1 = -0.2 (abs 0.2).
+		// So CPU (0.8 distance) should be the winner.
+		if !containsLine(got.Interpretation, "cpu has the largest distance from target (ratio 1.800)") {
+			t.Fatalf("expected CPU to be chosen as most influential, got %#v", got.Interpretation)
+		}
+	}
+}
+
+func TestAnalyzeStabilizationWindowSpecificRules(t *testing.T) {
+	// Set custom window for scaleDown
+	window := int32(600)
+	hpa := baseHPA()
+	hpa.Spec.Behavior = &autoscalingv2.HorizontalPodAutoscalerBehavior{
+		ScaleDown: &autoscalingv2.HPAScalingRules{
+			StabilizationWindowSeconds: &window,
+		},
+	}
+	hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
+		{Type: "AbleToScale", Status: corev1.ConditionTrue, Reason: "ScaleDownStabilized", Message: "scale down stabilized"},
+	}
+
+	got := Analyze(hpa, true)
+	if !containsLine(got.Actions, "wait up to about 600s") {
+		t.Fatalf("expected wait action referring to 600s window, got %#v", got.Actions)
+	}
 }

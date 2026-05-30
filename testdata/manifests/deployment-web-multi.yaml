@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-multi
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web-multi
+  template:
+    metadata:
+      labels:
+        app: web-multi
+    spec:
+      containers:
+        - name: web-multi
+          image: registry.k8s.io/hpa-example
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi

@@ -1,5 +1,7 @@
 # kubectl-hpa-status
 
+![kubectl-hpa-status demo](images/demo.png)
+
 A kubectl plugin for inspecting HorizontalPodAutoscaler status with detailed
 scaling analysis using existing Kubernetes API signals.
 
