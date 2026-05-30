@@ -25,6 +25,7 @@ go mod tidy
 go build -o kubectl-hpa-status .
 chmod +x ./kubectl-hpa-status
 sudo mv ./kubectl-hpa-status /usr/local/bin/
+kubectl hpa status <hpa-name> -n <namespace>
 ```
 
 To verify the plugin is visible:
@@ -37,8 +38,9 @@ kubectl plugin list
 
 ```sh
 kubectl hpa status <hpa-name> [-n namespace] [--context context] [--events=false]
-kubectl hpa status list [-A] [-o wide|json|yaml]
+kubectl hpa status <hpa-name> --watch --interval 5s
 kubectl hpa status analyze <hpa-name>
+kubectl hpa status list [-A] [-o table|wide|json|yaml]
 kubectl hpa status watch <hpa-name> --interval 5s
 ```
 
@@ -53,19 +55,26 @@ kubectl plugin list
 Direct binary usage is also supported:
 
 ```sh
+kubectl-hpa-status analyze <hpa-name> -n <namespace>
 kubectl-hpa-status status <hpa-name> -n <namespace>
 kubectl-hpa-status list -A
 kubectl-hpa-status completion zsh
 ```
+
+`analyze` is the detailed diagnostic command. `status` is intentionally more
+compact by default; pass `--interpret` when you want interpretation in status
+output.
 
 Common flags:
 
 - `-n, --namespace`: namespace
 - `-A, --all-namespaces`: list HPAs across all namespaces
 - `--context`, `--kubeconfig`, `--cluster`: explicit kubeconfig selection
-- `-o wide|json|yaml`: output format
+- `-o table|wide|json|yaml`: output format
 - `--no-interpret`: omit interpretation and show status-derived data only
 - `--events=false`: omit recent Events
+- `--events=3`: show the latest 3 HPA Events
+- `--watch --interval 5s`: refresh one HPA from the main command
 - `--version`: print the plugin version
 
 The plugin reads:
@@ -127,9 +136,9 @@ Validated on a local kind cluster named `hpa-status-poc`.
 List view:
 
 ```text
-NAMESPACE            NAME                             CURRENT  DESIRED  ISSUE                    SUMMARY
-default              web                              3        5                                 HPA currently wants to scale up.
-default              api                              2        2        FailedGetResourceMetric  HPA cannot currently compute a scaling recommendation from metrics.
+NAMESPACE            NAME                             CURRENT  DESIRED  HEALTH     ISSUE                            SUMMARY
+default              web                              3        5        OK                                          HPA currently wants to scale up.
+default              api                              2        2        ERROR      ERROR: FailedGetResourceMetric   HPA cannot currently compute a scaling recommendation from metrics.
 ```
 
 Multi-metric HPA:
@@ -196,6 +205,10 @@ rather than exposing the controller's full decision trace.
 This plugin reports what can be inferred from existing HPA status, metrics,
 conditions, and events. It does not know the controller's internal intermediate
 calculations.
+
+Interpretation lines are diagnostic inferences, not the HPA controller's
+authoritative internal decision trace. When the API does not expose a stable
+decision record, the output says so explicitly.
 
 ## Development roadmap
 

@@ -1,4 +1,4 @@
-module github.com/matsui/kubectl-hpa-status
+module github.com/mattsu2020/kubehpa_cli
 
 go 1.24.0
 

@@ -62,6 +62,54 @@ func TestMostInfluentialMetricChoosesLargestDistance(t *testing.T) {
 	}
 }
 
+func TestAnalyzeMultiMetricMaxReplicasExplainsLimitAndImpactEstimate(t *testing.T) {
+	hpa := baseHPA()
+	hpa.Status.CurrentReplicas = 5
+	hpa.Status.DesiredReplicas = 5
+	hpa.Spec.MaxReplicas = 5
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{
+		resourceMetricSpec(corev1.ResourceCPU, 80),
+		resourceMetricSpec(corev1.ResourceMemory, 50),
+	}
+	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{
+		resourceMetricStatus(corev1.ResourceCPU, 70),
+		resourceMetricStatus(corev1.ResourceMemory, 68),
+	}
+	hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
+		{Type: "ScalingActive", Status: corev1.ConditionTrue, Reason: "ValidMetricFound"},
+		{Type: "ScalingLimited", Status: corev1.ConditionTrue, Reason: "TooManyReplicas"},
+	}
+
+	got := Analyze(hpa, true)
+	if got.Summary != "HPA is at maxReplicas." {
+		t.Fatalf("unexpected summary: %s", got.Summary)
+	}
+	if got.ImpactMetric == nil || got.ImpactMetric.Name != "memory" {
+		t.Fatalf("expected memory impact estimate, got %#v", got.ImpactMetric)
+	}
+	if !containsLine(got.Interpretation, "constrained by maxReplicas") {
+		t.Fatalf("expected maxReplicas interpretation, got %#v", got.Interpretation)
+	}
+	if !containsLine(got.Interpretation, "only an impact estimate") {
+		t.Fatalf("expected multi-metric estimate caveat, got %#v", got.Interpretation)
+	}
+}
+
+func TestAnalyzeScaleDownStabilized(t *testing.T) {
+	hpa := baseHPA()
+	hpa.Status.CurrentReplicas = 8
+	hpa.Status.DesiredReplicas = 8
+	hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
+		{Type: "ScalingActive", Status: corev1.ConditionTrue, Reason: "ValidMetricFound"},
+		{Type: "AbleToScale", Status: corev1.ConditionTrue, Reason: "ScaleDownStabilized", Message: "recent recommendations were higher"},
+	}
+
+	got := Analyze(hpa, true)
+	if !containsLine(got.Interpretation, "Scale down appears stabilized") {
+		t.Fatalf("expected stabilization interpretation, got %#v", got.Interpretation)
+	}
+}
+
 func baseHPA() *autoscalingv2.HorizontalPodAutoscaler {
 	minReplicas := int32(2)
 	return &autoscalingv2.HorizontalPodAutoscaler{

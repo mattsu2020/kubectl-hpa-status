@@ -13,13 +13,6 @@ spec:
     This plugin reads existing HPA status, metrics, conditions, and events
     to provide human-readable analysis without reimplementing the HPA
     controller's internal decision logic.
-  caveats: |
-    Krew installs this plugin as hpa-status.
-    You can invoke it as:
-      kubectl hpa status <hpa-name> -n <namespace>
-    Depending on your kubectl plugin discovery behavior, this equivalent form
-    may also work:
-      kubectl hpa-status status <hpa-name> -n <namespace>
   platforms:
     - selector:
         matchLabels:

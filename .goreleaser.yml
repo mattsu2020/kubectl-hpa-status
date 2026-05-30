@@ -13,7 +13,7 @@ builds:
     env:
       - CGO_ENABLED=0
     ldflags:
-      - -s -w -X github.com/matsui/kubectl-hpa-status/cmd.version={{ .Tag }}
+      - -s -w -X github.com/mattsu2020/kubehpa_cli/cmd.version={{ .Tag }}
     goos:
       - linux
       - darwin
