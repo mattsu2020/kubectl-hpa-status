@@ -140,10 +140,10 @@ func TestWriteListTextVisuallyHighlightsProblems(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := out.String()
-	if !strings.Contains(text, "! ERROR") {
+	if !strings.Contains(text, "ERROR") {
 		t.Fatalf("expected ERROR marker in %q", text)
 	}
-	if !strings.Contains(text, "! LIMITED") {
+	if !strings.Contains(text, "ScalingLimited") {
 		t.Fatalf("expected LIMITED marker in %q", text)
 	}
 }
@@ -157,7 +157,7 @@ func TestWriteListTextColorizesHealthWhenEnabled(t *testing.T) {
 	if err := WriteListText(&out, report, ListTextOptions{Theme: style.NewTheme(true)}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "! ERROR") {
+	if !strings.Contains(out.String(), "ERROR") {
 		t.Fatalf("expected ERROR marker, got %q", out.String())
 	}
 	if !strings.Contains(out.String(), "\x1b[") {
@@ -238,6 +238,31 @@ func TestAnalyzeBehaviorAddsRecommendedScaleDownAction(t *testing.T) {
 	}
 	if !containsLine(got.Actions, "wait up to about 300s") {
 		t.Fatalf("expected scale-down action, got %#v", got.Actions)
+	}
+}
+
+func TestAnalyzeAddsConcretePatchSuggestionForMaxReplicas(t *testing.T) {
+	hpa := baseHPA()
+	hpa.Status.CurrentReplicas = 10
+	hpa.Status.DesiredReplicas = 10
+	hpa.Spec.MaxReplicas = 10
+	hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
+		{Type: "ScalingActive", Status: corev1.ConditionTrue, Reason: "ValidMetricFound"},
+		{Type: "ScalingLimited", Status: corev1.ConditionTrue, Reason: "TooManyReplicas"},
+	}
+
+	got := Analyze(hpa, true)
+	if got.HealthScore >= 100 {
+		t.Fatalf("expected reduced health score, got %d", got.HealthScore)
+	}
+	if len(got.Suggestions) == 0 {
+		t.Fatalf("expected suggestions")
+	}
+	if !strings.Contains(got.Suggestions[0].Command, "kubectl patch hpa web") {
+		t.Fatalf("expected kubectl patch command, got %#v", got.Suggestions[0])
+	}
+	if !strings.Contains(got.Suggestions[0].Patch, `"maxReplicas":20`) {
+		t.Fatalf("expected maxReplicas patch, got %#v", got.Suggestions[0])
 	}
 }
 
@@ -414,8 +439,8 @@ func TestAnalyzeMultipleMetricsCappedByMaxReplicas(t *testing.T) {
 		resourceMetricSpec(corev1.ResourceMemory, 100),
 	}
 	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{
-		resourceMetricStatus(corev1.ResourceCPU, 90),   // ratio 1.800
-		resourceMetricStatus(corev1.ResourceMemory, 80),  // ratio 0.800
+		resourceMetricStatus(corev1.ResourceCPU, 90),    // ratio 1.800
+		resourceMetricStatus(corev1.ResourceMemory, 80), // ratio 0.800
 	}
 	hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
 		{Type: "ScalingActive", Status: corev1.ConditionTrue, Reason: "ValidMetricFound"},

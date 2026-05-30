@@ -21,11 +21,14 @@ type Analysis struct {
 	Desired           int32              `json:"desiredReplicas" yaml:"desiredReplicas"`
 	Min               int32              `json:"minReplicas" yaml:"minReplicas"`
 	Max               int32              `json:"maxReplicas" yaml:"maxReplicas"`
+	Health            string             `json:"health" yaml:"health"`
+	HealthScore       int                `json:"healthScore" yaml:"healthScore"`
 	Summary           string             `json:"summary" yaml:"summary"`
 	Conditions        []Condition        `json:"conditions" yaml:"conditions"`
 	Metrics           []Metric           `json:"metrics" yaml:"metrics"`
 	Behavior          []BehaviorRule     `json:"behavior,omitempty" yaml:"behavior,omitempty"`
 	Actions           []string           `json:"recommendedActions,omitempty" yaml:"recommendedActions,omitempty"`
+	Suggestions       []Suggestion       `json:"suggestions,omitempty" yaml:"suggestions,omitempty"`
 	Interpretation    []string           `json:"interpretation,omitempty" yaml:"interpretation,omitempty"`
 	ImpactMetric      *MetricImpactGuess `json:"impactMetric,omitempty" yaml:"impactMetric,omitempty"`
 	CreationTimestamp metav1.Time        `json:"creationTimestamp,omitempty" yaml:"creationTimestamp,omitempty"`
@@ -60,6 +63,15 @@ type BehaviorRule struct {
 	SelectPolicy               string   `json:"selectPolicy,omitempty" yaml:"selectPolicy,omitempty"`
 	Policies                   []string `json:"policies,omitempty" yaml:"policies,omitempty"`
 	Text                       string   `json:"text" yaml:"text"`
+}
+
+type Suggestion struct {
+	Title       string `json:"title" yaml:"title"`
+	Description string `json:"description" yaml:"description"`
+	Command     string `json:"command,omitempty" yaml:"command,omitempty"`
+	Patch       string `json:"patch,omitempty" yaml:"patch,omitempty"`
+	Risk        string `json:"risk,omitempty" yaml:"risk,omitempty"`
+	Apply       bool   `json:"apply,omitempty" yaml:"apply,omitempty"`
 }
 
 func Analyze(src *autoscalingv2.HorizontalPodAutoscaler, includeInterpretation bool) Analysis {
@@ -101,10 +113,50 @@ func Analyze(src *autoscalingv2.HorizontalPodAutoscaler, includeInterpretation b
 
 	if includeInterpretation {
 		analysis.Actions = RecommendedActions(src, minReplicas)
+		analysis.Suggestions = BuildSuggestions(src, minReplicas)
 		analysis.Interpretation = Interpret(src, minReplicas)
 	}
+	analysis.Health, analysis.HealthScore = Health(src, minReplicas)
 
 	return analysis
+}
+
+func Health(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) (string, int) {
+	score := 100
+	health := "OK"
+	for _, condition := range hpa.Status.Conditions {
+		switch {
+		case condition.Type == "ScalingActive" && condition.Status != corev1.ConditionTrue:
+			score -= 45
+			health = "ERROR"
+		case condition.Type == "AbleToScale" && condition.Status != corev1.ConditionTrue:
+			score -= 35
+			health = "ERROR"
+		case condition.Type == "ScalingLimited" && condition.Status == corev1.ConditionTrue:
+			score -= 25
+			if health != "ERROR" {
+				health = "LIMITED"
+			}
+		case condition.Type == "AbleToScale" && condition.Reason == "ScaleDownStabilized":
+			score -= 10
+			if health == "OK" {
+				health = "STABILIZED"
+			}
+		}
+	}
+	if hpa.Status.CurrentReplicas == hpa.Status.DesiredReplicas && hpa.Status.CurrentReplicas == hpa.Spec.MaxReplicas {
+		score -= 20
+		if health == "OK" {
+			health = "LIMITED"
+		}
+	}
+	if hpa.Status.DesiredReplicas == minReplicas {
+		score -= 5
+	}
+	if score < 0 {
+		score = 0
+	}
+	return health, score
 }
 
 func SummarizeDirection(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) string {

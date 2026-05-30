@@ -15,6 +15,12 @@ type StatusReport struct {
 	Events   []Event  `json:"events,omitempty" yaml:"events,omitempty"`
 }
 
+type StatusTextOptions struct {
+	Theme style.Theme
+	Lang  string
+	Fix   bool
+}
+
 // WatchState holds the previous and current Analysis for diff display.
 type WatchState struct {
 	Previous *Analysis
@@ -22,20 +28,27 @@ type WatchState struct {
 }
 
 func WriteStatusText(w io.Writer, report StatusReport, theme style.Theme) error {
+	return WriteStatusTextWithOptions(w, report, StatusTextOptions{Theme: theme})
+}
+
+func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTextOptions) error {
 	a := report.Analysis
+	theme := opts.Theme
+	labels := textLabels(opts.Lang)
 	var out []byte
 	out = fmt.Appendf(out, "HPA %s/%s\n", a.Namespace, a.Name)
-	out = fmt.Appendf(out, "Target: %s\n", a.Target)
+	out = fmt.Appendf(out, "%s: %s\n", labels.Target, a.Target)
 
 	// Replicas: highlight desired when it differs from current
 	desired := theme.ReplicaHighlight(a.Desired, a.Desired != a.Current)
-	out = fmt.Appendf(out, "Replicas: current=%d desired=%s min=%d max=%d\n", a.Current, desired, a.Min, a.Max)
+	out = fmt.Appendf(out, "%s: current=%d desired=%s min=%d max=%d\n", labels.Replicas, a.Current, desired, a.Min, a.Max)
+	out = fmt.Appendf(out, "%s: %s %d/100\n", labels.Health, theme.HealthLabel(a.Health), a.HealthScore)
 
 	out = append(out, '\n')
-	out = fmt.Appendf(out, "Summary: %s\n", theme.SummaryColor(a.Summary))
+	out = fmt.Appendf(out, "%s: %s\n", labels.Summary, theme.SummaryColor(a.Summary))
 
 	out = append(out, '\n')
-	out = append(out, "Conditions:\n"...)
+	out = fmt.Appendf(out, "%s:\n", labels.Conditions)
 	if len(a.Conditions) == 0 {
 		out = append(out, "  No conditions reported.\n"...)
 	} else {
@@ -46,7 +59,7 @@ func WriteStatusText(w io.Writer, report StatusReport, theme style.Theme) error 
 	}
 
 	out = append(out, '\n')
-	out = append(out, "Metrics:\n"...)
+	out = fmt.Appendf(out, "%s:\n", labels.Metrics)
 	if len(a.Metrics) == 0 {
 		out = append(out, "  No current metrics reported.\n"...)
 	} else {
@@ -59,7 +72,7 @@ func WriteStatusText(w io.Writer, report StatusReport, theme style.Theme) error 
 
 	if len(a.Behavior) > 0 {
 		out = append(out, '\n')
-		out = append(out, "Behavior:\n"...)
+		out = fmt.Appendf(out, "%s:\n", labels.Behavior)
 		for _, behavior := range a.Behavior {
 			out = fmt.Appendf(out, "  - %s\n", behavior.Text)
 		}
@@ -67,22 +80,41 @@ func WriteStatusText(w io.Writer, report StatusReport, theme style.Theme) error 
 
 	if len(a.Actions) > 0 {
 		out = append(out, '\n')
-		out = append(out, "Recommended actions:\n"...)
+		out = fmt.Appendf(out, "%s:\n", labels.Actions)
 		for _, action := range a.Actions {
 			out = fmt.Appendf(out, "  - %s\n", theme.ActionLine(action))
 		}
 	}
 
+	if len(a.Suggestions) > 0 {
+		out = append(out, '\n')
+		if opts.Fix {
+			out = fmt.Appendf(out, "%s:\n", labels.Fix)
+		} else {
+			out = fmt.Appendf(out, "%s:\n", labels.Suggestions)
+		}
+		for _, suggestion := range a.Suggestions {
+			out = fmt.Appendf(out, "  - %s: %s", suggestion.Title, suggestion.Description)
+			if suggestion.Risk != "" {
+				out = fmt.Appendf(out, " (risk: %s)", suggestion.Risk)
+			}
+			out = append(out, '\n')
+			if suggestion.Command != "" {
+				out = fmt.Appendf(out, "    $ %s\n", theme.ActionLine(suggestion.Command))
+			}
+		}
+	}
+
 	if len(a.Interpretation) > 0 {
 		out = append(out, '\n')
-		out = append(out, "Interpretation:\n"...)
+		out = fmt.Appendf(out, "%s:\n", labels.Interpretation)
 		for _, line := range a.Interpretation {
 			out = fmt.Appendf(out, "  - %s\n", theme.InterpretationLine(line))
 		}
 	}
 
 	out = append(out, '\n')
-	out = append(out, "Recent events:\n"...)
+	out = fmt.Appendf(out, "%s:\n", labels.Events)
 	if len(report.Events) == 0 {
 		out = append(out, "  No recent events found.\n"...)
 	} else {
@@ -93,6 +125,54 @@ func WriteStatusText(w io.Writer, report StatusReport, theme style.Theme) error 
 
 	_, err := w.Write(out)
 	return err
+}
+
+type labels struct {
+	Target         string
+	Replicas       string
+	Health         string
+	Summary        string
+	Conditions     string
+	Metrics        string
+	Behavior       string
+	Actions        string
+	Suggestions    string
+	Fix            string
+	Interpretation string
+	Events         string
+}
+
+func textLabels(lang string) labels {
+	if strings.EqualFold(lang, "ja") {
+		return labels{
+			Target:         "対象",
+			Replicas:       "レプリカ",
+			Health:         "ヘルススコア",
+			Summary:        "要約",
+			Conditions:     "状態",
+			Metrics:        "メトリクス",
+			Behavior:       "Behavior",
+			Actions:        "推奨アクション",
+			Suggestions:    "推奨コマンド",
+			Fix:            "修正プラン",
+			Interpretation: "解釈",
+			Events:         "最近のイベント",
+		}
+	}
+	return labels{
+		Target:         "Target",
+		Replicas:       "Replicas",
+		Health:         "Health score",
+		Summary:        "Summary",
+		Conditions:     "Conditions",
+		Metrics:        "Metrics",
+		Behavior:       "Behavior",
+		Actions:        "Recommended actions",
+		Suggestions:    "Recommended commands",
+		Fix:            "Fix plan",
+		Interpretation: "Interpretation",
+		Events:         "Recent events",
+	}
 }
 
 // WriteStatusDiff writes a status display that highlights changes between the
@@ -232,7 +312,10 @@ type ListItem struct {
 	Max               int32       `json:"maxReplicas" yaml:"maxReplicas"`
 	Summary           string      `json:"summary" yaml:"summary"`
 	Health            string      `json:"health" yaml:"health"`
+	HealthScore       int         `json:"healthScore" yaml:"healthScore"`
 	Issue             string      `json:"issue,omitempty" yaml:"issue,omitempty"`
+	Metrics           string      `json:"metrics,omitempty" yaml:"metrics,omitempty"`
+	Behavior          string      `json:"behavior,omitempty" yaml:"behavior,omitempty"`
 	Conditions        string      `json:"conditions,omitempty" yaml:"conditions,omitempty"`
 	CreationTimestamp metav1.Time `json:"creationTimestamp,omitempty" yaml:"creationTimestamp,omitempty"`
 }
@@ -244,6 +327,7 @@ type ListReport struct {
 type ListTextOptions struct {
 	Wide  bool
 	Color bool
+	Lang  string
 	// Theme takes precedence over Color. When Theme is set, Color is ignored.
 	Theme style.Theme
 }
@@ -258,7 +342,10 @@ func (o ListTextOptions) theme() style.Theme {
 func NewListItem(src Analysis) ListItem {
 	var errors []string
 	var limiteds []string
-	health := "OK"
+	health := src.Health
+	if health == "" {
+		health = "OK"
+	}
 
 	for _, condition := range src.Conditions {
 		if condition.Type == "ScalingActive" && condition.Status != "True" {
@@ -290,6 +377,11 @@ func NewListItem(src Analysis) ListItem {
 		condParts = append(condParts, fmt.Sprintf("%s=%s", c.Type, c.Status))
 	}
 	conditions := strings.Join(condParts, ";")
+	metrics := compactMetrics(src.Metrics)
+	behavior := compactBehavior(src.Behavior)
+	if src.HealthScore == 0 {
+		_, src.HealthScore = healthFromAnalysis(src)
+	}
 
 	return ListItem{
 		Namespace:         src.Namespace,
@@ -301,10 +393,26 @@ func NewListItem(src Analysis) ListItem {
 		Max:               src.Max,
 		Summary:           src.Summary,
 		Health:            health,
+		HealthScore:       src.HealthScore,
 		Issue:             issue,
+		Metrics:           metrics,
+		Behavior:          behavior,
 		Conditions:        conditions,
 		CreationTimestamp: src.CreationTimestamp,
 	}
+}
+
+func healthFromAnalysis(src Analysis) (string, int) {
+	score := 100
+	switch src.Health {
+	case "ERROR":
+		score = 50
+	case "LIMITED":
+		score = 75
+	case "STABILIZED":
+		score = 90
+	}
+	return src.Health, score
 }
 
 func padRight(s string, width int) string {
@@ -319,7 +427,7 @@ func WriteListText(w io.Writer, report ListReport, opts ListTextOptions) error {
 	t := opts.theme()
 	var out []byte
 	if opts.Wide {
-		out = fmt.Appendf(out, "%s %s %s %s %s %s %s %s %s %s %s\n",
+		out = fmt.Appendf(out, "%s %s %s %s %s %s %s %s %s %s %s %s %s %s\n",
 			padRight("NAMESPACE", 20),
 			padRight("NAME", 32),
 			padRight("TARGET", 28),
@@ -328,11 +436,14 @@ func WriteListText(w io.Writer, report ListReport, opts ListTextOptions) error {
 			padRight("MIN", 8),
 			padRight("MAX", 8),
 			padRight("HEALTH", 12),
+			padRight("SCORE", 8),
+			padRight("METRICS", 20),
+			padRight("BEHAVIOR", 28),
 			padRight("ISSUE", 32),
 			padRight("CONDITIONS", 36),
 			"SUMMARY")
 		for _, item := range report.Items {
-			out = fmt.Appendf(out, "%s %s %s %s %s %s %s %s %s %s %s\n",
+			out = fmt.Appendf(out, "%s %s %s %s %s %s %s %s %s %s %s %s %s %s\n",
 				padRight(item.Namespace, 20),
 				padRight(item.Name, 32),
 				padRight(item.Target, 28),
@@ -341,6 +452,9 @@ func WriteListText(w io.Writer, report ListReport, opts ListTextOptions) error {
 				padRight(fmt.Sprintf("%d", item.Min), 8),
 				padRight(fmt.Sprintf("%d", item.Max), 8),
 				padRight(t.HealthLabel(item.Health), 12),
+				padRight(fmt.Sprintf("%d", item.HealthScore), 8),
+				padRight(item.Metrics, 20),
+				padRight(item.Behavior, 28),
 				padRight(t.Issue(item.Issue, item.Health), 32),
 				padRight(item.Conditions, 36),
 				item.Summary)
@@ -349,24 +463,75 @@ func WriteListText(w io.Writer, report ListReport, opts ListTextOptions) error {
 		return err
 	}
 
-	out = fmt.Appendf(out, "%s %s %s %s %s %s %s\n",
+	out = fmt.Appendf(out, "%s %s %s %s %s %s %s %s\n",
 		padRight("NAMESPACE", 20),
 		padRight("NAME", 32),
 		padRight("CURRENT", 8),
 		padRight("DESIRED", 8),
 		padRight("HEALTH", 12),
+		padRight("SCORE", 8),
 		padRight("ISSUE", 32),
 		"SUMMARY")
 	for _, item := range report.Items {
-		out = fmt.Appendf(out, "%s %s %s %s %s %s %s\n",
+		out = fmt.Appendf(out, "%s %s %s %s %s %s %s %s\n",
 			padRight(item.Namespace, 20),
 			padRight(item.Name, 32),
 			padRight(fmt.Sprintf("%d", item.Current), 8),
 			padRight(fmt.Sprintf("%d", item.Desired), 8),
 			padRight(t.HealthLabel(item.Health), 12),
+			padRight(fmt.Sprintf("%d", item.HealthScore), 8),
 			padRight(t.Issue(item.Issue, item.Health), 32),
 			item.Summary)
 	}
 	_, err := w.Write(out)
 	return err
+}
+
+func compactMetrics(metrics []Metric) string {
+	var parts []string
+	for _, metric := range metrics {
+		if metric.Ratio == nil {
+			continue
+		}
+		name := metric.Name
+		if name == "" {
+			name = metric.Type
+		}
+		parts = append(parts, fmt.Sprintf("%s %s", name, progressBar(*metric.Ratio)))
+	}
+	return strings.Join(parts, ",")
+}
+
+func progressBar(ratio float64) string {
+	if ratio < 0 {
+		ratio = 0
+	}
+	if ratio > 2 {
+		ratio = 2
+	}
+	filled := int((ratio/2)*10 + 0.5)
+	if filled > 10 {
+		filled = 10
+	}
+	return strings.Repeat("█", filled) + strings.Repeat("░", 10-filled)
+}
+
+func compactBehavior(behavior []BehaviorRule) string {
+	var parts []string
+	for _, rule := range behavior {
+		direction := strings.TrimPrefix(rule.Direction, "scale")
+		if direction == "" {
+			direction = rule.Direction
+		}
+		var value string
+		if rule.StabilizationWindowSeconds != nil {
+			value = fmt.Sprintf("%s:%ds", direction, *rule.StabilizationWindowSeconds)
+		} else if len(rule.Policies) > 0 {
+			value = fmt.Sprintf("%s:%s", direction, strings.Join(rule.Policies, ","))
+		} else {
+			value = direction + ":custom"
+		}
+		parts = append(parts, value)
+	}
+	return strings.Join(parts, " ")
 }

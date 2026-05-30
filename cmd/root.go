@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -19,6 +20,7 @@ import (
 	"golang.org/x/term"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/util/jsonpath"
 	"sigs.k8s.io/yaml"
@@ -42,11 +44,18 @@ type options struct {
 	interpret      bool
 	noInterpret    bool
 	explain        bool
+	suggest        bool
+	fix            bool
+	apply          bool
+	yes            bool
+	lang           string
+	recommend      bool
 	watch          bool
 	watchInterval  time.Duration
 	watchTimeout   time.Duration
 	untilCondition string
 	clientOverride kubernetes.Interface
+	in             io.Reader
 }
 
 func (o *options) newClient() (*kube.Client, error) {
@@ -77,15 +86,24 @@ func NewRootCommand() *cobra.Command {
 		SilenceErrors: true,
 		Args:          cobra.ArbitraryArgs,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			if opts.recommend {
+				opts.suggest = true
+			}
+			if opts.fix || opts.apply {
+				opts.suggest = true
+				opts.explain = true
+			}
 			if opts.noInterpret {
 				opts.interpret = false
+				opts.suggest = false
 			}
+			opts.in = cmd.InOrStdin()
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				return cmd.Help()
 			}
-			includeInterpretation := (opts.interpret || opts.explain) && !opts.noInterpret
+			includeInterpretation := (opts.interpret || opts.explain || opts.suggest) && !opts.noInterpret
 			if opts.watch {
 				return runWatch(cmd.Context(), cmd.OutOrStdout(), opts, args[0], includeInterpretation)
 			}
@@ -104,6 +122,12 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().StringVar(&opts.color, "color", opts.color, "colorize table output: auto, always, never")
 	root.PersistentFlags().BoolVar(&opts.interpret, "interpret", false, "include interpretation in status output")
 	root.PersistentFlags().BoolVar(&opts.explain, "explain", false, "include detailed interpretation and recommended actions")
+	root.PersistentFlags().BoolVar(&opts.suggest, "suggest", false, "include concrete suggestions for configuration changes")
+	root.PersistentFlags().BoolVar(&opts.fix, "fix", false, "show stronger fix plan with patch commands")
+	root.PersistentFlags().BoolVar(&opts.apply, "apply", false, "apply suggested HPA spec patches after confirmation")
+	root.PersistentFlags().BoolVarP(&opts.yes, "yes", "y", false, "skip confirmation when used with --apply")
+	root.PersistentFlags().StringVar(&opts.lang, "lang", "", "text output language: en or ja")
+	root.PersistentFlags().BoolVar(&opts.recommend, "recommend", false, "alias for --suggest")
 	root.PersistentFlags().BoolVar(&opts.noInterpret, "no-interpret", false, "omit interpretation and show raw status-derived data")
 	root.PersistentFlags().Var(&opts.events, "events", "show recent HPA events: true, false, or a number")
 	root.PersistentFlags().BoolVarP(&opts.watch, "watch", "w", false, "watch HPA status periodically")
@@ -127,7 +151,7 @@ func newStatusCommand(opts *options) *cobra.Command {
 		Short: "Show concise status for one HPA",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			includeInterpretation := (opts.interpret || opts.explain) && !opts.noInterpret
+			includeInterpretation := (opts.interpret || opts.explain || opts.suggest) && !opts.noInterpret
 			if opts.watch {
 				return runWatch(cmd.Context(), cmd.OutOrStdout(), opts, args[0], includeInterpretation)
 			}
@@ -207,9 +231,20 @@ func runStatus(ctx context.Context, out io.Writer, opts *options, name string, i
 	if err != nil {
 		return err
 	}
+	if opts.apply {
+		applied, err := applySuggestions(ctx, out, opts, name, report.Analysis.Suggestions)
+		if err != nil {
+			return err
+		}
+		report.Analysis.Actions = append(report.Analysis.Actions, applied...)
+	}
 
 	return writeOutput(out, opts.output, opts.template, report, func() error {
-		return hpaanalysis.WriteStatusText(out, report, style.NewTheme(shouldColorize(opts.color, out)))
+		return hpaanalysis.WriteStatusTextWithOptions(out, report, hpaanalysis.StatusTextOptions{
+			Theme: style.NewTheme(shouldColorize(opts.color, out)),
+			Lang:  outputLang(opts),
+			Fix:   opts.fix,
+		})
 	})
 }
 
@@ -278,6 +313,7 @@ func runList(ctx context.Context, out io.Writer, opts *options) error {
 			Wide:  wide,
 			Color: shouldColorize(opts.color, out),
 			Theme: style.NewTheme(shouldColorize(opts.color, out)),
+			Lang:  outputLang(opts),
 		})
 	})
 }
@@ -422,6 +458,8 @@ func sortListItems(items []hpaanalysis.ListItem, sortBy string) {
 			return left.CreationTimestamp.Before(&right.CreationTimestamp)
 		case "health":
 			return left.Health < right.Health
+		case "healthscore", "score":
+			return left.HealthScore > right.HealthScore
 		case "issue":
 			return left.Issue < right.Issue
 		case "min", "minreplicas":
@@ -434,6 +472,63 @@ func sortListItems(items []hpaanalysis.ListItem, sortBy string) {
 			return left.Namespace+"/"+left.Name < right.Namespace+"/"+right.Name
 		}
 	})
+}
+
+func outputLang(opts *options) string {
+	if opts.lang != "" {
+		return strings.ToLower(opts.lang)
+	}
+	if strings.EqualFold(opts.output, "ja") {
+		return "ja"
+	}
+	return ""
+}
+
+func applySuggestions(ctx context.Context, out io.Writer, opts *options, name string, suggestions []hpaanalysis.Suggestion) ([]string, error) {
+	var patches []hpaanalysis.Suggestion
+	for _, suggestion := range suggestions {
+		if suggestion.Apply && suggestion.Patch != "" {
+			patches = append(patches, suggestion)
+		}
+	}
+	if len(patches) == 0 {
+		return []string{"No applicable HPA patch was suggested."}, nil
+	}
+	if !opts.yes {
+		if opts.in == nil {
+			opts.in = os.Stdin
+		}
+		if _, err := fmt.Fprintf(out, "Apply %d suggested patch(es) to HPA %s? [y/N]: ", len(patches), name); err != nil {
+			return nil, err
+		}
+		scanner := bufio.NewScanner(opts.in)
+		if !scanner.Scan() {
+			if err := scanner.Err(); err != nil {
+				return nil, err
+			}
+			return []string{"Apply skipped."}, nil
+		}
+		answer := strings.ToLower(strings.TrimSpace(scanner.Text()))
+		if answer != "y" && answer != "yes" {
+			return []string{"Apply skipped."}, nil
+		}
+	}
+
+	client, err := opts.newClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Kubernetes client from kubeconfig/context flags: %w", err)
+	}
+	var applied []string
+	for _, suggestion := range patches {
+		_, err := client.Interface.AutoscalingV2().
+			HorizontalPodAutoscalers(client.Namespace).
+			Patch(ctx, name, types.MergePatchType, []byte(suggestion.Patch), metav1.PatchOptions{})
+		if err != nil {
+			return applied, fmt.Errorf("failed to apply suggested patch %q: %w", suggestion.Title, err)
+		}
+		applied = append(applied, fmt.Sprintf("Applied: %s", suggestion.Title))
+	}
+	return applied, nil
 }
 
 func reportHasCondition(report hpaanalysis.StatusReport, condition string) bool {
@@ -470,7 +565,7 @@ func shouldColorize(mode string, out io.Writer) bool {
 
 func writeOutput(out io.Writer, format string, templateStr string, value any, writeText func() error) error {
 	switch format {
-	case "", "table", "wide":
+	case "", "table", "wide", "ja":
 		return writeText()
 	case "json":
 		encoder := json.NewEncoder(out)

@@ -68,15 +68,21 @@ func (t Theme) HealthLabel(health string) string {
 	label := health
 	switch health {
 	case "ERROR":
-		label = "! ERROR"
+		label = "🔴 ERROR"
 	case "LIMITED":
-		label = "! LIMITED"
+		label = "🔴 ScalingLimited"
+	case "STABILIZED":
+		label = "🟡 Stabilized"
+	case "OK":
+		label = "🟢 Healthy"
 	}
 	switch health {
 	case "ERROR":
 		return t.Error.Render(label)
 	case "LIMITED":
 		return t.Limited.Render(label)
+	case "STABILIZED":
+		return t.Warning.Render(label)
 	case "OK":
 		return t.OK.Render(label)
 	default:

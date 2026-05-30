@@ -35,6 +35,26 @@ archives:
 checksum:
   name_template: checksums.txt
 
+sboms:
+  - artifacts: archive
+
+homebrew_casks:
+  - name: kubectl-hpa-status
+    repository:
+      owner: mattsu2020
+      name: homebrew-tap
+    homepage: https://github.com/mattsu2020/kubectl-hpa-status
+    description: kubectl plugin for HPA status, scaling analysis, and suggested fixes
+    license: Apache-2.0
+    binaries:
+      - kubectl-hpa-status
+    url:
+      verified: github.com/mattsu2020/kubectl-hpa-status
+    caveats: |
+      Try:
+        kubectl-hpa-status list -A --wide
+        kubectl-hpa-status status <hpa-name> --suggest
+
 changelog:
   sort: asc
   filters:

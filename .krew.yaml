@@ -13,6 +13,11 @@ spec:
     This plugin reads existing HPA status, metrics, conditions, and events
     to provide human-readable analysis without reimplementing the HPA
     controller's internal decision logic.
+  caveats: |
+    Try:
+      kubectl hpa_status list -A --wide
+      kubectl hpa_status status <hpa-name> --suggest
+      kubectl hpa_status status <hpa-name> --fix --apply
   platforms:
     - selector:
         matchLabels:

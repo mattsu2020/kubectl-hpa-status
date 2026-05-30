@@ -5,6 +5,18 @@
 A kubectl plugin for inspecting HorizontalPodAutoscaler status with detailed
 scaling analysis using existing Kubernetes API signals.
 
+### Why use `kubectl-hpa-status`?
+
+| Feature | `kubectl describe hpa` | `kubectl hpa status` (This plugin) |
+| --- | --- | --- |
+| **Focus** | Raw status & spec dumps | Multi-dimensional diagnostics & actions |
+| **Scaling Summary** | Standard K8s condition text | Clear operational direction summary |
+| **Limitation Detection** | Raw min/max limits displayed | Auto-explains caps when maxReplicas is reached |
+| **Multi-Metric Diagnostics** | Lists targets independently | Guesses & highlights the highest impact metric |
+| **Stabilization Warning** | Not explicitly tracked | Flags active stabilization windows & suggests wait durations |
+| **Watch Mode** | Requires external `watch` (no diff) | Built-in refresh with previous state delta diffs |
+| **Recommendation Guide** | None | Explains *why* and suggests config fixes |
+
 ## Quick usage
 
 ```sh
@@ -110,6 +122,8 @@ Direct binary usage is also supported:
 ```sh
 kubectl-hpa-status analyze <hpa-name> -n <namespace>
 kubectl-hpa-status status <hpa-name> -n <namespace>
+kubectl-hpa-status status <hpa-name> --suggest
+kubectl-hpa-status status <hpa-name> --fix --apply
 kubectl-hpa-status list -A
 kubectl-hpa-status completion zsh
 ```
@@ -130,6 +144,10 @@ Common flags:
 - `--color auto|always|never`: colorize table output
 - `--interpret`: include diagnostic interpretation in compact status output
 - `--explain`: include detailed interpretation and recommended actions
+- `--suggest`: include concrete `kubectl patch` commands when a safe HPA spec suggestion is visible
+- `--fix`: show a stronger fix plan with applyable patches
+- `--apply`: apply suggested HPA patches after confirmation; use `-y` to skip the prompt
+- `--lang=ja` or `-o ja`: show Japanese text labels
 - `--no-interpret`: omit interpretation and show status-derived data only
 - `--events=false`: omit recent Events
 - `--events=3`: show the latest 3 HPA Events
@@ -271,31 +289,18 @@ HPA API surface. The plugin can validate how far existing signals go, while
 keeping any future API discussion focused on concrete remaining ambiguities
 rather than exposing the controller's full decision trace.
 
-## Limitation
+## Known Gaps & Future Roadmap
 
-This plugin reports what can be inferred from existing HPA status, metrics,
-conditions, and events. It does not know the controller's internal intermediate
-calculations.
+This plugin reports what can be inferred from existing HPA status, metrics, conditions, and events. It does not know the controller's internal intermediate calculations.
+Interpretation lines are diagnostic inferences, not the HPA controller's authoritative internal decision trace. They include confidence labels so users can distinguish direct status observations from weaker interpretations. When the API does not expose a stable decision record, the output says so explicitly.
 
-Interpretation lines are diagnostic inferences, not the HPA controller's
-authoritative internal decision trace. They include confidence labels so users
-can distinguish direct status observations from weaker interpretations. When
-the API does not expose a stable decision record, the output says so explicitly.
-
-## Development roadmap
-
-The repository is now structured for incremental feature work:
-
-- `cmd/`: Cobra command wiring and CLI output selection
-- `internal/kube/`: kubeconfig and Kubernetes client construction
-- `pkg/hpa/`: HPA status analysis, formatting, and unit-tested interpretation logic
-
-Near-term work:
-
-- add integration tests with kind/testenv for real HPA behavior
-- add terminal screenshots or asciinema recordings for the README
-- add release automation for Homebrew formulae and SBOMs
-- add richer structured output contracts as the CLI stabilizes
+### Future Roadmap
+- [x] **Integration Testing:** Added kind-based E2E tests for verification in CI.
+- [x] **Visual Demos:** Added high-fidelity demo screenshots to documentation.
+- [x] **Homebrew Cask:** Generate Homebrew tap metadata through GoReleaser.
+- [ ] **Interactive TUI Monitor:** Enhance the watch mode into a rich terminal dashboard.
+- [ ] **Batch Analysis:** Support analyzing all HPAs across multiple namespaces in one run.
+- [ ] **Suggest Flag:** Provide actionable optimization values based on HPA analysis.
 
 ## License
 

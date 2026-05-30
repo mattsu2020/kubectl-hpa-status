@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"strings"
 	"testing"
 	"time"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
@@ -70,6 +72,59 @@ func TestRunStatus_ScalingLimited(t *testing.T) {
 	}
 	if !strings.Contains(output, "ScalingLimited") {
 		t.Errorf("expected ScalingLimited condition in output, got:\n%s", output)
+	}
+}
+
+func TestRunStatusSuggestShowsPatchCommand(t *testing.T) {
+	hpa := kube.BuildHPA("default", "api",
+		kube.WithReplicas(10, 10),
+		kube.WithMinMax(2, 10),
+		kube.WithScalingLimitedTrue("TooManyReplicas"),
+	)
+	fakeClient := kube.NewFakeClient(hpa)
+
+	var buf bytes.Buffer
+	opts := &options{
+		suggest:        true,
+		clientOverride: fakeClient,
+		events:         eventOption{enabled: false},
+	}
+	err := runStatus(context.Background(), &buf, opts, "api", true)
+	if err != nil {
+		t.Fatalf("runStatus returned error: %v", err)
+	}
+	output := buf.String()
+	if !strings.Contains(output, "kubectl patch hpa api") {
+		t.Fatalf("expected patch command in suggest output, got:\n%s", output)
+	}
+}
+
+func TestRunStatusApplyPatchesHPA(t *testing.T) {
+	hpa := kube.BuildHPA("default", "api",
+		kube.WithReplicas(10, 10),
+		kube.WithMinMax(2, 10),
+		kube.WithScalingLimitedTrue("TooManyReplicas"),
+	)
+	fakeClient := kube.NewFakeClient(hpa)
+
+	var buf bytes.Buffer
+	opts := &options{
+		apply:          true,
+		yes:            true,
+		in:             io.Reader(strings.NewReader("")),
+		clientOverride: fakeClient,
+		events:         eventOption{enabled: false},
+	}
+	err := runStatus(context.Background(), &buf, opts, "api", true)
+	if err != nil {
+		t.Fatalf("runStatus returned error: %v", err)
+	}
+	got, err := fakeClient.AutoscalingV2().HorizontalPodAutoscalers("default").Get(context.Background(), "api", metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Spec.MaxReplicas != 20 {
+		t.Fatalf("expected maxReplicas=20 after apply, got %d", got.Spec.MaxReplicas)
 	}
 }
 
