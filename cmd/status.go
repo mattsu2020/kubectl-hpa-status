@@ -39,6 +39,7 @@ func newAnalyzeCommand(opts *options) *cobra.Command {
 		Use:               "analyze NAME [NAME...]",
 		Aliases:           []string{"diagnose"},
 		Short:             "Analyze one or more HPAs using visible Kubernetes API signals",
+		Deprecated:        "Use 'status NAME --explain' instead. The analyze subcommand will be removed in a future release.",
 		Args:              cobra.MinimumNArgs(1),
 		ValidArgsFunction: hpaNameCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -58,6 +59,8 @@ func runStatus(ctx context.Context, out io.Writer, opts *options, name string, i
 }
 
 func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []string, includeInterpretation bool) error {
+	watchMode := opts.watch
+
 	if len(names) == 1 {
 		report, err := buildStatusReport(ctx, opts, names[0], includeInterpretation)
 		if err != nil {
@@ -71,13 +74,16 @@ func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []st
 			report.Analysis.Actions = append(report.Analysis.Actions, applied...)
 		}
 
-		return writeOutput(out, opts.output, opts.template, report, func() error {
+		if err := writeOutput(out, opts.output, opts.template, report, func() error {
 			return hpaanalysis.WriteStatusTextWithOptions(out, report, hpaanalysis.StatusTextOptions{
 				Theme: style.NewTheme(shouldColorize(opts.color, out)),
 				Lang:  outputLang(opts),
 				Fix:   opts.fix,
 			})
-		})
+		}); err != nil {
+			return err
+		}
+		return warningExitCode(report.Analysis.Health, report.Analysis.Name, report.Analysis.Namespace, watchMode)
 	}
 
 	reports := make([]hpaanalysis.StatusReport, 0, len(names))
@@ -96,7 +102,7 @@ func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []st
 		reports = append(reports, report)
 	}
 
-	return writeOutput(out, opts.output, opts.template, reports, func() error {
+	if err := writeOutput(out, opts.output, opts.template, reports, func() error {
 		for i, report := range reports {
 			if i > 0 {
 				if _, err := fmt.Fprintln(out); err != nil {
@@ -112,7 +118,17 @@ func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []st
 			}
 		}
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
+
+	// Return warning exit code if any HPA has ERROR or LIMITED health.
+	for _, r := range reports {
+		if err := warningExitCode(r.Analysis.Health, r.Analysis.Name, r.Analysis.Namespace, watchMode); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func runSingleStatus(ctx context.Context, out io.Writer, opts *options, name string, includeInterpretation bool) error {
@@ -128,13 +144,16 @@ func runSingleStatus(ctx context.Context, out io.Writer, opts *options, name str
 		report.Analysis.Actions = append(report.Analysis.Actions, applied...)
 	}
 
-	return writeOutput(out, opts.output, opts.template, report, func() error {
+	if err := writeOutput(out, opts.output, opts.template, report, func() error {
 		return hpaanalysis.WriteStatusTextWithOptions(out, report, hpaanalysis.StatusTextOptions{
 			Theme: style.NewTheme(shouldColorize(opts.color, out)),
 			Lang:  outputLang(opts),
 			Fix:   opts.fix,
 		})
-	})
+	}); err != nil {
+		return err
+	}
+	return warningExitCode(report.Analysis.Health, report.Analysis.Name, report.Analysis.Namespace, opts.watch)
 }
 
 func buildStatusReport(ctx context.Context, opts *options, name string, includeInterpretation bool) (hpaanalysis.StatusReport, error) {
@@ -167,6 +186,13 @@ func buildStatusReport(ctx context.Context, opts *options, name string, includeI
 	}
 
 	if opts.keda {
+		report.Analysis.KEDAInfo = enrichKEDA(ctx, opts, hpa)
+	}
+
+	if opts.vpa {
+		enrichVPA(ctx, opts, hpa, &report)
+	} else if isKEDA, _ := kube.DetectKEDA(hpa); isKEDA && includeInterpretation {
+		// Auto-attempt KEDA enrichment when KEDA labels are detected and interpretation is enabled
 		report.Analysis.KEDAInfo = enrichKEDA(ctx, opts, hpa)
 	}
 
@@ -287,4 +313,35 @@ func enrichKEDA(ctx context.Context, opts *options, hpa *autoscalingv2.Horizonta
 	kedaAnalysis.Lines = append(kedaAnalysis.Lines, hpaanalysis.AnalyzeKEDA(hpa, kedaAnalysis)...)
 
 	return kedaAnalysis
+}
+
+func enrichVPA(ctx context.Context, opts *options, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
+	dynClient, _, err := kube.NewDynamicClient(kube.Options{
+		Namespace:  opts.namespace,
+		Context:    opts.contextName,
+		Kubeconfig: opts.kubeconfig,
+		Cluster:    opts.cluster,
+	})
+	if err != nil {
+		// VPA errors should not fail the command; skip silently.
+		return
+	}
+
+	vpaInfo, err := kube.FindConflictingVPA(ctx, dynClient, report.Analysis.Namespace, hpa)
+	if err != nil {
+		// VPA CRD may not be installed; skip silently.
+		return
+	}
+	if vpaInfo == nil {
+		return
+	}
+
+	conflict := &hpaanalysis.VPAConflictInfo{
+		VPAName:    vpaInfo.Name,
+		TargetKind: vpaInfo.TargetKind,
+		TargetName: vpaInfo.TargetName,
+		Warning:    fmt.Sprintf("VPA %s and HPA both target %s/%s with overlapping resource metrics", vpaInfo.Name, vpaInfo.TargetKind, vpaInfo.TargetName),
+	}
+	report.Analysis.VPAConflict = conflict
+	report.Analysis.Interpretation = append(report.Analysis.Interpretation, hpaanalysis.AnalyzeVPA(hpa, vpaInfo)...)
 }

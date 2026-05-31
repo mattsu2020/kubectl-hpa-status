@@ -169,6 +169,8 @@ func writeOutput(out io.Writer, format string, templateStr string, value any, wr
 		return writeJSONPath(out, templateStr, value)
 	case "go-template", "template":
 		return writeTemplate(out, templateStr, value)
+	case "prometheus":
+		return writePrometheus(out, value)
 	default:
 		if expression, ok := strings.CutPrefix(format, "jsonpath="); ok {
 			return writeJSONPath(out, expression, value)
@@ -215,4 +217,55 @@ func writeTemplate(out io.Writer, expression string, value any) error {
 	}
 	_, err = fmt.Fprintln(out)
 	return err
+}
+
+func writePrometheus(w io.Writer, value any) error {
+	switch report := value.(type) {
+	case hpaanalysis.ListReport:
+		for _, item := range report.Items {
+			if err := writePrometheusMetrics(w, item.Namespace, item.Name, item.HealthScore, item.Current, item.Desired, item.Min, item.Max); err != nil {
+				return err
+			}
+		}
+	case hpaanalysis.StatusReport:
+		a := report.Analysis
+		return writePrometheusMetrics(w, a.Namespace, a.Name, a.HealthScore, a.Current, a.Desired, a.Min, a.Max)
+	default:
+		return fmt.Errorf("prometheus output requires a StatusReport or ListReport, got %T", value)
+	}
+	return nil
+}
+
+func writePrometheusMetrics(w io.Writer, namespace, name string, healthScore int, current, desired, min, max int32) error {
+	type metric struct {
+		name   string
+		help   string
+		value  any
+	}
+	metrics := []metric{
+		{name: "hpa_health_score", help: "Health score of an HPA (0-100)", value: healthScore},
+		{name: "hpa_current_replicas", help: "Current replica count", value: current},
+		{name: "hpa_desired_replicas", help: "Desired replica count", value: desired},
+		{name: "hpa_min_replicas", help: "Minimum replica count", value: min},
+		{name: "hpa_max_replicas", help: "Maximum replica count", value: max},
+	}
+	labels := fmt.Sprintf(`namespace="%s",name="%s"`, escapePrometheusLabelValue(namespace), escapePrometheusLabelValue(name))
+	for _, m := range metrics {
+		if _, err := fmt.Fprintf(w, "# HELP %s %s\n", m.name, m.help); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(w, "# TYPE %s gauge\n", m.name); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(w, "%s{%s} %v\n", m.name, labels, m.value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func escapePrometheusLabelValue(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `"`, `\"`)
+	return s
 }

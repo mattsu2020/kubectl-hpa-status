@@ -63,8 +63,16 @@ func TestRunStatus_ScalingLimited(t *testing.T) {
 		events:         eventOption{enabled: false},
 	}
 	err := runStatus(context.Background(), &buf, opts, "api", true)
-	if err != nil {
-		t.Fatalf("runStatus returned error: %v", err)
+	// ScalingLimited produces LIMITED health -> ExitCodeError with code 2.
+	if err == nil {
+		t.Fatal("expected ExitCodeError for ScalingLimited, got nil")
+	}
+	exitErr, ok := err.(*ExitCodeError)
+	if !ok {
+		t.Fatalf("expected *ExitCodeError, got %T: %v", err, err)
+	}
+	if exitErr.Code != ExitWarning {
+		t.Fatalf("expected exit code %d, got %d", ExitWarning, exitErr.Code)
 	}
 	output := buf.String()
 	if !strings.Contains(output, "maxReplicas") {
@@ -90,8 +98,9 @@ func TestRunStatusSuggestShowsPatchCommand(t *testing.T) {
 		events:         eventOption{enabled: false},
 	}
 	err := runStatus(context.Background(), &buf, opts, "api", true)
-	if err != nil {
-		t.Fatalf("runStatus returned error: %v", err)
+	// LIMITED health returns ExitCodeError; that is expected.
+	if !isExitCodeWarning(err) {
+		t.Fatalf("expected ExitCodeError with ExitWarning, got: %v", err)
 	}
 	output := buf.String()
 	if !strings.Contains(output, "kubectl patch hpa api") {
@@ -117,8 +126,9 @@ func TestRunStatusApplyPatchesHPA(t *testing.T) {
 		events:         eventOption{enabled: false},
 	}
 	err := runStatus(context.Background(), &buf, opts, "api", true)
-	if err != nil {
-		t.Fatalf("runStatus returned error: %v", err)
+	// LIMITED health returns ExitCodeError; that is expected.
+	if !isExitCodeWarning(err) {
+		t.Fatalf("expected ExitCodeError with ExitWarning, got: %v", err)
 	}
 	got, err := fakeClient.AutoscalingV2().HorizontalPodAutoscalers("default").Get(context.Background(), "api", metav1.GetOptions{})
 	if err != nil {
@@ -147,8 +157,9 @@ func TestRunStatusApplyDefaultsToDryRun(t *testing.T) {
 		events:         eventOption{enabled: false},
 	}
 	err := runStatus(context.Background(), &buf, opts, "api", true)
-	if err != nil {
-		t.Fatalf("runStatus returned error: %v", err)
+	// LIMITED health returns ExitCodeError; that is expected.
+	if !isExitCodeWarning(err) {
+		t.Fatalf("expected ExitCodeError with ExitWarning, got: %v", err)
 	}
 	output := buf.String()
 	if !strings.Contains(output, "Dry-run mode is enabled") {
@@ -172,8 +183,9 @@ func TestRunStatus_MetricsFetchFailure(t *testing.T) {
 		events:         eventOption{enabled: false},
 	}
 	err := runStatus(context.Background(), &buf, opts, "broken", true)
-	if err != nil {
-		t.Fatalf("runStatus returned error: %v", err)
+	// ERROR health returns ExitCodeError with code 2.
+	if !isExitCodeWarning(err) {
+		t.Fatalf("expected ExitCodeError with ExitWarning, got: %v", err)
 	}
 	output := buf.String()
 	if !strings.Contains(output, "FailedGetResourceMetric") {
@@ -564,4 +576,104 @@ func TestRunWatch_UntilCondition(t *testing.T) {
 	if !strings.Contains(output, "Stopped") {
 		t.Errorf("expected 'Stopped' message when condition found, got:\n%s", output)
 	}
+}
+
+// --------------------------------------------------------------------------
+// Exit code integration tests
+// --------------------------------------------------------------------------
+
+func TestRunStatus_ExitCode_HealthyHPA(t *testing.T) {
+	hpa := kube.BuildHPA("default", "web",
+		kube.WithReplicas(3, 5),
+		kube.WithResourceMetric("cpu", 80, 70),
+	)
+	fakeClient := kube.NewFakeClient(hpa)
+
+	var buf bytes.Buffer
+	opts := &options{
+		clientOverride: fakeClient,
+		events:         eventOption{enabled: false},
+	}
+	err := runStatus(context.Background(), &buf, opts, "web", true)
+	if err != nil {
+		t.Fatalf("expected no error for healthy HPA, got: %v", err)
+	}
+}
+
+func TestRunStatus_ExitCode_ScalingInactive(t *testing.T) {
+	hpa := kube.BuildHPA("default", "broken",
+		kube.WithReplicas(2, 0),
+		kube.WithScalingActiveFalse("FailedGetResourceMetric"),
+	)
+	fakeClient := kube.NewFakeClient(hpa)
+
+	var buf bytes.Buffer
+	opts := &options{
+		clientOverride: fakeClient,
+		events:         eventOption{enabled: false},
+	}
+	err := runStatus(context.Background(), &buf, opts, "broken", true)
+	if err == nil {
+		t.Fatal("expected ExitCodeError for ScalingActive=False, got nil")
+	}
+	exitErr, ok := err.(*ExitCodeError)
+	if !ok {
+		t.Fatalf("expected *ExitCodeError, got %T: %v", err, err)
+	}
+	if exitErr.Code != ExitWarning {
+		t.Fatalf("expected exit code %d (ExitWarning), got %d", ExitWarning, exitErr.Code)
+	}
+}
+
+func TestRunStatus_ExitCode_NotFound(t *testing.T) {
+	fakeClient := kube.NewFakeClient()
+
+	var buf bytes.Buffer
+	opts := &options{
+		clientOverride: fakeClient,
+		events:         eventOption{enabled: false},
+	}
+	err := runStatus(context.Background(), &buf, opts, "nonexistent", false)
+	if err == nil {
+		t.Fatal("expected error for nonexistent HPA, got nil")
+	}
+	// Not-found should be a regular error, not an ExitCodeError.
+	if _, ok := err.(*ExitCodeError); ok {
+		t.Fatalf("expected regular error for not-found, got *ExitCodeError")
+	}
+	if !strings.Contains(err.Error(), "was not found") {
+		t.Errorf("expected not-found error message, got: %v", err)
+	}
+}
+
+func TestRunStatus_ExitCode_ScalingLimited(t *testing.T) {
+	hpa := kube.BuildHPA("default", "api",
+		kube.WithReplicas(10, 10),
+		kube.WithMinMax(2, 10),
+		kube.WithScalingLimitedTrue("TooManyReplicas"),
+	)
+	fakeClient := kube.NewFakeClient(hpa)
+
+	var buf bytes.Buffer
+	opts := &options{
+		clientOverride: fakeClient,
+		events:         eventOption{enabled: false},
+	}
+	err := runStatus(context.Background(), &buf, opts, "api", true)
+	if err == nil {
+		t.Fatal("expected ExitCodeError for ScalingLimited, got nil")
+	}
+	exitErr, ok := err.(*ExitCodeError)
+	if !ok {
+		t.Fatalf("expected *ExitCodeError, got %T: %v", err, err)
+	}
+	if exitErr.Code != ExitWarning {
+		t.Fatalf("expected exit code %d (ExitWarning), got %d", ExitWarning, exitErr.Code)
+	}
+}
+
+// isExitCodeWarning returns true if err is an *ExitCodeError with ExitWarning code.
+func isExitCodeWarning(err error) bool {
+	exitErr, ok := err.(*ExitCodeError)
+	return ok && exitErr.Code == ExitWarning
 }

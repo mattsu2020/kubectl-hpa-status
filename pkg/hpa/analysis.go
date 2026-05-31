@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
@@ -38,27 +39,31 @@ type HealthWeights struct {
 }
 
 type Analysis struct {
-	Namespace         string             `json:"namespace" yaml:"namespace"`
-	Name              string             `json:"name" yaml:"name"`
-	Target            string             `json:"target" yaml:"target"`
-	Current           int32              `json:"currentReplicas" yaml:"currentReplicas"`
-	Desired           int32              `json:"desiredReplicas" yaml:"desiredReplicas"`
-	Min               int32              `json:"minReplicas" yaml:"minReplicas"`
-	Max               int32              `json:"maxReplicas" yaml:"maxReplicas"`
-	Health            string             `json:"health" yaml:"health"`
-	HealthScore       int                `json:"healthScore" yaml:"healthScore"`
-	Summary           string             `json:"summary" yaml:"summary"`
-	Conditions        []Condition        `json:"conditions" yaml:"conditions"`
-	Metrics           []Metric           `json:"metrics" yaml:"metrics"`
-	Behavior          []BehaviorRule     `json:"behavior,omitempty" yaml:"behavior,omitempty"`
-	Actions           []string           `json:"recommendedActions,omitempty" yaml:"recommendedActions,omitempty"`
-	Suggestions       []Suggestion       `json:"suggestions,omitempty" yaml:"suggestions,omitempty"`
-	Interpretation    []string           `json:"interpretation,omitempty" yaml:"interpretation,omitempty"`
-	KEDAInfo          *KEDAAnalysis      `json:"keda,omitempty" yaml:"keda,omitempty"`
-	TargetReplicas    *TargetReplicaInfo `json:"targetReplicas,omitempty" yaml:"targetReplicas,omitempty"`
-	Debug             []string           `json:"debug,omitempty" yaml:"debug,omitempty"`
-	ImpactMetric      *MetricImpactGuess `json:"impactMetric,omitempty" yaml:"impactMetric,omitempty"`
-	CreationTimestamp metav1.Time        `json:"creationTimestamp,omitempty" yaml:"creationTimestamp,omitempty"`
+	Namespace             string             `json:"namespace" yaml:"namespace"`
+	Name                  string             `json:"name" yaml:"name"`
+	Target                string             `json:"target" yaml:"target"`
+	Current               int32              `json:"currentReplicas" yaml:"currentReplicas"`
+	Desired               int32              `json:"desiredReplicas" yaml:"desiredReplicas"`
+	Min                   int32              `json:"minReplicas" yaml:"minReplicas"`
+	Max                   int32              `json:"maxReplicas" yaml:"maxReplicas"`
+	Health                string             `json:"health" yaml:"health"`
+	HealthScore           int                `json:"healthScore" yaml:"healthScore"`
+	Summary               string             `json:"summary" yaml:"summary"`
+	Conditions            []Condition        `json:"conditions" yaml:"conditions"`
+	Metrics               []Metric           `json:"metrics" yaml:"metrics"`
+	Behavior              []BehaviorRule     `json:"behavior,omitempty" yaml:"behavior,omitempty"`
+	Actions               []string           `json:"recommendedActions,omitempty" yaml:"recommendedActions,omitempty"`
+	Suggestions           []Suggestion       `json:"suggestions,omitempty" yaml:"suggestions,omitempty"`
+	Interpretation        []string           `json:"interpretation,omitempty" yaml:"interpretation,omitempty"`
+	KEDAInfo              *KEDAAnalysis      `json:"keda,omitempty" yaml:"keda,omitempty"`
+	VPAConflict           *VPAConflictInfo   `json:"vpaConflict,omitempty" yaml:"vpaConflict,omitempty"`
+	TargetReplicas        *TargetReplicaInfo `json:"targetReplicas,omitempty" yaml:"targetReplicas,omitempty"`
+	Debug                 []string           `json:"debug,omitempty" yaml:"debug,omitempty"`
+	ImpactMetric          *MetricImpactGuess `json:"impactMetric,omitempty" yaml:"impactMetric,omitempty"`
+	CreationTimestamp     metav1.Time        `json:"creationTimestamp,omitempty" yaml:"creationTimestamp,omitempty"`
+	StaleStatus           *StaleStatusInfo   `json:"staleStatus,omitempty" yaml:"staleStatus,omitempty"`
+	StabilizationRemaining *int64            `json:"stabilizationRemaining,omitempty" yaml:"stabilizationRemaining,omitempty"`
+	ScaleToZero           *ScaleToZeroInfo   `json:"scaleToZero,omitempty" yaml:"scaleToZero,omitempty"`
 }
 
 type Condition struct {
@@ -79,9 +84,24 @@ type Metric struct {
 }
 
 type MetricImpactGuess struct {
-	Name  string  `json:"name" yaml:"name"`
-	Ratio float64 `json:"ratio" yaml:"ratio"`
-	Note  string  `json:"note" yaml:"note"`
+	Name       string  `json:"name" yaml:"name"`
+	Ratio      float64 `json:"ratio" yaml:"ratio"`
+	Note       string  `json:"note" yaml:"note"`
+	Confidence string  `json:"confidence,omitempty" yaml:"confidence,omitempty"`
+}
+
+// StaleStatusInfo holds details about observedGeneration lag.
+type StaleStatusInfo struct {
+	ObservedGeneration int64 `json:"observedGeneration" yaml:"observedGeneration"`
+	CurrentGeneration  int64 `json:"currentGeneration" yaml:"currentGeneration"`
+	Diff               int64 `json:"diff" yaml:"diff"`
+}
+
+// ScaleToZeroInfo holds scale-to-zero related information.
+type ScaleToZeroInfo struct {
+	Enabled   bool   `json:"enabled" yaml:"enabled"`
+	ColdStart bool   `json:"coldStart,omitempty" yaml:"coldStart,omitempty"`
+	Note      string `json:"note,omitempty" yaml:"note,omitempty"`
 }
 
 type BehaviorRule struct {
@@ -180,10 +200,39 @@ func AnalyzeWithOptions(src *autoscalingv2.HorizontalPodAutoscaler, includeInter
 	// Prefix summary with [STALE STATUS] when the controller has not yet observed the latest spec.
 	if src.Status.ObservedGeneration != nil && *src.Status.ObservedGeneration < src.Generation {
 		analysis.Summary = "[STALE STATUS] " + analysis.Summary
+		analysis.StaleStatus = &StaleStatusInfo{
+			ObservedGeneration: *src.Status.ObservedGeneration,
+			CurrentGeneration:  src.Generation,
+			Diff:               src.Generation - *src.Status.ObservedGeneration,
+		}
 	}
 
 	if guess, ok := MostInfluentialMetric(src); ok {
+		// When desiredReplicas == maxReplicas, the winner metric cannot be reliably determined
+		if src.Status.DesiredReplicas == src.Spec.MaxReplicas {
+			guess.Confidence = "low"
+			guess.Note = "desiredReplicas == maxReplicas so the winner metric cannot be reliably determined"
+		} else {
+			guess.Confidence = "medium"
+		}
 		analysis.ImpactMetric = &guess
+	}
+
+	// Scale-to-zero detection
+	if minReplicas == 0 {
+		info := &ScaleToZeroInfo{Enabled: true}
+		if src.Status.DesiredReplicas == 0 && src.Status.CurrentReplicas > 0 {
+			info.ColdStart = true
+			info.Note = "Cold start: scaling from 0 to 1 may experience additional delay; the first metric evaluation must complete before replicas are provisioned."
+		} else if src.Status.DesiredReplicas == 0 && src.Status.CurrentReplicas == 0 {
+			info.Note = "HPA is at zero replicas (scaled to zero). The next scale-up requires a cold start."
+		}
+		analysis.ScaleToZero = info
+	}
+
+	// Stabilization remaining time estimation
+	if remaining := estimateStabilizationRemaining(src); remaining != nil {
+		analysis.StabilizationRemaining = remaining
 	}
 
 	if includeInterpretation {
@@ -274,7 +323,13 @@ func SummarizeDirection(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas 
 		return "HPA cannot currently compute a scaling recommendation from metrics."
 	}
 	if hpa.Status.DesiredReplicas == 0 && hpa.Status.CurrentReplicas > 0 {
+		if minReplicas == 0 {
+			return "HPA wants to scale to zero (cold start will occur on next scale-up)."
+		}
 		return "HPA has no visible desired replica recommendation in status."
+	}
+	if minReplicas == 0 && hpa.Status.DesiredReplicas == 0 && hpa.Status.CurrentReplicas == 0 {
+		return "HPA is scaled to zero (minReplicas=0); awaiting trigger to scale up."
 	}
 
 	current := hpa.Status.CurrentReplicas
@@ -287,6 +342,8 @@ func SummarizeDirection(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas 
 		return "HPA currently wants to scale down."
 	case desired == hpa.Spec.MaxReplicas:
 		return "HPA is at maxReplicas."
+	case desired == minReplicas && minReplicas == 0:
+		return "HPA is at minReplicas (scale-to-zero enabled)."
 	case desired == minReplicas:
 		return "HPA is at minReplicas."
 	default:
@@ -316,8 +373,13 @@ func Interpret(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []
 		lines = append(lines,
 			fmt.Sprintf("[confidence: high] AbleToScale is %s: %s - %s", condition.Status, condition.Reason, condition.Message))
 	} else if condition := FindCondition(hpa, "AbleToScale"); condition != nil && condition.Reason == "ScaleDownStabilized" {
-		lines = append(lines,
-			fmt.Sprintf("[confidence: medium] Scale down appears stabilized: %s", condition.Message))
+		if remaining := estimateStabilizationRemaining(hpa); remaining != nil && *remaining > 0 {
+			lines = append(lines,
+				fmt.Sprintf("[confidence: high] Scale down appears stabilized: %s (approximately %d seconds remaining before scale-down is allowed).", condition.Message, *remaining))
+		} else {
+			lines = append(lines,
+				fmt.Sprintf("[confidence: medium] Scale down appears stabilized: %s", condition.Message))
+		}
 	}
 
 	if condition := FindCondition(hpa, "ScalingLimited"); condition != nil && condition.Status == corev1.ConditionTrue {
@@ -344,7 +406,7 @@ func Interpret(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []
 					deviation = -deviation
 				}
 				if deviation < 0.1 {
-					lines = append(lines, fmt.Sprintf("[tolerance-likely] %s metric ratio is %.3f (within ±10%% of target); the HPA default tolerance band of 0.1 likely explains why replicas are unchanged despite %s being %.1f%% %s target.", metric.Name, metric.Ratio, metric.Name, (metric.Ratio-1)*100, metric.Note))
+					lines = append(lines, fmt.Sprintf("[tolerance-confirmed] [confidence: high] %s metric ratio is %.3f (within ±10%% of target); the Kubernetes default tolerance band of 0.1 (10%%) explains why replicas are unchanged despite %s being %.1f%% %s target.", metric.Name, metric.Ratio, metric.Name, (metric.Ratio-1)*100, metric.Note))
 				} else {
 					lines = append(lines, fmt.Sprintf("[confidence: medium] %s metric ratio is approximately %.3f, which is close to the target.", metric.Name, metric.Ratio))
 					lines = append(lines, "[confidence: medium] This is consistent with tolerance-based no-scale. Kubernetes commonly uses a tolerance band around the target, but HPA status does not expose tolerance as an explicit reason.")
@@ -354,12 +416,23 @@ func Interpret(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []
 		}
 	}
 
-	if guess, ok := MostInfluentialMetric(hpa); ok && len(hpa.Status.CurrentMetrics) > 1 {
+	if hpa.Status.DesiredReplicas == hpa.Spec.MaxReplicas && len(hpa.Status.CurrentMetrics) > 1 {
+		lines = append(lines, "[confidence: high] desiredReplicas == maxReplicas; the winning metric cannot be reliably determined because the replica cap may hide the true metric winner.")
+	} else if guess, ok := MostInfluentialMetric(hpa); ok && len(hpa.Status.CurrentMetrics) > 1 {
 		lines = append(lines, fmt.Sprintf("[confidence: medium] Among visible resource utilization metrics, %s has the largest distance from target (ratio %.3f).", guess.Name, guess.Ratio))
 		lines = append(lines, "[confidence: high] This is only an impact estimate; the API does not expose per-metric replica recommendations or the final metric winner.")
 	} else if len(hpa.Status.CurrentMetrics) > 1 {
 		lines = append(lines, "[confidence: high] Multiple current metrics are reported, but the API does not expose per-metric replica recommendations or which metric would have selected the recommendation before replica limits were applied.")
 		lines = append(lines, "[confidence: high] Events and human-readable messages can hint at the contributing metric, but they are not a stable decision record.")
+	}
+
+	// Scale-to-zero interpretation
+	if minReplicas == 0 {
+		if hpa.Status.DesiredReplicas == 0 && hpa.Status.CurrentReplicas == 0 {
+			lines = append(lines, "[confidence: high] Scale-to-zero is enabled (minReplicas=0) and the workload is currently at zero replicas. The next scale-up requires a cold start which may introduce additional latency.")
+		} else if hpa.Status.DesiredReplicas == 0 && hpa.Status.CurrentReplicas > 0 {
+			lines = append(lines, "[confidence: high] Scale-to-zero is enabled (minReplicas=0) and the HPA wants to scale to zero. Note: scaling from 0 back to 1 requires a cold start.")
+		}
 	}
 
 	lines = append(lines, ExternalMetricDiagnostics(hpa)...)
@@ -863,6 +936,29 @@ func scaleDownStabilizationWindow(hpa *autoscalingv2.HorizontalPodAutoscaler) *i
 		return nil
 	}
 	return hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds
+}
+
+// estimateStabilizationRemaining estimates how many seconds remain before
+// the scale-down stabilization window expires. Returns nil if the HPA is
+// not in a ScaleDownStabilized state or required data is unavailable.
+func estimateStabilizationRemaining(hpa *autoscalingv2.HorizontalPodAutoscaler) *int64 {
+	condition := FindCondition(hpa, "AbleToScale")
+	if condition == nil || condition.Reason != "ScaleDownStabilized" {
+		return nil
+	}
+	window := scaleDownStabilizationWindow(hpa)
+	if window == nil {
+		return nil
+	}
+	if hpa.Status.LastScaleTime == nil {
+		return nil
+	}
+	elapsed := time.Since(hpa.Status.LastScaleTime.Time).Seconds()
+	remaining := int64(float64(*window) - elapsed)
+	if remaining < 0 {
+		remaining = 0
+	}
+	return &remaining
 }
 
 func CompareMetricToTarget(utilization *int32, target string) string {

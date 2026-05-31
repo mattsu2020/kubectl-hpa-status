@@ -1,0 +1,33 @@
+# Section labels
+label_target: "Target"
+label_replicas: "Replicas"
+label_health: "Health"
+label_summary: "Summary"
+label_conditions: "Conditions"
+label_metrics: "Metrics"
+label_behavior: "Behavior"
+label_actions: "Recommended Actions"
+label_suggestions: "Suggestions"
+label_fix: "Fix Plan"
+label_interpretation: "Interpretation"
+label_debug: "Debug"
+label_keda: "KEDA"
+label_events: "Events"
+label_risk: "Risk"
+label_precondition: "Precondition"
+label_warning: "Warning"
+
+# Health states
+health_ok: "OK"
+health_error: "ERROR"
+health_limited: "LIMITED"
+health_stabilized: "STABILIZED"
+
+# Directions
+dir_scale_up: "HPA currently wants to scale up."
+dir_scale_down: "HPA currently wants to scale down."
+dir_at_max: "HPA is at maxReplicas."
+dir_at_min: "HPA is at minReplicas."
+dir_unchanged: "HPA currently keeps the replica count unchanged."
+dir_no_recommendation: "HPA has no visible desired replica recommendation in status."
+dir_inactive: "HPA cannot currently compute a scaling recommendation from metrics."
