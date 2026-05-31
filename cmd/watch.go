@@ -31,8 +31,14 @@ func runWatch(ctx context.Context, out io.Writer, opts *options, name string, in
 		defer cancel()
 	}
 
+	interval := opts.watchInterval
+	if interval < time.Second {
+		fmt.Fprintf(out, "Warning: interval %s is below 1s; clamping to 1s to reduce API server load.\n", interval)
+		interval = time.Second
+	}
+
 	theme := style.NewTheme(shouldColorize(opts.color, out))
-	ticker := time.NewTicker(opts.watchInterval)
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	var previous *hpaanalysis.Analysis
@@ -89,8 +95,14 @@ func runWatchList(ctx context.Context, out io.Writer, opts *options) error {
 		defer cancel()
 	}
 
+	interval := opts.watchInterval
+	if interval < time.Second {
+		fmt.Fprintf(out, "Warning: interval %s is below 1s; clamping to 1s to reduce API server load.\n", interval)
+		interval = time.Second
+	}
+
 	theme := style.NewTheme(shouldColorize(opts.color, out))
-	ticker := time.NewTicker(opts.watchInterval)
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {

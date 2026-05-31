@@ -269,3 +269,19 @@ func escapePrometheusLabelValue(s string) string {
 	s = strings.ReplaceAll(s, `"`, `\"`)
 	return s
 }
+
+func writeError(out io.Writer, format string, err error) {
+	switch format {
+	case "json":
+		_ = json.NewEncoder(out).Encode(map[string]string{"error": err.Error()})
+	case "yaml":
+		data, marshalErr := yaml.Marshal(map[string]string{"error": err.Error()})
+		if marshalErr != nil {
+			_, _ = fmt.Fprintf(out, "Error: %v\n", err)
+			return
+		}
+		_, _ = out.Write(data)
+	default:
+		_, _ = fmt.Fprintf(out, "Error: %v\n", err)
+	}
+}

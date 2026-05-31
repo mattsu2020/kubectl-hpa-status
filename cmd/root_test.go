@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -360,5 +361,38 @@ func TestWriteOutputPrometheusUnknownType(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "prometheus output requires") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestWriteErrorJSON(t *testing.T) {
+	var out bytes.Buffer
+	writeError(&out, "json", fmt.Errorf("HPA not found"))
+	output := strings.TrimSpace(out.String())
+	if !strings.Contains(output, `"error"`) {
+		t.Fatalf("expected JSON error key, got %q", output)
+	}
+	if !strings.Contains(output, "HPA not found") {
+		t.Fatalf("expected error message in JSON, got %q", output)
+	}
+}
+
+func TestWriteErrorYAML(t *testing.T) {
+	var out bytes.Buffer
+	writeError(&out, "yaml", fmt.Errorf("HPA not found"))
+	output := strings.TrimSpace(out.String())
+	if !strings.Contains(output, "error:") {
+		t.Fatalf("expected YAML error key, got %q", output)
+	}
+	if !strings.Contains(output, "HPA not found") {
+		t.Fatalf("expected error message in YAML, got %q", output)
+	}
+}
+
+func TestWriteErrorText(t *testing.T) {
+	var out bytes.Buffer
+	writeError(&out, "", fmt.Errorf("HPA not found"))
+	output := strings.TrimSpace(out.String())
+	if !strings.Contains(output, "Error: HPA not found") {
+		t.Fatalf("expected plain text error, got %q", output)
 	}
 }
