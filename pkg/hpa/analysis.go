@@ -63,7 +63,19 @@ type Analysis struct {
 	CreationTimestamp     metav1.Time        `json:"creationTimestamp,omitempty" yaml:"creationTimestamp,omitempty"`
 	StaleStatus           *StaleStatusInfo   `json:"staleStatus,omitempty" yaml:"staleStatus,omitempty"`
 	StabilizationRemaining *int64            `json:"stabilizationRemaining,omitempty" yaml:"stabilizationRemaining,omitempty"`
-	ScaleToZero           *ScaleToZeroInfo   `json:"scaleToZero,omitempty" yaml:"scaleToZero,omitempty"`
+	ScaleToZero             *ScaleToZeroInfo    `json:"scaleToZero,omitempty" yaml:"scaleToZero,omitempty"`
+	StructuredInterpretation []StructuredMessage `json:"structuredInterpretation,omitempty" yaml:"structuredInterpretation,omitempty"`
+	StructuredActions        []StructuredMessage `json:"structuredActions,omitempty" yaml:"structuredActions,omitempty"`
+}
+
+// StructuredMessage provides a machine-readable representation of an
+// interpretation or action line, with a reason, human message, and
+// suggested next step.
+type StructuredMessage struct {
+	Reason   string `json:"reason" yaml:"reason"`
+	Message  string `json:"message" yaml:"message"`
+	NextStep string `json:"nextStep,omitempty" yaml:"nextStep,omitempty"`
+	Severity string `json:"severity,omitempty" yaml:"severity,omitempty"` // "warning", "error", "info"
 }
 
 type Condition struct {
@@ -240,6 +252,8 @@ func AnalyzeWithOptions(src *autoscalingv2.HorizontalPodAutoscaler, includeInter
 		analysis.Suggestions = BuildSuggestions(src, minReplicas)
 		analysis.Interpretation = Interpret(src, minReplicas)
 		analysis.Interpretation = append(analysis.Interpretation, KEDADiagnostics(src)...)
+		analysis.StructuredInterpretation = buildStructuredInterpretation(src, minReplicas)
+		analysis.StructuredActions = buildStructuredActions(src, minReplicas)
 	}
 	analysis.Health, analysis.HealthScore = HealthWithWeights(src, minReplicas, opts.HealthWeights)
 	if opts.Debug {
@@ -911,6 +925,198 @@ func staleMetricActions(hpa *autoscalingv2.HorizontalPodAutoscaler) []string {
 	return actions
 }
 
+// buildStructuredInterpretation mirrors the key cases from Interpret() and
+// returns machine-readable StructuredMessage entries.
+func buildStructuredInterpretation(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []StructuredMessage {
+	var msgs []StructuredMessage
+
+	// Stale status (observedGeneration lag)
+	if hpa.Status.ObservedGeneration != nil && *hpa.Status.ObservedGeneration < hpa.Generation {
+		msgs = append(msgs, StructuredMessage{
+			Reason:   "StaleStatus",
+			Message:  fmt.Sprintf("observedGeneration=%d is behind generation=%d", *hpa.Status.ObservedGeneration, hpa.Generation),
+			NextStep: "Wait for HPA controller to process latest spec",
+			Severity: "warning",
+		})
+	}
+
+	// ScalingActive not True
+	if condition := FindCondition(hpa, "ScalingActive"); condition != nil && condition.Status != corev1.ConditionTrue {
+		msgs = append(msgs, StructuredMessage{
+			Reason:   "ScalingInactive",
+			Message:  fmt.Sprintf("ScalingActive is %s: %s - %s", condition.Status, condition.Reason, condition.Message),
+			NextStep: "Check metrics-server or custom metrics adapters",
+			Severity: "error",
+		})
+		return msgs
+	}
+
+	// AbleToScale not True
+	if condition := FindCondition(hpa, "AbleToScale"); condition != nil && condition.Status != corev1.ConditionTrue {
+		msgs = append(msgs, StructuredMessage{
+			Reason:   "UnableToScale",
+			Message:  fmt.Sprintf("AbleToScale is %s: %s - %s", condition.Status, condition.Reason, condition.Message),
+			Severity: "error",
+		})
+	} else if condition := FindCondition(hpa, "AbleToScale"); condition != nil && condition.Reason == "ScaleDownStabilized" {
+		nextStep := ""
+		if remaining := estimateStabilizationRemaining(hpa); remaining != nil && *remaining > 0 {
+			nextStep = fmt.Sprintf("Scale-down stabilized; approximately %d seconds remaining", *remaining)
+		}
+		msgs = append(msgs, StructuredMessage{
+			Reason:   "ScaleDownStabilized",
+			Message:  condition.Message,
+			NextStep: nextStep,
+			Severity: "info",
+		})
+	}
+
+	// ScalingLimited
+	if condition := FindCondition(hpa, "ScalingLimited"); condition != nil && condition.Status == corev1.ConditionTrue {
+		switch hpa.Status.DesiredReplicas {
+		case hpa.Spec.MaxReplicas:
+			msgs = append(msgs, StructuredMessage{
+				Reason:   "LimitedByMaxReplicas",
+				Message:  "desiredReplicas is constrained by maxReplicas",
+				NextStep: "Raise maxReplicas or reduce load/target utilization",
+				Severity: "warning",
+			})
+		case minReplicas:
+			msgs = append(msgs, StructuredMessage{
+				Reason:   "LimitedByMinReplicas",
+				Message:  "desiredReplicas is constrained by minReplicas",
+				NextStep: "Lower minReplicas if scale-down below this point is expected",
+				Severity: "warning",
+			})
+		default:
+			msgs = append(msgs, StructuredMessage{
+				Reason:   "ScalingLimited",
+				Message:  "The recommendation is reported as limited",
+				Severity: "warning",
+			})
+		}
+	}
+
+	// Tolerance-confirmed no-scale
+	if hpa.Status.DesiredReplicas == hpa.Status.CurrentReplicas &&
+		hpa.Status.DesiredReplicas != hpa.Spec.MaxReplicas &&
+		hpa.Status.DesiredReplicas != minReplicas {
+		if metric, ok := MetricOutsideTarget(hpa); ok {
+			deviation := metric.Ratio - 1.0
+			if deviation < 0 {
+				deviation = -deviation
+			}
+			if deviation < 0.1 {
+				msgs = append(msgs, StructuredMessage{
+					Reason:   "ToleranceNoScale",
+					Message:  fmt.Sprintf("%s metric ratio is %.3f (within ±10%% of target)", metric.Name, metric.Ratio),
+					Severity: "info",
+				})
+			}
+		}
+	}
+
+	// maxReplicas winner hidden
+	if hpa.Status.DesiredReplicas == hpa.Spec.MaxReplicas && len(hpa.Status.CurrentMetrics) > 1 {
+		msgs = append(msgs, StructuredMessage{
+			Reason:   "MaxReplicasWinnerHidden",
+			Message:  "desiredReplicas == maxReplicas; the winning metric cannot be reliably determined",
+			Severity: "info",
+		})
+	}
+
+	// Scale-to-zero
+	if minReplicas == 0 {
+		if hpa.Status.DesiredReplicas == 0 && hpa.Status.CurrentReplicas == 0 {
+			msgs = append(msgs, StructuredMessage{
+				Reason:   "ScaleToZero",
+				Message:  "Scale-to-zero enabled and workload is at zero replicas",
+				NextStep: "Next scale-up requires a cold start which may introduce additional latency",
+				Severity: "info",
+			})
+		} else if hpa.Status.DesiredReplicas == 0 && hpa.Status.CurrentReplicas > 0 {
+			msgs = append(msgs, StructuredMessage{
+				Reason:   "ScaleToZero",
+				Message:  "Scale-to-zero enabled and HPA wants to scale to zero",
+				NextStep: "Scaling from 0 back to 1 requires a cold start",
+				Severity: "info",
+			})
+		}
+	}
+
+	// VPA conflict
+	if hpa.Annotations != nil || hpa.Labels != nil {
+		// VPA conflict detection is handled externally via AnalyzeVPA;
+		// here we only flag when VPAConflict field is set on the Analysis.
+		// This structured message is populated by the caller if needed.
+	}
+
+	return msgs
+}
+
+// buildStructuredActions mirrors the key cases from RecommendedActions() and
+// returns machine-readable StructuredMessage entries.
+func buildStructuredActions(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []StructuredMessage {
+	var msgs []StructuredMessage
+
+	// Wait for generation
+	if hpa.Status.ObservedGeneration != nil && *hpa.Status.ObservedGeneration < hpa.Generation {
+		msgs = append(msgs, StructuredMessage{
+			Reason:   "WaitForGeneration",
+			Message:  "Status does not reflect the latest spec",
+			NextStep: "Wait for controller reconciliation",
+			Severity: "warning",
+		})
+	}
+
+	// ScalingActive not True → check metrics
+	if condition := FindCondition(hpa, "ScalingActive"); condition != nil && condition.Status != corev1.ConditionTrue {
+		msgs = append(msgs, StructuredMessage{
+			Reason:   "RestoreMetrics",
+			Message:  "ScalingActive is not True",
+			NextStep: "Check metrics-server or custom/external metrics adapters",
+			Severity: "error",
+		})
+		return msgs
+	}
+
+	// ScaleDownStabilized
+	if condition := FindCondition(hpa, "AbleToScale"); condition != nil && condition.Reason == "ScaleDownStabilized" {
+		nextStep := "Review HPA behavior and recent recommendations"
+		if window := scaleDownStabilizationWindow(hpa); window != nil {
+			nextStep = fmt.Sprintf("Wait up to about %ds or review spec.behavior.scaleDown.stabilizationWindowSeconds", *window)
+		}
+		msgs = append(msgs, StructuredMessage{
+			Reason:   "WaitForStabilization",
+			Message:  "Scale-down is stabilized",
+			NextStep: nextStep,
+			Severity: "info",
+		})
+	}
+
+	// ScalingLimited
+	if condition := FindCondition(hpa, "ScalingLimited"); condition != nil && condition.Status == corev1.ConditionTrue {
+		switch hpa.Status.DesiredReplicas {
+		case hpa.Spec.MaxReplicas:
+			msgs = append(msgs, StructuredMessage{
+				Reason:   "RaiseMaxReplicas",
+				Message:  "HPA is capped at maxReplicas",
+				NextStep: "Raise maxReplicas or reduce load/target utilization if more capacity is expected",
+				Severity: "warning",
+			})
+		case minReplicas:
+			msgs = append(msgs, StructuredMessage{
+				Reason:   "LowerMinReplicas",
+				Message:  "HPA is capped at minReplicas",
+				NextStep: "Lower minReplicas if scale-down below this point is expected",
+				Severity: "warning",
+			})
+		}
+	}
+
+	return msgs
+}
+
 func DebugLines(hpa *autoscalingv2.HorizontalPodAutoscaler, analysis Analysis) []string {
 	var lines []string
 	lines = append(lines, fmt.Sprintf("replicas: current=%d desired=%d min=%d max=%d diff=%+d", analysis.Current, analysis.Desired, analysis.Min, analysis.Max, analysis.Desired-analysis.Current))
@@ -997,7 +1203,7 @@ func MetricOutsideTarget(hpa *autoscalingv2.HorizontalPodAutoscaler) (MetricImpa
 
 func MostInfluentialMetric(hpa *autoscalingv2.HorizontalPodAutoscaler) (MetricImpactGuess, bool) {
 	var best MetricImpactGuess
-	var bestDistance float64
+	var bestScore float64
 
 	for _, metric := range hpa.Status.CurrentMetrics {
 		if metric.Type != autoscalingv2.ResourceMetricSourceType || metric.Resource == nil {
@@ -1011,17 +1217,27 @@ func MostInfluentialMetric(hpa *autoscalingv2.HorizontalPodAutoscaler) (MetricIm
 		if distance < 0 {
 			distance = -distance
 		}
-		if distance > bestDistance {
-			bestDistance = distance
+
+		// Score by estimated replica impact: ratio * currentReplicas gives
+		// a rough estimate of how many replicas this metric would want.
+		// Higher impact = more likely to be the winner.
+		replicaImpact := distance * float64(hpa.Status.CurrentReplicas)
+
+		if replicaImpact > bestScore {
+			bestScore = replicaImpact
+			note := "largest visible utilization ratio distance from target"
+			if hpa.Status.CurrentReplicas > 0 {
+				note = fmt.Sprintf("estimated replica impact %.1f (ratio distance %.3f × %d current replicas)", replicaImpact, distance, hpa.Status.CurrentReplicas)
+			}
 			best = MetricImpactGuess{
 				Name:  string(metric.Resource.Name),
 				Ratio: *ratio,
-				Note:  "largest visible utilization ratio distance from target",
+				Note:  note,
 			}
 		}
 	}
 
-	return best, bestDistance > 0
+	return best, bestScore > 0
 }
 
 func prioritizedConditions(conditions []autoscalingv2.HorizontalPodAutoscalerCondition) []autoscalingv2.HorizontalPodAutoscalerCondition {

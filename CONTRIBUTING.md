@@ -2,6 +2,31 @@
 
 Thanks for helping improve `kubectl-hpa-status`.
 
+## Quick Start (5 minutes)
+
+```bash
+# 1. Clone and build
+git clone https://github.com/mattsu2020/kubectl-hpa-status.git
+cd kubectl-hpa-status
+make build
+
+# 2. Run tests
+make test
+
+# 3. Try it locally (requires a kubeconfig pointing to a cluster)
+./kubectl-hpa-status list -A --wide
+
+# 4. Run with a specific HPA
+./kubectl-hpa-status status my-hpa --explain
+
+# 5. Run E2E tests (requires kind)
+kind create cluster
+make e2e
+kind delete cluster
+```
+
+Prerequisites: Go 1.25+, kubectl, a Kubernetes cluster (or kind for E2E).
+
 ## Development
 
 ```sh

@@ -43,6 +43,28 @@ without depending on Cobra command wiring.
    attached to the same model.
 4. Output writers render text, JSON, YAML, JSONPath, or templates.
 
+## Health Score Algorithm
+
+The health score starts at 100 and deducts configurable penalties for each detected condition:
+
+| Condition | Default Penalty | Health State | Description |
+|-----------|----------------|--------------|-------------|
+| `ScalingActive != True` | -45 | ERROR | Metrics not available; HPA cannot compute recommendations |
+| `AbleToScale != True` | -35 | ERROR | HPA controller unable to scale (config or permission issue) |
+| `ScalingLimited == True` | -25 | LIMITED | HPA capped by minReplicas or maxReplicas |
+| Implicit maxReplicas (current==desired==max) | -20 | LIMITED | Desired replicas equal maxReplicas without explicit ScalingLimited |
+| `ScaleDownStabilized` | -10 | STABILIZED | Scale-down suppressed by stabilization window |
+| At minimum replicas | -5 | (no change) | Desired replicas equal minReplicas |
+
+Health states (in priority order): `ERROR` > `LIMITED` > `STABILIZED` > `OK`.
+
+Score is clamped to [0, 100]. All penalties are configurable via `--health-weights` flag or config file.
+
+### Example scores:
+- Healthy HPA at steady state: 95 (-5 for at-minimum)
+- HPA at maxReplicas: 75 (-25 ScalingLimited) or 80 (-20 implicit)
+- Metrics unavailable: 55 (-45 ScalingInactive, -10 at-minimum) → ERROR
+
 ## CLI Defaults And Config
 
 Runtime defaults can come from flags or an optional config file. The default

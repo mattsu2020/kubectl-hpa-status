@@ -131,31 +131,6 @@ func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []st
 	return nil
 }
 
-func runSingleStatus(ctx context.Context, out io.Writer, opts *options, name string, includeInterpretation bool) error {
-	report, err := buildStatusReport(ctx, opts, name, includeInterpretation)
-	if err != nil {
-		return err
-	}
-	if opts.apply {
-		applied, err := applySuggestions(ctx, out, opts, name, report.Analysis.Suggestions)
-		if err != nil {
-			return err
-		}
-		report.Analysis.Actions = append(report.Analysis.Actions, applied...)
-	}
-
-	if err := writeOutput(out, opts.output, opts.template, report, func() error {
-		return hpaanalysis.WriteStatusTextWithOptions(out, report, hpaanalysis.StatusTextOptions{
-			Theme: style.NewTheme(shouldColorize(opts.color, out)),
-			Lang:  outputLang(opts),
-			Fix:   opts.fix,
-		})
-	}); err != nil {
-		return err
-	}
-	return warningExitCode(report.Analysis.Health, report.Analysis.Name, report.Analysis.Namespace, opts.watch)
-}
-
 func buildStatusReport(ctx context.Context, opts *options, name string, includeInterpretation bool) (hpaanalysis.StatusReport, error) {
 	client, err := opts.newClient()
 	if err != nil {

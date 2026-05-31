@@ -224,7 +224,7 @@ kubectl delete namespace hpa-status-examples
 kubectl hpa status <hpa-name> [<hpa-name>...] [-n namespace] [--context context] [--events=false]
 kubectl hpa status <hpa-name> --watch --interval 5s
 kubectl hpa status <hpa-name> --watch --timeout 2m --until-condition scaling-limited
-kubectl hpa status analyze <hpa-name> [<hpa-name>...]
+kubectl hpa status analyze <hpa-name> [<hpa-name>...]  # deprecated; use status --explain instead
 kubectl hpa status list [-A] [--selector app=web] [--sort-by desired] [--filter scaling-limited]
 kubectl hpa status list -A --problem
 kubectl hpa status scan --selector app=web
@@ -276,7 +276,7 @@ Detailed flags:
 | `--color auto|always|never` | text output | Control terminal color output. |
 | `--interpret` | `status` | Include diagnostic interpretation in compact status output. |
 | `--explain` | `status`, `analyze` | Include detailed interpretation and recommended actions. |
-| `--suggest`, `--recommend` | `status`, `analyze` | Include concrete `kubectl patch` commands when a safe HPA spec suggestion is visible. |
+| `--suggest`, `--recommend` | `status`, `analyze` | Include concrete `kubectl patch` commands when a safe HPA spec suggestion is visible. `--recommend` is an alias for `--suggest`. |
 | `--fix` | `status`, `analyze` | Show a stronger fix plan with applicable patches. |
 | `--apply` | `status`, `analyze` | Validate suggested HPA patches with server-side dry-run by default. |
 | `--dry-run=false` | `--apply` workflow | Persist changes; still shows a diff and asks for confirmation unless `-y` is set. |
@@ -290,6 +290,21 @@ Detailed flags:
 | `--timeout 2m` | watch mode | Stop watch after a duration. |
 | `--until-condition scaling-limited` | watch mode | Stop watch once the normalized condition type is present. |
 | `--version` | root | Print the plugin version. |
+
+### Health Score
+
+Each HPA receives a health score from 0 to 100. The score starts at 100 and penalties are deducted for detected issues:
+
+| Deduction | Score Impact |
+|-----------|-------------|
+| Metrics unavailable (`ScalingActive=False`) | -45 |
+| Unable to scale (`AbleToScale!=True`) | -35 |
+| Scaling limited by min/maxReplicas | -25 |
+| Implicitly at maxReplicas | -20 |
+| Scale-down stabilization window active | -10 |
+| At minimum replicas | -5 |
+
+**Health states**: `OK` → `STABILIZED` → `LIMITED` → `ERROR` (worsening order). Use `--health-score`, `--min-score`, and `--max-score` to filter by score range.
 
 Supported Kubernetes versions:
 
