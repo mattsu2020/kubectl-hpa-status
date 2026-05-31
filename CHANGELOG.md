@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added Makefile targets for build, test, coverage, lint, E2E, and release checks.
 - Added Dependabot and CodeQL workflows.
 - Added Renovate configuration, govulncheck, and gosec CI checks.
-- Added GoReleaser SBOM and Homebrew Cask metadata.
+- Added GoReleaser SBOM and Homebrew Cask metadata for the dedicated tap.
 - Added `scan` and `list --problem` for cluster-wide HPA problem triage.
 - Added reusable status, list, and watch asciinema demo sources plus a comparison visual.
 - Added a larger SVG screenshot gallery covering explain, list, watch, suggest, dry-run apply, Japanese output, JSON, and common failure states.

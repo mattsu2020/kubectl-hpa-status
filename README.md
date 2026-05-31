@@ -143,7 +143,7 @@ dashes, Krew creates a kubectl-visible symlink using underscores, so
 ### Homebrew
 
 ```sh
-brew install mattsu2020/tap/kubectl-hpa-status
+brew install --cask mattsu2020/kubectl-hpa-status/kubectl-hpa-status
 kubectl-hpa-status list -A --wide
 ```
 
@@ -450,7 +450,7 @@ Interpretation lines are diagnostic inferences, not the HPA controller's authori
 ### Future Roadmap
 - [x] **Integration Testing:** Added kind-based E2E tests for verification in CI.
 - [x] **Visual Demos:** Added high-fidelity demo screenshots to documentation.
-- [x] **Homebrew Cask:** Generate Homebrew tap metadata through GoReleaser.
+- [x] **Homebrew packaging:** Generate Homebrew cask metadata in a dedicated tap through GoReleaser.
 - [ ] **Interactive TUI Monitor:** Enhance the watch mode into a rich terminal dashboard.
 - [ ] **Batch Analysis:** Support analyzing all HPAs across multiple namespaces in one run.
 - [ ] **Suggest Flag:** Provide actionable optimization values based on HPA analysis.

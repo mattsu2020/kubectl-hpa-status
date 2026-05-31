@@ -102,7 +102,7 @@ kubectl hpa status <hpa-name> --suggest
 ### Homebrew
 
 ```sh
-brew install mattsu2020/tap/kubectl-hpa-status
+brew install --cask mattsu2020/kubectl-hpa-status/kubectl-hpa-status
 kubectl-hpa-status list -A --wide
 ```
 
@@ -174,7 +174,7 @@ kind delete cluster --name hpa-status-dev
 ## ロードマップ
 - [x] **インテグレーションテスト:** CI検証用の `kind` ベースE2Eテスト。
 - [x] **デモのビジュアル化:** ドキュメントへのスクリーンショットの追加。
-- [x] **Homebrew配布:** GoReleaserでHomebrew CaskとSBOMを生成。
+- [x] **Homebrew配布:** GoReleaserで専用TapのHomebrew CaskとSBOMを生成。
 - [ ] **インタラクティブTUIモニタ:** watchモードをリッチなダッシュボードへ強化。
 - [x] **バッチ分析機能:** `scan` / `list -A --problem` で問題のあるHPAを一括診断。
 - [x] **Suggest/Fix機能:** `--suggest` / `--fix --apply` により、具体的なパッチ案と適用フローを表示。

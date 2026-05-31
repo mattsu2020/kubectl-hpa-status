@@ -42,7 +42,8 @@ homebrew_casks:
   - name: kubectl-hpa-status
     repository:
       owner: mattsu2020
-      name: homebrew-tap
+      name: homebrew-kubectl-hpa-status
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     homepage: https://github.com/mattsu2020/kubectl-hpa-status
     description: kubectl plugin for HPA status, scaling analysis, and suggested fixes
     license: Apache-2.0
