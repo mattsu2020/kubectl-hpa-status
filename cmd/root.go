@@ -47,6 +47,7 @@ type options struct {
 	debug          bool
 	dashboard      bool
 	keda           bool
+	vpa            bool
 	config         string
 	healthWeights  hpaanalysis.HealthWeights
 	problem        bool
@@ -152,6 +153,7 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().BoolVarP(&opts.watch, "watch", "w", false, "watch HPA status periodically")
 	root.PersistentFlags().BoolVar(&opts.dashboard, "dashboard", false, "render watch output as a compact terminal dashboard")
 	root.PersistentFlags().BoolVar(&opts.keda, "keda", false, "enable KEDA ScaledObject integration and cross-reference diagnostics")
+	root.PersistentFlags().BoolVar(&opts.vpa, "vpa", false, "detect VerticalPodAutoscaler conflicts with HPA target")
 	root.PersistentFlags().DurationVar(&opts.watchInterval, "interval", opts.watchInterval, "watch refresh interval")
 	root.PersistentFlags().DurationVar(&opts.watchTimeout, "timeout", 0, "stop watching after this duration")
 	root.PersistentFlags().StringVar(&opts.untilCondition, "until-condition", "", "stop watching once an HPA condition type is present, for example scaling-limited")

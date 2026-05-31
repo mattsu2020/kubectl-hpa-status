@@ -29,8 +29,9 @@ func TestRunStatus_ScalingInactiveWithExternalMetric(t *testing.T) {
 		events:         eventOption{enabled: false},
 	}
 	err := runStatus(context.Background(), &buf, opts, "keda-worker", true)
-	if err != nil {
-		t.Fatalf("runStatus returned error: %v", err)
+	// ScalingActive=False produces ERROR health -> ExitCodeError with code 2.
+	if !isExitCodeWarning(err) {
+		t.Fatalf("expected ExitCodeError with ExitWarning, got: %v", err)
 	}
 	output := buf.String()
 	if !strings.Contains(output, "FailedGetExternalMetric") {
@@ -57,8 +58,9 @@ func TestRunStatus_ImplicitMaxReplicas(t *testing.T) {
 		events:         eventOption{enabled: false},
 	}
 	err := runStatus(context.Background(), &buf, opts, "capped", true)
-	if err != nil {
-		t.Fatalf("runStatus returned error: %v", err)
+	// Implicit maxReplicas produces LIMITED health -> ExitCodeError with code 2.
+	if !isExitCodeWarning(err) {
+		t.Fatalf("expected ExitCodeError with ExitWarning, got: %v", err)
 	}
 	output := buf.String()
 	// Health is rendered with emoji + label like "ScalingLimited", not bare "LIMITED".

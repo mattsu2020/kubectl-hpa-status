@@ -53,8 +53,8 @@ func TestAnalyzeDetectsToleranceLikeNoScale(t *testing.T) {
 	if got.ImpactMetric == nil || got.ImpactMetric.Name != "memory" {
 		t.Fatalf("expected memory impact estimate, got %#v", got.ImpactMetric)
 	}
-	if !containsLine(got.Interpretation, "tolerance-likely") {
-		t.Fatalf("expected tolerance-likely interpretation, got %#v", got.Interpretation)
+	if !containsLine(got.Interpretation, "tolerance-confirmed") {
+		t.Fatalf("expected tolerance-confirmed interpretation, got %#v", got.Interpretation)
 	}
 }
 
@@ -106,8 +106,8 @@ func TestAnalyzeMultiMetricMaxReplicasExplainsLimitAndImpactEstimate(t *testing.
 	if !containsLine(got.Interpretation, "constrained by maxReplicas") {
 		t.Fatalf("expected maxReplicas interpretation, got %#v", got.Interpretation)
 	}
-	if !containsLine(got.Interpretation, "only an impact estimate") {
-		t.Fatalf("expected multi-metric estimate caveat, got %#v", got.Interpretation)
+	if !containsLine(got.Interpretation, "winning metric cannot be reliably determined") {
+		t.Fatalf("expected maxReplicas winner-detection warning, got %#v", got.Interpretation)
 	}
 }
 
@@ -565,8 +565,8 @@ func TestAnalyzeToleranceBoundaries(t *testing.T) {
 	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{resourceMetricStatus(corev1.ResourceCPU, 73)}
 
 	got := Analyze(hpa, true)
-	if !containsLine(got.Interpretation, "tolerance-likely") {
-		t.Fatalf("expected tolerance-likely mention within 10%% margin, got %#v", got.Interpretation)
+	if !containsLine(got.Interpretation, "tolerance-confirmed") {
+		t.Fatalf("expected tolerance-confirmed mention within 10%% margin, got %#v", got.Interpretation)
 	}
 
 	// Case 2: Outside tolerance (e.g. 90% vs 70% target -> ratio ~1.286)
@@ -607,13 +607,9 @@ func TestAnalyzeMultipleMetricsCappedByMaxReplicas(t *testing.T) {
 	if got.ImpactMetric == nil || got.ImpactMetric.Name != "cpu" {
 		t.Fatalf("expected cpu as the most influential metric, got %#v", got.ImpactMetric)
 	}
-	if !containsLine(got.Interpretation, "memory has the largest distance from target") && !containsLine(got.Interpretation, "cpu has the largest distance from target") {
-		// Either cpu (ratio 1.8) or memory (ratio 0.8) could be evaluated.
-		// Ratio distance: CPU: 1.8-1 = 0.8. Memory: 0.8-1 = -0.2 (abs 0.2).
-		// So CPU (0.8 distance) should be the winner.
-		if !containsLine(got.Interpretation, "cpu has the largest distance from target (ratio 1.800)") {
-			t.Fatalf("expected CPU to be chosen as most influential, got %#v", got.Interpretation)
-		}
+	// When desiredReplicas == maxReplicas, the winner metric cannot be reliably determined
+	if !containsLine(got.Interpretation, "winning metric cannot be reliably determined") {
+		t.Fatalf("expected maxReplicas winner-detection warning, got %#v", got.Interpretation)
 	}
 }
 
@@ -633,5 +629,125 @@ func TestAnalyzeStabilizationWindowSpecificRules(t *testing.T) {
 	got := Analyze(hpa, true)
 	if !containsLine(got.Actions, "wait up to about 600s") {
 		t.Fatalf("expected wait action referring to 600s window, got %#v", got.Actions)
+	}
+}
+
+func TestAnalyzeScaleToZeroMinReplicasZero(t *testing.T) {
+	minReplicas := int32(0)
+	hpa := baseHPA()
+	hpa.Spec.MinReplicas = &minReplicas
+	hpa.Status.CurrentReplicas = 0
+	hpa.Status.DesiredReplicas = 0
+
+	got := Analyze(hpa, true)
+	if got.ScaleToZero == nil || !got.ScaleToZero.Enabled {
+		t.Fatalf("expected ScaleToZero enabled, got %#v", got.ScaleToZero)
+	}
+	if got.Summary != "HPA is scaled to zero (minReplicas=0); awaiting trigger to scale up." {
+		t.Fatalf("unexpected summary: %s", got.Summary)
+	}
+	if !containsLine(got.Interpretation, "Scale-to-zero is enabled") {
+		t.Fatalf("expected scale-to-zero interpretation, got %#v", got.Interpretation)
+	}
+}
+
+func TestAnalyzeScaleToZeroColdStart(t *testing.T) {
+	minReplicas := int32(0)
+	hpa := baseHPA()
+	hpa.Spec.MinReplicas = &minReplicas
+	hpa.Status.CurrentReplicas = 3
+	hpa.Status.DesiredReplicas = 0
+	hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
+		{Type: "ScalingActive", Status: corev1.ConditionTrue, Reason: "ValidMetricFound"},
+	}
+
+	got := Analyze(hpa, true)
+	if got.ScaleToZero == nil || !got.ScaleToZero.Enabled {
+		t.Fatalf("expected ScaleToZero enabled, got %#v", got.ScaleToZero)
+	}
+	if !got.ScaleToZero.ColdStart {
+		t.Fatalf("expected ColdStart=true, got %#v", got.ScaleToZero)
+	}
+	if !strings.Contains(got.Summary, "cold start") {
+		t.Fatalf("expected cold start mention in summary, got %s", got.Summary)
+	}
+}
+
+func TestAnalyzeStabilizationRemaining(t *testing.T) {
+	window := int32(300)
+	hpa := baseHPA()
+	hpa.Spec.Behavior = &autoscalingv2.HorizontalPodAutoscalerBehavior{
+		ScaleDown: &autoscalingv2.HPAScalingRules{
+			StabilizationWindowSeconds: &window,
+		},
+	}
+	lastScaleTime := metav1.Now()
+	hpa.Status.LastScaleTime = &lastScaleTime
+	hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
+		{Type: "ScalingActive", Status: corev1.ConditionTrue, Reason: "ValidMetricFound"},
+		{Type: "AbleToScale", Status: corev1.ConditionTrue, Reason: "ScaleDownStabilized", Message: "recent recommendations were higher"},
+	}
+
+	got := Analyze(hpa, true)
+	if got.StabilizationRemaining == nil {
+		t.Fatalf("expected StabilizationRemaining to be set, got nil")
+	}
+	// The remaining time should be close to 300 (just scaled, so ~300s remaining)
+	if *got.StabilizationRemaining > 300 || *got.StabilizationRemaining < 290 {
+		t.Fatalf("expected StabilizationRemaining around 300, got %d", *got.StabilizationRemaining)
+	}
+}
+
+func TestAnalyzeStaleStatusStructured(t *testing.T) {
+	hpa := baseHPA()
+	observed := int64(1)
+	hpa.Generation = 3
+	hpa.Status.ObservedGeneration = &observed
+
+	got := Analyze(hpa, true)
+	if got.StaleStatus == nil {
+		t.Fatalf("expected StaleStatus to be set, got nil")
+	}
+	if got.StaleStatus.ObservedGeneration != 1 {
+		t.Fatalf("expected ObservedGeneration=1, got %d", got.StaleStatus.ObservedGeneration)
+	}
+	if got.StaleStatus.CurrentGeneration != 3 {
+		t.Fatalf("expected CurrentGeneration=3, got %d", got.StaleStatus.CurrentGeneration)
+	}
+	if got.StaleStatus.Diff != 2 {
+		t.Fatalf("expected Diff=2, got %d", got.StaleStatus.Diff)
+	}
+	if !strings.HasPrefix(got.Summary, "[STALE STATUS]") {
+		t.Fatalf("expected [STALE STATUS] prefix, got %s", got.Summary)
+	}
+}
+
+func TestAnalyzeMetricImpactGuessConfidence(t *testing.T) {
+	// Normal case - confidence should be medium
+	hpa := baseHPA()
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{resourceMetricSpec(corev1.ResourceCPU, 80)}
+	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{resourceMetricStatus(corev1.ResourceCPU, 88)}
+
+	got := Analyze(hpa, false)
+	if got.ImpactMetric == nil {
+		t.Fatalf("expected ImpactMetric, got nil")
+	}
+	if got.ImpactMetric.Confidence != "medium" {
+		t.Fatalf("expected confidence=medium, got %s", got.ImpactMetric.Confidence)
+	}
+
+	// MaxReplicas case - confidence should be low
+	hpa2 := baseHPA()
+	hpa2.Status.DesiredReplicas = 10
+	hpa2.Spec.MaxReplicas = 10
+	hpa2.Spec.Metrics = []autoscalingv2.MetricSpec{resourceMetricSpec(corev1.ResourceCPU, 80)}
+	hpa2.Status.CurrentMetrics = []autoscalingv2.MetricStatus{resourceMetricStatus(corev1.ResourceCPU, 88)}
+
+	got2 := Analyze(hpa2, false)
+	if got2.ImpactMetric == nil {
+		t.Fatalf("expected ImpactMetric, got nil")
+	}
+	if got2.ImpactMetric.Confidence != "low" {
+		t.Fatalf("expected confidence=low for maxReplicas case, got %s", got2.ImpactMetric.Confidence)
 	}
 }

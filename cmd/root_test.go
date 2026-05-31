@@ -256,3 +256,109 @@ func TestApplyConfigDefaultsDoesNotOverrideExplicitFlags(t *testing.T) {
 		t.Fatalf("expected min score from config, got %d", opts.healthScoreMin)
 	}
 }
+
+func TestWriteOutputPrometheus(t *testing.T) {
+	report := hpaanalysis.ListReport{
+		Items: []hpaanalysis.ListItem{
+			{Namespace: "default", Name: "web", HealthScore: 75, Current: 3, Desired: 5, Min: 1, Max: 10},
+			{Namespace: "prod", Name: "api", HealthScore: 100, Current: 2, Desired: 2, Min: 1, Max: 5},
+		},
+	}
+
+	var out bytes.Buffer
+	if err := writeOutput(&out, "prometheus", "", report, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	output := out.String()
+
+	// Verify HELP and TYPE comments for each metric appear
+	for _, metric := range []string{"hpa_health_score", "hpa_current_replicas", "hpa_desired_replicas", "hpa_min_replicas", "hpa_max_replicas"} {
+		help := "# HELP " + metric
+		typ := "# TYPE " + metric
+		if !strings.Contains(output, help) {
+			t.Fatalf("expected %q in prometheus output, got:\n%s", help, output)
+		}
+		if !strings.Contains(output, typ) {
+			t.Fatalf("expected %q in prometheus output, got:\n%s", typ, output)
+		}
+	}
+
+	// Verify metric values for first item
+	if !strings.Contains(output, `hpa_health_score{namespace="default",name="web"} 75`) {
+		t.Fatalf("expected health score metric for web, got:\n%s", output)
+	}
+	if !strings.Contains(output, `hpa_current_replicas{namespace="default",name="web"} 3`) {
+		t.Fatalf("expected current replicas metric for web, got:\n%s", output)
+	}
+	if !strings.Contains(output, `hpa_max_replicas{namespace="default",name="web"} 10`) {
+		t.Fatalf("expected max replicas metric for web, got:\n%s", output)
+	}
+
+	// Verify metric values for second item
+	if !strings.Contains(output, `hpa_health_score{namespace="prod",name="api"} 100`) {
+		t.Fatalf("expected health score metric for api, got:\n%s", output)
+	}
+	if !strings.Contains(output, `hpa_desired_replicas{namespace="prod",name="api"} 2`) {
+		t.Fatalf("expected desired replicas metric for api, got:\n%s", output)
+	}
+}
+
+func TestWriteOutputPrometheusStatusReport(t *testing.T) {
+	report := hpaanalysis.StatusReport{
+		Analysis: hpaanalysis.Analysis{
+			Namespace:   "staging",
+			Name:        "worker",
+			HealthScore: 50,
+			Current:     4,
+			Desired:     8,
+			Min:         2,
+			Max:         20,
+		},
+	}
+
+	var out bytes.Buffer
+	if err := writeOutput(&out, "prometheus", "", report, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	output := out.String()
+	if !strings.Contains(output, `hpa_health_score{namespace="staging",name="worker"} 50`) {
+		t.Fatalf("expected health score metric for worker, got:\n%s", output)
+	}
+	if !strings.Contains(output, `hpa_desired_replicas{namespace="staging",name="worker"} 8`) {
+		t.Fatalf("expected desired replicas metric for worker, got:\n%s", output)
+	}
+}
+
+func TestWriteOutputPrometheusLabelEscaping(t *testing.T) {
+	report := hpaanalysis.ListReport{
+		Items: []hpaanalysis.ListItem{
+			{Namespace: `team\"a`, Name: `my"hpa`, HealthScore: 90, Current: 1, Desired: 1, Min: 1, Max: 3},
+		},
+	}
+
+	var out bytes.Buffer
+	if err := writeOutput(&out, "prometheus", "", report, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	output := out.String()
+	if !strings.Contains(output, `namespace="team\\\"a"`) {
+		t.Fatalf("expected escaped namespace label, got:\n%s", output)
+	}
+	if !strings.Contains(output, `name="my\"hpa"`) {
+		t.Fatalf("expected escaped name label, got:\n%s", output)
+	}
+}
+
+func TestWriteOutputPrometheusUnknownType(t *testing.T) {
+	var out bytes.Buffer
+	err := writeOutput(&out, "prometheus", "", "not a report", nil)
+	if err == nil {
+		t.Fatal("expected error for unsupported type")
+	}
+	if !strings.Contains(err.Error(), "prometheus output requires") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

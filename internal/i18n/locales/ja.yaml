@@ -1,0 +1,33 @@
+# セクションラベル
+label_target: "ターゲット"
+label_replicas: "レプリカ"
+label_health: "ヘルス"
+label_summary: "サマリー"
+label_conditions: "条件"
+label_metrics: "メトリクス"
+label_behavior: "ビヘイビア"
+label_actions: "推奨アクション"
+label_suggestions: "提案"
+label_fix: "修正プラン"
+label_interpretation: "解釈"
+label_debug: "デバッグ"
+label_keda: "KEDA"
+label_events: "イベント"
+label_risk: "リスク"
+label_precondition: "前提条件"
+label_warning: "警告"
+
+# ヘルス状態
+health_ok: "OK"
+health_error: "エラー"
+health_limited: "制限あり"
+health_stabilized: "安定化中"
+
+# 方向
+dir_scale_up: "HPAは現在スケールアップを希望しています。"
+dir_scale_down: "HPAは現在スケールダウンを希望しています。"
+dir_at_max: "HPAはmaxReplicasに達しています。"
+dir_at_min: "HPAはminReplicasに達しています。"
+dir_unchanged: "HPAは現在レプリカ数を維持しています。"
+dir_no_recommendation: "HPAには可視的な希望レプリカ数の推奨がありません。"
+dir_inactive: "HPAは現在メトリクスからスケーリング推奨を計算できません。"
