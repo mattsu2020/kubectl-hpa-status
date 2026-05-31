@@ -222,6 +222,30 @@ func TestE2E_HPAStatus(t *testing.T) {
 	if !strings.Contains(listOutput, "test-hpa") {
 		t.Errorf("expected test-hpa in list output, got:\n%s", listOutput)
 	}
+
+	// Test Japanese labels stay wired through the command path.
+	buf.Reset()
+	rootCmd = cmd.NewRootCommand()
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(buf)
+	rootCmd.SetArgs([]string{"status", "test-hpa", "-n", nsName, "--lang=ja", "--kubeconfig", kubeconfig})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("failed to execute Japanese status command: %v. Output:\n%s", err, buf.String())
+	}
+	if !strings.Contains(buf.String(), "対象:") {
+		t.Errorf("expected Japanese status labels, got:\n%s", buf.String())
+	}
+
+	// Test the cluster-wide problem scan command. This HPA is healthy enough to
+	// produce no rows, but the command path and all-namespace list must succeed.
+	buf.Reset()
+	rootCmd = cmd.NewRootCommand()
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(buf)
+	rootCmd.SetArgs([]string{"scan", "--kubeconfig", kubeconfig})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("failed to execute scan command: %v. Output:\n%s", err, buf.String())
+	}
 }
 
 func int32Ptr(v int32) *int32 {

@@ -261,8 +261,14 @@ func TestAnalyzeAddsConcretePatchSuggestionForMaxReplicas(t *testing.T) {
 	if !strings.Contains(got.Suggestions[0].Command, "kubectl patch hpa web") {
 		t.Fatalf("expected kubectl patch command, got %#v", got.Suggestions[0])
 	}
+	if !strings.Contains(got.Suggestions[0].Command, "--dry-run=server") {
+		t.Fatalf("expected dry-run command, got %#v", got.Suggestions[0])
+	}
 	if !strings.Contains(got.Suggestions[0].Patch, `"maxReplicas":20`) {
 		t.Fatalf("expected maxReplicas patch, got %#v", got.Suggestions[0])
+	}
+	if len(got.Suggestions[0].Preconditions) == 0 || len(got.Suggestions[0].Warnings) == 0 {
+		t.Fatalf("expected safety preconditions and warnings, got %#v", got.Suggestions[0])
 	}
 }
 

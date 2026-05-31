@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="420" viewBox="0 0 960 420" role="img" aria-label="Japanese output">
+  <rect width="960" height="420" rx="12" fill="#111827"/>
+  <text x="28" y="46" fill="#93c5fd" font-family="ui-monospace,Menlo,monospace" font-size="18">$ kubectl hpa status web --lang=ja</text>
+  <text x="28" y="100" fill="#e2e8f0" font-family="ui-monospace,Menlo,monospace" font-size="18">HPA default/web</text>
+  <text x="28" y="136" fill="#e2e8f0" font-family="ui-monospace,Menlo,monospace" font-size="18">対象: Deployment/web</text>
+  <text x="28" y="172" fill="#e2e8f0" font-family="ui-monospace,Menlo,monospace" font-size="18">レプリカ: current=3 desired=5 min=2 max=10</text>
+  <text x="28" y="208" fill="#86efac" font-family="ui-monospace,Menlo,monospace" font-size="18">ヘルススコア: 🟢 Healthy 100/100</text>
+  <text x="28" y="260" fill="#facc15" font-family="ui-monospace,Menlo,monospace" font-size="18">要約: HPA currently wants to scale up.</text>
+</svg>

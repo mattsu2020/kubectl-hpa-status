@@ -2,8 +2,11 @@
 
 [![CI](https://github.com/mattsu2020/kubectl-hpa-status/actions/workflows/ci.yml/badge.svg)](https://github.com/mattsu2020/kubectl-hpa-status/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/mattsu2020/kubectl-hpa-status/actions/workflows/codeql.yml/badge.svg)](https://github.com/mattsu2020/kubectl-hpa-status/actions/workflows/codeql.yml)
+[![Release](https://github.com/mattsu2020/kubectl-hpa-status/actions/workflows/release.yml/badge.svg)](https://github.com/mattsu2020/kubectl-hpa-status/actions/workflows/release.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/mattsu2020/kubectl-hpa-status.svg)](https://pkg.go.dev/github.com/mattsu2020/kubectl-hpa-status)
 [![Release](https://img.shields.io/github/v/release/mattsu2020/kubectl-hpa-status)](https://github.com/mattsu2020/kubectl-hpa-status/releases)
+[![GoReleaser](https://img.shields.io/badge/release-GoReleaser-00add8)](https://goreleaser.com/)
+[![golangci-lint](https://img.shields.io/badge/lint-golangci--lint-blue)](https://golangci-lint.run/)
 [![Krew](https://img.shields.io/badge/krew-hpa--status-blue)](https://krew.sigs.k8s.io/plugins/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
@@ -11,11 +14,15 @@
 
 既存の Kubernetes API シグナルを活用し、詳細なスケーリング分析とともに HorizontalPodAutoscaler (HPA) の状態を調査するための kubectl プラグインです。
 
+English README: [README.md](README.md)
+
 このツールは、HPA運用でよくある3つの疑問にすばやく答えます。
 
 - このHPAは正常か、上限に張り付いているか、安定化中か、メトリクス取得に失敗しているか。
 - どのConditionやメトリクスが現在の挙動を説明しているか。
 - 次に実行すべきコマンドは何か、安全にdry-run検証できるか。
+
+リポジトリ名とバイナリ名は `kubectl-hpa-status` です。`kubehpa_cli` は初期開発時の作業ディレクトリ名/愛称であり、リリース成果物、Go module path、インストールコマンドでは使いません。
 
 ## デモ
 
@@ -26,6 +33,20 @@
 - watchデモ: [docs/watch.cast](docs/watch.cast)
 
 ![kubectl describe hpa と kubectl-hpa-status の比較](images/describe-vs-hpa-status.svg)
+
+| ワークフロー | 画像 |
+| --- | --- |
+| `status --explain` | [status-explain.svg](images/status-explain.svg) |
+| `list -A --wide --problem` | [list-wide.svg](images/list-wide.svg) |
+| `watch --interval 5s` | [watch-mode.svg](images/watch-mode.svg) |
+| `--suggest` dry-runコマンド | [suggest-dry-run.svg](images/suggest-dry-run.svg) |
+| `--fix --apply` 差分確認 | [apply-diff.svg](images/apply-diff.svg) |
+| 日本語ラベル | [ja-output.svg](images/ja-output.svg) |
+| `scan` クラスタ診断 | [scan-output.svg](images/scan-output.svg) |
+| JSON出力 | [json-output.svg](images/json-output.svg) |
+| メトリクス取得失敗 | [metrics-failure.svg](images/metrics-failure.svg) |
+| スケールダウン安定化 | [stabilized-output.svg](images/stabilized-output.svg) |
+| 複数メトリクス推定 | [multi-metric-output.svg](images/multi-metric-output.svg) |
 
 ### なぜ `kubectl-hpa-status` を使うべきなのか？
 
@@ -127,6 +148,15 @@ kind delete cluster --name hpa-status-dev
 | kind上のmetrics-server v0.8.1 | 検証済み |
 | custom/external metrics adapters | HPA statusに見える範囲で対応 |
 | KEDA管理のHPA | HPAオブジェクトとして診断可能。KEDA固有分析は将来対応 |
+
+## 安全な修正フロー
+
+`--suggest` / `--fix --apply` は安全側に倒しています。
+
+1. `--suggest` は `--dry-run=server` 付きの `kubectl patch` を表示します。
+2. `--fix --apply` もデフォルトではserver-side dry-runで、適用前に差分を表示します。
+3. 永続的に変更するには `--dry-run=false` が明示的に必要です。
+4. maxReplicas引き上げ提案には、容量・quota・コスト・下流依存の確認を促す警告を出します。
 
 ## ロードマップ
 - [x] **インテグレーションテスト:** CI検証用の `kind` ベースE2Eテスト。

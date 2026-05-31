@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="420" viewBox="0 0 960 420" role="img" aria-label="metrics failure output">
+  <rect width="960" height="420" rx="12" fill="#111827"/>
+  <text x="28" y="46" fill="#93c5fd" font-family="ui-monospace,Menlo,monospace" font-size="18">$ kubectl hpa status broken --explain</text>
+  <text x="28" y="104" fill="#fecaca" font-family="ui-monospace,Menlo,monospace" font-size="18">Health score: 🔴 ERROR 55/100</text>
+  <text x="28" y="150" fill="#fca5a5" font-family="ui-monospace,Menlo,monospace" font-size="17">Summary: HPA cannot currently compute a scaling recommendation from metrics.</text>
+  <text x="28" y="206" fill="#e2e8f0" font-family="ui-monospace,Menlo,monospace" font-size="16">ScalingActive False FailedGetResourceMetric missing cpu metrics</text>
+  <text x="28" y="270" fill="#facc15" font-family="ui-monospace,Menlo,monospace" font-size="16">Recommended action: Check metrics-server or custom/external metrics adapters.</text>
+</svg>

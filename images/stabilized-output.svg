@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="420" viewBox="0 0 960 420" role="img" aria-label="scale down stabilized output">
+  <rect width="960" height="420" rx="12" fill="#0f172a"/>
+  <text x="28" y="46" fill="#93c5fd" font-family="ui-monospace,Menlo,monospace" font-size="18">$ kubectl hpa status worker --explain</text>
+  <text x="28" y="104" fill="#facc15" font-family="ui-monospace,Menlo,monospace" font-size="18">Health score: 🟡 Stabilized 90/100</text>
+  <text x="28" y="150" fill="#e2e8f0" font-family="ui-monospace,Menlo,monospace" font-size="17">AbleToScale True ScaleDownStabilized recent recommendations were higher</text>
+  <text x="28" y="210" fill="#facc15" font-family="ui-monospace,Menlo,monospace" font-size="16">Recommended action: wait up to about 300s or review scaleDown behavior.</text>
+  <text x="28" y="270" fill="#cbd5e1" font-family="ui-monospace,Menlo,monospace" font-size="16">Behavior: scaleDown stabilizationWindow=300s</text>
+</svg>

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="420" viewBox="0 0 960 420" role="img" aria-label="apply diff output">
+  <rect width="960" height="420" rx="12" fill="#0f172a"/>
+  <text x="28" y="46" fill="#93c5fd" font-family="ui-monospace,Menlo,monospace" font-size="18">$ kubectl hpa status api --fix --apply</text>
+  <text x="28" y="104" fill="#facc15" font-family="ui-monospace,Menlo,monospace" font-size="18">Proposed patch: Raise maxReplicas</text>
+  <text x="52" y="148" fill="#e2e8f0" font-family="ui-monospace,Menlo,monospace" font-size="18">spec.maxReplicas: 10 -&gt; 20</text>
+  <text x="28" y="206" fill="#fca5a5" font-family="ui-monospace,Menlo,monospace" font-size="16">Dry-run mode is enabled; Kubernetes will validate patches without persisting them.</text>
+  <text x="28" y="260" fill="#cbd5e1" font-family="ui-monospace,Menlo,monospace" font-size="17">dry-run 1 suggested patch(es) to HPA api? [y/N]:</text>
+  <text x="28" y="326" fill="#86efac" font-family="ui-monospace,Menlo,monospace" font-size="18">Dry-run validated: Raise maxReplicas</text>
+</svg>

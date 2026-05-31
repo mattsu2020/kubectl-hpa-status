@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="360" viewBox="0 0 1180 360" role="img" aria-label="wide list output">
+  <rect width="1180" height="360" rx="12" fill="#111827"/>
+  <text x="28" y="46" fill="#93c5fd" font-family="ui-monospace,Menlo,monospace" font-size="18">$ kubectl hpa status list -A --wide --problem</text>
+  <text x="28" y="96" fill="#cbd5e1" font-family="ui-monospace,Menlo,monospace" font-size="15">NAMESPACE  NAME     TARGET             CURRENT DESIRED MIN MAX HEALTH             SCORE METRICS        ISSUE</text>
+  <text x="28" y="140" fill="#fecaca" font-family="ui-monospace,Menlo,monospace" font-size="16">default    api      Deployment/api     10      10      2   10  🔴 ScalingLimited 75    cpu ██████████  LIMITED: TooManyReplicas</text>
+  <text x="28" y="184" fill="#fecaca" font-family="ui-monospace,Menlo,monospace" font-size="16">payments   worker   Deployment/worker  2       0       1   10  🔴 ERROR          55                  ERROR: FailedGetResourceMetric</text>
+  <text x="28" y="250" fill="#86efac" font-family="Inter,Arial,sans-serif" font-size="20">Problem-only scan focuses the operator on HPAs that need attention.</text>
+</svg>

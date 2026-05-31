@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="420" viewBox="0 0 960 420" role="img" aria-label="status explain output">
+  <rect width="960" height="420" rx="12" fill="#0f172a"/>
+  <text x="28" y="46" fill="#93c5fd" font-family="ui-monospace,Menlo,monospace" font-size="18">$ kubectl hpa status web --explain</text>
+  <text x="28" y="92" fill="#e2e8f0" font-family="ui-monospace,Menlo,monospace" font-size="18">HPA default/web</text>
+  <text x="28" y="126" fill="#e2e8f0" font-family="ui-monospace,Menlo,monospace" font-size="18">Target: Deployment/web</text>
+  <text x="28" y="160" fill="#e2e8f0" font-family="ui-monospace,Menlo,monospace" font-size="18">Replicas: current=3 desired=5 min=2 max=10</text>
+  <text x="28" y="194" fill="#86efac" font-family="ui-monospace,Menlo,monospace" font-size="18">Health score: 🟢 Healthy 100/100</text>
+  <text x="28" y="242" fill="#facc15" font-family="ui-monospace,Menlo,monospace" font-size="18">Summary: HPA currently wants to scale up.</text>
+  <text x="28" y="290" fill="#e2e8f0" font-family="ui-monospace,Menlo,monospace" font-size="17">- Resource cpu current=120% target=80% ratio=1.500</text>
+  <text x="28" y="338" fill="#cbd5e1" font-family="ui-monospace,Menlo,monospace" font-size="17">[confidence: high] desiredReplicas is greater than currentReplicas.</text>
+</svg>

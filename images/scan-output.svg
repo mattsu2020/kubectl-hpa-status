@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="420" viewBox="0 0 960 420" role="img" aria-label="scan output">
+  <rect width="960" height="420" rx="12" fill="#0b1220"/>
+  <text x="28" y="46" fill="#93c5fd" font-family="ui-monospace,Menlo,monospace" font-size="18">$ kubectl hpa status scan</text>
+  <text x="28" y="102" fill="#cbd5e1" font-family="ui-monospace,Menlo,monospace" font-size="16">NAMESPACE  NAME     HEALTH             SCORE  ISSUE</text>
+  <text x="28" y="150" fill="#fecaca" font-family="ui-monospace,Menlo,monospace" font-size="16">default    api      🔴 ScalingLimited  75     LIMITED: TooManyReplicas</text>
+  <text x="28" y="194" fill="#fecaca" font-family="ui-monospace,Menlo,monospace" font-size="16">payments   worker   🔴 ERROR           55     ERROR: FailedGetResourceMetric</text>
+  <text x="28" y="274" fill="#86efac" font-family="Inter,Arial,sans-serif" font-size="20">`scan` is a problem-focused cluster-wide entry point.</text>
+</svg>

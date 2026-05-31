@@ -2,9 +2,12 @@
 
 [![CI](https://github.com/mattsu2020/kubectl-hpa-status/actions/workflows/ci.yml/badge.svg)](https://github.com/mattsu2020/kubectl-hpa-status/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/mattsu2020/kubectl-hpa-status/actions/workflows/codeql.yml/badge.svg)](https://github.com/mattsu2020/kubectl-hpa-status/actions/workflows/codeql.yml)
+[![Release](https://github.com/mattsu2020/kubectl-hpa-status/actions/workflows/release.yml/badge.svg)](https://github.com/mattsu2020/kubectl-hpa-status/actions/workflows/release.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/mattsu2020/kubectl-hpa-status.svg)](https://pkg.go.dev/github.com/mattsu2020/kubectl-hpa-status)
 [![Go Report Card](https://goreportcard.com/badge/github.com/mattsu2020/kubectl-hpa-status)](https://goreportcard.com/report/github.com/mattsu2020/kubectl-hpa-status)
 [![Release](https://img.shields.io/github/v/release/mattsu2020/kubectl-hpa-status)](https://github.com/mattsu2020/kubectl-hpa-status/releases)
+[![GoReleaser](https://img.shields.io/badge/release-GoReleaser-00add8)](https://goreleaser.com/)
+[![golangci-lint](https://img.shields.io/badge/lint-golangci--lint-blue)](https://golangci-lint.run/)
 [![Krew](https://img.shields.io/badge/krew-hpa--status-blue)](https://krew.sigs.k8s.io/plugins/)
 [![Kubernetes](https://img.shields.io/badge/kubernetes-autoscaling%2Fv2-326ce5)](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/)
 [![Coverage](https://img.shields.io/badge/coverage-make%20coverage-informational)](#development)
@@ -15,11 +18,17 @@
 A kubectl plugin for inspecting HorizontalPodAutoscaler status with detailed
 scaling analysis using existing Kubernetes API signals.
 
+日本語版README: [README.ja.md](README.ja.md)
+
 It answers three common HPA questions quickly:
 
 - Is this HPA healthy, capped, stabilized, or unable to read metrics?
 - Which visible metric or condition most likely explains the current behavior?
 - What command should I run next, and can I validate it safely first?
+
+The repository and binary are named `kubectl-hpa-status`. The local workspace
+name `kubehpa_cli` is only an early development nickname and is not used in
+release artifacts, module paths, or install commands.
 
 ## Demo
 
@@ -28,6 +37,20 @@ It answers three common HPA questions quickly:
 - status explain demo: [docs/status-explain.cast](docs/status-explain.cast)
 - wide list demo: [docs/list-wide.cast](docs/list-wide.cast)
 - watch demo: [docs/watch.cast](docs/watch.cast)
+
+| Workflow | Visual |
+| --- | --- |
+| `status --explain` | [status-explain.svg](images/status-explain.svg) |
+| `list -A --wide --problem` | [list-wide.svg](images/list-wide.svg) |
+| `watch --interval 5s` | [watch-mode.svg](images/watch-mode.svg) |
+| `--suggest` dry-run command | [suggest-dry-run.svg](images/suggest-dry-run.svg) |
+| `--fix --apply` diff prompt | [apply-diff.svg](images/apply-diff.svg) |
+| Japanese labels | [ja-output.svg](images/ja-output.svg) |
+| `scan` cluster triage | [scan-output.svg](images/scan-output.svg) |
+| JSON output | [json-output.svg](images/json-output.svg) |
+| metrics failure | [metrics-failure.svg](images/metrics-failure.svg) |
+| scale-down stabilization | [stabilized-output.svg](images/stabilized-output.svg) |
+| multi-metric estimate | [multi-metric-output.svg](images/multi-metric-output.svg) |
 
 ```sh
 kubectl hpa status list -A --wide
@@ -255,6 +278,15 @@ kind-specific `--kubelet-insecure-tls` option.
 | metrics-server v0.8.1 on kind | Validated |
 | custom/external metrics adapters | Supported through visible HPA status; adapter-specific internals are not inspected |
 | KEDA-scaled workloads | HPA objects can be inspected; KEDA-specific analysis is future work |
+
+## Safe fix workflow
+
+Suggestions are intentionally conservative:
+
+1. `--suggest` prints copy-pasteable `kubectl patch` commands with `--dry-run=server`.
+2. `--fix --apply` still defaults to server-side dry-run and prints a field-level diff before asking for confirmation.
+3. Persisting changes requires `--dry-run=false`; this is never the default.
+4. maxReplicas suggestions include preconditions and warnings because raising a ceiling can affect node capacity, quotas, cost, and downstream systems.
 
 ## Validation matrix
 

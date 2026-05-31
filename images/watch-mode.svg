@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="420" viewBox="0 0 960 420" role="img" aria-label="watch mode output">
+  <rect width="960" height="420" rx="12" fill="#0b1220"/>
+  <text x="28" y="46" fill="#93c5fd" font-family="ui-monospace,Menlo,monospace" font-size="18">$ kubectl hpa status watch web --interval 5s</text>
+  <text x="28" y="100" fill="#94a3b8" font-family="ui-monospace,Menlo,monospace" font-size="16">Updated: 2026-05-30T21:30:00+09:00</text>
+  <text x="28" y="142" fill="#e2e8f0" font-family="ui-monospace,Menlo,monospace" font-size="18">Replicas: current=3 desired=5 min=2 max=10</text>
+  <text x="28" y="178" fill="#facc15" font-family="ui-monospace,Menlo,monospace" font-size="18">Summary: HPA currently wants to scale up.</text>
+  <line x1="28" y1="218" x2="900" y2="218" stroke="#334155"/>
+  <text x="28" y="260" fill="#94a3b8" font-family="ui-monospace,Menlo,monospace" font-size="16">Updated: 2026-05-30T21:30:05+09:00</text>
+  <text x="28" y="302" fill="#86efac" font-family="ui-monospace,Menlo,monospace" font-size="18">Replicas: current=5 desired=5 min=2 max=10</text>
+  <text x="28" y="338" fill="#86efac" font-family="ui-monospace,Menlo,monospace" font-size="18">Summary: HPA currently keeps the replica count unchanged.</text>
+</svg>

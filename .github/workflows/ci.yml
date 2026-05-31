@@ -46,16 +46,6 @@ jobs:
         with:
           args: ./...
 
-      - name: Create kind cluster
-        uses: helm/kind-action@v1.12.0
-        with:
-          cluster_name: kind
-
-      - name: Run E2E Tests
-        run: |
-          kubectl cluster-info
-          go test -v -tags=e2e ./test/e2e/...
-
   golangci-lint:
     runs-on: ubuntu-latest
     steps:
@@ -71,3 +61,31 @@ jobs:
         uses: golangci/golangci-lint-action@v8
         with:
           version: latest
+
+  e2e:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        kind-node-image:
+          - kindest/node:v1.34.0
+          - kindest/node:v1.35.0
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1.12.0
+        with:
+          cluster_name: kind
+          node_image: ${{ matrix.kind-node-image }}
+
+      - name: Run E2E Tests
+        run: |
+          kubectl cluster-info
+          go test -v -tags=e2e ./test/e2e/...

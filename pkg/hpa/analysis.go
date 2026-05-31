@@ -66,12 +66,14 @@ type BehaviorRule struct {
 }
 
 type Suggestion struct {
-	Title       string `json:"title" yaml:"title"`
-	Description string `json:"description" yaml:"description"`
-	Command     string `json:"command,omitempty" yaml:"command,omitempty"`
-	Patch       string `json:"patch,omitempty" yaml:"patch,omitempty"`
-	Risk        string `json:"risk,omitempty" yaml:"risk,omitempty"`
-	Apply       bool   `json:"apply,omitempty" yaml:"apply,omitempty"`
+	Title         string   `json:"title" yaml:"title"`
+	Description   string   `json:"description" yaml:"description"`
+	Command       string   `json:"command,omitempty" yaml:"command,omitempty"`
+	Patch         string   `json:"patch,omitempty" yaml:"patch,omitempty"`
+	Risk          string   `json:"risk,omitempty" yaml:"risk,omitempty"`
+	Preconditions []string `json:"preconditions,omitempty" yaml:"preconditions,omitempty"`
+	Warnings      []string `json:"warnings,omitempty" yaml:"warnings,omitempty"`
+	Apply         bool     `json:"apply,omitempty" yaml:"apply,omitempty"`
 }
 
 func Analyze(src *autoscalingv2.HorizontalPodAutoscaler, includeInterpretation bool) Analysis {

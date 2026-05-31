@@ -102,6 +102,12 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 			if suggestion.Command != "" {
 				out = fmt.Appendf(out, "    $ %s\n", theme.ActionLine(suggestion.Command))
 			}
+			for _, precondition := range suggestion.Preconditions {
+				out = fmt.Appendf(out, "    precondition: %s\n", precondition)
+			}
+			for _, warning := range suggestion.Warnings {
+				out = fmt.Appendf(out, "    warning: %s\n", theme.ActionLine(warning))
+			}
 		}
 	}
 

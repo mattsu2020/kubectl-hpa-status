@@ -17,12 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added GoReleaser SBOM and Homebrew Cask metadata.
 - Added `scan` and `list --problem` for cluster-wide HPA problem triage.
 - Added reusable status, list, and watch asciinema demo sources plus a comparison visual.
+- Added a larger SVG screenshot gallery covering explain, list, watch, suggest, dry-run apply, Japanese output, JSON, and common failure states.
 
 ### Changed
 - Upgraded Kubernetes client libraries to `k8s.io/*` v0.35.0.
 - Expanded README badges, demo links, installation examples, and development documentation.
 - Made `--apply` dry-run by default, with patch diff output and explicit `--dry-run=false` required for persistence.
 - Added commit and build date to release version metadata.
+- Added safety preconditions and warnings to structured suggestions, and made copy-paste patch commands dry-run by default.
+- Expanded E2E command coverage for Japanese output and cluster-wide `scan`.
 
 ## [0.2.0] - 2026-05-30
 
