@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added a larger SVG screenshot gallery covering explain, list, watch, suggest, dry-run apply, Japanese output, JSON, and common failure states.
 - Added architecture, security, RBAC, and richer issue/PR documentation.
 - Added `version` subcommand for build metadata.
+- Added practical `examples/` manifests for CPU/memory, behavior, custom metrics, and KEDA-style HPA scenarios.
 
 ### Changed
 - Upgraded Kubernetes client libraries to `k8s.io/*` v0.35.0.
@@ -29,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added safety preconditions and warnings to structured suggestions, and made copy-paste patch commands dry-run by default.
 - Expanded E2E command coverage for Japanese output and cluster-wide `scan`.
 - Upload coverage to Codecov from CI while keeping coverage upload non-blocking.
+- Expanded Japanese README coverage to match the English usage, safety, CI/CD, validation, and known-gap sections.
 
 ## [0.2.0] - 2026-05-30
 

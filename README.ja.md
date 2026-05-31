@@ -4,10 +4,12 @@
 [![CodeQL](https://github.com/mattsu2020/kubectl-hpa-status/actions/workflows/codeql.yml/badge.svg)](https://github.com/mattsu2020/kubectl-hpa-status/actions/workflows/codeql.yml)
 [![Release](https://github.com/mattsu2020/kubectl-hpa-status/actions/workflows/release.yml/badge.svg)](https://github.com/mattsu2020/kubectl-hpa-status/actions/workflows/release.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/mattsu2020/kubectl-hpa-status.svg)](https://pkg.go.dev/github.com/mattsu2020/kubectl-hpa-status)
+[![Go Report Card](https://goreportcard.com/badge/github.com/mattsu2020/kubectl-hpa-status)](https://goreportcard.com/report/github.com/mattsu2020/kubectl-hpa-status)
 [![Release](https://img.shields.io/github/v/release/mattsu2020/kubectl-hpa-status)](https://github.com/mattsu2020/kubectl-hpa-status/releases)
 [![GoReleaser](https://img.shields.io/badge/release-GoReleaser-00add8)](https://goreleaser.com/)
 [![golangci-lint](https://img.shields.io/badge/lint-golangci--lint-blue)](https://golangci-lint.run/)
 [![Krew](https://img.shields.io/badge/krew-hpa--status-blue)](https://krew.sigs.k8s.io/plugins/)
+[![Kubernetes](https://img.shields.io/badge/kubernetes-autoscaling%2Fv2-326ce5)](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/)
 [![Codecov](https://codecov.io/gh/mattsu2020/kubectl-hpa-status/branch/main/graph/badge.svg)](https://codecov.io/gh/mattsu2020/kubectl-hpa-status)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
@@ -88,6 +90,34 @@ kubectl hpa status <hpa-name> -o 'jsonpath={.analysis.summary}'
 - `Interpretation` (解釈) は診断上の推論であり、コントローラーの非公開な決定履歴そのものではありません。
 - `confidence: high` (確信度: 高) は明示的なステータスフィールドに基づいていることを示し、`confidence: medium` (確信度: 中) はステータスと説明が一致しているものの、API自体が内部の詳細な理由を開示していないことを示します。
 
+よく見るべきシグナル:
+
+- `ScalingActive=False`: metrics-server、custom metrics adapter、external metrics adapterを確認します。
+- `ScalingLimited=True`: `minReplicas`、`maxReplicas`、target utilizationを確認します。
+- `ScaleDownStabilized`: `spec.behavior.scaleDown.stabilizationWindowSeconds` と安定化ウィンドウを確認します。
+- 出力が古い場合: `status.observedGeneration` と `metadata.generation` を比較します。
+
+インストール直後のhelp出力例:
+
+```text
+Inspect HorizontalPodAutoscaler status
+
+Usage:
+  kubectl-hpa-status [flags]
+  kubectl-hpa-status [command]
+
+Available Commands:
+  analyze     Analyze one HPA using visible Kubernetes API signals
+  completion  Generate shell completion
+  list        List HPAs and highlight visible issues
+  scan        Scan all namespaces for HPAs with visible problems
+  status      Show concise status for one HPA
+  watch       Watch one HPA status
+
+Common flags include -n/--namespace, -A/--all-namespaces, -o/--output,
+--events, --explain, --watch, --interval, --timeout, and --until-condition.
+```
+
 ## インストール
 
 ### Krew (推奨)
@@ -118,6 +148,100 @@ kubectl hpa status <hpa-name> -n <namespace>
 
 読み取り専用RBACと、`--apply --dry-run=false` 用のpatch権限例は
 [docs/rbac.yaml](docs/rbac.yaml) を参照してください。
+
+Go module path、GitHubリポジトリ、リリースメタデータ、ユーザー向けバイナリ名は
+すべて `github.com/mattsu2020/kubectl-hpa-status` / `kubectl-hpa-status`
+に統一されています。
+
+## サンプル
+
+実用的なサンプルマニフェストは [examples/](examples/) にあります。
+
+| 例 | 内容 |
+| --- | --- |
+| [cpu-memory-hpa.yaml](examples/cpu-memory-hpa.yaml) | CPU + Memoryの複数メトリクスHPA |
+| [behavior-hpa.yaml](examples/behavior-hpa.yaml) | scaleUp/scaleDownポリシーとstabilization window |
+| [custom-metrics-hpa.yaml](examples/custom-metrics-hpa.yaml) | custom metrics adapter向けのObject metric例 |
+| [keda-style-hpa.yaml](examples/keda-style-hpa.yaml) | KEDA風ラベルとExternal metricを持つHPA |
+
+```sh
+kubectl apply -f examples/cpu-memory-hpa.yaml
+kubectl hpa status web-multi -n hpa-status-examples --explain --suggest
+kubectl hpa status list -n hpa-status-examples --wide
+kubectl delete namespace hpa-status-examples
+```
+
+## 使い方
+
+```sh
+kubectl hpa status <hpa-name> [-n namespace] [--context context] [--events=false]
+kubectl hpa status <hpa-name> --watch --interval 5s
+kubectl hpa status <hpa-name> --watch --timeout 2m --until-condition scaling-limited
+kubectl hpa status analyze <hpa-name>
+kubectl hpa status list [-A] [--sort-by desired] [--filter scaling-limited]
+kubectl hpa status list -A --problem
+kubectl hpa status scan
+kubectl hpa status ls [-A] --wide
+kubectl hpa status watch <hpa-name> --interval 5s
+```
+
+直接バイナリとしても実行できます。
+
+```sh
+kubectl-hpa-status analyze <hpa-name> -n <namespace>
+kubectl-hpa-status status <hpa-name> -n <namespace>
+kubectl-hpa-status status <hpa-name> --suggest
+kubectl-hpa-status status <hpa-name> --fix --apply
+kubectl-hpa-status status <hpa-name> --fix --apply --dry-run=false
+kubectl-hpa-status scan
+kubectl-hpa-status list -A
+kubectl-hpa-status completion zsh
+```
+
+主なフラグ:
+
+- `-n, --namespace`: namespace
+- `-A, --all-namespaces`: 全namespaceのHPAを一覧
+- `--context`, `--kubeconfig`, `--cluster`: kubeconfig選択
+- `-o table|wide|json|yaml|jsonpath=...|template=...`: 出力形式
+- `--wide`: table出力でtarget、min、maxを表示
+- `--sort-by namespace|name|current|desired|health|health-score|issue`: `list` のソート
+- `--filter all|ok|error|limited|scaling-limited|issue`: `list` のフィルタ
+- `--color auto|always|never`: table出力の色
+- `--interpret`: compact statusに診断解釈を含める
+- `--explain`: 詳細な解釈と推奨アクションを含める
+- `--suggest`: 安全に見えるHPA spec修正案を `kubectl patch` として表示
+- `--fix`: より強い修正計画と適用可能なpatchを表示
+- `--apply`: デフォルトではserver-side dry-runでHPA patchを検証
+- `--dry-run=false`: `--apply` と併用したときのみ永続変更。`-y` なしでは確認プロンプトあり
+- `--problem`: `list` で問題が見えるHPAだけ表示
+- `--lang=ja` または `-o ja`: 日本語ラベルで表示
+- `--no-interpret`: 解釈を省き、ステータス由来のデータのみ表示
+- `--events=false`: 最近のEventsを省略
+- `--events=3`: 最新3件のHPA Eventsを表示
+- `--watch --interval 5s`: メインコマンドから単一HPAを更新表示
+- `--timeout 2m`: watchを指定時間で停止
+- `--until-condition scaling-limited`: 指定conditionが出たらwatch停止
+- `--version`: バージョンを表示
+
+対応Kubernetesバージョン:
+
+- Runtime target: `autoscaling/v2` `HorizontalPodAutoscaler` を提供するクラスタ
+- 検証済みクラスタ: Kubernetes v1.35.0 + metrics-server v0.8.1
+- Client libraries: `k8s.io/client-go` / `k8s.io/api` v0.35.0
+
+このプラグインが読む情報:
+
+- `autoscaling/v2` `HorizontalPodAutoscaler`
+- `status.currentReplicas`
+- `status.desiredReplicas`
+- `status.currentMetrics`
+- `status.conditions`
+- `status.observedGeneration` が存在する場合
+- `spec.behavior` が存在する場合
+- 直近のHPA Events
+
+HPA controllerの内部意思決定ロジックを再実装するものではありません。
 
 ## 開発
 
@@ -162,6 +286,18 @@ kind delete cluster --name hpa-status-dev
 | custom/external metrics adapters | HPA statusに見える範囲で対応 |
 | KEDA管理のHPA | HPAオブジェクトとして診断可能。KEDA固有分析は将来対応 |
 
+## 検証済み環境
+
+- kind: v0.31.0
+- kind node image: `kindest/node:v1.35.0`
+- Kubernetes server: v1.35.0
+- kubectl: v1.36.1
+- metrics-server: v0.8.1
+- HPA API: `autoscaling/v2`
+
+metrics-serverはupstream release manifestにkind向けの
+`--kubelet-insecure-tls` オプションを加えて検証しています。
+
 ## 安全な修正フロー
 
 `--suggest` / `--fix --apply` は安全側に倒しています。
@@ -170,6 +306,92 @@ kind delete cluster --name hpa-status-dev
 2. `--fix --apply` もデフォルトではserver-side dry-runで、適用前に差分を表示します。
 3. 永続的に変更するには `--dry-run=false` が明示的に必要です。
 4. maxReplicas引き上げ提案には、容量・quota・コスト・下流依存の確認を促す警告を出します。
+5. プレビューでは「メトリクスが高いままなら即時ScaleUpが起き得る」など、期待される効果も示します。
+
+## CI/CD
+
+| Workflow | 目的 |
+| --- | --- |
+| [ci.yml](.github/workflows/ci.yml) | `go test`、coverage、govulncheck、gosec、golangci-lint、kind E2E |
+| [codeql.yml](.github/workflows/codeql.yml) | CodeQL静的解析 |
+| [release.yml](.github/workflows/release.yml) | GoReleaserによるバイナリ、SBOM、Homebrew Cask Tap更新、Krew release bot |
+
+CI実行時にcoverageをCodecovへアップロードします。リリース時のHomebrew更新は
+専用Tap [mattsu2020/homebrew-kubectl-hpa-status](https://github.com/mattsu2020/homebrew-kubectl-hpa-status)
+を使います。
+
+## Validation matrix
+
+| ケース | 既存シグナルで説明可能か | 使用するシグナル | 残る曖昧さ |
+| --- | --- | --- | --- |
+| CPUがtargetを超えScaleUp | だいたい可能 | `currentMetrics`, `desiredReplicas`, Events | 低 |
+| CPUがtarget未満でScaleDown | だいたい可能 | `currentMetrics`, `desiredReplicas`, Events | 低 |
+| `maxReplicas` に制限 | 可能 | `ScalingLimited`, `maxReplicas` | 低 |
+| メトリクス取得失敗 | 可能 | `ScalingActive=False`, Events | 低 |
+| 複数メトリクスの最終勝者 | 一部難しい | `currentMetrics`, `spec.metrics` | 中 |
+| ScaleDown stabilization | 一部可能 | `AbleToScale`, condition reason, Events | 中 |
+| toleranceによるno-scale | 難しい | `currentMetrics`, `desiredReplicas` | 中から高 |
+| missing metrics / not-ready podsの影響 | 難しい | 現状のstatusでは不足 | 高 |
+
+Eventsは直近の診断コンテキストとして有用ですが、このPOCでは安定した意思決定記録としては扱いません。
+
+## 出力例
+
+List view:
+
+```text
+NAMESPACE            NAME                             CURRENT  DESIRED  HEALTH              SCORE    ISSUE                            SUMMARY
+default              web                              3        5        🟢 Healthy          100                                       HPA currently wants to scale up.
+default              api                              2        2        🔴 ERROR            55       ERROR: FailedGetResourceMetric   HPA cannot currently compute a scaling recommendation from metrics.
+```
+
+複数メトリクスHPA:
+
+```text
+HPA default/web-multi
+Target: Deployment/web-multi
+Replicas: current=5 desired=5 min=2 max=5
+Health score: 🔴 ScalingLimited 75/100
+Summary: HPA is at maxReplicas.
+
+Metrics:
+  - Resource cpu current=0% target=80% note="current value is below target"
+  - Resource memory current=68% target=50% note="current value is above target"
+
+Recommended actions:
+  - HPA is capped at maxReplicas; raise maxReplicas or reduce load/target utilization if more capacity is expected.
+
+Recommended commands:
+  - Raise maxReplicas: The HPA is capped at maxReplicas=5. Raising it to 10 allows the controller to add capacity if metrics still require it. (risk: medium)
+    $ kubectl patch hpa web-multi -n default --type=merge -p '{"spec":{"maxReplicas":10}}'
+
+Interpretation:
+  - [confidence: high] ScalingLimited reports that the visible desired replica count is constrained by maxReplicas.
+  - [confidence: medium] Among visible resource utilization metrics, memory has the largest distance from target (ratio 1.360).
+  - [confidence: high] This is only an impact estimate; the API does not expose per-metric replica recommendations or the final metric winner.
+```
+
+## Findings
+
+既存のHPAシグナルだけでも、以下はかなり説明できます。
+
+- `ScalingActive=False`、condition reason、直近Eventsによるメトリクス取得失敗
+- `ScalingLimited=True`、condition reason、`desiredReplicas == maxReplicas` による上限到達
+- `currentReplicas` と `desiredReplicas` による見えているScaleUp / ScaleDown方向
+- `ScaleDownStabilized` のようなcondition reasonで表面化しているScaleDown stabilization
+
+一方で、現在のHPA statusだけでは安定して断定しづらいものもあります。
+
+- 複数メトリクスHPAで、最終的にどのmetricが推奨値を決めたか
+- no-scaleがtolerance由来なのか、roundingや保守的なmetric処理由来なのか
+- missing metricsやnot-ready podsが内部推奨値へどう影響したか
+- stabilizationに使われた内部recommendation history
+
+## Known Gaps
+
+このプラグインは、HPA status、metrics、conditions、eventsから推論できることを表示します。
+controller内部の中間計算や非公開の意思決定履歴を知っているわけではありません。
+解釈行にはconfidenceを付け、直接観測できる事実と弱い推論を区別します。
 
 ## ロードマップ
 - [x] **インテグレーションテスト:** CI検証用の `kind` ベースE2Eテスト。
@@ -178,6 +400,7 @@ kind delete cluster --name hpa-status-dev
 - [ ] **インタラクティブTUIモニタ:** watchモードをリッチなダッシュボードへ強化。
 - [x] **バッチ分析機能:** `scan` / `list -A --problem` で問題のあるHPAを一括診断。
 - [x] **Suggest/Fix機能:** `--suggest` / `--fix --apply` により、具体的なパッチ案と適用フローを表示。
+- [ ] **KEDA / Custom Metrics深掘り:** HPA statusに見える範囲を超えたadapter固有の文脈を追加。
 
 ## ライセンス
 

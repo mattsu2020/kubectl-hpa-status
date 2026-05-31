@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hpa-status-examples
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keda-worker
+  namespace: hpa-status-examples
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: keda-worker
+  template:
+    metadata:
+      labels:
+        app: keda-worker
+    spec:
+      containers:
+        - name: worker
+          image: registry.k8s.io/pause:3.10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: keda-hpa-keda-worker
+  namespace: hpa-status-examples
+  labels:
+    app.kubernetes.io/managed-by: keda-operator
+    scaledobject.keda.sh/name: keda-worker
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: keda-worker
+  minReplicas: 1
+  maxReplicas: 50
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+  metrics:
+    - type: External
+      external:
+        metric:
+          name: s0-azure-queue-message-count
+        target:
+          type: AverageValue
+          averageValue: "5"

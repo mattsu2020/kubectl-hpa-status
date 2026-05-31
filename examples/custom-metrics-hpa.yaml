@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hpa-status-examples
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: queue-worker
+  namespace: hpa-status-examples
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: queue-worker
+  template:
+    metadata:
+      labels:
+        app: queue-worker
+    spec:
+      containers:
+        - name: worker
+          image: registry.k8s.io/pause:3.10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: queue-worker
+  namespace: hpa-status-examples
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: queue-worker
+  minReplicas: 1
+  maxReplicas: 30
+  metrics:
+    - type: Object
+      object:
+        describedObject:
+          apiVersion: v1
+          kind: Service
+          name: queue
+        metric:
+          name: queue_messages_ready
+        target:
+          type: Value
+          value: "100"
+

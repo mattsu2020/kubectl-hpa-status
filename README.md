@@ -171,6 +171,24 @@ The Go module path, GitHub repository, release metadata, and user-facing binary
 name now all use `github.com/mattsu2020/kubectl-hpa-status` /
 `kubectl-hpa-status`.
 
+## Examples
+
+Practical manifests live in [examples/](examples/):
+
+| Example | What it demonstrates |
+| --- | --- |
+| [cpu-memory-hpa.yaml](examples/cpu-memory-hpa.yaml) | CPU and memory HPA for multi-metric diagnostics |
+| [behavior-hpa.yaml](examples/behavior-hpa.yaml) | scaleUp/scaleDown policies and stabilization windows |
+| [custom-metrics-hpa.yaml](examples/custom-metrics-hpa.yaml) | object metric shape for custom metrics adapters |
+| [keda-style-hpa.yaml](examples/keda-style-hpa.yaml) | KEDA-style HPA labels and external metrics |
+
+```sh
+kubectl apply -f examples/cpu-memory-hpa.yaml
+kubectl hpa status web-multi -n hpa-status-examples --explain --suggest
+kubectl hpa status list -n hpa-status-examples --wide
+kubectl delete namespace hpa-status-examples
+```
+
 ## Usage
 
 ```sh
@@ -294,6 +312,19 @@ Suggestions are intentionally conservative:
 2. `--fix --apply` still defaults to server-side dry-run and prints a field-level diff before asking for confirmation.
 3. Persisting changes requires `--dry-run=false`; this is never the default.
 4. maxReplicas suggestions include preconditions and warnings because raising a ceiling can affect node capacity, quotas, cost, and downstream systems.
+5. The preview explains the expected effect, such as allowing immediate scale-up if metrics still require more replicas.
+
+## CI/CD
+
+| Workflow | Purpose |
+| --- | --- |
+| [ci.yml](.github/workflows/ci.yml) | `go test`, coverage, govulncheck, gosec, golangci-lint, and kind E2E |
+| [codeql.yml](.github/workflows/codeql.yml) | CodeQL static analysis |
+| [release.yml](.github/workflows/release.yml) | GoReleaser binaries, SBOM, Homebrew Cask tap update, and Krew release bot |
+
+Coverage is uploaded to Codecov when CI runs. Release automation uses the
+dedicated Homebrew tap
+[mattsu2020/homebrew-kubectl-hpa-status](https://github.com/mattsu2020/homebrew-kubectl-hpa-status).
 
 ## Validation matrix
 
@@ -452,8 +483,9 @@ Interpretation lines are diagnostic inferences, not the HPA controller's authori
 - [x] **Visual Demos:** Added high-fidelity demo screenshots to documentation.
 - [x] **Homebrew packaging:** Generate Homebrew cask metadata in a dedicated tap through GoReleaser.
 - [ ] **Interactive TUI Monitor:** Enhance the watch mode into a rich terminal dashboard.
-- [ ] **Batch Analysis:** Support analyzing all HPAs across multiple namespaces in one run.
-- [ ] **Suggest Flag:** Provide actionable optimization values based on HPA analysis.
+- [x] **Batch Analysis:** Analyze all HPAs across namespaces with `scan` and `list -A --problem`.
+- [x] **Suggest/Fix Workflow:** Provide actionable dry-run-first patch suggestions with `--suggest` and `--fix --apply`.
+- [ ] **KEDA and Custom Metrics Deep Dive:** Add adapter-specific context beyond visible HPA status.
 
 ## License
 
