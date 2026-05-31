@@ -751,3 +751,109 @@ func TestAnalyzeMetricImpactGuessConfidence(t *testing.T) {
 		t.Fatalf("expected confidence=low for maxReplicas case, got %s", got2.ImpactMetric.Confidence)
 	}
 }
+
+func TestStructuredInterpretation_ScalingInactive(t *testing.T) {
+	hpa := baseHPA()
+	hpa.Status.CurrentReplicas = 3
+	hpa.Status.DesiredReplicas = 0
+	hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
+		{Type: "ScalingActive", Status: corev1.ConditionFalse, Reason: "FailedGetResourceMetric", Message: "missing cpu metrics"},
+	}
+
+	got := Analyze(hpa, true)
+	if len(got.StructuredInterpretation) == 0 {
+		t.Fatalf("expected structured interpretation, got none")
+	}
+	found := false
+	for _, msg := range got.StructuredInterpretation {
+		if msg.Reason == "ScalingInactive" {
+			found = true
+			if msg.Severity != "error" {
+				t.Fatalf("expected severity=error, got %s", msg.Severity)
+			}
+			if msg.NextStep == "" {
+				t.Fatalf("expected non-empty NextStep for ScalingInactive")
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected StructuredMessage with reason=ScalingInactive, got %#v", got.StructuredInterpretation)
+	}
+}
+
+func TestStructuredInterpretation_StaleStatus(t *testing.T) {
+	hpa := baseHPA()
+	observed := int64(1)
+	hpa.Generation = 3
+	hpa.Status.ObservedGeneration = &observed
+
+	got := Analyze(hpa, true)
+	found := false
+	for _, msg := range got.StructuredInterpretation {
+		if msg.Reason == "StaleStatus" {
+			found = true
+			if msg.Severity != "warning" {
+				t.Fatalf("expected severity=warning, got %s", msg.Severity)
+			}
+			if msg.NextStep == "" {
+				t.Fatalf("expected non-empty NextStep for StaleStatus")
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected StructuredMessage with reason=StaleStatus, got %#v", got.StructuredInterpretation)
+	}
+}
+
+func TestStructuredInterpretation_ScaleDownStabilized(t *testing.T) {
+	hpa := baseHPA()
+	hpa.Status.CurrentReplicas = 8
+	hpa.Status.DesiredReplicas = 8
+	hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
+		{Type: "ScalingActive", Status: corev1.ConditionTrue, Reason: "ValidMetricFound"},
+		{Type: "AbleToScale", Status: corev1.ConditionTrue, Reason: "ScaleDownStabilized", Message: "recent recommendations were higher"},
+	}
+
+	got := Analyze(hpa, true)
+	found := false
+	for _, msg := range got.StructuredInterpretation {
+		if msg.Reason == "ScaleDownStabilized" {
+			found = true
+			if msg.Severity != "info" {
+				t.Fatalf("expected severity=info, got %s", msg.Severity)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected StructuredMessage with reason=ScaleDownStabilized, got %#v", got.StructuredInterpretation)
+	}
+}
+
+func TestStructuredActions_RestoreMetrics(t *testing.T) {
+	hpa := baseHPA()
+	hpa.Status.CurrentReplicas = 3
+	hpa.Status.DesiredReplicas = 0
+	hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
+		{Type: "ScalingActive", Status: corev1.ConditionFalse, Reason: "FailedGetResourceMetric", Message: "missing cpu metrics"},
+	}
+
+	got := Analyze(hpa, true)
+	if len(got.StructuredActions) == 0 {
+		t.Fatalf("expected structured actions, got none")
+	}
+	found := false
+	for _, msg := range got.StructuredActions {
+		if msg.Reason == "RestoreMetrics" {
+			found = true
+			if msg.Severity != "error" {
+				t.Fatalf("expected severity=error, got %s", msg.Severity)
+			}
+			if msg.NextStep == "" {
+				t.Fatalf("expected non-empty NextStep for RestoreMetrics")
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected StructuredMessage with reason=RestoreMetrics, got %#v", got.StructuredActions)
+	}
+}
