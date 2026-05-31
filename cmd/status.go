@@ -64,6 +64,9 @@ func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []st
 	if len(names) == 1 {
 		report, err := buildStatusReport(ctx, opts, names[0], includeInterpretation)
 		if err != nil {
+			if opts.output == "json" || opts.output == "yaml" {
+				writeError(out, opts.output, err)
+			}
 			return err
 		}
 		if opts.apply {
@@ -90,6 +93,9 @@ func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []st
 	for _, name := range names {
 		report, err := buildStatusReport(ctx, opts, name, includeInterpretation)
 		if err != nil {
+			if opts.output == "json" || opts.output == "yaml" {
+				writeError(out, opts.output, err)
+			}
 			return err
 		}
 		if opts.apply {
@@ -142,7 +148,14 @@ func buildStatusReport(ctx context.Context, opts *options, name string, includeI
 		Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			return hpaanalysis.StatusReport{}, fmt.Errorf("HPA %q was not found in namespace %q; check the name, namespace, or use list -A to find it: %w", name, client.Namespace, err)
+			return hpaanalysis.StatusReport{}, fmt.Errorf("HPA %q was not found in namespace %q. "+
+				"If the cluster is running Kubernetes older than 1.23, the autoscaling/v2 API may not be available. "+
+				"Check with: kubectl api-resources | grep autoscaling. Original error: %w", name, client.Namespace, err)
+		}
+		if apierrors.IsMethodNotSupported(err) {
+			return hpaanalysis.StatusReport{}, fmt.Errorf("the Kubernetes API server does not support the autoscaling/v2 API. "+
+				"This plugin requires Kubernetes 1.23+ (stable from 1.26). "+
+				"Check with: kubectl api-resources | grep autoscaling. Original error: %w", err)
 		}
 		return hpaanalysis.StatusReport{}, fmt.Errorf("failed to get HPA %s/%s from the Kubernetes API server: %w", client.Namespace, name, err)
 	}

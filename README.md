@@ -115,6 +115,8 @@ healthWeights:
   scalingLimited: 25
 ```
 
+The config file `~/.kube/hpa-status.yaml` is supported and allows setting defaults for all flags. See the config file example above.
+
 How to read the output:
 
 - `Summary` is the visible state derived from HPA status.
@@ -155,7 +157,14 @@ Common flags include -n/--namespace, -A/--all-namespaces, -o/--output,
 ### Krew (recommended)
 
 ```sh
+# Install via Krew (once published to the official krew-index)
 kubectl krew install hpa-status
+
+# Until then, install from the local manifest:
+kubectl krew install --manifest https://raw.githubusercontent.com/mattsu2020/kubectl-hpa-status/main/.krew.yaml
+```
+
+```sh
 kubectl hpa status <hpa-name> -n <namespace>
 kubectl hpa status list -A --wide
 kubectl hpa status <hpa-name> --suggest
@@ -172,7 +181,7 @@ when your kubectl plugin discovery supports it; if it does not, use
 ### Homebrew
 
 ```sh
-brew install --cask mattsu2020/kubectl-hpa-status/kubectl-hpa-status
+brew install mattsu2020/kubectl-hpa-status/kubectl-hpa-status
 kubectl-hpa-status list -A --wide
 ```
 
@@ -199,6 +208,12 @@ you intentionally use `--apply --dry-run=false`.
 The Go module path, GitHub repository, release metadata, and user-facing binary
 name now all use `github.com/mattsu2020/kubectl-hpa-status` /
 `kubectl-hpa-status`.
+
+### Requirements
+
+- **Kubernetes 1.26+** (autoscaling/v2 GA since 1.23, stable in 1.26)
+- kubectl configured with a kubeconfig
+- metrics-server (for CPU/memory metrics) or custom/external metrics adapter
 
 ## Examples
 
@@ -308,6 +323,7 @@ Each HPA receives a health score from 0 to 100. The score starts at 100 and pena
 
 Supported Kubernetes versions:
 
+- **Kubernetes 1.26 or later is required.** The plugin uses `autoscaling/v2` which became GA in Kubernetes 1.23 and is the stable API from 1.26 onward.
 - Runtime target: clusters serving `autoscaling/v2` `HorizontalPodAutoscaler`
 - Validated cluster: Kubernetes v1.35.0 with metrics-server v0.8.1
 - Client libraries: `k8s.io/client-go` / `k8s.io/api` v0.35.0
@@ -350,6 +366,8 @@ kind-specific `--kubelet-insecure-tls` option.
 | Many HPAs need triage | `kubectl hpa status scan` | Health score, issue, conditions | Start with `ERROR`, then `ScalingLimited` |
 
 ## Compatibility matrix
+
+Kubernetes 1.26 or later is required. The plugin uses `autoscaling/v2` which became GA in Kubernetes 1.23 and is the stable API from 1.26 onward.
 
 | Environment | Status |
 | --- | --- |

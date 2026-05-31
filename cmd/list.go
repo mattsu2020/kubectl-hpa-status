@@ -53,7 +53,11 @@ func newScanCommand(opts *options) *cobra.Command {
 func runList(ctx context.Context, out io.Writer, opts *options) error {
 	client, err := opts.newClient()
 	if err != nil {
-		return fmt.Errorf("failed to create Kubernetes client from kubeconfig/context flags: %w", err)
+		listErr := fmt.Errorf("failed to create Kubernetes client from kubeconfig/context flags: %w", err)
+		if opts.output == "json" || opts.output == "yaml" {
+			writeError(out, opts.output, listErr)
+		}
+		return listErr
 	}
 
 	namespace := client.Namespace
@@ -69,7 +73,11 @@ func runList(ctx context.Context, out io.Writer, opts *options) error {
 		HorizontalPodAutoscalers(namespace).
 		List(ctx, metav1.ListOptions{LabelSelector: opts.selector})
 	if err != nil {
-		return fmt.Errorf("failed to list HPAs: %w", err)
+		listErr := fmt.Errorf("failed to list HPAs: %w", err)
+		if opts.output == "json" || opts.output == "yaml" {
+			writeError(out, opts.output, listErr)
+		}
+		return listErr
 	}
 
 	report := hpaanalysis.ListReport{}
