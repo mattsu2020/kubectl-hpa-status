@@ -21,6 +21,10 @@ scaling analysis using existing Kubernetes API signals.
 
 日本語版README: [README.ja.md](README.ja.md)
 
+Documentation sync note: `README.md` is the release source of truth. Keep
+`README.ja.md` in sync for user-facing flags, install paths, and examples when
+changing this file.
+
 It answers three common HPA questions quickly:
 
 - Is this HPA healthy, capped, stabilized, or unable to read metrics?
@@ -83,10 +87,32 @@ kubectl hpa status <hpa-name> -n <namespace>
 kubectl hpa status <hpa-name> --explain
 kubectl hpa status <hpa-name> --suggest
 kubectl hpa status <hpa-name> --fix --apply
+kubectl hpa status hpa-a hpa-b -n production
 kubectl hpa status list -A --wide --sort-by=desired --filter=scaling-limited
+kubectl hpa status list -A --selector='app=web,tier!=canary'
 kubectl hpa status ls -A -o json
 kubectl hpa status <hpa-name> --watch --timeout=2m --until-condition=scaling-limited
 kubectl hpa status <hpa-name> -o 'jsonpath={.analysis.summary}'
+```
+
+### Config file
+
+If `--config` is omitted and `~/.kube/hpa-status.yaml` exists, the plugin reads
+it as default CLI settings. Explicit flags always win over config values.
+
+```yaml
+namespace: production
+lang: en
+color: auto
+events: 5
+selector: app.kubernetes.io/part-of=my-service
+sortBy: problem
+maxScore: 80
+dashboard: false
+healthWeights:
+  scalingInactive: 45
+  unableToScale: 35
+  scalingLimited: 25
 ```
 
 How to read the output:
@@ -195,13 +221,13 @@ kubectl delete namespace hpa-status-examples
 ## Usage
 
 ```sh
-kubectl hpa status <hpa-name> [-n namespace] [--context context] [--events=false]
+kubectl hpa status <hpa-name> [<hpa-name>...] [-n namespace] [--context context] [--events=false]
 kubectl hpa status <hpa-name> --watch --interval 5s
 kubectl hpa status <hpa-name> --watch --timeout 2m --until-condition scaling-limited
-kubectl hpa status analyze <hpa-name>
-kubectl hpa status list [-A] [--sort-by desired] [--filter scaling-limited]
+kubectl hpa status analyze <hpa-name> [<hpa-name>...]
+kubectl hpa status list [-A] [--selector app=web] [--sort-by desired] [--filter scaling-limited]
 kubectl hpa status list -A --problem
-kubectl hpa status scan
+kubectl hpa status scan --selector app=web
 kubectl hpa status ls [-A] --wide
 kubectl hpa status watch <hpa-name> --interval 5s
 ```
@@ -231,32 +257,39 @@ kubectl-hpa-status completion zsh
 compact by default; pass `--interpret` when you want interpretation in status
 output.
 
-Common flags:
+Detailed flags:
 
-- `-n, --namespace`: namespace
-- `-A, --all-namespaces`: list HPAs across all namespaces
-- `--context`, `--kubeconfig`, `--cluster`: explicit kubeconfig selection
-- `-o table|wide|json|yaml|jsonpath=...|template=...`: output format
-- `--wide`: show target, min, and max columns in table output
-- `--sort-by namespace|name|current|desired|health|health-score|issue`: sort `list` output
-- `--filter all|ok|error|limited|scaling-limited|issue`: filter `list` output
-- `--health-score <threshold>`: show only HPAs whose health score is at or below the positive threshold
-- `--color auto|always|never`: colorize table output
-- `--interpret`: include diagnostic interpretation in compact status output
-- `--explain`: include detailed interpretation and recommended actions
-- `--suggest`: include concrete `kubectl patch` commands when a safe HPA spec suggestion is visible
-- `--fix`: show a stronger fix plan with applicable patches
-- `--apply`: validate suggested HPA patches with server-side dry-run by default
-- `--dry-run=false`: persist changes when used with `--apply`; still shows a diff and asks for confirmation unless `-y` is set
-- `--problem`: show only HPAs with visible problems in `list`
-- `--lang=ja` or `-o ja`: show Japanese text labels
-- `--no-interpret`: omit interpretation and show status-derived data only
-- `--events=false`: omit recent Events
-- `--events=3`: show the latest 3 HPA Events
-- `--watch --interval 5s`: refresh one HPA from the main command
-- `--timeout 2m`: stop watch after a duration
-- `--until-condition scaling-limited`: stop watch once the condition type is present
-- `--version`: print the plugin version
+| Flag | Applies to | Description |
+| --- | --- | --- |
+| `-n, --namespace` | all commands | Namespace to read when `-A` is not set. Defaults to the current kubeconfig namespace or `default`. |
+| `-A, --all-namespaces` | `list`, `scan`, completion | List HPAs across all namespaces. |
+| `-l, --selector` | `list`, `scan` | Kubernetes label selector passed to the HPA list call, such as `app=web,tier!=canary`. |
+| `--context`, `--kubeconfig`, `--cluster` | all commands | Explicit kubeconfig selection. |
+| `--config` | all commands | Read defaults from a YAML/JSON config file. Defaults to `~/.kube/hpa-status.yaml` when present. |
+| `-o table|wide|json|yaml|jsonpath=...|template=...` | status, analyze, list, scan | Output format. YAML is supported for both single and multiple HPA output. |
+| `--wide` | table output | Show target, min, max, and replica delta columns where applicable. |
+| `--sort-by namespace|name|current|desired|diff|health-score|issue|problem` | `list`, `scan` | Sort list output. `problem` puts the lowest health score and largest replica delta first. |
+| `--filter all|ok|error|limited|scaling-limited|issue` | `list`, `scan` | Filter by health or issue text. |
+| `--health-score`, `--max-score` | `list`, `scan` | Show only HPAs whose health score is at or below the threshold. |
+| `--min-score` | `list`, `scan` | Show only HPAs whose health score is at or above the threshold. |
+| `--problem` | `list`, `scan` | Show only HPAs with a visible issue. |
+| `--color auto|always|never` | text output | Control terminal color output. |
+| `--interpret` | `status` | Include diagnostic interpretation in compact status output. |
+| `--explain` | `status`, `analyze` | Include detailed interpretation and recommended actions. |
+| `--suggest`, `--recommend` | `status`, `analyze` | Include concrete `kubectl patch` commands when a safe HPA spec suggestion is visible. |
+| `--fix` | `status`, `analyze` | Show a stronger fix plan with applicable patches. |
+| `--apply` | `status`, `analyze` | Validate suggested HPA patches with server-side dry-run by default. |
+| `--dry-run=false` | `--apply` workflow | Persist changes; still shows a diff and asks for confirmation unless `-y` is set. |
+| `--keda` | `status`, `analyze` | For KEDA-managed HPAs, look up the matching ScaledObject and include trigger/condition context. |
+| `--lang=ja`, `-o ja` | text output | Show Japanese text labels. |
+| `--no-interpret` | `status`, `analyze` | Omit interpretation and show status-derived data only. |
+| `--events=false` | `status`, `analyze` | Omit recent HPA Events. |
+| `--events=3` | `status`, `analyze` | Show the latest 3 HPA Events. |
+| `--watch --interval 5s` | `status`, `watch` | Refresh one HPA periodically. Watch mode accepts exactly one HPA name. |
+| `--dashboard` | `watch` | Render watch output as a compact terminal dashboard. |
+| `--timeout 2m` | watch mode | Stop watch after a duration. |
+| `--until-condition scaling-limited` | watch mode | Stop watch once the normalized condition type is present. |
+| `--version` | root | Print the plugin version. |
 
 Supported Kubernetes versions:
 
@@ -294,8 +327,11 @@ kind-specific `--kubelet-insecure-tls` option.
 | Symptom | Command | Primary signals | Likely next step |
 | --- | --- | --- | --- |
 | HPA is not scaling and metrics are missing | `kubectl hpa status <name> --explain` | `ScalingActive=False`, Events | Check metrics-server or custom/external metrics adapters |
+| metrics-server is slow or recently restarted | `kubectl hpa status <name> --explain --events=10` | stale `currentMetrics`, `FailedGetResourceMetric`, old `lastTransitionTime` | Wait for the scrape interval, then check `kubectl top pods` and metrics-server logs |
 | Replicas are capped at the top | `kubectl hpa status <name> --suggest` | `ScalingLimited=True`, `desiredReplicas == maxReplicas` | Review capacity, then validate the suggested maxReplicas patch |
 | Scale-down looks delayed | `kubectl hpa status <name> --explain` | `AbleToScale=True`, `ScaleDownStabilized`, `spec.behavior.scaleDown` | Wait for or tune stabilization window |
+| KEDA-managed HPA is not reacting | `kubectl hpa status <name> --keda --explain` | KEDA labels, External metrics, ScaledObject conditions | Check ScaledObject triggers, TriggerAuthentication, external metrics API, and KEDA operator logs |
+| Custom or external metric looks ambiguous | `kubectl hpa status <name> --explain --debug` | External/Object metric ratio, missing current status | Confirm adapter freshness and metric selector semantics outside the HPA status API |
 | Many HPAs need triage | `kubectl hpa status scan` | Health score, issue, conditions | Start with `ERROR`, then `ScalingLimited` |
 
 ## Compatibility matrix
@@ -305,8 +341,8 @@ kind-specific `--kubelet-insecure-tls` option.
 | HPA API `autoscaling/v2` | Required |
 | Kubernetes v1.35.0 | Validated |
 | metrics-server v0.8.1 on kind | Validated |
-| custom/external metrics adapters | Supported through visible HPA status; adapter-specific internals are not inspected |
-| KEDA-scaled workloads | HPA objects can be inspected; KEDA-specific analysis is future work |
+| custom/external metrics adapters | Supported through visible HPA status with best-effort ratio interpretation; adapter-specific internals are not inspected |
+| KEDA-scaled workloads | Basic KEDA-managed HPA detection is automatic. `--keda` optionally looks up the matching ScaledObject for trigger and condition context |
 
 ## Safe fix workflow
 
@@ -501,8 +537,10 @@ Interpretation lines are diagnostic inferences, not the HPA controller's authori
 - [x] **Homebrew packaging:** Generate Homebrew cask metadata in a dedicated tap through GoReleaser.
 - [ ] **Interactive TUI Monitor:** Enhance the watch mode into a rich terminal dashboard.
 - [x] **Batch Analysis:** Analyze all HPAs across namespaces with `scan` and `list -A --problem`.
+- [x] **Selector and multi-target workflows:** Filter `list` / `scan` with `--selector` and inspect multiple HPAs with `status hpa-a hpa-b`.
 - [x] **Suggest/Fix Workflow:** Provide actionable dry-run-first patch suggestions with `--suggest` and `--fix --apply`.
-- [ ] **KEDA and Custom Metrics Deep Dive:** Add adapter-specific context beyond visible HPA status.
+- [x] **KEDA ScaledObject lookup:** `--keda` can cross-reference the matching ScaledObject when KEDA CRDs are available.
+- [ ] **Custom Metrics Deep Dive:** Add adapter-specific context beyond visible HPA status.
 
 ## License
 

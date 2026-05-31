@@ -53,6 +53,19 @@ For list output changes, update `pkg/hpa/text.go` and cover the table behavior
 with tests. For command flags, add tests in `cmd/root_test.go` when the behavior
 can be checked without a live cluster.
 
+## Good first contribution areas
+
+- Documentation: keep `README.md` and `README.ja.md` aligned when flags,
+  examples, install paths, or limitations change.
+- Translation: improve Japanese wording in `README.ja.md` and user-facing
+  labels without changing command semantics.
+- Testdata: add focused manifests under `testdata/` or `examples/` for KEDA,
+  custom/external metrics, stabilization windows, and not-ready scale targets.
+- Analysis tests: cover edge cases in `pkg/hpa/analysis.go` and
+  `pkg/hpa/suggestions.go`, especially cases where HPA status is ambiguous.
+- UX tests: add command-level tests for new flags, sorting, filtering, output
+  formats, and completion behavior.
+
 ## Krew manifest
 
 The Krew plugin name is intentionally `hpa-status`. Keep `.krew.yaml`,

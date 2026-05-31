@@ -162,6 +162,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newListCommand(opts))
 	root.AddCommand(newScanCommand(opts))
 	root.AddCommand(newWatchCommand(opts))
+	root.AddCommand(newTUICommand(opts))
 	root.AddCommand(newVersionCommand())
 	root.AddCommand(newCompletionCommand(root))
 
