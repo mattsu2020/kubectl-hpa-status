@@ -74,6 +74,7 @@ func (o *options) newClient() (*kube.Client, error) {
 	return kube.NewClient(kopts)
 }
 
+// NewRootCommand creates and returns the root cobra command for kubectl-hpa-status.
 func NewRootCommand() *cobra.Command {
 	opts := &options{
 		events:         eventOption{enabled: true, limit: 5},
@@ -96,7 +97,7 @@ func NewRootCommand() *cobra.Command {
 			}
 			return hpaNameCompletion(opts)(cmd, args, toComplete)
 		},
-		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
 			if err := applyConfigDefaults(cmd, opts); err != nil {
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %v\n", err)
 			}

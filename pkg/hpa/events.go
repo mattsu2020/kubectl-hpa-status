@@ -11,6 +11,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
+// Event is a simplified Kubernetes event with reason and message.
 type Event struct {
 	Reason  string `json:"reason" yaml:"reason"`
 	Message string `json:"message" yaml:"message"`

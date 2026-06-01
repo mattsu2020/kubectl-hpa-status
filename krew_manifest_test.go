@@ -1,3 +1,4 @@
+// Package main validates the krew plugin manifest.
 package main
 
 import (

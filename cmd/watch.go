@@ -43,8 +43,8 @@ func runWatch(ctx context.Context, out io.Writer, opts *options, name string, in
 
 	var previous *hpaanalysis.Analysis
 	for {
-		if clear := theme.ScreenClear(); clear != "" {
-			if _, err := out.Write([]byte(clear)); err != nil {
+		if clearScreen := theme.ScreenClear(); clearScreen != "" {
+			if _, err := out.Write([]byte(clearScreen)); err != nil {
 				return err
 			}
 		} else {
@@ -106,8 +106,8 @@ func runWatchList(ctx context.Context, out io.Writer, opts *options) error {
 	defer ticker.Stop()
 
 	for {
-		if clear := theme.ScreenClear(); clear != "" {
-			if _, err := out.Write([]byte(clear)); err != nil {
+		if clearScreen := theme.ScreenClear(); clearScreen != "" {
+			if _, err := out.Write([]byte(clearScreen)); err != nil {
 				return err
 			}
 		} else {

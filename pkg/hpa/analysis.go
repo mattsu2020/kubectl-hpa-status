@@ -1082,11 +1082,7 @@ func buildStructuredInterpretation(hpa *autoscalingv2.HorizontalPodAutoscaler, m
 	}
 
 	// VPA conflict
-	if hpa.Annotations != nil || hpa.Labels != nil {
-		// VPA conflict detection is handled externally via AnalyzeVPA;
-		// here we only flag when VPAConflict field is set on the Analysis.
-		// This structured message is populated by the caller if needed.
-	}
+
 
 	return msgs
 }

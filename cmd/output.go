@@ -236,7 +236,7 @@ func writePrometheus(w io.Writer, value any) error {
 	return nil
 }
 
-func writePrometheusMetrics(w io.Writer, namespace, name string, healthScore int, current, desired, min, max int32) error {
+func writePrometheusMetrics(w io.Writer, namespace, name string, healthScore int, current, desired, minR, maxR int32) error {
 	type metric struct {
 		name  string
 		help  string
@@ -246,8 +246,8 @@ func writePrometheusMetrics(w io.Writer, namespace, name string, healthScore int
 		{name: "hpa_health_score", help: "Health score of an HPA (0-100)", value: healthScore},
 		{name: "hpa_current_replicas", help: "Current replica count", value: current},
 		{name: "hpa_desired_replicas", help: "Desired replica count", value: desired},
-		{name: "hpa_min_replicas", help: "Minimum replica count", value: min},
-		{name: "hpa_max_replicas", help: "Maximum replica count", value: max},
+		{name: "hpa_min_replicas", help: "Minimum replica count", value: minR},
+		{name: "hpa_max_replicas", help: "Maximum replica count", value: maxR},
 	}
 	labels := fmt.Sprintf(`namespace="%s",name="%s"`, escapePrometheusLabelValue(namespace), escapePrometheusLabelValue(name))
 	for _, m := range metrics {

@@ -1,3 +1,4 @@
+// Package tui implements an interactive terminal dashboard for HPA monitoring.
 package tui
 
 import (
@@ -245,11 +246,11 @@ func healthStyle(health string) lipgloss.Style {
 	}
 }
 
-func truncate(s string, max int) string {
-	if len(s) <= max {
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
 		return s
 	}
-	return s[:max-1] + "…"
+	return s[:maxLen-1] + "…"
 }
 
 func padRight(s string, width int) string {

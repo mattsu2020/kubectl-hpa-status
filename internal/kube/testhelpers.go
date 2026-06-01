@@ -78,10 +78,10 @@ func WithReplicas(current, desired int32) HPAOption {
 }
 
 // WithMinMax sets min and max replicas.
-func WithMinMax(minReplicas, max int32) HPAOption {
+func WithMinMax(minReplicas, maxR int32) HPAOption {
 	return func(hpa *autoscalingv2.HorizontalPodAutoscaler) {
 		hpa.Spec.MinReplicas = &minReplicas
-		hpa.Spec.MaxReplicas = max
+		hpa.Spec.MaxReplicas = maxR
 	}
 }
 

@@ -19,7 +19,7 @@ func newListCommand(opts *options) *cobra.Command {
 		Aliases: []string{"ls"},
 		Short:   "List HPAs and highlight visible issues",
 		Args:    cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			if opts.watch {
 				return runWatchList(cmd.Context(), cmd.OutOrStdout(), opts)
 			}
@@ -41,7 +41,7 @@ func newScanCommand(opts *options) *cobra.Command {
 		Aliases: []string{"problems"},
 		Short:   "Scan all namespaces for HPAs with visible problems",
 		Args:    cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			opts.allNamespaces = true
 			opts.problem = true
 			opts.wide = true
