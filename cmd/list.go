@@ -1,9 +1,11 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"sort"
 	"strings"
 
@@ -118,22 +120,85 @@ func applyListSuggestions(ctx context.Context, out io.Writer, opts *options, hpa
 	for _, item := range items {
 		selected[item.Namespace+"/"+item.Name] = true
 	}
+
+	// Collect selected HPAs with their applicable suggestions.
+	type batchEntry struct {
+		Namespace  string
+		Name       string
+		Suggestion hpaanalysis.Suggestion
+	}
+	var entries []batchEntry
 	for i := range hpas {
 		hpa := &hpas[i]
 		if !selected[hpa.Namespace+"/"+hpa.Name] {
 			continue
 		}
 		analysis := hpaanalysis.AnalyzeWithOptions(hpa, true, analysisOptions(opts))
-		applied, err := applySuggestionsInNamespace(ctx, out, opts, hpa.Namespace, hpa.Name, analysis.Suggestions)
-		if err != nil {
-			return err
-		}
-		for _, line := range applied {
-			if _, err := fmt.Fprintf(out, "%s/%s: %s\n", hpa.Namespace, hpa.Name, line); err != nil {
-				return err
+		for _, s := range analysis.Suggestions {
+			if s.Apply && s.Patch != "" {
+				entries = append(entries, batchEntry{
+					Namespace:  hpa.Namespace,
+					Name:       hpa.Name,
+					Suggestion: s,
+				})
 			}
 		}
 	}
+
+	if len(entries) == 0 {
+		fmt.Fprintln(out, "No applicable HPA patches found.")
+		return nil
+	}
+
+	// Display summary table of all patches.
+	seenHPAs := make(map[string]bool)
+	for _, e := range entries {
+		seenHPAs[e.Namespace+"/"+e.Name] = true
+	}
+	fmt.Fprintf(out, "\nBatch patch summary (%d patches across %d HPA(s)):\n", len(entries), len(seenHPAs))
+	fmt.Fprintln(out, "  NAMESPACE/NAME                    PATCH                           RISK")
+	for _, e := range entries {
+		fmt.Fprintf(out, "  %-35s %-30s %s\n", e.Namespace+"/"+e.Name, e.Suggestion.Title, e.Suggestion.Risk)
+	}
+	fmt.Fprintln(out)
+
+	// Single confirmation for the entire batch.
+	if !opts.yes {
+		action := "dry-run"
+		if !opts.dryRun {
+			action = "apply"
+		}
+		fmt.Fprintf(out, "%s %d patches? [y/N]: ", action, len(entries))
+		if opts.in == nil {
+			opts.in = os.Stdin
+		}
+		scanner := bufio.NewScanner(opts.in)
+		if !scanner.Scan() {
+			return nil
+		}
+		answer := strings.ToLower(strings.TrimSpace(scanner.Text()))
+		if answer != "y" && answer != "yes" {
+			fmt.Fprintln(out, "Batch apply skipped.")
+			return nil
+		}
+	}
+
+	// Apply each patch; continue on individual failure.
+	var succeeded, failed int
+	for _, e := range entries {
+		results, err := applySuggestionsInNamespace(ctx, out, opts, e.Namespace, e.Name, []hpaanalysis.Suggestion{e.Suggestion})
+		if err != nil {
+			fmt.Fprintf(out, "  FAILED %s/%s: %v\n", e.Namespace, e.Name, err)
+			failed++
+			continue
+		}
+		for _, line := range results {
+			fmt.Fprintf(out, "%s/%s: %s\n", e.Namespace, e.Name, line)
+		}
+		succeeded++
+	}
+
+	fmt.Fprintf(out, "\nBatch complete: %d succeeded, %d failed\n", succeeded, failed)
 	return nil
 }
 

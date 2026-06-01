@@ -341,8 +341,10 @@ func enrichKEDA(ctx context.Context, opts *options, hpa *autoscalingv2.Horizonta
 	triggers := make([]hpaanalysis.KEDATriggerSummary, 0, len(info.Triggers))
 	for _, t := range info.Triggers {
 		triggers = append(triggers, hpaanalysis.KEDATriggerSummary{
-			Type: t.Type,
-			Name: t.Name,
+			Type:    t.Type,
+			Name:    t.Name,
+			Status:  t.Status,
+			Message: t.Message,
 		})
 	}
 
@@ -350,6 +352,14 @@ func enrichKEDA(ctx context.Context, opts *options, hpa *autoscalingv2.Horizonta
 	for _, c := range info.Conditions {
 		if strings.EqualFold(c.Status, "False") {
 			conditionLines = append(conditionLines, fmt.Sprintf("condition %q is False (reason: %s): %s", c.Type, c.Reason, c.Message))
+		}
+	}
+
+	var fallback *hpaanalysis.KEDAFallbackInfo
+	if info.Fallback != nil {
+		fallback = &hpaanalysis.KEDAFallbackInfo{
+			FailureThreshold: info.Fallback.FailureThreshold,
+			Replicas:         info.Fallback.Replicas,
 		}
 	}
 
@@ -361,6 +371,7 @@ func enrichKEDA(ctx context.Context, opts *options, hpa *autoscalingv2.Horizonta
 		MinReplicaCount:  info.MinReplicaCount,
 		MaxReplicaCount:  info.MaxReplicaCount,
 		Lines:            conditionLines,
+		Fallback:         fallback,
 	}
 
 	if len(conditionLines) == 0 && len(info.Conditions) > 0 {

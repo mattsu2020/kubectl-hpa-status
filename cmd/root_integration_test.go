@@ -525,6 +525,99 @@ func TestRunList_LabelSelector(t *testing.T) {
 	}
 }
 
+func TestRunListApplyBatchSummaryAndConfirmation(t *testing.T) {
+	apiHPA := kube.BuildHPA("default", "api",
+		kube.WithReplicas(10, 10),
+		kube.WithMinMax(2, 10),
+		kube.WithScalingLimitedTrue("TooManyReplicas"),
+	)
+	webHPA := kube.BuildHPA("default", "web",
+		kube.WithReplicas(10, 10),
+		kube.WithMinMax(2, 10),
+		kube.WithScalingLimitedTrue("TooManyReplicas"),
+	)
+	fakeClient := kube.NewFakeClient(apiHPA, webHPA)
+
+	var buf bytes.Buffer
+	opts := &options{
+		apply:          true,
+		dryRun:         true,
+		yes:            true,
+		in:             io.Reader(strings.NewReader("")),
+		problem:        true,
+		clientOverride: fakeClient,
+		events:         eventOption{enabled: false},
+	}
+	err := runList(context.Background(), &buf, opts)
+	if err != nil {
+		t.Fatalf("runList returned error: %v", err)
+	}
+	output := buf.String()
+	if !strings.Contains(output, "Batch patch summary") {
+		t.Fatalf("expected batch patch summary header, got:\n%s", output)
+	}
+	if !strings.Contains(output, "Batch complete:") {
+		t.Fatalf("expected batch complete summary, got:\n%s", output)
+	}
+	if !strings.Contains(output, "2 succeeded") {
+		t.Fatalf("expected 2 succeeded, got:\n%s", output)
+	}
+}
+
+func TestRunListApplyBatchSkippedOnNoInput(t *testing.T) {
+	apiHPA := kube.BuildHPA("default", "api",
+		kube.WithReplicas(10, 10),
+		kube.WithMinMax(2, 10),
+		kube.WithScalingLimitedTrue("TooManyReplicas"),
+	)
+	fakeClient := kube.NewFakeClient(apiHPA)
+
+	var buf bytes.Buffer
+	opts := &options{
+		apply:          true,
+		dryRun:         true,
+		yes:            false,
+		in:             io.Reader(strings.NewReader("n\n")),
+		problem:        true,
+		clientOverride: fakeClient,
+		events:         eventOption{enabled: false},
+	}
+	err := runList(context.Background(), &buf, opts)
+	if err != nil {
+		t.Fatalf("runList returned error: %v", err)
+	}
+	output := buf.String()
+	if !strings.Contains(output, "Batch apply skipped") {
+		t.Fatalf("expected batch apply skipped message, got:\n%s", output)
+	}
+}
+
+func TestRunListApplyBatchNoPatchesFound(t *testing.T) {
+	// Healthy HPA with no applicable suggestions
+	hpa := kube.BuildHPA("default", "web",
+		kube.WithReplicas(3, 3),
+		kube.WithResourceMetric("cpu", 80, 70),
+	)
+	fakeClient := kube.NewFakeClient(hpa)
+
+	var buf bytes.Buffer
+	opts := &options{
+		apply:          true,
+		dryRun:         true,
+		yes:            true,
+		in:             io.Reader(strings.NewReader("")),
+		healthScoreMax: 80, // will not match since health is 100
+		clientOverride: fakeClient,
+		events:         eventOption{enabled: false},
+	}
+	// The HPA is healthy (score 100) but we filter for score <= 80, so nothing matches.
+	// The apply flow runs only on filtered items, so no patches.
+	err := runList(context.Background(), &buf, opts)
+	if err != nil {
+		t.Fatalf("runList returned error: %v", err)
+	}
+}
+
 // --------------------------------------------------------------------------
 // Watch command integration tests
 // --------------------------------------------------------------------------

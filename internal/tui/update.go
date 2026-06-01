@@ -89,6 +89,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case key.Matches(msg, m.keys.Escape):
+		if m.viewMode == helpView {
+			m.viewMode = listView
+			return m, nil
+		}
 		if m.viewMode == detailView {
 			m.viewMode = listView
 			return m, nil
@@ -106,6 +110,42 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.Filter):
 		m.filtering = true
 		m.filterInput.Focus()
+		return m, nil
+
+	case key.Matches(msg, m.keys.Help):
+		if m.viewMode == helpView {
+			m.viewMode = listView
+		} else {
+			m.viewMode = helpView
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.Sort):
+		sortCycle := []string{"name", "health-score", "issue", "namespace"}
+		found := false
+		for i, f := range sortCycle {
+			if m.sortField == f {
+				m.sortField = sortCycle[(i+1)%len(sortCycle)]
+				found = true
+				break
+			}
+		}
+		if !found {
+			m.sortField = "health-score"
+		}
+		m.sortDescending = !m.sortDescending
+		m.sortItems()
+		m.cursor = 0
+		return m, nil
+
+	case key.Matches(msg, m.keys.JumpProblem):
+		filtered := m.filteredItems()
+		for i, item := range filtered {
+			if item.Health != "OK" {
+				m.cursor = i
+				break
+			}
+		}
 		return m, nil
 	}
 

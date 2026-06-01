@@ -200,3 +200,195 @@ func TestFetchResult_SetsError(t *testing.T) {
 		t.Fatal("expected error to be set")
 	}
 }
+
+func TestHelpView_Toggle(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.width = 120
+	m.height = 40
+	m.items = []hpaanalysis.ListItem{{Name: "web"}}
+	if m.viewMode != listView {
+		t.Fatal("expected listView initially")
+	}
+
+	// Press ? to open help.
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}})
+	m2 := updated.(Model)
+	if m2.viewMode != helpView {
+		t.Fatal("expected helpView after pressing ?")
+	}
+
+	// Press ? again to close help.
+	updated2, _ := m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}})
+	m3 := updated2.(Model)
+	if m3.viewMode != listView {
+		t.Fatal("expected listView after pressing ? again")
+	}
+}
+
+func TestHelpView_EscapeClose(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.width = 120
+	m.height = 40
+	m.items = []hpaanalysis.ListItem{{Name: "web"}}
+	m.viewMode = helpView
+
+	// Press Esc to close help.
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m2 := updated.(Model)
+	if m2.viewMode != listView {
+		t.Fatal("expected listView after pressing Esc in helpView")
+	}
+}
+
+func TestSort_Cycling(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.items = []hpaanalysis.ListItem{
+		{Name: "web", HealthScore: 80},
+		{Name: "api", HealthScore: 50},
+	}
+
+	// First S press: sortField not in cycle, defaults to health-score.
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'S'}})
+	m2 := updated.(Model)
+	if m2.sortField != "health-score" {
+		t.Fatalf("expected sortField health-score, got %q", m2.sortField)
+	}
+
+	// Second S press: cycles from health-score -> issue.
+	updated2, _ := m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'S'}})
+	m3 := updated2.(Model)
+	if m3.sortField != "issue" {
+		t.Fatalf("expected sortField issue, got %q", m3.sortField)
+	}
+
+	// Third S press: cycles from issue -> namespace.
+	updated3, _ := m3.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'S'}})
+	m4 := updated3.(Model)
+	if m4.sortField != "namespace" {
+		t.Fatalf("expected sortField namespace, got %q", m4.sortField)
+	}
+
+	// Fourth S press: cycles from namespace -> name.
+	updated4, _ := m4.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'S'}})
+	m5 := updated4.(Model)
+	if m5.sortField != "name" {
+		t.Fatalf("expected sortField name, got %q", m5.sortField)
+	}
+
+	// Fifth S press: cycles from name -> health-score (wraps around).
+	updated5, _ := m5.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'S'}})
+	m6 := updated5.(Model)
+	if m6.sortField != "health-score" {
+		t.Fatalf("expected sortField health-score (wrap), got %q", m6.sortField)
+	}
+}
+
+func TestSort_OrdersItems(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.items = []hpaanalysis.ListItem{
+		{Name: "beta", HealthScore: 50},
+		{Name: "alpha", HealthScore: 90},
+		{Name: "gamma", HealthScore: 30},
+	}
+
+	// Sort by name.
+	m.sortField = "name"
+	m.sortDescending = false
+	m.sortItems()
+
+	if m.items[0].Name != "alpha" {
+		t.Fatalf("expected first item alpha, got %q", m.items[0].Name)
+	}
+	if m.items[2].Name != "gamma" {
+		t.Fatalf("expected last item gamma, got %q", m.items[2].Name)
+	}
+
+	// Sort descending by health-score.
+	m.sortField = "health-score"
+	m.sortDescending = true
+	m.sortItems()
+
+	if m.items[0].Name != "alpha" {
+		t.Fatalf("expected first item alpha (score 90 desc), got %q", m.items[0].Name)
+	}
+}
+
+func TestJumpProblem(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.items = []hpaanalysis.ListItem{
+		{Name: "web", Health: "OK"},
+		{Name: "api", Health: "WARN"},
+		{Name: "worker", Health: "ERROR"},
+		{Name: "cache", Health: "OK"},
+	}
+
+	// Press g to jump to first non-OK item.
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	m2 := updated.(Model)
+	if m2.cursor != 1 {
+		t.Fatalf("expected cursor at 1 (first non-OK), got %d", m2.cursor)
+	}
+}
+
+func TestJumpProblem_AllOK(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.items = []hpaanalysis.ListItem{
+		{Name: "web", Health: "OK"},
+		{Name: "api", Health: "OK"},
+	}
+
+	// Press g when all items are OK: cursor should stay at 0.
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	m2 := updated.(Model)
+	if m2.cursor != 0 {
+		t.Fatalf("expected cursor to stay at 0, got %d", m2.cursor)
+	}
+}
+
+func TestFilteredItems_ByHealth(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.items = []hpaanalysis.ListItem{
+		{Name: "web", Health: "OK"},
+		{Name: "api", Health: "ERROR"},
+	}
+	m.filter = "error"
+	filtered := m.filteredItems()
+	if len(filtered) != 1 {
+		t.Fatalf("expected 1 item matching health 'error', got %d", len(filtered))
+	}
+	if filtered[0].Name != "api" {
+		t.Fatalf("expected api, got %s", filtered[0].Name)
+	}
+}
+
+func TestFilteredItems_ByIssue(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.items = []hpaanalysis.ListItem{
+		{Name: "web", Issue: "ScalingLimited"},
+		{Name: "api", Issue: "OK"},
+	}
+	m.filter = "scaling"
+	filtered := m.filteredItems()
+	if len(filtered) != 1 {
+		t.Fatalf("expected 1 item matching issue, got %d", len(filtered))
+	}
+	if filtered[0].Name != "web" {
+		t.Fatalf("expected web, got %s", filtered[0].Name)
+	}
+}
+
+func TestFilteredItems_BySummary(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.items = []hpaanalysis.ListItem{
+		{Name: "web", Summary: "Replicas at max capacity"},
+		{Name: "api", Summary: "Running normally"},
+	}
+	m.filter = "max capacity"
+	filtered := m.filteredItems()
+	if len(filtered) != 1 {
+		t.Fatalf("expected 1 item matching summary, got %d", len(filtered))
+	}
+	if filtered[0].Name != "web" {
+		t.Fatalf("expected web, got %s", filtered[0].Name)
+	}
+}

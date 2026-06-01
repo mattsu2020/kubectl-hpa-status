@@ -3,6 +3,7 @@ package tui
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"time"
 
@@ -21,6 +22,7 @@ type viewMode int
 const (
 	listView viewMode = iota
 	detailView
+	helpView
 )
 
 // Model is the top-level bubbletea model for the TUI dashboard.
@@ -43,6 +45,8 @@ type Model struct {
 	width       int
 	height      int
 	loading     bool
+	sortField      string
+	sortDescending bool
 
 	keys keyMap
 }
@@ -58,15 +62,17 @@ type Options struct {
 
 // keyMap defines the keyboard shortcuts.
 type keyMap struct {
-	Up      key.Binding
-	Down    key.Binding
-	Enter   key.Binding
-	Escape  key.Binding
-	Quit    key.Binding
-	Refresh key.Binding
-	Pause   key.Binding
-	Filter  key.Binding
-	Help    key.Binding
+	Up          key.Binding
+	Down        key.Binding
+	Enter       key.Binding
+	Escape      key.Binding
+	Quit        key.Binding
+	Refresh     key.Binding
+	Pause       key.Binding
+	Filter      key.Binding
+	Help        key.Binding
+	Sort        key.Binding
+	JumpProblem key.Binding
 }
 
 func defaultKeys() keyMap {
@@ -106,6 +112,14 @@ func defaultKeys() keyMap {
 		Help: key.NewBinding(
 			key.WithKeys("?"),
 			key.WithHelp("?", "help"),
+		),
+		Sort: key.NewBinding(
+			key.WithKeys("S"),
+			key.WithHelp("S", "sort cycle"),
+		),
+		JumpProblem: key.NewBinding(
+			key.WithKeys("g"),
+			key.WithHelp("g", "jump to problems"),
 		),
 	}
 }
@@ -153,7 +167,11 @@ func (m *Model) filteredItems() []hpaanalysis.ListItem {
 	}
 	filtered := make([]hpaanalysis.ListItem, 0, len(m.items))
 	for _, item := range m.items {
-		if containsIgnoreCase(item.Name, m.filter) || containsIgnoreCase(item.Namespace, m.filter) {
+		if containsIgnoreCase(item.Name, m.filter) ||
+			containsIgnoreCase(item.Namespace, m.filter) ||
+			containsIgnoreCase(item.Health, m.filter) ||
+			containsIgnoreCase(item.Issue, m.filter) ||
+			containsIgnoreCase(item.Summary, m.filter) {
 			filtered = append(filtered, item)
 		}
 	}
@@ -189,6 +207,40 @@ func findSubstring(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// sortItems sorts the item list by the current sort field.
+func (m *Model) sortItems() {
+	if m.sortField == "" {
+		return
+	}
+	slices.SortStableFunc(m.items, func(a, b hpaanalysis.ListItem) int {
+		var cmp int
+		switch m.sortField {
+		case "name":
+			cmp = strings.Compare(a.Name, b.Name)
+		case "namespace":
+			cmp = strings.Compare(a.Namespace, b.Namespace)
+		case "health-score":
+			cmp = cmpInt(a.HealthScore, b.HealthScore)
+		case "issue":
+			cmp = strings.Compare(a.Issue, b.Issue)
+		}
+		if m.sortDescending {
+			return -cmp
+		}
+		return cmp
+	})
+}
+
+func cmpInt(a, b int) int {
+	if a < b {
+		return -1
+	}
+	if a > b {
+		return 1
+	}
+	return 0
 }
 
 // fetchHPAs fetches all HPA items in the background.

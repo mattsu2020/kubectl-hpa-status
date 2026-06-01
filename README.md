@@ -403,6 +403,30 @@ The plugin reads:
 
 It intentionally does not reimplement the HPA controller's internal decision logic.
 
+### JSONPath and template output examples
+
+```sh
+# List HPA names with health scores
+kubectl hpa status list -A -o jsonpath='{range .items[*]}{.namespace}/{.name} {.healthScore}{"\n"}{end}'
+
+# Show only HPAs with health score below 80
+kubectl hpa status list -A -o jsonpath='{range .items[?(@.healthScore<80)]}{.namespace}/{.name} {.health}{"\n"}{end}'
+
+# Extract KEDA ScaledObject name for KEDA-managed HPAs
+kubectl hpa status status <hpa> -o jsonpath='{.analysis.keda.scaledObjectName}'
+
+# Get VPA conflict warning
+kubectl hpa status status <hpa> --vpa -o jsonpath='{.analysis.vpaConflict.warning}'
+
+# Get structured interpretation entries
+kubectl hpa status status <hpa> -o jsonpath='{range .analysis.structuredInterpretation[*]}{.severity} {.text}{"\n"}{end}'
+
+# Output per-HPA summary as JSON for automation
+kubectl hpa status list -A -o json | jq '.items[] | {name, namespace, healthScore, issue}'
+```
+
+For the full JSON schema, see [docs/output-schema.json](docs/output-schema.json).
+
 ## Validated environment
 
 - kind: v0.31.0
@@ -414,6 +438,33 @@ It intentionally does not reimplement the HPA controller's internal decision log
 
 metrics-server was installed from the upstream release manifest with the
 kind-specific `--kubelet-insecure-tls` option.
+
+## Interactive TUI
+
+Launch a real-time interactive dashboard for monitoring HPAs across the cluster:
+
+```sh
+kubectl hpa status tui          # current namespace
+kubectl hpa status tui -A       # all namespaces
+```
+
+Key bindings:
+
+| Key | Action |
+| --- | --- |
+| `↑` / `k` | Move cursor up |
+| `↓` / `j` | Move cursor down |
+| `Enter` | Open HPA detail view |
+| `Esc` | Go back / Close help |
+| `/` | Filter by name, namespace, health status, or issue text |
+| `S` | Cycle sort: name → health-score → issue → namespace |
+| `g` | Jump to first problematic HPA (health ≠ OK) |
+| `r` | Refresh data now |
+| `p` | Pause / resume auto-refresh |
+| `?` | Toggle key binding help overlay |
+| `q` / `Ctrl+c` | Quit |
+
+The dashboard auto-refreshes every 5 seconds. Filter accepts partial matches across multiple fields. Sort cycles through available columns. Use `g` to quickly jump to the first HPA that needs attention.
 
 ## Troubleshooting patterns
 
@@ -428,6 +479,10 @@ kind-specific `--kubelet-insecure-tls` option.
 | HPA wants to scale up but pods stay Pending | `kubectl hpa status <name> --explain` | Pending/Unschedulable target pods | Check node capacity, Cluster Autoscaler/Karpenter events, quotas, affinity, and taints |
 | VPA and HPA both manage CPU/memory | `kubectl hpa status <name> --vpa --explain` | VPA updateMode, controlled resources, recommendations | Prefer VPA recommender-only mode or avoid overlapping CPU/memory ownership |
 | Many HPAs need triage | `kubectl hpa status scan` | Health score, issue, conditions | Start with `ERROR`, then `ScalingLimited` |
+| `[STALE STATUS]` prefix in summary | `kubectl hpa status <name> --explain` | `observedGeneration < metadata.generation` | Wait for HPA controller reconciliation; check kube-controller-manager health |
+| KEDA external metric stale on managed HPA | `kubectl hpa status <name> --keda --explain` | Missing external metric in `currentMetrics`, KEDA trigger status | Verify `kubectl get scaledobject -n <ns>`, check keda-operator pod logs, verify TriggerAuthentication |
+| minReplicas=0 cold start delay | `kubectl hpa status <name> --explain` | `ScaleToZero` indicator, no immediate scale-up | Expected behavior; first metric evaluation after scale-to-zero introduces a delay equal to the polling interval |
+| Batch fix multiple HPAs | `kubectl hpa status list -A --problem --fix --apply` | Summary table of all patches | Review the batch summary, confirm once to apply all |
 
 ### FAQ
 

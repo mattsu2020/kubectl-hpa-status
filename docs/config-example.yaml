@@ -46,6 +46,7 @@ events: 5
 # dashboard: true
 
 # Kubernetes list API page size for list/scan/tui. Set to 0 to disable pagination.
+# Default: 500. For very large clusters (10,000+ HPAs), consider 1000 to reduce API round-trips.
 # chunkSize: 500
 
 # Named output templates. Use with -o hpa-names, -o jsonpath:summary,
@@ -58,13 +59,18 @@ events: 5
 #     type: jsonpath
 #     template: '{.analysis.summary}'
 
-# Custom health score penalty weights (zero = use default)
-# CLI override example:
+# Custom health score penalty weights.
+# Each weight is a penalty deducted from the starting score of 100 when the
+# corresponding condition is detected. A higher value means a harsher penalty.
+#
+# Override via CLI flag (repeatable):
 #   --health-weight scalingInactive=50 --health-weight scalingLimited=30
+#
+# Available weights and their defaults:
 healthWeights:
-  scalingInactive: 45
-  unableToScale: 35
-  scalingLimited: 25
-  implicitMaxReplicas: 20
-  scaleDownStabilized: 10
-  atMinimumReplicas: 5
+  scalingInactive: 45    # Deducted when ScalingActive != True (metrics unavailable). Default: 45
+  unableToScale: 35      # Deducted when AbleToScale != True (controller issue). Default: 35
+  scalingLimited: 25     # Deducted when ScalingLimited == True (hit min/max bounds). Default: 25
+  implicitMaxReplicas: 20 # Deducted when current == desired == maxReplicas. Default: 20
+  scaleDownStabilized: 10 # Deducted during scale-down stabilization window. Default: 10
+  atMinimumReplicas: 5    # Deducted when desired == minReplicas. Default: 5

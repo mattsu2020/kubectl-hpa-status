@@ -52,6 +52,9 @@ brews:
       Try:
         kubectl-hpa-status list -A --wide
         kubectl-hpa-status status <hpa-name> --suggest
+        kubectl-hpa-status status <hpa-name> --keda --explain
+        kubectl-hpa-status status <hpa-name> --fix --apply
+        kubectl-hpa-status tui
 
 changelog:
   sort: asc

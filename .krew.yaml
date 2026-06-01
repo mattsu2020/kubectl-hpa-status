@@ -21,7 +21,9 @@ spec:
     Try:
       kubectl hpa_status list -A --wide
       kubectl hpa_status status <hpa-name> --suggest
+      kubectl hpa_status status <hpa-name> --keda --explain
       kubectl hpa_status status <hpa-name> --fix --apply
+      kubectl hpa_status tui
   platforms:
     - selector:
         matchLabels:
