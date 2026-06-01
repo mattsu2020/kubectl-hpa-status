@@ -5,11 +5,22 @@ metadata:
 spec:
   version: {{ .TagName }}
   homepage: https://github.com/mattsu2020/kubectl-hpa-status
-  shortDescription: Show detailed HPA status and scaling analysis
+  shortDescription: Show detailed HPA status, scaling analysis, and safe fix suggestions
   description: |
     Displays detailed HorizontalPodAutoscaler status including current and
     target utilization, replica counts, scaling conditions, metric analysis,
-    and interpretation of scaling decisions.
+    and interpretation of scaling decisions. Features include:
+    - Health scoring with configurable weights
+    - KEDA ScaledObject cross-reference (--keda)
+    - VPA conflict detection (--vpa)
+    - Metrics pipeline diagnostics (--diagnose-metrics)
+    - Resource request consistency checks (--check-resources)
+    - Safe dry-run-first patch suggestions (--suggest, --fix, --apply)
+    - Interactive TUI dashboard with filtering, sorting, and multi-select
+    - Stabilization window countdown visualization
+    - Standalone reports (--report markdown/html)
+    - Shell completion for bash, zsh, fish, and PowerShell
+    - Japanese language support (--lang ja)
     This plugin reads existing HPA status, metrics, conditions, and events
     to provide human-readable analysis without reimplementing the HPA
     controller's internal decision logic.
@@ -23,6 +34,9 @@ spec:
       kubectl hpa_status status <hpa-name> --suggest
       kubectl hpa_status status <hpa-name> --keda --explain
       kubectl hpa_status status <hpa-name> --fix --apply
+      kubectl hpa_status status <hpa-name> --diagnose-metrics
+      kubectl hpa_status status <hpa-name> --check-resources
+      kubectl hpa_status status <hpa-name> --report markdown
       kubectl hpa_status tui
   platforms:
     - selector:

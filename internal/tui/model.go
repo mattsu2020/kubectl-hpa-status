@@ -23,6 +23,7 @@ const (
 	listView viewMode = iota
 	detailView
 	helpView
+	metricsView
 )
 
 // Model is the top-level bubbletea model for the TUI dashboard.
@@ -47,6 +48,7 @@ type Model struct {
 	loading     bool
 	sortField      string
 	sortDescending bool
+	selected       map[string]bool
 
 	keys keyMap
 }
@@ -62,17 +64,22 @@ type Options struct {
 
 // keyMap defines the keyboard shortcuts.
 type keyMap struct {
-	Up          key.Binding
-	Down        key.Binding
-	Enter       key.Binding
-	Escape      key.Binding
-	Quit        key.Binding
-	Refresh     key.Binding
-	Pause       key.Binding
-	Filter      key.Binding
-	Help        key.Binding
-	Sort        key.Binding
-	JumpProblem key.Binding
+	Up            key.Binding
+	Down          key.Binding
+	Enter         key.Binding
+	Escape        key.Binding
+	Quit          key.Binding
+	Refresh       key.Binding
+	Pause         key.Binding
+	Filter        key.Binding
+	Help          key.Binding
+	Sort          key.Binding
+	JumpProblem   key.Binding
+	Metrics       key.Binding
+	ToggleSelect  key.Binding
+	SelectAll     key.Binding
+	DeselectAll   key.Binding
+	ApplySelected key.Binding
 }
 
 func defaultKeys() keyMap {
@@ -121,6 +128,26 @@ func defaultKeys() keyMap {
 			key.WithKeys("g"),
 			key.WithHelp("g", "jump to problems"),
 		),
+		Metrics: key.NewBinding(
+			key.WithKeys("m"),
+			key.WithHelp("m", "metrics detail"),
+		),
+		ToggleSelect: key.NewBinding(
+			key.WithKeys(" "),
+			key.WithHelp("space", "toggle select"),
+		),
+		SelectAll: key.NewBinding(
+			key.WithKeys("a"),
+			key.WithHelp("a", "select all"),
+		),
+		DeselectAll: key.NewBinding(
+			key.WithKeys("A"),
+			key.WithHelp("A", "deselect all"),
+		),
+		ApplySelected: key.NewBinding(
+			key.WithKeys("s"),
+			key.WithHelp("s", "apply to selected"),
+		),
 	}
 }
 
@@ -152,6 +179,7 @@ func NewModel(client kubernetes.Interface, namespace string, opts Options) Model
 		keys:        defaultKeys(),
 		filterInput: ti,
 		loading:     true,
+		selected:    map[string]bool{},
 	}
 }
 

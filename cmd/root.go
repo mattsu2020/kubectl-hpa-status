@@ -53,12 +53,15 @@ type options struct {
 	healthWeightOverrides []string
 	outputTemplates       map[string]outputTemplateConfig
 	healthWeights         hpaanalysis.HealthWeights
+	diagnoseMetrics       bool
 	problem               bool
 	recommend             bool
 	watch                 bool
 	watchInterval         time.Duration
 	watchTimeout          time.Duration
 	untilCondition        string
+	report                string
+	checkResources        bool
 	clientOverride        kubernetes.Interface
 	in                    io.Reader
 }
@@ -167,10 +170,13 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().BoolVarP(&opts.watch, "watch", "w", false, "watch HPA status periodically")
 	root.PersistentFlags().BoolVar(&opts.dashboard, "dashboard", false, "render watch output as a compact terminal dashboard")
 	root.PersistentFlags().BoolVar(&opts.keda, "keda", false, "enable KEDA ScaledObject integration and cross-reference diagnostics")
+	root.PersistentFlags().BoolVar(&opts.diagnoseMetrics, "diagnose-metrics", false, "run comprehensive metrics pipeline health checks")
 	root.PersistentFlags().BoolVar(&opts.vpa, "vpa", false, "detect VerticalPodAutoscaler conflicts with HPA target")
+	root.PersistentFlags().BoolVar(&opts.checkResources, "check-resources", false, "check HPA target utilization against pod resource requests")
 	root.PersistentFlags().DurationVar(&opts.watchInterval, "interval", opts.watchInterval, "watch refresh interval")
 	root.PersistentFlags().DurationVar(&opts.watchTimeout, "timeout", 0, "stop watching after this duration")
 	root.PersistentFlags().StringVar(&opts.untilCondition, "until-condition", "", "stop watching once an HPA condition type is present, for example scaling-limited")
+	root.PersistentFlags().StringVar(&opts.report, "report", "", "generate standalone report: markdown or html")
 	root.PersistentFlags().Lookup("events").NoOptDefVal = "true"
 
 	root.AddCommand(newStatusCommand(opts))
@@ -184,6 +190,8 @@ func NewRootCommand() *cobra.Command {
 
 	_ = root.MarkPersistentFlagFilename("kubeconfig")
 	_ = root.MarkPersistentFlagFilename("config", "yaml", "yml", "json")
+
+	registerFlagCompletions(root, opts)
 
 	return root
 }

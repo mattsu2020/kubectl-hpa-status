@@ -84,6 +84,10 @@ func writeOutput(out io.Writer, format string, templateStr string, value any, wr
 		return writeTemplate(out, templateStr, value)
 	case "prometheus":
 		return writePrometheus(out, value)
+	case "markdown", "md":
+		return writeMarkdown(out, value)
+	case "html":
+		return writeHTML(out, value)
 	default:
 		if expression, ok := strings.CutPrefix(format, "jsonpath="); ok {
 			return writeJSONPath(out, expression, value)
@@ -108,6 +112,14 @@ func writeOutput(out io.Writer, format string, templateStr string, value any, wr
 }
 
 func outputSelection(opts *options) (string, string) {
+	if opts.report != "" {
+		switch opts.report {
+		case "markdown", "md":
+			return "markdown", ""
+		case "html":
+			return "html", ""
+		}
+	}
 	format := opts.output
 	templateStr := opts.template
 	if len(opts.outputTemplates) == 0 || format == "" {
@@ -224,6 +236,52 @@ func escapePrometheusLabelValue(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	s = strings.ReplaceAll(s, `"`, `\"`)
 	return s
+}
+
+func writeMarkdown(out io.Writer, value any) error {
+	switch report := value.(type) {
+	case hpaanalysis.StatusReport:
+		return hpaanalysis.WriteMarkdownReport(out, report)
+	case []hpaanalysis.StatusReport:
+		for i, r := range report {
+			if i > 0 {
+				if _, err := fmt.Fprintln(out); err != nil {
+					return err
+				}
+			}
+			if err := hpaanalysis.WriteMarkdownReport(out, r); err != nil {
+				return err
+			}
+		}
+		return nil
+	case hpaanalysis.ListReport:
+		return hpaanalysis.WriteMarkdownListReport(out, report)
+	default:
+		return fmt.Errorf("markdown output requires a StatusReport or ListReport, got %T", value)
+	}
+}
+
+func writeHTML(out io.Writer, value any) error {
+	switch report := value.(type) {
+	case hpaanalysis.StatusReport:
+		return hpaanalysis.WriteHTMLReport(out, report)
+	case []hpaanalysis.StatusReport:
+		for i, r := range report {
+			if i > 0 {
+				if _, err := fmt.Fprintln(out); err != nil {
+					return err
+				}
+			}
+			if err := hpaanalysis.WriteHTMLReport(out, r); err != nil {
+				return err
+			}
+		}
+		return nil
+	case hpaanalysis.ListReport:
+		return hpaanalysis.WriteHTMLListReport(out, report)
+	default:
+		return fmt.Errorf("html output requires a StatusReport or ListReport, got %T", value)
+	}
 }
 
 func writeError(out io.Writer, format string, err error) {
