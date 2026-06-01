@@ -18,14 +18,6 @@ linters:
         - all
         - -QF1012 # WriteString(Sprintf) is acceptable for readability
 
-    exclusions:
-      rules:
-        # Deprecated fake.NewSimpleClientset has no direct replacement without applyconfig
-        - path: internal/kube/testhelpers.go
-          linters:
-            - staticcheck
-          text: "SA1019"
-
 formatters:
   enable:
     - gofmt

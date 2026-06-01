@@ -15,7 +15,7 @@ func NewFakeClient(hpas ...*autoscalingv2.HorizontalPodAutoscaler) *fake.Clients
 	for _, hpa := range hpas {
 		objects = append(objects, hpa)
 	}
-	return fake.NewSimpleClientset(objects...)
+	return fake.NewSimpleClientset(objects...) //nolint:staticcheck // SA1019 deprecated, no replacement without applyconfig
 }
 
 // NewFakeClientWithEvents creates a fake Kubernetes clientset pre-loaded with
@@ -28,7 +28,7 @@ func NewFakeClientWithEvents(hpas []*autoscalingv2.HorizontalPodAutoscaler, even
 	for _, event := range events {
 		objects = append(objects, event)
 	}
-	return fake.NewSimpleClientset(objects...)
+	return fake.NewSimpleClientset(objects...) //nolint:staticcheck // SA1019 deprecated, no replacement without applyconfig
 }
 
 // BuildHPA creates a HorizontalPodAutoscaler with sensible defaults for testing.
