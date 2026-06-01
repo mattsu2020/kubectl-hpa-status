@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"testing"
 
-	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/charmbracelet/bubbletea"
+	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
 
 func TestNewModel_InitialState(t *testing.T) {

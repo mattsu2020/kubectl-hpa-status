@@ -33,7 +33,7 @@ func runWatch(ctx context.Context, out io.Writer, opts *options, name string, in
 
 	interval := opts.watchInterval
 	if interval < time.Second {
-		fmt.Fprintf(out, "Warning: interval %s is below 1s; clamping to 1s to reduce API server load.\n", interval)
+		_, _ = fmt.Fprintf(out, "Warning: interval %s is below 1s; clamping to 1s to reduce API server load.\n", interval)
 		interval = time.Second
 	}
 
@@ -97,7 +97,7 @@ func runWatchList(ctx context.Context, out io.Writer, opts *options) error {
 
 	interval := opts.watchInterval
 	if interval < time.Second {
-		fmt.Fprintf(out, "Warning: interval %s is below 1s; clamping to 1s to reduce API server load.\n", interval)
+		_, _ = fmt.Fprintf(out, "Warning: interval %s is below 1s; clamping to 1s to reduce API server load.\n", interval)
 		interval = time.Second
 	}
 

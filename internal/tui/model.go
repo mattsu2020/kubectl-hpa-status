@@ -28,20 +28,20 @@ type Model struct {
 	namespace string
 	opts      Options
 
-	items      []hpaanalysis.ListItem
-	reports    map[string]*hpaanalysis.StatusReport
-	cursor     int
-	viewMode   viewMode
-	paused     bool
-	filter     string
+	items       []hpaanalysis.ListItem
+	reports     map[string]*hpaanalysis.StatusReport
+	cursor      int
+	viewMode    viewMode
+	paused      bool
+	filter      string
 	filterInput textinput.Model
-	filtering  bool
-	interval   time.Duration
+	filtering   bool
+	interval    time.Duration
 	lastRefresh time.Time
-	err        error
-	width      int
-	height     int
-	loading    bool
+	err         error
+	width       int
+	height      int
+	loading     bool
 
 	keys keyMap
 }
@@ -56,15 +56,15 @@ type Options struct {
 
 // keyMap defines the keyboard shortcuts.
 type keyMap struct {
-	Up       key.Binding
-	Down     key.Binding
-	Enter    key.Binding
-	Escape   key.Binding
-	Quit     key.Binding
-	Refresh  key.Binding
-	Pause    key.Binding
-	Filter   key.Binding
-	Help     key.Binding
+	Up      key.Binding
+	Down    key.Binding
+	Enter   key.Binding
+	Escape  key.Binding
+	Quit    key.Binding
+	Refresh key.Binding
+	Pause   key.Binding
+	Filter  key.Binding
+	Help    key.Binding
 }
 
 func defaultKeys() keyMap {
@@ -226,12 +226,12 @@ func tickCmd(interval time.Duration) tea.Cmd {
 
 // Styles for the TUI.
 var (
-	headerStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
-	cursorStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
-	dimStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	okStyle     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("2"))
-	errorStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("1"))
-	warnStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("3"))
+	headerStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
+	cursorStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
+	dimStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	okStyle        = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("2"))
+	errorStyle     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("1"))
+	warnStyle      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("3"))
 	statusBarStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 )
 
