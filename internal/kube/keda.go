@@ -142,7 +142,7 @@ func NewDynamicClient(opts Options) (dynamic.Interface, string, error) {
 
 // FindScaledObjectForHPA attempts to locate the ScaledObject that owns the given HPA.
 // It tries the label-based name first, then falls back to listing ScaledObjects in the namespace.
-func FindScaledObjectForHPA(ctx context.Context, dynClient dynamic.Interface, typedClient kubernetes.Interface, hpa *autoscalingv2.HorizontalPodAutoscaler) (*unstructured.Unstructured, error) {
+func FindScaledObjectForHPA(ctx context.Context, dynClient dynamic.Interface, _ kubernetes.Interface, hpa *autoscalingv2.HorizontalPodAutoscaler) (*unstructured.Unstructured, error) {
 	if _, name := DetectKEDA(hpa); name != "" {
 		return FetchScaledObject(ctx, dynClient, hpa.Namespace, name)
 	}

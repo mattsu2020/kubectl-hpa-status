@@ -231,9 +231,7 @@ var (
 	okStyle     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("2"))
 	errorStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("1"))
 	warnStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("3"))
-	barStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("4"))
 	statusBarStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	helpStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 )
 
 func healthStyle(health string) lipgloss.Style {

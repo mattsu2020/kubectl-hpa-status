@@ -238,9 +238,9 @@ func writePrometheus(w io.Writer, value any) error {
 
 func writePrometheusMetrics(w io.Writer, namespace, name string, healthScore int, current, desired, min, max int32) error {
 	type metric struct {
-		name   string
-		help   string
-		value  any
+		name  string
+		help  string
+		value any
 	}
 	metrics := []metric{
 		{name: "hpa_health_score", help: "Health score of an HPA (0-100)", value: healthScore},

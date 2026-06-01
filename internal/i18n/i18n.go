@@ -1,3 +1,6 @@
+// Package i18n provides internationalization support using embedded locale files.
+// Package i18n provides internationalization support for kubectl-hpa-status
+// using embedded locale files.
 package i18n
 
 import (

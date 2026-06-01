@@ -1,3 +1,5 @@
+// Package hpa provides HPA analysis, health scoring, metric formatting,
+// and diagnostic interpretation for HorizontalPodAutoscaler resources.
 package hpa
 
 import (
@@ -24,11 +26,13 @@ const (
 	healthPenaltyAtMinimumReplicas   = 5
 )
 
+// AnalysisOptions configures the analysis behavior.
 type AnalysisOptions struct {
 	HealthWeights HealthWeights `json:"healthWeights,omitempty" yaml:"healthWeights,omitempty"`
 	Debug         bool          `json:"debug,omitempty" yaml:"debug,omitempty"`
 }
 
+// HealthWeights holds configurable penalty values for health score computation.
 type HealthWeights struct {
 	ScalingInactive     int `json:"scalingInactive,omitempty" yaml:"scalingInactive,omitempty"`
 	UnableToScale       int `json:"unableToScale,omitempty" yaml:"unableToScale,omitempty"`
@@ -38,6 +42,7 @@ type HealthWeights struct {
 	AtMinimumReplicas   int `json:"atMinimumReplicas,omitempty" yaml:"atMinimumReplicas,omitempty"`
 }
 
+// Analysis holds the complete analysis result for a single HPA.
 type Analysis struct {
 	Namespace             string             `json:"namespace" yaml:"namespace"`
 	Name                  string             `json:"name" yaml:"name"`
@@ -78,6 +83,7 @@ type StructuredMessage struct {
 	Severity string `json:"severity,omitempty" yaml:"severity,omitempty"` // "warning", "error", "info"
 }
 
+// Condition represents an HPA condition with type, status, reason, and message.
 type Condition struct {
 	Type    string `json:"type" yaml:"type"`
 	Status  string `json:"status" yaml:"status"`
@@ -85,6 +91,7 @@ type Condition struct {
 	Message string `json:"message,omitempty" yaml:"message,omitempty"`
 }
 
+// Metric holds formatted metric data including current, target, ratio, and display text.
 type Metric struct {
 	Type    string   `json:"type" yaml:"type"`
 	Name    string   `json:"name,omitempty" yaml:"name,omitempty"`
@@ -95,6 +102,7 @@ type Metric struct {
 	Text    string   `json:"text" yaml:"text"`
 }
 
+// MetricImpactGuess estimates which resource metric has the most impact on scaling.
 type MetricImpactGuess struct {
 	Name       string  `json:"name" yaml:"name"`
 	Ratio      float64 `json:"ratio" yaml:"ratio"`
@@ -116,6 +124,7 @@ type ScaleToZeroInfo struct {
 	Note      string `json:"note,omitempty" yaml:"note,omitempty"`
 }
 
+// BehaviorRule describes a scale-up or scale-down behavior policy.
 type BehaviorRule struct {
 	Direction                  string   `json:"direction" yaml:"direction"`
 	StabilizationWindowSeconds *int32   `json:"stabilizationWindowSeconds,omitempty" yaml:"stabilizationWindowSeconds,omitempty"`
@@ -124,6 +133,7 @@ type BehaviorRule struct {
 	Text                       string   `json:"text" yaml:"text"`
 }
 
+// Suggestion holds a recommended HPA patch with safety metadata.
 type Suggestion struct {
 	Title         string   `json:"title" yaml:"title"`
 	Description   string   `json:"description" yaml:"description"`
@@ -161,10 +171,12 @@ type TargetReplicaInfo struct {
 	NotReady      int32 `json:"notReady" yaml:"notReady"`
 }
 
+// Analyze produces an Analysis for the given HPA using default options.
 func Analyze(src *autoscalingv2.HorizontalPodAutoscaler, includeInterpretation bool) Analysis {
 	return AnalyzeWithOptions(src, includeInterpretation, AnalysisOptions{})
 }
 
+// AnalyzeWithOptions produces an Analysis with custom health weights and debug settings.
 func AnalyzeWithOptions(src *autoscalingv2.HorizontalPodAutoscaler, includeInterpretation bool, opts AnalysisOptions) Analysis {
 	if src == nil {
 		return Analysis{
@@ -263,10 +275,12 @@ func AnalyzeWithOptions(src *autoscalingv2.HorizontalPodAutoscaler, includeInter
 	return analysis
 }
 
+// Health computes the health state and score using default penalty weights.
 func Health(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) (string, int) {
 	return HealthWithWeights(hpa, minReplicas, HealthWeights{})
 }
 
+// HealthWithWeights computes the health state and score using configurable penalty weights.
 func HealthWithWeights(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32, weights HealthWeights) (string, int) {
 	if hpa == nil {
 		return "ERROR", 0
@@ -332,6 +346,7 @@ func defaultHealthWeights(weights HealthWeights) HealthWeights {
 	return weights
 }
 
+// SummarizeDirection returns a one-line summary of the HPA scaling direction.
 func SummarizeDirection(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) string {
 	if condition := FindCondition(hpa, "ScalingActive"); condition != nil && condition.Status != corev1.ConditionTrue {
 		return "HPA cannot currently compute a scaling recommendation from metrics."
@@ -365,6 +380,7 @@ func SummarizeDirection(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas 
 	}
 }
 
+// Interpret generates detailed interpretation lines with confidence labels.
 func Interpret(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []string {
 	var lines []string
 
@@ -456,6 +472,7 @@ func Interpret(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []
 	return lines
 }
 
+// ExternalMetricDiagnostics generates diagnostic lines for external metric issues.
 func ExternalMetricDiagnostics(hpa *autoscalingv2.HorizontalPodAutoscaler) []string {
 	var lines []string
 	for _, spec := range hpa.Spec.Metrics {
@@ -476,6 +493,7 @@ func ExternalMetricDiagnostics(hpa *autoscalingv2.HorizontalPodAutoscaler) []str
 	return lines
 }
 
+// ObjectMetricDiagnostics generates diagnostic lines for object metric issues.
 func ObjectMetricDiagnostics(hpa *autoscalingv2.HorizontalPodAutoscaler) []string {
 	var lines []string
 	for _, spec := range hpa.Spec.Metrics {
@@ -495,6 +513,7 @@ func ObjectMetricDiagnostics(hpa *autoscalingv2.HorizontalPodAutoscaler) []strin
 	return lines
 }
 
+// KEDADiagnostics generates diagnostic lines when the HPA appears KEDA-managed.
 func KEDADiagnostics(hpa *autoscalingv2.HorizontalPodAutoscaler) []string {
 	if !looksLikeKEDAManaged(hpa) {
 		return nil
@@ -527,6 +546,7 @@ func looksLikeKEDAManaged(hpa *autoscalingv2.HorizontalPodAutoscaler) bool {
 	return strings.HasPrefix(hpa.Name, "keda-hpa-")
 }
 
+// FindCondition returns the HPA condition matching the given type, or nil.
 func FindCondition(hpa *autoscalingv2.HorizontalPodAutoscaler, conditionType string) *autoscalingv2.HorizontalPodAutoscalerCondition {
 	for i := range hpa.Status.Conditions {
 		if string(hpa.Status.Conditions[i].Type) == conditionType {
@@ -553,6 +573,7 @@ func calculateRatioAndNote(currentVal autoscalingv2.MetricValueStatus, targetVal
 	return ratio, note
 }
 
+// FormatMetricStatus formats a metric status entry into a Metric struct.
 func FormatMetricStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, metric autoscalingv2.MetricStatus) Metric {
 	switch metric.Type {
 	case "":
@@ -686,6 +707,7 @@ func FormatMetricStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, metric autos
 	}
 }
 
+// FindResourceTargetSpec returns the target specification for a resource metric.
 func FindResourceTargetSpec(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) autoscalingv2.MetricTarget {
 	for _, spec := range hpa.Spec.Metrics {
 		if spec.Type == autoscalingv2.ResourceMetricSourceType &&
@@ -697,10 +719,12 @@ func FindResourceTargetSpec(hpa *autoscalingv2.HorizontalPodAutoscaler, name str
 	return autoscalingv2.MetricTarget{}
 }
 
+// FindResourceTarget returns the formatted target string for a resource metric.
 func FindResourceTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) string {
 	return FormatMetricTarget(FindResourceTargetSpec(hpa, name))
 }
 
+// FindContainerResourceTargetSpec returns the target spec for a container resource metric.
 func FindContainerResourceTargetSpec(hpa *autoscalingv2.HorizontalPodAutoscaler, name, container string) autoscalingv2.MetricTarget {
 	for _, spec := range hpa.Spec.Metrics {
 		if spec.Type == autoscalingv2.ContainerResourceMetricSourceType &&
@@ -713,10 +737,12 @@ func FindContainerResourceTargetSpec(hpa *autoscalingv2.HorizontalPodAutoscaler,
 	return autoscalingv2.MetricTarget{}
 }
 
+// FindContainerResourceTarget returns the formatted target for a container resource metric.
 func FindContainerResourceTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, name, container string) string {
 	return FormatMetricTarget(FindContainerResourceTargetSpec(hpa, name, container))
 }
 
+// FindPodsTargetSpec returns the target specification for a pods metric.
 func FindPodsTargetSpec(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) autoscalingv2.MetricTarget {
 	for _, spec := range hpa.Spec.Metrics {
 		if spec.Type == autoscalingv2.PodsMetricSourceType &&
@@ -728,10 +754,12 @@ func FindPodsTargetSpec(hpa *autoscalingv2.HorizontalPodAutoscaler, name string)
 	return autoscalingv2.MetricTarget{}
 }
 
+// FindPodsTarget returns the formatted target string for a pods metric.
 func FindPodsTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) string {
 	return FormatMetricTarget(FindPodsTargetSpec(hpa, name))
 }
 
+// FindObjectTargetSpec returns the target specification for an object metric.
 func FindObjectTargetSpec(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) autoscalingv2.MetricTarget {
 	for _, spec := range hpa.Spec.Metrics {
 		if spec.Type == autoscalingv2.ObjectMetricSourceType &&
@@ -743,10 +771,12 @@ func FindObjectTargetSpec(hpa *autoscalingv2.HorizontalPodAutoscaler, name strin
 	return autoscalingv2.MetricTarget{}
 }
 
+// FindObjectTarget returns the formatted target string for an object metric.
 func FindObjectTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) string {
 	return FormatMetricTarget(FindObjectTargetSpec(hpa, name))
 }
 
+// FindExternalTargetSpec returns the target specification for an external metric.
 func FindExternalTargetSpec(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) autoscalingv2.MetricTarget {
 	for _, spec := range hpa.Spec.Metrics {
 		if spec.Type == autoscalingv2.ExternalMetricSourceType &&
@@ -758,6 +788,7 @@ func FindExternalTargetSpec(hpa *autoscalingv2.HorizontalPodAutoscaler, name str
 	return autoscalingv2.MetricTarget{}
 }
 
+// FindExternalTarget returns the formatted target string for an external metric.
 func FindExternalTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) string {
 	return FormatMetricTarget(FindExternalTargetSpec(hpa, name))
 }
@@ -789,6 +820,7 @@ func currentObjectMetric(hpa *autoscalingv2.HorizontalPodAutoscaler, name string
 	return autoscalingv2.MetricStatus{}, false
 }
 
+// FormatMetricTarget returns a human-readable string for a metric target.
 func FormatMetricTarget(target autoscalingv2.MetricTarget) string {
 	switch target.Type {
 	case autoscalingv2.UtilizationMetricType:
@@ -807,6 +839,7 @@ func FormatMetricTarget(target autoscalingv2.MetricTarget) string {
 	return "<unknown>"
 }
 
+// FormatMetricValue returns a formatted string for utilization or average value.
 func FormatMetricValue(utilization *int32, averageValue *resource.Quantity) string {
 	if utilization != nil {
 		return fmt.Sprintf("%d%%", *utilization)
@@ -817,6 +850,7 @@ func FormatMetricValue(utilization *int32, averageValue *resource.Quantity) stri
 	return "<unknown>"
 }
 
+// FormatMetricValueStatus returns a formatted string for a metric value status.
 func FormatMetricValueStatus(value autoscalingv2.MetricValueStatus) string {
 	if value.AverageUtilization != nil {
 		return fmt.Sprintf("%d%%", *value.AverageUtilization)
@@ -830,6 +864,7 @@ func FormatMetricValueStatus(value autoscalingv2.MetricValueStatus) string {
 	return "<unknown>"
 }
 
+// FormatBehavior extracts and formats HPA behavior rules.
 func FormatBehavior(hpa *autoscalingv2.HorizontalPodAutoscaler) []BehaviorRule {
 	if hpa.Spec.Behavior == nil {
 		return nil
@@ -845,6 +880,7 @@ func FormatBehavior(hpa *autoscalingv2.HorizontalPodAutoscaler) []BehaviorRule {
 	return out
 }
 
+// FormatBehaviorRule formats a single behavior rule (scaleUp or scaleDown).
 func FormatBehaviorRule(direction string, rules *autoscalingv2.HPAScalingRules) *BehaviorRule {
 	if rules == nil {
 		return nil
@@ -881,6 +917,7 @@ func FormatBehaviorRule(direction string, rules *autoscalingv2.HPAScalingRules) 
 	return &rule
 }
 
+// RecommendedActions generates actionable recommendation strings.
 func RecommendedActions(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []string {
 	var actions []string
 	if hpa.Status.ObservedGeneration != nil && *hpa.Status.ObservedGeneration < hpa.Generation {
@@ -1117,6 +1154,7 @@ func buildStructuredActions(hpa *autoscalingv2.HorizontalPodAutoscaler, minRepli
 	return msgs
 }
 
+// DebugLines generates verbose debug information lines.
 func DebugLines(hpa *autoscalingv2.HorizontalPodAutoscaler, analysis Analysis) []string {
 	var lines []string
 	lines = append(lines, fmt.Sprintf("replicas: current=%d desired=%d min=%d max=%d diff=%+d", analysis.Current, analysis.Desired, analysis.Min, analysis.Max, analysis.Desired-analysis.Current))
@@ -1167,6 +1205,7 @@ func estimateStabilizationRemaining(hpa *autoscalingv2.HorizontalPodAutoscaler) 
 	return &remaining
 }
 
+// CompareMetricToTarget returns a comparison description for utilization vs target.
 func CompareMetricToTarget(utilization *int32, target string) string {
 	if utilization == nil || !strings.HasSuffix(target, "%") {
 		return ""
@@ -1187,6 +1226,7 @@ func CompareMetricToTarget(utilization *int32, target string) string {
 	}
 }
 
+// MetricOutsideTarget finds a resource metric whose ratio differs from 1.0.
 func MetricOutsideTarget(hpa *autoscalingv2.HorizontalPodAutoscaler) (MetricImpactGuess, bool) {
 	for _, metric := range hpa.Status.CurrentMetrics {
 		if metric.Type != autoscalingv2.ResourceMetricSourceType || metric.Resource == nil {
@@ -1201,6 +1241,7 @@ func MetricOutsideTarget(hpa *autoscalingv2.HorizontalPodAutoscaler) (MetricImpa
 	return MetricImpactGuess{}, false
 }
 
+// MostInfluentialMetric estimates which resource metric has the largest scaling impact.
 func MostInfluentialMetric(hpa *autoscalingv2.HorizontalPodAutoscaler) (MetricImpactGuess, bool) {
 	var best MetricImpactGuess
 	var bestScore float64
@@ -1292,6 +1333,7 @@ func quantityRatio(current, target *resource.Quantity) *float64 {
 	return &ratio
 }
 
+// CompareQuantityToTarget returns a comparison description for quantity values.
 func CompareQuantityToTarget(current, target *resource.Quantity) string {
 	if current == nil || target == nil {
 		return ""

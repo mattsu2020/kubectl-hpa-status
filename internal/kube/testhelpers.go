@@ -3,8 +3,8 @@ package kube
 import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 )
@@ -78,9 +78,9 @@ func WithReplicas(current, desired int32) HPAOption {
 }
 
 // WithMinMax sets min and max replicas.
-func WithMinMax(min, max int32) HPAOption {
+func WithMinMax(minReplicas, max int32) HPAOption {
 	return func(hpa *autoscalingv2.HorizontalPodAutoscaler) {
-		hpa.Spec.MinReplicas = &min
+		hpa.Spec.MinReplicas = &minReplicas
 		hpa.Spec.MaxReplicas = max
 	}
 }
@@ -211,7 +211,7 @@ func WithScaleDownStabilized() HPAOption {
 	}
 }
 
-// WithBehavior sets scaleDown stabilization window.
+// WithScaleDownStabilizationWindow sets the scaleDown stabilization window.
 func WithScaleDownStabilizationWindow(seconds int32) HPAOption {
 	return func(hpa *autoscalingv2.HorizontalPodAutoscaler) {
 		if hpa.Spec.Behavior == nil {

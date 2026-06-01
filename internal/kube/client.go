@@ -1,14 +1,16 @@
+// Package kube provides Kubernetes client construction and resource helpers.
 package kube
 
 import (
 	"path/filepath"
 
 	"k8s.io/client-go/kubernetes"
-	_ "k8s.io/client-go/plugin/pkg/client/auth"
+	_ "k8s.io/client-go/plugin/pkg/client/auth" // for cloud provider auth
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 )
 
+// Options holds kubeconfig and cluster connection settings.
 type Options struct {
 	Namespace  string
 	Context    string
@@ -16,6 +18,7 @@ type Options struct {
 	Cluster    string
 }
 
+// Client wraps a Kubernetes typed client with namespace information.
 type Client struct {
 	Interface kubernetes.Interface
 	Namespace string
@@ -35,6 +38,7 @@ func WithNamespace(ns string) ClientOption {
 	return func(c *Client) { c.Namespace = ns }
 }
 
+// NewClient creates a Client from the given Options.
 func NewClient(opts Options, extra ...ClientOption) (*Client, error) {
 	c := &Client{}
 	for _, opt := range extra {

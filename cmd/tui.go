@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/tui"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/tui"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
