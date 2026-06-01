@@ -1,3 +1,4 @@
+// Package cmd implements the CLI commands for kubectl-hpa-status.
 package cmd
 
 import (

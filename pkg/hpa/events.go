@@ -16,6 +16,7 @@ type Event struct {
 	Message string `json:"message" yaml:"message"`
 }
 
+// RecentEvents fetches recent Kubernetes events for the specified HPA.
 func RecentEvents(ctx context.Context, client kubernetes.Interface, namespace, name string, limit int64) ([]Event, error) {
 	selector := fields.AndSelectors(
 		fields.OneTermEqualSelector("involvedObject.kind", "HorizontalPodAutoscaler"),
@@ -52,6 +53,7 @@ func RecentEvents(ctx context.Context, client kubernetes.Interface, namespace, n
 	return out, nil
 }
 
+// EventFromCore converts a corev1.Event to a simplified Event struct.
 func EventFromCore(event corev1.Event) Event {
 	return Event{
 		Reason:  event.Reason,

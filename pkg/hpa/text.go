@@ -10,11 +10,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// StatusReport holds the analysis result and events for a single HPA.
 type StatusReport struct {
 	Analysis Analysis `json:"analysis" yaml:"analysis"`
 	Events   []Event  `json:"events,omitempty" yaml:"events,omitempty"`
 }
 
+// StatusTextOptions configures text output rendering with theme, language, and fix mode.
 type StatusTextOptions struct {
 	Theme style.Theme
 	Lang  string
@@ -27,10 +29,12 @@ type WatchState struct {
 	Current  *Analysis
 }
 
+// WriteStatusText writes a plain text status report using the given theme.
 func WriteStatusText(w io.Writer, report StatusReport, theme style.Theme) error {
 	return WriteStatusTextWithOptions(w, report, StatusTextOptions{Theme: theme})
 }
 
+// WriteStatusDashboard writes a compact dashboard format status report.
 func WriteStatusDashboard(w io.Writer, report StatusReport, theme style.Theme) error {
 	a := report.Analysis
 	diff := a.Desired - a.Current
@@ -79,6 +83,7 @@ func WriteStatusDashboard(w io.Writer, report StatusReport, theme style.Theme) e
 	return err
 }
 
+// WriteStatusTextWithOptions writes a status report with full rendering options.
 func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTextOptions) error {
 	a := report.Analysis
 	theme := opts.Theme
@@ -411,6 +416,7 @@ func formatMetricText(m Metric, coloredNote string) string {
 	return strings.Replace(m.Text, m.Note, coloredNote, 1)
 }
 
+// ListItem is a compact row representation for list output.
 type ListItem struct {
 	Namespace         string      `json:"namespace" yaml:"namespace"`
 	Name              string      `json:"name" yaml:"name"`
@@ -429,10 +435,12 @@ type ListItem struct {
 	CreationTimestamp metav1.Time `json:"creationTimestamp,omitempty" yaml:"creationTimestamp,omitempty"`
 }
 
+// ListReport holds the list of HPA items for table output.
 type ListReport struct {
 	Items []ListItem `json:"items" yaml:"items"`
 }
 
+// ListTextOptions configures list output with wide, color, language, and theme.
 type ListTextOptions struct {
 	Wide  bool
 	Color bool
@@ -448,6 +456,7 @@ func (o ListTextOptions) theme() style.Theme {
 	return style.NewTheme(true)
 }
 
+// NewListItem converts an Analysis into a compact ListItem for list output.
 func NewListItem(src Analysis) ListItem {
 	var errors []string
 	var limiteds []string
@@ -532,6 +541,7 @@ func padRight(s string, width int) string {
 	return s + strings.Repeat(" ", width-w)
 }
 
+// WriteListText writes a table-formatted list of HPA items.
 func WriteListText(w io.Writer, report ListReport, opts ListTextOptions) error {
 	t := opts.theme()
 	var out []byte

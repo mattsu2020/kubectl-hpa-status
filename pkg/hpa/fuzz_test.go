@@ -26,13 +26,13 @@ func FuzzAnalyze(f *testing.F) {
 		},
 	}
 	f.Add(0, 0, 0, 0, 0, 0, true, true)
-	f.Fuzz(func(t *testing.T, current, desired, min, max, metricCurrent, metricTarget int, hasMetrics, hasConditions bool) {
+	f.Fuzz(func(_ *testing.T, current, desired, minVal, maxVal, metricCurrent, metricTarget int, hasMetrics, hasConditions bool) {
 		// Clamp values to reasonable ranges
-		if min < 0 {
-			min = 0
+		if minVal < 0 {
+			minVal = 0
 		}
-		if max < min {
-			max = min
+		if maxVal < minVal {
+			maxVal = minVal
 		}
 		if current < 0 {
 			current = 0
@@ -50,9 +50,9 @@ func FuzzAnalyze(f *testing.F) {
 		hpa := seed.DeepCopy()
 		hpa.Status.CurrentReplicas = int32(current)
 		hpa.Status.DesiredReplicas = int32(desired)
-		minVal := int32(min)
-		hpa.Spec.MinReplicas = &minVal
-		hpa.Spec.MaxReplicas = int32(max)
+		minR := int32(minVal)
+		hpa.Spec.MinReplicas = &minR
+		hpa.Spec.MaxReplicas = int32(maxVal)
 
 		if hasMetrics {
 			metricCur := int32(metricCurrent)
@@ -99,12 +99,12 @@ func FuzzAnalyze(f *testing.F) {
 		_ = analysis.Health
 		_ = analysis.HealthScore
 
-		_, _ = Health(hpa, int32(min))
-		_, _ = HealthWithWeights(hpa, int32(min), HealthWeights{})
-		_ = SummarizeDirection(hpa, int32(min))
-		_ = Interpret(hpa, int32(min))
-		_ = RecommendedActions(hpa, int32(min))
-		_ = BuildSuggestions(hpa, int32(min))
+		_, _ = Health(hpa, int32(minVal))
+		_, _ = HealthWithWeights(hpa, int32(minVal), HealthWeights{})
+		_ = SummarizeDirection(hpa, int32(minVal))
+		_ = Interpret(hpa, int32(minVal))
+		_ = RecommendedActions(hpa, int32(minVal))
+		_ = BuildSuggestions(hpa, int32(minVal))
 		_ = DebugLines(hpa, analysis)
 		_, _ = MetricOutsideTarget(hpa)
 		_, _ = MostInfluentialMetric(hpa)
@@ -117,7 +117,7 @@ func FuzzAnalyze(f *testing.F) {
 
 func FuzzAnalyzeNil(f *testing.F) {
 	f.Add(0)
-	f.Fuzz(func(t *testing.T, _ int) {
+	f.Fuzz(func(_ *testing.T, _ int) {
 		// nil HPA should never panic
 		analysis := Analyze(nil, true)
 		_ = analysis.Health
