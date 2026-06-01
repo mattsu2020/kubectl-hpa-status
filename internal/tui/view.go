@@ -29,6 +29,8 @@ func (m Model) View() string {
 		content = m.renderDetailView()
 	case helpView:
 		content = m.renderHelpView()
+	case metricsView:
+		content = m.renderMetricsView()
 	}
 
 	statusBar := m.renderStatusBar()
@@ -120,6 +122,13 @@ func (m Model) renderListView() string {
 			cursor = cursorStyle.Render("▸ ")
 			rowStyle = lipgloss.NewStyle()
 		}
+		// Checkbox for selection.
+		itemKey := item.Namespace + "/" + item.Name
+		if m.selected[itemKey] {
+			cursor = cursorStyle.Render("▸ ") + okStyle.Render("[x] ")
+		} else {
+			cursor = cursorStyle.Render("▸ ") + dimStyle.Render("[ ] ")
+		}
 
 		ns := truncate(item.Namespace, nsW)
 		name := truncate(item.Name, nameW)
@@ -180,6 +189,19 @@ func (m Model) renderDetailView() string {
 	report, ok := m.reports[key]
 	if ok && report != nil {
 		a := report.Analysis
+
+		// Stabilization countdown.
+		if a.StabilizationRemaining != nil && *a.StabilizationRemaining > 0 {
+			remaining := fmt.Sprintf("%ds", *a.StabilizationRemaining)
+			sb.WriteString("\n")
+			sb.WriteString(warnStyle.Render(fmt.Sprintf("Scale-down stabilized: %s remaining", remaining)))
+			sb.WriteString("\n")
+			if a.StabilizationWindowSeconds != nil && *a.StabilizationWindowSeconds > 0 {
+				bar := renderCountdownBar(int(*a.StabilizationRemaining), int(*a.StabilizationWindowSeconds))
+				sb.WriteString(bar)
+				sb.WriteString("\n")
+			}
+		}
 
 		// Conditions.
 		if len(a.Conditions) > 0 {
@@ -264,7 +286,29 @@ func (m Model) renderDetailView() string {
 						label = fmt.Sprintf("%s: %s", label, badge)
 					}
 					sb.WriteString(fmt.Sprintf("    - %s\n", label))
+					if t.MetricName != "" || t.Threshold != "" || t.CurrentValue != "" {
+						var detailParts []string
+						if t.MetricName != "" {
+							detailParts = append(detailParts, fmt.Sprintf("metric=%s", t.MetricName))
+						}
+						if t.Threshold != "" {
+							detailParts = append(detailParts, fmt.Sprintf("threshold=%s", t.Threshold))
+						}
+						if t.CurrentValue != "" {
+							detailParts = append(detailParts, fmt.Sprintf("current=%s", t.CurrentValue))
+						}
+						sb.WriteString(fmt.Sprintf("      %s\n", strings.Join(detailParts, " ")))
+					}
+					if t.AuthRef != "" {
+						sb.WriteString(fmt.Sprintf("      authRef=%s\n", t.AuthRef))
+					}
 				}
+			}
+			if a.KEDAInfo.PollingInterval != nil {
+				sb.WriteString(fmt.Sprintf("  Polling interval: %ds\n", *a.KEDAInfo.PollingInterval))
+			}
+			if a.KEDAInfo.CooldownPeriod != nil {
+				sb.WriteString(fmt.Sprintf("  Cooldown period: %ds\n", *a.KEDAInfo.CooldownPeriod))
 			}
 			if a.KEDAInfo.Fallback != nil {
 				sb.WriteString(fmt.Sprintf("  Fallback: failureThreshold=%d, replicas=%d\n", a.KEDAInfo.Fallback.FailureThreshold, a.KEDAInfo.Fallback.Replicas))
@@ -289,8 +333,114 @@ func (m Model) renderDetailView() string {
 	}
 
 	sb.WriteString("\n")
-	sb.WriteString(dimStyle.Render("Press esc to go back, r to refresh"))
+	sb.WriteString(dimStyle.Render("Press esc to go back, r to refresh, m metrics detail"))
 
+	return sb.String()
+}
+
+// renderMetricsView shows detailed per-metric diagnostics for the selected HPA.
+func (m Model) renderMetricsView() string {
+	filtered := m.filteredItems()
+	if m.cursor < 0 || m.cursor >= len(filtered) {
+		return "No HPA selected."
+	}
+
+	item := filtered[m.cursor]
+	key := item.Namespace + "/" + item.Name
+
+	var sb strings.Builder
+	sb.WriteString(headerStyle.Render(fmt.Sprintf("Metrics Diagnostics: %s/%s", item.Namespace, item.Name)))
+	sb.WriteString("\n\n")
+
+	report, ok := m.reports[key]
+	if !ok || report == nil {
+		sb.WriteString(dimStyle.Render("No detailed metrics data available."))
+		sb.WriteString("\n")
+	} else {
+		a := report.Analysis
+
+		if len(a.Metrics) == 0 {
+			sb.WriteString(dimStyle.Render("No metrics configured for this HPA."))
+			sb.WriteString("\n")
+		}
+
+		for i, metric := range a.Metrics {
+			name := metric.Name
+			if name == "" {
+				name = metric.Type
+			}
+
+			sb.WriteString(fmt.Sprintf("  %s (%s)\n", name, metric.Type))
+
+			if metric.Current != "" {
+				sb.WriteString(fmt.Sprintf("    current=%s", metric.Current))
+			}
+			if metric.Target != "" {
+				sb.WriteString(fmt.Sprintf("  target=%s", metric.Target))
+			}
+			if metric.Ratio != nil {
+				sb.WriteString(fmt.Sprintf("  ratio=%.3f", *metric.Ratio))
+			}
+			sb.WriteString("\n")
+
+			// Status assessment.
+			if metric.Ratio != nil {
+				ratio := *metric.Ratio
+				switch {
+				case ratio > 1.0:
+					sb.WriteString(fmt.Sprintf("    status: %s\n", warnStyle.Render("above target")))
+				case ratio < 0.9:
+					sb.WriteString(fmt.Sprintf("    status: %s\n", okStyle.Render("below target")))
+				default:
+					sb.WriteString(fmt.Sprintf("    status: %s\n", okStyle.Render("within tolerance")))
+				}
+			}
+
+			// Note contains diagnostic info.
+			if metric.Note != "" {
+				sb.WriteString(fmt.Sprintf("    note: %s\n", dimStyle.Render(metric.Note)))
+			}
+
+			if i < len(a.Metrics)-1 {
+				sb.WriteString("\n")
+			}
+		}
+
+		// Metrics pipeline diagnostics if available.
+		if a.MetricsDiagnostics != nil {
+			sb.WriteString("\n")
+			sb.WriteString(headerStyle.Render(" Pipeline Health "))
+			sb.WriteString("\n\n")
+
+			for _, check := range a.MetricsDiagnostics.PerMetricChecks {
+				statusStr := okStyle.Render("✓")
+				switch check.Status {
+				case "missing":
+					statusStr = errorStyle.Render("✗")
+				case "stale":
+					statusStr = warnStyle.Render("⚠")
+				}
+				sb.WriteString(fmt.Sprintf("  %s %s/%s: %s\n", statusStr, check.MetricType, check.MetricName, check.Status))
+				if check.Details != "" {
+					sb.WriteString(fmt.Sprintf("    %s\n", dimStyle.Render(check.Details)))
+				}
+				if check.Remediation != "" {
+					sb.WriteString(fmt.Sprintf("    fix: %s\n", dimStyle.Render(check.Remediation)))
+				}
+			}
+
+			if len(a.MetricsDiagnostics.RemediationSteps) > 0 {
+				sb.WriteString("\n")
+				sb.WriteString("Remediation:\n")
+				for _, step := range a.MetricsDiagnostics.RemediationSteps {
+					sb.WriteString(fmt.Sprintf("  - %s\n", step))
+				}
+			}
+		}
+	}
+
+	sb.WriteString("\n")
+	sb.WriteString(dimStyle.Render("Press esc to go back"))
 	return sb.String()
 }
 
@@ -310,6 +460,9 @@ func (m Model) renderStatusBar() string {
 	}
 
 	parts = append(parts, fmt.Sprintf("hpas: %d", len(m.items)))
+	if len(m.selected) > 0 {
+		parts = append(parts, fmt.Sprintf("selected: %d", len(m.selected)))
+	}
 
 	if m.filter != "" {
 		parts = append(parts, fmt.Sprintf("filter: %s", m.filter))
@@ -350,4 +503,26 @@ func renderScoreBar(score int) string {
 	default:
 		return errorStyle.Render(bar)
 	}
+}
+
+// renderCountdownBar renders a visual bar showing stabilization window progress.
+func renderCountdownBar(remaining, total int) string {
+	const width = 20
+	if total <= 0 {
+		return ""
+	}
+	elapsed := total - remaining
+	if elapsed < 0 {
+		elapsed = 0
+	}
+	filled := elapsed * width / total
+	if filled < 0 {
+		filled = 0
+	}
+	if filled > width {
+		filled = width
+	}
+
+	bar := strings.Repeat("█", filled) + strings.Repeat("░", width-filled)
+	return warnStyle.Render(bar) + dimStyle.Render(fmt.Sprintf(" %ds/%ds", remaining, total))
 }

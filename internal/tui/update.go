@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -89,11 +91,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case key.Matches(msg, m.keys.Escape):
-		if m.viewMode == helpView {
-			m.viewMode = listView
-			return m, nil
-		}
-		if m.viewMode == detailView {
+		switch m.viewMode {
+		case helpView, detailView, metricsView:
 			m.viewMode = listView
 			return m, nil
 		}
@@ -145,6 +144,52 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.cursor = i
 				break
 			}
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.Metrics):
+		if m.viewMode == detailView || m.viewMode == listView {
+			m.viewMode = metricsView
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.ToggleSelect):
+		if m.viewMode == listView {
+			filtered := m.filteredItems()
+			if m.cursor >= 0 && m.cursor < len(filtered) {
+				key := filtered[m.cursor].Namespace + "/" + filtered[m.cursor].Name
+				m.selected[key] = !m.selected[key]
+			}
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.SelectAll):
+		if m.viewMode == listView {
+			for _, item := range m.filteredItems() {
+				m.selected[item.Namespace+"/"+item.Name] = true
+			}
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.DeselectAll):
+		if m.viewMode == listView {
+			m.selected = map[string]bool{}
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.ApplySelected):
+		if m.viewMode == listView && len(m.selected) > 0 {
+			filtered := m.filteredItems()
+			selectedNames := make([]string, 0, len(m.selected))
+			for _, item := range filtered {
+				key := item.Namespace + "/" + item.Name
+				if m.selected[key] {
+					selectedNames = append(selectedNames, item.Name)
+				}
+			}
+			m.selected = map[string]bool{}
+			m.err = fmt.Errorf("apply for %d HPA(s): use CLI instead (kubectl-hpa-status list --problem --fix --apply). Selected: %s", len(selectedNames), strings.Join(selectedNames, ", "))
+			return m, nil
 		}
 		return m, nil
 	}

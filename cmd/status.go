@@ -189,6 +189,17 @@ func buildStatusReport(ctx context.Context, opts *options, name string, includeI
 		report.Analysis.KEDAInfo = enrichKEDA(ctx, opts, hpa)
 	}
 
+	if opts.diagnoseMetrics {
+		report.Analysis.MetricsDiagnostics = hpaanalysis.DiagnoseMetricsPipeline(hpa)
+	}
+
+	if opts.checkResources {
+		resources, err := kube.FetchScaleTargetResources(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef.Kind, hpa.Spec.ScaleTargetRef.Name)
+		if err == nil && resources != nil {
+			report.Analysis.ResourceCheck = hpaanalysis.CheckResourceConsistency(hpa, resources)
+		}
+	}
+
 	report.Analysis.TargetReplicas = fetchTargetReplicaInfo(ctx, client, hpa)
 	if report.Analysis.TargetReplicas != nil && report.Analysis.TargetReplicas.NotReady > 0 {
 		tr := report.Analysis.TargetReplicas
@@ -341,10 +352,14 @@ func enrichKEDA(ctx context.Context, opts *options, hpa *autoscalingv2.Horizonta
 	triggers := make([]hpaanalysis.KEDATriggerSummary, 0, len(info.Triggers))
 	for _, t := range info.Triggers {
 		triggers = append(triggers, hpaanalysis.KEDATriggerSummary{
-			Type:    t.Type,
-			Name:    t.Name,
-			Status:  t.Status,
-			Message: t.Message,
+			Type:         t.Type,
+			Name:         t.Name,
+			Status:       t.Status,
+			Message:      t.Message,
+			MetricName:   t.MetricName,
+			Threshold:    t.Threshold,
+			CurrentValue: t.CurrentValue,
+			AuthRef:      t.AuthenticationRef,
 		})
 	}
 

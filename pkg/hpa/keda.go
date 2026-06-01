@@ -42,13 +42,21 @@ func analyzeKEDATriggers(hpa *autoscalingv2.HorizontalPodAutoscaler, keda *KEDAA
 
 	var lines []string
 
-	// Check for external metrics without matching triggers.
+	// Check for external metrics without matching triggers and report explicit mappings.
 	for _, spec := range hpa.Spec.Metrics {
 		if spec.Type == autoscalingv2.ExternalMetricSourceType && spec.External != nil {
 			matched := false
 			for _, t := range keda.Triggers {
 				if strings.Contains(spec.External.Metric.Name, t.Name) || strings.Contains(spec.External.Metric.Name, strings.ToLower(t.Type)) {
 					matched = true
+					triggerDesc := fmt.Sprintf("KEDA trigger %q (type %s)", t.Name, t.Type)
+					if t.Threshold != "" {
+						triggerDesc += fmt.Sprintf(" threshold=%s", t.Threshold)
+					}
+					if t.CurrentValue != "" {
+						triggerDesc += fmt.Sprintf(" current=%s", t.CurrentValue)
+					}
+					lines = append(lines, fmt.Sprintf("[confidence: high] %s produces external metric %q which matches HPA spec.metrics entry.", triggerDesc, spec.External.Metric.Name))
 					break
 				}
 			}

@@ -1065,3 +1065,180 @@ func TestInterpretDetectsMetricDisagreement(t *testing.T) {
 		t.Fatalf("expected queue_depth mentioned in disagreement, got %#v", got2.Interpretation)
 	}
 }
+
+func TestDiagnoseMetricsPipeline_NilHPA(t *testing.T) {
+	got := DiagnoseMetricsPipeline(nil)
+	if got != nil {
+		t.Fatalf("expected nil for nil HPA, got %#v", got)
+	}
+}
+
+func TestDiagnoseMetricsPipeline_NoSpecMetrics(t *testing.T) {
+	hpa := baseHPA()
+	got := DiagnoseMetricsPipeline(hpa)
+	if got == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if got.OverallStatus != "healthy" {
+		t.Fatalf("expected healthy for no spec metrics, got %s", got.OverallStatus)
+	}
+	if len(got.PerMetricChecks) != 0 {
+		t.Fatalf("expected no per-metric checks, got %d", len(got.PerMetricChecks))
+	}
+}
+
+func TestDiagnoseMetricsPipeline_AllMetricsMissing(t *testing.T) {
+	hpa := baseHPA()
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{
+		resourceMetricSpec(corev1.ResourceCPU, 80),
+		resourceMetricSpec(corev1.ResourceMemory, 70),
+	}
+	// No current metrics set — simulates metrics server being down.
+
+	got := DiagnoseMetricsPipeline(hpa)
+	if got == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if got.OverallStatus != "error" {
+		t.Fatalf("expected error overall status, got %s", got.OverallStatus)
+	}
+	if len(got.PerMetricChecks) != 2 {
+		t.Fatalf("expected 2 per-metric checks, got %d", len(got.PerMetricChecks))
+	}
+	for _, check := range got.PerMetricChecks {
+		if check.Status != "missing" {
+			t.Fatalf("expected missing status for %s, got %s", check.MetricName, check.Status)
+		}
+		if check.Details == "" {
+			t.Fatalf("expected non-empty details for %s", check.MetricName)
+		}
+		if check.Remediation == "" {
+			t.Fatalf("expected non-empty remediation for %s", check.MetricName)
+		}
+	}
+	if len(got.RemediationSteps) == 0 {
+		t.Fatal("expected remediation steps for all-missing metrics")
+	}
+}
+
+func TestDiagnoseMetricsPipeline_AllMetricsHealthy(t *testing.T) {
+	hpa := baseHPA()
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{
+		resourceMetricSpec(corev1.ResourceCPU, 80),
+		resourceMetricSpec(corev1.ResourceMemory, 70),
+	}
+	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{
+		resourceMetricStatus(corev1.ResourceCPU, 75),
+		resourceMetricStatus(corev1.ResourceMemory, 65),
+	}
+
+	got := DiagnoseMetricsPipeline(hpa)
+	if got == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if got.OverallStatus != "healthy" {
+		t.Fatalf("expected healthy overall status, got %s", got.OverallStatus)
+	}
+	if len(got.PerMetricChecks) != 2 {
+		t.Fatalf("expected 2 per-metric checks, got %d", len(got.PerMetricChecks))
+	}
+	for _, check := range got.PerMetricChecks {
+		if check.Status != "healthy" {
+			t.Fatalf("expected healthy status for %s, got %s", check.MetricName, check.Status)
+		}
+	}
+	if len(got.RemediationSteps) != 0 {
+		t.Fatalf("expected no remediation steps for healthy metrics, got %d", len(got.RemediationSteps))
+	}
+}
+
+func TestDiagnoseMetricsPipeline_PartialMatches(t *testing.T) {
+	hpa := baseHPA()
+	target := resource.MustParse("10")
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{
+		resourceMetricSpec(corev1.ResourceCPU, 80),
+		{
+			Type: autoscalingv2.ExternalMetricSourceType,
+			External: &autoscalingv2.ExternalMetricSource{
+				Metric: autoscalingv2.MetricIdentifier{Name: "queue_depth"},
+				Target: autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType, Value: &target},
+			},
+		},
+	}
+	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{
+		resourceMetricStatus(corev1.ResourceCPU, 75),
+		// External metric intentionally omitted — simulates partial missing.
+	}
+
+	got := DiagnoseMetricsPipeline(hpa)
+	if got == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if got.OverallStatus != "degraded" {
+		t.Fatalf("expected degraded overall status, got %s", got.OverallStatus)
+	}
+	if len(got.PerMetricChecks) != 2 {
+		t.Fatalf("expected 2 per-metric checks, got %d", len(got.PerMetricChecks))
+	}
+
+	cpuHealthy := false
+	queueMissing := false
+	for _, check := range got.PerMetricChecks {
+		if check.MetricName == "cpu" && check.Status == "healthy" {
+			cpuHealthy = true
+		}
+		if check.MetricName == "queue_depth" && check.Status == "missing" {
+			queueMissing = true
+		}
+	}
+	if !cpuHealthy {
+		t.Fatal("expected cpu to be healthy")
+	}
+	if !queueMissing {
+		t.Fatal("expected queue_depth to be missing")
+	}
+	if len(got.RemediationSteps) == 0 {
+		t.Fatal("expected remediation steps for partial missing metrics")
+	}
+}
+
+func TestDiagnoseMetricsPipeline_ExternalMetricHealthy(t *testing.T) {
+	hpa := baseHPA()
+	target := resource.MustParse("10")
+	current := resource.MustParse("12")
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{
+		{
+			Type: autoscalingv2.ExternalMetricSourceType,
+			External: &autoscalingv2.ExternalMetricSource{
+				Metric: autoscalingv2.MetricIdentifier{Name: "queue_depth"},
+				Target: autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType, Value: &target},
+			},
+		},
+	}
+	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{
+		{
+			Type: autoscalingv2.ExternalMetricSourceType,
+			External: &autoscalingv2.ExternalMetricStatus{
+				Metric:  autoscalingv2.MetricIdentifier{Name: "queue_depth"},
+				Current: autoscalingv2.MetricValueStatus{Value: &current},
+			},
+		},
+	}
+
+	got := DiagnoseMetricsPipeline(hpa)
+	if got == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if got.OverallStatus != "healthy" {
+		t.Fatalf("expected healthy overall status, got %s", got.OverallStatus)
+	}
+	if len(got.PerMetricChecks) != 1 {
+		t.Fatalf("expected 1 per-metric check, got %d", len(got.PerMetricChecks))
+	}
+	if got.PerMetricChecks[0].Status != "healthy" {
+		t.Fatalf("expected healthy, got %s", got.PerMetricChecks[0].Status)
+	}
+	if got.PerMetricChecks[0].MetricType != "External" {
+		t.Fatalf("expected External metric type, got %s", got.PerMetricChecks[0].MetricType)
+	}
+}

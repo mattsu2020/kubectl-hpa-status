@@ -6,6 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/tools/clientcmd/api"
 )
 
 func newCompletionCommand(root *cobra.Command) *cobra.Command {
@@ -60,4 +62,132 @@ func hpaNameCompletion(opts *options) func(*cobra.Command, []string, string) ([]
 		}
 		return names, cobra.ShellCompDirectiveNoFileComp
 	}
+}
+
+// Static flag completion functions provide tab-completion for flag values.
+
+func outputCompletions(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+	return []string{
+		"table\tDefault table output",
+		"wide\tExtended table columns",
+		"json\tJSON format",
+		"yaml\tYAML format",
+		"jsonpath=\tJSONPath expression",
+		"template=\tGo template",
+		"prometheus\tPrometheus exposition format",
+	}, cobra.ShellCompDirectiveNoFileComp
+}
+
+func filterCompletions(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+	return []string{
+		"all\tShow all HPAs",
+		"ok\tShow healthy HPAs",
+		"error\tShow HPAs with errors",
+		"limited\tShow scaling-limited HPAs",
+		"issue\tShow HPAs with any issue",
+	}, cobra.ShellCompDirectiveNoFileComp
+}
+
+func sortByCompletions(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+	return []string{
+		"name\tSort by HPA name",
+		"namespace\tSort by namespace",
+		"health\tSort by health state",
+		"healthscore\tSort by health score",
+		"current\tSort by current replicas",
+		"desired\tSort by desired replicas",
+		"diff\tSort by replica difference",
+		"age\tSort by creation time",
+		"issue\tSort by issue description",
+		"min\tSort by minReplicas",
+		"max\tSort by maxReplicas",
+		"target\tSort by target utilization",
+	}, cobra.ShellCompDirectiveNoFileComp
+}
+
+func colorCompletions(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+	return []string{
+		"auto\tColorize when stdout is a terminal",
+		"always\tAlways colorize output",
+		"never\tNever colorize output",
+	}, cobra.ShellCompDirectiveNoFileComp
+}
+
+func langCompletions(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+	return []string{
+		"en\tEnglish output",
+		"ja\tJapanese output",
+	}, cobra.ShellCompDirectiveNoFileComp
+}
+
+func eventsCompletions(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+	return []string{
+		"true\tShow recent HPA events",
+		"false\tHide events",
+	}, cobra.ShellCompDirectiveNoFileComp
+}
+
+func untilConditionCompletions(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+	return []string{
+		"ok\tHPA is healthy",
+		"healthy\tHPA is healthy",
+		"stable\tHPA is stable (not scaling)",
+		"scaling-limited\tHPA hit min or max replicas",
+		"error\tHPA has an error condition",
+	}, cobra.ShellCompDirectiveNoFileComp
+}
+
+// Dynamic flag completion functions that query the Kubernetes API or kubeconfig.
+
+func namespaceCompletions(opts *options) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+	return func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+		client, err := opts.newClient()
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		namespaces, err := client.Interface.CoreV1().Namespaces().List(context.Background(), metav1.ListOptions{})
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		names := make([]string, 0, len(namespaces.Items))
+		for _, ns := range namespaces.Items {
+			names = append(names, ns.Name)
+		}
+		return names, cobra.ShellCompDirectiveNoFileComp
+	}
+}
+
+func contextCompletions(opts *options) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+	return func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+		loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+		if opts.kubeconfig != "" {
+			loadingRules.ExplicitPath = opts.kubeconfig
+		}
+		config, err := loadingRules.Load()
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		return contextNames(config), cobra.ShellCompDirectiveNoFileComp
+	}
+}
+
+func contextNames(config *api.Config) []string {
+	names := make([]string, 0, len(config.Contexts))
+	for name := range config.Contexts {
+		names = append(names, name)
+	}
+	return names
+}
+
+// registerFlagCompletions registers shell completions for all flags with known values.
+func registerFlagCompletions(root *cobra.Command, opts *options) {
+	_ = root.RegisterFlagCompletionFunc("output", outputCompletions)
+	_ = root.RegisterFlagCompletionFunc("filter", filterCompletions)
+	_ = root.RegisterFlagCompletionFunc("sort-by", sortByCompletions)
+	_ = root.RegisterFlagCompletionFunc("color", colorCompletions)
+	_ = root.RegisterFlagCompletionFunc("lang", langCompletions)
+	_ = root.RegisterFlagCompletionFunc("events", eventsCompletions)
+	_ = root.RegisterFlagCompletionFunc("until-condition", untilConditionCompletions)
+	_ = root.RegisterFlagCompletionFunc("namespace", namespaceCompletions(opts))
+	_ = root.RegisterFlagCompletionFunc("context", contextCompletions(opts))
 }

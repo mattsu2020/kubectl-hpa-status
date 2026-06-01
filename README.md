@@ -289,6 +289,12 @@ Practical manifests live in [examples/](examples/):
 kubectl apply -f examples/cpu-memory-hpa.yaml
 kubectl hpa status web-multi -n hpa-status-examples --explain --suggest
 kubectl hpa status list -n hpa-status-examples --wide
+# Diagnose metrics pipeline issues
+kubectl hpa status web-multi -n hpa-status-examples --diagnose-metrics
+# Check resource request consistency
+kubectl hpa status web-multi -n hpa-status-examples --check-resources
+# Generate a standalone report
+kubectl hpa status web-multi -n hpa-status-examples --report markdown
 kubectl delete namespace hpa-status-examples
 ```
 
@@ -357,7 +363,11 @@ Detailed flags:
 | `--diff` | `status`, `analyze` | Include field-level diffs for suggested HPA spec patches. |
 | `--apply` | `status`, `analyze`, `list`, `scan` | Validate suggested HPA patches with server-side dry-run by default. For `list`, combine it with `--problem`, `--filter`, or a score filter. |
 | `--dry-run=false` | `--apply` workflow | Persist changes; still shows a diff and asks for confirmation unless `-y` is set. |
-| `--keda` | `status`, `analyze` | For KEDA-managed HPAs, look up the matching ScaledObject and include trigger/condition context. |
+| `--keda` | `status`, `analyze` | For KEDA-managed HPAs, look up the matching ScaledObject and include trigger details (metric name, threshold, current value, auth ref). |
+| `--vpa` | `status`, `analyze` | Detect VerticalPodAutoscaler conflicts with the HPA target. |
+| `--diagnose-metrics` | `status`, `analyze` | Run comprehensive metrics pipeline health checks with per-metric status and remediation steps. |
+| `--check-resources` | `status`, `analyze` | Validate HPA target utilization against pod resource requests/limits. |
+| `--report markdown\|html` | `status`, `list` | Generate standalone reports in Markdown or HTML format. |
 | `--lang=ja`, `-o ja` | text output | Show Japanese text labels. |
 | `--no-interpret` | `status`, `analyze` | Omit interpretation and show status-derived data only. |
 | `--events=false` | `status`, `analyze` | Omit recent HPA Events. |
@@ -459,12 +469,17 @@ Key bindings:
 | `/` | Filter by name, namespace, health status, or issue text |
 | `S` | Cycle sort: name → health-score → issue → namespace |
 | `g` | Jump to first problematic HPA (health ≠ OK) |
+| `m` | View per-metric diagnostics detail |
+| `space` | Toggle HPA selection for batch operations |
+| `a` | Select all filtered HPAs |
+| `A` | Deselect all |
+| `s` | Show apply hint for selected HPAs |
 | `r` | Refresh data now |
 | `p` | Pause / resume auto-refresh |
 | `?` | Toggle key binding help overlay |
 | `q` / `Ctrl+c` | Quit |
 
-The dashboard auto-refreshes every 5 seconds. Filter accepts partial matches across multiple fields. Sort cycles through available columns. Use `g` to quickly jump to the first HPA that needs attention.
+The dashboard auto-refreshes every 5 seconds. Filter accepts partial matches across multiple fields. Sort cycles through available columns. Use `g` to quickly jump to the first HPA that needs attention. Press `m` to view per-metric diagnostics, or use `space` to select HPAs for batch operations.
 
 ## Troubleshooting patterns
 
@@ -482,6 +497,9 @@ The dashboard auto-refreshes every 5 seconds. Filter accepts partial matches acr
 | `[STALE STATUS]` prefix in summary | `kubectl hpa status <name> --explain` | `observedGeneration < metadata.generation` | Wait for HPA controller reconciliation; check kube-controller-manager health |
 | KEDA external metric stale on managed HPA | `kubectl hpa status <name> --keda --explain` | Missing external metric in `currentMetrics`, KEDA trigger status | Verify `kubectl get scaledobject -n <ns>`, check keda-operator pod logs, verify TriggerAuthentication |
 | minReplicas=0 cold start delay | `kubectl hpa status <name> --explain` | `ScaleToZero` indicator, no immediate scale-up | Expected behavior; first metric evaluation after scale-to-zero introduces a delay equal to the polling interval |
+| All metrics show `<unknown>` | `kubectl hpa status <name> --diagnose-metrics` | Per-metric health checks, missing status | Check metrics-server deployment, custom metrics adapter registration, API service health |
+| HPA target utilization seems wrong | `kubectl hpa status <name> --check-resources` | Resource request warnings, zero requests, target mismatch | Review pod template resource requests; HPA utilization = usage / request |
+| Need an incident report | `kubectl hpa status <name> --report markdown` | Standalone report with all sections | Paste into Slack, Notion, or incident tracking tool |
 | Batch fix multiple HPAs | `kubectl hpa status list -A --problem --fix --apply` | Summary table of all patches | Review the batch summary, confirm once to apply all |
 
 ### FAQ
@@ -510,8 +528,9 @@ Kubernetes v1.26 through v1.36 is the tested range. The plugin uses `autoscaling
 | Kubernetes v1.26 - v1.36 | Tested and supported |
 | metrics-server v0.8.1 on kind | Validated |
 | custom/external metrics adapters | Supported through visible HPA status with best-effort ratio and selector interpretation; adapter-specific internals are not inspected |
-| KEDA-scaled workloads | Basic KEDA-managed HPA detection is automatic. `--keda` optionally looks up the matching ScaledObject for trigger and condition context |
-| VPA co-management | `--vpa` detects same-target CPU/memory overlap and includes visible VPA recommendations when the VPA CRD is installed |
+| KEDA 2.0+ (`keda.sh/v1alpha1`) | Automatic KEDA-managed HPA detection. `--keda` looks up the ScaledObject for trigger details (type, metric name, threshold, current value, auth ref), polling interval, cooldown, and fallback configuration |
+| VPA 0.9+ (`autoscaling.k8s.io/v1`) | `--vpa` detects same-target CPU/memory overlap and includes visible VPA recommendations when the VPA CRD is installed |
+| Shell Completion | bash, zsh, fish, PowerShell with dynamic HPA name, namespace, and context completion |
 
 ## Safe fix workflow
 
@@ -707,11 +726,18 @@ Interpretation lines are diagnostic inferences, not the HPA controller's authori
 - [x] **Integration Testing:** Added kind-based E2E tests for verification in CI.
 - [x] **Visual Demos:** Added high-fidelity demo screenshots to documentation.
 - [x] **Homebrew packaging:** Generate Homebrew cask metadata in a dedicated tap through GoReleaser.
-- [ ] **Interactive TUI Monitor:** Enhance the watch mode into a rich terminal dashboard.
+- [x] **Interactive TUI Monitor:** Bubbletea-based TUI with list/detail/metrics views, filtering, sorting, and multi-select.
 - [x] **Batch Analysis:** Analyze all HPAs across namespaces with `scan` and `list -A --problem`.
 - [x] **Selector and multi-target workflows:** Filter `list` / `scan` with `--selector` and inspect multiple HPAs with `status hpa-a hpa-b`.
 - [x] **Suggest/Fix Workflow:** Provide actionable dry-run-first patch suggestions with `--suggest` and `--fix --apply`.
 - [x] **KEDA ScaledObject lookup:** `--keda` can cross-reference the matching ScaledObject when KEDA CRDs are available.
+- [x] **Shell Completion:** Full tab-completion for bash/zsh/fish/powershell including flags (`--output`, `--filter`, `--sort-by`, etc.) and dynamic namespace/context completion.
+- [x] **KEDA Integration Deepening:** Rich trigger display with metric name, threshold, current value, and auth ref; explicit trigger-to-HPA-metric mapping.
+- [x] **Stabilization Window Countdown:** Visual countdown bar and remaining time display in TUI and text output.
+- [x] **Metrics Pipeline Diagnostics:** `--diagnose-metrics` runs per-metric health checks with remediation steps.
+- [x] **Resource Consistency Check:** `--check-resources` validates HPA targets against pod resource requests/limits.
+- [x] **Report Output:** `--report markdown` and `--report html` generate standalone incident reports.
+- [x] **Bulk Operations (TUI):** Multi-select HPAs in TUI with space/a/A keys and batch apply with s.
 - [ ] **Custom Metrics Deep Dive:** Add adapter-specific context beyond visible HPA status.
 
 ## License

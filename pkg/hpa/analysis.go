@@ -73,6 +73,9 @@ type Analysis struct {
 	StructuredInterpretation []StructuredMessage `json:"structuredInterpretation,omitempty" yaml:"structuredInterpretation,omitempty"`
 	StructuredActions        []StructuredMessage `json:"structuredActions,omitempty" yaml:"structuredActions,omitempty"`
 	DecisionSignals          []DecisionSignal    `json:"decisionSignals,omitempty" yaml:"decisionSignals,omitempty"`
+	StabilizationWindowSeconds *int32                       `json:"stabilizationWindowSeconds,omitempty" yaml:"stabilizationWindowSeconds,omitempty"`
+	MetricsDiagnostics         *MetricsPipelineDiagnostics  `json:"metricsDiagnostics,omitempty" yaml:"metricsDiagnostics,omitempty"`
+	ResourceCheck              *ResourceCheckResult         `json:"resourceCheck,omitempty" yaml:"resourceCheck,omitempty"`
 }
 
 // DecisionSignal is the stable internal shape for explicit controller scaling
@@ -176,10 +179,14 @@ type KEDAAnalysis struct {
 
 // KEDATriggerSummary is a display-oriented summary of a KEDA trigger.
 type KEDATriggerSummary struct {
-	Type    string `json:"type" yaml:"type"`
-	Name    string `json:"name,omitempty" yaml:"name,omitempty"`
-	Status  string `json:"status,omitempty" yaml:"status,omitempty"`
-	Message string `json:"message,omitempty" yaml:"message,omitempty"`
+	Type         string `json:"type" yaml:"type"`
+	Name         string `json:"name,omitempty" yaml:"name,omitempty"`
+	Status       string `json:"status,omitempty" yaml:"status,omitempty"`
+	Message      string `json:"message,omitempty" yaml:"message,omitempty"`
+	MetricName   string `json:"metricName,omitempty" yaml:"metricName,omitempty"`
+	Threshold    string `json:"threshold,omitempty" yaml:"threshold,omitempty"`
+	CurrentValue string `json:"currentValue,omitempty" yaml:"currentValue,omitempty"`
+	AuthRef      string `json:"authRef,omitempty" yaml:"authRef,omitempty"`
 }
 
 // KEDAFallbackInfo holds fallback information for display.
@@ -196,6 +203,36 @@ type TargetReplicaInfo struct {
 	NotReady      int32 `json:"notReady" yaml:"notReady"`
 	Pending       int32 `json:"pending,omitempty" yaml:"pending,omitempty"`
 	Unschedulable int32 `json:"unschedulable,omitempty" yaml:"unschedulable,omitempty"`
+}
+
+// MetricsPipelineDiagnostics holds the results of metrics pipeline health checks.
+type MetricsPipelineDiagnostics struct {
+	OverallStatus    string                `json:"overallStatus" yaml:"overallStatus"`
+	PerMetricChecks  []PerMetricHealthCheck `json:"perMetricChecks,omitempty" yaml:"perMetricChecks,omitempty"`
+	RemediationSteps []string              `json:"remediationSteps,omitempty" yaml:"remediationSteps,omitempty"`
+}
+
+// PerMetricHealthCheck describes the health of a single metric source.
+type PerMetricHealthCheck struct {
+	MetricType   string `json:"metricType" yaml:"metricType"`
+	MetricName   string `json:"metricName" yaml:"metricName"`
+	Status       string `json:"status" yaml:"status"` // "healthy", "missing", "stale"
+	Details      string `json:"details,omitempty" yaml:"details,omitempty"`
+	Remediation  string `json:"remediation,omitempty" yaml:"remediation,omitempty"`
+}
+
+// ResourceCheckResult holds warnings about resource request/limit consistency with HPA targets.
+type ResourceCheckResult struct {
+	Warnings []ResourceWarning `json:"warnings,omitempty" yaml:"warnings,omitempty"`
+}
+
+// ResourceWarning describes a single resource consistency issue.
+type ResourceWarning struct {
+	Container string `json:"container" yaml:"container"`
+	Resource  string `json:"resource" yaml:"resource"`
+	Category  string `json:"category" yaml:"category"` // "missing-requests", "zero-requests", "target-vs-request-mismatch"
+	Details   string `json:"details" yaml:"details"`
+	Severity  string `json:"severity" yaml:"severity"` // "warning", "error"
 }
 
 // Analyze produces an Analysis for the given HPA using default options.
@@ -284,6 +321,9 @@ func AnalyzeWithOptions(src *autoscalingv2.HorizontalPodAutoscaler, includeInter
 	// Stabilization remaining time estimation
 	if remaining := estimateStabilizationRemaining(src); remaining != nil {
 		analysis.StabilizationRemaining = remaining
+	}
+	if window := scaleDownStabilizationWindow(src); window != nil {
+		analysis.StabilizationWindowSeconds = window
 	}
 
 	if includeInterpretation {
@@ -1484,6 +1524,209 @@ func CompareQuantityToTarget(current, target *resource.Quantity) string {
 	default:
 		return "current value equals target"
 	}
+}
+
+// DiagnoseMetricsPipeline performs a comprehensive health check of the metrics
+// pipeline by comparing spec metrics against current metrics in the HPA status.
+// It returns per-metric health checks and remediation steps for any issues found.
+func DiagnoseMetricsPipeline(hpa *autoscalingv2.HorizontalPodAutoscaler) *MetricsPipelineDiagnostics {
+	if hpa == nil {
+		return nil
+	}
+
+	specMetrics := hpa.Spec.Metrics
+	currentMetrics := hpa.Status.CurrentMetrics
+
+	if len(specMetrics) == 0 {
+		return &MetricsPipelineDiagnostics{
+			OverallStatus:   "healthy",
+			PerMetricChecks: nil,
+			RemediationSteps: []string{
+				"No spec metrics are configured; the HPA relies on default resource metrics or has no metric source.",
+			},
+		}
+	}
+
+	// When all spec metrics exist but current metrics is empty, the metrics
+	// server or custom metrics adapter is likely down.
+	allCurrentMissing := len(currentMetrics) == 0
+
+	var checks []PerMetricHealthCheck
+	var remediationSteps []string
+	hasMissing := false
+
+	for _, spec := range specMetrics {
+		metricType, metricName := specMetricIdentity(spec)
+		check := PerMetricHealthCheck{
+			MetricType: metricType,
+			MetricName: metricName,
+		}
+
+		if allCurrentMissing {
+			check.Status = "missing"
+			check.Details = fmt.Sprintf(
+				"%s metric %q is configured but no current metrics are reported at all; the metrics server or adapter is likely down.",
+				metricType, metricName,
+			)
+			check.Remediation = fmt.Sprintf(
+				"Verify that the metrics server or custom metrics adapter is running and accessible: kubectl get pods -n kube-system | grep metrics; kubectl logs -n kube-system <metrics-pod>.",
+			)
+			hasMissing = true
+			checks = append(checks, check)
+			continue
+		}
+
+		if found := findMatchingCurrentMetric(spec, currentMetrics); found {
+			check.Status = "healthy"
+			check.Details = fmt.Sprintf("%s metric %q is reporting current values.", metricType, metricName)
+		} else {
+			check.Status = "missing"
+			check.Details = fmt.Sprintf(
+				"%s metric %q is configured but no matching current metric status is reported.",
+				metricType, metricName,
+			)
+			check.Remediation = buildMetricRemediation(spec)
+			hasMissing = true
+		}
+
+		checks = append(checks, check)
+	}
+
+	overallStatus := "healthy"
+	if allCurrentMissing {
+		overallStatus = "error"
+		remediationSteps = append(remediationSteps,
+			"All spec metrics have no corresponding current metrics. The metrics pipeline is not delivering data to the HPA controller.",
+			"Check metrics-server deployment: kubectl get deploy metrics-server -n kube-system.",
+			"Verify API service registration: kubectl get apiservice v1beta1.metrics.k8s.io.",
+			"If using a custom/external metrics adapter, check its pods and logs.",
+			"Ensure NetworkPolicy or firewall rules allow the metrics server to scrape kubelets.",
+		)
+	} else if hasMissing {
+		overallStatus = "degraded"
+		remediationSteps = append(remediationSteps,
+			"One or more spec metrics are not reporting current values. Check the specific metric adapter and metric availability.",
+		)
+		for _, check := range checks {
+			if check.Status == "missing" && check.Remediation != "" {
+				remediationSteps = append(remediationSteps, check.Remediation)
+			}
+		}
+	}
+
+	return &MetricsPipelineDiagnostics{
+		OverallStatus:    overallStatus,
+		PerMetricChecks:  checks,
+		RemediationSteps: remediationSteps,
+	}
+}
+
+// specMetricIdentity returns the type and name of a spec metric for display.
+func specMetricIdentity(spec autoscalingv2.MetricSpec) (string, string) {
+	switch spec.Type {
+	case autoscalingv2.ResourceMetricSourceType:
+		if spec.Resource != nil {
+			return "Resource", string(spec.Resource.Name)
+		}
+	case autoscalingv2.ContainerResourceMetricSourceType:
+		if spec.ContainerResource != nil {
+			return "ContainerResource", fmt.Sprintf("%s/%s", spec.ContainerResource.Container, spec.ContainerResource.Name)
+		}
+	case autoscalingv2.PodsMetricSourceType:
+		if spec.Pods != nil {
+			return "Pods", spec.Pods.Metric.Name
+		}
+	case autoscalingv2.ObjectMetricSourceType:
+		if spec.Object != nil {
+			return "Object", spec.Object.Metric.Name
+		}
+	case autoscalingv2.ExternalMetricSourceType:
+		if spec.External != nil {
+			return "External", spec.External.Metric.Name
+		}
+	}
+	return string(spec.Type), "<unknown>"
+}
+
+// findMatchingCurrentMetric checks whether a spec metric has a matching entry
+// in the current metrics status.
+func findMatchingCurrentMetric(spec autoscalingv2.MetricSpec, currentMetrics []autoscalingv2.MetricStatus) bool {
+	for _, current := range currentMetrics {
+		if spec.Type != current.Type {
+			continue
+		}
+		switch spec.Type {
+		case autoscalingv2.ResourceMetricSourceType:
+			if spec.Resource != nil && current.Resource != nil &&
+				spec.Resource.Name == current.Resource.Name {
+				return true
+			}
+		case autoscalingv2.ContainerResourceMetricSourceType:
+			if spec.ContainerResource != nil && current.ContainerResource != nil &&
+				spec.ContainerResource.Name == current.ContainerResource.Name &&
+				spec.ContainerResource.Container == current.ContainerResource.Container {
+				return true
+			}
+		case autoscalingv2.PodsMetricSourceType:
+			if spec.Pods != nil && current.Pods != nil &&
+				spec.Pods.Metric.Name == current.Pods.Metric.Name {
+				return true
+			}
+		case autoscalingv2.ObjectMetricSourceType:
+			if spec.Object != nil && current.Object != nil &&
+				spec.Object.Metric.Name == current.Object.Metric.Name {
+				return true
+			}
+		case autoscalingv2.ExternalMetricSourceType:
+			if spec.External != nil && current.External != nil &&
+				spec.External.Metric.Name == current.External.Metric.Name {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// buildMetricRemediation returns a remediation string for a missing spec metric.
+func buildMetricRemediation(spec autoscalingv2.MetricSpec) string {
+	switch spec.Type {
+	case autoscalingv2.ResourceMetricSourceType:
+		if spec.Resource != nil {
+			return fmt.Sprintf(
+				"Resource metric %q is missing. Verify that the metrics-server is running and can scrape kubelet metrics: kubectl top pods -n <namespace>.",
+				spec.Resource.Name,
+			)
+		}
+	case autoscalingv2.ExternalMetricSourceType:
+		if spec.External != nil {
+			return fmt.Sprintf(
+				"External metric %q is missing. Verify the external metrics adapter is serving the metric and check adapter logs for errors.",
+				spec.External.Metric.Name,
+			)
+		}
+	case autoscalingv2.PodsMetricSourceType:
+		if spec.Pods != nil {
+			return fmt.Sprintf(
+				"Pods metric %q is missing. Verify the custom metrics adapter is serving this metric and check that pods are exposing the expected metric values.",
+				spec.Pods.Metric.Name,
+			)
+		}
+	case autoscalingv2.ObjectMetricSourceType:
+		if spec.Object != nil {
+			return fmt.Sprintf(
+				"Object metric %q is missing. Verify the described object %s/%s exists and the metrics adapter can retrieve its values.",
+				spec.Object.Metric.Name, spec.Object.DescribedObject.Kind, spec.Object.DescribedObject.Name,
+			)
+		}
+	case autoscalingv2.ContainerResourceMetricSourceType:
+		if spec.ContainerResource != nil {
+			return fmt.Sprintf(
+				"ContainerResource metric %s/%s is missing. Verify the metrics-server is running and the container is reporting resource usage.",
+				spec.ContainerResource.Container, spec.ContainerResource.Name,
+			)
+		}
+	}
+	return "Verify the metrics adapter for this metric type is installed and functioning correctly."
 }
 
 // metricDisplayName returns a human-readable name for a metric status entry.

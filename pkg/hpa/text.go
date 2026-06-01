@@ -96,6 +96,34 @@ func triggerStatusBadge(status string, theme style.Theme) string {
 	}
 }
 
+// metricsDiagnosticsStatus returns a themed display string for the overall metrics diagnostics status.
+func metricsDiagnosticsStatus(status string, theme style.Theme) string {
+	switch status {
+	case "healthy":
+		return theme.OK.Render("healthy")
+	case "degraded":
+		return theme.Bold.Render("degraded")
+	case "error":
+		return theme.Error.Render("error")
+	default:
+		return theme.Dim.Render(status)
+	}
+}
+
+// metricsDiagnosticsIndicator returns a themed status indicator for a per-metric health check.
+func metricsDiagnosticsIndicator(status string, theme style.Theme) string {
+	switch status {
+	case "healthy":
+		return theme.OK.Render("✓")
+	case "missing":
+		return theme.Error.Render("✗")
+	case "stale":
+		return theme.Bold.Render("!")
+	default:
+		return theme.Dim.Render("?")
+	}
+}
+
 // WriteStatusTextWithOptions writes a status report with full rendering options.
 func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTextOptions) error {
 	a := report.Analysis
@@ -202,7 +230,7 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 		out = fmt.Appendf(out, "%s:\n", labels.KEDA)
 		out = fmt.Appendf(out, "  ScaledObject: %s\n", a.KEDAInfo.ScaledObjectName)
 		if len(a.KEDAInfo.Triggers) > 0 {
-			triggerLines := make([]string, 0, len(a.KEDAInfo.Triggers))
+			out = fmt.Appendf(out, "  Triggers:\n")
 			for _, t := range a.KEDAInfo.Triggers {
 				label := t.Type
 				if t.Name != "" {
@@ -212,11 +240,29 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 					badge := triggerStatusBadge(t.Status, theme)
 					label = fmt.Sprintf("%s: %s", label, badge)
 				}
-				triggerLines = append(triggerLines, label)
-			}
-			out = fmt.Appendf(out, "  Triggers:\n")
-			for _, tl := range triggerLines {
-				out = fmt.Appendf(out, "    - %s\n", tl)
+				out = fmt.Appendf(out, "    - %s\n", label)
+				if t.MetricName != "" || t.Threshold != "" || t.CurrentValue != "" {
+					detail := ""
+					if t.MetricName != "" {
+						detail = fmt.Sprintf("metric=%s", t.MetricName)
+					}
+					if t.Threshold != "" {
+						if detail != "" {
+							detail += " "
+						}
+						detail += fmt.Sprintf("threshold=%s", t.Threshold)
+					}
+					if t.CurrentValue != "" {
+						if detail != "" {
+							detail += " "
+						}
+						detail += fmt.Sprintf("current=%s", t.CurrentValue)
+					}
+					out = fmt.Appendf(out, "      %s\n", detail)
+				}
+				if t.AuthRef != "" {
+					out = fmt.Appendf(out, "      authRef=%s\n", t.AuthRef)
+				}
 			}
 		}
 		if a.KEDAInfo.Fallback != nil {
@@ -256,6 +302,40 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 		out = fmt.Appendf(out, "  warning: %s\n", theme.ActionLine(a.VPAConflict.Warning))
 	}
 
+	if a.MetricsDiagnostics != nil {
+		out = append(out, '\n')
+		out = fmt.Appendf(out, "%s:\n", labels.MetricsDiagnostics)
+		out = fmt.Appendf(out, "  %s: %s\n", labels.Health, metricsDiagnosticsStatus(a.MetricsDiagnostics.OverallStatus, theme))
+		if len(a.MetricsDiagnostics.PerMetricChecks) > 0 {
+			out = append(out, "  Checks:\n"...)
+			for _, check := range a.MetricsDiagnostics.PerMetricChecks {
+				indicator := metricsDiagnosticsIndicator(check.Status, theme)
+				out = fmt.Appendf(out, "    - %s %s/%s: %s\n", indicator, check.MetricType, check.MetricName, check.Details)
+				if check.Remediation != "" {
+					out = fmt.Appendf(out, "      %s\n", check.Remediation)
+				}
+			}
+		}
+		if len(a.MetricsDiagnostics.RemediationSteps) > 0 {
+			out = append(out, "  Remediation:\n"...)
+			for _, step := range a.MetricsDiagnostics.RemediationSteps {
+				out = fmt.Appendf(out, "    - %s\n", step)
+			}
+		}
+	}
+
+	if a.ResourceCheck != nil && len(a.ResourceCheck.Warnings) > 0 {
+		out = append(out, '\n')
+		out = append(out, "Resource Check:\n"...)
+		for _, w := range a.ResourceCheck.Warnings {
+			indicator := "warning"
+			if w.Severity == "error" {
+				indicator = "error"
+			}
+			out = fmt.Appendf(out, "  [%s] %s/%s: %s\n", indicator, w.Container, w.Resource, w.Details)
+		}
+	}
+
 	out = append(out, '\n')
 	out = fmt.Appendf(out, "%s:\n", labels.Events)
 	if len(report.Events) == 0 {
@@ -286,23 +366,24 @@ func indentBlock(text string, prefix string) string {
 }
 
 type labels struct {
-	Target         string
-	Replicas       string
-	Health         string
-	Summary        string
-	Conditions     string
-	Metrics        string
-	Behavior       string
-	Actions        string
-	Suggestions    string
-	Fix            string
-	Interpretation string
-	Debug          string
-	KEDA           string
-	Events         string
-	Risk           string
-	Precondition   string
-	Warning        string
+	Target              string
+	Replicas            string
+	Health              string
+	Summary             string
+	Conditions          string
+	Metrics             string
+	Behavior            string
+	Actions             string
+	Suggestions         string
+	Fix                 string
+	Interpretation      string
+	Debug               string
+	KEDA                string
+	Events              string
+	Risk                string
+	Precondition        string
+	Warning             string
+	MetricsDiagnostics  string
 }
 
 func textLabels(lang string) labels {
@@ -324,7 +405,8 @@ func textLabels(lang string) labels {
 			Events:         "最近のイベント",
 			Risk:           "リスク",
 			Precondition:   "前提条件",
-			Warning:        "警告",
+			Warning:             "警告",
+			MetricsDiagnostics:  "メトリクス診断",
 		}
 	}
 	return labels{
@@ -344,7 +426,8 @@ func textLabels(lang string) labels {
 		Events:         "Recent events",
 		Risk:           "risk",
 		Precondition:   "precondition",
-		Warning:        "warning",
+		Warning:             "warning",
+		MetricsDiagnostics:  "Metrics Diagnostics",
 	}
 }
 

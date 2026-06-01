@@ -23,16 +23,16 @@ var scaledObjectGVR = schema.GroupVersionResource{
 
 // KEDAInfo holds extracted information about a KEDA ScaledObject.
 type KEDAInfo struct {
-	ScaledObjectName string               `json:"scaledObjectName" yaml:"scaledObjectName"`
-	Triggers         []KEDATrigger        `json:"triggers,omitempty" yaml:"triggers,omitempty"`
-	PollingInterval  *int32               `json:"pollingInterval,omitempty" yaml:"pollingInterval,omitempty"`
-	CooldownPeriod   *int32               `json:"cooldownPeriod,omitempty" yaml:"cooldownPeriod,omitempty"`
-	MinReplicaCount  *int32               `json:"minReplicaCount,omitempty" yaml:"minReplicaCount,omitempty"`
-	MaxReplicaCount  *int32               `json:"maxReplicaCount,omitempty" yaml:"maxReplicaCount,omitempty"`
-	Conditions       []KEDACondition      `json:"conditions,omitempty" yaml:"conditions,omitempty"`
-	Advanced         map[string]string    `json:"advanced,omitempty" yaml:"advanced,omitempty"`
-	Fallback         *KEDAFallback        `json:"fallback,omitempty" yaml:"fallback,omitempty"`
-	ScalingPolicies  []KEDAScalingPolicy  `json:"scalingPolicies,omitempty" yaml:"scalingPolicies,omitempty"`
+	ScaledObjectName string              `json:"scaledObjectName" yaml:"scaledObjectName"`
+	Triggers         []KEDATrigger       `json:"triggers,omitempty" yaml:"triggers,omitempty"`
+	PollingInterval  *int32              `json:"pollingInterval,omitempty" yaml:"pollingInterval,omitempty"`
+	CooldownPeriod   *int32              `json:"cooldownPeriod,omitempty" yaml:"cooldownPeriod,omitempty"`
+	MinReplicaCount  *int32              `json:"minReplicaCount,omitempty" yaml:"minReplicaCount,omitempty"`
+	MaxReplicaCount  *int32              `json:"maxReplicaCount,omitempty" yaml:"maxReplicaCount,omitempty"`
+	Conditions       []KEDACondition     `json:"conditions,omitempty" yaml:"conditions,omitempty"`
+	Advanced         map[string]string   `json:"advanced,omitempty" yaml:"advanced,omitempty"`
+	Fallback         *KEDAFallback       `json:"fallback,omitempty" yaml:"fallback,omitempty"`
+	ScalingPolicies  []KEDAScalingPolicy `json:"scalingPolicies,omitempty" yaml:"scalingPolicies,omitempty"`
 }
 
 // KEDATrigger represents a single KEDA scaler trigger.
@@ -40,9 +40,12 @@ type KEDATrigger struct {
 	Type              string            `json:"type" yaml:"type"`
 	Name              string            `json:"name,omitempty" yaml:"name,omitempty"`
 	Metadata          map[string]string `json:"metadata,omitempty" yaml:"metadata,omitempty"`
-	Status            string            `json:"status,omitempty" yaml:"status,omitempty"`                        // "Active", "Inactive", "Unknown"
+	Status            string            `json:"status,omitempty" yaml:"status,omitempty"` // "Active", "Inactive", "Unknown"
 	Message           string            `json:"message,omitempty" yaml:"message,omitempty"`
 	AuthenticationRef string            `json:"authenticationRef,omitempty" yaml:"authenticationRef,omitempty"`
+	MetricName        string            `json:"metricName,omitempty" yaml:"metricName,omitempty"`
+	Threshold         string            `json:"threshold,omitempty" yaml:"threshold,omitempty"`
+	CurrentValue      string            `json:"currentValue,omitempty" yaml:"currentValue,omitempty"`
 }
 
 // KEDACondition represents a condition from the ScaledObject status.
@@ -228,6 +231,16 @@ func extractTriggers(spec map[string]any) []KEDATrigger {
 			for k, v := range metadata {
 				trigger.Metadata[k] = fmt.Sprintf("%v", v)
 			}
+			// Extract threshold from common metadata keys used by KEDA scalers.
+			if v, ok := metadata["threshold"]; ok {
+				trigger.Threshold = fmt.Sprintf("%v", v)
+			} else if v, ok := metadata["value"]; ok {
+				trigger.Threshold = fmt.Sprintf("%v", v)
+			}
+		}
+		// Extract metricType to determine the produced metric name.
+		if ms, ok := tm["metricType"].(string); ok && ms != "" {
+			trigger.MetricName = ms
 		}
 		// Extract authenticationRef.name from the trigger spec.
 		if authRef, ok := tm["authenticationRef"].(map[string]any); ok {
@@ -254,13 +267,25 @@ func extractTriggerStatus(u *unstructured.Unstructured, triggers []KEDATrigger) 
 	// KEDA v2: status.health is a map keyed by trigger name or index.
 	for i := range triggers {
 		t := &triggers[i]
-		// Try matching by trigger name first, then by type.
-		if entry, ok := health[t.Name].(map[string]any); ok && t.Name != "" {
-			t.Status = mapHealthStatus(stringValue(entry, "status"))
-			t.Message = stringValue(entry, "message")
-		} else if entry, ok := health[t.Type].(map[string]any); ok {
-			t.Status = mapHealthStatus(stringValue(entry, "status"))
-			t.Message = stringValue(entry, "message")
+		var entry map[string]any
+		if t.Name != "" {
+			entry, _ = health[t.Name].(map[string]any)
+		}
+		if entry == nil {
+			entry, _ = health[t.Type].(map[string]any)
+		}
+		if entry == nil {
+			continue
+		}
+		t.Status = mapHealthStatus(stringValue(entry, "status"))
+		t.Message = stringValue(entry, "message")
+		// Extract current metric value from health entry.
+		if cv, ok := entry["currentValue"]; ok {
+			t.CurrentValue = fmt.Sprintf("%v", cv)
+		}
+		// Override threshold from health entry if available (more accurate than spec metadata).
+		if th, ok := entry["threshold"]; ok {
+			t.Threshold = fmt.Sprintf("%v", th)
 		}
 	}
 }
