@@ -47,7 +47,7 @@ func analysisOptions(opts *options) hpaanalysis.AnalysisOptions {
 }
 
 func loadConfigFile(path string) (configFile, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // path is from user config flag, not arbitrary input
 	if err != nil {
 		return configFile{}, err
 	}

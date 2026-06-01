@@ -3,6 +3,7 @@ package kube
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -259,12 +260,21 @@ func extractInt32Ptr(m map[string]any, key string) *int32 {
 	}
 	switch v := raw.(type) {
 	case int64:
-		val := int32(v)
+		if v < math.MinInt32 || v > math.MaxInt32 {
+			return nil
+		}
+		val := int32(v) //nolint:gosec // overflow checked above
 		return &val
 	case int:
-		val := int32(v)
+		if v < math.MinInt32 || v > math.MaxInt32 {
+			return nil
+		}
+		val := int32(v) //nolint:gosec // overflow checked above
 		return &val
 	case float64:
+		if v < math.MinInt32 || v > math.MaxInt32 {
+			return nil
+		}
 		val := int32(v)
 		return &val
 	default:
