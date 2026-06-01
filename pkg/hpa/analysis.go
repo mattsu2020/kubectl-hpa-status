@@ -45,37 +45,37 @@ type HealthWeights struct {
 
 // Analysis holds the complete analysis result for a single HPA.
 type Analysis struct {
-	Namespace                string              `json:"namespace" yaml:"namespace"`
-	Name                     string              `json:"name" yaml:"name"`
-	Target                   string              `json:"target" yaml:"target"`
-	Current                  int32               `json:"currentReplicas" yaml:"currentReplicas"`
-	Desired                  int32               `json:"desiredReplicas" yaml:"desiredReplicas"`
-	Min                      int32               `json:"minReplicas" yaml:"minReplicas"`
-	Max                      int32               `json:"maxReplicas" yaml:"maxReplicas"`
-	Health                   string              `json:"health" yaml:"health"`
-	HealthScore              int                 `json:"healthScore" yaml:"healthScore"`
-	Summary                  string              `json:"summary" yaml:"summary"`
-	Conditions               []Condition         `json:"conditions" yaml:"conditions"`
-	Metrics                  []Metric            `json:"metrics" yaml:"metrics"`
-	Behavior                 []BehaviorRule      `json:"behavior,omitempty" yaml:"behavior,omitempty"`
-	Actions                  []string            `json:"recommendedActions,omitempty" yaml:"recommendedActions,omitempty"`
-	Suggestions              []Suggestion        `json:"suggestions,omitempty" yaml:"suggestions,omitempty"`
-	Interpretation           []string            `json:"interpretation,omitempty" yaml:"interpretation,omitempty"`
-	KEDAInfo                 *KEDAAnalysis       `json:"keda,omitempty" yaml:"keda,omitempty"`
-	VPAConflict              *VPAConflictInfo    `json:"vpaConflict,omitempty" yaml:"vpaConflict,omitempty"`
-	TargetReplicas           *TargetReplicaInfo  `json:"targetReplicas,omitempty" yaml:"targetReplicas,omitempty"`
-	Debug                    []string            `json:"debug,omitempty" yaml:"debug,omitempty"`
-	ImpactMetric             *MetricImpactGuess  `json:"impactMetric,omitempty" yaml:"impactMetric,omitempty"`
-	CreationTimestamp        metav1.Time         `json:"creationTimestamp,omitempty" yaml:"creationTimestamp,omitempty"`
-	StaleStatus              *StaleStatusInfo    `json:"staleStatus,omitempty" yaml:"staleStatus,omitempty"`
-	StabilizationRemaining   *int64              `json:"stabilizationRemaining,omitempty" yaml:"stabilizationRemaining,omitempty"`
-	ScaleToZero              *ScaleToZeroInfo    `json:"scaleToZero,omitempty" yaml:"scaleToZero,omitempty"`
-	StructuredInterpretation []StructuredMessage `json:"structuredInterpretation,omitempty" yaml:"structuredInterpretation,omitempty"`
-	StructuredActions        []StructuredMessage `json:"structuredActions,omitempty" yaml:"structuredActions,omitempty"`
-	DecisionSignals          []DecisionSignal    `json:"decisionSignals,omitempty" yaml:"decisionSignals,omitempty"`
-	StabilizationWindowSeconds *int32                       `json:"stabilizationWindowSeconds,omitempty" yaml:"stabilizationWindowSeconds,omitempty"`
-	MetricsDiagnostics         *MetricsPipelineDiagnostics  `json:"metricsDiagnostics,omitempty" yaml:"metricsDiagnostics,omitempty"`
-	ResourceCheck              *ResourceCheckResult         `json:"resourceCheck,omitempty" yaml:"resourceCheck,omitempty"`
+	Namespace                  string                      `json:"namespace" yaml:"namespace"`
+	Name                       string                      `json:"name" yaml:"name"`
+	Target                     string                      `json:"target" yaml:"target"`
+	Current                    int32                       `json:"currentReplicas" yaml:"currentReplicas"`
+	Desired                    int32                       `json:"desiredReplicas" yaml:"desiredReplicas"`
+	Min                        int32                       `json:"minReplicas" yaml:"minReplicas"`
+	Max                        int32                       `json:"maxReplicas" yaml:"maxReplicas"`
+	Health                     string                      `json:"health" yaml:"health"`
+	HealthScore                int                         `json:"healthScore" yaml:"healthScore"`
+	Summary                    string                      `json:"summary" yaml:"summary"`
+	Conditions                 []Condition                 `json:"conditions" yaml:"conditions"`
+	Metrics                    []Metric                    `json:"metrics" yaml:"metrics"`
+	Behavior                   []BehaviorRule              `json:"behavior,omitempty" yaml:"behavior,omitempty"`
+	Actions                    []string                    `json:"recommendedActions,omitempty" yaml:"recommendedActions,omitempty"`
+	Suggestions                []Suggestion                `json:"suggestions,omitempty" yaml:"suggestions,omitempty"`
+	Interpretation             []string                    `json:"interpretation,omitempty" yaml:"interpretation,omitempty"`
+	KEDAInfo                   *KEDAAnalysis               `json:"keda,omitempty" yaml:"keda,omitempty"`
+	VPAConflict                *VPAConflictInfo            `json:"vpaConflict,omitempty" yaml:"vpaConflict,omitempty"`
+	TargetReplicas             *TargetReplicaInfo          `json:"targetReplicas,omitempty" yaml:"targetReplicas,omitempty"`
+	Debug                      []string                    `json:"debug,omitempty" yaml:"debug,omitempty"`
+	ImpactMetric               *MetricImpactGuess          `json:"impactMetric,omitempty" yaml:"impactMetric,omitempty"`
+	CreationTimestamp          metav1.Time                 `json:"creationTimestamp,omitempty" yaml:"creationTimestamp,omitempty"`
+	StaleStatus                *StaleStatusInfo            `json:"staleStatus,omitempty" yaml:"staleStatus,omitempty"`
+	StabilizationRemaining     *int64                      `json:"stabilizationRemaining,omitempty" yaml:"stabilizationRemaining,omitempty"`
+	ScaleToZero                *ScaleToZeroInfo            `json:"scaleToZero,omitempty" yaml:"scaleToZero,omitempty"`
+	StructuredInterpretation   []StructuredMessage         `json:"structuredInterpretation,omitempty" yaml:"structuredInterpretation,omitempty"`
+	StructuredActions          []StructuredMessage         `json:"structuredActions,omitempty" yaml:"structuredActions,omitempty"`
+	DecisionSignals            []DecisionSignal            `json:"decisionSignals,omitempty" yaml:"decisionSignals,omitempty"`
+	StabilizationWindowSeconds *int32                      `json:"stabilizationWindowSeconds,omitempty" yaml:"stabilizationWindowSeconds,omitempty"`
+	MetricsDiagnostics         *MetricsPipelineDiagnostics `json:"metricsDiagnostics,omitempty" yaml:"metricsDiagnostics,omitempty"`
+	ResourceCheck              *ResourceCheckResult        `json:"resourceCheck,omitempty" yaml:"resourceCheck,omitempty"`
 }
 
 // DecisionSignal is the stable internal shape for explicit controller scaling
@@ -207,18 +207,18 @@ type TargetReplicaInfo struct {
 
 // MetricsPipelineDiagnostics holds the results of metrics pipeline health checks.
 type MetricsPipelineDiagnostics struct {
-	OverallStatus    string                `json:"overallStatus" yaml:"overallStatus"`
+	OverallStatus    string                 `json:"overallStatus" yaml:"overallStatus"`
 	PerMetricChecks  []PerMetricHealthCheck `json:"perMetricChecks,omitempty" yaml:"perMetricChecks,omitempty"`
-	RemediationSteps []string              `json:"remediationSteps,omitempty" yaml:"remediationSteps,omitempty"`
+	RemediationSteps []string               `json:"remediationSteps,omitempty" yaml:"remediationSteps,omitempty"`
 }
 
 // PerMetricHealthCheck describes the health of a single metric source.
 type PerMetricHealthCheck struct {
-	MetricType   string `json:"metricType" yaml:"metricType"`
-	MetricName   string `json:"metricName" yaml:"metricName"`
-	Status       string `json:"status" yaml:"status"` // "healthy", "missing", "stale"
-	Details      string `json:"details,omitempty" yaml:"details,omitempty"`
-	Remediation  string `json:"remediation,omitempty" yaml:"remediation,omitempty"`
+	MetricType  string `json:"metricType" yaml:"metricType"`
+	MetricName  string `json:"metricName" yaml:"metricName"`
+	Status      string `json:"status" yaml:"status"` // "healthy", "missing", "stale"
+	Details     string `json:"details,omitempty" yaml:"details,omitempty"`
+	Remediation string `json:"remediation,omitempty" yaml:"remediation,omitempty"`
 }
 
 // ResourceCheckResult holds warnings about resource request/limit consistency with HPA targets.
@@ -1568,9 +1568,7 @@ func DiagnoseMetricsPipeline(hpa *autoscalingv2.HorizontalPodAutoscaler) *Metric
 				"%s metric %q is configured but no current metrics are reported at all; the metrics server or adapter is likely down.",
 				metricType, metricName,
 			)
-			check.Remediation = fmt.Sprintf(
-				"Verify that the metrics server or custom metrics adapter is running and accessible: kubectl get pods -n kube-system | grep metrics; kubectl logs -n kube-system <metrics-pod>.",
-			)
+			check.Remediation = "Verify that the metrics server or custom metrics adapter is running and accessible: kubectl get pods -n kube-system | grep metrics; kubectl logs -n kube-system <metrics-pod>."
 			hasMissing = true
 			checks = append(checks, check)
 			continue

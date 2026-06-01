@@ -115,7 +115,7 @@ jobs:
           - kubernetes: "1.28"
             kind-node-image: kindest/node:v1.28.15
           - kubernetes: "1.30"
-            kind-node-image: kindest/node:v1.30.14
+            kind-node-image: kindest/node:v1.30.13
           - kubernetes: "1.35"
             kind-node-image: kindest/node:v1.35.0
     steps:

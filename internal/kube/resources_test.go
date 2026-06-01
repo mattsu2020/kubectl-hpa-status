@@ -44,7 +44,7 @@ func TestFetchScaleTargetResources_Deployment(t *testing.T) {
 		},
 	}
 
-	client := fake.NewSimpleClientset(deploy)
+	client := fake.NewClientset(deploy)
 	result, err := FetchScaleTargetResources(context.Background(), client, "default", "Deployment", "web")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -98,7 +98,7 @@ func TestFetchScaleTargetResources_StatefulSet(t *testing.T) {
 		},
 	}
 
-	client := fake.NewSimpleClientset(sts)
+	client := fake.NewClientset(sts)
 	result, err := FetchScaleTargetResources(context.Background(), client, "default", "StatefulSet", "db")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -140,7 +140,7 @@ func TestFetchScaleTargetResources_ReplicaSet(t *testing.T) {
 		},
 	}
 
-	client := fake.NewSimpleClientset(rs)
+	client := fake.NewClientset(rs)
 	result, err := FetchScaleTargetResources(context.Background(), client, "default", "ReplicaSet", "web-abc123")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -154,7 +154,7 @@ func TestFetchScaleTargetResources_ReplicaSet(t *testing.T) {
 }
 
 func TestFetchScaleTargetResources_UnsupportedKind(t *testing.T) {
-	client := fake.NewSimpleClientset()
+	client := fake.NewClientset()
 	result, err := FetchScaleTargetResources(context.Background(), client, "default", "DaemonSet", "agent")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -165,7 +165,7 @@ func TestFetchScaleTargetResources_UnsupportedKind(t *testing.T) {
 }
 
 func TestFetchScaleTargetResources_DeploymentNotFound(t *testing.T) {
-	client := fake.NewSimpleClientset()
+	client := fake.NewClientset()
 	_, err := FetchScaleTargetResources(context.Background(), client, "default", "Deployment", "missing")
 	if err == nil {
 		t.Fatal("expected error for missing deployment")
@@ -207,7 +207,7 @@ func TestFetchScaleTargetResources_MultipleContainers(t *testing.T) {
 		},
 	}
 
-	client := fake.NewSimpleClientset(deploy)
+	client := fake.NewClientset(deploy)
 	result, err := FetchScaleTargetResources(context.Background(), client, "default", "Deployment", "web")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -240,7 +240,7 @@ func TestFetchScaleTargetResources_NoResources(t *testing.T) {
 		},
 	}
 
-	client := fake.NewSimpleClientset(deploy)
+	client := fake.NewClientset(deploy)
 	result, err := FetchScaleTargetResources(context.Background(), client, "default", "Deployment", "web")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -287,7 +287,7 @@ func TestFetchScaleTargetResources_EmptyContainers(t *testing.T) {
 		},
 	}
 
-	client := fake.NewSimpleClientset([]runtime.Object{deploy}...)
+	client := fake.NewClientset([]runtime.Object{deploy}...)
 	result, err := FetchScaleTargetResources(context.Background(), client, "default", "Deployment", "web")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

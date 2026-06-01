@@ -32,20 +32,20 @@ type Model struct {
 	namespace string
 	opts      Options
 
-	items       []hpaanalysis.ListItem
-	reports     map[string]*hpaanalysis.StatusReport
-	cursor      int
-	viewMode    viewMode
-	paused      bool
-	filter      string
-	filterInput textinput.Model
-	filtering   bool
-	interval    time.Duration
-	lastRefresh time.Time
-	err         error
-	width       int
-	height      int
-	loading     bool
+	items          []hpaanalysis.ListItem
+	reports        map[string]*hpaanalysis.StatusReport
+	cursor         int
+	viewMode       viewMode
+	paused         bool
+	filter         string
+	filterInput    textinput.Model
+	filtering      bool
+	interval       time.Duration
+	lastRefresh    time.Time
+	err            error
+	width          int
+	height         int
+	loading        bool
 	sortField      string
 	sortDescending bool
 	selected       map[string]bool

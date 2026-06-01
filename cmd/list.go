@@ -146,7 +146,9 @@ func applyListSuggestions(ctx context.Context, out io.Writer, opts *options, hpa
 	}
 
 	if len(entries) == 0 {
-		fmt.Fprintln(out, "No applicable HPA patches found.")
+		if _, err := fmt.Fprintln(out, "No applicable HPA patches found."); err != nil {
+			return fmt.Errorf("write output: %w", err)
+		}
 		return nil
 	}
 
@@ -155,12 +157,20 @@ func applyListSuggestions(ctx context.Context, out io.Writer, opts *options, hpa
 	for _, e := range entries {
 		seenHPAs[e.Namespace+"/"+e.Name] = true
 	}
-	fmt.Fprintf(out, "\nBatch patch summary (%d patches across %d HPA(s)):\n", len(entries), len(seenHPAs))
-	fmt.Fprintln(out, "  NAMESPACE/NAME                    PATCH                           RISK")
-	for _, e := range entries {
-		fmt.Fprintf(out, "  %-35s %-30s %s\n", e.Namespace+"/"+e.Name, e.Suggestion.Title, e.Suggestion.Risk)
+	if _, err := fmt.Fprintf(out, "\nBatch patch summary (%d patches across %d HPA(s)):\n", len(entries), len(seenHPAs)); err != nil {
+		return fmt.Errorf("write output: %w", err)
 	}
-	fmt.Fprintln(out)
+	if _, err := fmt.Fprintln(out, "  NAMESPACE/NAME                    PATCH                           RISK"); err != nil {
+		return fmt.Errorf("write output: %w", err)
+	}
+	for _, e := range entries {
+		if _, err := fmt.Fprintf(out, "  %-35s %-30s %s\n", e.Namespace+"/"+e.Name, e.Suggestion.Title, e.Suggestion.Risk); err != nil {
+			return fmt.Errorf("write output: %w", err)
+		}
+	}
+	if _, err := fmt.Fprintln(out); err != nil {
+		return fmt.Errorf("write output: %w", err)
+	}
 
 	// Single confirmation for the entire batch.
 	if !opts.yes {
@@ -168,7 +178,9 @@ func applyListSuggestions(ctx context.Context, out io.Writer, opts *options, hpa
 		if !opts.dryRun {
 			action = "apply"
 		}
-		fmt.Fprintf(out, "%s %d patches? [y/N]: ", action, len(entries))
+		if _, err := fmt.Fprintf(out, "%s %d patches? [y/N]: ", action, len(entries)); err != nil {
+			return fmt.Errorf("write output: %w", err)
+		}
 		if opts.in == nil {
 			opts.in = os.Stdin
 		}

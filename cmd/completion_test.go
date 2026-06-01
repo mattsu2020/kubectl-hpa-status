@@ -106,9 +106,9 @@ func TestUntilConditionCompletions(t *testing.T) {
 func TestContextNames(t *testing.T) {
 	config := &api.Config{
 		Contexts: map[string]*api.Context{
-			"dev":    {},
+			"dev":     {},
 			"staging": {},
-			"prod":   {},
+			"prod":    {},
 		},
 	}
 	names := contextNames(config)

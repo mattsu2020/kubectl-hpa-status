@@ -104,7 +104,7 @@ func (c *Client) ListHPAs(ctx context.Context, namespace string, opts metav1.Lis
 		}
 		if all.ResourceVersion == "" {
 			all.TypeMeta = page.TypeMeta
-			all.ListMeta.ResourceVersion = page.ResourceVersion
+			all.ResourceVersion = page.ResourceVersion
 		}
 		all.Items = append(all.Items, page.Items...)
 		if page.Continue == "" {

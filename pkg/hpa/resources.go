@@ -138,7 +138,7 @@ func isZeroQuantity(value string) bool {
 	// and decimal formats like "0.1", "0.00"
 	numStr := value
 	for i, r := range value {
-		if !((r >= '0' && r <= '9') || r == '.' || r == '-') {
+		if (r < '0' || r > '9') && r != '.' && r != '-' {
 			numStr = value[:i]
 			break
 		}

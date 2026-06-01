@@ -3,8 +3,6 @@ package tui
 import (
 	"fmt"
 	"strings"
-
-	"github.com/charmbracelet/lipgloss"
 )
 
 // View renders the current state of the TUI.
@@ -116,14 +114,9 @@ func (m Model) renderListView() string {
 
 	for i := start; i < len(filtered) && i < start+visibleHeight; i++ {
 		item := filtered[i]
-		cursor := "  "
-		rowStyle := lipgloss.NewStyle()
-		if i == m.cursor {
-			cursor = cursorStyle.Render("▸ ")
-			rowStyle = lipgloss.NewStyle()
-		}
 		// Checkbox for selection.
 		itemKey := item.Namespace + "/" + item.Name
+		var cursor string
 		if m.selected[itemKey] {
 			cursor = cursorStyle.Render("▸ ") + okStyle.Render("[x] ")
 		} else {
@@ -142,7 +135,7 @@ func (m Model) renderListView() string {
 			health + "  " +
 			dimStyle.Render(score) + "  " +
 			dimStyle.Render(padRight(issue, issueW)) + "  " +
-			rowStyle.Render(summary)
+			summary
 
 		sb.WriteString(cursor + row + "\n")
 	}
