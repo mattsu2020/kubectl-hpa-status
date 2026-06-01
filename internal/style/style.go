@@ -63,18 +63,27 @@ func NewTheme(colorEnabled bool) Theme {
 func (t Theme) Enabled() bool { return t.enabled }
 
 // HealthLabel renders a health status string (OK, ERROR, LIMITED) with
-// appropriate styling and prefix markers.
-func (t Theme) HealthLabel(health string) string {
+// appropriate styling, prefix markers, and a score-based tier indicator.
+// Tier: 90+ = Excellent, 70-89 = Warning, <70 = Critical.
+func (t Theme) HealthLabel(health string, score int) string {
+	tier := "Critical"
+	switch {
+	case score >= 90:
+		tier = "Excellent"
+	case score >= 70:
+		tier = "Warning"
+	}
+
 	label := health
 	switch health {
 	case "ERROR":
-		label = "🔴 ERROR"
+		label = fmt.Sprintf("🔴 ERROR (%s)", tier)
 	case "LIMITED":
-		label = "🔴 ScalingLimited"
+		label = fmt.Sprintf("🔴 ScalingLimited (%s)", tier)
 	case "STABILIZED":
-		label = "🟡 Stabilized"
+		label = fmt.Sprintf("🟡 Stabilized (%s)", tier)
 	case "OK":
-		label = "🟢 Healthy"
+		label = fmt.Sprintf("🟢 Healthy (%s)", tier)
 	}
 	switch health {
 	case "ERROR":

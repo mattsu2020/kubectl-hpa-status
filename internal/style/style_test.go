@@ -11,7 +11,7 @@ func TestNewTheme_DisabledProducesPlain(t *testing.T) {
 		t.Fatal("disabled theme should not be enabled")
 	}
 	for _, label := range []string{"OK", "ERROR", "LIMITED"} {
-		got := theme.HealthLabel(label)
+		got := theme.HealthLabel(label, 100)
 		if strings.Contains(got, "\x1b[") {
 			t.Errorf("expected no ANSI in HealthLabel(%q), got %q", label, got)
 		}
@@ -23,7 +23,7 @@ func TestNewTheme_EnabledProducesANSI(t *testing.T) {
 	if !theme.Enabled() {
 		t.Fatal("enabled theme should be enabled")
 	}
-	got := theme.HealthLabel("ERROR")
+	got := theme.HealthLabel("ERROR", 50)
 	if !strings.Contains(got, "\x1b[") {
 		t.Errorf("expected ANSI escape codes in HealthLabel(ERROR), got %q", got)
 	}
@@ -34,13 +34,13 @@ func TestNewTheme_EnabledProducesANSI(t *testing.T) {
 
 func TestHealthLabel_Markers(t *testing.T) {
 	theme := NewTheme(false)
-	if got := theme.HealthLabel("OK"); got != "🟢 Healthy" {
+	if got := theme.HealthLabel("OK", 100); got != "🟢 Healthy (Excellent)" {
 		t.Errorf("expected healthy label, got %q", got)
 	}
-	if got := theme.HealthLabel("ERROR"); got != "🔴 ERROR" {
+	if got := theme.HealthLabel("ERROR", 50); got != "🔴 ERROR (Critical)" {
 		t.Errorf("expected error label, got %q", got)
 	}
-	if got := theme.HealthLabel("LIMITED"); got != "🔴 ScalingLimited" {
+	if got := theme.HealthLabel("LIMITED", 75); got != "🔴 ScalingLimited (Warning)" {
 		t.Errorf("expected limited label, got %q", got)
 	}
 }

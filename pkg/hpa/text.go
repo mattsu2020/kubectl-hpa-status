@@ -42,7 +42,7 @@ func WriteStatusDashboard(w io.Writer, report StatusReport, theme style.Theme) e
 	out = fmt.Appendf(out, "kubectl-hpa-status dashboard\n")
 	out = fmt.Appendf(out, "HPA      %s/%s\n", a.Namespace, a.Name)
 	out = fmt.Appendf(out, "Target   %s\n", a.Target)
-	out = fmt.Appendf(out, "Health   %s %d/100\n", theme.HealthLabel(a.Health), a.HealthScore)
+	out = fmt.Appendf(out, "Health   %s %d/100\n", theme.HealthLabel(a.Health, a.HealthScore), a.HealthScore)
 	out = fmt.Appendf(out, "Replicas current=%d desired=%d diff=%+d min=%d max=%d\n", a.Current, a.Desired, diff, a.Min, a.Max)
 	out = fmt.Appendf(out, "Summary  %s\n", theme.SummaryColor(a.Summary))
 
@@ -95,7 +95,7 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 	// Replicas: highlight desired when it differs from current
 	desired := theme.ReplicaHighlight(a.Desired, a.Desired != a.Current)
 	out = fmt.Appendf(out, "%s: current=%d desired=%s min=%d max=%d\n", labels.Replicas, a.Current, desired, a.Min, a.Max)
-	out = fmt.Appendf(out, "%s: %s %d/100\n", labels.Health, theme.HealthLabel(a.Health), a.HealthScore)
+	out = fmt.Appendf(out, "%s: %s %d/100\n", labels.Health, theme.HealthLabel(a.Health, a.HealthScore), a.HealthScore)
 
 	out = append(out, '\n')
 	out = fmt.Appendf(out, "%s: %s\n", labels.Summary, theme.SummaryColor(a.Summary))
@@ -572,7 +572,7 @@ func WriteListText(w io.Writer, report ListReport, opts ListTextOptions) error {
 				padRight(formatReplicaDiff(item.Desired-item.Current), 8),
 				padRight(fmt.Sprintf("%d", item.Min), 8),
 				padRight(fmt.Sprintf("%d", item.Max), 8),
-				padRight(t.HealthLabel(item.Health), 12),
+				padRight(t.HealthLabel(item.Health, item.HealthScore), 12),
 				padRight(fmt.Sprintf("%d", item.HealthScore), 8),
 				padRight(item.Metrics, 20),
 				padRight(item.Behavior, 28),
@@ -599,7 +599,7 @@ func WriteListText(w io.Writer, report ListReport, opts ListTextOptions) error {
 			padRight(item.Name, 32),
 			padRight(fmt.Sprintf("%d", item.Current), 8),
 			padRight(fmt.Sprintf("%d", item.Desired), 8),
-			padRight(t.HealthLabel(item.Health), 12),
+			padRight(t.HealthLabel(item.Health, item.HealthScore), 12),
 			padRight(fmt.Sprintf("%d", item.HealthScore), 8),
 			padRight(t.Issue(item.Issue, item.Health), 32),
 			item.Summary)
