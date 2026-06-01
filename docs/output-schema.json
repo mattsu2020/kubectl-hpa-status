@@ -73,6 +73,10 @@
           "type": "array",
           "items": { "$ref": "#/$defs/structuredEntry" }
         },
+        "decisionSignals": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/decisionSignal" }
+        },
         "keda": { "$ref": "#/$defs/kedaAnalysis" },
         "vpaConflict": { "$ref": "#/$defs/vpaConflict" },
         "targetReplicas": { "$ref": "#/$defs/targetReplicas" },
@@ -152,6 +156,17 @@
         "severity": { "type": "string", "enum": ["info", "warning", "error"] },
         "confidence": { "type": "string", "enum": ["high", "medium"] }
       }
+    },
+    "decisionSignal": {
+      "type": "object",
+      "properties": {
+        "reason": { "type": "string" },
+        "message": { "type": "string" },
+        "metricName": { "type": "string" },
+        "source": { "type": "string" },
+        "confidence": { "type": "string", "enum": ["high", "medium", "low"] }
+      },
+      "required": ["reason"]
     },
     "kedaAnalysis": {
       "type": "object",

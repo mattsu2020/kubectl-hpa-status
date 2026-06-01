@@ -69,9 +69,7 @@ func runList(ctx context.Context, out io.Writer, opts *options) error {
 		filter = "issue"
 	}
 
-	hpas, err := client.Interface.AutoscalingV2().
-		HorizontalPodAutoscalers(namespace).
-		List(ctx, metav1.ListOptions{LabelSelector: opts.selector})
+	hpas, err := client.ListHPAs(ctx, namespace, metav1.ListOptions{LabelSelector: opts.selector}, opts.chunkSize)
 	if err != nil {
 		listErr := fmt.Errorf("failed to list HPAs: %w", err)
 		if opts.output == "json" || opts.output == "yaml" {
@@ -94,7 +92,8 @@ func runList(ctx context.Context, out io.Writer, opts *options) error {
 	sortListItems(report.Items, sortBy)
 
 	wide := opts.wide || opts.output == "wide"
-	return writeOutput(out, opts.output, opts.template, report, func() error {
+	format, templateStr := outputSelection(opts)
+	return writeOutput(out, format, templateStr, report, func() error {
 		return hpaanalysis.WriteListText(out, report, hpaanalysis.ListTextOptions{
 			Wide:  wide,
 			Color: shouldColorize(opts.color, out),

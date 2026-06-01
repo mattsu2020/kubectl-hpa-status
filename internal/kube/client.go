@@ -2,8 +2,11 @@
 package kube
 
 import (
+	"context"
 	"path/filepath"
 
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth" // for cloud provider auth
 	"k8s.io/client-go/tools/clientcmd"
@@ -81,6 +84,34 @@ func NewClient(opts Options, extra ...ClientOption) (*Client, error) {
 	}
 
 	return &Client{Interface: client, Namespace: namespace}, nil
+}
+
+// ListHPAs reads HPAs with Kubernetes API pagination enabled when chunkSize is
+// positive. This keeps list/scan memory growth predictable on large clusters
+// while preserving the same returned object shape for existing analyzers.
+func (c *Client) ListHPAs(ctx context.Context, namespace string, opts metav1.ListOptions, chunkSize int64) (*autoscalingv2.HorizontalPodAutoscalerList, error) {
+	if chunkSize <= 0 {
+		return c.Interface.AutoscalingV2().HorizontalPodAutoscalers(namespace).List(ctx, opts)
+	}
+
+	opts.Limit = chunkSize
+	opts.Continue = ""
+	all := &autoscalingv2.HorizontalPodAutoscalerList{}
+	for {
+		page, err := c.Interface.AutoscalingV2().HorizontalPodAutoscalers(namespace).List(ctx, opts)
+		if err != nil {
+			return nil, err
+		}
+		if all.ResourceVersion == "" {
+			all.TypeMeta = page.TypeMeta
+			all.ListMeta.ResourceVersion = page.ResourceVersion
+		}
+		all.Items = append(all.Items, page.Items...)
+		if page.Continue == "" {
+			return all, nil
+		}
+		opts.Continue = page.Continue
+	}
 }
 
 func newLoadingRules(opts Options) *clientcmd.ClientConfigLoadingRules {

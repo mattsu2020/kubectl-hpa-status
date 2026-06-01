@@ -95,6 +95,7 @@ kubectl hpa status <hpa-name> -o 'jsonpath={.analysis.summary}'
 - `Recommended actions` (推奨アクション) は、ConditionやBehavior設定に基づいた運用上のヒントです。
 - `Interpretation` (解釈) は診断上の推論であり、コントローラーの非公開な決定履歴そのものではありません。
 - `confidence: high` (確信度: 高) は明示的なステータスフィールドに基づいていることを示し、`confidence: medium` (確信度: 中) はステータスと説明が一致しているものの、API自体が内部の詳細な理由を開示していないことを示します。
+- 複数メトリクス時の「勝者」は推定として表示します。現行のHPA statusはメトリクスごとの推奨レプリカ数や最終選択を公開しないため、targetからの距離が最も大きい可視メトリクスを強調します。
 
 よく見るべきシグナル:
 
@@ -144,7 +145,8 @@ kubectl hpa status <hpa-name> --suggest
 
 Krewではプラグイン名は `hpa-status` として入ります。kubectlはハイフンを含む
 プラグインを `kubectl hpa_status` として検出できます。
-**このREADMEでは、kubectlのnested plugin discoveryが対応している環境向けに
+**重要: Krewで入れた場合は通常 `kubectl hpa status <name>` ではなく
+`kubectl hpa_status status <name>` を使います。** このREADMEでは、kubectlのnested plugin discoveryが対応している環境向けに
 `kubectl hpa status` を推奨形として書いています。動かない場合は
 `kubectl hpa_status status <hpa-name>` または
 `kubectl-hpa-status status <hpa-name>` を使ってください。**
@@ -170,6 +172,16 @@ kubectl hpa status <hpa-name> -n <namespace>
 
 読み取り専用RBACと、`--apply --dry-run=false` 用のpatch権限例は
 [docs/rbac.yaml](docs/rbac.yaml) を参照してください。
+
+最小の読み取り権限は次の通りです:
+
+- `autoscaling/v2` `horizontalpodautoscalers` の `get`, `list`, `watch`
+- core `events` の `list`, `watch`
+- not-ready replicaの補足表示に使う `deployments`, `statefulsets`, `replicasets` の `get`（任意）
+- `--keda` 使用時の KEDA `scaledobjects` の `get`, `list`（任意）
+
+通常の診断に書き込み権限は不要です。HPAの `patch` は明示的に
+`--apply --dry-run=false` を使う運用だけに付与してください。
 
 Go module path、GitHubリポジトリ、リリースメタデータ、ユーザー向けバイナリ名は
 すべて `github.com/mattsu2020/kubectl-hpa-status` / `kubectl-hpa-status`
@@ -238,6 +250,7 @@ kubectl-hpa-status completion powershell
 | `-l, --selector` | `list`, `scan` | HPA一覧APIに渡すラベルセレクタ。例: `app=web,tier!=canary`。 |
 | `--context`, `--kubeconfig`, `--cluster` | 全コマンド | kubeconfig選択。 |
 | `--config <file>` | 全コマンド | YAML/JSON設定ファイルを読み込み。省略時は存在すれば `~/.kube/hpa-status.yaml`。 |
+| `--chunk-size` | `list`, `scan`, `tui` | Kubernetes list APIのページサイズ。デフォルトは500。0でページング無効。 |
 | `-o table|wide|json|yaml|jsonpath=...|template=...` | status, analyze, list, scan | 出力形式。単一/複数HPAのYAML出力にも対応。 |
 | `--wide` | table出力 | target、min、max、desired-current差分など追加列を表示。 |
 | `--sort-by namespace|name|current|desired|diff|health-score|issue|problem` | `list`, `scan` | list出力のソート。`problem` は低スコアとレプリカ差分を優先。 |
@@ -250,6 +263,7 @@ kubectl-hpa-status completion powershell
 | `--explain` | `status`, `analyze` | 詳細な解釈と推奨アクションを含める。 |
 | `--suggest`, `--recommend` | `status`, `analyze` | 安全に見える修正案を `kubectl patch` として表示。`--recommend` は `--suggest` のエイリアスです。 |
 | `--fix` | `status`, `analyze` | より強い修正計画と適用可能なpatchを表示。 |
+| `--diff` | `status`, `analyze` | 提案されたHPA spec patchのフィールド単位差分を表示。 |
 | `--apply` | `status`, `analyze` | デフォルトでserver-side dry-runとしてHPA patchを検証。 |
 | `--dry-run=false` | `--apply` フロー | 永続変更。`-y` なしでは差分表示後に確認プロンプトあり。 |
 | `--keda` | `status`, `analyze` | KEDA管理HPAで対応するScaledObjectを参照し、trigger/condition文脈を追加。 |
@@ -364,6 +378,14 @@ kind delete cluster --name hpa-status-dev
 | tolerance付近で増減しない | `kubectl hpa status <name> --explain --debug` | ratioが1.02〜1.10付近、desired=current | sustainedな圧力か確認し、必要ならHPAConfigurableTolerance利用を検討 |
 | クラスタ全体を棚卸ししたい | `kubectl hpa status scan` | health score, issue, conditions | `ERROR` から優先して確認 |
 
+### FAQ
+
+**複数メトリクスHPAで、どのメトリクスが勝ったか分かりますか?** 完全には分かりません。現行APIから見える `currentMetrics` と `spec.metrics` で推定しますが、メトリクスごとの推奨レプリカ数、missing metricの保守的補正、最終選択は公開されていません。
+
+**Krew後に `kubectl hpa status` が動かないのはなぜですか?** Krewはハイフンを含むプラグイン名をunderscore経由で公開します。`kubectl plugin list` で `hpa-status` が見える場合は `kubectl hpa_status status <name>` を使ってください。
+
+**Conditionが正常に見えるのにLIMITEDになるのはなぜですか?** クラスタによって `ScalingLimited` の反映が遅れる/出ない場合があります。`current == desired == maxReplicas` のような明示的なレプリカ状況も見て、軽いimplicit maxReplicasペナルティを適用します。
+
 ## 互換性マトリクス
 
 Kubernetes 1.26以降が必要です。本プラグインは `autoscaling/v2` を使用しており、同APIはKubernetes 1.23でGA、1.26以降で安定APIとなっています。
@@ -439,6 +461,8 @@ dry-runモードの違い:
 CI実行時にcoverageをCodecovへアップロードします。リリース時のHomebrew更新は
 専用Tap [mattsu2020/homebrew-kubectl-hpa-status](https://github.com/mattsu2020/homebrew-kubectl-hpa-status)
 を使います。
+E2Eは Kubernetes 1.26 / 1.28 / 1.30 / 最新追跡kind image のmatrixで実行し、
+対応範囲の `autoscaling/v2` 互換性を継続確認します。
 
 ## Validation matrix
 

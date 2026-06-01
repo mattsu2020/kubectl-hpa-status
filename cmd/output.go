@@ -86,6 +86,12 @@ func applyConfig(cmd *cobra.Command, opts *options, cfg configFile) {
 	if cfg.Dashboard != nil && !persistentFlagChanged(cmd, "dashboard") {
 		opts.dashboard = *cfg.Dashboard
 	}
+	if cfg.ChunkSize != nil && !persistentFlagChanged(cmd, "chunk-size") {
+		opts.chunkSize = *cfg.ChunkSize
+	}
+	if len(cfg.Templates) > 0 {
+		opts.outputTemplates = cfg.Templates
+	}
 	if cfg.Events != nil && !persistentFlagChanged(cmd, "events") {
 		opts.events.enabled = true
 		opts.events.limit = *cfg.Events
@@ -191,6 +197,49 @@ func writeOutput(out io.Writer, format string, templateStr string, value any, wr
 			return writeTemplate(out, expression, value)
 		}
 		return fmt.Errorf("unsupported output format %q", format)
+	}
+}
+
+func outputSelection(opts *options) (string, string) {
+	format := opts.output
+	templateStr := opts.template
+	if len(opts.outputTemplates) == 0 || format == "" {
+		return format, templateStr
+	}
+	if cfg, ok := opts.outputTemplates[format]; ok {
+		if cfg.Type == "" {
+			return "go-template", cfg.Template
+		}
+		return normalizeTemplateType(cfg.Type), cfg.Template
+	}
+	for _, prefix := range []string{"jsonpath=", "jsonpath:", "template=", "template:", "go-template=", "go-template:"} {
+		name, ok := strings.CutPrefix(format, prefix)
+		if !ok {
+			continue
+		}
+		cfg, exists := opts.outputTemplates[name]
+		if !exists {
+			return format, templateStr
+		}
+		if cfg.Type == "" {
+			if strings.HasPrefix(prefix, "jsonpath") {
+				return "jsonpath", cfg.Template
+			}
+			return "go-template", cfg.Template
+		}
+		return normalizeTemplateType(cfg.Type), cfg.Template
+	}
+	return format, templateStr
+}
+
+func normalizeTemplateType(value string) string {
+	switch normalizeSelector(value) {
+	case "jsonpath":
+		return "jsonpath"
+	case "gotemplate", "template":
+		return "go-template"
+	default:
+		return value
 	}
 }
 

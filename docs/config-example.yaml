@@ -45,6 +45,19 @@ events: 5
 # Dashboard mode for watch
 # dashboard: true
 
+# Kubernetes list API page size for list/scan/tui. Set to 0 to disable pagination.
+# chunkSize: 500
+
+# Named output templates. Use with -o hpa-names, -o jsonpath:summary,
+# or -o template:hpa-names.
+# templates:
+#   hpa-names:
+#     type: go-template
+#     template: '{{ range .Items }}{{ .Namespace }}/{{ .Name }}{{ "\n" }}{{ end }}'
+#   summary:
+#     type: jsonpath
+#     template: '{.analysis.summary}'
+
 # Custom health score penalty weights (zero = use default)
 healthWeights:
   scalingInactive: 45

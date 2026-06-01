@@ -36,6 +36,7 @@ func newTUICommand(opts *options) *cobra.Command {
 			model := tui.NewModel(client.Interface, namespace, tui.Options{
 				AllNamespaces: opts.allNamespaces,
 				Debug:         opts.debug,
+				ChunkSize:     opts.chunkSize,
 			})
 
 			program, err := tea.NewProgram(model, tea.WithAltScreen()).Run()

@@ -129,6 +129,14 @@ selector: app.kubernetes.io/part-of=my-service
 sortBy: problem
 maxScore: 80
 dashboard: false
+chunkSize: 500
+templates:
+  hpa-names:
+    type: go-template
+    template: '{{ range .Items }}{{ .Namespace }}/{{ .Name }}{{ "\n" }}{{ end }}'
+  summaries:
+    type: jsonpath
+    template: '{.analysis.summary}'
 healthWeights:
   scalingInactive: 45
   unableToScale: 35
@@ -143,6 +151,7 @@ How to read the output:
 - `Recommended actions` are operational hints based on visible conditions and behavior settings.
 - `Interpretation` is diagnostic inference, not the controller's private decision trace.
 - `confidence: high` means the line is based on explicit status fields; `confidence: medium` means the status is consistent with the explanation but the API does not expose the exact internal reason.
+- Multi-metric "winner" lines are intentionally labeled as estimates. Kubernetes HPA status does not expose per-metric replica recommendations today, so the plugin highlights the metric with the largest visible distance from target instead of claiming the exact controller winner.
 
 Common troubleshooting checks:
 
@@ -208,7 +217,8 @@ kubectl hpa status <hpa-name> --suggest
 Krew installs the plugin as `hpa-status`. For plugins whose names contain
 dashes, Krew creates a kubectl-visible symlink using underscores, so
 `hpa-status` is discoverable by kubectl as `kubectl hpa_status`.
-**This project documents `kubectl hpa status` as the preferred nested command
+**Important: Krew users usually need `kubectl hpa_status status <hpa-name>`,
+not `kubectl hpa status <hpa-name>`.** This project documents `kubectl hpa status` as the preferred nested command
 when your kubectl plugin discovery supports it; if it does not, use
 `kubectl hpa_status status <hpa-name>` or the direct binary
 `kubectl-hpa-status status <hpa-name>`.**
@@ -239,6 +249,16 @@ kubectl plugin list
 Minimum readonly RBAC and optional patch RBAC examples are available in
 [docs/rbac.yaml](docs/rbac.yaml). The plugin only needs `patch` permission when
 you intentionally use `--apply --dry-run=false`.
+
+Minimum read-only permissions:
+
+- `get`, `list`, `watch` on `autoscaling/v2` `horizontalpodautoscalers`
+- `list`, `watch` on core `events`
+- optional `get` on `deployments`, `statefulsets`, and `replicasets` for not-ready target replica hints
+- optional `get`, `list` on KEDA `scaledobjects` when using `--keda`
+
+Write permission is not required for normal diagnostics. Add `patch` on HPAs
+only for the explicit `--apply --dry-run=false` workflow.
 
 The Go module path, GitHub repository, release metadata, and user-facing binary
 name now all use `github.com/mattsu2020/kubectl-hpa-status` /
@@ -319,6 +339,7 @@ Detailed flags:
 | `-l, --selector` | `list`, `scan` | Kubernetes label selector passed to the HPA list call, such as `app=web,tier!=canary`. |
 | `--context`, `--kubeconfig`, `--cluster` | all commands | Explicit kubeconfig selection. |
 | `--config` | all commands | Read defaults from a YAML/JSON config file. Defaults to `~/.kube/hpa-status.yaml` when present. |
+| `--chunk-size` | `list`, `scan`, `tui` | Kubernetes list page size. Defaults to 500; set 0 to disable pagination. |
 | `-o table|wide|json|yaml|jsonpath=...|template=...` | status, analyze, list, scan | Output format. YAML is supported for both single and multiple HPA output. For the JSON schema, see [docs/output-schema.json](docs/output-schema.json). |
 | `--wide` | table output | Show target, min, max, and replica delta columns where applicable. |
 | `--sort-by namespace|name|current|desired|diff|health-score|issue|problem` | `list`, `scan` | Sort list output. `problem` puts the lowest health score and largest replica delta first. |
@@ -331,6 +352,7 @@ Detailed flags:
 | `--explain` | `status`, `analyze` | Include detailed interpretation and recommended actions. |
 | `--suggest`, `--recommend` | `status`, `analyze` | Include concrete `kubectl patch` commands when a safe HPA spec suggestion is visible. `--recommend` is an alias for `--suggest`. |
 | `--fix` | `status`, `analyze` | Show a stronger fix plan with applicable patches. |
+| `--diff` | `status`, `analyze` | Include field-level diffs for suggested HPA spec patches. |
 | `--apply` | `status`, `analyze` | Validate suggested HPA patches with server-side dry-run by default. |
 | `--dry-run=false` | `--apply` workflow | Persist changes; still shows a diff and asks for confirmation unless `-y` is set. |
 | `--keda` | `status`, `analyze` | For KEDA-managed HPAs, look up the matching ScaledObject and include trigger/condition context. |
@@ -403,6 +425,22 @@ kind-specific `--kubelet-insecure-tls` option.
 | Custom or external metric looks ambiguous | `kubectl hpa status <name> --explain --debug` | External/Object metric ratio, missing current status | Confirm adapter freshness and metric selector semantics outside the HPA status API |
 | Many HPAs need triage | `kubectl hpa status scan` | Health score, issue, conditions | Start with `ERROR`, then `ScalingLimited` |
 
+### FAQ
+
+**Which metric won in a multi-metric HPA?** The plugin can only estimate from
+visible `currentMetrics` and `spec.metrics`. It cannot see the controller's
+per-metric replica recommendations, missing-metric dampening, or final
+selection before min/max and stabilization constraints.
+
+**Why does `kubectl hpa status` fail after Krew install?** Krew exposes
+dash-separated plugin names through underscores. Run `kubectl plugin list`; if
+you see `hpa-status`, use `kubectl hpa_status status <name>`.
+
+**Why does the score say LIMITED when conditions look healthy?** Some clusters
+lag or omit `ScalingLimited`; the plugin also checks explicit replica evidence
+such as `current == desired == maxReplicas` and applies the smaller implicit
+maxReplicas penalty.
+
 ## Compatibility matrix
 
 Kubernetes v1.26 through v1.36 is the tested range. The plugin uses `autoscaling/v2` which became GA in Kubernetes 1.23 and is the stable API from 1.26 onward. The plugin is expected to work with future Kubernetes versions that serve `autoscaling/v2`.
@@ -449,6 +487,9 @@ Dry-run modes:
 Coverage is uploaded to Codecov when CI runs. Release automation uses the
 dedicated Homebrew tap
 [mattsu2020/homebrew-kubectl-hpa-status](https://github.com/mattsu2020/homebrew-kubectl-hpa-status).
+The E2E job runs a Kubernetes version matrix covering 1.26, 1.28, 1.30, and the
+current tracked kind image so regressions across supported `autoscaling/v2`
+clusters are caught early.
 
 ## Validation matrix
 

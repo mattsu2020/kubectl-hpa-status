@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
@@ -52,6 +53,7 @@ type Options struct {
 	AllNamespaces bool
 	ColorEnabled  bool
 	Debug         bool
+	ChunkSize     int64
 }
 
 // keyMap defines the keyboard shortcuts.
@@ -197,7 +199,7 @@ func fetchHPAs(m Model) tea.Cmd {
 			ns = metav1.NamespaceAll
 		}
 
-		hpas, err := m.client.AutoscalingV2().HorizontalPodAutoscalers(ns).List(context.Background(), metav1.ListOptions{})
+		hpas, err := listHPAs(context.Background(), m.client, ns, metav1.ListOptions{}, m.opts.ChunkSize)
 		if err != nil {
 			return fetchResultMsg{err: err}
 		}
@@ -215,6 +217,26 @@ func fetchHPAs(m Model) tea.Cmd {
 		}
 
 		return fetchResultMsg{items: items, reports: reports}
+	}
+}
+
+func listHPAs(ctx context.Context, client kubernetes.Interface, namespace string, opts metav1.ListOptions, chunkSize int64) (*autoscalingv2.HorizontalPodAutoscalerList, error) {
+	if chunkSize <= 0 {
+		return client.AutoscalingV2().HorizontalPodAutoscalers(namespace).List(ctx, opts)
+	}
+	opts.Limit = chunkSize
+	opts.Continue = ""
+	all := &autoscalingv2.HorizontalPodAutoscalerList{}
+	for {
+		page, err := client.AutoscalingV2().HorizontalPodAutoscalers(namespace).List(ctx, opts)
+		if err != nil {
+			return nil, err
+		}
+		all.Items = append(all.Items, page.Items...)
+		if page.Continue == "" {
+			return all, nil
+		}
+		opts.Continue = page.Continue
 	}
 }
 

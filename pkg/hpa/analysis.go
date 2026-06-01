@@ -71,6 +71,19 @@ type Analysis struct {
 	ScaleToZero              *ScaleToZeroInfo    `json:"scaleToZero,omitempty" yaml:"scaleToZero,omitempty"`
 	StructuredInterpretation []StructuredMessage `json:"structuredInterpretation,omitempty" yaml:"structuredInterpretation,omitempty"`
 	StructuredActions        []StructuredMessage `json:"structuredActions,omitempty" yaml:"structuredActions,omitempty"`
+	DecisionSignals          []DecisionSignal    `json:"decisionSignals,omitempty" yaml:"decisionSignals,omitempty"`
+}
+
+// DecisionSignal is the stable internal shape for explicit controller scaling
+// decision data. Current Kubernetes HPA status does not expose these fields;
+// future structured status adapters should populate this slice and renderers
+// should prefer it over best-effort inference when present.
+type DecisionSignal struct {
+	Reason     string `json:"reason" yaml:"reason"`
+	Message    string `json:"message,omitempty" yaml:"message,omitempty"`
+	MetricName string `json:"metricName,omitempty" yaml:"metricName,omitempty"`
+	Source     string `json:"source,omitempty" yaml:"source,omitempty"`
+	Confidence string `json:"confidence,omitempty" yaml:"confidence,omitempty"`
 }
 
 // StructuredMessage provides a machine-readable representation of an

@@ -66,6 +66,40 @@ func TestWriteOutputTemplate(t *testing.T) {
 	}
 }
 
+func TestOutputSelectionUsesNamedConfigTemplate(t *testing.T) {
+	opts := &options{
+		output: "names",
+		outputTemplates: map[string]outputTemplateConfig{
+			"names": {Type: "go-template", Template: "{{ .Analysis.Namespace }}/{{ .Analysis.Name }}"},
+		},
+	}
+
+	format, templateStr := outputSelection(opts)
+	if format != "go-template" {
+		t.Fatalf("expected go-template format, got %q", format)
+	}
+	if templateStr != "{{ .Analysis.Namespace }}/{{ .Analysis.Name }}" {
+		t.Fatalf("unexpected template %q", templateStr)
+	}
+}
+
+func TestOutputSelectionUsesNamedJSONPathTemplate(t *testing.T) {
+	opts := &options{
+		output: "jsonpath:summary",
+		outputTemplates: map[string]outputTemplateConfig{
+			"summary": {Template: "{.analysis.summary}"},
+		},
+	}
+
+	format, templateStr := outputSelection(opts)
+	if format != "jsonpath" {
+		t.Fatalf("expected jsonpath format, got %q", format)
+	}
+	if templateStr != "{.analysis.summary}" {
+		t.Fatalf("unexpected template %q", templateStr)
+	}
+}
+
 func TestMatchesListFilter(t *testing.T) {
 	item := hpaanalysis.ListItem{
 		Health: "LIMITED",
@@ -173,7 +207,7 @@ func TestSortListItemsByAge(t *testing.T) {
 
 func TestPatchDiffIncludesCurrentDesiredReplicas(t *testing.T) {
 	minReplicas := int32(2)
-	diff := patchDiff(&minReplicas, 7, 10, `{"spec":{"maxReplicas":20}}`)
+	diff := hpaanalysis.SuggestionDiff(&minReplicas, 7, 10, `{"spec":{"maxReplicas":20}}`)
 	if !strings.Contains(diff, "status.desiredReplicas: 7") {
 		t.Fatalf("expected desiredReplicas context, got %q", diff)
 	}

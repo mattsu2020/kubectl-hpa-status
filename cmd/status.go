@@ -77,11 +77,13 @@ func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []st
 			report.Analysis.Actions = append(report.Analysis.Actions, applied...)
 		}
 
-		if err := writeOutput(out, opts.output, opts.template, report, func() error {
+		format, templateStr := outputSelection(opts)
+		if err := writeOutput(out, format, templateStr, report, func() error {
 			return hpaanalysis.WriteStatusTextWithOptions(out, report, hpaanalysis.StatusTextOptions{
 				Theme: style.NewTheme(shouldColorize(opts.color, out)),
 				Lang:  outputLang(opts),
 				Fix:   opts.fix,
+				Diff:  opts.diff,
 			})
 		}); err != nil {
 			return err
@@ -108,7 +110,8 @@ func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []st
 		reports = append(reports, report)
 	}
 
-	if err := writeOutput(out, opts.output, opts.template, reports, func() error {
+	format, templateStr := outputSelection(opts)
+	if err := writeOutput(out, format, templateStr, reports, func() error {
 		for i, report := range reports {
 			if i > 0 {
 				if _, err := fmt.Fprintln(out); err != nil {
@@ -119,6 +122,7 @@ func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []st
 				Theme: style.NewTheme(shouldColorize(opts.color, out)),
 				Lang:  outputLang(opts),
 				Fix:   opts.fix,
+				Diff:  opts.diff,
 			}); err != nil {
 				return err
 			}

@@ -20,6 +20,7 @@
 set -euo pipefail
 
 CLUSTER_NAME="hpa-status-e2e"
+KIND_NODE_IMAGE="${KIND_NODE_IMAGE:-kindest/node:v1.31.0}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 MANIFEST_DIR="$PROJECT_DIR/testdata/manifests"
@@ -51,8 +52,8 @@ if kind get clusters 2>/dev/null | grep -q "$CLUSTER_NAME"; then
     warn "Cluster $CLUSTER_NAME already exists, deleting..."
     kind delete cluster --name "$CLUSTER_NAME"
 fi
-log "Creating kind cluster $CLUSTER_NAME..."
-kind create cluster --name "$CLUSTER_NAME --image kindest/node:v1.31.0" --wait 60s
+log "Creating kind cluster $CLUSTER_NAME with $KIND_NODE_IMAGE..."
+kind create cluster --name "$CLUSTER_NAME" --image "$KIND_NODE_IMAGE" --wait 60s
 
 export KUBECONFIG="$(kind get kubeconfig --name "$CLUSTER_NAME")"
 

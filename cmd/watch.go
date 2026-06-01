@@ -57,7 +57,8 @@ func runWatch(ctx context.Context, out io.Writer, opts *options, name string, in
 		if err != nil {
 			return err
 		}
-		if err := writeOutput(out, opts.output, opts.template, report, func() error {
+		format, templateStr := outputSelection(opts)
+		if err := writeOutput(out, format, templateStr, report, func() error {
 			if opts.dashboard {
 				return hpaanalysis.WriteStatusDashboard(out, report, theme)
 			}

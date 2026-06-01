@@ -80,6 +80,20 @@ Health states (in priority order): `ERROR` > `LIMITED` > `STABILIZED` > `OK`.
 
 Score is clamped to [0, 100]. All penalties are configurable via `--health-weights` flag or config file.
 
+The default weights favor operator urgency over mathematical precision:
+
+- Metrics unavailability gets the largest deduction because the HPA cannot
+  compute a trustworthy recommendation.
+- `AbleToScale != True` is nearly as severe because the controller is reporting
+  it cannot act on the desired scale.
+- min/max limiting is lower because it can be intentional capacity policy, but
+  it still requires attention when demand remains high.
+- implicit maxReplicas receives a smaller penalty than explicit
+  `ScalingLimited` because it is inferred from replica counts and may be a
+  transient status lag.
+- stabilization and at-minimum deductions are advisory. They explain surprising
+  no-op behavior without turning an otherwise healthy HPA into an error.
+
 ### Example scores:
 - Healthy HPA at steady state: 95 (-5 for at-minimum)
 - HPA at maxReplicas: 75 (-25 ScalingLimited) or 80 (-20 implicit)
@@ -96,11 +110,13 @@ health-score weights.
 
 ## Watch Dashboard
 
-`--watch` remains a simple polling loop over Kubernetes API reads. The
-`--dashboard` renderer is intentionally output-only: it does not introduce an
-event loop framework or terminal input state. If a future Bubble Tea-style TUI
-is added, it should reuse the same `Analysis` model and keep JSON/YAML output
-unchanged.
+`--watch` remains a simple polling loop over Kubernetes API reads.
+`--dashboard` is intentionally output-only for scripts and recordings.
+
+The `tui` subcommand is the interactive Bubble Tea path. It reuses the same
+`Analysis` and `ListItem` models, supports refresh/pause/filter/detail
+navigation, and paginates Kubernetes list calls. Keep JSON/YAML output
+unchanged when expanding the TUI.
 
 ## KEDA And Adapter Context
 
@@ -109,6 +125,21 @@ signals visible on the HPA itself. The analyzer detects KEDA-style labels,
 annotations, and `keda-hpa-*` names, then points operators to ScaledObject and
 adapter diagnostics. Direct reads of KEDA CRDs should be added through a
 separate optional client path so clusters without KEDA do not pay that cost.
+
+Karpenter and Cluster Autoscaler integration should follow the same rule:
+surface relationships that are explicit in Kubernetes objects first, then add
+optional reads of provider-specific CRDs or logs only behind flags. The HPA
+analysis model should say "scaling is capped or pending"; autoscaler adapters
+can add "new nodes are pending" or "node provisioning is blocked" context
+without changing the HPA decision summary.
+
+## Large Cluster Lists
+
+`list`, `scan`, and `tui` use Kubernetes ListOptions pagination by default.
+The default page size is 500 and is configurable with `--chunk-size` or
+`chunkSize` in config. Keep per-item analysis streaming-friendly: avoid retaining
+raw HPA objects after converting them to `ListItem`/`StatusReport`, and prefer
+selector filtering at the API server via `--selector` when possible.
 
 ## Suggestion Safety
 
@@ -127,10 +158,19 @@ arrives, add it as another input signal rather than replacing the existing
 analysis model. The current boundary should remain: use explicit controller
 signals when available, and clearly label inference when they are not.
 
+As of 2026-06-01, kubernetes/kubernetes#138992 is closed in favor of
+kubernetes/enhancements#6107 and kubernetes/enhancements#6111. Those follow-up
+items are also closed, and no generated Kubernetes client type for structured
+HPA decision status is available in this repository yet. Keep this integration
+as a prepared boundary, not an active API dependency.
+
 Concrete integration plan:
 
 - Add a small adapter that converts the new structured decision fields into the
   existing `Analysis` model instead of leaking raw API shape into renderers.
+- Keep that adapter behind an interface such as `DecisionSignals` so tests can
+  exercise future Kubernetes fields before the generated client types are
+  widely available.
 - Prefer structured controller reasons over current best-effort inference for
   metric winner, tolerance, missing-metric handling, and stabilization history.
 - Keep the old inference path as a fallback for older clusters and mark it with

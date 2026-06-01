@@ -21,44 +21,47 @@ var (
 )
 
 type options struct {
-	namespace      string
-	allNamespaces  bool
-	contextName    string
-	kubeconfig     string
-	cluster        string
-	output         string
-	template       string
-	wide           bool
-	selector       string
-	sortBy         string
-	filter         string
-	healthScoreMin int
-	healthScoreMax int
-	color          string
-	events         eventOption
-	interpret      bool
-	noInterpret    bool
-	explain        bool
-	suggest        bool
-	fix            bool
-	apply          bool
-	dryRun         bool
-	yes            bool
-	lang           string
-	debug          bool
-	dashboard      bool
-	keda           bool
-	vpa            bool
-	config         string
-	healthWeights  hpaanalysis.HealthWeights
-	problem        bool
-	recommend      bool
-	watch          bool
-	watchInterval  time.Duration
-	watchTimeout   time.Duration
-	untilCondition string
-	clientOverride kubernetes.Interface
-	in             io.Reader
+	namespace       string
+	allNamespaces   bool
+	contextName     string
+	kubeconfig      string
+	cluster         string
+	output          string
+	template        string
+	wide            bool
+	selector        string
+	sortBy          string
+	filter          string
+	healthScoreMin  int
+	healthScoreMax  int
+	color           string
+	events          eventOption
+	interpret       bool
+	noInterpret     bool
+	explain         bool
+	suggest         bool
+	fix             bool
+	apply           bool
+	diff            bool
+	dryRun          bool
+	yes             bool
+	lang            string
+	debug           bool
+	dashboard       bool
+	keda            bool
+	vpa             bool
+	config          string
+	chunkSize       int64
+	outputTemplates map[string]outputTemplateConfig
+	healthWeights   hpaanalysis.HealthWeights
+	problem         bool
+	recommend       bool
+	watch           bool
+	watchInterval   time.Duration
+	watchTimeout    time.Duration
+	untilCondition  string
+	clientOverride  kubernetes.Interface
+	in              io.Reader
 }
 
 func (o *options) newClient() (*kube.Client, error) {
@@ -81,6 +84,7 @@ func NewRootCommand() *cobra.Command {
 		color:          "auto",
 		dryRun:         true,
 		healthScoreMax: -1,
+		chunkSize:      500,
 		watchInterval:  5 * time.Second,
 	}
 
@@ -107,6 +111,9 @@ func NewRootCommand() *cobra.Command {
 			if opts.fix || opts.apply {
 				opts.suggest = true
 				opts.explain = true
+			}
+			if opts.diff {
+				opts.suggest = true
 			}
 			if opts.noInterpret {
 				opts.interpret = false
@@ -143,12 +150,14 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().BoolVar(&opts.explain, "explain", false, "include detailed interpretation and recommended actions")
 	root.PersistentFlags().BoolVar(&opts.suggest, "suggest", false, "include concrete suggestions for configuration changes")
 	root.PersistentFlags().BoolVar(&opts.fix, "fix", false, "show stronger fix plan with patch commands")
+	root.PersistentFlags().BoolVar(&opts.diff, "diff", false, "show field-level diff of suggested changes")
 	root.PersistentFlags().BoolVar(&opts.apply, "apply", false, "run suggested HPA spec patch workflow")
 	root.PersistentFlags().BoolVar(&opts.dryRun, "dry-run", opts.dryRun, "use server-side dry-run for --apply; set --dry-run=false to persist changes")
 	root.PersistentFlags().BoolVarP(&opts.yes, "yes", "y", false, "skip confirmation when used with --apply")
 	root.PersistentFlags().StringVar(&opts.lang, "lang", "", "text output language: en or ja")
 	root.PersistentFlags().BoolVarP(&opts.debug, "debug", "v", false, "include internal analysis details such as ratios and health scoring inputs")
 	root.PersistentFlags().StringVar(&opts.config, "config", "", "optional config file for analysis settings such as health score weights")
+	root.PersistentFlags().Int64Var(&opts.chunkSize, "chunk-size", opts.chunkSize, "Kubernetes list page size for list/scan/tui; set 0 to disable pagination")
 	root.PersistentFlags().BoolVar(&opts.recommend, "recommend", false, "alias for --suggest")
 	root.PersistentFlags().BoolVar(&opts.noInterpret, "no-interpret", false, "omit interpretation and show raw status-derived data")
 	root.PersistentFlags().Var(&opts.events, "events", "show recent HPA events: true, false, or a number")
@@ -181,23 +190,30 @@ func buildVersion() string {
 }
 
 type configFile struct {
-	Namespace     string                    `json:"namespace" yaml:"namespace"`
-	AllNamespaces *bool                     `json:"allNamespaces" yaml:"allNamespaces"`
-	Output        string                    `json:"output" yaml:"output"`
-	Wide          *bool                     `json:"wide" yaml:"wide"`
-	Selector      string                    `json:"selector" yaml:"selector"`
-	SortBy        string                    `json:"sortBy" yaml:"sortBy"`
-	Filter        string                    `json:"filter" yaml:"filter"`
-	MinScore      *int                      `json:"minScore" yaml:"minScore"`
-	MaxScore      *int                      `json:"maxScore" yaml:"maxScore"`
-	HealthScore   *int                      `json:"healthScore" yaml:"healthScore"`
-	Color         string                    `json:"color" yaml:"color"`
-	Events        *int                      `json:"events" yaml:"events"`
-	EventsEnabled *bool                     `json:"eventsEnabled" yaml:"eventsEnabled"`
-	Lang          string                    `json:"lang" yaml:"lang"`
-	Debug         *bool                     `json:"debug" yaml:"debug"`
-	Dashboard     *bool                     `json:"dashboard" yaml:"dashboard"`
-	HealthWeights hpaanalysis.HealthWeights `json:"healthWeights" yaml:"healthWeights"`
+	Namespace     string                          `json:"namespace" yaml:"namespace"`
+	AllNamespaces *bool                           `json:"allNamespaces" yaml:"allNamespaces"`
+	Output        string                          `json:"output" yaml:"output"`
+	Wide          *bool                           `json:"wide" yaml:"wide"`
+	Selector      string                          `json:"selector" yaml:"selector"`
+	SortBy        string                          `json:"sortBy" yaml:"sortBy"`
+	Filter        string                          `json:"filter" yaml:"filter"`
+	MinScore      *int                            `json:"minScore" yaml:"minScore"`
+	MaxScore      *int                            `json:"maxScore" yaml:"maxScore"`
+	HealthScore   *int                            `json:"healthScore" yaml:"healthScore"`
+	Color         string                          `json:"color" yaml:"color"`
+	Events        *int                            `json:"events" yaml:"events"`
+	EventsEnabled *bool                           `json:"eventsEnabled" yaml:"eventsEnabled"`
+	Lang          string                          `json:"lang" yaml:"lang"`
+	Debug         *bool                           `json:"debug" yaml:"debug"`
+	Dashboard     *bool                           `json:"dashboard" yaml:"dashboard"`
+	ChunkSize     *int64                          `json:"chunkSize" yaml:"chunkSize"`
+	Templates     map[string]outputTemplateConfig `json:"templates" yaml:"templates"`
+	HealthWeights hpaanalysis.HealthWeights       `json:"healthWeights" yaml:"healthWeights"`
+}
+
+type outputTemplateConfig struct {
+	Type     string `json:"type" yaml:"type"`
+	Template string `json:"template" yaml:"template"`
 }
 
 func applyConfigDefaults(cmd *cobra.Command, opts *options) error {

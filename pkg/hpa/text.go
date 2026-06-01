@@ -16,11 +16,12 @@ type StatusReport struct {
 	Events   []Event  `json:"events,omitempty" yaml:"events,omitempty"`
 }
 
-// StatusTextOptions configures text output rendering with theme, language, and fix mode.
+// StatusTextOptions configures text output rendering with theme, language, fix mode, and diff display.
 type StatusTextOptions struct {
 	Theme style.Theme
 	Lang  string
 	Fix   bool
+	Diff  bool
 }
 
 // WatchState holds the previous and current Analysis for diff display.
@@ -155,6 +156,10 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 			if suggestion.Command != "" {
 				out = fmt.Appendf(out, "    $ %s\n", theme.ActionLine(suggestion.Command))
 			}
+			if opts.Diff && suggestion.Patch != "" {
+				currentMin := a.Min
+				out = fmt.Appendf(out, "    diff:\n%s", indentBlock(SuggestionDiff(&currentMin, a.Desired, a.Max, suggestion.Patch), "      "))
+			}
 			for _, precondition := range suggestion.Preconditions {
 				out = fmt.Appendf(out, "    %s: %s\n", labels.Precondition, precondition)
 			}
@@ -224,6 +229,14 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 
 	_, err := w.Write(out)
 	return err
+}
+
+func indentBlock(text string, prefix string) string {
+	lines := strings.Split(strings.TrimRight(text, "\n"), "\n")
+	for i, line := range lines {
+		lines[i] = prefix + line
+	}
+	return strings.Join(lines, "\n") + "\n"
 }
 
 type labels struct {

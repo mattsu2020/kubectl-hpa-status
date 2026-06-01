@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strings"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
@@ -339,4 +340,38 @@ func mustJSON(value any) string {
 		panic(err)
 	}
 	return string(data)
+}
+
+// SuggestionDiff renders a field-level diff of a suggestion's patch against
+// the current HPA spec values.
+func SuggestionDiff(currentMin *int32, currentDesired int32, currentMax int32, patch string) string {
+	var parsed struct {
+		Spec struct {
+			MinReplicas *int32 `json:"minReplicas"`
+			MaxReplicas *int32 `json:"maxReplicas"`
+			Behavior    any    `json:"behavior"`
+		} `json:"spec"`
+	}
+	if err := json.Unmarshal([]byte(patch), &parsed); err != nil {
+		return fmt.Sprintf("  patch: %s", patch)
+	}
+	var lines []string
+	lines = append(lines, fmt.Sprintf("  status.desiredReplicas: %d (current status, unchanged by patch)", currentDesired))
+	if parsed.Spec.MinReplicas != nil {
+		current := int32(1)
+		if currentMin != nil {
+			current = *currentMin
+		}
+		lines = append(lines, fmt.Sprintf("  spec.minReplicas: %d -> %d", current, *parsed.Spec.MinReplicas))
+	}
+	if parsed.Spec.MaxReplicas != nil {
+		lines = append(lines, fmt.Sprintf("  spec.maxReplicas: %d -> %d", currentMax, *parsed.Spec.MaxReplicas))
+	}
+	if parsed.Spec.Behavior != nil {
+		lines = append(lines, "  spec.behavior: updated")
+	}
+	if len(lines) == 0 {
+		lines = append(lines, fmt.Sprintf("  patch: %s", patch))
+	}
+	return strings.Join(lines, "\n") + "\n"
 }
