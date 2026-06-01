@@ -35,9 +35,6 @@ archives:
 checksum:
   name_template: checksums.txt
 
-sboms:
-  - artifacts: archive
-
 brews:
   - name: kubectl-hpa-status
     repository:
