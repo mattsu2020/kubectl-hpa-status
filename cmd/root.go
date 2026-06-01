@@ -226,7 +226,7 @@ func newVersionCommand() *cobra.Command {
 		Use:   "version",
 		Short: "Print version and build metadata",
 		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			_, err := fmt.Fprintf(cmd.OutOrStdout(), "kubectl-hpa-status version %s\n", buildVersion())
 			return err
 		},

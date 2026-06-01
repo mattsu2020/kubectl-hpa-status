@@ -15,7 +15,7 @@ func newTUICommand(opts *options) *cobra.Command {
 		Use:   "tui",
 		Short: "Interactive TUI dashboard for HPA status",
 		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			// TUI requires a terminal.
 			out := cmd.OutOrStdout()
 			file, ok := out.(*os.File)
