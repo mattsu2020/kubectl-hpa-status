@@ -217,6 +217,23 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 		}
 	}
 
+	if a.VPAConflict != nil {
+		out = append(out, '\n')
+		out = fmt.Appendf(out, "VPA:\n")
+		out = fmt.Appendf(out, "  %s targets %s/%s", a.VPAConflict.VPAName, a.VPAConflict.TargetKind, a.VPAConflict.TargetName)
+		if a.VPAConflict.UpdateMode != "" {
+			out = fmt.Appendf(out, " updateMode=%s", a.VPAConflict.UpdateMode)
+		}
+		out = append(out, '\n')
+		if len(a.VPAConflict.ControlledResources) > 0 {
+			out = fmt.Appendf(out, "  Controlled resources: %s\n", strings.Join(a.VPAConflict.ControlledResources, ", "))
+		}
+		for _, rec := range a.VPAConflict.Recommendations {
+			out = fmt.Appendf(out, "  - %s/%s target=%s lower=%s upper=%s\n", rec.Container, rec.Resource, emptyAsUnknown(rec.Target), emptyAsUnknown(rec.Lower), emptyAsUnknown(rec.Upper))
+		}
+		out = fmt.Appendf(out, "  warning: %s\n", theme.ActionLine(a.VPAConflict.Warning))
+	}
+
 	out = append(out, '\n')
 	out = fmt.Appendf(out, "%s:\n", labels.Events)
 	if len(report.Events) == 0 {
@@ -229,6 +246,13 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 
 	_, err := w.Write(out)
 	return err
+}
+
+func emptyAsUnknown(value string) string {
+	if value == "" {
+		return "<unknown>"
+	}
+	return value
 }
 
 func indentBlock(text string, prefix string) string {

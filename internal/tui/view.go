@@ -200,7 +200,12 @@ func (m Model) renderDetailView() string {
 		// Target replica info (not-ready pods).
 		if a.TargetReplicas != nil && a.TargetReplicas.NotReady > 0 {
 			sb.WriteString("\n")
-			sb.WriteString(warnStyle.Render(fmt.Sprintf("⚠ %d of %d pods not ready", a.TargetReplicas.NotReady, a.TargetReplicas.TotalReplicas)))
+			sb.WriteString(warnStyle.Render(fmt.Sprintf("%d of %d pods not ready", a.TargetReplicas.NotReady, a.TargetReplicas.TotalReplicas)))
+			sb.WriteString("\n")
+		}
+		if a.TargetReplicas != nil && a.TargetReplicas.Pending > 0 {
+			sb.WriteString("\n")
+			sb.WriteString(warnStyle.Render(fmt.Sprintf("%d pods pending (%d unschedulable)", a.TargetReplicas.Pending, a.TargetReplicas.Unschedulable)))
 			sb.WriteString("\n")
 		}
 
@@ -214,6 +219,22 @@ func (m Model) renderDetailView() string {
 					triggerNames = append(triggerNames, t.Type)
 				}
 				sb.WriteString(fmt.Sprintf("  Triggers: %s\n", strings.Join(triggerNames, ", ")))
+			}
+		}
+
+		if len(a.Suggestions) > 0 {
+			sb.WriteString("\nSuggestions:\n")
+			for _, suggestion := range a.Suggestions {
+				sb.WriteString(fmt.Sprintf("  - %s (%s)\n", suggestion.Title, suggestion.Risk))
+			}
+			sb.WriteString(dimStyle.Render("  Use --fix --apply for the selected HPA to validate patches.\n"))
+		}
+
+		if a.VPAConflict != nil {
+			sb.WriteString("\nVPA:\n")
+			sb.WriteString(fmt.Sprintf("  %s updateMode=%s\n", a.VPAConflict.VPAName, a.VPAConflict.UpdateMode))
+			for _, rec := range a.VPAConflict.Recommendations {
+				sb.WriteString(fmt.Sprintf("  - %s/%s target=%s\n", rec.Container, rec.Resource, rec.Target))
 			}
 		}
 	}

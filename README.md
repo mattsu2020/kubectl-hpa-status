@@ -111,6 +111,7 @@ kubectl hpa status hpa-a hpa-b -n production
 kubectl hpa status list -A --wide --sort-by=desired --filter=scaling-limited
 kubectl hpa status list -A --selector='app=web,tier!=canary'
 kubectl hpa status ls -A -o json
+kubectl hpa status scan --apply --yes
 kubectl hpa status <hpa-name> --watch --timeout=2m --until-condition=scaling-limited
 kubectl hpa status <hpa-name> -o 'jsonpath={.analysis.summary}'
 ```
@@ -340,6 +341,7 @@ Detailed flags:
 | `--context`, `--kubeconfig`, `--cluster` | all commands | Explicit kubeconfig selection. |
 | `--config` | all commands | Read defaults from a YAML/JSON config file. Defaults to `~/.kube/hpa-status.yaml` when present. |
 | `--chunk-size` | `list`, `scan`, `tui` | Kubernetes list page size. Defaults to 500; set 0 to disable pagination. |
+| `--health-weight name=value` | all analysis commands | Override one health score penalty from the CLI. Repeatable; names include `scalingInactive`, `unableToScale`, `scalingLimited`, `implicitMaxReplicas`, `scaleDownStabilized`, and `atMinimumReplicas`. |
 | `-o table|wide|json|yaml|jsonpath=...|template=...` | status, analyze, list, scan | Output format. YAML is supported for both single and multiple HPA output. For the JSON schema, see [docs/output-schema.json](docs/output-schema.json). |
 | `--wide` | table output | Show target, min, max, and replica delta columns where applicable. |
 | `--sort-by namespace|name|current|desired|diff|health-score|issue|problem` | `list`, `scan` | Sort list output. `problem` puts the lowest health score and largest replica delta first. |
@@ -353,7 +355,7 @@ Detailed flags:
 | `--suggest`, `--recommend` | `status`, `analyze` | Include concrete `kubectl patch` commands when a safe HPA spec suggestion is visible. `--recommend` is an alias for `--suggest`. |
 | `--fix` | `status`, `analyze` | Show a stronger fix plan with applicable patches. |
 | `--diff` | `status`, `analyze` | Include field-level diffs for suggested HPA spec patches. |
-| `--apply` | `status`, `analyze` | Validate suggested HPA patches with server-side dry-run by default. |
+| `--apply` | `status`, `analyze`, `list`, `scan` | Validate suggested HPA patches with server-side dry-run by default. For `list`, combine it with `--problem`, `--filter`, or a score filter. |
 | `--dry-run=false` | `--apply` workflow | Persist changes; still shows a diff and asks for confirmation unless `-y` is set. |
 | `--keda` | `status`, `analyze` | For KEDA-managed HPAs, look up the matching ScaledObject and include trigger/condition context. |
 | `--lang=ja`, `-o ja` | text output | Show Japanese text labels. |
@@ -423,6 +425,8 @@ kind-specific `--kubelet-insecure-tls` option.
 | Scale-down looks delayed | `kubectl hpa status <name> --explain` | `AbleToScale=True`, `ScaleDownStabilized`, `spec.behavior.scaleDown` | Wait for or tune stabilization window |
 | KEDA-managed HPA is not reacting | `kubectl hpa status <name> --keda --explain` | KEDA labels, External metrics, ScaledObject conditions | Check ScaledObject triggers, TriggerAuthentication, external metrics API, and KEDA operator logs |
 | Custom or external metric looks ambiguous | `kubectl hpa status <name> --explain --debug` | External/Object metric ratio, missing current status | Confirm adapter freshness and metric selector semantics outside the HPA status API |
+| HPA wants to scale up but pods stay Pending | `kubectl hpa status <name> --explain` | Pending/Unschedulable target pods | Check node capacity, Cluster Autoscaler/Karpenter events, quotas, affinity, and taints |
+| VPA and HPA both manage CPU/memory | `kubectl hpa status <name> --vpa --explain` | VPA updateMode, controlled resources, recommendations | Prefer VPA recommender-only mode or avoid overlapping CPU/memory ownership |
 | Many HPAs need triage | `kubectl hpa status scan` | Health score, issue, conditions | Start with `ERROR`, then `ScalingLimited` |
 
 ### FAQ
@@ -450,8 +454,9 @@ Kubernetes v1.26 through v1.36 is the tested range. The plugin uses `autoscaling
 | HPA API `autoscaling/v2` | Required |
 | Kubernetes v1.26 - v1.36 | Tested and supported |
 | metrics-server v0.8.1 on kind | Validated |
-| custom/external metrics adapters | Supported through visible HPA status with best-effort ratio interpretation; adapter-specific internals are not inspected |
+| custom/external metrics adapters | Supported through visible HPA status with best-effort ratio and selector interpretation; adapter-specific internals are not inspected |
 | KEDA-scaled workloads | Basic KEDA-managed HPA detection is automatic. `--keda` optionally looks up the matching ScaledObject for trigger and condition context |
+| VPA co-management | `--vpa` detects same-target CPU/memory overlap and includes visible VPA recommendations when the VPA CRD is installed |
 
 ## Safe fix workflow
 

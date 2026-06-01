@@ -10,6 +10,7 @@ import (
 	"time"
 
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -97,6 +98,32 @@ func TestOutputSelectionUsesNamedJSONPathTemplate(t *testing.T) {
 	}
 	if templateStr != "{.analysis.summary}" {
 		t.Fatalf("unexpected template %q", templateStr)
+	}
+}
+
+func TestApplyHealthWeightOverrides(t *testing.T) {
+	opts := &options{healthWeightOverrides: []string{"scalingInactive=50", "atMinimumReplicas=0"}}
+	if err := applyHealthWeightOverrides(opts); err != nil {
+		t.Fatal(err)
+	}
+	if opts.healthWeights.ScalingInactive != 50 {
+		t.Fatalf("expected scalingInactive=50, got %d", opts.healthWeights.ScalingInactive)
+	}
+	if opts.healthWeights.AtMinimumReplicas != 0 {
+		t.Fatalf("expected atMinimumReplicas=0, got %d", opts.healthWeights.AtMinimumReplicas)
+	}
+}
+
+func TestPodUnschedulable(t *testing.T) {
+	pod := corev1.Pod{
+		Status: corev1.PodStatus{
+			Conditions: []corev1.PodCondition{
+				{Type: corev1.PodScheduled, Status: corev1.ConditionFalse, Reason: corev1.PodReasonUnschedulable},
+			},
+		},
+	}
+	if !podUnschedulable(pod) {
+		t.Fatal("expected pod to be unschedulable")
 	}
 }
 

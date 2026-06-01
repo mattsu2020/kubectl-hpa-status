@@ -12,6 +12,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	klabels "k8s.io/apimachinery/pkg/labels"
 )
 
 const limitation = "[confidence: high] This plugin uses existing HPA status, conditions, metrics, and events. It does not expose internal controller calculations."
@@ -106,13 +107,15 @@ type Condition struct {
 
 // Metric holds formatted metric data including current, target, ratio, and display text.
 type Metric struct {
-	Type    string   `json:"type" yaml:"type"`
-	Name    string   `json:"name,omitempty" yaml:"name,omitempty"`
-	Current string   `json:"current,omitempty" yaml:"current,omitempty"`
-	Target  string   `json:"target,omitempty" yaml:"target,omitempty"`
-	Ratio   *float64 `json:"ratio,omitempty" yaml:"ratio,omitempty"`
-	Note    string   `json:"note,omitempty" yaml:"note,omitempty"`
-	Text    string   `json:"text" yaml:"text"`
+	Type     string   `json:"type" yaml:"type"`
+	Name     string   `json:"name,omitempty" yaml:"name,omitempty"`
+	Selector string   `json:"selector,omitempty" yaml:"selector,omitempty"`
+	Object   string   `json:"object,omitempty" yaml:"object,omitempty"`
+	Current  string   `json:"current,omitempty" yaml:"current,omitempty"`
+	Target   string   `json:"target,omitempty" yaml:"target,omitempty"`
+	Ratio    *float64 `json:"ratio,omitempty" yaml:"ratio,omitempty"`
+	Note     string   `json:"note,omitempty" yaml:"note,omitempty"`
+	Text     string   `json:"text" yaml:"text"`
 }
 
 // MetricImpactGuess estimates which resource metric has the most impact on scaling.
@@ -182,6 +185,8 @@ type TargetReplicaInfo struct {
 	TotalReplicas int32 `json:"totalReplicas" yaml:"totalReplicas"`
 	ReadyReplicas int32 `json:"readyReplicas" yaml:"readyReplicas"`
 	NotReady      int32 `json:"notReady" yaml:"notReady"`
+	Pending       int32 `json:"pending,omitempty" yaml:"pending,omitempty"`
+	Unschedulable int32 `json:"unschedulable,omitempty" yaml:"unschedulable,omitempty"`
 }
 
 // Analyze produces an Analysis for the given HPA using default options.
@@ -493,13 +498,13 @@ func ExternalMetricDiagnostics(hpa *autoscalingv2.HorizontalPodAutoscaler) []str
 			continue
 		}
 		if !hasCurrentExternalMetric(hpa, spec.External.Metric.Name) {
-			lines = append(lines, fmt.Sprintf("[confidence: high] External metric %q is configured but no matching current metric status is reported; check the external metrics adapter, selector, and metric freshness.", spec.External.Metric.Name))
+			lines = append(lines, fmt.Sprintf("[confidence: high] External metric %q%s is configured but no matching current metric status is reported; check the external metrics adapter, selector, and metric freshness.", spec.External.Metric.Name, selectorSuffix(spec.External.Metric.Selector)))
 			continue
 		}
 		if metric, ok := currentExternalMetric(hpa, spec.External.Metric.Name); ok {
 			formatted := FormatMetricStatus(hpa, metric)
 			if formatted.Ratio != nil {
-				lines = append(lines, fmt.Sprintf("[confidence: medium] External metric %q is %.3fx its target; stale or delayed adapter data can make HPA decisions lag behind workload demand.", spec.External.Metric.Name, *formatted.Ratio))
+				lines = append(lines, fmt.Sprintf("[confidence: medium] External metric %q%s is %.3fx its target; stale or delayed adapter data can make HPA decisions lag behind workload demand.", spec.External.Metric.Name, selectorSuffix(spec.External.Metric.Selector), *formatted.Ratio))
 			}
 		}
 	}
@@ -517,13 +522,21 @@ func ObjectMetricDiagnostics(hpa *autoscalingv2.HorizontalPodAutoscaler) []strin
 			formatted := FormatMetricStatus(hpa, metric)
 			object := fmt.Sprintf("%s/%s", spec.Object.DescribedObject.Kind, spec.Object.DescribedObject.Name)
 			if formatted.Ratio != nil {
-				lines = append(lines, fmt.Sprintf("[confidence: medium] Object metric %q on %s is %.3fx its target; compare this object-level load with per-pod load before changing replica limits.", spec.Object.Metric.Name, object, *formatted.Ratio))
+				lines = append(lines, fmt.Sprintf("[confidence: medium] Object metric %q%s on %s is %.3fx its target; compare this object-level load with per-pod load before changing replica limits.", spec.Object.Metric.Name, selectorSuffix(spec.Object.Metric.Selector), object, *formatted.Ratio))
 			}
 		} else {
-			lines = append(lines, fmt.Sprintf("[confidence: high] Object metric %q is configured but no matching current metric status is reported; verify the described object and metric adapter output.", spec.Object.Metric.Name))
+			lines = append(lines, fmt.Sprintf("[confidence: high] Object metric %q%s is configured but no matching current metric status is reported; verify the described object and metric adapter output.", spec.Object.Metric.Name, selectorSuffix(spec.Object.Metric.Selector)))
 		}
 	}
 	return lines
+}
+
+func selectorSuffix(selector *metav1.LabelSelector) string {
+	formatted := FormatMetricSelector(selector)
+	if formatted == "" {
+		return ""
+	}
+	return fmt.Sprintf(" selector=%q", formatted)
 }
 
 // KEDADiagnostics generates diagnostic lines when the HPA appears KEDA-managed.
@@ -647,7 +660,11 @@ func FormatMetricStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, metric autos
 		target := FormatMetricTarget(targetSpec)
 		current := FormatMetricValueStatus(metric.Pods.Current)
 		ratio, note := calculateRatioAndNote(metric.Pods.Current, targetSpec, target)
+		selector := FormatMetricSelector(metric.Pods.Metric.Selector)
 		text := fmt.Sprintf("Pods %s current=%s target=%s", metric.Pods.Metric.Name, current, target)
+		if selector != "" {
+			text = fmt.Sprintf("%s selector=%q", text, selector)
+		}
 		if ratio != nil {
 			text = fmt.Sprintf("%s ratio=%.3f", text, *ratio)
 		}
@@ -655,13 +672,14 @@ func FormatMetricStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, metric autos
 			text = fmt.Sprintf("%s note=%q", text, note)
 		}
 		return Metric{
-			Type:    "Pods",
-			Name:    metric.Pods.Metric.Name,
-			Current: current,
-			Target:  target,
-			Ratio:   ratio,
-			Note:    note,
-			Text:    text,
+			Type:     "Pods",
+			Name:     metric.Pods.Metric.Name,
+			Selector: selector,
+			Current:  current,
+			Target:   target,
+			Ratio:    ratio,
+			Note:     note,
+			Text:     text,
 		}
 	case autoscalingv2.ObjectMetricSourceType:
 		if metric.Object == nil {
@@ -672,7 +690,11 @@ func FormatMetricStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, metric autos
 		current := FormatMetricValueStatus(metric.Object.Current)
 		ratio, note := calculateRatioAndNote(metric.Object.Current, targetSpec, target)
 		name := fmt.Sprintf("%s/%s", metric.Object.DescribedObject.Kind, metric.Object.DescribedObject.Name)
+		selector := FormatMetricSelector(metric.Object.Metric.Selector)
 		text := fmt.Sprintf("Object %s %s current=%s target=%s", name, metric.Object.Metric.Name, current, target)
+		if selector != "" {
+			text = fmt.Sprintf("%s selector=%q", text, selector)
+		}
 		if ratio != nil {
 			text = fmt.Sprintf("%s ratio=%.3f", text, *ratio)
 		}
@@ -680,13 +702,15 @@ func FormatMetricStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, metric autos
 			text = fmt.Sprintf("%s note=%q", text, note)
 		}
 		return Metric{
-			Type:    "Object",
-			Name:    metric.Object.Metric.Name,
-			Current: current,
-			Target:  target,
-			Ratio:   ratio,
-			Note:    note,
-			Text:    text,
+			Type:     "Object",
+			Name:     metric.Object.Metric.Name,
+			Selector: selector,
+			Object:   name,
+			Current:  current,
+			Target:   target,
+			Ratio:    ratio,
+			Note:     note,
+			Text:     text,
 		}
 	case autoscalingv2.ExternalMetricSourceType:
 		if metric.External == nil {
@@ -696,7 +720,11 @@ func FormatMetricStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, metric autos
 		target := FormatMetricTarget(targetSpec)
 		current := FormatMetricValueStatus(metric.External.Current)
 		ratio, note := calculateRatioAndNote(metric.External.Current, targetSpec, target)
+		selector := FormatMetricSelector(metric.External.Metric.Selector)
 		text := fmt.Sprintf("External %s current=%s target=%s", metric.External.Metric.Name, current, target)
+		if selector != "" {
+			text = fmt.Sprintf("%s selector=%q", text, selector)
+		}
 		if ratio != nil {
 			text = fmt.Sprintf("%s ratio=%.3f", text, *ratio)
 		}
@@ -704,13 +732,14 @@ func FormatMetricStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, metric autos
 			text = fmt.Sprintf("%s note=%q", text, note)
 		}
 		return Metric{
-			Type:    "External",
-			Name:    metric.External.Metric.Name,
-			Current: current,
-			Target:  target,
-			Ratio:   ratio,
-			Note:    note,
-			Text:    text,
+			Type:     "External",
+			Name:     metric.External.Metric.Name,
+			Selector: selector,
+			Current:  current,
+			Target:   target,
+			Ratio:    ratio,
+			Note:     note,
+			Text:     text,
 		}
 	default:
 		return Metric{
@@ -850,6 +879,22 @@ func FormatMetricTarget(target autoscalingv2.MetricTarget) string {
 		}
 	}
 	return "<unknown>"
+}
+
+// FormatMetricSelector returns a stable selector string for custom/external
+// metrics. Empty selectors are omitted from text output.
+func FormatMetricSelector(selector *metav1.LabelSelector) string {
+	if selector == nil {
+		return ""
+	}
+	parsed, err := metav1.LabelSelectorAsSelector(selector)
+	if err != nil {
+		return klabels.FormatLabels(selector.MatchLabels)
+	}
+	if parsed.Empty() {
+		return ""
+	}
+	return parsed.String()
 }
 
 // FormatMetricValue returns a formatted string for utilization or average value.

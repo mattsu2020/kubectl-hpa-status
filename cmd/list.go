@@ -10,6 +10,7 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/internal/style"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/spf13/cobra"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -80,7 +81,7 @@ func runList(ctx context.Context, out io.Writer, opts *options) error {
 
 	report := hpaanalysis.ListReport{}
 	for i := range hpas.Items {
-		item := hpaanalysis.NewListItem(hpaanalysis.AnalyzeWithOptions(&hpas.Items[i], false, analysisOptions(opts)))
+		item := hpaanalysis.NewListItem(hpaanalysis.AnalyzeWithOptions(&hpas.Items[i], opts.apply, analysisOptions(opts)))
 		if matchesListFilter(item, filter) && matchesHealthScoreRange(item, opts.healthScoreMin, opts.healthScoreMax) {
 			report.Items = append(report.Items, item)
 		}
@@ -90,6 +91,15 @@ func runList(ctx context.Context, out io.Writer, opts *options) error {
 		sortBy = "problem"
 	}
 	sortListItems(report.Items, sortBy)
+
+	if opts.apply {
+		if !opts.problem && filter == "" && opts.healthScoreMin <= 0 && opts.healthScoreMax <= 0 {
+			return fmt.Errorf("--apply with list requires --problem, --filter, --health-score, --max-score, or --min-score to avoid applying suggestions to an unbounded set")
+		}
+		if err := applyListSuggestions(ctx, out, opts, hpas.Items, report.Items); err != nil {
+			return err
+		}
+	}
 
 	wide := opts.wide || opts.output == "wide"
 	format, templateStr := outputSelection(opts)
@@ -101,6 +111,30 @@ func runList(ctx context.Context, out io.Writer, opts *options) error {
 			Lang:  outputLang(opts),
 		})
 	})
+}
+
+func applyListSuggestions(ctx context.Context, out io.Writer, opts *options, hpas []autoscalingv2.HorizontalPodAutoscaler, items []hpaanalysis.ListItem) error {
+	selected := map[string]bool{}
+	for _, item := range items {
+		selected[item.Namespace+"/"+item.Name] = true
+	}
+	for i := range hpas {
+		hpa := &hpas[i]
+		if !selected[hpa.Namespace+"/"+hpa.Name] {
+			continue
+		}
+		analysis := hpaanalysis.AnalyzeWithOptions(hpa, true, analysisOptions(opts))
+		applied, err := applySuggestionsInNamespace(ctx, out, opts, hpa.Namespace, hpa.Name, analysis.Suggestions)
+		if err != nil {
+			return err
+		}
+		for _, line := range applied {
+			if _, err := fmt.Fprintf(out, "%s/%s: %s\n", hpa.Namespace, hpa.Name, line); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func matchesListFilter(item hpaanalysis.ListItem, filter string) bool {

@@ -21,47 +21,48 @@ var (
 )
 
 type options struct {
-	namespace       string
-	allNamespaces   bool
-	contextName     string
-	kubeconfig      string
-	cluster         string
-	output          string
-	template        string
-	wide            bool
-	selector        string
-	sortBy          string
-	filter          string
-	healthScoreMin  int
-	healthScoreMax  int
-	color           string
-	events          eventOption
-	interpret       bool
-	noInterpret     bool
-	explain         bool
-	suggest         bool
-	fix             bool
-	apply           bool
-	diff            bool
-	dryRun          bool
-	yes             bool
-	lang            string
-	debug           bool
-	dashboard       bool
-	keda            bool
-	vpa             bool
-	config          string
-	chunkSize       int64
-	outputTemplates map[string]outputTemplateConfig
-	healthWeights   hpaanalysis.HealthWeights
-	problem         bool
-	recommend       bool
-	watch           bool
-	watchInterval   time.Duration
-	watchTimeout    time.Duration
-	untilCondition  string
-	clientOverride  kubernetes.Interface
-	in              io.Reader
+	namespace             string
+	allNamespaces         bool
+	contextName           string
+	kubeconfig            string
+	cluster               string
+	output                string
+	template              string
+	wide                  bool
+	selector              string
+	sortBy                string
+	filter                string
+	healthScoreMin        int
+	healthScoreMax        int
+	color                 string
+	events                eventOption
+	interpret             bool
+	noInterpret           bool
+	explain               bool
+	suggest               bool
+	fix                   bool
+	apply                 bool
+	diff                  bool
+	dryRun                bool
+	yes                   bool
+	lang                  string
+	debug                 bool
+	dashboard             bool
+	keda                  bool
+	vpa                   bool
+	config                string
+	chunkSize             int64
+	healthWeightOverrides []string
+	outputTemplates       map[string]outputTemplateConfig
+	healthWeights         hpaanalysis.HealthWeights
+	problem               bool
+	recommend             bool
+	watch                 bool
+	watchInterval         time.Duration
+	watchTimeout          time.Duration
+	untilCondition        string
+	clientOverride        kubernetes.Interface
+	in                    io.Reader
 }
 
 func (o *options) newClient() (*kube.Client, error) {
@@ -103,6 +104,9 @@ func NewRootCommand() *cobra.Command {
 		},
 		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
 			if err := applyConfigDefaults(cmd, opts); err != nil {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %v\n", err)
+			}
+			if err := applyHealthWeightOverrides(opts); err != nil {
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %v\n", err)
 			}
 			if opts.recommend {
@@ -158,6 +162,7 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().BoolVarP(&opts.debug, "debug", "v", false, "include internal analysis details such as ratios and health scoring inputs")
 	root.PersistentFlags().StringVar(&opts.config, "config", "", "optional config file for analysis settings such as health score weights")
 	root.PersistentFlags().Int64Var(&opts.chunkSize, "chunk-size", opts.chunkSize, "Kubernetes list page size for list/scan/tui; set 0 to disable pagination")
+	root.PersistentFlags().StringArrayVar(&opts.healthWeightOverrides, "health-weight", nil, "override a health score penalty, for example scalingInactive=50; repeatable")
 	root.PersistentFlags().BoolVar(&opts.recommend, "recommend", false, "alias for --suggest")
 	root.PersistentFlags().BoolVar(&opts.noInterpret, "no-interpret", false, "omit interpretation and show raw status-derived data")
 	root.PersistentFlags().Var(&opts.events, "events", "show recent HPA events: true, false, or a number")

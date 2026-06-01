@@ -14,6 +14,10 @@ import (
 )
 
 func applySuggestions(ctx context.Context, out io.Writer, opts *options, name string, suggestions []hpaanalysis.Suggestion) ([]string, error) {
+	return applySuggestionsInNamespace(ctx, out, opts, "", name, suggestions)
+}
+
+func applySuggestionsInNamespace(ctx context.Context, out io.Writer, opts *options, namespace string, name string, suggestions []hpaanalysis.Suggestion) ([]string, error) {
 	var patches []hpaanalysis.Suggestion
 	for _, suggestion := range suggestions {
 		if suggestion.Apply && suggestion.Patch != "" {
@@ -27,9 +31,12 @@ func applySuggestions(ctx context.Context, out io.Writer, opts *options, name st
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Kubernetes client from kubeconfig/context flags: %w", err)
 	}
+	if namespace == "" {
+		namespace = client.Namespace
+	}
 	for _, suggestion := range patches {
 		current, err := client.Interface.AutoscalingV2().
-			HorizontalPodAutoscalers(client.Namespace).
+			HorizontalPodAutoscalers(namespace).
 			Get(ctx, name, metav1.GetOptions{})
 		if err != nil {
 			return nil, fmt.Errorf("failed to get HPA before applying suggested patch %q: %w", suggestion.Title, err)
@@ -51,7 +58,7 @@ func applySuggestions(ctx context.Context, out io.Writer, opts *options, name st
 		if !opts.dryRun {
 			action = "apply"
 		}
-		if _, err := fmt.Fprintf(out, "%s %d suggested patch(es) to HPA %s? [y/N]: ", action, len(patches), name); err != nil {
+		if _, err := fmt.Fprintf(out, "%s %d suggested patch(es) to HPA %s/%s? [y/N]: ", action, len(patches), namespace, name); err != nil {
 			return nil, err
 		}
 		scanner := bufio.NewScanner(opts.in)
@@ -74,7 +81,7 @@ func applySuggestions(ctx context.Context, out io.Writer, opts *options, name st
 	}
 	for _, suggestion := range patches {
 		_, err := client.Interface.AutoscalingV2().
-			HorizontalPodAutoscalers(client.Namespace).
+			HorizontalPodAutoscalers(namespace).
 			Patch(ctx, name, types.MergePatchType, []byte(suggestion.Patch), patchOptions)
 		if err != nil {
 			return applied, fmt.Errorf("failed to apply suggested patch %q: %w", suggestion.Title, err)

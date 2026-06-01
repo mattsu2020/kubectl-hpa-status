@@ -46,6 +46,45 @@ func TestExtractVPAInfo(t *testing.T) {
 	}
 }
 
+func TestExtractVPAInfo_RecommendationsAndControlledResources(t *testing.T) {
+	u := &unstructured.Unstructured{
+		Object: map[string]any{
+			"metadata": map[string]any{"name": "web-vpa"},
+			"spec": map[string]any{
+				"targetRef": map[string]any{"kind": "Deployment", "name": "web"},
+				"resourcePolicy": map[string]any{
+					"containerPolicies": []any{
+						map[string]any{"controlledResources": []any{"cpu", "memory"}},
+					},
+				},
+			},
+			"status": map[string]any{
+				"recommendation": map[string]any{
+					"containerRecommendations": []any{
+						map[string]any{
+							"containerName": "app",
+							"target":        map[string]any{"cpu": "250m", "memory": "256Mi"},
+							"lowerBound":    map[string]any{"cpu": "100m"},
+							"upperBound":    map[string]any{"memory": "512Mi"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	info := ExtractVPAInfo(u)
+	if len(info.ControlledResources) != 2 || info.ControlledResources[0] != "cpu" || info.ControlledResources[1] != "memory" {
+		t.Fatalf("unexpected controlled resources: %#v", info.ControlledResources)
+	}
+	if len(info.Recommendations) != 2 {
+		t.Fatalf("expected cpu and memory recommendations, got %#v", info.Recommendations)
+	}
+	if info.Recommendations[0].Container != "app" || info.Recommendations[0].Resource != "cpu" || info.Recommendations[0].Target != "250m" {
+		t.Fatalf("unexpected cpu recommendation: %#v", info.Recommendations[0])
+	}
+}
+
 func TestExtractVPAInfo_RecommenderMode(t *testing.T) {
 	u := &unstructured.Unstructured{
 		Object: map[string]any{

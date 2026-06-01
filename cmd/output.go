@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"text/template"
 
@@ -27,6 +28,36 @@ func shouldColorize(mode string, out io.Writer) bool {
 	default:
 		return false
 	}
+}
+
+func applyHealthWeightOverrides(opts *options) error {
+	for _, override := range opts.healthWeightOverrides {
+		key, value, ok := strings.Cut(override, "=")
+		if !ok {
+			return fmt.Errorf("invalid --health-weight %q; expected name=value", override)
+		}
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 0 {
+			return fmt.Errorf("invalid --health-weight %q; value must be a non-negative integer", override)
+		}
+		switch normalizeSelector(key) {
+		case "scalinginactive":
+			opts.healthWeights.ScalingInactive = parsed
+		case "unabletoscale":
+			opts.healthWeights.UnableToScale = parsed
+		case "scalinglimited":
+			opts.healthWeights.ScalingLimited = parsed
+		case "implicitmaxreplicas":
+			opts.healthWeights.ImplicitMaxReplicas = parsed
+		case "scaledownstabilized":
+			opts.healthWeights.ScaleDownStabilized = parsed
+		case "atminimumreplicas":
+			opts.healthWeights.AtMinimumReplicas = parsed
+		default:
+			return fmt.Errorf("unknown health weight %q", key)
+		}
+	}
+	return nil
 }
 
 func outputLang(opts *options) string {

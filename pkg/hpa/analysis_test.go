@@ -857,3 +857,43 @@ func TestStructuredActions_RestoreMetrics(t *testing.T) {
 		t.Fatalf("expected StructuredMessage with reason=RestoreMetrics, got %#v", got.StructuredActions)
 	}
 }
+
+func TestFormatMetricStatusIncludesExternalSelector(t *testing.T) {
+	target := resource.MustParse("10")
+	current := resource.MustParse("20")
+	hpa := baseHPA()
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{
+		{
+			Type: autoscalingv2.ExternalMetricSourceType,
+			External: &autoscalingv2.ExternalMetricSource{
+				Metric: autoscalingv2.MetricIdentifier{
+					Name: "queue_depth",
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{"queue": "payments"},
+					},
+				},
+				Target: autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType, Value: &target},
+			},
+		},
+	}
+
+	got := FormatMetricStatus(hpa, autoscalingv2.MetricStatus{
+		Type: autoscalingv2.ExternalMetricSourceType,
+		External: &autoscalingv2.ExternalMetricStatus{
+			Metric: autoscalingv2.MetricIdentifier{
+				Name: "queue_depth",
+				Selector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{"queue": "payments"},
+				},
+			},
+			Current: autoscalingv2.MetricValueStatus{Value: &current},
+		},
+	})
+
+	if got.Selector != "queue=payments" {
+		t.Fatalf("expected selector in metric, got %#v", got)
+	}
+	if !strings.Contains(got.Text, `selector="queue=payments"`) {
+		t.Fatalf("expected selector in text, got %q", got.Text)
+	}
+}

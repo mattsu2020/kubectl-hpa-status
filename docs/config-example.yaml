@@ -59,6 +59,8 @@ events: 5
 #     template: '{.analysis.summary}'
 
 # Custom health score penalty weights (zero = use default)
+# CLI override example:
+#   --health-weight scalingInactive=50 --health-weight scalingLimited=30
 healthWeights:
   scalingInactive: 45
   unableToScale: 35

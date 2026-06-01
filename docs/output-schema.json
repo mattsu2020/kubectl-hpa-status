@@ -107,6 +107,8 @@
       "properties": {
         "type": { "type": "string" },
         "name": { "type": "string" },
+        "selector": { "type": "string" },
+        "object": { "type": "string" },
         "current": { "type": "string" },
         "target": { "type": "string" },
         "ratio": { "type": "number" },
@@ -198,7 +200,26 @@
         "vpaName": { "type": "string" },
         "targetKind": { "type": "string" },
         "targetName": { "type": "string" },
+        "updateMode": { "type": "string" },
+        "controlledResources": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "recommendations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/vpaRecommendation" }
+        },
         "warning": { "type": "string" }
+      }
+    },
+    "vpaRecommendation": {
+      "type": "object",
+      "properties": {
+        "container": { "type": "string" },
+        "resource": { "type": "string" },
+        "target": { "type": "string" },
+        "lower": { "type": "string" },
+        "upper": { "type": "string" }
       }
     },
     "targetReplicas": {
@@ -206,7 +227,9 @@
       "properties": {
         "totalReplicas": { "type": "integer" },
         "readyReplicas": { "type": "integer" },
-        "notReady": { "type": "integer" }
+        "notReady": { "type": "integer" },
+        "pending": { "type": "integer" },
+        "unschedulable": { "type": "integer" }
       }
     },
     "impactMetric": {

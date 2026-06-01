@@ -78,7 +78,8 @@ The health score starts at 100 and deducts configurable penalties for each detec
 
 Health states (in priority order): `ERROR` > `LIMITED` > `STABILIZED` > `OK`.
 
-Score is clamped to [0, 100]. All penalties are configurable via `--health-weights` flag or config file.
+Score is clamped to [0, 100]. All penalties are configurable via repeated
+`--health-weight name=value` flags or config file.
 
 The default weights favor operator urgency over mathematical precision:
 
@@ -125,6 +126,9 @@ signals visible on the HPA itself. The analyzer detects KEDA-style labels,
 annotations, and `keda-hpa-*` names, then points operators to ScaledObject and
 adapter diagnostics. Direct reads of KEDA CRDs should be added through a
 separate optional client path so clusters without KEDA do not pay that cost.
+External, object, and pods metrics include selectors in the formatted metric
+model when they are visible in HPA status/spec, but adapter query internals such
+as PromQL are still outside the HPA API surface.
 
 Karpenter and Cluster Autoscaler integration should follow the same rule:
 surface relationships that are explicit in Kubernetes objects first, then add
@@ -140,6 +144,11 @@ The default page size is 500 and is configurable with `--chunk-size` or
 `chunkSize` in config. Keep per-item analysis streaming-friendly: avoid retaining
 raw HPA objects after converting them to `ListItem`/`StatusReport`, and prefer
 selector filtering at the API server via `--selector` when possible.
+
+`list --apply` and `scan --apply` reuse the same dry-run-first suggestion
+workflow as single-HPA status, but require an explicit bounded selection such as
+`--problem`, `--filter`, or score filters. This prevents accidentally applying
+suggestions to every HPA returned by an unbounded cluster-wide list.
 
 ## Suggestion Safety
 

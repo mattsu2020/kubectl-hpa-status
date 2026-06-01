@@ -11,6 +11,7 @@ import (
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/spf13/cobra"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -198,6 +199,20 @@ func buildStatusReport(ctx context.Context, opts *options, name string, includeI
 			fmt.Sprintf("Investigate why %d pod(s) are not ready on the scale target; not-ready pods can cause misleading metric utilization ratios.", tr.NotReady),
 		)
 	}
+	if report.Analysis.TargetReplicas != nil && report.Analysis.TargetReplicas.Pending > 0 {
+		tr := report.Analysis.TargetReplicas
+		report.Analysis.Interpretation = append(report.Analysis.Interpretation,
+			fmt.Sprintf("[confidence: high] %d pod(s) for the scale target are Pending; HPA may be requesting capacity that the cluster has not scheduled yet.", tr.Pending),
+		)
+		if tr.Unschedulable > 0 {
+			report.Analysis.Interpretation = append(report.Analysis.Interpretation,
+				fmt.Sprintf("[confidence: high] %d Pending pod(s) are marked Unschedulable, which points to node capacity, taint/toleration, affinity, or quota constraints rather than HPA math.", tr.Unschedulable),
+			)
+			report.Analysis.Actions = append(report.Analysis.Actions,
+				"Check pending Pods, node capacity, Cluster Autoscaler/Karpenter events, quotas, affinity, and taints before raising HPA bounds.",
+			)
+		}
+	}
 
 	return report, nil
 }
@@ -217,14 +232,16 @@ func fetchTargetReplicaInfo(ctx context.Context, client *kube.Client, hpa *autos
 		total := deploy.Status.Replicas
 		ready := deploy.Status.ReadyReplicas
 		notReady := total - ready
-		if notReady <= 0 {
-			return nil
-		}
-		return &hpaanalysis.TargetReplicaInfo{
+		info := &hpaanalysis.TargetReplicaInfo{
 			TotalReplicas: total,
 			ReadyReplicas: ready,
 			NotReady:      notReady,
 		}
+		enrichPendingPods(ctx, client, hpa.Namespace, metav1.FormatLabelSelector(deploy.Spec.Selector), info)
+		if info.NotReady <= 0 && info.Pending <= 0 && info.Unschedulable <= 0 {
+			return nil
+		}
+		return info
 	case "StatefulSet":
 		sts, err := client.Interface.AppsV1().StatefulSets(hpa.Namespace).Get(ctx, ref.Name, metav1.GetOptions{})
 		if err != nil {
@@ -233,16 +250,65 @@ func fetchTargetReplicaInfo(ctx context.Context, client *kube.Client, hpa *autos
 		total := sts.Status.Replicas
 		ready := sts.Status.ReadyReplicas
 		notReady := total - ready
-		if notReady <= 0 {
-			return nil
-		}
-		return &hpaanalysis.TargetReplicaInfo{
+		info := &hpaanalysis.TargetReplicaInfo{
 			TotalReplicas: total,
 			ReadyReplicas: ready,
 			NotReady:      notReady,
 		}
+		enrichPendingPods(ctx, client, hpa.Namespace, metav1.FormatLabelSelector(sts.Spec.Selector), info)
+		if info.NotReady <= 0 && info.Pending <= 0 && info.Unschedulable <= 0 {
+			return nil
+		}
+		return info
+	case "ReplicaSet":
+		rs, err := client.Interface.AppsV1().ReplicaSets(hpa.Namespace).Get(ctx, ref.Name, metav1.GetOptions{})
+		if err != nil {
+			return nil
+		}
+		total := rs.Status.Replicas
+		ready := rs.Status.ReadyReplicas
+		notReady := total - ready
+		info := &hpaanalysis.TargetReplicaInfo{
+			TotalReplicas: total,
+			ReadyReplicas: ready,
+			NotReady:      notReady,
+		}
+		enrichPendingPods(ctx, client, hpa.Namespace, metav1.FormatLabelSelector(rs.Spec.Selector), info)
+		if info.NotReady <= 0 && info.Pending <= 0 && info.Unschedulable <= 0 {
+			return nil
+		}
+		return info
 	}
 	return nil
+}
+
+func enrichPendingPods(ctx context.Context, client *kube.Client, namespace string, selector string, info *hpaanalysis.TargetReplicaInfo) {
+	if selector == "" || info == nil {
+		return
+	}
+	pods, err := client.Interface.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: selector})
+	if err != nil {
+		return
+	}
+	for _, pod := range pods.Items {
+		if pod.Status.Phase == corev1.PodPending {
+			info.Pending++
+			if podUnschedulable(pod) {
+				info.Unschedulable++
+			}
+		}
+	}
+}
+
+func podUnschedulable(pod corev1.Pod) bool {
+	for _, condition := range pod.Status.Conditions {
+		if condition.Type == corev1.PodScheduled &&
+			condition.Status == corev1.ConditionFalse &&
+			condition.Reason == corev1.PodReasonUnschedulable {
+			return true
+		}
+	}
+	return false
 }
 
 func enrichKEDA(ctx context.Context, opts *options, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpaanalysis.KEDAAnalysis {
@@ -328,12 +394,6 @@ func enrichVPA(ctx context.Context, opts *options, hpa *autoscalingv2.Horizontal
 		return
 	}
 
-	conflict := &hpaanalysis.VPAConflictInfo{
-		VPAName:    vpaInfo.Name,
-		TargetKind: vpaInfo.TargetKind,
-		TargetName: vpaInfo.TargetName,
-		Warning:    fmt.Sprintf("VPA %s and HPA both target %s/%s with overlapping resource metrics", vpaInfo.Name, vpaInfo.TargetKind, vpaInfo.TargetName),
-	}
-	report.Analysis.VPAConflict = conflict
+	report.Analysis.VPAConflict = hpaanalysis.NewVPAConflictInfo(vpaInfo)
 	report.Analysis.Interpretation = append(report.Analysis.Interpretation, hpaanalysis.AnalyzeVPA(hpa, vpaInfo)...)
 }

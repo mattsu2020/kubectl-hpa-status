@@ -207,7 +207,7 @@ func fetchHPAs(m Model) tea.Cmd {
 		items := make([]hpaanalysis.ListItem, 0, len(hpas.Items))
 		reports := make(map[string]*hpaanalysis.StatusReport, len(hpas.Items))
 		for i := range hpas.Items {
-			analysis := hpaanalysis.AnalyzeWithOptions(&hpas.Items[i], false, hpaanalysis.AnalysisOptions{
+			analysis := hpaanalysis.AnalyzeWithOptions(&hpas.Items[i], true, hpaanalysis.AnalysisOptions{
 				Debug: m.opts.Debug,
 			})
 			item := hpaanalysis.NewListItem(analysis)
