@@ -82,6 +82,26 @@ kubectl hpa status <hpa-name> --fix --apply
 
 ## Quick usage
 
+### Which invocation works for you?
+
+kubectl discovers plugins differently depending on your kubectl version and
+installation method. After installing, run:
+
+```sh
+kubectl plugin list
+```
+
+Then use the command path that appears in the output:
+
+| Output from `kubectl plugin list` | Invocation |
+| --- | --- |
+| `kubectl-hpa-status` (standalone binary in PATH) | `kubectl-hpa-status status <name>` |
+| `hpa-status` (Krew symlink) | `kubectl hpa_status status <name>` |
+| `hpa/status` (nested plugin directory) | `kubectl hpa status <name>` |
+
+All three invoke the same binary and accept the same flags.
+This project documents `kubectl hpa status` as the preferred form.
+
 ```sh
 kubectl hpa status <hpa-name> -n <namespace>
 kubectl hpa status <hpa-name> --explain
@@ -115,7 +135,7 @@ healthWeights:
   scalingLimited: 25
 ```
 
-The config file `~/.kube/hpa-status.yaml` is supported and allows setting defaults for all flags. See the config file example above.
+The config file `~/.kube/hpa-status.yaml` is supported and allows setting defaults for all flags. For a complete example with all fields, see [docs/config-example.yaml](docs/config-example.yaml).
 
 How to read the output:
 
@@ -164,6 +184,21 @@ kubectl krew install hpa-status
 kubectl krew install --manifest https://raw.githubusercontent.com/mattsu2020/kubectl-hpa-status/main/.krew.yaml
 ```
 
+#### Krew official index status
+
+`hpa-status` is not yet in the official krew-index. The current install path
+uses a direct manifest URL.
+
+To submit to the official index:
+
+1. Ensure at least one GitHub release with cross-platform binaries.
+2. Generate the manifest: `make krew` (validates `.krew.yaml` template).
+3. Fork `kubernetes-sigs/krew-index`, copy the resolved manifest to `plugins/hpa-status.yaml`.
+4. Open a PR against the krew-index repo following their plugin review process.
+5. After merge, `kubectl krew install hpa-status` works for all users.
+
+Track progress: [krew-index plugins](https://github.com/kubernetes-sigs/krew-index/tree/master/plugins)
+
 ```sh
 kubectl hpa status <hpa-name> -n <namespace>
 kubectl hpa status list -A --wide
@@ -211,7 +246,10 @@ name now all use `github.com/mattsu2020/kubectl-hpa-status` /
 
 ### Requirements
 
-- **Kubernetes 1.26+** (autoscaling/v2 GA since 1.23, stable in 1.26)
+- **Kubernetes v1.26 through v1.36** (tested range). The plugin uses `autoscaling/v2`
+  which became GA in Kubernetes 1.23 and is the stable API from 1.26 onward.
+  The plugin is expected to work with future Kubernetes versions that serve
+  `autoscaling/v2`; the tested range will be updated as CI validation expands.
 - kubectl configured with a kubeconfig
 - metrics-server (for CPU/memory metrics) or custom/external metrics adapter
 
@@ -239,7 +277,7 @@ kubectl delete namespace hpa-status-examples
 kubectl hpa status <hpa-name> [<hpa-name>...] [-n namespace] [--context context] [--events=false]
 kubectl hpa status <hpa-name> --watch --interval 5s
 kubectl hpa status <hpa-name> --watch --timeout 2m --until-condition scaling-limited
-kubectl hpa status analyze <hpa-name> [<hpa-name>...]  # deprecated; use status --explain instead
+kubectl hpa status analyze <hpa-name> [<hpa-name>...]  # deprecated; use `status --explain` instead
 kubectl hpa status list [-A] [--selector app=web] [--sort-by desired] [--filter scaling-limited]
 kubectl hpa status list -A --problem
 kubectl hpa status scan --selector app=web
@@ -281,7 +319,7 @@ Detailed flags:
 | `-l, --selector` | `list`, `scan` | Kubernetes label selector passed to the HPA list call, such as `app=web,tier!=canary`. |
 | `--context`, `--kubeconfig`, `--cluster` | all commands | Explicit kubeconfig selection. |
 | `--config` | all commands | Read defaults from a YAML/JSON config file. Defaults to `~/.kube/hpa-status.yaml` when present. |
-| `-o table|wide|json|yaml|jsonpath=...|template=...` | status, analyze, list, scan | Output format. YAML is supported for both single and multiple HPA output. |
+| `-o table|wide|json|yaml|jsonpath=...|template=...` | status, analyze, list, scan | Output format. YAML is supported for both single and multiple HPA output. For the JSON schema, see [docs/output-schema.json](docs/output-schema.json). |
 | `--wide` | table output | Show target, min, max, and replica delta columns where applicable. |
 | `--sort-by namespace|name|current|desired|diff|health-score|issue|problem` | `list`, `scan` | Sort list output. `problem` puts the lowest health score and largest replica delta first. |
 | `--filter all|ok|error|limited|scaling-limited|issue` | `list`, `scan` | Filter by health or issue text. |
@@ -367,12 +405,12 @@ kind-specific `--kubelet-insecure-tls` option.
 
 ## Compatibility matrix
 
-Kubernetes 1.26 or later is required. The plugin uses `autoscaling/v2` which became GA in Kubernetes 1.23 and is the stable API from 1.26 onward.
+Kubernetes v1.26 through v1.36 is the tested range. The plugin uses `autoscaling/v2` which became GA in Kubernetes 1.23 and is the stable API from 1.26 onward. The plugin is expected to work with future Kubernetes versions that serve `autoscaling/v2`.
 
 | Environment | Status |
 | --- | --- |
 | HPA API `autoscaling/v2` | Required |
-| Kubernetes v1.35.0 | Validated |
+| Kubernetes v1.26 - v1.36 | Tested and supported |
 | metrics-server v0.8.1 on kind | Validated |
 | custom/external metrics adapters | Supported through visible HPA status with best-effort ratio interpretation; adapter-specific internals are not inspected |
 | KEDA-scaled workloads | Basic KEDA-managed HPA detection is automatic. `--keda` optionally looks up the matching ScaledObject for trigger and condition context |

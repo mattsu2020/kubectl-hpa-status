@@ -1,0 +1,251 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "kubectl-hpa-status output",
+  "description": "JSON schema for kubectl-hpa-status status and list output formats",
+  "oneOf": [
+    { "$ref": "#/$defs/statusReport" },
+    { "$ref": "#/$defs/listReport" }
+  ],
+  "$defs": {
+    "statusReport": {
+      "type": "object",
+      "properties": {
+        "analysis": { "$ref": "#/$defs/analysis" },
+        "events": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/event" }
+        }
+      },
+      "required": ["analysis"]
+    },
+    "listReport": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/listItem" }
+        }
+      },
+      "required": ["items"]
+    },
+    "analysis": {
+      "type": "object",
+      "properties": {
+        "namespace": { "type": "string" },
+        "name": { "type": "string" },
+        "target": { "type": "string" },
+        "currentReplicas": { "type": "integer" },
+        "desiredReplicas": { "type": "integer" },
+        "minReplicas": { "type": "integer" },
+        "maxReplicas": { "type": "integer" },
+        "health": { "type": "string", "enum": ["OK", "STABILIZED", "LIMITED", "ERROR"] },
+        "healthScore": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "summary": { "type": "string" },
+        "conditions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/condition" }
+        },
+        "metrics": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/metric" }
+        },
+        "behavior": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/behaviorPolicy" }
+        },
+        "recommendedActions": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "suggestions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/suggestion" }
+        },
+        "interpretation": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "structuredInterpretation": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/structuredEntry" }
+        },
+        "structuredActions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/structuredEntry" }
+        },
+        "keda": { "$ref": "#/$defs/kedaAnalysis" },
+        "vpaConflict": { "$ref": "#/$defs/vpaConflict" },
+        "targetReplicas": { "$ref": "#/$defs/targetReplicas" },
+        "impactMetric": { "$ref": "#/$defs/impactMetric" },
+        "creationTimestamp": { "type": "string", "format": "date-time" },
+        "staleStatus": { "$ref": "#/$defs/staleStatus" },
+        "stabilizationRemaining": { "type": "integer" },
+        "scaleToZero": { "$ref": "#/$defs/scaleToZero" },
+        "debug": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["namespace", "name", "health", "healthScore", "summary"]
+    },
+    "condition": {
+      "type": "object",
+      "properties": {
+        "type": { "type": "string" },
+        "status": { "type": "string", "enum": ["True", "False", "Unknown"] },
+        "reason": { "type": "string" },
+        "message": { "type": "string" }
+      },
+      "required": ["type", "status"]
+    },
+    "metric": {
+      "type": "object",
+      "properties": {
+        "type": { "type": "string" },
+        "name": { "type": "string" },
+        "current": { "type": "string" },
+        "target": { "type": "string" },
+        "ratio": { "type": "number" },
+        "note": { "type": "string" },
+        "text": { "type": "string" }
+      }
+    },
+    "behaviorPolicy": {
+      "type": "object",
+      "properties": {
+        "direction": { "type": "string", "enum": ["scaleUp", "scaleDown"] },
+        "stabilizationWindowSeconds": { "type": "integer" },
+        "selectPolicy": { "type": "string" },
+        "policies": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "text": { "type": "string" }
+      }
+    },
+    "suggestion": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "command": { "type": "string" },
+        "patch": { "type": "string" },
+        "risk": { "type": "string" },
+        "preconditions": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "warnings": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "apply": { "type": "boolean" }
+      },
+      "required": ["title", "description"]
+    },
+    "structuredEntry": {
+      "type": "object",
+      "properties": {
+        "reason": { "type": "string" },
+        "message": { "type": "string" },
+        "nextStep": { "type": "string" },
+        "severity": { "type": "string", "enum": ["info", "warning", "error"] },
+        "confidence": { "type": "string", "enum": ["high", "medium"] }
+      }
+    },
+    "kedaAnalysis": {
+      "type": "object",
+      "properties": {
+        "scaledObjectName": { "type": "string" },
+        "triggers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string" },
+              "name": { "type": "string" }
+            }
+          }
+        },
+        "pollingInterval": { "type": "integer" },
+        "cooldownPeriod": { "type": "integer" },
+        "minReplicaCount": { "type": "integer" },
+        "maxReplicaCount": { "type": "integer" },
+        "lines": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "vpaConflict": {
+      "type": "object",
+      "properties": {
+        "vpaName": { "type": "string" },
+        "targetKind": { "type": "string" },
+        "targetName": { "type": "string" },
+        "warning": { "type": "string" }
+      }
+    },
+    "targetReplicas": {
+      "type": "object",
+      "properties": {
+        "totalReplicas": { "type": "integer" },
+        "readyReplicas": { "type": "integer" },
+        "notReady": { "type": "integer" }
+      }
+    },
+    "impactMetric": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "ratio": { "type": "number" },
+        "note": { "type": "string" },
+        "confidence": { "type": "string", "enum": ["high", "medium"] }
+      }
+    },
+    "staleStatus": {
+      "type": "object",
+      "properties": {
+        "observedGeneration": { "type": "integer" },
+        "currentGeneration": { "type": "integer" },
+        "diff": { "type": "integer" }
+      }
+    },
+    "scaleToZero": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "coldStart": { "type": "boolean" },
+        "note": { "type": "string" }
+      }
+    },
+    "event": {
+      "type": "object",
+      "properties": {
+        "reason": { "type": "string" },
+        "message": { "type": "string" }
+      }
+    },
+    "listItem": {
+      "type": "object",
+      "properties": {
+        "namespace": { "type": "string" },
+        "name": { "type": "string" },
+        "target": { "type": "string" },
+        "currentReplicas": { "type": "integer" },
+        "desiredReplicas": { "type": "integer" },
+        "minReplicas": { "type": "integer" },
+        "maxReplicas": { "type": "integer" },
+        "summary": { "type": "string" },
+        "health": { "type": "string", "enum": ["OK", "STABILIZED", "LIMITED", "ERROR"] },
+        "healthScore": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "issue": { "type": "string" },
+        "metrics": { "type": "string" },
+        "behavior": { "type": "string" },
+        "conditions": { "type": "string" },
+        "creationTimestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["namespace", "name", "health", "healthScore"]
+    }
+  }
+}

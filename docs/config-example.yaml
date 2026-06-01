@@ -1,0 +1,55 @@
+# Example ~/.kube/hpa-status.yaml
+# All fields are optional. Explicit flags always win over config values.
+# Place this file at ~/.kube/hpa-status.yaml or specify with --config.
+
+# Default namespace (equivalent to -n)
+# namespace: production
+
+# List across all namespaces (equivalent to -A)
+# allNamespaces: true
+
+# Default output format: table, wide, json, yaml
+# output: json
+
+# Show extra columns in list output
+# wide: true
+
+# Label selector for list/scan
+# selector: app.kubernetes.io/part-of=my-service
+
+# Sort list output: namespace, name, current, desired, diff, healthscore, issue, problem
+# sortBy: problem
+
+# Filter list output: all, ok, error, limited, scaling-limited, issue
+# filter: issue
+
+# Score range filtering (show only HPAs in this range)
+# minScore: 60
+# maxScore: 90
+
+# Color output: auto, always, never
+color: auto
+
+# Number of recent events to show
+events: 5
+
+# Disable events entirely
+# eventsEnabled: false
+
+# Text language: en or ja
+# lang: ja
+
+# Include debug details
+# debug: true
+
+# Dashboard mode for watch
+# dashboard: true
+
+# Custom health score penalty weights (zero = use default)
+healthWeights:
+  scalingInactive: 45
+  unableToScale: 35
+  scalingLimited: 25
+  implicitMaxReplicas: 20
+  scaleDownStabilized: 10
+  atMinimumReplicas: 5

@@ -32,6 +32,26 @@ Inference should be labeled with confidence language and covered by tests.
 | `pkg/hpa/events.go` | recent Event lookup and formatting |
 | `test/e2e/` | kind-backed command path tests |
 
+### cmd/ file responsibilities
+
+| File | Purpose |
+| --- | --- |
+| `root.go` | Root command, flag definitions, config file parsing, shared `options` struct |
+| `status.go` | `status` and `analyze` (deprecated) subcommands, HPA fetch, KEDA/VPA enrichment |
+| `list.go` | `list`/`scan` subcommands, sort/filter logic |
+| `apply.go` | `--apply` suggestion workflow with confirmation and patch diff |
+| `watch.go` | Polling watch loop for status and list |
+| `tui.go` | Bubble Tea interactive TUI dashboard |
+| `output.go` | Format routing (JSON, YAML, jsonpath, template, prometheus), config loading |
+| `helpers.go` | `eventOption` type for `--events` flag |
+| `exitcode.go` | Exit code constants for script integration |
+| `completion.go` | Shell completion generation and HPA name completion |
+
+Potential refactoring notes:
+- `output.go` handles both format routing and config loading. Config loading could move to a dedicated `config.go`.
+- `status.go` is the largest file and handles KEDA/VPA enrichment. Enrichment helpers could move to `internal/kube/`.
+- The `options` struct in `root.go` is shared across all commands. As flags grow, consider splitting into per-command option structs.
+
 `pkg/hpa` is kept importable so downstream tools can reuse the analysis model
 without depending on Cobra command wiring.
 
