@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/rand"
 	"os"
@@ -317,9 +318,12 @@ func TestE2E_ScalingInactive(t *testing.T) {
 	rootCmd.SetArgs([]string{"status", "broken-hpa", "-n", nsName, "--explain", "--kubeconfig", kubeconfig})
 
 	if err := rootCmd.Execute(); err != nil {
-		// The command may return a non-zero exit code due to ERROR health, but
-		// Execute() returns nil because the exit code is handled separately.
-		t.Fatalf("failed to execute status broken-hpa --explain: %v. Output:\n%s", err, buf.String())
+		// The command may return a non-nil error (ExitCodeError) due to ERROR health.
+		// This is expected behavior; exit codes are set for script integration.
+		var exitErr *cmd.ExitCodeError
+		if !errors.As(err, &exitErr) {
+			t.Fatalf("unexpected error (not ExitCodeError): %v. Output:\n%s", err, buf.String())
+		}
 	}
 
 	explainOutput := buf.String()
