@@ -23,21 +23,26 @@ var scaledObjectGVR = schema.GroupVersionResource{
 
 // KEDAInfo holds extracted information about a KEDA ScaledObject.
 type KEDAInfo struct {
-	ScaledObjectName string            `json:"scaledObjectName" yaml:"scaledObjectName"`
-	Triggers         []KEDATrigger     `json:"triggers,omitempty" yaml:"triggers,omitempty"`
-	PollingInterval  *int32            `json:"pollingInterval,omitempty" yaml:"pollingInterval,omitempty"`
-	CooldownPeriod   *int32            `json:"cooldownPeriod,omitempty" yaml:"cooldownPeriod,omitempty"`
-	MinReplicaCount  *int32            `json:"minReplicaCount,omitempty" yaml:"minReplicaCount,omitempty"`
-	MaxReplicaCount  *int32            `json:"maxReplicaCount,omitempty" yaml:"maxReplicaCount,omitempty"`
-	Conditions       []KEDACondition   `json:"conditions,omitempty" yaml:"conditions,omitempty"`
-	Advanced         map[string]string `json:"advanced,omitempty" yaml:"advanced,omitempty"`
+	ScaledObjectName string               `json:"scaledObjectName" yaml:"scaledObjectName"`
+	Triggers         []KEDATrigger        `json:"triggers,omitempty" yaml:"triggers,omitempty"`
+	PollingInterval  *int32               `json:"pollingInterval,omitempty" yaml:"pollingInterval,omitempty"`
+	CooldownPeriod   *int32               `json:"cooldownPeriod,omitempty" yaml:"cooldownPeriod,omitempty"`
+	MinReplicaCount  *int32               `json:"minReplicaCount,omitempty" yaml:"minReplicaCount,omitempty"`
+	MaxReplicaCount  *int32               `json:"maxReplicaCount,omitempty" yaml:"maxReplicaCount,omitempty"`
+	Conditions       []KEDACondition      `json:"conditions,omitempty" yaml:"conditions,omitempty"`
+	Advanced         map[string]string    `json:"advanced,omitempty" yaml:"advanced,omitempty"`
+	Fallback         *KEDAFallback        `json:"fallback,omitempty" yaml:"fallback,omitempty"`
+	ScalingPolicies  []KEDAScalingPolicy  `json:"scalingPolicies,omitempty" yaml:"scalingPolicies,omitempty"`
 }
 
 // KEDATrigger represents a single KEDA scaler trigger.
 type KEDATrigger struct {
-	Type     string            `json:"type" yaml:"type"`
-	Name     string            `json:"name,omitempty" yaml:"name,omitempty"`
-	Metadata map[string]string `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	Type              string            `json:"type" yaml:"type"`
+	Name              string            `json:"name,omitempty" yaml:"name,omitempty"`
+	Metadata          map[string]string `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	Status            string            `json:"status,omitempty" yaml:"status,omitempty"`                        // "Active", "Inactive", "Unknown"
+	Message           string            `json:"message,omitempty" yaml:"message,omitempty"`
+	AuthenticationRef string            `json:"authenticationRef,omitempty" yaml:"authenticationRef,omitempty"`
 }
 
 // KEDACondition represents a condition from the ScaledObject status.
@@ -46,6 +51,19 @@ type KEDACondition struct {
 	Status  string `json:"status" yaml:"status"`
 	Reason  string `json:"reason,omitempty" yaml:"reason,omitempty"`
 	Message string `json:"message,omitempty" yaml:"message,omitempty"`
+}
+
+// KEDAFallback holds fallback configuration from a ScaledObject.
+type KEDAFallback struct {
+	FailureThreshold int32 `json:"failureThreshold" yaml:"failureThreshold"`
+	Replicas         int32 `json:"replicas" yaml:"replicas"`
+}
+
+// KEDAScalingPolicy represents a scaling policy from a ScaledObject.
+type KEDAScalingPolicy struct {
+	Type          string `json:"type" yaml:"type"` // "scaleUp" or "scaleDown"
+	Value         int32  `json:"value" yaml:"value"`
+	PeriodSeconds int32  `json:"periodSeconds" yaml:"periodSeconds"`
 }
 
 // DetectKEDA checks whether an HPA is KEDA-managed by inspecting labels and annotations.
@@ -102,11 +120,15 @@ func ExtractKEDAInfo(u *unstructured.Unstructured) KEDAInfo {
 		if advanced, ok := spec["advanced"].(map[string]any); ok {
 			info.Advanced = extractAdvanced(advanced)
 		}
+		info.Fallback = extractFallback(spec)
+		info.ScalingPolicies = extractScalingPolicies(spec)
 	}
 
 	status, ok := u.Object["status"].(map[string]any)
 	if ok {
 		info.Conditions = extractKEDAConditions(status)
+		// Merge trigger health status into triggers extracted from spec.
+		extractTriggerStatus(u, info.Triggers)
 	}
 
 	return info
@@ -207,9 +229,128 @@ func extractTriggers(spec map[string]any) []KEDATrigger {
 				trigger.Metadata[k] = fmt.Sprintf("%v", v)
 			}
 		}
+		// Extract authenticationRef.name from the trigger spec.
+		if authRef, ok := tm["authenticationRef"].(map[string]any); ok {
+			trigger.AuthenticationRef = stringValue(authRef, "name")
+		}
 		triggers = append(triggers, trigger)
 	}
 	return triggers
+}
+
+// extractTriggerStatus reads status.health from the ScaledObject and merges
+// per-trigger health status (Active/Inactive/Unknown) into the triggers slice.
+func extractTriggerStatus(u *unstructured.Unstructured, triggers []KEDATrigger) {
+	status, ok := u.Object["status"].(map[string]any)
+	if !ok {
+		return
+	}
+	health, ok := status["health"].(map[string]any)
+	if !ok {
+		// No per-trigger health; try conditions for overall status.
+		return
+	}
+
+	// KEDA v2: status.health is a map keyed by trigger name or index.
+	for i := range triggers {
+		t := &triggers[i]
+		// Try matching by trigger name first, then by type.
+		if entry, ok := health[t.Name].(map[string]any); ok && t.Name != "" {
+			t.Status = mapHealthStatus(stringValue(entry, "status"))
+			t.Message = stringValue(entry, "message")
+		} else if entry, ok := health[t.Type].(map[string]any); ok {
+			t.Status = mapHealthStatus(stringValue(entry, "status"))
+			t.Message = stringValue(entry, "message")
+		}
+	}
+}
+
+// mapHealthStatus converts KEDA health status strings to a normalized form.
+func mapHealthStatus(s string) string {
+	switch strings.ToLower(s) {
+	case "active", "happy", "true":
+		return "Active"
+	case "inactive", "false":
+		return "Inactive"
+	case "unknown", "":
+		return "Unknown"
+	default:
+		return s
+	}
+}
+
+// extractFallback reads spec.fallback from the ScaledObject.
+func extractFallback(spec map[string]any) *KEDAFallback {
+	raw, ok := spec["fallback"]
+	if !ok {
+		return nil
+	}
+	fm, ok := raw.(map[string]any)
+	if !ok {
+		return nil
+	}
+	threshold := extractInt32Ptr(fm, "failureThreshold")
+	replicas := extractInt32Ptr(fm, "replicas")
+	if threshold == nil && replicas == nil {
+		return nil
+	}
+	fallback := &KEDAFallback{}
+	if threshold != nil {
+		fallback.FailureThreshold = *threshold
+	}
+	if replicas != nil {
+		fallback.Replicas = *replicas
+	}
+	return fallback
+}
+
+// extractScalingPolicies reads scaling policies from
+// spec.advanced.horizontalPodAutoscalerConfig.behavior.
+func extractScalingPolicies(spec map[string]any) []KEDAScalingPolicy {
+	advanced, ok := spec["advanced"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	hpaConfig, ok := advanced["horizontalPodAutoscalerConfig"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	behavior, ok := hpaConfig["behavior"].(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	var policies []KEDAScalingPolicy
+	for _, direction := range []string{"scaleUp", "scaleDown"} {
+		rules, ok := behavior[direction].(map[string]any)
+		if !ok {
+			continue
+		}
+		rawPolicies, ok := rules["policies"].([]any)
+		if !ok {
+			continue
+		}
+		for _, p := range rawPolicies {
+			pm, ok := p.(map[string]any)
+			if !ok {
+				continue
+			}
+			value := extractInt32Ptr(pm, "value")
+			period := extractInt32Ptr(pm, "periodSeconds")
+			if value == nil {
+				continue
+			}
+			sp := KEDAScalingPolicy{
+				Type:  direction,
+				Value: *value,
+			}
+			if period != nil {
+				sp.PeriodSeconds = *period
+			}
+			policies = append(policies, sp)
+		}
+	}
+	return policies
 }
 
 func extractKEDAConditions(status map[string]any) []KEDACondition {

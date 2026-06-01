@@ -171,12 +171,21 @@ type KEDAAnalysis struct {
 	MinReplicaCount  *int32               `json:"minReplicaCount,omitempty" yaml:"minReplicaCount,omitempty"`
 	MaxReplicaCount  *int32               `json:"maxReplicaCount,omitempty" yaml:"maxReplicaCount,omitempty"`
 	Lines            []string             `json:"lines,omitempty" yaml:"lines,omitempty"`
+	Fallback         *KEDAFallbackInfo    `json:"fallback,omitempty" yaml:"fallback,omitempty"`
 }
 
 // KEDATriggerSummary is a display-oriented summary of a KEDA trigger.
 type KEDATriggerSummary struct {
-	Type string `json:"type" yaml:"type"`
-	Name string `json:"name,omitempty" yaml:"name,omitempty"`
+	Type    string `json:"type" yaml:"type"`
+	Name    string `json:"name,omitempty" yaml:"name,omitempty"`
+	Status  string `json:"status,omitempty" yaml:"status,omitempty"`
+	Message string `json:"message,omitempty" yaml:"message,omitempty"`
+}
+
+// KEDAFallbackInfo holds fallback information for display.
+type KEDAFallbackInfo struct {
+	FailureThreshold int32 `json:"failureThreshold" yaml:"failureThreshold"`
+	Replicas         int32 `json:"replicas" yaml:"replicas"`
 }
 
 // TargetReplicaInfo holds replica status from the scale target resource.
@@ -467,11 +476,31 @@ func Interpret(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []
 	if hpa.Status.DesiredReplicas == hpa.Spec.MaxReplicas && len(hpa.Status.CurrentMetrics) > 1 {
 		lines = append(lines, "[confidence: high] desiredReplicas == maxReplicas; the winning metric cannot be reliably determined because the replica cap may hide the true metric winner.")
 	} else if guess, ok := MostInfluentialMetric(hpa); ok && len(hpa.Status.CurrentMetrics) > 1 {
-		lines = append(lines, fmt.Sprintf("[confidence: medium] Among visible resource utilization metrics, %s has the largest distance from target (ratio %.3f).", guess.Name, guess.Ratio))
+		lines = append(lines, fmt.Sprintf("[confidence: medium] Among visible metrics, %s has the largest distance from target (ratio %.3f).", guess.Name, guess.Ratio))
 		lines = append(lines, "[confidence: high] This is only an impact estimate; the API does not expose per-metric replica recommendations or the final metric winner.")
 	} else if len(hpa.Status.CurrentMetrics) > 1 {
 		lines = append(lines, "[confidence: high] Multiple current metrics are reported, but the API does not expose per-metric replica recommendations or which metric would have selected the recommendation before replica limits were applied.")
 		lines = append(lines, "[confidence: high] Events and human-readable messages can hint at the contributing metric, but they are not a stable decision record.")
+	}
+
+	// Metric disagreement detection: when metrics pull in opposite directions.
+	if len(hpa.Status.CurrentMetrics) > 1 {
+		var scaleUp, scaleDown []string
+		for _, metric := range hpa.Status.CurrentMetrics {
+			_, ratio := metricImpactRatio(hpa, metric)
+			if ratio == nil {
+				continue
+			}
+			name := metricDisplayName(metric)
+			if *ratio > 1.0 {
+				scaleUp = append(scaleUp, name)
+			} else if *ratio < 1.0 {
+				scaleDown = append(scaleDown, name)
+			}
+		}
+		if len(scaleUp) > 0 && len(scaleDown) > 0 {
+			lines = append(lines, fmt.Sprintf("[confidence: medium] Metric disagreement detected: %s want scale-up (ratio > 1.0) while %s want scale-down (ratio < 1.0). The HPA controller will use its selectPolicy to resolve this, but consider whether the metric targets are well-tuned.", strings.Join(scaleUp, ", "), strings.Join(scaleDown, ", ")))
+		}
 	}
 
 	// Scale-to-zero interpretation
@@ -1294,16 +1323,14 @@ func MetricOutsideTarget(hpa *autoscalingv2.HorizontalPodAutoscaler) (MetricImpa
 	return MetricImpactGuess{}, false
 }
 
-// MostInfluentialMetric estimates which resource metric has the largest scaling impact.
+// MostInfluentialMetric estimates which metric has the largest scaling impact
+// across all metric types: Resource, ContainerResource, External, Pods, and Object.
 func MostInfluentialMetric(hpa *autoscalingv2.HorizontalPodAutoscaler) (MetricImpactGuess, bool) {
 	var best MetricImpactGuess
 	var bestScore float64
 
 	for _, metric := range hpa.Status.CurrentMetrics {
-		if metric.Type != autoscalingv2.ResourceMetricSourceType || metric.Resource == nil {
-			continue
-		}
-		ratio := utilizationRatio(metric.Resource.Current.AverageUtilization, FindResourceTarget(hpa, string(metric.Resource.Name)))
+		name, ratio := metricImpactRatio(hpa, metric)
 		if ratio == nil {
 			continue
 		}
@@ -1312,19 +1339,19 @@ func MostInfluentialMetric(hpa *autoscalingv2.HorizontalPodAutoscaler) (MetricIm
 			distance = -distance
 		}
 
-		// Score by estimated replica impact: ratio * currentReplicas gives
+		// Score by estimated replica impact: ratio distance * currentReplicas gives
 		// a rough estimate of how many replicas this metric would want.
 		// Higher impact = more likely to be the winner.
 		replicaImpact := distance * float64(hpa.Status.CurrentReplicas)
 
 		if replicaImpact > bestScore {
 			bestScore = replicaImpact
-			note := "largest visible utilization ratio distance from target"
+			note := "largest visible ratio distance from target"
 			if hpa.Status.CurrentReplicas > 0 {
-				note = fmt.Sprintf("estimated replica impact %.1f (ratio distance %.3f × %d current replicas)", replicaImpact, distance, hpa.Status.CurrentReplicas)
+				note = fmt.Sprintf("estimated replica impact %.1f (ratio distance %.3f x %d current replicas)", replicaImpact, distance, hpa.Status.CurrentReplicas)
 			}
 			best = MetricImpactGuess{
-				Name:  string(metric.Resource.Name),
+				Name:  name,
 				Ratio: *ratio,
 				Note:  note,
 			}
@@ -1332,6 +1359,63 @@ func MostInfluentialMetric(hpa *autoscalingv2.HorizontalPodAutoscaler) (MetricIm
 	}
 
 	return best, bestScore > 0
+}
+
+// metricImpactRatio returns the metric display name and ratio for any metric type.
+func metricImpactRatio(hpa *autoscalingv2.HorizontalPodAutoscaler, metric autoscalingv2.MetricStatus) (string, *float64) {
+	switch metric.Type {
+	case autoscalingv2.ResourceMetricSourceType:
+		if metric.Resource == nil {
+			return "", nil
+		}
+		ratio := utilizationRatio(metric.Resource.Current.AverageUtilization, FindResourceTarget(hpa, string(metric.Resource.Name)))
+		return string(metric.Resource.Name), ratio
+
+	case autoscalingv2.ContainerResourceMetricSourceType:
+		if metric.ContainerResource == nil {
+			return "", nil
+		}
+		targetSpec := FindContainerResourceTargetSpec(hpa, string(metric.ContainerResource.Name), metric.ContainerResource.Container)
+		target := FormatMetricTarget(targetSpec)
+		ratio := utilizationRatio(metric.ContainerResource.Current.AverageUtilization, target)
+		name := fmt.Sprintf("%s/%s", metric.ContainerResource.Container, metric.ContainerResource.Name)
+		if ratio != nil {
+			return name, ratio
+		}
+		// Fall back to quantity-based ratio if utilization is not available.
+		if metric.ContainerResource.Current.AverageValue != nil && targetSpec.AverageValue != nil {
+			ratio = quantityRatio(metric.ContainerResource.Current.AverageValue, targetSpec.AverageValue)
+			return name, ratio
+		}
+		return name, nil
+
+	case autoscalingv2.ExternalMetricSourceType:
+		if metric.External == nil {
+			return "", nil
+		}
+		targetSpec := FindExternalTargetSpec(hpa, metric.External.Metric.Name)
+		ratio, _ := calculateRatioAndNote(metric.External.Current, targetSpec, FormatMetricTarget(targetSpec))
+		return metric.External.Metric.Name, ratio
+
+	case autoscalingv2.PodsMetricSourceType:
+		if metric.Pods == nil {
+			return "", nil
+		}
+		targetSpec := FindPodsTargetSpec(hpa, metric.Pods.Metric.Name)
+		ratio, _ := calculateRatioAndNote(metric.Pods.Current, targetSpec, FormatMetricTarget(targetSpec))
+		return metric.Pods.Metric.Name, ratio
+
+	case autoscalingv2.ObjectMetricSourceType:
+		if metric.Object == nil {
+			return "", nil
+		}
+		targetSpec := FindObjectTargetSpec(hpa, metric.Object.Metric.Name)
+		ratio, _ := calculateRatioAndNote(metric.Object.Current, targetSpec, FormatMetricTarget(targetSpec))
+		return metric.Object.Metric.Name, ratio
+
+	default:
+		return "", nil
+	}
 }
 
 func prioritizedConditions(conditions []autoscalingv2.HorizontalPodAutoscalerCondition) []autoscalingv2.HorizontalPodAutoscalerCondition {
@@ -1400,4 +1484,31 @@ func CompareQuantityToTarget(current, target *resource.Quantity) string {
 	default:
 		return "current value equals target"
 	}
+}
+
+// metricDisplayName returns a human-readable name for a metric status entry.
+func metricDisplayName(metric autoscalingv2.MetricStatus) string {
+	switch metric.Type {
+	case autoscalingv2.ResourceMetricSourceType:
+		if metric.Resource != nil {
+			return string(metric.Resource.Name)
+		}
+	case autoscalingv2.ContainerResourceMetricSourceType:
+		if metric.ContainerResource != nil {
+			return fmt.Sprintf("%s/%s", metric.ContainerResource.Container, metric.ContainerResource.Name)
+		}
+	case autoscalingv2.ExternalMetricSourceType:
+		if metric.External != nil {
+			return metric.External.Metric.Name
+		}
+	case autoscalingv2.PodsMetricSourceType:
+		if metric.Pods != nil {
+			return metric.Pods.Metric.Name
+		}
+	case autoscalingv2.ObjectMetricSourceType:
+		if metric.Object != nil {
+			return metric.Object.Metric.Name
+		}
+	}
+	return string(metric.Type)
 }

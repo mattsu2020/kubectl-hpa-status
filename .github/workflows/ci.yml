@@ -30,6 +30,33 @@ jobs:
         run: |
           go test -coverprofile=coverage.out ./...
           go tool cover -func=coverage.out
+          echo "## Coverage summary"
+          go tool cover -func=coverage.out | grep total | awk '{print "Total coverage: "$3}'
+
+      - name: Check coverage threshold
+        run: |
+          TOTAL=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+          echo "Total coverage: ${TOTAL}%"
+          THRESHOLD=70
+          if [ "$(echo "$TOTAL < $THRESHOLD" | bc -l)" = "1" ]; then
+            echo "::warning::Coverage ${TOTAL}% is below threshold ${THRESHOLD}%"
+          fi
+
+      - name: Check README sync
+        run: |
+          EN_SECTIONS=$(grep "^##" README.md | sed 's/\[.*\](.*)//' | sed 's/[[:space:]]*$//')
+          JA_SECTIONS=$(grep "^##" README.ja.md | sed 's/\[.*\](.*)//' | sed 's/[[:space:]]*$//')
+          EN_COUNT=$(echo "$EN_SECTIONS" | wc -l | tr -d ' ')
+          JA_COUNT=$(echo "$JA_SECTIONS" | wc -l | tr -d ' ')
+          echo "README.md sections: $EN_COUNT"
+          echo "README.ja.md sections: $JA_COUNT"
+          if [ "$EN_COUNT" -ne "$JA_COUNT" ]; then
+            echo "::warning::Section count differs: README.md has $EN_COUNT sections, README.ja.md has $JA_COUNT sections"
+            echo "--- README.md sections ---"
+            echo "$EN_SECTIONS"
+            echo "--- README.ja.md sections ---"
+            echo "$JA_SECTIONS"
+          fi
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v7

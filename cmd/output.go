@@ -5,12 +5,10 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strconv"
 	"strings"
 	"text/template"
 
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
-	"github.com/spf13/cobra"
 	"golang.org/x/term"
 	"k8s.io/client-go/util/jsonpath"
 	"sigs.k8s.io/yaml"
@@ -30,36 +28,6 @@ func shouldColorize(mode string, out io.Writer) bool {
 	}
 }
 
-func applyHealthWeightOverrides(opts *options) error {
-	for _, override := range opts.healthWeightOverrides {
-		key, value, ok := strings.Cut(override, "=")
-		if !ok {
-			return fmt.Errorf("invalid --health-weight %q; expected name=value", override)
-		}
-		parsed, err := strconv.Atoi(value)
-		if err != nil || parsed < 0 {
-			return fmt.Errorf("invalid --health-weight %q; value must be a non-negative integer", override)
-		}
-		switch normalizeSelector(key) {
-		case "scalinginactive":
-			opts.healthWeights.ScalingInactive = parsed
-		case "unabletoscale":
-			opts.healthWeights.UnableToScale = parsed
-		case "scalinglimited":
-			opts.healthWeights.ScalingLimited = parsed
-		case "implicitmaxreplicas":
-			opts.healthWeights.ImplicitMaxReplicas = parsed
-		case "scaledownstabilized":
-			opts.healthWeights.ScaleDownStabilized = parsed
-		case "atminimumreplicas":
-			opts.healthWeights.AtMinimumReplicas = parsed
-		default:
-			return fmt.Errorf("unknown health weight %q", key)
-		}
-	}
-	return nil
-}
-
 func outputLang(opts *options) string {
 	if opts.lang != "" {
 		return strings.ToLower(opts.lang)
@@ -75,98 +43,6 @@ func analysisOptions(opts *options) hpaanalysis.AnalysisOptions {
 		HealthWeights: opts.healthWeights,
 		Debug:         opts.debug,
 	}
-}
-
-func loadConfigFile(path string) (configFile, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- path is from user --config flag, not arbitrary input
-	if err != nil {
-		return configFile{}, err
-	}
-	var cfg configFile
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return configFile{}, err
-	}
-	return cfg, nil
-}
-
-func applyConfig(cmd *cobra.Command, opts *options, cfg configFile) {
-	if cfg.Namespace != "" && !persistentFlagChanged(cmd, "namespace") {
-		opts.namespace = cfg.Namespace
-	}
-	if cfg.AllNamespaces != nil && !persistentFlagChanged(cmd, "all-namespaces") {
-		opts.allNamespaces = *cfg.AllNamespaces
-	}
-	if cfg.Output != "" && !persistentFlagChanged(cmd, "output") {
-		opts.output = cfg.Output
-	}
-	if cfg.Wide != nil && !persistentFlagChanged(cmd, "wide") {
-		opts.wide = *cfg.Wide
-	}
-	if cfg.Selector != "" && !persistentFlagChanged(cmd, "selector") {
-		opts.selector = cfg.Selector
-	}
-	if cfg.Color != "" && !persistentFlagChanged(cmd, "color") {
-		opts.color = cfg.Color
-	}
-	if cfg.Lang != "" && !persistentFlagChanged(cmd, "lang") {
-		opts.lang = cfg.Lang
-	}
-	if cfg.Debug != nil && !persistentFlagChanged(cmd, "debug") {
-		opts.debug = *cfg.Debug
-	}
-	if cfg.Dashboard != nil && !persistentFlagChanged(cmd, "dashboard") {
-		opts.dashboard = *cfg.Dashboard
-	}
-	if cfg.ChunkSize != nil && !persistentFlagChanged(cmd, "chunk-size") {
-		opts.chunkSize = *cfg.ChunkSize
-	}
-	if len(cfg.Templates) > 0 {
-		opts.outputTemplates = cfg.Templates
-	}
-	if cfg.Events != nil && !persistentFlagChanged(cmd, "events") {
-		opts.events.enabled = true
-		opts.events.limit = *cfg.Events
-	}
-	if cfg.EventsEnabled != nil && !persistentFlagChanged(cmd, "events") {
-		opts.events.enabled = *cfg.EventsEnabled
-	}
-	if cfg.SortBy != "" && !localFlagChanged(cmd, "sort-by") {
-		opts.sortBy = cfg.SortBy
-	}
-	if cfg.Filter != "" && !localFlagChanged(cmd, "filter") {
-		opts.filter = cfg.Filter
-	}
-	if cfg.MinScore != nil && !localFlagChanged(cmd, "min-score") {
-		opts.healthScoreMin = *cfg.MinScore
-	}
-	if cfg.MaxScore != nil && !localFlagChanged(cmd, "max-score") && !localFlagChanged(cmd, "health-score") {
-		opts.healthScoreMax = *cfg.MaxScore
-	}
-	if cfg.HealthScore != nil && !localFlagChanged(cmd, "health-score") && !localFlagChanged(cmd, "max-score") {
-		opts.healthScoreMax = *cfg.HealthScore
-	}
-	if cfg.HealthWeights != (hpaanalysis.HealthWeights{}) {
-		opts.healthWeights = cfg.HealthWeights
-	}
-}
-
-func persistentFlagChanged(cmd *cobra.Command, name string) bool {
-	root := cmd.Root()
-	if root == nil {
-		return false
-	}
-	flag := root.PersistentFlags().Lookup(name)
-	return flag != nil && flag.Changed
-}
-
-func localFlagChanged(cmd *cobra.Command, name string) bool {
-	for current := cmd; current != nil; current = current.Parent() {
-		flag := current.Flags().Lookup(name)
-		if flag != nil {
-			return flag.Changed
-		}
-	}
-	return false
 }
 
 func reportHasCondition(report hpaanalysis.StatusReport, condition string) bool {

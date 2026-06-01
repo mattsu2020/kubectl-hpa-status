@@ -897,3 +897,171 @@ func TestFormatMetricStatusIncludesExternalSelector(t *testing.T) {
 		t.Fatalf("expected selector in text, got %q", got.Text)
 	}
 }
+
+func TestMostInfluentialMetricConsidersExternalMetrics(t *testing.T) {
+	hpa := baseHPA()
+	target := resource.MustParse("10")
+	current := resource.MustParse("20")
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{
+		resourceMetricSpec(corev1.ResourceCPU, 80),
+		{
+			Type: autoscalingv2.ExternalMetricSourceType,
+			External: &autoscalingv2.ExternalMetricSource{
+				Metric: autoscalingv2.MetricIdentifier{Name: "queue_depth"},
+				Target: autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType, Value: &target},
+			},
+		},
+	}
+	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{
+		resourceMetricStatus(corev1.ResourceCPU, 85),
+		{
+			Type: autoscalingv2.ExternalMetricSourceType,
+			External: &autoscalingv2.ExternalMetricStatus{
+				Metric:  autoscalingv2.MetricIdentifier{Name: "queue_depth"},
+				Current: autoscalingv2.MetricValueStatus{Value: &current},
+			},
+		},
+	}
+
+	got, ok := MostInfluentialMetric(hpa)
+	if !ok {
+		t.Fatal("expected an impact estimate")
+	}
+	// External queue_depth ratio is 2.0 (20/10), CPU ratio is ~1.06 (85/80).
+	// External has larger distance from target, so it should win.
+	if got.Name != "queue_depth" {
+		t.Fatalf("expected queue_depth to be most influential, got %s", got.Name)
+	}
+	if got.Ratio < 1.9 || got.Ratio > 2.1 {
+		t.Fatalf("expected ratio around 2.0, got %.3f", got.Ratio)
+	}
+}
+
+func TestMostInfluentialMetricConsidersPodsMetrics(t *testing.T) {
+	hpa := baseHPA()
+	averageTarget := resource.MustParse("100m")
+	averageCurrent := resource.MustParse("180m")
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{
+		resourceMetricSpec(corev1.ResourceCPU, 80),
+		{
+			Type: autoscalingv2.PodsMetricSourceType,
+			Pods: &autoscalingv2.PodsMetricSource{
+				Metric: autoscalingv2.MetricIdentifier{Name: "requests_per_second"},
+				Target: autoscalingv2.MetricTarget{Type: autoscalingv2.AverageValueMetricType, AverageValue: &averageTarget},
+			},
+		},
+	}
+	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{
+		resourceMetricStatus(corev1.ResourceCPU, 85),
+		{
+			Type: autoscalingv2.PodsMetricSourceType,
+			Pods: &autoscalingv2.PodsMetricStatus{
+				Metric:  autoscalingv2.MetricIdentifier{Name: "requests_per_second"},
+				Current: autoscalingv2.MetricValueStatus{AverageValue: &averageCurrent},
+			},
+		},
+	}
+
+	got, ok := MostInfluentialMetric(hpa)
+	if !ok {
+		t.Fatal("expected an impact estimate")
+	}
+	// Pods metric ratio is 1.8 (180m/100m), CPU ratio is ~1.06 (85/80).
+	if got.Name != "requests_per_second" {
+		t.Fatalf("expected requests_per_second to be most influential, got %s", got.Name)
+	}
+}
+
+func TestMostInfluentialMetricConsidersContainerResourceMetrics(t *testing.T) {
+	hpa := baseHPA()
+	containerTarget := int32(50)
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{
+		resourceMetricSpec(corev1.ResourceCPU, 80),
+		{
+			Type: autoscalingv2.ContainerResourceMetricSourceType,
+			ContainerResource: &autoscalingv2.ContainerResourceMetricSource{
+				Name:      corev1.ResourceCPU,
+				Container: "sidecar",
+				Target: autoscalingv2.MetricTarget{
+					Type:               autoscalingv2.UtilizationMetricType,
+					AverageUtilization: &containerTarget,
+				},
+			},
+		},
+	}
+	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{
+		resourceMetricStatus(corev1.ResourceCPU, 85),
+		{
+			Type: autoscalingv2.ContainerResourceMetricSourceType,
+			ContainerResource: &autoscalingv2.ContainerResourceMetricStatus{
+				Name:      corev1.ResourceCPU,
+				Container: "sidecar",
+				Current: autoscalingv2.MetricValueStatus{
+					AverageUtilization: func() *int32 { v := int32(90); return &v }(),
+				},
+			},
+		},
+	}
+
+	got, ok := MostInfluentialMetric(hpa)
+	if !ok {
+		t.Fatal("expected an impact estimate")
+	}
+	// ContainerResource sidecar/cpu ratio is 1.8 (90/50), CPU ratio is ~1.06 (85/80).
+	if got.Name != "sidecar/cpu" {
+		t.Fatalf("expected sidecar/cpu to be most influential, got %s", got.Name)
+	}
+}
+
+func TestInterpretDetectsMetricDisagreement(t *testing.T) {
+	target := resource.MustParse("10")
+	lowCurrent := resource.MustParse("5")
+	hpa := baseHPA()
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{
+		resourceMetricSpec(corev1.ResourceCPU, 80),
+		{
+			Type: autoscalingv2.ExternalMetricSourceType,
+			External: &autoscalingv2.ExternalMetricSource{
+				Metric: autoscalingv2.MetricIdentifier{Name: "queue_depth"},
+				Target: autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType, Value: &target},
+			},
+		},
+	}
+	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{
+		resourceMetricStatus(corev1.ResourceCPU, 50), // ratio ~0.625, below target
+		{
+			Type: autoscalingv2.ExternalMetricSourceType,
+			External: &autoscalingv2.ExternalMetricStatus{
+				Metric:  autoscalingv2.MetricIdentifier{Name: "queue_depth"},
+				Current: autoscalingv2.MetricValueStatus{Value: &lowCurrent}, // ratio 0.5, below target
+			},
+		},
+	}
+
+	// No disagreement when both are below target
+	got := Analyze(hpa, true)
+	if containsLine(got.Interpretation, "Metric disagreement detected") {
+		t.Fatal("did not expect disagreement when both metrics are below target")
+	}
+
+	// Now make the external metric above target to create disagreement
+	highCurrent := resource.MustParse("20")
+	hpa.Status.CurrentMetrics[1] = autoscalingv2.MetricStatus{
+		Type: autoscalingv2.ExternalMetricSourceType,
+		External: &autoscalingv2.ExternalMetricStatus{
+			Metric:  autoscalingv2.MetricIdentifier{Name: "queue_depth"},
+			Current: autoscalingv2.MetricValueStatus{Value: &highCurrent}, // ratio 2.0, above target
+		},
+	}
+
+	got2 := Analyze(hpa, true)
+	if !containsLine(got2.Interpretation, "Metric disagreement detected") {
+		t.Fatalf("expected metric disagreement warning, got %#v", got2.Interpretation)
+	}
+	if !containsLine(got2.Interpretation, "cpu") {
+		t.Fatalf("expected cpu mentioned in disagreement, got %#v", got2.Interpretation)
+	}
+	if !containsLine(got2.Interpretation, "queue_depth") {
+		t.Fatalf("expected queue_depth mentioned in disagreement, got %#v", got2.Interpretation)
+	}
+}

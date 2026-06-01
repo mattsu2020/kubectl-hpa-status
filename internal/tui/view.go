@@ -27,11 +27,50 @@ func (m Model) View() string {
 		content = m.renderListView()
 	case detailView:
 		content = m.renderDetailView()
+	case helpView:
+		content = m.renderHelpView()
 	}
 
 	statusBar := m.renderStatusBar()
 
 	return content + "\n" + statusBar
+}
+
+func (m Model) renderHelpView() string {
+	var sb strings.Builder
+	sb.WriteString(headerStyle.Render(" Key Bindings "))
+	sb.WriteString("\n\n")
+	bindings := []struct{ key, desc string }{
+		{"↑/k", "Move cursor up"},
+		{"↓/j", "Move cursor down"},
+		{"Enter", "View HPA detail"},
+		{"Esc", "Go back / Close help"},
+		{"/", "Filter by name, namespace, health, or issue"},
+		{"S", "Cycle sort: name → health-score → issue → namespace"},
+		{"g", "Jump to first problematic HPA"},
+		{"r", "Refresh data now"},
+		{"p", "Pause/resume auto-refresh"},
+		{"?", "Toggle this help"},
+		{"q/Ctrl+c", "Quit"},
+	}
+	for _, b := range bindings {
+		sb.WriteString(fmt.Sprintf("  %-14s %s\n", b.key, dimStyle.Render(b.desc)))
+	}
+	sb.WriteString("\n")
+	sb.WriteString(dimStyle.Render("Press ? or Esc to close"))
+	return sb.String()
+}
+
+// tuiTriggerStatusBadge returns a styled status string for a KEDA trigger.
+func tuiTriggerStatusBadge(status string) string {
+	switch status {
+	case "Active":
+		return okStyle.Render("Active ✓")
+	case "Inactive":
+		return errorStyle.Render("Inactive ✗")
+	default:
+		return dimStyle.Render("Unknown ?")
+	}
 }
 
 func (m Model) renderListView() string {
@@ -214,11 +253,21 @@ func (m Model) renderDetailView() string {
 			sb.WriteString("\nKEDA:\n")
 			sb.WriteString(fmt.Sprintf("  ScaledObject: %s\n", a.KEDAInfo.ScaledObjectName))
 			if len(a.KEDAInfo.Triggers) > 0 {
-				triggerNames := make([]string, 0, len(a.KEDAInfo.Triggers))
+				sb.WriteString("  Triggers:\n")
 				for _, t := range a.KEDAInfo.Triggers {
-					triggerNames = append(triggerNames, t.Type)
+					label := t.Type
+					if t.Name != "" {
+						label = fmt.Sprintf("%s (%s)", t.Type, t.Name)
+					}
+					if t.Status != "" {
+						badge := tuiTriggerStatusBadge(t.Status)
+						label = fmt.Sprintf("%s: %s", label, badge)
+					}
+					sb.WriteString(fmt.Sprintf("    - %s\n", label))
 				}
-				sb.WriteString(fmt.Sprintf("  Triggers: %s\n", strings.Join(triggerNames, ", ")))
+			}
+			if a.KEDAInfo.Fallback != nil {
+				sb.WriteString(fmt.Sprintf("  Fallback: failureThreshold=%d, replicas=%d\n", a.KEDAInfo.Fallback.FailureThreshold, a.KEDAInfo.Fallback.Replicas))
 			}
 		}
 
@@ -264,6 +313,10 @@ func (m Model) renderStatusBar() string {
 
 	if m.filter != "" {
 		parts = append(parts, fmt.Sprintf("filter: %s", m.filter))
+	}
+
+	if m.sortField != "" {
+		parts = append(parts, fmt.Sprintf("sort:%s", m.sortField))
 	}
 
 	if m.viewMode == listView {

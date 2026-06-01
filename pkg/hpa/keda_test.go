@@ -145,6 +145,71 @@ func TestAnalyzeKEDA_NoTriggers(t *testing.T) {
 	}
 }
 
+func TestAnalyzeKEDA_InactiveTrigger(t *testing.T) {
+	minReplicas := int32(1)
+	hpa := &autoscalingv2.HorizontalPodAutoscaler{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "keda-hpa-worker",
+			Namespace: "default",
+			Labels:    map[string]string{"scaledobject.keda.sh/name": "worker"},
+		},
+		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+			MinReplicas: &minReplicas,
+			MaxReplicas: 10,
+		},
+	}
+
+	keda := &KEDAAnalysis{
+		ScaledObjectName: "worker",
+		Triggers: []KEDATriggerSummary{
+			{Type: "kafka", Name: "my-topic", Status: "Active"},
+			{Type: "prometheus", Name: "http-rate", Status: "Inactive"},
+		},
+	}
+
+	lines := AnalyzeKEDA(hpa, keda)
+
+	if !containsKEDALine(lines, "trigger") || !containsKEDALine(lines, "Inactive") {
+		t.Fatalf("expected inactive trigger warning, got %v", lines)
+	}
+}
+
+func TestAnalyzeKEDA_Fallback(t *testing.T) {
+	minReplicas := int32(1)
+	hpa := &autoscalingv2.HorizontalPodAutoscaler{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "keda-hpa-worker",
+			Namespace: "default",
+			Labels:    map[string]string{"scaledobject.keda.sh/name": "worker"},
+		},
+		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+			MinReplicas: &minReplicas,
+			MaxReplicas: 10,
+		},
+	}
+
+	keda := &KEDAAnalysis{
+		ScaledObjectName: "worker",
+		Triggers:         []KEDATriggerSummary{{Type: "cpu"}},
+		Fallback: &KEDAFallbackInfo{
+			FailureThreshold: 3,
+			Replicas:         5,
+		},
+	}
+
+	lines := AnalyzeKEDA(hpa, keda)
+
+	if !containsKEDALine(lines, "fallback configured") {
+		t.Fatalf("expected fallback info line, got %v", lines)
+	}
+	if !containsKEDALine(lines, "failureThreshold=3") {
+		t.Fatalf("expected failureThreshold=3, got %v", lines)
+	}
+	if !containsKEDALine(lines, "replicas=5") {
+		t.Fatalf("expected replicas=5, got %v", lines)
+	}
+}
+
 func containsKEDALine(lines []string, substr string) bool {
 	for _, line := range lines {
 		if strings.Contains(line, substr) {

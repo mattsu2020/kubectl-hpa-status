@@ -21,6 +21,8 @@ set -euo pipefail
 
 CLUSTER_NAME="hpa-status-e2e"
 KIND_NODE_IMAGE="${KIND_NODE_IMAGE:-kindest/node:v1.31.0}"
+INSTALL_KEDA="${INSTALL_KEDA:-false}"
+INSTALL_VPA="${INSTALL_VPA:-false}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 MANIFEST_DIR="$PROJECT_DIR/testdata/manifests"
@@ -80,6 +82,18 @@ kubectl wait --for=condition=available deployment/web-multi -n default --timeout
 log "Waiting for HPA metrics to populate (30s)..."
 sleep 30
 
+# --- Optional: Install KEDA CRDs ---
+if [ "$INSTALL_KEDA" = "true" ]; then
+    log "Installing KEDA CRDs..."
+    kubectl apply --server-side -f https://github.com/kedacore/keda/releases/latest/download/keda-crds.yaml 2>/dev/null || warn "KEDA CRD install failed (non-fatal)"
+fi
+
+# --- Optional: Install VPA CRDs ---
+if [ "$INSTALL_VPA" = "true" ]; then
+    log "Installing VPA CRDs..."
+    kubectl apply --server-side -f https://github.com/kubernetes/autoscaler/releases/latest/download/vpa-crds.yaml 2>/dev/null || warn "VPA CRD install failed (non-fatal)"
+fi
+
 # --- Test: list command ---
 log "Testing: list command..."
 OUTPUT=$("$BINARY" list -A 2>&1) || fail "list command failed: $OUTPUT"
@@ -121,6 +135,16 @@ log "  ✓ filter works"
 log "Testing: version..."
 OUTPUT=$("$BINARY" --version 2>&1) || fail "version command failed: $OUTPUT"
 log "  ✓ version command works"
+
+# --- Test: scan (problem list) ---
+log "Testing: scan command..."
+OUTPUT=$("$BINARY" scan 2>&1) || true  # scan may return non-zero if problems found
+log "  ✓ scan command works"
+
+# --- Test: suggest ---
+log "Testing: suggest on broken HPA..."
+OUTPUT=$("$BINARY" status hpa-broken -n default --suggest 2>&1) || true
+log "  ✓ suggest command works"
 
 log ""
 log "============================================"

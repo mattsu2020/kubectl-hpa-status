@@ -26,6 +26,9 @@ func AnalyzeKEDA(hpa *autoscalingv2.HorizontalPodAutoscaler, keda *KEDAAnalysis)
 	// KEDA min/max vs HPA min/max.
 	lines = append(lines, analyzeKEDAReplicaBounds(hpa, keda)...)
 
+	// Trigger status analysis (inactive triggers, fallback).
+	lines = append(lines, analyzeKEDATriggerStatus(keda)...)
+
 	// ScaledObject conditions from pre-populated lines.
 	lines = append(lines, keda.Lines...)
 
@@ -93,6 +96,28 @@ func analyzeKEDAReplicaBounds(hpa *autoscalingv2.HorizontalPodAutoscaler, keda *
 	}
 	if keda.MaxReplicaCount != nil && *keda.MaxReplicaCount != hpa.Spec.MaxReplicas {
 		lines = append(lines, fmt.Sprintf("[confidence: high] KEDA maxReplicaCount=%d differs from HPA maxReplicas=%d; KEDA reconciliation may override manual HPA changes.", *keda.MaxReplicaCount, hpa.Spec.MaxReplicas))
+	}
+
+	return lines
+}
+
+// analyzeKEDATriggerStatus checks for inactive triggers and notes fallback configuration.
+func analyzeKEDATriggerStatus(keda *KEDAAnalysis) []string {
+	if keda == nil {
+		return nil
+	}
+	var lines []string
+
+	// Check for inactive triggers.
+	for _, t := range keda.Triggers {
+		if t.Status == "Inactive" {
+			lines = append(lines, fmt.Sprintf("[confidence: high] KEDA trigger %q (type %s) is Inactive; the scaler may not be receiving events or the external source may be unavailable.", t.Name, t.Type))
+		}
+	}
+
+	// Note fallback configuration.
+	if keda.Fallback != nil {
+		lines = append(lines, fmt.Sprintf("[confidence: high] ScaledObject has fallback configured: failureThreshold=%d, replicas=%d. KEDA will fall back to %d replicas if the scaler fails %d consecutive checks.", keda.Fallback.FailureThreshold, keda.Fallback.Replicas, keda.Fallback.Replicas, keda.Fallback.FailureThreshold))
 	}
 
 	return lines

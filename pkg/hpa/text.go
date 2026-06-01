@@ -84,6 +84,18 @@ func WriteStatusDashboard(w io.Writer, report StatusReport, theme style.Theme) e
 	return err
 }
 
+// triggerStatusBadge returns a display string with a visual indicator for a KEDA trigger status.
+func triggerStatusBadge(status string, theme style.Theme) string {
+	switch status {
+	case "Active":
+		return theme.OK.Render("Active ✓")
+	case "Inactive":
+		return theme.Error.Render("Inactive ✗")
+	default:
+		return theme.Dim.Render("Unknown ?")
+	}
+}
+
 // WriteStatusTextWithOptions writes a status report with full rendering options.
 func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTextOptions) error {
 	a := report.Analysis
@@ -190,15 +202,25 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 		out = fmt.Appendf(out, "%s:\n", labels.KEDA)
 		out = fmt.Appendf(out, "  ScaledObject: %s\n", a.KEDAInfo.ScaledObjectName)
 		if len(a.KEDAInfo.Triggers) > 0 {
-			triggerNames := make([]string, 0, len(a.KEDAInfo.Triggers))
+			triggerLines := make([]string, 0, len(a.KEDAInfo.Triggers))
 			for _, t := range a.KEDAInfo.Triggers {
+				label := t.Type
 				if t.Name != "" {
-					triggerNames = append(triggerNames, fmt.Sprintf("%s (%s)", t.Type, t.Name))
-				} else {
-					triggerNames = append(triggerNames, t.Type)
+					label = fmt.Sprintf("%s (%s)", t.Type, t.Name)
 				}
+				if t.Status != "" {
+					badge := triggerStatusBadge(t.Status, theme)
+					label = fmt.Sprintf("%s: %s", label, badge)
+				}
+				triggerLines = append(triggerLines, label)
 			}
-			out = fmt.Appendf(out, "  Triggers: %s\n", strings.Join(triggerNames, ", "))
+			out = fmt.Appendf(out, "  Triggers:\n")
+			for _, tl := range triggerLines {
+				out = fmt.Appendf(out, "    - %s\n", tl)
+			}
+		}
+		if a.KEDAInfo.Fallback != nil {
+			out = fmt.Appendf(out, "  Fallback: failureThreshold=%d, replicas=%d\n", a.KEDAInfo.Fallback.FailureThreshold, a.KEDAInfo.Fallback.Replicas)
 		}
 		if a.KEDAInfo.PollingInterval != nil {
 			out = fmt.Appendf(out, "  Polling interval: %ds\n", *a.KEDAInfo.PollingInterval)

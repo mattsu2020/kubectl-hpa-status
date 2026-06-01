@@ -4,8 +4,6 @@ package cmd
 import (
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
@@ -192,54 +190,6 @@ func NewRootCommand() *cobra.Command {
 
 func buildVersion() string {
 	return fmt.Sprintf("%s (commit=%s, date=%s)", version, commit, date)
-}
-
-type configFile struct {
-	Namespace     string                          `json:"namespace" yaml:"namespace"`
-	AllNamespaces *bool                           `json:"allNamespaces" yaml:"allNamespaces"`
-	Output        string                          `json:"output" yaml:"output"`
-	Wide          *bool                           `json:"wide" yaml:"wide"`
-	Selector      string                          `json:"selector" yaml:"selector"`
-	SortBy        string                          `json:"sortBy" yaml:"sortBy"`
-	Filter        string                          `json:"filter" yaml:"filter"`
-	MinScore      *int                            `json:"minScore" yaml:"minScore"`
-	MaxScore      *int                            `json:"maxScore" yaml:"maxScore"`
-	HealthScore   *int                            `json:"healthScore" yaml:"healthScore"`
-	Color         string                          `json:"color" yaml:"color"`
-	Events        *int                            `json:"events" yaml:"events"`
-	EventsEnabled *bool                           `json:"eventsEnabled" yaml:"eventsEnabled"`
-	Lang          string                          `json:"lang" yaml:"lang"`
-	Debug         *bool                           `json:"debug" yaml:"debug"`
-	Dashboard     *bool                           `json:"dashboard" yaml:"dashboard"`
-	ChunkSize     *int64                          `json:"chunkSize" yaml:"chunkSize"`
-	Templates     map[string]outputTemplateConfig `json:"templates" yaml:"templates"`
-	HealthWeights hpaanalysis.HealthWeights       `json:"healthWeights" yaml:"healthWeights"`
-}
-
-type outputTemplateConfig struct {
-	Type     string `json:"type" yaml:"type"`
-	Template string `json:"template" yaml:"template"`
-}
-
-func applyConfigDefaults(cmd *cobra.Command, opts *options) error {
-	path, explicit := opts.config, opts.config != ""
-	if path == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return nil
-		}
-		path = filepath.Join(home, ".kube", "hpa-status.yaml")
-	}
-
-	cfg, err := loadConfigFile(path)
-	if err != nil {
-		if !explicit && os.IsNotExist(err) {
-			return nil
-		}
-		return fmt.Errorf("failed to load config %s: %w", path, err)
-	}
-	applyConfig(cmd, opts, cfg)
-	return nil
 }
 
 func newVersionCommand() *cobra.Command {

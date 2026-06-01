@@ -343,6 +343,30 @@ healthWeights:
 
 HPA controllerの内部意思決定ロジックを再実装するものではありません。
 
+### JSONPath / テンプレート出力例
+
+```sh
+# HPA名とヘルススコアを一覧
+kubectl hpa status list -A -o jsonpath='{range .items[*]}{.namespace}/{.name} {.healthScore}{"\n"}{end}'
+
+# ヘルススコア80未満のHPAのみ抽出
+kubectl hpa status list -A -o jsonpath='{range .items[?(@.healthScore<80)]}{.namespace}/{.name} {.health}{"\n"}{end}'
+
+# KEDA ScaledObject名を取得
+kubectl hpa status status <hpa> -o jsonpath='{.analysis.keda.scaledObjectName}'
+
+# VPA競合警告を取得
+kubectl hpa status status <hpa> --vpa -o jsonpath='{.analysis.vpaConflict.warning}'
+
+# 構造化解釈エントリを出力
+kubectl hpa status status <hpa> -o jsonpath='{range .analysis.structuredInterpretation[*]}{.severity} {.text}{"\n"}{end}'
+
+# 自動化用にJSONで出力
+kubectl hpa status list -A -o json | jq '.items[] | {name, namespace, healthScore, issue}'
+```
+
+完全なJSONスキーマは [docs/output-schema.json](docs/output-schema.json) を参照してください。
+
 ## 開発
 
 ```sh
@@ -369,6 +393,35 @@ kind delete cluster --name hpa-status-dev
 
 ## よくあるトラブルパターン
 
+## インタラクティブ TUI
+
+クラスタ全体のHPAをリアルタイムに監視するインタラクティブダッシュボードを起動:
+
+```sh
+kubectl hpa status tui          # 現在のネームスペース
+kubectl hpa status tui -A       # 全ネームスペース
+```
+
+キーバインド:
+
+| キー | アクション |
+| --- | --- |
+| `↑` / `k` | カーソルを上に移動 |
+| `↓` / `j` | カーソルを下に移動 |
+| `Enter` | HPA詳細ビューを開く |
+| `Esc` | 戻る / ヘルプを閉じる |
+| `/` | 名前・ネームスペース・ヘルス状態・課題でフィルタ |
+| `S` | ソート順を切替: name → health-score → issue → namespace |
+| `g` | 最初の問題ありHPA（health ≠ OK）にジャンプ |
+| `r` | 今すぐデータを更新 |
+| `p` | 自動更新の一時停止 / 再開 |
+| `?` | キーバインドヘルプの表示切替 |
+| `q` / `Ctrl+c` | 終了 |
+
+ダッシュボードは5秒ごとに自動更新します。フィルタは複数フィールドに対する部分一致を受け付けます。`g` キーで注意が必要な最初のHPAに素早くジャンプできます。
+
+## トラブルシューティングパターン
+
 | 症状 | コマンド | 主なシグナル | 次の一手 |
 | --- | --- | --- | --- |
 | メトリクスが取れずスケールしない | `kubectl hpa status <name> --explain` | `ScalingActive=False`, Events | metrics-server または custom/external metrics adapter を確認 |
@@ -381,6 +434,10 @@ kind delete cluster --name hpa-status-dev
 | VPAとHPAがCPU/Memoryを同時管理 | `kubectl hpa status <name> --vpa --explain` | VPA updateMode、controlled resources、recommendation | VPAをrecommender用途に寄せるか、CPU/Memoryの所有を片方へ寄せる |
 | tolerance付近で増減しない | `kubectl hpa status <name> --explain --debug` | ratioが1.02〜1.10付近、desired=current | sustainedな圧力か確認し、必要ならHPAConfigurableTolerance利用を検討 |
 | クラスタ全体を棚卸ししたい | `kubectl hpa status scan` | health score, issue, conditions | `ERROR` から優先して確認 |
+| サマリーに `[STALE STATUS]` が表示 | `kubectl hpa status <name> --explain` | `observedGeneration < metadata.generation` | HPA controllerの再調整を待機; kube-controller-managerの健全性を確認 |
+| KEDA管理HPAで外部メトリクスが古い | `kubectl hpa status <name> --keda --explain` | `currentMetrics` に外部メトリクス欠落、KEDAトリガー状態 | `kubectl get scaledobject -n <ns>` を確認、keda-operator Podログ、TriggerAuthenticationを確認 |
+| minReplicas=0 コールドスタート遅延 | `kubectl hpa status <name> --explain` | `ScaleToZero` 表示、即時スケールアップなし | 仕様通りの動作; scale-to-zero後の最初のメトリック評価にポーリング間隔分の遅延が発生 |
+| 複数HPAを一括修正 | `kubectl hpa status list -A --problem --fix --apply` | 全パッチのサマリーテーブル | バッチサマリーを確認し、一度の確認で全適用 |
 
 ### FAQ
 

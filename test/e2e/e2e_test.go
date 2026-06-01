@@ -17,6 +17,7 @@ import (
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -610,4 +611,246 @@ func createBrokenHPA(t *testing.T, client *kubernetes.Clientset, nsName, hpaName
 
 func int32Ptr(v int32) *int32 {
 	return &v
+}
+
+// TestE2E_KEDAManagedHPA tests KEDA-managed HPA detection and display.
+// This test creates an HPA with KEDA labels and verifies that the --keda flag
+// produces KEDA-related output. The ScaledObject CRD lookup is expected to fail
+// gracefully when KEDA is not installed.
+func TestE2E_KEDAManagedHPA(t *testing.T) {
+	kubeconfig := resolveKubeconfig(t)
+	_, client, nsName := setupTestNamespace(t, kubeconfig)
+
+	createTestRC(t, client, nsName, "keda-rc")
+
+	// Create an HPA with KEDA labels (auto-detected as KEDA-managed)
+	minReplicas := int32(2)
+	hpa := &autoscalingv2.HorizontalPodAutoscaler{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "keda-hpa-test",
+			Namespace: nsName,
+			Labels: map[string]string{
+				"scaledobject.keda.sh/name": "test-scaledobject",
+			},
+		},
+		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
+				APIVersion: "v1",
+				Kind:       "ReplicationController",
+				Name:       "keda-rc",
+			},
+			MinReplicas: &minReplicas,
+			MaxReplicas: 10,
+			Metrics: []autoscalingv2.MetricSpec{
+				{
+					Type: autoscalingv2.ExternalMetricSourceType,
+					External: &autoscalingv2.ExternalMetricSource{
+						Metric: autoscalingv2.MetricIdentifier{
+							Name: "queue_length",
+						},
+						Target: autoscalingv2.MetricTarget{
+							Type:  autoscalingv2.AverageValueMetricType,
+							Value: resourcePtr("5"),
+						},
+					},
+				},
+			},
+		},
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	hpa, err := client.AutoscalingV2().HorizontalPodAutoscalers(nsName).Create(ctx, hpa, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("failed to create KEDA HPA: %v", err)
+	}
+
+	hpa.Status = autoscalingv2.HorizontalPodAutoscalerStatus{
+		CurrentReplicas: 2,
+		DesiredReplicas: 3,
+		Conditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
+			{
+				Type:               autoscalingv2.ScalingActive,
+				Status:             corev1.ConditionTrue,
+				Reason:             "ValidMetricFound",
+				Message:            "the HPA was able to successfully calculate a recommendation",
+				LastTransitionTime: metav1.Now(),
+			},
+		},
+		CurrentMetrics: []autoscalingv2.MetricStatus{
+			{
+				Type: autoscalingv2.ExternalMetricSourceType,
+				External: &autoscalingv2.ExternalMetricStatus{
+					Metric: autoscalingv2.MetricIdentifier{
+						Name: "queue_length",
+					},
+					Current: autoscalingv2.MetricValueStatus{
+						AverageValue: resourcePtr("8"),
+					},
+				},
+			},
+		},
+	}
+	if _, err := client.AutoscalingV2().HorizontalPodAutoscalers(nsName).UpdateStatus(ctx, hpa, metav1.UpdateOptions{}); err != nil {
+		t.Fatalf("failed to update KEDA HPA status: %v", err)
+	}
+
+	// Test status --keda on the KEDA-labeled HPA
+	buf := new(bytes.Buffer)
+	rootCmd := cmd.NewRootCommand()
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(buf)
+	rootCmd.SetArgs([]string{"status", "keda-hpa-test", "-n", nsName, "--keda", "--explain", "--kubeconfig", kubeconfig})
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Logf("status --keda returned error (may be expected if KEDA CRD absent): %v", err)
+	}
+
+	output := buf.String()
+	t.Logf("KEDA status output:\n%s", output)
+
+	// Even without KEDA CRD, the output should detect KEDA labels
+	if !strings.Contains(output, "KEDA") {
+		t.Errorf("expected KEDA detection in output, got:\n%s", output)
+	}
+}
+
+// TestE2E_ListApplyDryRun tests batch apply workflow with multiple HPAs.
+func TestE2E_ListApplyDryRun(t *testing.T) {
+	kubeconfig := resolveKubeconfig(t)
+	_, client, nsName := setupTestNamespace(t, kubeconfig)
+
+	// Create two RC+HPA pairs
+	createTestRC(t, client, nsName, "apply-rc-1")
+	createTestRC(t, client, nsName, "apply-rc-2")
+
+	// Create an HPA at maxReplicas (ScalingLimited scenario)
+	createScalingLimitedHPA(t, client, nsName, "limited-hpa-1", "apply-rc-1")
+	createScalingLimitedHPA(t, client, nsName, "limited-hpa-2", "apply-rc-2")
+
+	// Test list --problem --apply (dry-run by default)
+	buf := new(bytes.Buffer)
+	rootCmd := cmd.NewRootCommand()
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(buf)
+	rootCmd.SetArgs([]string{"list", "-n", nsName, "--problem", "--fix", "--apply", "--yes", "--kubeconfig", kubeconfig})
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Logf("list --problem --apply returned error: %v. Output:\n%s", err, buf.String())
+	}
+
+	output := buf.String()
+	t.Logf("List apply output:\n%s", output)
+
+	// Should show dry-run validation or suggestion output
+	if !strings.Contains(output, "limited-hpa-1") && !strings.Contains(output, "No applicable") {
+		t.Errorf("expected limited-hpa-1 in output, got:\n%s", output)
+	}
+}
+
+// TestE2E_TUICommand verifies the tui command can be constructed without error.
+// Full TUI testing requires a terminal, so we only verify the command path.
+func TestE2E_TUICommand(t *testing.T) {
+	rootCmd := cmd.NewRootCommand()
+
+	// Verify the tui subcommand exists
+	tuiCmd, _, err := rootCmd.Find([]string{"tui"})
+	if err != nil {
+		t.Fatalf("tui subcommand not found: %v", err)
+	}
+	if tuiCmd == nil {
+		t.Fatal("tui subcommand is nil")
+	}
+	if tuiCmd.Short == "" {
+		t.Error("tui subcommand missing Short description")
+	}
+}
+
+// createScalingLimitedHPA creates an HPA that is at maxReplicas to trigger ScalingLimited.
+func createScalingLimitedHPA(t *testing.T, client *kubernetes.Clientset, nsName, hpaName, rcName string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	minReplicas := int32(1)
+	maxReplicas := int32(3)
+	hpa := &autoscalingv2.HorizontalPodAutoscaler{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      hpaName,
+			Namespace: nsName,
+		},
+		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
+				APIVersion: "v1",
+				Kind:       "ReplicationController",
+				Name:       rcName,
+			},
+			MinReplicas: &minReplicas,
+			MaxReplicas: maxReplicas,
+			Metrics: []autoscalingv2.MetricSpec{
+				{
+					Type: autoscalingv2.ResourceMetricSourceType,
+					Resource: &autoscalingv2.ResourceMetricSource{
+						Name: corev1.ResourceCPU,
+						Target: autoscalingv2.MetricTarget{
+							Type:               autoscalingv2.UtilizationMetricType,
+							AverageUtilization: int32Ptr(50),
+						},
+					},
+				},
+			},
+		},
+	}
+	hpa, err := client.AutoscalingV2().HorizontalPodAutoscalers(nsName).Create(ctx, hpa, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("failed to create HPA %s: %v", hpaName, err)
+	}
+
+	hpa.Status = autoscalingv2.HorizontalPodAutoscalerStatus{
+		CurrentReplicas: maxReplicas,
+		DesiredReplicas: maxReplicas,
+		Conditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
+			{
+				Type:               autoscalingv2.ScalingActive,
+				Status:             corev1.ConditionTrue,
+				Reason:             "ValidMetricFound",
+				Message:            "the HPA was able to successfully calculate a recommendation",
+				LastTransitionTime: metav1.Now(),
+			},
+			{
+				Type:               autoscalingv2.AbleToScale,
+				Status:             corev1.ConditionTrue,
+				Reason:             "ReadyForScale",
+				Message:            "recommended size matches current size",
+				LastTransitionTime: metav1.Now(),
+			},
+			{
+				Type:               autoscalingv2.ScalingLimited,
+				Status:             corev1.ConditionTrue,
+				Reason:             "TooManyReplicas",
+				Message:            "the desired replica count is more than the maximum replica count",
+				LastTransitionTime: metav1.Now(),
+			},
+		},
+		CurrentMetrics: []autoscalingv2.MetricStatus{
+			{
+				Type: autoscalingv2.ResourceMetricSourceType,
+				Resource: &autoscalingv2.ResourceMetricStatus{
+					Name: corev1.ResourceCPU,
+					Current: autoscalingv2.MetricValueStatus{
+						AverageUtilization: int32Ptr(95),
+					},
+				},
+			},
+		},
+	}
+	if _, err := client.AutoscalingV2().HorizontalPodAutoscalers(nsName).UpdateStatus(ctx, hpa, metav1.UpdateOptions{}); err != nil {
+		t.Fatalf("failed to update HPA %s status: %v", hpaName, err)
+	}
+}
+
+// resourcePtr creates a pointer to a resource.Quantity parsed from a string.
+func resourcePtr(s string) *resource.Quantity {
+	q := resource.MustParse(s)
+	return &q
 }
