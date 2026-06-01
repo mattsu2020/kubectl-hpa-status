@@ -38,7 +38,7 @@ checksum:
 sboms:
   - artifacts: archive
 
-homebrew_taps:
+brews:
   - name: kubectl-hpa-status
     repository:
       owner: mattsu2020
