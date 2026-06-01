@@ -190,7 +190,9 @@ func applyListSuggestions(ctx context.Context, out io.Writer, opts *options, hpa
 		}
 		answer := strings.ToLower(strings.TrimSpace(scanner.Text()))
 		if answer != "y" && answer != "yes" {
-			fmt.Fprintln(out, "Batch apply skipped.")
+			if _, err := fmt.Fprintln(out, "Batch apply skipped."); err != nil {
+				return fmt.Errorf("write output: %w", err)
+			}
 			return nil
 		}
 	}
@@ -200,17 +202,23 @@ func applyListSuggestions(ctx context.Context, out io.Writer, opts *options, hpa
 	for _, e := range entries {
 		results, err := applySuggestionsInNamespace(ctx, out, opts, e.Namespace, e.Name, []hpaanalysis.Suggestion{e.Suggestion})
 		if err != nil {
-			fmt.Fprintf(out, "  FAILED %s/%s: %v\n", e.Namespace, e.Name, err)
+			if _, err := fmt.Fprintf(out, "  FAILED %s/%s: %v\n", e.Namespace, e.Name, err); err != nil {
+				return fmt.Errorf("write output: %w", err)
+			}
 			failed++
 			continue
 		}
 		for _, line := range results {
-			fmt.Fprintf(out, "%s/%s: %s\n", e.Namespace, e.Name, line)
+			if _, err := fmt.Fprintf(out, "%s/%s: %s\n", e.Namespace, e.Name, line); err != nil {
+				return fmt.Errorf("write output: %w", err)
+			}
 		}
 		succeeded++
 	}
 
-	fmt.Fprintf(out, "\nBatch complete: %d succeeded, %d failed\n", succeeded, failed)
+	if _, err := fmt.Fprintf(out, "\nBatch complete: %d succeeded, %d failed\n", succeeded, failed); err != nil {
+		return fmt.Errorf("write output: %w", err)
+	}
 	return nil
 }
 

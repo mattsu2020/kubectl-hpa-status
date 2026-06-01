@@ -211,9 +211,9 @@ func TestWriteHTMLReportHealthColorCoding(t *testing.T) {
 		t.Run(tc.health, func(t *testing.T) {
 			report := StatusReport{
 				Analysis: Analysis{
-					Name:         "test",
-					Health:       tc.health,
-					HealthScore:  50,
+					Name:        "test",
+					Health:      tc.health,
+					HealthScore: 50,
 				},
 			}
 			var buf bytes.Buffer

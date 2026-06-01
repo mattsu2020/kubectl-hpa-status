@@ -366,68 +366,68 @@ func indentBlock(text string, prefix string) string {
 }
 
 type labels struct {
-	Target              string
-	Replicas            string
-	Health              string
-	Summary             string
-	Conditions          string
-	Metrics             string
-	Behavior            string
-	Actions             string
-	Suggestions         string
-	Fix                 string
-	Interpretation      string
-	Debug               string
-	KEDA                string
-	Events              string
-	Risk                string
-	Precondition        string
-	Warning             string
-	MetricsDiagnostics  string
+	Target             string
+	Replicas           string
+	Health             string
+	Summary            string
+	Conditions         string
+	Metrics            string
+	Behavior           string
+	Actions            string
+	Suggestions        string
+	Fix                string
+	Interpretation     string
+	Debug              string
+	KEDA               string
+	Events             string
+	Risk               string
+	Precondition       string
+	Warning            string
+	MetricsDiagnostics string
 }
 
 func textLabels(lang string) labels {
 	if strings.EqualFold(lang, "ja") {
 		return labels{
-			Target:         "対象",
-			Replicas:       "レプリカ",
-			Health:         "ヘルススコア",
-			Summary:        "要約",
-			Conditions:     "状態",
-			Metrics:        "メトリクス",
-			Behavior:       "挙動",
-			Actions:        "推奨アクション",
-			Suggestions:    "推奨コマンド",
-			Fix:            "修正プラン",
-			Interpretation: "解釈",
-			Debug:          "デバッグ",
-			KEDA:           "KEDA",
-			Events:         "最近のイベント",
-			Risk:           "リスク",
-			Precondition:   "前提条件",
-			Warning:             "警告",
-			MetricsDiagnostics:  "メトリクス診断",
+			Target:             "対象",
+			Replicas:           "レプリカ",
+			Health:             "ヘルススコア",
+			Summary:            "要約",
+			Conditions:         "状態",
+			Metrics:            "メトリクス",
+			Behavior:           "挙動",
+			Actions:            "推奨アクション",
+			Suggestions:        "推奨コマンド",
+			Fix:                "修正プラン",
+			Interpretation:     "解釈",
+			Debug:              "デバッグ",
+			KEDA:               "KEDA",
+			Events:             "最近のイベント",
+			Risk:               "リスク",
+			Precondition:       "前提条件",
+			Warning:            "警告",
+			MetricsDiagnostics: "メトリクス診断",
 		}
 	}
 	return labels{
-		Target:         "Target",
-		Replicas:       "Replicas",
-		Health:         "Health score",
-		Summary:        "Summary",
-		Conditions:     "Conditions",
-		Metrics:        "Metrics",
-		Behavior:       "Behavior",
-		Actions:        "Recommended actions",
-		Suggestions:    "Recommended commands",
-		Fix:            "Fix plan",
-		Interpretation: "Interpretation",
-		Debug:          "Debug",
-		KEDA:           "KEDA",
-		Events:         "Recent events",
-		Risk:           "risk",
-		Precondition:   "precondition",
-		Warning:             "warning",
-		MetricsDiagnostics:  "Metrics Diagnostics",
+		Target:             "Target",
+		Replicas:           "Replicas",
+		Health:             "Health score",
+		Summary:            "Summary",
+		Conditions:         "Conditions",
+		Metrics:            "Metrics",
+		Behavior:           "Behavior",
+		Actions:            "Recommended actions",
+		Suggestions:        "Recommended commands",
+		Fix:                "Fix plan",
+		Interpretation:     "Interpretation",
+		Debug:              "Debug",
+		KEDA:               "KEDA",
+		Events:             "Recent events",
+		Risk:               "risk",
+		Precondition:       "precondition",
+		Warning:            "warning",
+		MetricsDiagnostics: "Metrics Diagnostics",
 	}
 }
 
