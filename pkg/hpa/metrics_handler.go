@@ -42,7 +42,7 @@ func handlerFor(t autoscalingv2.MetricSourceType) MetricHandler {
 }
 
 var metricHandlers = map[autoscalingv2.MetricSourceType]MetricHandler{
-	autoscalingv2.ResourceMetricSourceType:         resourceHandler{},
+	autoscalingv2.ResourceMetricSourceType:          resourceHandler{},
 	autoscalingv2.ContainerResourceMetricSourceType: containerResourceHandler{},
 	autoscalingv2.PodsMetricSourceType:              podsHandler{},
 	autoscalingv2.ObjectMetricSourceType:            objectHandler{},

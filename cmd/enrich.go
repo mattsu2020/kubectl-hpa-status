@@ -30,7 +30,7 @@ type enrichmentContext struct {
 // availability via API discovery and creates a dynamic client only
 // when at least one enrichment source is available. Returns nil when
 // both --keda and --vpa are false or when neither CRD is installed.
-func newEnrichmentContext(ctx context.Context, opts *options) *enrichmentContext {
+func newEnrichmentContext(_ context.Context, opts *options) *enrichmentContext {
 	if !opts.keda && !opts.vpa {
 		return nil
 	}

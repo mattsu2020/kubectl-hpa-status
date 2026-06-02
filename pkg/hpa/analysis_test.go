@@ -1267,7 +1267,7 @@ func TestApplyEnrichmentPenalties_VPAConflict(t *testing.T) {
 		Health:      "OK",
 		HealthScore: 95,
 		VPAConflict: &VPAConflictInfo{
-			VPAName:   "my-vpa",
+			VPAName:    "my-vpa",
 			UpdateMode: "Auto",
 		},
 	}
@@ -1290,7 +1290,7 @@ func TestApplyEnrichmentPenalties_BothPenalties(t *testing.T) {
 			},
 		},
 		VPAConflict: &VPAConflictInfo{
-			VPAName:   "my-vpa",
+			VPAName:    "my-vpa",
 			UpdateMode: "Auto",
 		},
 	}
@@ -1314,7 +1314,7 @@ func TestApplyEnrichmentPenalties_NilEnrichment(t *testing.T) {
 	}
 }
 
-func TestApplyEnrichmentPenalties_NilAnalysis(t *testing.T) {
+func TestApplyEnrichmentPenalties_NilAnalysis(_ *testing.T) {
 	ApplyEnrichmentPenalties(nil, HealthWeights{})
 	// Should not panic.
 }
@@ -1329,7 +1329,7 @@ func TestApplyEnrichmentPenalties_CustomWeights(t *testing.T) {
 			},
 		},
 		VPAConflict: &VPAConflictInfo{
-			VPAName:   "my-vpa",
+			VPAName:    "my-vpa",
 			UpdateMode: "Auto",
 		},
 	}
@@ -1352,7 +1352,7 @@ func TestApplyEnrichmentPenalties_ScoreNotBelowZero(t *testing.T) {
 			},
 		},
 		VPAConflict: &VPAConflictInfo{
-			VPAName:   "my-vpa",
+			VPAName:    "my-vpa",
 			UpdateMode: "Auto",
 		},
 	}

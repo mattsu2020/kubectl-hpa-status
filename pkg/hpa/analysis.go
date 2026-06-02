@@ -816,9 +816,6 @@ func calculateRatioAndNote(currentVal autoscalingv2.MetricValueStatus, targetVal
 
 // FindExternalTarget returns the formatted target string for an external metric.
 
-
-
-
 // FormatMetricTarget returns a human-readable string for a metric target.
 
 // FormatMetricSelector returns a stable selector string for custom/external
