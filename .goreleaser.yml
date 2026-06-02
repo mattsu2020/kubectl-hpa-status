@@ -35,6 +35,28 @@ archives:
 checksum:
   name_template: checksums.txt
 
+release:
+  github:
+    owner: mattsu2020
+    name: kubectl-hpa-status
+  name_template: "{{ .ProjectName }} {{ .Tag }}"
+  header: |
+    ## Release notes
+
+    This release was built by GoReleaser from tag {{ .Tag }}.
+  footer: |
+    ## Installation
+
+    ```sh
+    brew install mattsu2020/kubectl-hpa-status/kubectl-hpa-status
+    ```
+
+    Krew users should verify the kubectl plugin invocation with:
+
+    ```sh
+    kubectl plugin list
+    ```
+
 brews:
   - name: kubectl-hpa-status
     repository:
