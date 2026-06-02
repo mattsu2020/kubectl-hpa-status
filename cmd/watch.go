@@ -25,6 +25,10 @@ func newWatchCommand(opts *options) *cobra.Command {
 }
 
 func runWatch(ctx context.Context, out io.Writer, opts *options, name string, includeInterpretation bool) error {
+	if opts.dashboard && opts.output == "" && isInteractiveTerminal(out) {
+		return runTUI(ctx, out, opts, name, true)
+	}
+
 	if opts.watchTimeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, opts.watchTimeout)
@@ -41,6 +45,8 @@ func runWatch(ctx context.Context, out io.Writer, opts *options, name string, in
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
+	ec := newEnrichmentContext(ctx, opts)
+
 	var previous *hpaanalysis.Analysis
 	for {
 		if clearScreen := theme.ScreenClear(); clearScreen != "" {
@@ -53,7 +59,7 @@ func runWatch(ctx context.Context, out io.Writer, opts *options, name string, in
 			}
 		}
 
-		report, err := buildStatusReport(ctx, opts, name, includeInterpretation)
+		report, err := buildStatusReport(ctx, opts, name, includeInterpretation, ec)
 		if err != nil {
 			return err
 		}

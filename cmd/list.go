@@ -82,8 +82,32 @@ func runList(ctx context.Context, out io.Writer, opts *options) error {
 	}
 
 	report := hpaanalysis.ListReport{}
+
+	// Run batched KEDA/VPA enrichment when enabled.
+	ec := newEnrichmentContext(ctx, opts)
+	kedaResults := enrichListKEDA(ctx, ec, hpas.Items)
+	vpaResults := enrichListVPA(ctx, ec, hpas.Items)
+
 	for i := range hpas.Items {
-		item := hpaanalysis.NewListItem(hpaanalysis.AnalyzeWithOptions(&hpas.Items[i], opts.apply, analysisOptions(opts)))
+		analysis := hpaanalysis.AnalyzeWithOptions(&hpas.Items[i], opts.apply, analysisOptions(opts))
+
+		// Apply enrichment from batched results.
+		key := analysis.Namespace + "/" + analysis.Name
+		if kedaResults != nil {
+			if keda, ok := kedaResults[key]; ok {
+				analysis.KEDAInfo = keda
+			}
+		}
+		if vpaResults != nil {
+			if vpa, ok := vpaResults[key]; ok {
+				analysis.VPAConflict = vpa
+			}
+		}
+		if analysis.KEDAInfo != nil || analysis.VPAConflict != nil {
+			hpaanalysis.ApplyEnrichmentPenalties(&analysis, opts.healthWeights)
+		}
+
+		item := hpaanalysis.NewListItem(analysis)
 		if matchesListFilter(item, filter) && matchesHealthScoreRange(item, opts.healthScoreMin, opts.healthScoreMax) {
 			report.Items = append(report.Items, item)
 		}

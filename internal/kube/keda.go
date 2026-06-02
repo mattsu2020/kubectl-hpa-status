@@ -21,6 +21,11 @@ var scaledObjectGVR = schema.GroupVersionResource{
 	Resource: "scaledobjects",
 }
 
+// ScaledObjectGVR returns the GroupVersionResource for KEDA ScaledObjects.
+func ScaledObjectGVR() schema.GroupVersionResource {
+	return scaledObjectGVR
+}
+
 // KEDAInfo holds extracted information about a KEDA ScaledObject.
 type KEDAInfo struct {
 	ScaledObjectName string              `json:"scaledObjectName" yaml:"scaledObjectName"`

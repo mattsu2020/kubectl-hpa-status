@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/style"
@@ -61,9 +60,10 @@ func runStatus(ctx context.Context, out io.Writer, opts *options, name string, i
 
 func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []string, includeInterpretation bool) error {
 	watchMode := opts.watch
+	ec := newEnrichmentContext(ctx, opts)
 
 	if len(names) == 1 {
-		report, err := buildStatusReport(ctx, opts, names[0], includeInterpretation)
+		report, err := buildStatusReport(ctx, opts, names[0], includeInterpretation, ec)
 		if err != nil {
 			if opts.output == "json" || opts.output == "yaml" {
 				writeError(out, opts.output, err)
@@ -94,7 +94,7 @@ func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []st
 
 	reports := make([]hpaanalysis.StatusReport, 0, len(names))
 	for _, name := range names {
-		report, err := buildStatusReport(ctx, opts, name, includeInterpretation)
+		report, err := buildStatusReport(ctx, opts, name, includeInterpretation, ec)
 		if err != nil {
 			if opts.output == "json" || opts.output == "yaml" {
 				writeError(out, opts.output, err)
@@ -142,7 +142,7 @@ func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []st
 	return nil
 }
 
-func buildStatusReport(ctx context.Context, opts *options, name string, includeInterpretation bool) (hpaanalysis.StatusReport, error) {
+func buildStatusReport(ctx context.Context, opts *options, name string, includeInterpretation bool, ec *enrichmentContext) (hpaanalysis.StatusReport, error) {
 	client, err := opts.newClient()
 	if err != nil {
 		return hpaanalysis.StatusReport{}, fmt.Errorf("failed to create Kubernetes client from kubeconfig/context flags: %w", err)
@@ -178,16 +178,7 @@ func buildStatusReport(ctx context.Context, opts *options, name string, includeI
 		}
 	}
 
-	if opts.keda {
-		report.Analysis.KEDAInfo = enrichKEDA(ctx, opts, hpa)
-	}
-
-	if opts.vpa {
-		enrichVPA(ctx, opts, hpa, &report)
-	} else if isKEDA, _ := kube.DetectKEDA(hpa); isKEDA && includeInterpretation {
-		// Auto-attempt KEDA enrichment when KEDA labels are detected and interpretation is enabled
-		report.Analysis.KEDAInfo = enrichKEDA(ctx, opts, hpa)
-	}
+	enrichReport(ctx, ec, hpa, &report, opts.healthWeights)
 
 	if opts.diagnoseMetrics {
 		report.Analysis.MetricsDiagnostics = hpaanalysis.DiagnoseMetricsPipeline(hpa)
@@ -320,106 +311,4 @@ func podUnschedulable(pod corev1.Pod) bool {
 		}
 	}
 	return false
-}
-
-func enrichKEDA(ctx context.Context, opts *options, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpaanalysis.KEDAAnalysis {
-	isKEDA, _ := kube.DetectKEDA(hpa)
-	if !isKEDA {
-		return nil
-	}
-
-	dynClient, _, err := kube.NewDynamicClient(kube.Options{
-		Namespace:  opts.namespace,
-		Context:    opts.contextName,
-		Kubeconfig: opts.kubeconfig,
-		Cluster:    opts.cluster,
-	})
-	if err != nil {
-		return &hpaanalysis.KEDAAnalysis{
-			Lines: []string{fmt.Sprintf("[confidence: high] HPA appears KEDA-managed but dynamic client failed: %v", err)},
-		}
-	}
-
-	scaledObject, err := kube.FindScaledObjectForHPA(ctx, dynClient, nil, hpa)
-	if err != nil {
-		return &hpaanalysis.KEDAAnalysis{
-			Lines: []string{fmt.Sprintf("[confidence: high] HPA appears KEDA-managed but no ScaledObject found: %v", err)},
-		}
-	}
-
-	info := kube.ExtractKEDAInfo(scaledObject)
-
-	triggers := make([]hpaanalysis.KEDATriggerSummary, 0, len(info.Triggers))
-	for _, t := range info.Triggers {
-		triggers = append(triggers, hpaanalysis.KEDATriggerSummary{
-			Type:         t.Type,
-			Name:         t.Name,
-			Status:       t.Status,
-			Message:      t.Message,
-			MetricName:   t.MetricName,
-			Threshold:    t.Threshold,
-			CurrentValue: t.CurrentValue,
-			AuthRef:      t.AuthenticationRef,
-		})
-	}
-
-	var conditionLines []string
-	for _, c := range info.Conditions {
-		if strings.EqualFold(c.Status, "False") {
-			conditionLines = append(conditionLines, fmt.Sprintf("condition %q is False (reason: %s): %s", c.Type, c.Reason, c.Message))
-		}
-	}
-
-	var fallback *hpaanalysis.KEDAFallbackInfo
-	if info.Fallback != nil {
-		fallback = &hpaanalysis.KEDAFallbackInfo{
-			FailureThreshold: info.Fallback.FailureThreshold,
-			Replicas:         info.Fallback.Replicas,
-		}
-	}
-
-	kedaAnalysis := &hpaanalysis.KEDAAnalysis{
-		ScaledObjectName: info.ScaledObjectName,
-		Triggers:         triggers,
-		PollingInterval:  info.PollingInterval,
-		CooldownPeriod:   info.CooldownPeriod,
-		MinReplicaCount:  info.MinReplicaCount,
-		MaxReplicaCount:  info.MaxReplicaCount,
-		Lines:            conditionLines,
-		Fallback:         fallback,
-	}
-
-	if len(conditionLines) == 0 && len(info.Conditions) > 0 {
-		kedaAnalysis.Lines = []string{fmt.Sprintf("ScaledObject reports %d condition(s), all healthy.", len(info.Conditions))}
-	}
-
-	// Add KEDA interpretation lines to the analysis.
-	kedaAnalysis.Lines = append(kedaAnalysis.Lines, hpaanalysis.AnalyzeKEDA(hpa, kedaAnalysis)...)
-
-	return kedaAnalysis
-}
-
-func enrichVPA(ctx context.Context, opts *options, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
-	dynClient, _, err := kube.NewDynamicClient(kube.Options{
-		Namespace:  opts.namespace,
-		Context:    opts.contextName,
-		Kubeconfig: opts.kubeconfig,
-		Cluster:    opts.cluster,
-	})
-	if err != nil {
-		// VPA errors should not fail the command; skip silently.
-		return
-	}
-
-	vpaInfo, err := kube.FindConflictingVPA(ctx, dynClient, report.Analysis.Namespace, hpa)
-	if err != nil {
-		// VPA CRD may not be installed; skip silently.
-		return
-	}
-	if vpaInfo == nil {
-		return
-	}
-
-	report.Analysis.VPAConflict = hpaanalysis.NewVPAConflictInfo(vpaInfo)
-	report.Analysis.Interpretation = append(report.Analysis.Interpretation, hpaanalysis.AnalyzeVPA(hpa, vpaInfo)...)
 }

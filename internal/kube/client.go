@@ -7,6 +7,7 @@ import (
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth" // for cloud provider auth
 	"k8s.io/client-go/tools/clientcmd"
@@ -135,4 +136,44 @@ func newOverrides(opts Options) *clientcmd.ConfigOverrides {
 		overrides.Context = clientcmdapi.Context{Cluster: opts.Cluster}
 	}
 	return overrides
+}
+
+// CRDAvailability holds the results of a one-time CRD availability check.
+type CRDAvailability struct {
+	KEDA bool
+	VPA  bool
+}
+
+// NewDiscoveryClient creates a discovery client from the same Options used for
+// the typed and dynamic clients.
+func NewDiscoveryClient(opts Options) (discovery.DiscoveryInterface, error) {
+	loadingRules := newLoadingRules(opts)
+	overrides := newOverrides(opts)
+
+	clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, overrides)
+	restConfig, err := clientConfig.ClientConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	return discovery.NewDiscoveryClientForConfig(restConfig)
+}
+
+// DetectCRDs checks whether KEDA and VPA CRDs are installed on the cluster.
+// Any discovery error (including CRD not found) is treated as absent.
+// The function never returns an error.
+func DetectCRDs(disco discovery.DiscoveryInterface) CRDAvailability {
+	var avail CRDAvailability
+
+	_, err := disco.ServerResourcesForGroupVersion("keda.sh/v1alpha1")
+	if err == nil {
+		avail.KEDA = true
+	}
+
+	_, err = disco.ServerResourcesForGroupVersion("autoscaling.k8s.io/v1")
+	if err == nil {
+		avail.VPA = true
+	}
+
+	return avail
 }

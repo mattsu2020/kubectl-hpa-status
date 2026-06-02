@@ -49,6 +49,7 @@ type Model struct {
 	sortField      string
 	sortDescending bool
 	selected       map[string]bool
+	initialFocused bool
 
 	keys keyMap
 }
@@ -60,6 +61,23 @@ type Options struct {
 	ColorEnabled  bool
 	Debug         bool
 	ChunkSize     int64
+	Interval      time.Duration
+	InitialName   string
+	InitialNS     string
+	StartInDetail bool
+
+	// EnrichHPAs is an optional callback that applies KEDA/VPA enrichment
+	// to a slice of HPAs. When set, fetchHPAs calls it after the initial
+	// analysis pass to populate KEDAInfo and VPAConflict fields.
+	EnrichHPAs func(ctx context.Context, hpas []autoscalingv2.HorizontalPodAutoscaler) (
+		kedaResults map[string]*hpaanalysis.KEDAAnalysis,
+		vpaResults map[string]*hpaanalysis.VPAConflictInfo,
+	)
+
+	// HealthWeights holds user-configured penalty weights for enrichment
+	// health score adjustments. When zero-valued, ApplyEnrichmentPenalties
+	// uses its defaults.
+	HealthWeights hpaanalysis.HealthWeights
 }
 
 // keyMap defines the keyboard shortcuts.
@@ -167,6 +185,11 @@ func NewModel(client kubernetes.Interface, namespace string, opts Options) Model
 	ti.Placeholder = "filter by name..."
 	ti.CharLimit = 50
 
+	interval := opts.Interval
+	if interval <= 0 {
+		interval = 5 * time.Second
+	}
+
 	return Model{
 		client:      client,
 		namespace:   namespace,
@@ -175,7 +198,7 @@ func NewModel(client kubernetes.Interface, namespace string, opts Options) Model
 		reports:     map[string]*hpaanalysis.StatusReport{},
 		cursor:      0,
 		viewMode:    listView,
-		interval:    5 * time.Second,
+		interval:    interval,
 		keys:        defaultKeys(),
 		filterInput: ti,
 		loading:     true,
@@ -261,6 +284,25 @@ func (m *Model) sortItems() {
 	})
 }
 
+func (m *Model) focusInitialItem() {
+	if m.opts.InitialName == "" {
+		return
+	}
+	for i, item := range m.items {
+		if item.Name != m.opts.InitialName {
+			continue
+		}
+		if m.opts.InitialNS != "" && item.Namespace != m.opts.InitialNS {
+			continue
+		}
+		m.cursor = i
+		if m.opts.StartInDetail {
+			m.viewMode = detailView
+		}
+		return
+	}
+}
+
 func cmpInt(a, b int) int {
 	if a < b {
 		return -1
@@ -284,15 +326,38 @@ func fetchHPAs(m Model) tea.Cmd {
 			return fetchResultMsg{err: err}
 		}
 
+		// Run optional batched KEDA/VPA enrichment.
+		var kedaResults map[string]*hpaanalysis.KEDAAnalysis
+		var vpaResults map[string]*hpaanalysis.VPAConflictInfo
+		if m.opts.EnrichHPAs != nil {
+			kedaResults, vpaResults = m.opts.EnrichHPAs(context.Background(), hpas.Items)
+		}
+
 		items := make([]hpaanalysis.ListItem, 0, len(hpas.Items))
 		reports := make(map[string]*hpaanalysis.StatusReport, len(hpas.Items))
 		for i := range hpas.Items {
 			analysis := hpaanalysis.AnalyzeWithOptions(&hpas.Items[i], true, hpaanalysis.AnalysisOptions{
 				Debug: m.opts.Debug,
 			})
+
+			// Apply enrichment data from batched results.
+			key := analysis.Namespace + "/" + analysis.Name
+			if kedaResults != nil {
+				if keda, ok := kedaResults[key]; ok {
+					analysis.KEDAInfo = keda
+				}
+			}
+			if vpaResults != nil {
+				if vpa, ok := vpaResults[key]; ok {
+					analysis.VPAConflict = vpa
+				}
+			}
+			if analysis.KEDAInfo != nil || analysis.VPAConflict != nil {
+				hpaanalysis.ApplyEnrichmentPenalties(&analysis, m.opts.HealthWeights)
+			}
+
 			item := hpaanalysis.NewListItem(analysis)
 			items = append(items, item)
-			key := item.Namespace + "/" + item.Name
 			reports[key] = &hpaanalysis.StatusReport{Analysis: analysis}
 		}
 

@@ -1242,3 +1242,160 @@ func TestDiagnoseMetricsPipeline_ExternalMetricHealthy(t *testing.T) {
 		t.Fatalf("expected External metric type, got %s", got.PerMetricChecks[0].MetricType)
 	}
 }
+
+func TestApplyEnrichmentPenalties_KEDAInactiveTrigger(t *testing.T) {
+	a := &Analysis{
+		Health:      "OK",
+		HealthScore: 95,
+		KEDAInfo: &KEDAAnalysis{
+			Triggers: []KEDATriggerSummary{
+				{Type: "prometheus", Status: "Inactive"},
+			},
+		},
+	}
+	ApplyEnrichmentPenalties(a, HealthWeights{})
+	if a.HealthScore != 80 {
+		t.Errorf("expected score 80 (95-15), got %d", a.HealthScore)
+	}
+	if a.Health != "LIMITED" {
+		t.Errorf("expected LIMITED health, got %s", a.Health)
+	}
+}
+
+func TestApplyEnrichmentPenalties_VPAConflict(t *testing.T) {
+	a := &Analysis{
+		Health:      "OK",
+		HealthScore: 95,
+		VPAConflict: &VPAConflictInfo{
+			VPAName:   "my-vpa",
+			UpdateMode: "Auto",
+		},
+	}
+	ApplyEnrichmentPenalties(a, HealthWeights{})
+	if a.HealthScore != 75 {
+		t.Errorf("expected score 75 (95-20), got %d", a.HealthScore)
+	}
+	if a.Health != "LIMITED" {
+		t.Errorf("expected LIMITED health, got %s", a.Health)
+	}
+}
+
+func TestApplyEnrichmentPenalties_BothPenalties(t *testing.T) {
+	a := &Analysis{
+		Health:      "OK",
+		HealthScore: 95,
+		KEDAInfo: &KEDAAnalysis{
+			Triggers: []KEDATriggerSummary{
+				{Type: "prometheus", Status: "Inactive"},
+			},
+		},
+		VPAConflict: &VPAConflictInfo{
+			VPAName:   "my-vpa",
+			UpdateMode: "Auto",
+		},
+	}
+	ApplyEnrichmentPenalties(a, HealthWeights{})
+	if a.HealthScore != 60 {
+		t.Errorf("expected score 60 (95-15-20), got %d", a.HealthScore)
+	}
+}
+
+func TestApplyEnrichmentPenalties_NilEnrichment(t *testing.T) {
+	a := &Analysis{
+		Health:      "OK",
+		HealthScore: 95,
+	}
+	ApplyEnrichmentPenalties(a, HealthWeights{})
+	if a.HealthScore != 95 {
+		t.Errorf("expected score 95 unchanged, got %d", a.HealthScore)
+	}
+	if a.Health != "OK" {
+		t.Errorf("expected OK health unchanged, got %s", a.Health)
+	}
+}
+
+func TestApplyEnrichmentPenalties_NilAnalysis(t *testing.T) {
+	ApplyEnrichmentPenalties(nil, HealthWeights{})
+	// Should not panic.
+}
+
+func TestApplyEnrichmentPenalties_CustomWeights(t *testing.T) {
+	a := &Analysis{
+		Health:      "OK",
+		HealthScore: 95,
+		KEDAInfo: &KEDAAnalysis{
+			Triggers: []KEDATriggerSummary{
+				{Type: "prometheus", Status: "Inactive"},
+			},
+		},
+		VPAConflict: &VPAConflictInfo{
+			VPAName:   "my-vpa",
+			UpdateMode: "Auto",
+		},
+	}
+	ApplyEnrichmentPenalties(a, HealthWeights{
+		KEDAInactiveTrigger: 30,
+		VPAConflict:         40,
+	})
+	if a.HealthScore != 25 {
+		t.Errorf("expected score 25 (95-30-40), got %d", a.HealthScore)
+	}
+}
+
+func TestApplyEnrichmentPenalties_ScoreNotBelowZero(t *testing.T) {
+	a := &Analysis{
+		Health:      "OK",
+		HealthScore: 10,
+		KEDAInfo: &KEDAAnalysis{
+			Triggers: []KEDATriggerSummary{
+				{Type: "prometheus", Status: "Inactive"},
+			},
+		},
+		VPAConflict: &VPAConflictInfo{
+			VPAName:   "my-vpa",
+			UpdateMode: "Auto",
+		},
+	}
+	ApplyEnrichmentPenalties(a, HealthWeights{})
+	if a.HealthScore != 0 {
+		t.Errorf("expected score clamped to 0, got %d", a.HealthScore)
+	}
+}
+
+func TestApplyEnrichmentPenalties_DoesNotDowngradeERROR(t *testing.T) {
+	a := &Analysis{
+		Health:      "ERROR",
+		HealthScore: 55,
+		KEDAInfo: &KEDAAnalysis{
+			Triggers: []KEDATriggerSummary{
+				{Type: "prometheus", Status: "Inactive"},
+			},
+		},
+	}
+	ApplyEnrichmentPenalties(a, HealthWeights{})
+	if a.HealthScore != 40 {
+		t.Errorf("expected score 40 (55-15), got %d", a.HealthScore)
+	}
+	if a.Health != "ERROR" {
+		t.Errorf("expected ERROR health preserved, got %s", a.Health)
+	}
+}
+
+func TestApplyEnrichmentPenalties_KEDAHealthyTriggersNoPenalty(t *testing.T) {
+	a := &Analysis{
+		Health:      "OK",
+		HealthScore: 95,
+		KEDAInfo: &KEDAAnalysis{
+			Triggers: []KEDATriggerSummary{
+				{Type: "prometheus", Status: "Active"},
+			},
+		},
+	}
+	ApplyEnrichmentPenalties(a, HealthWeights{})
+	if a.HealthScore != 95 {
+		t.Errorf("expected score 95 unchanged, got %d", a.HealthScore)
+	}
+	if a.Health != "OK" {
+		t.Errorf("expected OK health unchanged, got %s", a.Health)
+	}
+}

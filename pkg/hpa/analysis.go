@@ -25,6 +25,8 @@ const (
 	healthPenaltyImplicitMaxReplicas = 20
 	healthPenaltyScaleDownStabilized = 10
 	healthPenaltyAtMinimumReplicas   = 5
+	healthPenaltyKEDAInactiveTrigger = 15
+	healthPenaltyVPAConflict         = 20
 )
 
 // AnalysisOptions configures the analysis behavior.
@@ -41,6 +43,8 @@ type HealthWeights struct {
 	ImplicitMaxReplicas int `json:"implicitMaxReplicas,omitempty" yaml:"implicitMaxReplicas,omitempty"`
 	ScaleDownStabilized int `json:"scaleDownStabilized,omitempty" yaml:"scaleDownStabilized,omitempty"`
 	AtMinimumReplicas   int `json:"atMinimumReplicas,omitempty" yaml:"atMinimumReplicas,omitempty"`
+	KEDAInactiveTrigger int `json:"kedaInactiveTrigger,omitempty" yaml:"kedaInactiveTrigger,omitempty"`
+	VPAConflict         int `json:"vpaConflict,omitempty" yaml:"vpaConflict,omitempty"`
 }
 
 // Analysis holds the complete analysis result for a single HPA.
@@ -410,7 +414,46 @@ func defaultHealthWeights(weights HealthWeights) HealthWeights {
 	if weights.AtMinimumReplicas == 0 {
 		weights.AtMinimumReplicas = healthPenaltyAtMinimumReplicas
 	}
+	if weights.KEDAInactiveTrigger == 0 {
+		weights.KEDAInactiveTrigger = healthPenaltyKEDAInactiveTrigger
+	}
+	if weights.VPAConflict == 0 {
+		weights.VPAConflict = healthPenaltyVPAConflict
+	}
 	return weights
+}
+
+// ApplyEnrichmentPenalties adjusts the health score and state based on
+// KEDA and VPA enrichment data populated after AnalyzeWithOptions.
+// This is a post-hoc adjustment that keeps AnalyzeWithOptions clean.
+func ApplyEnrichmentPenalties(a *Analysis, weights HealthWeights) {
+	if a == nil {
+		return
+	}
+	weights = defaultHealthWeights(weights)
+
+	if a.KEDAInfo != nil {
+		for _, t := range a.KEDAInfo.Triggers {
+			if strings.EqualFold(t.Status, "Inactive") || strings.EqualFold(t.Status, "False") {
+				a.HealthScore -= weights.KEDAInactiveTrigger
+				if a.Health != "ERROR" {
+					a.Health = "LIMITED"
+				}
+				break
+			}
+		}
+	}
+
+	if a.VPAConflict != nil {
+		a.HealthScore -= weights.VPAConflict
+		if a.Health == "OK" || a.Health == "STABILIZED" {
+			a.Health = "LIMITED"
+		}
+	}
+
+	if a.HealthScore < 0 {
+		a.HealthScore = 0
+	}
 }
 
 // SummarizeDirection returns a one-line summary of the HPA scaling direction.

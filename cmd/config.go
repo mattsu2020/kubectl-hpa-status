@@ -34,6 +34,8 @@ type configFile struct {
 	ChunkSize     *int64                          `json:"chunkSize" yaml:"chunkSize"`
 	Templates     map[string]outputTemplateConfig `json:"templates" yaml:"templates"`
 	HealthWeights hpaanalysis.HealthWeights       `json:"healthWeights" yaml:"healthWeights"`
+	Keda          *bool                           `json:"keda" yaml:"keda"`
+	Vpa           *bool                           `json:"vpa" yaml:"vpa"`
 }
 
 // outputTemplateConfig defines a named output template entry in the config file.
@@ -116,6 +118,12 @@ func applyConfig(cmd *cobra.Command, opts *options, cfg configFile) {
 	if cfg.HealthWeights != (hpaanalysis.HealthWeights{}) {
 		opts.healthWeights = cfg.HealthWeights
 	}
+	if cfg.Keda != nil && !persistentFlagChanged(cmd, "keda") {
+		opts.keda = *cfg.Keda
+	}
+	if cfg.Vpa != nil && !persistentFlagChanged(cmd, "vpa") {
+		opts.vpa = *cfg.Vpa
+	}
 }
 
 // applyConfigDefaults resolves the config file path, loads the config, and
@@ -166,6 +174,10 @@ func applyHealthWeightOverrides(opts *options) error {
 			opts.healthWeights.ScaleDownStabilized = parsed
 		case "atminimumreplicas":
 			opts.healthWeights.AtMinimumReplicas = parsed
+		case "kedainactivetrigger":
+			opts.healthWeights.KEDAInactiveTrigger = parsed
+		case "vpaconflict":
+			opts.healthWeights.VPAConflict = parsed
 		default:
 			return fmt.Errorf("unknown health weight %q", key)
 		}
