@@ -75,6 +75,8 @@ The health score starts at 100 and deducts configurable penalties for each detec
 | Implicit maxReplicas (current==desired==max) | -20 | LIMITED | Desired replicas equal maxReplicas without explicit ScalingLimited |
 | `ScaleDownStabilized` | -10 | STABILIZED | Scale-down suppressed by stabilization window |
 | At minimum replicas | -5 | (no change) | Desired replicas equal minReplicas |
+| KEDA inactive trigger | -15 | LIMITED | External event source not producing events; scale-up may not trigger |
+| VPA conflict | -20 | LIMITED | Both VPA and HPA target the same resource on the same workload |
 
 Health states (in priority order): `ERROR` > `LIMITED` > `STABILIZED` > `OK`.
 

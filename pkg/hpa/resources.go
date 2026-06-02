@@ -111,6 +111,18 @@ func checkSingleContainer(containerName, resourceName string, target autoscaling
 		})
 	}
 
+	// Check for missing limits.
+	_, hasLimit := cr.Limits[resourceName]
+	if !hasLimit {
+		warnings = append(warnings, ResourceWarning{
+			Container: containerName,
+			Resource:  resourceName,
+			Category:  "missing-limits",
+			Details:   fmt.Sprintf("container %q has no %s limit; without limits, OOM kills may occur and resource utilization may be unpredictable", containerName, resourceName),
+			Severity:  "warning",
+		})
+	}
+
 	return warnings
 }
 

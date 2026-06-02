@@ -12,21 +12,58 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	klabels "k8s.io/apimachinery/pkg/labels"
 )
 
 const limitation = "[confidence: high] This plugin uses existing HPA status, conditions, metrics, and events. It does not expose internal controller calculations."
 
 const (
-	healthScoreMax                   = 100
-	healthPenaltyScalingInactive     = 45
-	healthPenaltyUnableToScale       = 35
-	healthPenaltyScalingLimited      = 25
+	healthScoreMax = 100
+
+	// healthPenaltyScalingInactive is the largest penalty because when the
+	// metrics pipeline is unavailable the HPA cannot compute any trustworthy
+	// recommendation. The controller stops producing desiredReplicas updates,
+	// and the existing replica count may be stale. Operators must restore
+	// metric availability before any other HPA tuning matters.
+	healthPenaltyScalingInactive = 45
+
+	// healthPenaltyUnableToScale is nearly as severe because the HPA controller
+	// is explicitly reporting that it cannot act on scaling decisions, even if
+	// metrics are available. Common causes include invalid scaleTargetRef,
+	// RBAC issues, or the scale subresource being missing.
+	healthPenaltyUnableToScale = 35
+
+	// healthPenaltyScalingLimited indicates the HPA is capped by minReplicas
+	// or maxReplicas. This is a lower penalty because capacity limits can be
+	// intentional policy, but the operator should verify whether demand truly
+	// requires more (or fewer) replicas.
+	healthPenaltyScalingLimited = 25
+
+	// healthPenaltyImplicitMaxReplicas is a smaller penalty than explicit
+	// ScalingLimited because it is inferred from current==desired==max without
+	// a ScalingLimited condition. This can be a transient status lag.
 	healthPenaltyImplicitMaxReplicas = 20
+
+	// healthPenaltyScaleDownStabilized is advisory: the HPA is deliberately
+	// holding off on scale-down within the stabilization window. No urgent
+	// action is needed but operators should be aware of the suppressed
+	// scale-down.
 	healthPenaltyScaleDownStabilized = 10
-	healthPenaltyAtMinimumReplicas   = 5
+
+	// healthPenaltyAtMinimumReplicas is informational: the workload is at its
+	// floor. The score drop is small because this can be normal behavior for
+	// low-traffic periods, but it signals that the HPA has no room to scale
+	// down further.
+	healthPenaltyAtMinimumReplicas = 5
+
+	// healthPenaltyKEDAInactiveTrigger is applied when a KEDA trigger reports
+	// Inactive status, meaning the external event source is not producing
+	// events. The HPA may not scale up even if demand increases.
 	healthPenaltyKEDAInactiveTrigger = 15
-	healthPenaltyVPAConflict         = 20
+
+	// healthPenaltyVPAConflict is applied when both VPA and HPA target the
+	// same resource (CPU/memory) on the same workload, which can cause
+	// conflicting scaling decisions.
+	healthPenaltyVPAConflict = 20
 )
 
 // AnalysisOptions configures the analysis behavior.
@@ -253,6 +290,52 @@ func AnalyzeWithOptions(src *autoscalingv2.HorizontalPodAutoscaler, includeInter
 			Summary:     "HPA data is unavailable.",
 			Interpretation: []string{
 				"[confidence: high] HPA input was nil; no Kubernetes status can be analyzed.",
+			},
+		}
+	}
+
+	// Validate scaleTargetRef is present.
+	if src.Spec.ScaleTargetRef.Kind == "" || src.Spec.ScaleTargetRef.Name == "" {
+		return Analysis{
+			Namespace:   src.Namespace,
+			Name:        src.Name,
+			Health:      "ERROR",
+			HealthScore: 0,
+			Summary:     "HPA spec.scaleTargetRef is empty or incomplete.",
+			Interpretation: []string{
+				"[confidence: high] This HPA has no valid scaleTargetRef; it cannot function.",
+			},
+		}
+	}
+
+	// Validate maxReplicas > 0.
+	if src.Spec.MaxReplicas <= 0 {
+		return Analysis{
+			Namespace:   src.Namespace,
+			Name:        src.Name,
+			Health:      "ERROR",
+			HealthScore: 0,
+			Summary:     "HPA spec.maxReplicas must be greater than zero.",
+			Interpretation: []string{
+				"[confidence: high] This HPA has spec.maxReplicas set to 0 or negative; it cannot scale.",
+			},
+		}
+	}
+
+	// Validate minReplicas <= maxReplicas.
+	minReplicasCheck := int32(1)
+	if src.Spec.MinReplicas != nil {
+		minReplicasCheck = *src.Spec.MinReplicas
+	}
+	if minReplicasCheck > src.Spec.MaxReplicas {
+		return Analysis{
+			Namespace:   src.Namespace,
+			Name:        src.Name,
+			Health:      "ERROR",
+			HealthScore: 0,
+			Summary:     fmt.Sprintf("HPA spec.minReplicas (%d) exceeds spec.maxReplicas (%d).", minReplicasCheck, src.Spec.MaxReplicas),
+			Interpretation: []string{
+				fmt.Sprintf("[confidence: high] spec.minReplicas (%d) is greater than spec.maxReplicas (%d); the HPA configuration is contradictory.", minReplicasCheck, src.Spec.MaxReplicas),
 			},
 		}
 	}
@@ -712,327 +795,38 @@ func calculateRatioAndNote(currentVal autoscalingv2.MetricValueStatus, targetVal
 }
 
 // FormatMetricStatus formats a metric status entry into a Metric struct.
-func FormatMetricStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, metric autoscalingv2.MetricStatus) Metric {
-	switch metric.Type {
-	case "":
-		return Metric{Text: "Metric status is present, but details are unavailable"}
-	case autoscalingv2.ResourceMetricSourceType:
-		if metric.Resource == nil {
-			return Metric{Type: "Resource", Text: "Resource metric: <missing status>"}
-		}
-		targetSpec := FindResourceTargetSpec(hpa, string(metric.Resource.Name))
-		target := FormatMetricTarget(targetSpec)
-		current := FormatMetricValue(metric.Resource.Current.AverageUtilization, metric.Resource.Current.AverageValue)
-		ratio, note := calculateRatioAndNote(metric.Resource.Current, targetSpec, target)
-		text := fmt.Sprintf("Resource %s current=%s target=%s", metric.Resource.Name, current, target)
-		if ratio != nil {
-			text = fmt.Sprintf("%s ratio=%.3f", text, *ratio)
-		}
-		if note != "" {
-			text = fmt.Sprintf("%s note=%q", text, note)
-		}
-		return Metric{
-			Type:    "Resource",
-			Name:    string(metric.Resource.Name),
-			Current: current,
-			Target:  target,
-			Ratio:   ratio,
-			Note:    note,
-			Text:    text,
-		}
-	case autoscalingv2.ContainerResourceMetricSourceType:
-		if metric.ContainerResource == nil {
-			return Metric{Type: "ContainerResource", Text: "ContainerResource metric: <missing status>"}
-		}
-		targetSpec := FindContainerResourceTargetSpec(hpa, string(metric.ContainerResource.Name), metric.ContainerResource.Container)
-		target := FormatMetricTarget(targetSpec)
-		current := FormatMetricValueStatus(metric.ContainerResource.Current)
-		ratio, note := calculateRatioAndNote(metric.ContainerResource.Current, targetSpec, target)
-		text := fmt.Sprintf("ContainerResource %s/%s current=%s target=%s", metric.ContainerResource.Container, metric.ContainerResource.Name, current, target)
-		if ratio != nil {
-			text = fmt.Sprintf("%s ratio=%.3f", text, *ratio)
-		}
-		if note != "" {
-			text = fmt.Sprintf("%s note=%q", text, note)
-		}
-		return Metric{
-			Type:    "ContainerResource",
-			Name:    fmt.Sprintf("%s/%s", metric.ContainerResource.Container, metric.ContainerResource.Name),
-			Current: current,
-			Target:  target,
-			Ratio:   ratio,
-			Note:    note,
-			Text:    text,
-		}
-	case autoscalingv2.PodsMetricSourceType:
-		if metric.Pods == nil {
-			return Metric{Type: "Pods", Text: "Pods metric: <missing status>"}
-		}
-		targetSpec := FindPodsTargetSpec(hpa, metric.Pods.Metric.Name)
-		target := FormatMetricTarget(targetSpec)
-		current := FormatMetricValueStatus(metric.Pods.Current)
-		ratio, note := calculateRatioAndNote(metric.Pods.Current, targetSpec, target)
-		selector := FormatMetricSelector(metric.Pods.Metric.Selector)
-		text := fmt.Sprintf("Pods %s current=%s target=%s", metric.Pods.Metric.Name, current, target)
-		if selector != "" {
-			text = fmt.Sprintf("%s selector=%q", text, selector)
-		}
-		if ratio != nil {
-			text = fmt.Sprintf("%s ratio=%.3f", text, *ratio)
-		}
-		if note != "" {
-			text = fmt.Sprintf("%s note=%q", text, note)
-		}
-		return Metric{
-			Type:     "Pods",
-			Name:     metric.Pods.Metric.Name,
-			Selector: selector,
-			Current:  current,
-			Target:   target,
-			Ratio:    ratio,
-			Note:     note,
-			Text:     text,
-		}
-	case autoscalingv2.ObjectMetricSourceType:
-		if metric.Object == nil {
-			return Metric{Type: "Object", Text: "Object metric: <missing status>"}
-		}
-		targetSpec := FindObjectTargetSpec(hpa, metric.Object.Metric.Name)
-		target := FormatMetricTarget(targetSpec)
-		current := FormatMetricValueStatus(metric.Object.Current)
-		ratio, note := calculateRatioAndNote(metric.Object.Current, targetSpec, target)
-		name := fmt.Sprintf("%s/%s", metric.Object.DescribedObject.Kind, metric.Object.DescribedObject.Name)
-		selector := FormatMetricSelector(metric.Object.Metric.Selector)
-		text := fmt.Sprintf("Object %s %s current=%s target=%s", name, metric.Object.Metric.Name, current, target)
-		if selector != "" {
-			text = fmt.Sprintf("%s selector=%q", text, selector)
-		}
-		if ratio != nil {
-			text = fmt.Sprintf("%s ratio=%.3f", text, *ratio)
-		}
-		if note != "" {
-			text = fmt.Sprintf("%s note=%q", text, note)
-		}
-		return Metric{
-			Type:     "Object",
-			Name:     metric.Object.Metric.Name,
-			Selector: selector,
-			Object:   name,
-			Current:  current,
-			Target:   target,
-			Ratio:    ratio,
-			Note:     note,
-			Text:     text,
-		}
-	case autoscalingv2.ExternalMetricSourceType:
-		if metric.External == nil {
-			return Metric{Type: "External", Text: "External metric: <missing status>"}
-		}
-		targetSpec := FindExternalTargetSpec(hpa, metric.External.Metric.Name)
-		target := FormatMetricTarget(targetSpec)
-		current := FormatMetricValueStatus(metric.External.Current)
-		ratio, note := calculateRatioAndNote(metric.External.Current, targetSpec, target)
-		selector := FormatMetricSelector(metric.External.Metric.Selector)
-		text := fmt.Sprintf("External %s current=%s target=%s", metric.External.Metric.Name, current, target)
-		if selector != "" {
-			text = fmt.Sprintf("%s selector=%q", text, selector)
-		}
-		if ratio != nil {
-			text = fmt.Sprintf("%s ratio=%.3f", text, *ratio)
-		}
-		if note != "" {
-			text = fmt.Sprintf("%s note=%q", text, note)
-		}
-		return Metric{
-			Type:     "External",
-			Name:     metric.External.Metric.Name,
-			Selector: selector,
-			Current:  current,
-			Target:   target,
-			Ratio:    ratio,
-			Note:     note,
-			Text:     text,
-		}
-	default:
-		return Metric{
-			Type: string(metric.Type),
-			Text: fmt.Sprintf("%s metric is present, but this plugin does not know how to format it in detail", metric.Type),
-		}
-	}
-}
 
 // FindResourceTargetSpec returns the target specification for a resource metric.
-func FindResourceTargetSpec(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) autoscalingv2.MetricTarget {
-	for _, spec := range hpa.Spec.Metrics {
-		if spec.Type == autoscalingv2.ResourceMetricSourceType &&
-			spec.Resource != nil &&
-			string(spec.Resource.Name) == name {
-			return spec.Resource.Target
-		}
-	}
-	return autoscalingv2.MetricTarget{}
-}
 
 // FindResourceTarget returns the formatted target string for a resource metric.
-func FindResourceTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) string {
-	return FormatMetricTarget(FindResourceTargetSpec(hpa, name))
-}
 
 // FindContainerResourceTargetSpec returns the target spec for a container resource metric.
-func FindContainerResourceTargetSpec(hpa *autoscalingv2.HorizontalPodAutoscaler, name, container string) autoscalingv2.MetricTarget {
-	for _, spec := range hpa.Spec.Metrics {
-		if spec.Type == autoscalingv2.ContainerResourceMetricSourceType &&
-			spec.ContainerResource != nil &&
-			string(spec.ContainerResource.Name) == name &&
-			spec.ContainerResource.Container == container {
-			return spec.ContainerResource.Target
-		}
-	}
-	return autoscalingv2.MetricTarget{}
-}
 
 // FindContainerResourceTarget returns the formatted target for a container resource metric.
-func FindContainerResourceTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, name, container string) string {
-	return FormatMetricTarget(FindContainerResourceTargetSpec(hpa, name, container))
-}
 
 // FindPodsTargetSpec returns the target specification for a pods metric.
-func FindPodsTargetSpec(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) autoscalingv2.MetricTarget {
-	for _, spec := range hpa.Spec.Metrics {
-		if spec.Type == autoscalingv2.PodsMetricSourceType &&
-			spec.Pods != nil &&
-			spec.Pods.Metric.Name == name {
-			return spec.Pods.Target
-		}
-	}
-	return autoscalingv2.MetricTarget{}
-}
 
 // FindPodsTarget returns the formatted target string for a pods metric.
-func FindPodsTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) string {
-	return FormatMetricTarget(FindPodsTargetSpec(hpa, name))
-}
 
 // FindObjectTargetSpec returns the target specification for an object metric.
-func FindObjectTargetSpec(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) autoscalingv2.MetricTarget {
-	for _, spec := range hpa.Spec.Metrics {
-		if spec.Type == autoscalingv2.ObjectMetricSourceType &&
-			spec.Object != nil &&
-			spec.Object.Metric.Name == name {
-			return spec.Object.Target
-		}
-	}
-	return autoscalingv2.MetricTarget{}
-}
 
 // FindObjectTarget returns the formatted target string for an object metric.
-func FindObjectTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) string {
-	return FormatMetricTarget(FindObjectTargetSpec(hpa, name))
-}
 
 // FindExternalTargetSpec returns the target specification for an external metric.
-func FindExternalTargetSpec(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) autoscalingv2.MetricTarget {
-	for _, spec := range hpa.Spec.Metrics {
-		if spec.Type == autoscalingv2.ExternalMetricSourceType &&
-			spec.External != nil &&
-			spec.External.Metric.Name == name {
-			return spec.External.Target
-		}
-	}
-	return autoscalingv2.MetricTarget{}
-}
 
 // FindExternalTarget returns the formatted target string for an external metric.
-func FindExternalTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) string {
-	return FormatMetricTarget(FindExternalTargetSpec(hpa, name))
-}
 
-func hasCurrentExternalMetric(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) bool {
-	_, ok := currentExternalMetric(hpa, name)
-	return ok
-}
 
-func currentExternalMetric(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) (autoscalingv2.MetricStatus, bool) {
-	for _, metric := range hpa.Status.CurrentMetrics {
-		if metric.Type == autoscalingv2.ExternalMetricSourceType &&
-			metric.External != nil &&
-			metric.External.Metric.Name == name {
-			return metric, true
-		}
-	}
-	return autoscalingv2.MetricStatus{}, false
-}
 
-func currentObjectMetric(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) (autoscalingv2.MetricStatus, bool) {
-	for _, metric := range hpa.Status.CurrentMetrics {
-		if metric.Type == autoscalingv2.ObjectMetricSourceType &&
-			metric.Object != nil &&
-			metric.Object.Metric.Name == name {
-			return metric, true
-		}
-	}
-	return autoscalingv2.MetricStatus{}, false
-}
 
 // FormatMetricTarget returns a human-readable string for a metric target.
-func FormatMetricTarget(target autoscalingv2.MetricTarget) string {
-	switch target.Type {
-	case autoscalingv2.UtilizationMetricType:
-		if target.AverageUtilization != nil {
-			return fmt.Sprintf("%d%%", *target.AverageUtilization)
-		}
-	case autoscalingv2.AverageValueMetricType:
-		if target.AverageValue != nil {
-			return target.AverageValue.String()
-		}
-	case autoscalingv2.ValueMetricType:
-		if target.Value != nil {
-			return target.Value.String()
-		}
-	}
-	return "<unknown>"
-}
 
 // FormatMetricSelector returns a stable selector string for custom/external
 // metrics. Empty selectors are omitted from text output.
-func FormatMetricSelector(selector *metav1.LabelSelector) string {
-	if selector == nil {
-		return ""
-	}
-	parsed, err := metav1.LabelSelectorAsSelector(selector)
-	if err != nil {
-		return klabels.FormatLabels(selector.MatchLabels)
-	}
-	if parsed.Empty() {
-		return ""
-	}
-	return parsed.String()
-}
 
 // FormatMetricValue returns a formatted string for utilization or average value.
-func FormatMetricValue(utilization *int32, averageValue *resource.Quantity) string {
-	if utilization != nil {
-		return fmt.Sprintf("%d%%", *utilization)
-	}
-	if averageValue != nil && !averageValue.IsZero() {
-		return averageValue.String()
-	}
-	return "<unknown>"
-}
 
 // FormatMetricValueStatus returns a formatted string for a metric value status.
-func FormatMetricValueStatus(value autoscalingv2.MetricValueStatus) string {
-	if value.AverageUtilization != nil {
-		return fmt.Sprintf("%d%%", *value.AverageUtilization)
-	}
-	if value.AverageValue != nil && !value.AverageValue.IsZero() {
-		return value.AverageValue.String()
-	}
-	if value.Value != nil && !value.Value.IsZero() {
-		return value.Value.String()
-	}
-	return "<unknown>"
-}
 
 // FormatBehavior extracts and formats HPA behavior rules.
 func FormatBehavior(hpa *autoscalingv2.HorizontalPodAutoscaler) []BehaviorRule {
@@ -1445,61 +1239,6 @@ func MostInfluentialMetric(hpa *autoscalingv2.HorizontalPodAutoscaler) (MetricIm
 }
 
 // metricImpactRatio returns the metric display name and ratio for any metric type.
-func metricImpactRatio(hpa *autoscalingv2.HorizontalPodAutoscaler, metric autoscalingv2.MetricStatus) (string, *float64) {
-	switch metric.Type {
-	case autoscalingv2.ResourceMetricSourceType:
-		if metric.Resource == nil {
-			return "", nil
-		}
-		ratio := utilizationRatio(metric.Resource.Current.AverageUtilization, FindResourceTarget(hpa, string(metric.Resource.Name)))
-		return string(metric.Resource.Name), ratio
-
-	case autoscalingv2.ContainerResourceMetricSourceType:
-		if metric.ContainerResource == nil {
-			return "", nil
-		}
-		targetSpec := FindContainerResourceTargetSpec(hpa, string(metric.ContainerResource.Name), metric.ContainerResource.Container)
-		target := FormatMetricTarget(targetSpec)
-		ratio := utilizationRatio(metric.ContainerResource.Current.AverageUtilization, target)
-		name := fmt.Sprintf("%s/%s", metric.ContainerResource.Container, metric.ContainerResource.Name)
-		if ratio != nil {
-			return name, ratio
-		}
-		// Fall back to quantity-based ratio if utilization is not available.
-		if metric.ContainerResource.Current.AverageValue != nil && targetSpec.AverageValue != nil {
-			ratio = quantityRatio(metric.ContainerResource.Current.AverageValue, targetSpec.AverageValue)
-			return name, ratio
-		}
-		return name, nil
-
-	case autoscalingv2.ExternalMetricSourceType:
-		if metric.External == nil {
-			return "", nil
-		}
-		targetSpec := FindExternalTargetSpec(hpa, metric.External.Metric.Name)
-		ratio, _ := calculateRatioAndNote(metric.External.Current, targetSpec, FormatMetricTarget(targetSpec))
-		return metric.External.Metric.Name, ratio
-
-	case autoscalingv2.PodsMetricSourceType:
-		if metric.Pods == nil {
-			return "", nil
-		}
-		targetSpec := FindPodsTargetSpec(hpa, metric.Pods.Metric.Name)
-		ratio, _ := calculateRatioAndNote(metric.Pods.Current, targetSpec, FormatMetricTarget(targetSpec))
-		return metric.Pods.Metric.Name, ratio
-
-	case autoscalingv2.ObjectMetricSourceType:
-		if metric.Object == nil {
-			return "", nil
-		}
-		targetSpec := FindObjectTargetSpec(hpa, metric.Object.Metric.Name)
-		ratio, _ := calculateRatioAndNote(metric.Object.Current, targetSpec, FormatMetricTarget(targetSpec))
-		return metric.Object.Metric.Name, ratio
-
-	default:
-		return "", nil
-	}
-}
 
 func prioritizedConditions(conditions []autoscalingv2.HorizontalPodAutoscalerCondition) []autoscalingv2.HorizontalPodAutoscalerCondition {
 	out := append([]autoscalingv2.HorizontalPodAutoscalerCondition(nil), conditions...)
@@ -1663,136 +1402,10 @@ func DiagnoseMetricsPipeline(hpa *autoscalingv2.HorizontalPodAutoscaler) *Metric
 }
 
 // specMetricIdentity returns the type and name of a spec metric for display.
-func specMetricIdentity(spec autoscalingv2.MetricSpec) (string, string) {
-	switch spec.Type {
-	case autoscalingv2.ResourceMetricSourceType:
-		if spec.Resource != nil {
-			return "Resource", string(spec.Resource.Name)
-		}
-	case autoscalingv2.ContainerResourceMetricSourceType:
-		if spec.ContainerResource != nil {
-			return "ContainerResource", fmt.Sprintf("%s/%s", spec.ContainerResource.Container, spec.ContainerResource.Name)
-		}
-	case autoscalingv2.PodsMetricSourceType:
-		if spec.Pods != nil {
-			return "Pods", spec.Pods.Metric.Name
-		}
-	case autoscalingv2.ObjectMetricSourceType:
-		if spec.Object != nil {
-			return "Object", spec.Object.Metric.Name
-		}
-	case autoscalingv2.ExternalMetricSourceType:
-		if spec.External != nil {
-			return "External", spec.External.Metric.Name
-		}
-	}
-	return string(spec.Type), "<unknown>"
-}
 
 // findMatchingCurrentMetric checks whether a spec metric has a matching entry
 // in the current metrics status.
-func findMatchingCurrentMetric(spec autoscalingv2.MetricSpec, currentMetrics []autoscalingv2.MetricStatus) bool {
-	for _, current := range currentMetrics {
-		if spec.Type != current.Type {
-			continue
-		}
-		switch spec.Type {
-		case autoscalingv2.ResourceMetricSourceType:
-			if spec.Resource != nil && current.Resource != nil &&
-				spec.Resource.Name == current.Resource.Name {
-				return true
-			}
-		case autoscalingv2.ContainerResourceMetricSourceType:
-			if spec.ContainerResource != nil && current.ContainerResource != nil &&
-				spec.ContainerResource.Name == current.ContainerResource.Name &&
-				spec.ContainerResource.Container == current.ContainerResource.Container {
-				return true
-			}
-		case autoscalingv2.PodsMetricSourceType:
-			if spec.Pods != nil && current.Pods != nil &&
-				spec.Pods.Metric.Name == current.Pods.Metric.Name {
-				return true
-			}
-		case autoscalingv2.ObjectMetricSourceType:
-			if spec.Object != nil && current.Object != nil &&
-				spec.Object.Metric.Name == current.Object.Metric.Name {
-				return true
-			}
-		case autoscalingv2.ExternalMetricSourceType:
-			if spec.External != nil && current.External != nil &&
-				spec.External.Metric.Name == current.External.Metric.Name {
-				return true
-			}
-		}
-	}
-	return false
-}
 
 // buildMetricRemediation returns a remediation string for a missing spec metric.
-func buildMetricRemediation(spec autoscalingv2.MetricSpec) string {
-	switch spec.Type {
-	case autoscalingv2.ResourceMetricSourceType:
-		if spec.Resource != nil {
-			return fmt.Sprintf(
-				"Resource metric %q is missing. Verify that the metrics-server is running and can scrape kubelet metrics: kubectl top pods -n <namespace>.",
-				spec.Resource.Name,
-			)
-		}
-	case autoscalingv2.ExternalMetricSourceType:
-		if spec.External != nil {
-			return fmt.Sprintf(
-				"External metric %q is missing. Verify the external metrics adapter is serving the metric and check adapter logs for errors.",
-				spec.External.Metric.Name,
-			)
-		}
-	case autoscalingv2.PodsMetricSourceType:
-		if spec.Pods != nil {
-			return fmt.Sprintf(
-				"Pods metric %q is missing. Verify the custom metrics adapter is serving this metric and check that pods are exposing the expected metric values.",
-				spec.Pods.Metric.Name,
-			)
-		}
-	case autoscalingv2.ObjectMetricSourceType:
-		if spec.Object != nil {
-			return fmt.Sprintf(
-				"Object metric %q is missing. Verify the described object %s/%s exists and the metrics adapter can retrieve its values.",
-				spec.Object.Metric.Name, spec.Object.DescribedObject.Kind, spec.Object.DescribedObject.Name,
-			)
-		}
-	case autoscalingv2.ContainerResourceMetricSourceType:
-		if spec.ContainerResource != nil {
-			return fmt.Sprintf(
-				"ContainerResource metric %s/%s is missing. Verify the metrics-server is running and the container is reporting resource usage.",
-				spec.ContainerResource.Container, spec.ContainerResource.Name,
-			)
-		}
-	}
-	return "Verify the metrics adapter for this metric type is installed and functioning correctly."
-}
 
 // metricDisplayName returns a human-readable name for a metric status entry.
-func metricDisplayName(metric autoscalingv2.MetricStatus) string {
-	switch metric.Type {
-	case autoscalingv2.ResourceMetricSourceType:
-		if metric.Resource != nil {
-			return string(metric.Resource.Name)
-		}
-	case autoscalingv2.ContainerResourceMetricSourceType:
-		if metric.ContainerResource != nil {
-			return fmt.Sprintf("%s/%s", metric.ContainerResource.Container, metric.ContainerResource.Name)
-		}
-	case autoscalingv2.ExternalMetricSourceType:
-		if metric.External != nil {
-			return metric.External.Metric.Name
-		}
-	case autoscalingv2.PodsMetricSourceType:
-		if metric.Pods != nil {
-			return metric.Pods.Metric.Name
-		}
-	case autoscalingv2.ObjectMetricSourceType:
-		if metric.Object != nil {
-			return metric.Object.Metric.Name
-		}
-	}
-	return string(metric.Type)
-}

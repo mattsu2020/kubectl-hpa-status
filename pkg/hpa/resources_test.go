@@ -131,6 +131,7 @@ func TestCheckResourceConsistency_HighTargetUtilization(t *testing.T) {
 			{
 				Name:     "app",
 				Requests: map[string]string{"cpu": "100m"},
+				Limits:   map[string]string{"cpu": "500m"},
 			},
 		},
 	}
@@ -157,6 +158,7 @@ func TestCheckResourceConsistency_TargetUtilizationExactly90(t *testing.T) {
 			{
 				Name:     "app",
 				Requests: map[string]string{"cpu": "100m"},
+				Limits:   map[string]string{"cpu": "500m"},
 			},
 		},
 	}
@@ -173,6 +175,7 @@ func TestCheckResourceConsistency_MemoryMetric(t *testing.T) {
 			{
 				Name:     "app",
 				Requests: map[string]string{"memory": "128Mi"},
+				Limits:   map[string]string{"memory": "256Mi"},
 			},
 		},
 	}
@@ -189,6 +192,7 @@ func TestCheckResourceConsistency_MissingMemoryRequests(t *testing.T) {
 			{
 				Name:     "app",
 				Requests: map[string]string{"cpu": "100m"},
+				Limits:   map[string]string{"cpu": "500m"},
 			},
 		},
 	}
@@ -211,6 +215,7 @@ func TestCheckResourceConsistency_MultipleContainers(t *testing.T) {
 			{
 				Name:     "app",
 				Requests: map[string]string{"cpu": "100m"},
+				Limits:   map[string]string{"cpu": "500m"},
 			},
 			{
 				Name:     "sidecar",
@@ -264,6 +269,7 @@ func TestCheckResourceConsistency_ContainerResourceMetric(t *testing.T) {
 			{
 				Name:     "app",
 				Requests: map[string]string{"cpu": "100m"},
+				Limits:   map[string]string{"cpu": "500m"},
 			},
 			{
 				Name:     "sidecar",
@@ -321,6 +327,7 @@ func TestCheckResourceConsistency_ContainerResourceMetric_ContainerNotFound(t *t
 			{
 				Name:     "app",
 				Requests: map[string]string{"cpu": "100m"},
+				Limits:   map[string]string{"cpu": "500m"},
 			},
 		},
 	}
@@ -441,6 +448,7 @@ func TestCheckResourceConsistency_CombinedWarnings(t *testing.T) {
 			{
 				Name:     "app",
 				Requests: map[string]string{"cpu": "100m"},
+				Limits:   map[string]string{"cpu": "500m"},
 				// memory request is missing
 			},
 		},
@@ -492,6 +500,35 @@ func TestIsZeroQuantity(t *testing.T) {
 				t.Errorf("isZeroQuantity(%q) = %v, want %v", tt.input, got, tt.expected)
 			}
 		})
+	}
+}
+
+func TestCheckResourceConsistency_MissingLimits(t *testing.T) {
+	hpa := buildTestHPA("cpu", 80)
+	resources := &kube.ResourceRequests{
+		Containers: []kube.ContainerResources{
+			{
+				Name:     "app",
+				Requests: map[string]string{"cpu": "100m"},
+				Limits:   map[string]string{},
+			},
+		},
+	}
+	result := CheckResourceConsistency(hpa, resources)
+	if result == nil {
+		t.Fatal("expected warnings")
+	}
+	found := false
+	for _, w := range result.Warnings {
+		if w.Category == "missing-limits" {
+			found = true
+			if w.Severity != "warning" {
+				t.Errorf("expected severity warning, got %s", w.Severity)
+			}
+		}
+	}
+	if !found {
+		t.Error("expected missing-limits warning")
 	}
 }
 
