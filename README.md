@@ -43,6 +43,7 @@ release artifacts, module paths, or install commands.
 - wide list demo: [docs/list-wide.cast](docs/list-wide.cast)
 - watch demo: [docs/watch.cast](docs/watch.cast)
 - explain to suggest to fix flow: [docs/fix-flow.cast](docs/fix-flow.cast)
+- Japanese Zenn article draft: [docs/zenn-hpa-status-ja.md](docs/zenn-hpa-status-ja.md)
 
 | Workflow | Visual |
 | --- | --- |
@@ -79,6 +80,17 @@ kubectl hpa status <hpa-name> --fix --apply
 | **Stabilization Warning** | Not explicitly tracked | Flags active stabilization windows & suggests wait durations |
 | **Watch Mode** | Requires external `watch` (no diff) | Built-in refresh with previous state delta diffs |
 | **Recommendation Guide** | None | Explains *why* and suggests config fixes |
+
+### Operator workflow comparison
+
+| Task | With `kubectl describe hpa` | With `kubectl hpa status` | Typical time saved |
+| --- | --- | --- | --- |
+| Find why one HPA is not scaling | Read Conditions, Events, metrics, and replica fields manually | `status <name> --explain` groups the likely cause, evidence, and next checks | Minutes during incidents |
+| Detect maxReplicas caps across a cluster | Describe or list HPAs one by one, then compare desired/current/max fields | `list -A --problem --sort-by problem` or `scan` ranks capped HPAs first | Avoids namespace-by-namespace inspection |
+| Diagnose metrics unavailable | Search Events and infer whether the issue is resource, custom, or external metrics | `--diagnose-metrics` adds per-metric checks and remediation hints | Shortens first triage loop |
+| Explain scale-down delay | Correlate condition reason, behavior policy, and timing by hand | Stabilization status and remaining wait guidance are shown in text/TUI output | Avoids unsafe tuning guesses |
+| Produce a handoff report | Copy raw describe output and annotate it manually | `--report markdown` or `--report html` emits a structured incident report | Reduces repeated report writing |
+| Validate a safe fix | Write a patch command manually and remember dry-run flags | `--suggest` and `--fix --apply` produce dry-run-first commands with warnings | Reduces patch mistakes |
 
 ## Quick usage
 
@@ -423,13 +435,13 @@ kubectl hpa status list -A -o jsonpath='{range .items[*]}{.namespace}/{.name} {.
 kubectl hpa status list -A -o jsonpath='{range .items[?(@.healthScore<80)]}{.namespace}/{.name} {.health}{"\n"}{end}'
 
 # Extract KEDA ScaledObject name for KEDA-managed HPAs
-kubectl hpa status status <hpa> -o jsonpath='{.analysis.keda.scaledObjectName}'
+kubectl hpa status <hpa> -o jsonpath='{.analysis.keda.scaledObjectName}'
 
 # Get VPA conflict warning
-kubectl hpa status status <hpa> --vpa -o jsonpath='{.analysis.vpaConflict.warning}'
+kubectl hpa status <hpa> --vpa -o jsonpath='{.analysis.vpaConflict.warning}'
 
 # Get structured interpretation entries
-kubectl hpa status status <hpa> -o jsonpath='{range .analysis.structuredInterpretation[*]}{.severity} {.text}{"\n"}{end}'
+kubectl hpa status <hpa> -o jsonpath='{range .analysis.structuredInterpretation[*]}{.severity} {.text}{"\n"}{end}'
 
 # Output per-HPA summary as JSON for automation
 kubectl hpa status list -A -o json | jq '.items[] | {name, namespace, healthScore, issue}'
@@ -480,7 +492,7 @@ Key bindings:
 | `?` | Toggle key binding help overlay |
 | `q` / `Ctrl+c` | Quit |
 
-The dashboard auto-refreshes every 5 seconds by default, or with `--interval` when set. `--watch --dashboard` opens directly on the selected HPA detail view in an interactive terminal, while non-interactive output keeps the compact text dashboard for scripts and recordings. Filter accepts partial matches across multiple fields. Sort cycles through available columns. Use `g` to quickly jump to the first HPA that needs attention. Press `m` to view per-metric diagnostics, or use `space` to select HPAs for batch operations.
+The dashboard auto-refreshes every 5 seconds by default, or with `--interval` when set. `--watch --dashboard` opens directly on the selected HPA detail view in an interactive terminal, while non-interactive output keeps the compact text dashboard for scripts and recordings. Filter accepts partial matches across multiple fields. Sort cycles through available columns. Use `g` to quickly jump to the first HPA that needs attention. Press `m` to view per-metric diagnostics, or use `space` to select HPAs before moving to the CLI batch apply workflow.
 
 ## Troubleshooting patterns
 
@@ -502,6 +514,7 @@ The dashboard auto-refreshes every 5 seconds by default, or with `--interval` wh
 | HPA target utilization seems wrong | `kubectl hpa status <name> --check-resources` | Resource request warnings, zero requests, target mismatch | Review pod template resource requests; HPA utilization = usage / request |
 | Need an incident report | `kubectl hpa status <name> --report markdown` | Standalone report with all sections | Paste into Slack, Notion, or incident tracking tool |
 | Batch fix multiple HPAs | `kubectl hpa status list -A --problem --fix --apply` | Summary table of all patches | Review the batch summary, confirm once to apply all |
+| Need a cluster health summary for review | `kubectl hpa status list -A --report markdown` | Cluster-wide report sections, health scores, top issues | Share the report with the on-call handoff or platform review |
 
 ### FAQ
 
@@ -509,6 +522,17 @@ The dashboard auto-refreshes every 5 seconds by default, or with `--interval` wh
 visible `currentMetrics` and `spec.metrics`. It cannot see the controller's
 per-metric replica recommendations, missing-metric dampening, or final
 selection before min/max and stabilization constraints.
+
+**My HPA says `Metrics unavailable`. What should I run first?** Start with
+`kubectl hpa status <name> --explain --diagnose-metrics`. For CPU and memory,
+confirm `kubectl top pods` works and inspect metrics-server. For custom or
+external metrics, verify the adapter `APIService`, adapter logs, and metric
+selector semantics.
+
+**How do I tell whether stabilization is the reason scale-down is delayed?**
+Run `kubectl hpa status <name> --explain` or open the TUI/watch view. The
+plugin highlights `ScaleDownStabilized` and stabilization window timing when it
+is visible from HPA status, behavior policy, and recent events.
 
 **Why does `kubectl hpa status` fail after Krew install?** Krew exposes
 dash-separated plugin names through underscores. Run `kubectl plugin list`; if
@@ -738,8 +762,13 @@ Interpretation lines are diagnostic inferences, not the HPA controller's authori
 - [x] **Metrics Pipeline Diagnostics:** `--diagnose-metrics` runs per-metric health checks with remediation steps.
 - [x] **Resource Consistency Check:** `--check-resources` validates HPA targets against pod resource requests/limits.
 - [x] **Report Output:** `--report markdown` and `--report html` generate standalone incident reports.
-- [x] **Bulk Operations (TUI):** Multi-select HPAs in TUI with space/a/A keys and batch apply with s.
-- [ ] **Custom Metrics Deep Dive:** Add adapter-specific context beyond visible HPA status.
+- [x] **TUI Multi-select:** Multi-select HPAs in TUI with space/a/A keys and show the CLI batch apply path for selected HPAs.
+- [ ] **TUI Batch Apply Workflow:** Add in-TUI multi-HPA suggest and safe-confirm apply flow, equivalent to the CLI `list --problem --fix --apply` workflow.
+- [ ] **Custom and External Metrics Deep Dive:** Add adapter-specific context beyond visible HPA status, including APIService health, likely adapter ownership, and Prometheus/custom metrics troubleshooting hints.
+- [ ] **Report Summary Upgrade:** Add cluster-wide report sections for top unhealthy HPAs, health-score distribution, and recommended action rollups.
+- [ ] **Informer-backed Watch Mode:** Offer opt-in informer-based refresh for large clusters while preserving the current polling behavior for simple kubectl-plugin usage.
+- [ ] **KEP-6111 Structured Decision Adapter:** Keep a small adapter boundary ready so future structured HPA decision fields can replace best-effort inference without changing existing output contracts.
+- [ ] **Supply-chain Hardening:** Add SLSA provenance and cosign signing to GoReleaser once release automation is ready for enterprise verification workflows.
 
 ## License
 

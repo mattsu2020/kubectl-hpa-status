@@ -84,12 +84,24 @@ can be checked without a live cluster.
   examples, install paths, or limitations change.
 - Translation: improve Japanese wording in `README.ja.md` and user-facing
   labels without changing command semantics.
+- Community content: turn troubleshooting patterns into short blog posts,
+  demo recordings, or release notes. Good candidates are `Metrics unavailable`,
+  `ScaleDownStabilized`, KEDA external metrics, and cluster-wide `scan`.
 - Testdata: add focused manifests under `testdata/` or `examples/` for KEDA,
   custom/external metrics, stabilization windows, and not-ready scale targets.
 - Analysis tests: cover edge cases in `pkg/hpa/analysis.go` and
   `pkg/hpa/suggestions.go`, especially cases where HPA status is ambiguous.
 - UX tests: add command-level tests for new flags, sorting, filtering, output
   formats, and completion behavior.
+
+When opening issues for first-time contributors, prefer small, verifiable
+scopes and add the `good first issue` label. Include:
+
+- the file or command to change
+- the expected user-visible behavior
+- the validation command, such as `make test`, `make coverage`, or a specific
+  `kubectl-hpa-status` invocation
+- whether Japanese and English documentation both need updates
 
 ## Krew manifest
 
