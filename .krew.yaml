@@ -9,18 +9,11 @@ spec:
   description: |
     Displays detailed HorizontalPodAutoscaler status including current and
     target utilization, replica counts, scaling conditions, metric analysis,
-    and interpretation of scaling decisions. Features include:
-    - Health scoring with configurable weights
-    - KEDA ScaledObject cross-reference (--keda)
-    - VPA conflict detection (--vpa)
-    - Metrics pipeline diagnostics (--diagnose-metrics)
-    - Resource request consistency checks (--check-resources)
-    - Safe dry-run-first patch suggestions (--suggest, --fix, --apply)
-    - Interactive TUI dashboard with filtering, sorting, and multi-select
-    - Stabilization window countdown visualization
-    - Standalone reports (--report markdown/html)
-    - Shell completion for bash, zsh, fish, and PowerShell
-    - Japanese language support (--lang ja)
+    and interpretation of scaling decisions. Features include health scoring,
+    KEDA ScaledObject cross-reference, VPA conflict detection, metrics pipeline
+    diagnostics, resource request consistency checks, safe dry-run-first patch
+    suggestions, interactive TUI dashboard, stabilization window countdown,
+    standalone reports, shell completion, and Japanese language support.
     This plugin reads existing HPA status, metrics, conditions, and events
     to provide human-readable analysis without reimplementing the HPA
     controller's internal decision logic.
@@ -34,38 +27,35 @@ spec:
       kubectl hpa_status status <hpa-name> --suggest
       kubectl hpa_status status <hpa-name> --keda --explain
       kubectl hpa_status status <hpa-name> --fix --apply
-      kubectl hpa_status status <hpa-name> --diagnose-metrics
-      kubectl hpa_status status <hpa-name> --check-resources
-      kubectl hpa_status status <hpa-name> --report markdown
       kubectl hpa_status tui
   platforms:
-    - selector:
-        matchLabels:
-          os: darwin
-          arch: amd64
-      {{addURIAndSha "https://github.com/mattsu2020/kubectl-hpa-status/releases/download/{{ .TagName }}/kubectl-hpa-status_{{ .TagName }}_darwin_amd64.tar.gz" .TagName }}
-      bin: kubectl-hpa-status
-    - selector:
-        matchLabels:
-          os: darwin
-          arch: arm64
-      {{addURIAndSha "https://github.com/mattsu2020/kubectl-hpa-status/releases/download/{{ .TagName }}/kubectl-hpa-status_{{ .TagName }}_darwin_arm64.tar.gz" .TagName }}
-      bin: kubectl-hpa-status
-    - selector:
-        matchLabels:
-          os: linux
-          arch: amd64
-      {{addURIAndSha "https://github.com/mattsu2020/kubectl-hpa-status/releases/download/{{ .TagName }}/kubectl-hpa-status_{{ .TagName }}_linux_amd64.tar.gz" .TagName }}
-      bin: kubectl-hpa-status
-    - selector:
-        matchLabels:
-          os: linux
-          arch: arm64
-      {{addURIAndSha "https://github.com/mattsu2020/kubectl-hpa-status/releases/download/{{ .TagName }}/kubectl-hpa-status_{{ .TagName }}_linux_arm64.tar.gz" .TagName }}
-      bin: kubectl-hpa-status
-    - selector:
-        matchLabels:
-          os: windows
-          arch: amd64
-      {{addURIAndSha "https://github.com/mattsu2020/kubectl-hpa-status/releases/download/{{ .TagName }}/kubectl-hpa-status_{{ .TagName }}_windows_amd64.tar.gz" .TagName }}
-      bin: kubectl-hpa-status.exe
+  - selector:
+      matchLabels:
+        os: darwin
+        arch: amd64
+    {{addURIAndSha "https://github.com/mattsu2020/kubectl-hpa-status/releases/download/{{ .TagName }}/kubectl-hpa-status_{{ .TagName }}_darwin_amd64.tar.gz" .TagName }}
+    bin: kubectl-hpa-status
+  - selector:
+      matchLabels:
+        os: darwin
+        arch: arm64
+    {{addURIAndSha "https://github.com/mattsu2020/kubectl-hpa-status/releases/download/{{ .TagName }}/kubectl-hpa-status_{{ .TagName }}_darwin_arm64.tar.gz" .TagName }}
+    bin: kubectl-hpa-status
+  - selector:
+      matchLabels:
+        os: linux
+        arch: amd64
+    {{addURIAndSha "https://github.com/mattsu2020/kubectl-hpa-status/releases/download/{{ .TagName }}/kubectl-hpa-status_{{ .TagName }}_linux_amd64.tar.gz" .TagName }}
+    bin: kubectl-hpa-status
+  - selector:
+      matchLabels:
+        os: linux
+        arch: arm64
+    {{addURIAndSha "https://github.com/mattsu2020/kubectl-hpa-status/releases/download/{{ .TagName }}/kubectl-hpa-status_{{ .TagName }}_linux_arm64.tar.gz" .TagName }}
+    bin: kubectl-hpa-status
+  - selector:
+      matchLabels:
+        os: windows
+        arch: amd64
+    {{addURIAndSha "https://github.com/mattsu2020/kubectl-hpa-status/releases/download/{{ .TagName }}/kubectl-hpa-status_{{ .TagName }}_windows_amd64.tar.gz" .TagName }}
+    bin: kubectl-hpa-status.exe
