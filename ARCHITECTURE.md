@@ -112,12 +112,14 @@ health-score weights.
 ## Watch Dashboard
 
 `--watch` remains a simple polling loop over Kubernetes API reads.
-`--dashboard` is intentionally output-only for scripts and recordings.
+`--dashboard` opens the interactive Bubble Tea dashboard when stdout is an
+interactive terminal. Non-interactive stdout keeps the compact output-only
+dashboard for scripts and recordings.
 
 The `tui` subcommand is the interactive Bubble Tea path. It reuses the same
 `Analysis` and `ListItem` models, supports refresh/pause/filter/detail
-navigation, and paginates Kubernetes list calls. Keep JSON/YAML output
-unchanged when expanding the TUI.
+navigation, accepts the same refresh interval, and paginates Kubernetes list
+calls. Keep JSON/YAML output unchanged when expanding the TUI.
 
 ## KEDA And Adapter Context
 

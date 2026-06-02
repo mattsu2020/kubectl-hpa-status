@@ -40,6 +40,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.items = msg.items
 		m.reports = msg.reports
 		m.err = nil
+		if m.sortField != "" {
+			m.sortItems()
+		}
+		if !m.initialFocused {
+			m.focusInitialItem()
+			m.initialFocused = true
+		}
 		// Clamp cursor.
 		filtered := m.filteredItems()
 		if m.cursor >= len(filtered) {

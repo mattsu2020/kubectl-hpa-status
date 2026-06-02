@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
@@ -21,6 +22,13 @@ func TestNewModel_InitialState(t *testing.T) {
 	}
 	if m.interval.Seconds() != 5 {
 		t.Fatalf("expected 5s interval, got %v", m.interval)
+	}
+}
+
+func TestNewModel_CustomInterval(t *testing.T) {
+	m := NewModel(nil, "default", Options{Interval: 2 * time.Second})
+	if m.interval != 2*time.Second {
+		t.Fatalf("expected 2s interval, got %v", m.interval)
 	}
 }
 
@@ -187,6 +195,31 @@ func TestFetchResult_UpdatesItems(t *testing.T) {
 	}
 	if m2.err != nil {
 		t.Fatalf("unexpected error: %v", m2.err)
+	}
+}
+
+func TestFetchResult_FocusesInitialDetailItem(t *testing.T) {
+	m := NewModel(nil, "default", Options{
+		InitialName:   "api",
+		InitialNS:     "default",
+		StartInDetail: true,
+	})
+	updated, _ := m.Update(fetchResultMsg{
+		items: []hpaanalysis.ListItem{
+			{Namespace: "default", Name: "web", Health: "OK"},
+			{Namespace: "default", Name: "api", Health: "WARN"},
+		},
+		reports: map[string]*hpaanalysis.StatusReport{
+			"default/web": {Analysis: hpaanalysis.Analysis{Name: "web", Namespace: "default"}},
+			"default/api": {Analysis: hpaanalysis.Analysis{Name: "api", Namespace: "default"}},
+		},
+	})
+	m2 := updated.(Model)
+	if m2.cursor != 1 {
+		t.Fatalf("expected cursor to focus api at index 1, got %d", m2.cursor)
+	}
+	if m2.viewMode != detailView {
+		t.Fatal("expected detailView for watch dashboard initial item")
 	}
 }
 

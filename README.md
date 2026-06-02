@@ -456,6 +456,7 @@ Launch a real-time interactive dashboard for monitoring HPAs across the cluster:
 ```sh
 kubectl hpa status tui          # current namespace
 kubectl hpa status tui -A       # all namespaces
+kubectl hpa status web --watch --dashboard
 ```
 
 Key bindings:
@@ -479,7 +480,7 @@ Key bindings:
 | `?` | Toggle key binding help overlay |
 | `q` / `Ctrl+c` | Quit |
 
-The dashboard auto-refreshes every 5 seconds. Filter accepts partial matches across multiple fields. Sort cycles through available columns. Use `g` to quickly jump to the first HPA that needs attention. Press `m` to view per-metric diagnostics, or use `space` to select HPAs for batch operations.
+The dashboard auto-refreshes every 5 seconds by default, or with `--interval` when set. `--watch --dashboard` opens directly on the selected HPA detail view in an interactive terminal, while non-interactive output keeps the compact text dashboard for scripts and recordings. Filter accepts partial matches across multiple fields. Sort cycles through available columns. Use `g` to quickly jump to the first HPA that needs attention. Press `m` to view per-metric diagnostics, or use `space` to select HPAs for batch operations.
 
 ## Troubleshooting patterns
 
