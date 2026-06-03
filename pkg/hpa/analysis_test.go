@@ -1399,3 +1399,133 @@ func TestApplyEnrichmentPenalties_KEDAHealthyTriggersNoPenalty(t *testing.T) {
 		t.Errorf("expected OK health unchanged, got %s", a.Health)
 	}
 }
+
+func TestBuildSuggestions_NoRaiseMaxReplicasWhenCurrentReplicasZero(t *testing.T) {
+	hpa := baseHPA()
+	hpa.Status.CurrentReplicas = 0
+	hpa.Status.DesiredReplicas = 10
+	hpa.Spec.MaxReplicas = 10
+	hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
+		{Type: "ScalingActive", Status: corev1.ConditionTrue, Reason: "ValidMetricFound"},
+		{Type: "ScalingLimited", Status: corev1.ConditionTrue, Reason: "TooManyReplicas"},
+	}
+
+	minReplicas := *hpa.Spec.MinReplicas
+	suggestions := BuildSuggestions(hpa, minReplicas)
+	if containsSuggestion(suggestions, "Raise maxReplicas") {
+		t.Fatalf("expected no Raise maxReplicas suggestion when currentReplicas=0, got %#v", suggestions)
+	}
+}
+
+func TestBuildSuggestions_RaiseMaxReplicasWhenCurrentReplicasPositive(t *testing.T) {
+	hpa := baseHPA()
+	hpa.Status.CurrentReplicas = 10
+	hpa.Status.DesiredReplicas = 10
+	hpa.Spec.MaxReplicas = 10
+	hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
+		{Type: "ScalingActive", Status: corev1.ConditionTrue, Reason: "ValidMetricFound"},
+		{Type: "ScalingLimited", Status: corev1.ConditionTrue, Reason: "TooManyReplicas"},
+	}
+
+	minReplicas := *hpa.Spec.MinReplicas
+	suggestions := BuildSuggestions(hpa, minReplicas)
+	if !containsSuggestion(suggestions, "Raise maxReplicas") {
+		t.Fatalf("expected Raise maxReplicas suggestion when currentReplicas>0, got %#v", suggestions)
+	}
+}
+
+func TestBuildSuggestions_NoLowerMinReplicasWhenMinIsOne(t *testing.T) {
+	minReplicas := int32(1)
+	hpa := baseHPA()
+	hpa.Spec.MinReplicas = &minReplicas
+	hpa.Status.CurrentReplicas = 1
+	hpa.Status.DesiredReplicas = 1
+	hpa.Spec.MaxReplicas = 10
+	hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
+		{Type: "ScalingActive", Status: corev1.ConditionTrue, Reason: "ValidMetricFound"},
+		{Type: "ScalingLimited", Status: corev1.ConditionTrue, Reason: "TooFewReplicas"},
+	}
+
+	suggestions := BuildSuggestions(hpa, minReplicas)
+	if containsSuggestion(suggestions, "Lower minReplicas") {
+		t.Fatalf("expected no Lower minReplicas suggestion when minReplicas=1, got %#v", suggestions)
+	}
+}
+
+func TestBuildSuggestions_LowerMinReplicasWhenMinAboveOne(t *testing.T) {
+	minReplicas := int32(3)
+	hpa := baseHPA()
+	hpa.Spec.MinReplicas = &minReplicas
+	hpa.Status.CurrentReplicas = 3
+	hpa.Status.DesiredReplicas = 3
+	hpa.Spec.MaxReplicas = 10
+	hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
+		{Type: "ScalingActive", Status: corev1.ConditionTrue, Reason: "ValidMetricFound"},
+		{Type: "ScalingLimited", Status: corev1.ConditionTrue, Reason: "TooFewReplicas"},
+	}
+
+	suggestions := BuildSuggestions(hpa, minReplicas)
+	if !containsSuggestion(suggestions, "Lower minReplicas") {
+		t.Fatalf("expected Lower minReplicas suggestion when minReplicas=3, got %#v", suggestions)
+	}
+}
+
+func TestBuildSuggestions_NoShortenStabilizationAtDefault300s(t *testing.T) {
+	window := int32(300)
+	hpa := baseHPA()
+	hpa.Spec.Behavior = &autoscalingv2.HorizontalPodAutoscalerBehavior{
+		ScaleDown: &autoscalingv2.HPAScalingRules{
+			StabilizationWindowSeconds: &window,
+		},
+	}
+	hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
+		{Type: "ScalingActive", Status: corev1.ConditionTrue, Reason: "ValidMetricFound"},
+		{Type: "AbleToScale", Status: corev1.ConditionTrue, Reason: "ScaleDownStabilized", Message: "recent recommendations were higher"},
+	}
+
+	minReplicas := *hpa.Spec.MinReplicas
+	suggestions := BuildSuggestions(hpa, minReplicas)
+	if containsSuggestion(suggestions, "Shorten scale-down stabilization") {
+		t.Fatalf("expected no Shorten suggestion at default 300s window, got %#v", suggestions)
+	}
+}
+
+func TestBuildSuggestions_ShortenStabilizationAtExplicitlyHighWindow(t *testing.T) {
+	window := int32(600)
+	hpa := baseHPA()
+	hpa.Spec.Behavior = &autoscalingv2.HorizontalPodAutoscalerBehavior{
+		ScaleDown: &autoscalingv2.HPAScalingRules{
+			StabilizationWindowSeconds: &window,
+		},
+	}
+	hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
+		{Type: "ScalingActive", Status: corev1.ConditionTrue, Reason: "ValidMetricFound"},
+		{Type: "AbleToScale", Status: corev1.ConditionTrue, Reason: "ScaleDownStabilized", Message: "recent recommendations were higher"},
+	}
+
+	minReplicas := *hpa.Spec.MinReplicas
+	suggestions := BuildSuggestions(hpa, minReplicas)
+	if !containsSuggestion(suggestions, "Shorten scale-down stabilization") {
+		t.Fatalf("expected Shorten suggestion at 600s window, got %#v", suggestions)
+	}
+}
+
+func TestBuildSuggestions_ShortenStabilizationAtExplicitlySetBelow300s(t *testing.T) {
+	window := int32(120)
+	hpa := baseHPA()
+	hpa.Spec.Behavior = &autoscalingv2.HorizontalPodAutoscalerBehavior{
+		ScaleDown: &autoscalingv2.HPAScalingRules{
+			StabilizationWindowSeconds: &window,
+		},
+	}
+	hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
+		{Type: "ScalingActive", Status: corev1.ConditionTrue, Reason: "ValidMetricFound"},
+		{Type: "AbleToScale", Status: corev1.ConditionTrue, Reason: "ScaleDownStabilized", Message: "recent recommendations were higher"},
+	}
+
+	minReplicas := *hpa.Spec.MinReplicas
+	suggestions := BuildSuggestions(hpa, minReplicas)
+	if !containsSuggestion(suggestions, "Shorten scale-down stabilization") {
+		t.Fatalf("expected Shorten suggestion at explicitly set 120s window, got %#v", suggestions)
+	}
+}

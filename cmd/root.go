@@ -62,6 +62,8 @@ type options struct {
 	untilCondition        string
 	report                string
 	checkResources        bool
+	qps                   float32
+	burst                 int
 	clientOverride        kubernetes.Interface
 	in                    io.Reader
 }
@@ -72,6 +74,8 @@ func (o *options) newClient() (*kube.Client, error) {
 		Context:    o.contextName,
 		Kubeconfig: o.kubeconfig,
 		Cluster:    o.cluster,
+		QPS:        o.qps,
+		Burst:      o.burst,
 	}
 	if o.clientOverride != nil {
 		return kube.NewClient(kopts, kube.WithInterface(o.clientOverride))
@@ -173,6 +177,8 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().BoolVar(&opts.diagnoseMetrics, "diagnose-metrics", false, "run comprehensive metrics pipeline health checks")
 	root.PersistentFlags().BoolVar(&opts.vpa, "vpa", true, "detect VerticalPodAutoscaler conflicts (auto-detected when CRD is present; use --vpa=false to disable)")
 	root.PersistentFlags().BoolVar(&opts.checkResources, "check-resources", false, "check HPA target utilization against pod resource requests")
+	root.PersistentFlags().Float32Var(&opts.qps, "qps", 0, "client-side rate limiting queries per second (0 uses client-go default)")
+	root.PersistentFlags().IntVar(&opts.burst, "burst", 0, "client-side rate limiting burst size (0 uses client-go default)")
 	root.PersistentFlags().DurationVar(&opts.watchInterval, "interval", opts.watchInterval, "watch refresh interval")
 	root.PersistentFlags().DurationVar(&opts.watchTimeout, "timeout", 0, "stop watching after this duration")
 	root.PersistentFlags().StringVar(&opts.untilCondition, "until-condition", "", "stop watching once an HPA condition type is present, for example scaling-limited")

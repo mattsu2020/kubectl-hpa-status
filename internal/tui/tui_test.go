@@ -425,3 +425,96 @@ func TestFilteredItems_BySummary(t *testing.T) {
 		t.Fatalf("expected web, got %s", filtered[0].Name)
 	}
 }
+
+func TestIntervalUp_DecreasesInterval(t *testing.T) {
+	m := NewModel(nil, "default", Options{Interval: 10 * time.Second})
+	if m.interval != 10*time.Second {
+		t.Fatalf("expected initial interval 10s, got %v", m.interval)
+	}
+
+	// Press + to decrease interval (faster refresh).
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'+'}})
+	m2 := updated.(Model)
+	// 10s - max(10s/2, 1s) = 10s - 5s = 5s
+	if m2.interval != 5*time.Second {
+		t.Fatalf("expected interval 5s after +, got %v", m2.interval)
+	}
+
+	// Press + again.
+	updated2, _ := m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'+'}})
+	m3 := updated2.(Model)
+	// 5s - max(5s/2, 1s) = 5s - 2.5s = 2.5s
+	if m3.interval != 2500*time.Millisecond {
+		t.Fatalf("expected interval 2.5s after second +, got %v", m3.interval)
+	}
+}
+
+func TestIntervalUp_EqualsSign(t *testing.T) {
+	m := NewModel(nil, "default", Options{Interval: 10 * time.Second})
+
+	// Press = (same as + for IntervalUp).
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'='}})
+	m2 := updated.(Model)
+	if m2.interval != 5*time.Second {
+		t.Fatalf("expected interval 5s after =, got %v", m2.interval)
+	}
+}
+
+func TestIntervalUp_FloorOneSecond(t *testing.T) {
+	m := NewModel(nil, "default", Options{Interval: 2 * time.Second})
+
+	// Press +: 2s - max(2s/2, 1s) = 2s - 1s = 1s
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'+'}})
+	m2 := updated.(Model)
+	if m2.interval != 1*time.Second {
+		t.Fatalf("expected interval 1s, got %v", m2.interval)
+	}
+
+	// Press + again: step = max(1s/2, 1s) = 1s, but 1s - 1s = 0s -> floor 1s
+	updated2, _ := m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'+'}})
+	m3 := updated2.(Model)
+	if m3.interval != 1*time.Second {
+		t.Fatalf("expected interval clamped at 1s, got %v", m3.interval)
+	}
+}
+
+func TestIntervalDown_IncreasesInterval(t *testing.T) {
+	m := NewModel(nil, "default", Options{Interval: 10 * time.Second})
+
+	// Press - to increase interval (slower refresh).
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'-'}})
+	m2 := updated.(Model)
+	// 10s + max(10s/2, 1s) = 10s + 5s = 15s
+	if m2.interval != 15*time.Second {
+		t.Fatalf("expected interval 15s after -, got %v", m2.interval)
+	}
+}
+
+func TestIntervalDown_CeilingSixtySeconds(t *testing.T) {
+	m := NewModel(nil, "default", Options{Interval: 50 * time.Second})
+
+	// Press -: 50s + max(50s/2, 1s) = 50s + 25s = 75s -> ceiling 60s
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'-'}})
+	m2 := updated.(Model)
+	if m2.interval != 60*time.Second {
+		t.Fatalf("expected interval clamped at 60s, got %v", m2.interval)
+	}
+
+	// Press - again while at ceiling: step = 30s, 60s + 30s = 90s -> ceiling 60s
+	updated2, _ := m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'-'}})
+	m3 := updated2.(Model)
+	if m3.interval != 60*time.Second {
+		t.Fatalf("expected interval still 60s at ceiling, got %v", m3.interval)
+	}
+}
+
+func TestIntervalDown_MinimumStep(t *testing.T) {
+	m := NewModel(nil, "default", Options{Interval: 1 * time.Second})
+
+	// Press -: step = max(1s/2, 1s) = 1s, 1s + 1s = 2s
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'-'}})
+	m2 := updated.(Model)
+	if m2.interval != 2*time.Second {
+		t.Fatalf("expected interval 2s after - from 1s, got %v", m2.interval)
+	}
+}

@@ -10,6 +10,10 @@ import (
 )
 
 // Update handles all bubbletea messages.
+// Value receivers are intentional here: Bubbletea's architecture uses an
+// immutable model pattern where each message produces a new model state
+// rather than mutating the existing one. All methods on Model (Update, View,
+// Init, filteredItems) use value receivers for consistency with this pattern.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -61,6 +65,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+//nolint:gocyclo // Key dispatch table: each case is a flat, independent key binding handler.
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case key.Matches(msg, m.keys.Quit):
@@ -198,6 +203,30 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.err = fmt.Errorf("apply for %d HPA(s): use CLI instead (kubectl-hpa-status list --problem --fix --apply). Selected: %s", len(selectedNames), strings.Join(selectedNames, ", "))
 			return m, nil
 		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.IntervalUp):
+		step := m.interval / 2
+		if step < time.Second {
+			step = time.Second
+		}
+		newInterval := m.interval - step
+		if newInterval < time.Second {
+			newInterval = time.Second
+		}
+		m.interval = newInterval
+		return m, nil
+
+	case key.Matches(msg, m.keys.IntervalDown):
+		step := m.interval / 2
+		if step < time.Second {
+			step = time.Second
+		}
+		newInterval := m.interval + step
+		if newInterval > 60*time.Second {
+			newInterval = 60 * time.Second
+		}
+		m.interval = newInterval
 		return m, nil
 	}
 

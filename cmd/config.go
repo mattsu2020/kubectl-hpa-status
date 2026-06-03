@@ -44,6 +44,44 @@ type outputTemplateConfig struct {
 	Template string `json:"template" yaml:"template"`
 }
 
+// validateConfig checks config file values for correctness and returns an
+// error describing the first invalid field encountered.
+func validateConfig(cfg configFile) error {
+	if cfg.ChunkSize != nil && *cfg.ChunkSize < 0 {
+		return fmt.Errorf("config chunkSize must be >= 0, got %d", *cfg.ChunkSize)
+	}
+
+	if cfg.MinScore != nil && (*cfg.MinScore < 0 || *cfg.MinScore > 100) {
+		return fmt.Errorf("config minScore must be in [0, 100], got %d", *cfg.MinScore)
+	}
+	if cfg.MaxScore != nil && (*cfg.MaxScore < 0 || *cfg.MaxScore > 100) {
+		return fmt.Errorf("config maxScore must be in [0, 100], got %d", *cfg.MaxScore)
+	}
+	if cfg.HealthScore != nil && (*cfg.HealthScore < 0 || *cfg.HealthScore > 100) {
+		return fmt.Errorf("config healthScore must be in [0, 100], got %d", *cfg.HealthScore)
+	}
+
+	switch strings.ToLower(cfg.Color) {
+	case "", "auto", "always", "never":
+	default:
+		return fmt.Errorf("config color must be one of auto, always, never; got %q", cfg.Color)
+	}
+
+	switch normalizeSelector(cfg.Output) {
+	case "", "table", "wide", "json", "yaml", "jsonpath", "template", "gotemplate":
+	default:
+		return fmt.Errorf("config output must be one of table, wide, json, yaml, jsonpath, template; got %q", cfg.Output)
+	}
+
+	switch strings.ToLower(cfg.Lang) {
+	case "", "en", "ja":
+	default:
+		return fmt.Errorf("config lang must be one of en, ja; got %q", cfg.Lang)
+	}
+
+	return nil
+}
+
 // loadConfigFile reads and parses a YAML config file at the given path.
 func loadConfigFile(path string) (configFile, error) {
 	data, err := os.ReadFile(path) // #nosec G304 -- path is from user --config flag, not arbitrary input
@@ -52,6 +90,9 @@ func loadConfigFile(path string) (configFile, error) {
 	}
 	var cfg configFile
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return configFile{}, err
+	}
+	if err := validateConfig(cfg); err != nil {
 		return configFile{}, err
 	}
 	return cfg, nil

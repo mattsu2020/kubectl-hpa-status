@@ -9,6 +9,7 @@ import (
 	"text/template"
 
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/i18n"
 	"golang.org/x/term"
 	"k8s.io/client-go/util/jsonpath"
 	"sigs.k8s.io/yaml"
@@ -36,6 +37,23 @@ func outputLang(opts *options) string {
 		return "ja"
 	}
 	return ""
+}
+
+// i18nLabels is a LabelProvider backed by the internal/i18n locale system.
+type i18nLabels struct {
+	lang string
+}
+
+func (p i18nLabels) Get(key string) string {
+	return i18n.Get(p.lang, key)
+}
+
+func labelProviderForOpts(opts *options) hpaanalysis.LabelProvider {
+	lang := outputLang(opts)
+	if lang == "" {
+		return nil // use DefaultLabels
+	}
+	return i18nLabels{lang: lang}
 }
 
 func analysisOptions(opts *options) hpaanalysis.AnalysisOptions {

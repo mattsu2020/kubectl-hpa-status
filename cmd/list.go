@@ -134,7 +134,8 @@ func runList(ctx context.Context, out io.Writer, opts *options) error {
 			Wide:  wide,
 			Color: shouldColorize(opts.color, out),
 			Theme: style.NewTheme(shouldColorize(opts.color, out)),
-			Lang:  outputLang(opts),
+			Lang:   outputLang(opts),
+			Labels: labelProviderForOpts(opts),
 		})
 	})
 }

@@ -98,6 +98,8 @@ type keyMap struct {
 	SelectAll     key.Binding
 	DeselectAll   key.Binding
 	ApplySelected key.Binding
+	IntervalUp    key.Binding
+	IntervalDown  key.Binding
 }
 
 func defaultKeys() keyMap {
@@ -166,6 +168,14 @@ func defaultKeys() keyMap {
 			key.WithKeys("s"),
 			key.WithHelp("s", "apply to selected"),
 		),
+		IntervalUp: key.NewBinding(
+			key.WithKeys("+", "="),
+			key.WithHelp("+/=", "faster refresh"),
+		),
+		IntervalDown: key.NewBinding(
+			key.WithKeys("-"),
+			key.WithHelp("-", "slower refresh"),
+		),
 	}
 }
 
@@ -212,7 +222,8 @@ func (m Model) Init() tea.Cmd {
 }
 
 // filteredItems returns items matching the current filter text.
-func (m *Model) filteredItems() []hpaanalysis.ListItem {
+// Uses a value receiver since it does not mutate state.
+func (m Model) filteredItems() []hpaanalysis.ListItem {
 	if m.filter == "" {
 		return m.items
 	}

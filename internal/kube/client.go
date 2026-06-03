@@ -20,6 +20,8 @@ type Options struct {
 	Context    string
 	Kubeconfig string
 	Cluster    string
+	QPS        float32 // Client-side rate limiting queries per second. 0 means client-go default (5).
+	Burst      int     // Client-side rate limiting burst size. 0 means client-go default (10).
 }
 
 // Client wraps a Kubernetes typed client with namespace information.
@@ -77,6 +79,13 @@ func NewClient(opts Options, extra ...ClientOption) (*Client, error) {
 	restConfig, err := clientConfig.ClientConfig()
 	if err != nil {
 		return nil, err
+	}
+
+	if opts.QPS > 0 {
+		restConfig.QPS = opts.QPS
+	}
+	if opts.Burst > 0 {
+		restConfig.Burst = opts.Burst
 	}
 
 	client, err := kubernetes.NewForConfig(restConfig)

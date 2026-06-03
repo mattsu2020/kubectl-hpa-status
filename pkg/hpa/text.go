@@ -18,10 +18,11 @@ type StatusReport struct {
 
 // StatusTextOptions configures text output rendering with theme, language, fix mode, and diff display.
 type StatusTextOptions struct {
-	Theme style.Theme
-	Lang  string
-	Fix   bool
-	Diff  bool
+	Theme  style.Theme
+	Lang   string
+	Fix    bool
+	Diff   bool
+	Labels LabelProvider // When nil, English defaults are used. Takes precedence over Lang.
 }
 
 // WatchState holds the previous and current Analysis for diff display.
@@ -125,10 +126,11 @@ func metricsDiagnosticsIndicator(status string, theme style.Theme) string {
 }
 
 // WriteStatusTextWithOptions writes a status report with full rendering options.
+//nolint:gocyclo // Sequential text rendering of independent status sections; splitting would reduce readability.
 func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTextOptions) error {
 	a := report.Analysis
 	theme := opts.Theme
-	labels := textLabels(opts.Lang)
+	labels := resolveLabels(opts.Labels)
 	var out []byte
 	out = fmt.Appendf(out, "HPA %s/%s\n", a.Namespace, a.Name)
 	out = fmt.Appendf(out, "%s: %s\n", labels.Target, a.Target)
@@ -434,6 +436,8 @@ func textLabels(lang string) labels {
 // WriteStatusDiff writes a status display that highlights changes between the
 // previous and current analysis. Changed fields are shown with emphasis;
 // unchanged fields are dimmed when the theme supports it.
+//
+//nolint:gocyclo // Sequential diff rendering of independent status sections; each section is self-contained.
 func WriteStatusDiff(w io.Writer, state WatchState, theme style.Theme) error {
 	// When there is no previous state, fall back to full status display.
 	if state.Previous == nil {
@@ -584,9 +588,10 @@ type ListReport struct {
 
 // ListTextOptions configures list output with wide, color, language, and theme.
 type ListTextOptions struct {
-	Wide  bool
-	Color bool
-	Lang  string
+	Wide   bool
+	Color  bool
+	Lang   string
+	Labels LabelProvider // When nil, English defaults are used. Takes precedence over Lang.
 	// Theme takes precedence over Color. When Theme is set, Color is ignored.
 	Theme style.Theme
 }

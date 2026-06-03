@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"runtime"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/style"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/spf13/cobra"
+	"golang.org/x/sync/errgroup"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -85,6 +87,7 @@ func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []st
 				Lang:  outputLang(opts),
 				Fix:   opts.fix,
 				Diff:  opts.diff,
+				Labels: labelProviderForOpts(opts),
 			})
 		}); err != nil {
 			return err
@@ -92,23 +95,40 @@ func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []st
 		return warningExitCode(report.Analysis.Health, report.Analysis.Name, report.Analysis.Namespace, watchMode)
 	}
 
-	reports := make([]hpaanalysis.StatusReport, 0, len(names))
-	for _, name := range names {
-		report, err := buildStatusReport(ctx, opts, name, includeInterpretation, ec)
-		if err != nil {
-			if opts.output == "json" || opts.output == "yaml" {
-				writeError(out, opts.output, err)
+	reports := make([]hpaanalysis.StatusReport, len(names))
+	g, gctx := errgroup.WithContext(ctx)
+	limit := runtime.NumCPU()
+	if limit < 1 {
+		limit = 1
+	}
+	g.SetLimit(limit)
+
+	for i, name := range names {
+		i, name := i, name
+		g.Go(func() error {
+			if gctx.Err() != nil {
+				return gctx.Err()
 			}
-			return err
-		}
-		if opts.apply {
-			applied, err := applySuggestions(ctx, out, opts, name, report.Analysis.Suggestions)
+			report, err := buildStatusReport(gctx, opts, name, includeInterpretation, ec)
 			if err != nil {
+				if opts.output == "json" || opts.output == "yaml" {
+					writeError(out, opts.output, err)
+				}
 				return err
 			}
-			report.Analysis.Actions = append(report.Analysis.Actions, applied...)
-		}
-		reports = append(reports, report)
+			if opts.apply {
+				applied, err := applySuggestions(gctx, out, opts, name, report.Analysis.Suggestions)
+				if err != nil {
+					return err
+				}
+				report.Analysis.Actions = append(report.Analysis.Actions, applied...)
+			}
+			reports[i] = report
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return err
 	}
 
 	format, templateStr := outputSelection(opts)
@@ -124,6 +144,7 @@ func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []st
 				Lang:  outputLang(opts),
 				Fix:   opts.fix,
 				Diff:  opts.diff,
+				Labels: labelProviderForOpts(opts),
 			}); err != nil {
 				return err
 			}
