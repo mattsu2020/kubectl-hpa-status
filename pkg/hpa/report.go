@@ -151,6 +151,8 @@ func WriteMarkdownReport(w io.Writer, report StatusReport) error {
 
 // WriteHTMLReport writes a single StatusReport as a standalone HTML document
 // with inline CSS for portable viewing.
+//
+//nolint:gocyclo // Sequential HTML template rendering; each section is independent.
 func WriteHTMLReport(w io.Writer, report StatusReport) error {
 	a := report.Analysis
 	var out strings.Builder

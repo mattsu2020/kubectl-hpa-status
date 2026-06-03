@@ -5,6 +5,9 @@ run:
 
 linters:
   enable:
+    - errcheck
+    - gocritic
+    - gocyclo
     - govet
     - ineffassign
     - misspell
@@ -13,6 +16,8 @@ linters:
     - unused
 
   settings:
+    gocyclo:
+      min-complexity: 15
     staticcheck:
       checks:
         - all

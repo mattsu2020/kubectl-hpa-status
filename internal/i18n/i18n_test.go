@@ -20,8 +20,8 @@ func TestLoadJapanese(t *testing.T) {
 	if len(b) == 0 {
 		t.Fatal("expected non-empty Japanese bundle")
 	}
-	if b["label_target"] != "ターゲット" {
-		t.Errorf("expected label_target=ターゲット, got %q", b["label_target"])
+	if b["label_target"] != "対象" {
+		t.Errorf("expected label_target=対象, got %q", b["label_target"])
 	}
 }
 
@@ -44,8 +44,8 @@ func TestGetEnglish(t *testing.T) {
 
 func TestGetJapanese(t *testing.T) {
 	got := Get("ja", "label_target")
-	if got != "ターゲット" {
-		t.Errorf("expected 'ターゲット', got %q", got)
+	if got != "対象" {
+		t.Errorf("expected '対象', got %q", got)
 	}
 }
 
@@ -79,6 +79,26 @@ func TestDirectionKeysPresent(t *testing.T) {
 		}
 		if !strings.HasSuffix(b[key], ".") && !strings.Contains(b[key], "maxReplicas") && !strings.Contains(b[key], "minReplicas") {
 			t.Errorf("expected %q value to end with period or contain replicas info, got %q", key, b[key])
+		}
+	}
+}
+
+func TestAllLabelKeysExistInBothLocales(t *testing.T) {
+	en := Load("en")
+	ja := Load("ja")
+	labelKeys := []string{
+		"label_target", "label_replicas", "label_health", "label_summary",
+		"label_conditions", "label_metrics", "label_behavior", "label_actions",
+		"label_suggestions", "label_fix", "label_interpretation", "label_debug",
+		"label_keda", "label_events", "label_risk", "label_precondition",
+		"label_warning", "label_metrics_diagnostics",
+	}
+	for _, key := range labelKeys {
+		if _, ok := en[key]; !ok {
+			t.Errorf("expected key %q in English bundle", key)
+		}
+		if _, ok := ja[key]; !ok {
+			t.Errorf("expected key %q in Japanese bundle", key)
 		}
 	}
 }

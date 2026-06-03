@@ -141,6 +141,43 @@ analysis model should say "scaling is capped or pending"; autoscaler adapters
 can add "new nodes are pending" or "node provisioning is blocked" context
 without changing the HPA decision summary.
 
+## KEDA Detection Design
+
+KEDA detection uses a two-layer model to identify KEDA-managed HPAs:
+
+**Layer 1: Heuristic detection** (`pkg/hpa/interpret.go` `looksLikeKEDAManaged()`)
+
+This layer inspects only the HPA object itself using three signals:
+
+1. Label keys or values containing `keda.sh` or `keda` (case-insensitive)
+2. Annotation keys or values containing `keda.sh` or `keda`
+3. HPA name prefixed with `keda-hpa-`
+
+This heuristic is fast and requires no additional API calls, but it can produce
+false positives (an HPA named `keda-hpa-*` that is not KEDA-managed) and false
+negatives (a KEDA-managed HPA with a custom name and no KEDA labels/annotations).
+It is used for informational diagnostics and low-risk suggestions only.
+
+**Layer 2: CRD-based detection** (`internal/kube/keda.go` `DetectKEDA()` and `FindScaledObjectForHPA()`)
+
+This layer performs real ScaledObject CRD lookups through the Kubernetes dynamic
+client. It uses the `--keda` flag to opt into CRD-based enrichment, which fetches
+the ScaledObject and extracts trigger status, health conditions, fallback config,
+and scaling policies. Clusters without KEDA installed do not pay this cost.
+
+**When to use `--keda` flag:**
+
+- To confirm whether an HPA is genuinely KEDA-managed
+- To retrieve ScaledObject trigger health status (Active/Inactive/Unknown)
+- To diagnose external metric issues rooted in scaler misconfiguration
+- To check for KEDA inactive trigger penalties in health scoring
+
+**Future improvement path:**
+
+- Add an opt-in direct CRD fetch that bypasses the heuristic entirely
+- Cache ScaledObject lookups to reduce API server load during watch/list
+- Support KEDA v1alpha2 API version alongside v1alpha1
+
 ## Large Cluster Lists
 
 `list`, `scan`, and `tui` use Kubernetes ListOptions pagination by default.

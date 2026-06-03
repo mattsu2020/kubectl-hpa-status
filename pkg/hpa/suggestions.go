@@ -12,6 +12,7 @@ import (
 )
 
 // BuildSuggestions generates patch suggestions for the given HPA.
+//nolint:gocyclo // Sequential suggestion generation from independent HPA conditions; each block is self-contained.
 func BuildSuggestions(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []Suggestion {
 	var suggestions []Suggestion
 	if condition := FindCondition(hpa, "ScalingActive"); condition != nil && condition.Status != corev1.ConditionTrue {
@@ -27,56 +28,67 @@ func BuildSuggestions(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas in
 	if condition := FindCondition(hpa, "ScalingLimited"); condition != nil && condition.Status == corev1.ConditionTrue {
 		switch hpa.Status.DesiredReplicas {
 		case hpa.Spec.MaxReplicas:
-			nextMax := recommendedMaxReplicas(hpa)
-			patch := mustJSON(map[string]any{"spec": map[string]any{"maxReplicas": nextMax}})
-			warnings := []string{
-				"Confirm node capacity, PodDisruptionBudgets, quotas, and downstream dependency limits before persisting this change.",
-				"Run the patch as a server-side dry-run first; the plugin also dry-runs by default when --apply is used.",
-			}
-			if !hasVisibleScaleUpPressure(hpa) {
-				warnings = append(warnings, "No visible resource metric is above target; another metric or controller behavior may be responsible, so review currentMetrics before raising maxReplicas.")
-			}
-			suggestions = append(suggestions, Suggestion{
-				Title:       "Raise maxReplicas",
-				Description: fmt.Sprintf("The HPA is capped at maxReplicas=%d. Raising it to %d allows the controller to add capacity if metrics still require it.", hpa.Spec.MaxReplicas, nextMax),
-				Command:     kubectlPatchCommand(hpa, patch, true),
-				Patch:       patch,
-				Risk:        "medium",
-				Preconditions: []string{
-					"ScalingActive is True.",
-					"ScalingLimited is True and desiredReplicas equals maxReplicas.",
-					"Workload and cluster capacity can tolerate the proposed replica ceiling.",
-				},
-				Warnings: warnings,
-				Apply:    true,
-			})
-		case minReplicas:
-			nextMin := minReplicas - 1
-			if nextMin < 1 {
-				nextMin = 1
-			}
-			if nextMin < minReplicas {
-				patch := mustJSON(map[string]any{"spec": map[string]any{"minReplicas": nextMin}})
+			// Only suggest raising maxReplicas when the workload is actively running.
+			// If currentReplicas is 0, the HPA may be in an inactive or scale-to-zero
+			// state and raising maxReplicas would be misleading.
+			if hpa.Status.CurrentReplicas > 0 {
+				nextMax := recommendedMaxReplicas(hpa)
+				patch := mustJSON(map[string]any{"spec": map[string]any{"maxReplicas": nextMax}})
+				warnings := []string{
+					"Confirm node capacity, PodDisruptionBudgets, quotas, and downstream dependency limits before persisting this change.",
+					"Run the patch as a server-side dry-run first; the plugin also dry-runs by default when --apply is used.",
+				}
+				if !hasVisibleScaleUpPressure(hpa) {
+					warnings = append(warnings, "No visible resource metric is above target; another metric or controller behavior may be responsible, so review currentMetrics before raising maxReplicas.")
+				}
 				suggestions = append(suggestions, Suggestion{
-					Title:       "Lower minReplicas",
-					Description: fmt.Sprintf("The HPA is capped at minReplicas=%d. Lowering it to %d allows further scale-down.", minReplicas, nextMin),
+					Title:       "Raise maxReplicas",
+					Description: fmt.Sprintf("The HPA is capped at maxReplicas=%d. Raising it to %d allows the controller to add capacity if metrics still require it.", hpa.Spec.MaxReplicas, nextMax),
 					Command:     kubectlPatchCommand(hpa, patch, true),
 					Patch:       patch,
 					Risk:        "medium",
 					Preconditions: []string{
 						"ScalingActive is True.",
-						"ScalingLimited is True and desiredReplicas equals minReplicas.",
-						"The workload can safely run at the proposed lower minimum.",
+						"ScalingLimited is True and desiredReplicas equals maxReplicas.",
+						"currentReplicas > 0 (HPA is not in an inactive or scale-to-zero state).",
+						"Workload and cluster capacity can tolerate the proposed replica ceiling.",
 					},
-					Warnings: []string{"Validate availability, cold-start behavior, and disruption budgets before persisting this change."},
+					Warnings: warnings,
 					Apply:    true,
 				})
+			}
+		case minReplicas:
+			// Only suggest lowering minReplicas when there is room to lower.
+			// If minReplicas is already 1, there is no safe lower bound to suggest.
+			if minReplicas > 1 {
+				nextMin := minReplicas - 1
+				if nextMin < 1 {
+					nextMin = 1
+				}
+				if nextMin < minReplicas {
+					patch := mustJSON(map[string]any{"spec": map[string]any{"minReplicas": nextMin}})
+					suggestions = append(suggestions, Suggestion{
+						Title:       "Lower minReplicas",
+						Description: fmt.Sprintf("The HPA is capped at minReplicas=%d. Lowering it to %d allows further scale-down.", minReplicas, nextMin),
+						Command:     kubectlPatchCommand(hpa, patch, true),
+						Patch:       patch,
+						Risk:        "medium",
+						Preconditions: []string{
+							"ScalingActive is True.",
+							"ScalingLimited is True and desiredReplicas equals minReplicas.",
+							"minReplicas > 1 (there is room to lower).",
+							"The workload can safely run at the proposed lower minimum.",
+						},
+						Warnings: []string{"Validate availability, cold-start behavior, and disruption budgets before persisting this change."},
+						Apply:    true,
+					})
+				}
 			}
 		}
 	}
 
 	if condition := FindCondition(hpa, "AbleToScale"); condition != nil && condition.Reason == "ScaleDownStabilized" {
-		if window := scaleDownStabilizationWindow(hpa); window != nil && *window > 60 {
+		if window := scaleDownStabilizationWindow(hpa); window != nil && *window > 60 && *window != 300 {
 			nextWindow := *window / 2
 			patch := mustJSON(map[string]any{
 				"spec": map[string]any{
@@ -93,6 +105,7 @@ func BuildSuggestions(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas in
 				Risk:        "medium",
 				Preconditions: []string{
 					"AbleToScale reason reports ScaleDownStabilized.",
+					"The stabilization window is not at the default 300s (it was explicitly set).",
 					"The workload can tolerate faster downscale decisions.",
 				},
 				Warnings: []string{"Shorter stabilization can increase replica churn when traffic is bursty."},

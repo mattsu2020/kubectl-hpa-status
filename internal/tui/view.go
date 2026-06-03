@@ -50,6 +50,8 @@ func (m Model) renderHelpView() string {
 		{"g", "Jump to first problematic HPA"},
 		{"r", "Refresh data now"},
 		{"p", "Pause/resume auto-refresh"},
+		{"+/=", "Decrease refresh interval (faster)"},
+		{"-", "Increase refresh interval (slower)"},
 		{"?", "Toggle this help"},
 		{"q/Ctrl+c", "Quit"},
 	}
@@ -143,6 +145,7 @@ func (m Model) renderListView() string {
 	return sb.String()
 }
 
+//nolint:gocyclo // Sequential rendering of multiple optional detail sections; each section is independent.
 func (m Model) renderDetailView() string {
 	filtered := m.filteredItems()
 	if m.cursor < 0 || m.cursor >= len(filtered) {
@@ -446,7 +449,7 @@ func (m Model) renderStatusBar() string {
 		parts = append(parts, okStyle.Render("LIVE"))
 	}
 
-	parts = append(parts, fmt.Sprintf("interval: %s", m.interval))
+	parts = append(parts, fmt.Sprintf("interval: %s  (+/-)", m.interval))
 
 	if !m.lastRefresh.IsZero() {
 		parts = append(parts, fmt.Sprintf("updated: %s", m.lastRefresh.Format("15:04:05")))

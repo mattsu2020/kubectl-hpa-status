@@ -1,0 +1,307 @@
+// Package hpa provides HPA analysis, health scoring, metric formatting,
+// and diagnostic interpretation for HorizontalPodAutoscaler resources.
+package hpa
+
+import (
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
+const limitation = "[confidence: high] This plugin uses existing HPA status, conditions, metrics, and events. It does not expose internal controller calculations."
+
+const (
+	healthScoreMax = 100
+
+	// healthPenaltyScalingInactive is the largest penalty because when the
+	// metrics pipeline is unavailable the HPA cannot compute any trustworthy
+	// recommendation. The controller stops producing desiredReplicas updates,
+	// and the existing replica count may be stale. Operators must restore
+	// metric availability before any other HPA tuning matters.
+	healthPenaltyScalingInactive = 45
+
+	// healthPenaltyUnableToScale is nearly as severe because the HPA controller
+	// is explicitly reporting that it cannot act on scaling decisions, even if
+	// metrics are available. Common causes include invalid scaleTargetRef,
+	// RBAC issues, or the scale subresource being missing.
+	healthPenaltyUnableToScale = 35
+
+	// healthPenaltyScalingLimited indicates the HPA is capped by minReplicas
+	// or maxReplicas. This is a lower penalty because capacity limits can be
+	// intentional policy, but the operator should verify whether demand truly
+	// requires more (or fewer) replicas.
+	healthPenaltyScalingLimited = 25
+
+	// healthPenaltyImplicitMaxReplicas is a smaller penalty than explicit
+	// ScalingLimited because it is inferred from current==desired==max without
+	// a ScalingLimited condition. This can be a transient status lag.
+	healthPenaltyImplicitMaxReplicas = 20
+
+	// healthPenaltyScaleDownStabilized is advisory: the HPA is deliberately
+	// holding off on scale-down within the stabilization window. No urgent
+	// action is needed but operators should be aware of the suppressed
+	// scale-down.
+	healthPenaltyScaleDownStabilized = 10
+
+	// healthPenaltyAtMinimumReplicas is informational: the workload is at its
+	// floor. The score drop is small because this can be normal behavior for
+	// low-traffic periods, but it signals that the HPA has no room to scale
+	// down further.
+	healthPenaltyAtMinimumReplicas = 5
+
+	// healthPenaltyKEDAInactiveTrigger is applied when a KEDA trigger reports
+	// Inactive status, meaning the external event source is not producing
+	// events. The HPA may not scale up even if demand increases.
+	healthPenaltyKEDAInactiveTrigger = 15
+
+	// healthPenaltyVPAConflict is applied when both VPA and HPA target the
+	// same resource (CPU/memory) on the same workload, which can cause
+	// conflicting scaling decisions.
+	healthPenaltyVPAConflict = 20
+)
+
+// AnalysisOptions configures the analysis behavior.
+type AnalysisOptions struct {
+	HealthWeights HealthWeights `json:"healthWeights,omitempty" yaml:"healthWeights,omitempty"`
+	Debug         bool          `json:"debug,omitempty" yaml:"debug,omitempty"`
+}
+
+// HealthWeights holds configurable penalty values for health score computation.
+type HealthWeights struct {
+	ScalingInactive     int `json:"scalingInactive,omitempty" yaml:"scalingInactive,omitempty"`
+	UnableToScale       int `json:"unableToScale,omitempty" yaml:"unableToScale,omitempty"`
+	ScalingLimited      int `json:"scalingLimited,omitempty" yaml:"scalingLimited,omitempty"`
+	ImplicitMaxReplicas int `json:"implicitMaxReplicas,omitempty" yaml:"implicitMaxReplicas,omitempty"`
+	ScaleDownStabilized int `json:"scaleDownStabilized,omitempty" yaml:"scaleDownStabilized,omitempty"`
+	AtMinimumReplicas   int `json:"atMinimumReplicas,omitempty" yaml:"atMinimumReplicas,omitempty"`
+	KEDAInactiveTrigger int `json:"kedaInactiveTrigger,omitempty" yaml:"kedaInactiveTrigger,omitempty"`
+	VPAConflict         int `json:"vpaConflict,omitempty" yaml:"vpaConflict,omitempty"`
+}
+
+// Analysis holds the complete analysis result for a single HPA.
+type Analysis struct {
+	// Namespace is the Kubernetes namespace of the HPA.
+	Namespace string `json:"namespace" yaml:"namespace"`
+	// Name is the HPA resource name.
+	Name string `json:"name" yaml:"name"`
+	// Target is the scaleTargetRef in "Kind/Name" format.
+	Target string `json:"target" yaml:"target"`
+	// Current is the current replica count from HPA status.
+	Current int32 `json:"currentReplicas" yaml:"currentReplicas"`
+	// Desired is the desired replica count from HPA status.
+	Desired int32 `json:"desiredReplicas" yaml:"desiredReplicas"`
+	// Min is the minimum replica count (defaults to 1 if spec.minReplicas is nil).
+	Min int32 `json:"minReplicas" yaml:"minReplicas"`
+	// Max is the maximum replica count from spec.maxReplicas.
+	Max int32 `json:"maxReplicas" yaml:"maxReplicas"`
+	// Health is the health state: "OK", "ERROR", "LIMITED", or "STABILIZED".
+	Health string `json:"health" yaml:"health"`
+	// HealthScore is the numeric health score from 0 (worst) to 100 (best).
+	HealthScore int `json:"healthScore" yaml:"healthScore"`
+	// Summary is a one-line direction summary of the HPA scaling state.
+	Summary string `json:"summary" yaml:"summary"`
+	// Conditions lists the HPA conditions sorted by priority.
+	Conditions []Condition `json:"conditions" yaml:"conditions"`
+	// Metrics lists formatted metric data for each current metric.
+	Metrics []Metric `json:"metrics" yaml:"metrics"`
+	// Behavior lists the scale-up and scale-down behavior rules, if configured.
+	Behavior []BehaviorRule `json:"behavior,omitempty" yaml:"behavior,omitempty"`
+	// Actions lists recommended action strings for the operator.
+	Actions []string `json:"recommendedActions,omitempty" yaml:"recommendedActions,omitempty"`
+	// Suggestions lists patch suggestions with safety metadata.
+	Suggestions []Suggestion `json:"suggestions,omitempty" yaml:"suggestions,omitempty"`
+	// Interpretation lists detailed interpretation lines with confidence labels.
+	Interpretation []string `json:"interpretation,omitempty" yaml:"interpretation,omitempty"`
+	// KEDAInfo holds KEDA-specific analysis, populated when --keda is enabled.
+	KEDAInfo *KEDAAnalysis `json:"keda,omitempty" yaml:"keda,omitempty"`
+	// VPAConflict holds VPA conflict detection results, populated when --vpa is enabled.
+	VPAConflict *VPAConflictInfo `json:"vpaConflict,omitempty" yaml:"vpaConflict,omitempty"`
+	// TargetReplicas holds replica status from the scale target resource.
+	TargetReplicas *TargetReplicaInfo `json:"targetReplicas,omitempty" yaml:"targetReplicas,omitempty"`
+	// Debug lists verbose debug lines, populated when the debug option is enabled.
+	Debug []string `json:"debug,omitempty" yaml:"debug,omitempty"`
+	// ImpactMetric estimates which metric has the largest scaling impact.
+	ImpactMetric *MetricImpactGuess `json:"impactMetric,omitempty" yaml:"impactMetric,omitempty"`
+	// CreationTimestamp is the HPA creation time.
+	CreationTimestamp metav1.Time `json:"creationTimestamp,omitempty" yaml:"creationTimestamp,omitempty"`
+	// StaleStatus indicates observedGeneration lag, if detected.
+	StaleStatus *StaleStatusInfo `json:"staleStatus,omitempty" yaml:"staleStatus,omitempty"`
+	// StabilizationRemaining estimates seconds remaining in the scale-down stabilization window.
+	StabilizationRemaining *int64 `json:"stabilizationRemaining,omitempty" yaml:"stabilizationRemaining,omitempty"`
+	// ScaleToZero holds scale-to-zero information, populated when minReplicas=0.
+	ScaleToZero *ScaleToZeroInfo `json:"scaleToZero,omitempty" yaml:"scaleToZero,omitempty"`
+	// StructuredInterpretation provides machine-readable interpretation entries.
+	StructuredInterpretation []StructuredMessage `json:"structuredInterpretation,omitempty" yaml:"structuredInterpretation,omitempty"`
+	// StructuredActions provides machine-readable action entries.
+	StructuredActions []StructuredMessage `json:"structuredActions,omitempty" yaml:"structuredActions,omitempty"`
+	// DecisionSignals holds future-proof scaling decision data for KEP-6111 compatibility.
+	// Currently unused; future HPA API versions may populate this field.
+	DecisionSignals []DecisionSignal `json:"decisionSignals,omitempty" yaml:"decisionSignals,omitempty"`
+	// StabilizationWindowSeconds is the configured scale-down stabilization window.
+	StabilizationWindowSeconds *int32 `json:"stabilizationWindowSeconds,omitempty" yaml:"stabilizationWindowSeconds,omitempty"`
+	// MetricsDiagnostics holds per-metric health check results for the metrics pipeline.
+	MetricsDiagnostics *MetricsPipelineDiagnostics `json:"metricsDiagnostics,omitempty" yaml:"metricsDiagnostics,omitempty"`
+	// ResourceCheck holds warnings about resource request/limit consistency with HPA targets.
+	ResourceCheck *ResourceCheckResult `json:"resourceCheck,omitempty" yaml:"resourceCheck,omitempty"`
+}
+
+// DecisionSignal is the stable internal shape for explicit controller scaling
+// decision data. Current Kubernetes HPA status does not expose these fields;
+// future structured status adapters should populate this slice and renderers
+// should prefer it over best-effort inference when present.
+//
+// Future extensibility: When KEP-6111 (HPA Decision Explainability) lands,
+// an adapter should convert the API's decision fields into DecisionSignal
+// entries. The Reason field maps to the API's decision reason, Message to
+// the human-readable explanation, and MetricName/Source identify the
+// contributing metric or external trigger.
+type DecisionSignal struct {
+	Reason     string `json:"reason" yaml:"reason"`
+	Message    string `json:"message,omitempty" yaml:"message,omitempty"`
+	MetricName string `json:"metricName,omitempty" yaml:"metricName,omitempty"`
+	Source     string `json:"source,omitempty" yaml:"source,omitempty"`
+	Confidence string `json:"confidence,omitempty" yaml:"confidence,omitempty"`
+}
+
+// StructuredMessage provides a machine-readable representation of an
+// interpretation or action line, with a reason, human message, and
+// suggested next step.
+type StructuredMessage struct {
+	Reason   string `json:"reason" yaml:"reason"`
+	Message  string `json:"message" yaml:"message"`
+	NextStep string `json:"nextStep,omitempty" yaml:"nextStep,omitempty"`
+	Severity string `json:"severity,omitempty" yaml:"severity,omitempty"` // "warning", "error", "info"
+}
+
+// Condition represents an HPA condition with type, status, reason, and message.
+type Condition struct {
+	Type    string `json:"type" yaml:"type"`
+	Status  string `json:"status" yaml:"status"`
+	Reason  string `json:"reason,omitempty" yaml:"reason,omitempty"`
+	Message string `json:"message,omitempty" yaml:"message,omitempty"`
+}
+
+// Metric holds formatted metric data including current, target, ratio, and display text.
+type Metric struct {
+	Type     string   `json:"type" yaml:"type"`
+	Name     string   `json:"name,omitempty" yaml:"name,omitempty"`
+	Selector string   `json:"selector,omitempty" yaml:"selector,omitempty"`
+	Object   string   `json:"object,omitempty" yaml:"object,omitempty"`
+	Current  string   `json:"current,omitempty" yaml:"current,omitempty"`
+	Target   string   `json:"target,omitempty" yaml:"target,omitempty"`
+	Ratio    *float64 `json:"ratio,omitempty" yaml:"ratio,omitempty"`
+	Note     string   `json:"note,omitempty" yaml:"note,omitempty"`
+	Text     string   `json:"text" yaml:"text"`
+}
+
+// MetricImpactGuess estimates which resource metric has the most impact on scaling.
+type MetricImpactGuess struct {
+	Name       string  `json:"name" yaml:"name"`
+	Ratio      float64 `json:"ratio" yaml:"ratio"`
+	Note       string  `json:"note" yaml:"note"`
+	Confidence string  `json:"confidence,omitempty" yaml:"confidence,omitempty"`
+}
+
+// StaleStatusInfo holds details about observedGeneration lag.
+type StaleStatusInfo struct {
+	ObservedGeneration int64 `json:"observedGeneration" yaml:"observedGeneration"`
+	CurrentGeneration  int64 `json:"currentGeneration" yaml:"currentGeneration"`
+	Diff               int64 `json:"diff" yaml:"diff"`
+}
+
+// ScaleToZeroInfo holds scale-to-zero related information.
+type ScaleToZeroInfo struct {
+	Enabled   bool   `json:"enabled" yaml:"enabled"`
+	ColdStart bool   `json:"coldStart,omitempty" yaml:"coldStart,omitempty"`
+	Note      string `json:"note,omitempty" yaml:"note,omitempty"`
+}
+
+// BehaviorRule describes a scale-up or scale-down behavior policy.
+type BehaviorRule struct {
+	Direction                  string   `json:"direction" yaml:"direction"`
+	StabilizationWindowSeconds *int32   `json:"stabilizationWindowSeconds,omitempty" yaml:"stabilizationWindowSeconds,omitempty"`
+	SelectPolicy               string   `json:"selectPolicy,omitempty" yaml:"selectPolicy,omitempty"`
+	Policies                   []string `json:"policies,omitempty" yaml:"policies,omitempty"`
+	Text                       string   `json:"text" yaml:"text"`
+}
+
+// Suggestion holds a recommended HPA patch with safety metadata.
+type Suggestion struct {
+	Title         string   `json:"title" yaml:"title"`
+	Description   string   `json:"description" yaml:"description"`
+	Command       string   `json:"command,omitempty" yaml:"command,omitempty"`
+	Patch         string   `json:"patch,omitempty" yaml:"patch,omitempty"`
+	Risk          string   `json:"risk,omitempty" yaml:"risk,omitempty"`
+	Preconditions []string `json:"preconditions,omitempty" yaml:"preconditions,omitempty"`
+	Warnings      []string `json:"warnings,omitempty" yaml:"warnings,omitempty"`
+	Apply         bool     `json:"apply,omitempty" yaml:"apply,omitempty"`
+}
+
+// KEDAAnalysis holds KEDA-specific information attached to an HPA Analysis.
+// Populated only when --keda is enabled and the HPA is KEDA-managed.
+type KEDAAnalysis struct {
+	ScaledObjectName string               `json:"scaledObjectName" yaml:"scaledObjectName"`
+	Triggers         []KEDATriggerSummary `json:"triggers,omitempty" yaml:"triggers,omitempty"`
+	PollingInterval  *int32               `json:"pollingInterval,omitempty" yaml:"pollingInterval,omitempty"`
+	CooldownPeriod   *int32               `json:"cooldownPeriod,omitempty" yaml:"cooldownPeriod,omitempty"`
+	MinReplicaCount  *int32               `json:"minReplicaCount,omitempty" yaml:"minReplicaCount,omitempty"`
+	MaxReplicaCount  *int32               `json:"maxReplicaCount,omitempty" yaml:"maxReplicaCount,omitempty"`
+	Lines            []string             `json:"lines,omitempty" yaml:"lines,omitempty"`
+	Fallback         *KEDAFallbackInfo    `json:"fallback,omitempty" yaml:"fallback,omitempty"`
+}
+
+// KEDATriggerSummary is a display-oriented summary of a KEDA trigger.
+type KEDATriggerSummary struct {
+	Type         string `json:"type" yaml:"type"`
+	Name         string `json:"name,omitempty" yaml:"name,omitempty"`
+	Status       string `json:"status,omitempty" yaml:"status,omitempty"`
+	Message      string `json:"message,omitempty" yaml:"message,omitempty"`
+	MetricName   string `json:"metricName,omitempty" yaml:"metricName,omitempty"`
+	Threshold    string `json:"threshold,omitempty" yaml:"threshold,omitempty"`
+	CurrentValue string `json:"currentValue,omitempty" yaml:"currentValue,omitempty"`
+	AuthRef      string `json:"authRef,omitempty" yaml:"authRef,omitempty"`
+}
+
+// KEDAFallbackInfo holds fallback information for display.
+type KEDAFallbackInfo struct {
+	FailureThreshold int32 `json:"failureThreshold" yaml:"failureThreshold"`
+	Replicas         int32 `json:"replicas" yaml:"replicas"`
+}
+
+// TargetReplicaInfo holds replica status from the scale target resource.
+// When not-ready pods exist, HPA scaling calculations may be affected.
+type TargetReplicaInfo struct {
+	TotalReplicas int32 `json:"totalReplicas" yaml:"totalReplicas"`
+	ReadyReplicas int32 `json:"readyReplicas" yaml:"readyReplicas"`
+	NotReady      int32 `json:"notReady" yaml:"notReady"`
+	Pending       int32 `json:"pending,omitempty" yaml:"pending,omitempty"`
+	Unschedulable int32 `json:"unschedulable,omitempty" yaml:"unschedulable,omitempty"`
+}
+
+// MetricsPipelineDiagnostics holds the results of metrics pipeline health checks.
+type MetricsPipelineDiagnostics struct {
+	OverallStatus    string                 `json:"overallStatus" yaml:"overallStatus"`
+	PerMetricChecks  []PerMetricHealthCheck `json:"perMetricChecks,omitempty" yaml:"perMetricChecks,omitempty"`
+	RemediationSteps []string               `json:"remediationSteps,omitempty" yaml:"remediationSteps,omitempty"`
+}
+
+// PerMetricHealthCheck describes the health of a single metric source.
+type PerMetricHealthCheck struct {
+	MetricType  string `json:"metricType" yaml:"metricType"`
+	MetricName  string `json:"metricName" yaml:"metricName"`
+	Status      string `json:"status" yaml:"status"` // "healthy", "missing", "stale"
+	Details     string `json:"details,omitempty" yaml:"details,omitempty"`
+	Remediation string `json:"remediation,omitempty" yaml:"remediation,omitempty"`
+}
+
+// ResourceCheckResult holds warnings about resource request/limit consistency with HPA targets.
+type ResourceCheckResult struct {
+	Warnings []ResourceWarning `json:"warnings,omitempty" yaml:"warnings,omitempty"`
+}
+
+// ResourceWarning describes a single resource consistency issue.
+type ResourceWarning struct {
+	Container string `json:"container" yaml:"container"`
+	Resource  string `json:"resource" yaml:"resource"`
+	Category  string `json:"category" yaml:"category"` // "missing-requests", "zero-requests", "target-vs-request-mismatch"
+	Details   string `json:"details" yaml:"details"`
+	Severity  string `json:"severity" yaml:"severity"` // "warning", "error"
+}
