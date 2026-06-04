@@ -15,25 +15,25 @@ import (
 
 // configFile mirrors the YAML structure accepted by --config.
 type configFile struct {
-	Namespace     string                          `json:"namespace" yaml:"namespace"`
-	AllNamespaces *bool                           `json:"allNamespaces" yaml:"allNamespaces"`
-	Output        string                          `json:"output" yaml:"output"`
-	Wide          *bool                           `json:"wide" yaml:"wide"`
-	Selector      string                          `json:"selector" yaml:"selector"`
-	SortBy        string                          `json:"sortBy" yaml:"sortBy"`
-	Filter        string                          `json:"filter" yaml:"filter"`
-	MinScore      *int                            `json:"minScore" yaml:"minScore"`
-	MaxScore      *int                            `json:"maxScore" yaml:"maxScore"`
-	HealthScore   *int                            `json:"healthScore" yaml:"healthScore"`
-	Color         string                          `json:"color" yaml:"color"`
-	Events        *int                            `json:"events" yaml:"events"`
-	EventsEnabled *bool                           `json:"eventsEnabled" yaml:"eventsEnabled"`
-	Lang          string                          `json:"lang" yaml:"lang"`
-	Debug         *bool                           `json:"debug" yaml:"debug"`
-	Dashboard     *bool                           `json:"dashboard" yaml:"dashboard"`
-	ChunkSize     *int64                          `json:"chunkSize" yaml:"chunkSize"`
-	Templates     map[string]outputTemplateConfig `json:"templates" yaml:"templates"`
-	HealthWeights hpaanalysis.HealthWeights       `json:"healthWeights" yaml:"healthWeights"`
+	Namespace       string                          `json:"namespace" yaml:"namespace"`
+	AllNamespaces   *bool                           `json:"allNamespaces" yaml:"allNamespaces"`
+	Output          string                          `json:"output" yaml:"output"`
+	Wide            *bool                           `json:"wide" yaml:"wide"`
+	Selector        string                          `json:"selector" yaml:"selector"`
+	SortBy          string                          `json:"sortBy" yaml:"sortBy"`
+	Filter          string                          `json:"filter" yaml:"filter"`
+	MinScore        *int                            `json:"minScore" yaml:"minScore"`
+	MaxScore        *int                            `json:"maxScore" yaml:"maxScore"`
+	HealthScore     *int                            `json:"healthScore" yaml:"healthScore"`
+	Color           string                          `json:"color" yaml:"color"`
+	Events          *int                            `json:"events" yaml:"events"`
+	EventsEnabled   *bool                           `json:"eventsEnabled" yaml:"eventsEnabled"`
+	Lang            string                          `json:"lang" yaml:"lang"`
+	Debug           *bool                           `json:"debug" yaml:"debug"`
+	Dashboard       *bool                           `json:"dashboard" yaml:"dashboard"`
+	ChunkSize       *int64                          `json:"chunkSize" yaml:"chunkSize"`
+	Templates       map[string]outputTemplateConfig `json:"templates" yaml:"templates"`
+	HealthWeights   hpaanalysis.HealthWeights       `json:"healthWeights" yaml:"healthWeights"`
 	Keda            *bool                           `json:"keda" yaml:"keda"`
 	Vpa             *bool                           `json:"vpa" yaml:"vpa"`
 	ExplainPods     *bool                           `json:"explainPods" yaml:"explainPods"`

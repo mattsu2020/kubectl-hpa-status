@@ -131,9 +131,9 @@ func runList(ctx context.Context, out io.Writer, opts *options) error {
 	format, templateStr := outputSelection(opts)
 	return writeOutput(out, format, templateStr, report, func() error {
 		return hpaanalysis.WriteListText(out, report, hpaanalysis.ListTextOptions{
-			Wide:  wide,
-			Color: shouldColorize(opts.color, out),
-			Theme: style.NewTheme(shouldColorize(opts.color, out)),
+			Wide:   wide,
+			Color:  shouldColorize(opts.color, out),
+			Theme:  style.NewTheme(shouldColorize(opts.color, out)),
 			Lang:   outputLang(opts),
 			Labels: labelProviderForOpts(opts),
 		})

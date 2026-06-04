@@ -1177,12 +1177,14 @@ func createScaleToZeroHPA(t *testing.T, client *kubernetes.Clientset, nsName, hp
 			MaxReplicas: 10,
 			Metrics: []autoscalingv2.MetricSpec{
 				{
-					Type: autoscalingv2.ResourceMetricSourceType,
-					Resource: &autoscalingv2.ResourceMetricSource{
-						Name: corev1.ResourceCPU,
+					Type: autoscalingv2.ExternalMetricSourceType,
+					External: &autoscalingv2.ExternalMetricSource{
+						Metric: autoscalingv2.MetricIdentifier{
+							Name: "queue-depth",
+						},
 						Target: autoscalingv2.MetricTarget{
-							Type:               autoscalingv2.UtilizationMetricType,
-							AverageUtilization: int32Ptr(80),
+							Type:  autoscalingv2.AverageValueMetricType,
+							Value: resource.NewQuantity(10, resource.DecimalSI),
 						},
 					},
 				},

@@ -697,15 +697,16 @@ func NewListItem(src Analysis) ListItem {
 	}
 
 	for _, condition := range src.Conditions {
-		if condition.Type == "ScalingActive" && condition.Status != "True" {
+		switch {
+		case condition.Type == "ScalingActive" && condition.Status != "True":
 			errors = append(errors, "ERROR: "+condition.Reason)
-		} else if condition.Type == "AbleToScale" && condition.Status != "True" {
+		case condition.Type == "AbleToScale" && condition.Status != "True":
 			errors = append(errors, "ERROR: "+condition.Reason)
-		} else if condition.Type == "ScalingLimited" && condition.Status == "True" {
+		case condition.Type == "ScalingLimited" && condition.Status == "True":
 			limiteds = append(limiteds, "LIMITED: "+condition.Reason)
 		}
 	}
-	if src.Current == src.Desired && src.Current == src.Max {
+	if src.Current == src.Desired && src.Desired == src.Max {
 		limiteds = append(limiteds, "LIMITED: maxReplicas")
 	}
 
@@ -883,11 +884,12 @@ func compactBehavior(behavior []BehaviorRule) string {
 			direction = rule.Direction
 		}
 		var value string
-		if rule.StabilizationWindowSeconds != nil {
+		switch {
+		case rule.StabilizationWindowSeconds != nil:
 			value = fmt.Sprintf("%s:%ds", direction, *rule.StabilizationWindowSeconds)
-		} else if len(rule.Policies) > 0 {
+		case len(rule.Policies) > 0:
 			value = fmt.Sprintf("%s:%s", direction, strings.Join(rule.Policies, ","))
-		} else {
+		default:
 			value = direction + ":custom"
 		}
 		parts = append(parts, value)

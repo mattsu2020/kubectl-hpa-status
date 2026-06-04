@@ -8,8 +8,8 @@ import (
 	"strings"
 	"text/template"
 
-	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/i18n"
+	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"golang.org/x/term"
 	"k8s.io/client-go/util/jsonpath"
 	"sigs.k8s.io/yaml"
