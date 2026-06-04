@@ -1025,12 +1025,14 @@ func TestRunReplay_FromFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp file: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	if _, err := tmpFile.Write(data); err != nil {
 		t.Fatalf("failed to write trace: %v", err)
 	}
-	tmpFile.Close()
+	if err := tmpFile.Close(); err != nil {
+		t.Fatalf("failed to close temp file: %v", err)
+	}
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -1077,12 +1079,14 @@ func TestRunReplay_Markdown(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp file: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	if _, err := tmpFile.Write(data); err != nil {
 		t.Fatalf("failed to write trace: %v", err)
 	}
-	tmpFile.Close()
+	if err := tmpFile.Close(); err != nil {
+		t.Fatalf("failed to close temp file: %v", err)
+	}
 
 	var buf bytes.Buffer
 	opts := &options{
