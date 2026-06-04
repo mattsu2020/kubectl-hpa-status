@@ -383,7 +383,7 @@ func SuggestionDiff(currentMin *int32, currentDesired int32, currentMax int32, p
 	var lines []string
 	lines = append(lines, fmt.Sprintf("  status.desiredReplicas: %d (current status, unchanged by patch)", currentDesired))
 	if parsed.Spec.MinReplicas != nil {
-		current := int32(1)
+		current := DefaultMinReplicas
 		if currentMin != nil {
 			current = *currentMin
 		}

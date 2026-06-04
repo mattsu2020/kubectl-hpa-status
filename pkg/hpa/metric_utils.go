@@ -14,6 +14,9 @@ import (
 
 // SummarizeDirection returns a one-line summary of the HPA scaling direction.
 func SummarizeDirection(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) string {
+	if hpa == nil {
+		return "HPA data is unavailable."
+	}
 	if condition := FindCondition(hpa, "ScalingActive"); condition != nil && condition.Status != corev1.ConditionTrue {
 		return "HPA cannot currently compute a scaling recommendation from metrics."
 	}
@@ -47,7 +50,11 @@ func SummarizeDirection(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas 
 }
 
 // FindCondition returns the HPA condition matching the given type, or nil.
+// Returns nil safely when hpa is nil.
 func FindCondition(hpa *autoscalingv2.HorizontalPodAutoscaler, conditionType string) *autoscalingv2.HorizontalPodAutoscalerCondition {
+	if hpa == nil {
+		return nil
+	}
 	for i := range hpa.Status.Conditions {
 		if string(hpa.Status.Conditions[i].Type) == conditionType {
 			return &hpa.Status.Conditions[i]
@@ -96,6 +103,9 @@ func CompareMetricToTarget(utilization *int32, target string) string {
 
 // MetricOutsideTarget finds a resource metric whose ratio differs from 1.0.
 func MetricOutsideTarget(hpa *autoscalingv2.HorizontalPodAutoscaler) (MetricImpactGuess, bool) {
+	if hpa == nil {
+		return MetricImpactGuess{}, false
+	}
 	for _, metric := range hpa.Status.CurrentMetrics {
 		if metric.Type != autoscalingv2.ResourceMetricSourceType || metric.Resource == nil {
 			continue
@@ -112,6 +122,9 @@ func MetricOutsideTarget(hpa *autoscalingv2.HorizontalPodAutoscaler) (MetricImpa
 // MostInfluentialMetric estimates which metric has the largest scaling impact
 // across all metric types: Resource, ContainerResource, External, Pods, and Object.
 func MostInfluentialMetric(hpa *autoscalingv2.HorizontalPodAutoscaler) (MetricImpactGuess, bool) {
+	if hpa == nil {
+		return MetricImpactGuess{}, false
+	}
 	var best MetricImpactGuess
 	var bestScore float64
 

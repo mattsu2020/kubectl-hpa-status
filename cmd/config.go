@@ -101,84 +101,6 @@ func loadConfigFile(path string) (configFile, error) {
 	return cfg, nil
 }
 
-// applyConfig applies config file values only when the corresponding CLI flag
-// was not explicitly set by the user.
-func applyConfig(cmd *cobra.Command, opts *options, cfg configFile) {
-	if cfg.Namespace != "" && !persistentFlagChanged(cmd, "namespace") {
-		opts.namespace = cfg.Namespace
-	}
-	if cfg.AllNamespaces != nil && !persistentFlagChanged(cmd, "all-namespaces") {
-		opts.allNamespaces = *cfg.AllNamespaces
-	}
-	if cfg.Output != "" && !persistentFlagChanged(cmd, "output") {
-		opts.output = cfg.Output
-	}
-	if cfg.Wide != nil && !persistentFlagChanged(cmd, "wide") {
-		opts.wide = *cfg.Wide
-	}
-	if cfg.Selector != "" && !persistentFlagChanged(cmd, "selector") {
-		opts.selector = cfg.Selector
-	}
-	if cfg.Color != "" && !persistentFlagChanged(cmd, "color") {
-		opts.color = cfg.Color
-	}
-	if cfg.Lang != "" && !persistentFlagChanged(cmd, "lang") {
-		opts.lang = cfg.Lang
-	}
-	if cfg.Debug != nil && !persistentFlagChanged(cmd, "debug") {
-		opts.debug = *cfg.Debug
-	}
-	if cfg.Dashboard != nil && !persistentFlagChanged(cmd, "dashboard") {
-		opts.dashboard = *cfg.Dashboard
-	}
-	if cfg.ChunkSize != nil && !persistentFlagChanged(cmd, "chunk-size") {
-		opts.chunkSize = *cfg.ChunkSize
-	}
-	if len(cfg.Templates) > 0 {
-		opts.outputTemplates = cfg.Templates
-	}
-	if cfg.Events != nil && !persistentFlagChanged(cmd, "events") {
-		opts.events.enabled = true
-		opts.events.limit = *cfg.Events
-	}
-	if cfg.EventsEnabled != nil && !persistentFlagChanged(cmd, "events") {
-		opts.events.enabled = *cfg.EventsEnabled
-	}
-	if cfg.SortBy != "" && !localFlagChanged(cmd, "sort-by") {
-		opts.sortBy = cfg.SortBy
-	}
-	if cfg.Filter != "" && !localFlagChanged(cmd, "filter") {
-		opts.filter = cfg.Filter
-	}
-	if cfg.MinScore != nil && !localFlagChanged(cmd, "min-score") {
-		opts.healthScoreMin = *cfg.MinScore
-	}
-	if cfg.MaxScore != nil && !localFlagChanged(cmd, "max-score") && !localFlagChanged(cmd, "health-score") {
-		opts.healthScoreMax = *cfg.MaxScore
-	}
-	if cfg.HealthScore != nil && !localFlagChanged(cmd, "health-score") && !localFlagChanged(cmd, "max-score") {
-		opts.healthScoreMax = *cfg.HealthScore
-	}
-	if cfg.HealthWeights != (hpaanalysis.HealthWeights{}) {
-		opts.healthWeights = cfg.HealthWeights
-	}
-	if cfg.Keda != nil && !persistentFlagChanged(cmd, "keda") {
-		opts.keda = *cfg.Keda
-	}
-	if cfg.Vpa != nil && !persistentFlagChanged(cmd, "vpa") {
-		opts.vpa = *cfg.Vpa
-	}
-	if cfg.ExplainPods != nil && !persistentFlagChanged(cmd, "explain-pods") {
-		opts.explainPods = *cfg.ExplainPods
-	}
-	if len(cfg.Simulate) > 0 && !persistentFlagChanged(cmd, "simulate") {
-		opts.simulate = cfg.Simulate
-	}
-	if cfg.CapacityContext != nil && !persistentFlagChanged(cmd, "capacity-context") {
-		opts.capacityContext = *cfg.CapacityContext
-	}
-}
-
 // applyConfigDefaults resolves the config file path, loads the config, and
 // applies its values as defaults for any flags the user did not set explicitly.
 func applyConfigDefaults(cmd *cobra.Command, opts *options) error {
@@ -216,21 +138,21 @@ func applyHealthWeightOverrides(opts *options) error {
 		}
 		switch normalizeSelector(key) {
 		case "scalinginactive":
-			opts.healthWeights.ScalingInactive = parsed
+			opts.healthWeights.ScalingInactive = hpaanalysis.IntWeight(parsed)
 		case "unabletoscale":
-			opts.healthWeights.UnableToScale = parsed
+			opts.healthWeights.UnableToScale = hpaanalysis.IntWeight(parsed)
 		case "scalinglimited":
-			opts.healthWeights.ScalingLimited = parsed
+			opts.healthWeights.ScalingLimited = hpaanalysis.IntWeight(parsed)
 		case "implicitmaxreplicas":
-			opts.healthWeights.ImplicitMaxReplicas = parsed
+			opts.healthWeights.ImplicitMaxReplicas = hpaanalysis.IntWeight(parsed)
 		case "scaledownstabilized":
-			opts.healthWeights.ScaleDownStabilized = parsed
+			opts.healthWeights.ScaleDownStabilized = hpaanalysis.IntWeight(parsed)
 		case "atminimumreplicas":
-			opts.healthWeights.AtMinimumReplicas = parsed
+			opts.healthWeights.AtMinimumReplicas = hpaanalysis.IntWeight(parsed)
 		case "kedainactivetrigger":
-			opts.healthWeights.KEDAInactiveTrigger = parsed
+			opts.healthWeights.KEDAInactiveTrigger = hpaanalysis.IntWeight(parsed)
 		case "vpaconflict":
-			opts.healthWeights.VPAConflict = parsed
+			opts.healthWeights.VPAConflict = hpaanalysis.IntWeight(parsed)
 		default:
 			return fmt.Errorf("unknown health weight %q", key)
 		}

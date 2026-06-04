@@ -39,50 +39,42 @@ func HealthWithWeights(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas i
 	if hpa == nil {
 		return "ERROR", 0
 	}
-	weights = defaultHealthWeights(weights)
+	w := resolveWeights(weights)
 
 	score := healthScoreMax
 	health := "OK"
 	for _, condition := range hpa.Status.Conditions {
 		switch {
 		case condition.Type == "ScalingActive" && condition.Status != corev1.ConditionTrue:
-			score -= weights.ScalingInactive
+			score -= w.scalingInactive
 			health = "ERROR"
 		case condition.Type == "AbleToScale" && condition.Status != corev1.ConditionTrue:
-			score -= weights.UnableToScale
+			score -= w.unableToScale
 			health = "ERROR"
 		case condition.Type == "ScalingLimited" && condition.Status == corev1.ConditionTrue:
-			score -= weights.ScalingLimited
+			score -= w.scalingLimited
 			if health != "ERROR" {
 				health = "LIMITED"
 			}
 		case condition.Type == "AbleToScale" && condition.Reason == "ScaleDownStabilized":
-			score -= weights.ScaleDownStabilized
+			score -= w.scaleDownStabilized
 			if health == "OK" {
 				health = "STABILIZED"
 			}
 		}
 	}
 	if hpa.Status.CurrentReplicas == hpa.Status.DesiredReplicas && hpa.Status.DesiredReplicas == hpa.Spec.MaxReplicas {
-		// Only apply implicit max penalty when there is visible scaling
-		// pressure or a ScalingLimited condition. When the workload is
-		// running at maxReplicas without pressure, the ceiling may be
-		// intentional.
 		hasLimited := hasCondition(hpa.Status.Conditions, "ScalingLimited", corev1.ConditionTrue)
 		hasPressure := hasMetricAboveTarget(hpa.Status.CurrentMetrics, hpa)
 		if hasLimited || hasPressure {
-			score -= weights.ImplicitMaxReplicas
+			score -= w.implicitMaxReplicas
 			if health == "OK" {
 				health = "LIMITED"
 			}
 		}
 	}
-	// Only apply the AtMinimumReplicas penalty when the HPA is also
-	// reporting ScalingLimited=True. Running at minReplicas during
-	// low-traffic periods is normal and should not reduce the health
-	// score by itself.
 	if hpa.Status.DesiredReplicas == minReplicas && hasCondition(hpa.Status.Conditions, "ScalingLimited", corev1.ConditionTrue) {
-		score -= weights.AtMinimumReplicas
+		score -= w.atMinimumReplicas
 	}
 	if score < 0 {
 		score = 0
@@ -90,47 +82,52 @@ func HealthWithWeights(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas i
 	return health, score
 }
 
-func defaultHealthWeights(weights HealthWeights) HealthWeights {
-	if weights.ScalingInactive == 0 {
-		weights.ScalingInactive = healthPenaltyScalingInactive
+// resolvedWeights is the internal resolved form of HealthWeights where all
+// nil pointers have been replaced with default penalty values.
+type resolvedWeights struct {
+	scalingInactive     int
+	unableToScale       int
+	scalingLimited      int
+	implicitMaxReplicas int
+	scaleDownStabilized int
+	atMinimumReplicas   int
+	kedaInactiveTrigger int
+	vpaConflict         int
+}
+
+func resolveWeights(w HealthWeights) resolvedWeights {
+	return resolvedWeights{
+		scalingInactive:     weightOr(w.ScalingInactive, healthPenaltyScalingInactive),
+		unableToScale:       weightOr(w.UnableToScale, healthPenaltyUnableToScale),
+		scalingLimited:      weightOr(w.ScalingLimited, healthPenaltyScalingLimited),
+		implicitMaxReplicas: weightOr(w.ImplicitMaxReplicas, healthPenaltyImplicitMaxReplicas),
+		scaleDownStabilized: weightOr(w.ScaleDownStabilized, healthPenaltyScaleDownStabilized),
+		atMinimumReplicas:   weightOr(w.AtMinimumReplicas, healthPenaltyAtMinimumReplicas),
+		kedaInactiveTrigger: weightOr(w.KEDAInactiveTrigger, healthPenaltyKEDAInactiveTrigger),
+		vpaConflict:         weightOr(w.VPAConflict, healthPenaltyVPAConflict),
 	}
-	if weights.UnableToScale == 0 {
-		weights.UnableToScale = healthPenaltyUnableToScale
+}
+
+// weightOr returns the pointed-to value, or the default if nil.
+func weightOr(w *int, defaultVal int) int {
+	if w != nil {
+		return *w
 	}
-	if weights.ScalingLimited == 0 {
-		weights.ScalingLimited = healthPenaltyScalingLimited
-	}
-	if weights.ImplicitMaxReplicas == 0 {
-		weights.ImplicitMaxReplicas = healthPenaltyImplicitMaxReplicas
-	}
-	if weights.ScaleDownStabilized == 0 {
-		weights.ScaleDownStabilized = healthPenaltyScaleDownStabilized
-	}
-	if weights.AtMinimumReplicas == 0 {
-		weights.AtMinimumReplicas = healthPenaltyAtMinimumReplicas
-	}
-	if weights.KEDAInactiveTrigger == 0 {
-		weights.KEDAInactiveTrigger = healthPenaltyKEDAInactiveTrigger
-	}
-	if weights.VPAConflict == 0 {
-		weights.VPAConflict = healthPenaltyVPAConflict
-	}
-	return weights
+	return defaultVal
 }
 
 // ApplyEnrichmentPenalties adjusts the health score and state based on
 // KEDA and VPA enrichment data populated after AnalyzeWithOptions.
-// This is a post-hoc adjustment that keeps AnalyzeWithOptions clean.
 func ApplyEnrichmentPenalties(a *Analysis, weights HealthWeights) {
 	if a == nil {
 		return
 	}
-	weights = defaultHealthWeights(weights)
+	w := resolveWeights(weights)
 
 	if a.KEDAInfo != nil {
 		for _, t := range a.KEDAInfo.Triggers {
 			if strings.EqualFold(t.Status, "Inactive") || strings.EqualFold(t.Status, "False") {
-				a.HealthScore -= weights.KEDAInactiveTrigger
+				a.HealthScore -= w.kedaInactiveTrigger
 				if a.Health != "ERROR" {
 					a.Health = "LIMITED"
 				}
@@ -140,7 +137,7 @@ func ApplyEnrichmentPenalties(a *Analysis, weights HealthWeights) {
 	}
 
 	if a.VPAConflict != nil {
-		a.HealthScore -= weights.VPAConflict
+		a.HealthScore -= w.vpaConflict
 		if a.Health == "OK" || a.Health == "STABILIZED" {
 			a.Health = "LIMITED"
 		}

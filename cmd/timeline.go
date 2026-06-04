@@ -94,7 +94,7 @@ func runTimeline(ctx context.Context, out io.Writer, opts *options, name string,
 	var snapshots []hpaanalysis.TimelineSnapshot
 
 	for {
-		report, err := buildStatusReport(ctx, opts, name, true, ec)
+		report, err := buildStatusReportWithClient(ctx, opts, name, true, ec)
 		if err != nil {
 			return err
 		}
@@ -140,7 +140,7 @@ func runRecord(ctx context.Context, out io.Writer, opts *options, name string, i
 	start := time.Now()
 
 	for {
-		report, err := buildStatusReport(ctx, opts, name, true, ec)
+		report, err := buildStatusReportWithClient(ctx, opts, name, true, ec)
 		if err != nil {
 			return err
 		}

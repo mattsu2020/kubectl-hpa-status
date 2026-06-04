@@ -253,30 +253,28 @@ func collectInterpretationCases(hpa *autoscalingv2.HorizontalPodAutoscaler, minR
 	return cases
 }
 
-// Interpret generates detailed interpretation lines with confidence labels.
-func Interpret(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []string {
-	cases := collectInterpretationCases(hpa, minReplicas)
-	lines := make([]string, 0, len(cases))
-	for _, c := range cases {
-		lines = append(lines, c.message)
-	}
 
-	// Append diagnostic lines (not part of the shared case model)
-	lines = append(lines, ExternalMetricDiagnostics(hpa)...)
-	lines = append(lines, ObjectMetricDiagnostics(hpa)...)
-	lines = append(lines, KEDADiagnostics(hpa)...)
-	lines = append(lines, limitation)
-
-	return lines
+// DiagnosticEntry is a single collected diagnostic event. Both text and
+// structured output are derived from this unified representation.
+type DiagnosticEntry struct {
+	Reason   string
+	Message  string
+	NextStep string
+	Severity string
 }
 
-// buildStructuredInterpretation mirrors the key cases from Interpret() and
-// returns machine-readable StructuredMessage entries.
-func buildStructuredInterpretation(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []StructuredMessage {
-	cases := collectInterpretationCases(hpa, minReplicas)
-	msgs := make([]StructuredMessage, 0, len(cases))
-	for _, c := range cases {
-		msgs = append(msgs, StructuredMessage{
+// CollectDiagnostics gathers all diagnostic entries for an HPA in a single
+// pass. Core interpretation cases, external/object metric diagnostics, KEDA
+// diagnostics, and the limitation disclaimer are collected once and returned
+// as a flat slice. Both Interpret() and buildStructuredInterpretation()
+// consume this slice to produce their respective output formats, eliminating
+// the risk of divergence between text and JSON/YAML output.
+func CollectDiagnostics(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []DiagnosticEntry {
+	var entries []DiagnosticEntry
+
+	// Phase 1: Core interpretation cases from condition analysis.
+	for _, c := range collectInterpretationCases(hpa, minReplicas) {
+		entries = append(entries, DiagnosticEntry{
 			Reason:   c.reason,
 			Message:  c.message,
 			NextStep: c.nextStep,
@@ -284,47 +282,75 @@ func buildStructuredInterpretation(hpa *autoscalingv2.HorizontalPodAutoscaler, m
 		})
 	}
 
-	// Append diagnostic lines as structured messages for JSON/YAML parity.
+	// Phase 2: Metric-specific diagnostics.
 	for _, line := range ExternalMetricDiagnostics(hpa) {
-		msgs = append(msgs, StructuredMessage{
+		entries = append(entries, DiagnosticEntry{
 			Reason:   "ExternalMetricDiagnostic",
 			Message:  line,
 			Severity: severityFromConfidence(line),
 		})
 	}
 	for _, line := range ObjectMetricDiagnostics(hpa) {
-		msgs = append(msgs, StructuredMessage{
+		entries = append(entries, DiagnosticEntry{
 			Reason:   "ObjectMetricDiagnostic",
 			Message:  line,
 			Severity: severityFromConfidence(line),
 		})
 	}
+
+	// Phase 3: KEDA diagnostics.
 	for _, line := range KEDADiagnostics(hpa) {
-		msgs = append(msgs, StructuredMessage{
+		entries = append(entries, DiagnosticEntry{
 			Reason:   "KEDADiagnostic",
 			Message:  line,
 			Severity: severityFromConfidence(line),
 		})
 	}
-	msgs = append(msgs, StructuredMessage{
+
+	// Phase 4: Limitation disclaimer.
+	entries = append(entries, DiagnosticEntry{
 		Reason:   "Limitation",
 		Message:  limitation,
 		Severity: "info",
 	})
 
+	return entries
+}
+
+// Interpret generates detailed interpretation lines with confidence labels.
+func Interpret(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []string {
+	entries := CollectDiagnostics(hpa, minReplicas)
+	lines := make([]string, 0, len(entries))
+	for _, e := range entries {
+		lines = append(lines, e.Message)
+	}
+	return lines
+}
+
+// buildStructuredInterpretation converts collected diagnostics into
+// machine-readable StructuredMessage entries for JSON/YAML output.
+func buildStructuredInterpretation(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []StructuredMessage {
+	entries := CollectDiagnostics(hpa, minReplicas)
+	msgs := make([]StructuredMessage, 0, len(entries))
+	for _, e := range entries {
+		msgs = append(msgs, StructuredMessage{
+			Reason:   e.Reason,
+			Message:  e.Message,
+			NextStep: e.NextStep,
+			Severity: e.Severity,
+		})
+	}
 	return msgs
 }
 
 // severityFromConfidence extracts severity from a confidence label embedded in
-// a diagnostic message string. This avoids duplicating the confidence→severity
-// mapping between text and structured output.
+// a diagnostic message string.
 func severityFromConfidence(message string) string {
 	if strings.Contains(message, "[confidence: high]") {
 		return "warning"
 	}
 	return "info"
 }
-
 // ExternalMetricDiagnostics generates diagnostic lines for external metric issues.
 func ExternalMetricDiagnostics(hpa *autoscalingv2.HorizontalPodAutoscaler) []string {
 	var lines []string

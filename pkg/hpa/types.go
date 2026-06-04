@@ -67,16 +67,22 @@ type AnalysisOptions struct {
 }
 
 // HealthWeights holds configurable penalty values for health score computation.
+// nil means "use the default penalty"; a pointer to 0 means "explicitly disable
+// this penalty". Use the IntWeight helper to construct non-nil values.
 type HealthWeights struct {
-	ScalingInactive     int `json:"scalingInactive,omitempty" yaml:"scalingInactive,omitempty"`
-	UnableToScale       int `json:"unableToScale,omitempty" yaml:"unableToScale,omitempty"`
-	ScalingLimited      int `json:"scalingLimited,omitempty" yaml:"scalingLimited,omitempty"`
-	ImplicitMaxReplicas int `json:"implicitMaxReplicas,omitempty" yaml:"implicitMaxReplicas,omitempty"`
-	ScaleDownStabilized int `json:"scaleDownStabilized,omitempty" yaml:"scaleDownStabilized,omitempty"`
-	AtMinimumReplicas   int `json:"atMinimumReplicas,omitempty" yaml:"atMinimumReplicas,omitempty"`
-	KEDAInactiveTrigger int `json:"kedaInactiveTrigger,omitempty" yaml:"kedaInactiveTrigger,omitempty"`
-	VPAConflict         int `json:"vpaConflict,omitempty" yaml:"vpaConflict,omitempty"`
+	ScalingInactive     *int `json:"scalingInactive,omitempty" yaml:"scalingInactive,omitempty"`
+	UnableToScale       *int `json:"unableToScale,omitempty" yaml:"unableToScale,omitempty"`
+	ScalingLimited      *int `json:"scalingLimited,omitempty" yaml:"scalingLimited,omitempty"`
+	ImplicitMaxReplicas *int `json:"implicitMaxReplicas,omitempty" yaml:"implicitMaxReplicas,omitempty"`
+	ScaleDownStabilized *int `json:"scaleDownStabilized,omitempty" yaml:"scaleDownStabilized,omitempty"`
+	AtMinimumReplicas   *int `json:"atMinimumReplicas,omitempty" yaml:"atMinimumReplicas,omitempty"`
+	KEDAInactiveTrigger *int `json:"kedaInactiveTrigger,omitempty" yaml:"kedaInactiveTrigger,omitempty"`
+	VPAConflict         *int `json:"vpaConflict,omitempty" yaml:"vpaConflict,omitempty"`
 }
+
+// IntWeight returns a pointer to the given int value. Use this to set
+// explicit HealthWeights values, including 0 to disable a penalty.
+func IntWeight(v int) *int { return &v }
 
 // Analysis holds the complete analysis result for a single HPA.
 type Analysis struct {

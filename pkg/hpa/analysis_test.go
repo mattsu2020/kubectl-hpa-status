@@ -292,7 +292,7 @@ func TestAnalyzeWithOptionsDebugAndCustomHealthWeights(t *testing.T) {
 	)
 
 	got := AnalyzeWithOptions(hpa, true, AnalysisOptions{
-		HealthWeights: HealthWeights{ScalingLimited: 40},
+		HealthWeights: HealthWeights{ScalingLimited: IntWeight(40)},
 		Debug:         true,
 	})
 	if got.HealthScore != 55 {
@@ -1334,8 +1334,8 @@ func TestApplyEnrichmentPenalties_CustomWeights(t *testing.T) {
 		},
 	}
 	ApplyEnrichmentPenalties(a, HealthWeights{
-		KEDAInactiveTrigger: 30,
-		VPAConflict:         40,
+		KEDAInactiveTrigger: IntWeight(30),
+		VPAConflict:         IntWeight(40),
 	})
 	if a.HealthScore != 25 {
 		t.Errorf("expected score 25 (95-30-40), got %d", a.HealthScore)
@@ -1912,5 +1912,161 @@ func TestRecommendedMaxReplicas_RespectsCap(t *testing.T) {
 		if s.Title == "Raise maxReplicas" && strings.Contains(s.Patch, `"maxReplicas":200`) {
 			t.Fatalf("expected suggested maxReplicas to be capped, not 200 (same as current)")
 		}
+	}
+}
+
+func TestNilSafetyFindCondition(t *testing.T) {
+	result := FindCondition(nil, "ScalingActive")
+	if result != nil {
+		t.Fatal("expected nil for nil HPA")
+	}
+}
+
+func TestNilSafetySummarizeDirection(t *testing.T) {
+	result := SummarizeDirection(nil, 1)
+	if result != "HPA data is unavailable." {
+		t.Fatalf("unexpected summary for nil HPA: %s", result)
+	}
+}
+
+func TestNilSafetyMostInfluentialMetric(t *testing.T) {
+	_, ok := MostInfluentialMetric(nil)
+	if ok {
+		t.Fatal("expected false for nil HPA")
+	}
+}
+
+func TestNilSafetyMetricOutsideTarget(t *testing.T) {
+	_, ok := MetricOutsideTarget(nil)
+	if ok {
+		t.Fatal("expected false for nil HPA")
+	}
+}
+
+func TestHealthWeightsExplicitZeroDisablesPenalty(t *testing.T) {
+	hpa := baseHPA()
+	hpa.Status.Conditions = append(hpa.Status.Conditions,
+		autoscalingv2.HorizontalPodAutoscalerCondition{Type: "ScalingLimited", Status: corev1.ConditionTrue, Reason: "TooManyReplicas"},
+	)
+	_, defaultScore := Health(hpa, 2)
+
+	// With ScalingLimited explicitly set to 0, penalty should be disabled.
+	_, zeroScore := HealthWithWeights(hpa, 2, HealthWeights{ScalingLimited: IntWeight(0)})
+	if zeroScore != defaultScore+healthPenaltyScalingLimited {
+		t.Fatalf("expected %d (score without ScalingLimited penalty), got %d", defaultScore+healthPenaltyScalingLimited, zeroScore)
+	}
+}
+
+func TestCollectDiagnosticsIncludesAllPhases(t *testing.T) {
+	hpa := baseHPA()
+	hpa.Name = "keda-hpa-worker"
+	hpa.Labels = map[string]string{"scaledobject.keda.sh/name": "worker"}
+	target := resource.MustParse("10")
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{
+		{
+			Type: autoscalingv2.ExternalMetricSourceType,
+			External: &autoscalingv2.ExternalMetricSource{
+				Metric: autoscalingv2.MetricIdentifier{Name: "queue_depth"},
+				Target: autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType, Value: &target},
+			},
+		},
+	}
+
+	entries := CollectDiagnostics(hpa, 2)
+	reasons := make(map[string]int)
+	for _, e := range entries {
+		reasons[e.Reason]++
+	}
+
+	// Should have core cases (NoScaleVisible, Limitation)
+	if reasons["NoScaleVisible"] == 0 {
+		t.Fatal("expected NoScaleVisible from core cases")
+	}
+	// Should have ExternalMetricDiagnostic
+	if reasons["ExternalMetricDiagnostic"] == 0 {
+		t.Fatal("expected ExternalMetricDiagnostic")
+	}
+	// Should have KEDADiagnostic
+	if reasons["KEDADiagnostic"] == 0 {
+		t.Fatal("expected KEDADiagnostic")
+	}
+	// Should have Limitation
+	if reasons["Limitation"] == 0 {
+		t.Fatal("expected Limitation")
+	}
+}
+
+func TestCollectDiagnosticsTextStructuredParity(t *testing.T) {
+	hpa := baseHPA()
+	target := resource.MustParse("10")
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{
+		{
+			Type: autoscalingv2.ExternalMetricSourceType,
+			External: &autoscalingv2.ExternalMetricSource{
+				Metric: autoscalingv2.MetricIdentifier{Name: "queue_depth"},
+				Target: autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType, Value: &target},
+			},
+		},
+	}
+
+	text := Interpret(hpa, 2)
+	structured := buildStructuredInterpretation(hpa, 2)
+
+	if len(text) != len(structured) {
+		t.Fatalf("text (%d) and structured (%d) should have same length", len(text), len(structured))
+	}
+	for i, msg := range structured {
+		if text[i] != msg.Message {
+			t.Fatalf("entry %d: text=%q != structured.Message=%q", i, text[i], msg.Message)
+		}
+	}
+}
+
+func TestDefaultMinReplicasConstant(t *testing.T) {
+	if DefaultMinReplicas != 1 {
+		t.Fatalf("expected DefaultMinReplicas=1, got %d", DefaultMinReplicas)
+	}
+}
+
+func TestValidateHPA_NilHPA(t *testing.T) {
+	result := validateHPA(nil)
+	if result == nil {
+		t.Fatal("expected error result for nil HPA")
+	}
+	if result.Health != "ERROR" {
+		t.Fatalf("expected ERROR health, got %s", result.Health)
+	}
+}
+
+func TestValidateHPA_ValidHPA(t *testing.T) {
+	result := validateHPA(baseHPA())
+	if result != nil {
+		t.Fatalf("expected nil for valid HPA, got %+v", result)
+	}
+}
+
+func TestValidateHPA_EmptyScaleTargetRef(t *testing.T) {
+	hpa := baseHPA()
+	hpa.Spec.ScaleTargetRef = autoscalingv2.CrossVersionObjectReference{}
+	result := validateHPA(hpa)
+	if result == nil {
+		t.Fatal("expected error for empty scaleTargetRef")
+	}
+}
+
+func TestResolveMinReplicas_Default(t *testing.T) {
+	hpa := baseHPA()
+	hpa.Spec.MinReplicas = nil
+	if val := resolveMinReplicas(hpa); val != DefaultMinReplicas {
+		t.Fatalf("expected %d, got %d", DefaultMinReplicas, val)
+	}
+}
+
+func TestResolveMinReplicas_Explicit(t *testing.T) {
+	min := int32(5)
+	hpa := baseHPA()
+	hpa.Spec.MinReplicas = &min
+	if val := resolveMinReplicas(hpa); val != 5 {
+		t.Fatalf("expected 5, got %d", val)
 	}
 }

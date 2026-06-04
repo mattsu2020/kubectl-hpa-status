@@ -59,7 +59,7 @@ func runWatch(ctx context.Context, out io.Writer, opts *options, name string, in
 			}
 		}
 
-		report, err := buildStatusReport(ctx, opts, name, includeInterpretation, ec)
+		report, err := buildStatusReportWithClient(ctx, opts, name, includeInterpretation, ec)
 		if err != nil {
 			return err
 		}

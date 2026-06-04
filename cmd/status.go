@@ -65,7 +65,7 @@ func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []st
 	ec := newEnrichmentContext(ctx, opts)
 
 	if len(names) == 1 {
-		report, err := buildStatusReport(ctx, opts, names[0], includeInterpretation, ec)
+		report, err := buildStatusReportWithClient(ctx, opts, names[0], includeInterpretation, ec)
 		if err != nil {
 			if opts.output == "json" || opts.output == "yaml" {
 				writeError(out, opts.output, err)
@@ -95,6 +95,12 @@ func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []st
 		return warningExitCode(report.Analysis.Health, report.Analysis.Name, report.Analysis.Namespace, watchMode)
 	}
 
+	// Create client once for all HPAs to avoid redundant kubeconfig parsing.
+	client, err := opts.newClient()
+	if err != nil {
+		return fmt.Errorf("failed to create Kubernetes client from kubeconfig/context flags: %w", err)
+	}
+
 	reports := make([]hpaanalysis.StatusReport, len(names))
 	g, gctx := errgroup.WithContext(ctx)
 	limit := runtime.NumCPU()
@@ -109,7 +115,7 @@ func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []st
 			if gctx.Err() != nil {
 				return gctx.Err()
 			}
-			report, err := buildStatusReport(gctx, opts, name, includeInterpretation, ec)
+			report, err := buildStatusReport(gctx, opts, client, name, includeInterpretation, ec)
 			if err != nil {
 				if opts.output == "json" || opts.output == "yaml" {
 					writeError(out, opts.output, err)
@@ -163,11 +169,16 @@ func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []st
 	return nil
 }
 
-func buildStatusReport(ctx context.Context, opts *options, name string, includeInterpretation bool, ec *enrichmentContext) (hpaanalysis.StatusReport, error) {
+// buildStatusReportWithClient creates a client and delegates to buildStatusReport.
+func buildStatusReportWithClient(ctx context.Context, opts *options, name string, includeInterpretation bool, ec *enrichmentContext) (hpaanalysis.StatusReport, error) {
 	client, err := opts.newClient()
 	if err != nil {
 		return hpaanalysis.StatusReport{}, fmt.Errorf("failed to create Kubernetes client from kubeconfig/context flags: %w", err)
 	}
+	return buildStatusReport(ctx, opts, client, name, includeInterpretation, ec)
+}
+
+func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, name string, includeInterpretation bool, ec *enrichmentContext) (hpaanalysis.StatusReport, error) {
 
 	hpa, err := client.Interface.AutoscalingV2().
 		HorizontalPodAutoscalers(client.Namespace).

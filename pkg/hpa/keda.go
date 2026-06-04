@@ -94,7 +94,7 @@ func analyzeKEDAPolling(hpa *autoscalingv2.HorizontalPodAutoscaler, keda *KEDAAn
 
 func analyzeKEDAReplicaBounds(hpa *autoscalingv2.HorizontalPodAutoscaler, keda *KEDAAnalysis) []string {
 	var lines []string
-	minReplicas := int32(1)
+	minReplicas := DefaultMinReplicas
 	if hpa.Spec.MinReplicas != nil {
 		minReplicas = *hpa.Spec.MinReplicas
 	}

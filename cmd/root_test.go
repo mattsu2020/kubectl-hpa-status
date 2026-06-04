@@ -106,11 +106,11 @@ func TestApplyHealthWeightOverrides(t *testing.T) {
 	if err := applyHealthWeightOverrides(opts); err != nil {
 		t.Fatal(err)
 	}
-	if opts.healthWeights.ScalingInactive != 50 {
-		t.Fatalf("expected scalingInactive=50, got %d", opts.healthWeights.ScalingInactive)
+	if opts.healthWeights.ScalingInactive == nil || *opts.healthWeights.ScalingInactive != 50 {
+		t.Fatalf("expected scalingInactive=50, got %v", opts.healthWeights.ScalingInactive)
 	}
-	if opts.healthWeights.AtMinimumReplicas != 0 {
-		t.Fatalf("expected atMinimumReplicas=0, got %d", opts.healthWeights.AtMinimumReplicas)
+	if opts.healthWeights.AtMinimumReplicas == nil || *opts.healthWeights.AtMinimumReplicas != 0 {
+		t.Fatalf("expected atMinimumReplicas=0, got %v", opts.healthWeights.AtMinimumReplicas)
 	}
 }
 

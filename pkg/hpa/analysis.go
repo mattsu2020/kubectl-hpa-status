@@ -6,17 +6,19 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
+// DefaultMinReplicas is the default minimum replica count when spec.minReplicas is nil.
+const DefaultMinReplicas int32 = 1
+
 // Analyze produces an Analysis for the given HPA using default options.
 func Analyze(src *autoscalingv2.HorizontalPodAutoscaler, includeInterpretation bool) Analysis {
 	return AnalyzeWithOptions(src, includeInterpretation, AnalysisOptions{})
 }
 
-// AnalyzeWithOptions produces an Analysis with custom health weights and debug settings.
-//
-//nolint:gocyclo // Sequential analysis pipeline: validate, collect, enrich; each phase is independent.
-func AnalyzeWithOptions(src *autoscalingv2.HorizontalPodAutoscaler, includeInterpretation bool, opts AnalysisOptions) Analysis {
+// validateHPA checks the HPA for configuration errors and returns an error
+// Analysis if validation fails. Returns nil if the HPA is valid.
+func validateHPA(src *autoscalingv2.HorizontalPodAutoscaler) *Analysis {
 	if src == nil {
-		return Analysis{
+		return &Analysis{
 			Health:      "ERROR",
 			HealthScore: 0,
 			Summary:     "HPA data is unavailable.",
@@ -26,9 +28,8 @@ func AnalyzeWithOptions(src *autoscalingv2.HorizontalPodAutoscaler, includeInter
 		}
 	}
 
-	// Validate scaleTargetRef is present.
 	if src.Spec.ScaleTargetRef.Kind == "" || src.Spec.ScaleTargetRef.Name == "" {
-		return Analysis{
+		return &Analysis{
 			Namespace:   src.Namespace,
 			Name:        src.Name,
 			Health:      "ERROR",
@@ -40,9 +41,8 @@ func AnalyzeWithOptions(src *autoscalingv2.HorizontalPodAutoscaler, includeInter
 		}
 	}
 
-	// Validate maxReplicas > 0.
 	if src.Spec.MaxReplicas <= 0 {
-		return Analysis{
+		return &Analysis{
 			Namespace:   src.Namespace,
 			Name:        src.Name,
 			Health:      "ERROR",
@@ -54,28 +54,44 @@ func AnalyzeWithOptions(src *autoscalingv2.HorizontalPodAutoscaler, includeInter
 		}
 	}
 
-	// Validate minReplicas <= maxReplicas.
-	minReplicasCheck := int32(1)
+	minCheck := DefaultMinReplicas
 	if src.Spec.MinReplicas != nil {
-		minReplicasCheck = *src.Spec.MinReplicas
+		minCheck = *src.Spec.MinReplicas
 	}
-	if minReplicasCheck > src.Spec.MaxReplicas {
-		return Analysis{
+	if minCheck > src.Spec.MaxReplicas {
+		return &Analysis{
 			Namespace:   src.Namespace,
 			Name:        src.Name,
 			Health:      "ERROR",
 			HealthScore: 0,
-			Summary:     fmt.Sprintf("HPA spec.minReplicas (%d) exceeds spec.maxReplicas (%d).", minReplicasCheck, src.Spec.MaxReplicas),
+			Summary:     fmt.Sprintf("HPA spec.minReplicas (%d) exceeds spec.maxReplicas (%d).", minCheck, src.Spec.MaxReplicas),
 			Interpretation: []string{
-				fmt.Sprintf("[confidence: high] spec.minReplicas (%d) is greater than spec.maxReplicas (%d); the HPA configuration is contradictory.", minReplicasCheck, src.Spec.MaxReplicas),
+				fmt.Sprintf("[confidence: high] spec.minReplicas (%d) is greater than spec.maxReplicas (%d); the HPA configuration is contradictory.", minCheck, src.Spec.MaxReplicas),
 			},
 		}
 	}
 
-	minReplicas := int32(1)
+	return nil
+}
+
+// resolveMinReplicas returns the effective minReplicas value, defaulting to
+// DefaultMinReplicas when spec.minReplicas is nil.
+func resolveMinReplicas(src *autoscalingv2.HorizontalPodAutoscaler) int32 {
 	if src.Spec.MinReplicas != nil {
-		minReplicas = *src.Spec.MinReplicas
+		return *src.Spec.MinReplicas
 	}
+	return DefaultMinReplicas
+}
+
+// AnalyzeWithOptions produces an Analysis with custom health weights and debug settings.
+//
+//nolint:gocyclo // Sequential analysis pipeline: validate, collect, enrich; each phase is independent.
+func AnalyzeWithOptions(src *autoscalingv2.HorizontalPodAutoscaler, includeInterpretation bool, opts AnalysisOptions) Analysis {
+	if errResult := validateHPA(src); errResult != nil {
+		return *errResult
+	}
+
+	minReplicas := resolveMinReplicas(src)
 
 	analysis := Analysis{
 		Namespace:         src.Namespace,
