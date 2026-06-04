@@ -118,19 +118,20 @@ func collectInterpretationCases(hpa *autoscalingv2.HorizontalPodAutoscaler, minR
 	}
 
 	// Desired vs current comparison
-	if hpa.Status.DesiredReplicas > hpa.Status.CurrentReplicas {
+	switch {
+	case hpa.Status.DesiredReplicas > hpa.Status.CurrentReplicas:
 		cases = append(cases, interpretationCase{
 			reason:   "ScaleUpRecommended",
 			message:  "[confidence: high] desiredReplicas is greater than currentReplicas, so the HPA is recommending scale up.",
 			severity: "info",
 		})
-	} else if hpa.Status.DesiredReplicas < hpa.Status.CurrentReplicas {
+	case hpa.Status.DesiredReplicas < hpa.Status.CurrentReplicas:
 		cases = append(cases, interpretationCase{
 			reason:   "ScaleDownRecommended",
 			message:  "[confidence: high] desiredReplicas is less than currentReplicas, so the HPA is recommending scale down.",
 			severity: "info",
 		})
-	} else {
+	default:
 		cases = append(cases, interpretationCase{
 			reason:   "NoScaleVisible",
 			message:  "[confidence: high] desiredReplicas equals currentReplicas, so no immediate replica change is visible from status.",

@@ -41,7 +41,7 @@ func HealthWithWeights(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas i
 			}
 		}
 	}
-	if hpa.Status.CurrentReplicas == hpa.Status.DesiredReplicas && hpa.Status.CurrentReplicas == hpa.Spec.MaxReplicas {
+	if hpa.Status.CurrentReplicas == hpa.Status.DesiredReplicas && hpa.Status.DesiredReplicas == hpa.Spec.MaxReplicas {
 		score -= weights.ImplicitMaxReplicas
 		if health == "OK" {
 			health = "LIMITED"

@@ -70,7 +70,7 @@ func newReplayCommand(opts *options) *cobra.Command {
 		Use:   "replay FILE",
 		Short: "Replay a recorded HPA timeline trace from a JSON file",
 		Args:  cobra.ExactArgs(1),
-		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		ValidArgsFunction: func(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			return nil, cobra.ShellCompDirectiveDefault
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {

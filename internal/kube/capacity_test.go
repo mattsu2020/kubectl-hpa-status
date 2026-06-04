@@ -13,10 +13,12 @@ import (
 
 func TestFetchPendingPodDetails_NoPending(t *testing.T) {
 	client := fake.NewSimpleClientset()
-	client.CoreV1().Pods("default").Create(context.Background(), &corev1.Pod{
+	if _, err := client.CoreV1().Pods("default").Create(context.Background(), &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Name: "pod-1", Labels: map[string]string{"app": "web"}},
 		Status:     corev1.PodStatus{Phase: corev1.PodRunning},
-	}, metav1.CreateOptions{})
+	}, metav1.CreateOptions{}); err != nil {
+		t.Fatalf("failed to create pod: %v", err)
+	}
 
 	result := FetchPendingPodDetails(context.Background(), client, "default", "app=web")
 
@@ -27,7 +29,7 @@ func TestFetchPendingPodDetails_NoPending(t *testing.T) {
 
 func TestFetchPendingPodDetails_WithPending(t *testing.T) {
 	client := fake.NewSimpleClientset()
-	client.CoreV1().Pods("default").Create(context.Background(), &corev1.Pod{
+	if _, err := client.CoreV1().Pods("default").Create(context.Background(), &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Name: "pod-pending", Labels: map[string]string{"app": "web"}},
 		Status: corev1.PodStatus{
 			Phase: corev1.PodPending,
@@ -40,7 +42,9 @@ func TestFetchPendingPodDetails_WithPending(t *testing.T) {
 				},
 			},
 		},
-	}, metav1.CreateOptions{})
+	}, metav1.CreateOptions{}); err != nil {
+		t.Fatalf("failed to create pod: %v", err)
+	}
 
 	result := FetchPendingPodDetails(context.Background(), client, "default", "app=web")
 
@@ -76,7 +80,7 @@ func TestFetchResourceQuotas_None(t *testing.T) {
 
 func TestFetchResourceQuotas_NearLimit(t *testing.T) {
 	client := fake.NewSimpleClientset()
-	client.CoreV1().ResourceQuotas("default").Create(context.Background(), &corev1.ResourceQuota{
+	if _, err := client.CoreV1().ResourceQuotas("default").Create(context.Background(), &corev1.ResourceQuota{
 		ObjectMeta: metav1.ObjectMeta{Name: "compute"},
 		Spec: corev1.ResourceQuotaSpec{
 			Hard: corev1.ResourceList{
@@ -91,7 +95,9 @@ func TestFetchResourceQuotas_NearLimit(t *testing.T) {
 				corev1.ResourceCPU: resource.MustParse("9"),
 			},
 		},
-	}, metav1.CreateOptions{})
+	}, metav1.CreateOptions{}); err != nil {
+		t.Fatalf("failed to create resourcequota: %v", err)
+	}
 
 	result := FetchResourceQuotas(context.Background(), client, "default")
 
@@ -108,7 +114,7 @@ func TestFetchResourceQuotas_NearLimit(t *testing.T) {
 
 func TestFetchResourceQuotas_BelowThreshold(t *testing.T) {
 	client := fake.NewSimpleClientset()
-	client.CoreV1().ResourceQuotas("default").Create(context.Background(), &corev1.ResourceQuota{
+	if _, err := client.CoreV1().ResourceQuotas("default").Create(context.Background(), &corev1.ResourceQuota{
 		ObjectMeta: metav1.ObjectMeta{Name: "compute"},
 		Spec: corev1.ResourceQuotaSpec{
 			Hard: corev1.ResourceList{
@@ -123,7 +129,9 @@ func TestFetchResourceQuotas_BelowThreshold(t *testing.T) {
 				corev1.ResourceCPU: resource.MustParse("3"),
 			},
 		},
-	}, metav1.CreateOptions{})
+	}, metav1.CreateOptions{}); err != nil {
+		t.Fatalf("failed to create resourcequota: %v", err)
+	}
 
 	result := FetchResourceQuotas(context.Background(), client, "default")
 	if len(result) != 0 {
