@@ -62,6 +62,9 @@ type options struct {
 	untilCondition        string
 	report                string
 	checkResources        bool
+	explainPods           bool
+	simulate              []string
+	capacityContext       bool
 	qps                   float32
 	burst                 int
 	clientOverride        kubernetes.Interface
@@ -177,6 +180,9 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().BoolVar(&opts.diagnoseMetrics, "diagnose-metrics", false, "run comprehensive metrics pipeline health checks")
 	root.PersistentFlags().BoolVar(&opts.vpa, "vpa", true, "detect VerticalPodAutoscaler conflicts (auto-detected when CRD is present; use --vpa=false to disable)")
 	root.PersistentFlags().BoolVar(&opts.checkResources, "check-resources", false, "check HPA target utilization against pod resource requests")
+	root.PersistentFlags().BoolVar(&opts.explainPods, "explain-pods", false, "analyze scale target pods for readiness, resource requests, and metric coverage")
+	root.PersistentFlags().StringArrayVar(&opts.simulate, "simulate", nil, "simulate HPA spec changes (e.g. maxReplicas=20); repeatable")
+	root.PersistentFlags().BoolVar(&opts.capacityContext, "capacity-context", false, "check infrastructure capacity constraints affecting HPA scaling")
 	root.PersistentFlags().Float32Var(&opts.qps, "qps", 0, "client-side rate limiting queries per second (0 uses client-go default)")
 	root.PersistentFlags().IntVar(&opts.burst, "burst", 0, "client-side rate limiting burst size (0 uses client-go default)")
 	root.PersistentFlags().DurationVar(&opts.watchInterval, "interval", opts.watchInterval, "watch refresh interval")
@@ -191,6 +197,9 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newScanCommand(opts))
 	root.AddCommand(newWatchCommand(opts))
 	root.AddCommand(newTUICommand(opts))
+	root.AddCommand(newTimelineCommand(opts))
+	root.AddCommand(newRecordCommand(opts))
+	root.AddCommand(newReplayCommand(opts))
 	root.AddCommand(newVersionCommand())
 	root.AddCommand(newCompletionCommand(root))
 

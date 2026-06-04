@@ -34,6 +34,10 @@ func (DefaultLabels) Get(key string) string {
 		"label_precondition":       "precondition",
 		"label_warning":            "warning",
 		"label_metrics_diagnostics": "Metrics Diagnostics",
+		"label_pod_analysis":        "Pod Analysis",
+		"label_simulation":          "Simulation",
+		"label_capacity_context":    "Capacity Context",
+		"label_timeline":            "Timeline",
 	}
 	if v, ok := defaults[key]; ok {
 		return v
@@ -66,5 +70,9 @@ func resolveLabels(provider LabelProvider) labels {
 		Precondition:       provider.Get("label_precondition"),
 		Warning:            provider.Get("label_warning"),
 		MetricsDiagnostics: provider.Get("label_metrics_diagnostics"),
+		PodAnalysis:        provider.Get("label_pod_analysis"),
+		Simulation:         provider.Get("label_simulation"),
+		CapacityContext:    provider.Get("label_capacity_context"),
+		Timeline:           provider.Get("label_timeline"),
 	}
 }

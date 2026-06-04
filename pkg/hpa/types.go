@@ -3,6 +3,8 @@
 package hpa
 
 import (
+	"time"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -141,6 +143,12 @@ type Analysis struct {
 	MetricsDiagnostics *MetricsPipelineDiagnostics `json:"metricsDiagnostics,omitempty" yaml:"metricsDiagnostics,omitempty"`
 	// ResourceCheck holds warnings about resource request/limit consistency with HPA targets.
 	ResourceCheck *ResourceCheckResult `json:"resourceCheck,omitempty" yaml:"resourceCheck,omitempty"`
+	// PodAnalysis holds per-pod readiness and resource analysis for the scale target.
+	PodAnalysis *PodAnalysis `json:"podAnalysis,omitempty" yaml:"podAnalysis,omitempty"`
+	// Simulation holds what-if analysis results from --simulate.
+	Simulation *SimulationResult `json:"simulation,omitempty" yaml:"simulation,omitempty"`
+	// CapacityContext holds infrastructure capacity analysis for the scale target.
+	CapacityContext *CapacityContext `json:"capacityContext,omitempty" yaml:"capacityContext,omitempty"`
 }
 
 // DecisionSignal is the stable internal shape for explicit controller scaling
@@ -304,4 +312,107 @@ type ResourceWarning struct {
 	Category  string `json:"category" yaml:"category"` // "missing-requests", "zero-requests", "target-vs-request-mismatch"
 	Details   string `json:"details" yaml:"details"`
 	Severity  string `json:"severity" yaml:"severity"` // "warning", "error"
+}
+
+// PodAnalysis holds per-pod readiness and resource analysis for HPA scale target pods.
+type PodAnalysis struct {
+	Total           int32              `json:"total" yaml:"total"`
+	Ready           int32              `json:"ready" yaml:"ready"`
+	Unready         int32              `json:"unready" yaml:"unready"`
+	Pending         int32              `json:"pending" yaml:"pending"`
+	Terminating     int32              `json:"terminating" yaml:"terminating"`
+	ResourceIssues []PodResourceIssue `json:"resourceIssues,omitempty" yaml:"resourceIssues,omitempty"`
+	ContainerChecks []ContainerCheck   `json:"containerChecks,omitempty" yaml:"containerChecks,omitempty"`
+}
+
+// PodResourceIssue describes a pod container missing CPU or memory requests/limits.
+type PodResourceIssue struct {
+	Pod       string `json:"pod" yaml:"pod"`
+	Container string `json:"container" yaml:"container"`
+	Resource  string `json:"resource" yaml:"resource"`
+	Category  string `json:"category" yaml:"category"` // "missing-request", "missing-limit"
+}
+
+// ContainerCheck verifies that a ContainerResource metric target container exists in pods.
+type ContainerCheck struct {
+	Container string `json:"container" yaml:"container"`
+	Found     bool   `json:"found" yaml:"found"`
+	Message   string `json:"message,omitempty" yaml:"message,omitempty"`
+}
+
+// SimulationResult holds the before/after comparison of an HPA simulation.
+type SimulationResult struct {
+	Parameter      string           `json:"parameter" yaml:"parameter"`
+	OriginalValue  string           `json:"originalValue" yaml:"originalValue"`
+	SimulatedValue string           `json:"simulatedValue" yaml:"simulatedValue"`
+	Before         SimulationState  `json:"before" yaml:"before"`
+	After          SimulationState  `json:"after" yaml:"after"`
+	RiskAssessment string           `json:"riskAssessment,omitempty" yaml:"riskAssessment,omitempty"`
+	Interpretation []string         `json:"interpretation,omitempty" yaml:"interpretation,omitempty"`
+}
+
+// SimulationState is a snapshot of key analysis fields for before/after comparison.
+type SimulationState struct {
+	DesiredReplicas int32  `json:"desiredReplicas" yaml:"desiredReplicas"`
+	Health          string `json:"health" yaml:"health"`
+	HealthScore     int    `json:"healthScore" yaml:"healthScore"`
+	Summary         string `json:"summary" yaml:"summary"`
+	ScalingLimited  bool   `json:"scalingLimited" yaml:"scalingLimited"`
+}
+
+// CapacityContext holds infrastructure capacity analysis for the HPA scale target.
+type CapacityContext struct {
+	PendingPods      []PendingPodInfo  `json:"pendingPods,omitempty" yaml:"pendingPods,omitempty"`
+	QuotaConstraints []QuotaConstraint `json:"quotaConstraints,omitempty" yaml:"quotaConstraints,omitempty"`
+	PDBInterference  []PDBInterference `json:"pdbInterference,omitempty" yaml:"pdbInterference,omitempty"`
+	NodeHints        []string          `json:"nodeHints,omitempty" yaml:"nodeHints,omitempty"`
+}
+
+// PendingPodInfo describes a pending pod and its scheduling constraints.
+type PendingPodInfo struct {
+	Name          string   `json:"name" yaml:"name"`
+	Phase         string   `json:"phase" yaml:"phase"`
+	Unschedulable bool     `json:"unschedulable" yaml:"unschedulable"`
+	Reasons       []string `json:"reasons,omitempty" yaml:"reasons,omitempty"`
+}
+
+// QuotaConstraint describes a ResourceQuota that limits the scale target.
+type QuotaConstraint struct {
+	Name    string `json:"name" yaml:"name"`
+	Resource string `json:"resource" yaml:"resource"`
+	Used    string `json:"used" yaml:"used"`
+	Hard    string `json:"hard" yaml:"hard"`
+	Message string `json:"message" yaml:"message"`
+}
+
+// PDBInterference describes a PodDisruptionBudget that may interfere with scaling.
+type PDBInterference struct {
+	Name           string `json:"name" yaml:"name"`
+	MinAvailable   string `json:"minAvailable,omitempty" yaml:"minAvailable,omitempty"`
+	MaxUnavailable string `json:"maxUnavailable,omitempty" yaml:"maxUnavailable,omitempty"`
+	Disruption     string `json:"disruption" yaml:"disruption"`
+}
+
+// TimelineSnapshot captures the state of an HPA at a single point in time.
+type TimelineSnapshot struct {
+	Timestamp      time.Time   `json:"timestamp" yaml:"timestamp"`
+	Current        int32       `json:"currentReplicas" yaml:"currentReplicas"`
+	Desired        int32       `json:"desiredReplicas" yaml:"desiredReplicas"`
+	Health         string      `json:"health" yaml:"health"`
+	HealthScore    int         `json:"healthScore" yaml:"healthScore"`
+	TopMetric      string      `json:"topMetric" yaml:"topMetric"`
+	Conditions     []Condition `json:"conditions" yaml:"conditions"`
+	Summary        string      `json:"summary" yaml:"summary"`
+	Interpretation []string    `json:"interpretation,omitempty" yaml:"interpretation,omitempty"`
+	Events         []Event     `json:"events,omitempty" yaml:"events,omitempty"`
+}
+
+// TimelineTrace holds a sequence of snapshots for a single HPA.
+type TimelineTrace struct {
+	HPAName   string             `json:"hpaName" yaml:"hpaName"`
+	Namespace string             `json:"namespace" yaml:"namespace"`
+	Start     time.Time          `json:"start" yaml:"start"`
+	End       time.Time          `json:"end,omitempty" yaml:"end,omitempty"`
+	Interval  time.Duration      `json:"interval" yaml:"interval"`
+	Snapshots []TimelineSnapshot `json:"snapshots" yaml:"snapshots"`
 }
