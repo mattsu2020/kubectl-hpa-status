@@ -22,12 +22,7 @@ spec:
     kubectl hpa_status. This project also documents kubectl hpa status for
     nested plugin usage where kubectl plugin discovery supports it.
 
-    Try:
-      kubectl hpa_status list -A --wide
-      kubectl hpa_status status <hpa-name> --suggest
-      kubectl hpa_status status <hpa-name> --keda --explain
-      kubectl hpa_status status <hpa-name> --fix --apply
-      kubectl hpa_status tui
+
   platforms:
   - selector:
       matchLabels:

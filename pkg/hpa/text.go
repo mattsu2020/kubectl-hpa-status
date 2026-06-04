@@ -338,6 +338,78 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 		}
 	}
 
+	if a.PodAnalysis != nil {
+		out = append(out, '\n')
+		out = fmt.Appendf(out, "%s:\n", labels.PodAnalysis)
+		pa := a.PodAnalysis
+		out = fmt.Appendf(out, "  Total: %d  Ready: %d  Unready: %d  Pending: %d  Terminating: %d\n",
+			pa.Total, pa.Ready, pa.Unready, pa.Pending, pa.Terminating)
+		for _, issue := range pa.ResourceIssues {
+			out = fmt.Appendf(out, "  [%s] %s/%s: %s\n", issue.Category, issue.Pod, issue.Container, issue.Resource)
+		}
+		for _, check := range pa.ContainerChecks {
+			if !check.Found {
+				out = fmt.Appendf(out, "  [warning] %s\n", check.Message)
+			}
+		}
+	}
+
+	if a.Simulation != nil {
+		out = append(out, '\n')
+		out = fmt.Appendf(out, "%s (--simulate):\n", labels.Simulation)
+		sim := a.Simulation
+		out = fmt.Appendf(out, "  Parameter: %s\n", sim.Parameter)
+		out = fmt.Appendf(out, "  Original: %s  Simulated: %s\n", sim.OriginalValue, sim.SimulatedValue)
+		out = fmt.Appendf(out, "  Before: desired=%d health=%s(%d)  After: desired=%d health=%s(%d)\n",
+			sim.Before.DesiredReplicas, sim.Before.Health, sim.Before.HealthScore,
+			sim.After.DesiredReplicas, sim.After.Health, sim.After.HealthScore)
+		if sim.RiskAssessment != "" {
+			out = fmt.Appendf(out, "  Risk: %s\n", theme.ActionLine(sim.RiskAssessment))
+		}
+		for _, line := range sim.Interpretation {
+			out = fmt.Appendf(out, "  - %s\n", theme.InterpretationLine(line))
+		}
+	}
+
+	if a.CapacityContext != nil {
+		cc := a.CapacityContext
+		if len(cc.PendingPods) > 0 || len(cc.QuotaConstraints) > 0 || len(cc.PDBInterference) > 0 || len(cc.NodeHints) > 0 {
+			out = append(out, '\n')
+			out = fmt.Appendf(out, "%s:\n", labels.CapacityContext)
+			if len(cc.PendingPods) > 0 {
+				out = fmt.Appendf(out, "  Pending Pods: %d\n", len(cc.PendingPods))
+				for _, p := range cc.PendingPods {
+					suffix := ""
+					if p.Unschedulable {
+						suffix = " (unschedulable)"
+					}
+					out = fmt.Appendf(out, "    - %s%s\n", p.Name, suffix)
+					for _, reason := range p.Reasons {
+						out = fmt.Appendf(out, "      %s\n", reason)
+					}
+				}
+			}
+			if len(cc.QuotaConstraints) > 0 {
+				out = append(out, "  ResourceQuotas:\n"...)
+				for _, q := range cc.QuotaConstraints {
+					out = fmt.Appendf(out, "    - %s: %s used=%s hard=%s\n", q.Name, q.Resource, q.Used, q.Hard)
+				}
+			}
+			if len(cc.PDBInterference) > 0 {
+				out = append(out, "  PodDisruptionBudgets:\n"...)
+				for _, p := range cc.PDBInterference {
+					out = fmt.Appendf(out, "    - %s: %s\n", p.Name, p.Disruption)
+				}
+			}
+			if len(cc.NodeHints) > 0 {
+				out = append(out, "  Hints:\n"...)
+				for _, hint := range cc.NodeHints {
+					out = fmt.Appendf(out, "    - %s\n", theme.InterpretationLine(hint))
+				}
+			}
+		}
+	}
+
 	out = append(out, '\n')
 	out = fmt.Appendf(out, "%s:\n", labels.Events)
 	if len(report.Events) == 0 {
@@ -386,6 +458,10 @@ type labels struct {
 	Precondition       string
 	Warning            string
 	MetricsDiagnostics string
+	PodAnalysis        string
+	Simulation         string
+	CapacityContext    string
+	Timeline           string
 }
 
 func textLabels(lang string) labels {
@@ -409,6 +485,10 @@ func textLabels(lang string) labels {
 			Precondition:       "前提条件",
 			Warning:            "警告",
 			MetricsDiagnostics: "メトリクス診断",
+			PodAnalysis:        "Pod分析",
+			Simulation:         "シミュレーション",
+			CapacityContext:    "キャパシティコンテキスト",
+			Timeline:           "タイムライン",
 		}
 	}
 	return labels{
@@ -430,6 +510,10 @@ func textLabels(lang string) labels {
 		Precondition:       "precondition",
 		Warning:            "warning",
 		MetricsDiagnostics: "Metrics Diagnostics",
+		PodAnalysis:        "Pod Analysis",
+		Simulation:         "Simulation",
+		CapacityContext:    "Capacity Context",
+		Timeline:           "Timeline",
 	}
 }
 

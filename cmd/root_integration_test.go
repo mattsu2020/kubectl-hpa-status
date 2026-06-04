@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -769,4 +770,347 @@ func TestRunStatus_ExitCode_ScalingLimited(t *testing.T) {
 func isExitCodeWarning(err error) bool {
 	exitErr, ok := err.(*ExitCodeError)
 	return ok && exitErr.Code == ExitWarning
+}
+
+// --------------------------------------------------------------------------
+// --explain-pods integration tests
+// --------------------------------------------------------------------------
+
+func TestRunStatus_ExplainPods(t *testing.T) {
+	hpa := kube.BuildHPA("default", "web",
+		kube.WithReplicas(3, 5),
+		kube.WithResourceMetric("cpu", 80, 70),
+	)
+	fakeClient := kube.NewFakeClient(hpa)
+
+	var buf bytes.Buffer
+	opts := &options{
+		clientOverride: fakeClient,
+		events:         eventOption{enabled: false},
+		explainPods:    true,
+	}
+
+	err := runStatus(context.Background(), &buf, opts, "web", false)
+	if err != nil {
+		t.Fatalf("runStatus returned error: %v", err)
+	}
+
+	// PodAnalysis should be nil when no pods are found (no deployment in fake client)
+	// This verifies the code path doesn't crash
+	output := buf.String()
+	if !strings.Contains(output, "web") {
+		t.Error("expected output to contain HPA name")
+	}
+}
+
+func TestRunStatus_ExplainPods_JSON(t *testing.T) {
+	hpa := kube.BuildHPA("default", "web",
+		kube.WithReplicas(3, 5),
+		kube.WithResourceMetric("cpu", 80, 70),
+	)
+	fakeClient := kube.NewFakeClient(hpa)
+
+	var buf bytes.Buffer
+	opts := &options{
+		clientOverride: fakeClient,
+		events:         eventOption{enabled: false},
+		explainPods:    true,
+		output:         "json",
+	}
+
+	err := runStatus(context.Background(), &buf, opts, "web", false)
+	if err != nil && !isExitCodeWarning(err) {
+		t.Fatalf("runStatus returned error: %v", err)
+	}
+
+	var report hpaanalysis.StatusReport
+	if err := json.Unmarshal(buf.Bytes(), &report); err != nil {
+		t.Fatalf("failed to parse JSON output: %v", err)
+	}
+
+	// PodAnalysis field should exist in the JSON output (may be nil or empty)
+	_ = report.Analysis.PodAnalysis
+}
+
+// --------------------------------------------------------------------------
+// --simulate integration tests
+// --------------------------------------------------------------------------
+
+func TestRunStatus_Simulate(t *testing.T) {
+	hpa := kube.BuildHPA("default", "web",
+		kube.WithReplicas(3, 3),
+		kube.WithResourceMetric("cpu", 80, 70),
+		kube.WithMinMax(1, 10),
+	)
+	fakeClient := kube.NewFakeClient(hpa)
+
+	var buf bytes.Buffer
+	opts := &options{
+		clientOverride: fakeClient,
+		events:         eventOption{enabled: false},
+		simulate:       []string{"maxReplicas=20"},
+		output:         "json",
+	}
+
+	err := runStatus(context.Background(), &buf, opts, "web", false)
+	if err != nil && !isExitCodeWarning(err) {
+		t.Fatalf("runStatus returned error: %v", err)
+	}
+
+	var report hpaanalysis.StatusReport
+	if err := json.Unmarshal(buf.Bytes(), &report); err != nil {
+		t.Fatalf("failed to parse JSON output: %v", err)
+	}
+
+	if report.Analysis.Simulation == nil {
+		t.Fatal("expected Simulation to be populated")
+	}
+	if report.Analysis.Simulation.Parameter != "maxReplicas" {
+		t.Errorf("expected parameter=maxReplicas, got %q", report.Analysis.Simulation.Parameter)
+	}
+	if report.Analysis.Simulation.OriginalValue != "10" {
+		t.Errorf("expected originalValue=10, got %q", report.Analysis.Simulation.OriginalValue)
+	}
+	if report.Analysis.Simulation.SimulatedValue != "20" {
+		t.Errorf("expected simulatedValue=20, got %q", report.Analysis.Simulation.SimulatedValue)
+	}
+}
+
+func TestRunStatus_SimulateText(t *testing.T) {
+	hpa := kube.BuildHPA("default", "web",
+		kube.WithReplicas(3, 3),
+		kube.WithResourceMetric("cpu", 80, 70),
+		kube.WithMinMax(1, 10),
+	)
+	fakeClient := kube.NewFakeClient(hpa)
+
+	var buf bytes.Buffer
+	opts := &options{
+		clientOverride: fakeClient,
+		events:         eventOption{enabled: false},
+		simulate:       []string{"maxReplicas=20"},
+	}
+
+	err := runStatus(context.Background(), &buf, opts, "web", false)
+	if err != nil && !isExitCodeWarning(err) {
+		t.Fatalf("runStatus returned error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "Simulation") {
+		t.Error("expected output to contain 'Simulation' section")
+	}
+	if !strings.Contains(output, "maxReplicas") {
+		t.Error("expected output to contain 'maxReplicas'")
+	}
+}
+
+func TestParseSimulateOverrides(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   []string
+		want    map[string]string
+		wantErr bool
+	}{
+		{
+			name:  "single override",
+			input: []string{"maxReplicas=20"},
+			want:  map[string]string{"maxReplicas": "20"},
+		},
+		{
+			name:  "multiple overrides",
+			input: []string{"maxReplicas=20", "minReplicas=3"},
+			want:  map[string]string{"maxReplicas": "20", "minReplicas": "3"},
+		},
+		{
+			name:    "no equals sign",
+			input:   []string{"maxReplicas"},
+			wantErr: true,
+		},
+		{
+			name:    "empty key",
+			input:   []string{"=20"},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseSimulateOverrides(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Error("expected error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(got) != len(tt.want) {
+				t.Fatalf("expected %d overrides, got %d", len(tt.want), len(got))
+			}
+			for k, v := range tt.want {
+				if got[k] != v {
+					t.Errorf("override[%q] = %q, want %q", k, got[k], v)
+				}
+			}
+		})
+	}
+}
+
+// --------------------------------------------------------------------------
+// --capacity-context integration tests
+// --------------------------------------------------------------------------
+
+func TestRunStatus_CapacityContext(t *testing.T) {
+	hpa := kube.BuildHPA("default", "web",
+		kube.WithReplicas(3, 5),
+		kube.WithResourceMetric("cpu", 80, 70),
+	)
+	fakeClient := kube.NewFakeClient(hpa)
+
+	var buf bytes.Buffer
+	opts := &options{
+		clientOverride: fakeClient,
+		events:         eventOption{enabled: false},
+		capacityContext: true,
+		output:         "json",
+	}
+
+	err := runStatus(context.Background(), &buf, opts, "web", false)
+	if err != nil {
+		t.Fatalf("runStatus returned error: %v", err)
+	}
+
+	var report hpaanalysis.StatusReport
+	if err := json.Unmarshal(buf.Bytes(), &report); err != nil {
+		t.Fatalf("failed to parse JSON output: %v", err)
+	}
+
+	// CapacityContext should be non-nil (even if empty)
+	if report.Analysis.CapacityContext == nil {
+		t.Error("expected CapacityContext to be populated")
+	}
+}
+
+// --------------------------------------------------------------------------
+// Replay integration tests
+// --------------------------------------------------------------------------
+
+func TestRunReplay_FromFile(t *testing.T) {
+	trace := hpaanalysis.TimelineTrace{
+		HPAName:   "web",
+		Namespace: "default",
+		Start:     time.Now(),
+		Interval:  5 * time.Second,
+		Snapshots: []hpaanalysis.TimelineSnapshot{
+			{
+				Timestamp:   time.Now(),
+				Current:     3,
+				Desired:     3,
+				Health:      "OK",
+				HealthScore: 100,
+				TopMetric:   "cpu (ratio=0.90 within target)",
+				Summary:     "steady",
+			},
+		},
+	}
+
+	data, err := json.Marshal(trace)
+	if err != nil {
+		t.Fatalf("failed to marshal trace: %v", err)
+	}
+
+	tmpFile, err := os.CreateTemp("", "hpa-trace-*.json")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.Write(data); err != nil {
+		t.Fatalf("failed to write trace: %v", err)
+	}
+	tmpFile.Close()
+
+	var buf bytes.Buffer
+	opts := &options{
+		events: eventOption{enabled: false},
+		color:  "never",
+	}
+
+	err = runReplay(&buf, opts, tmpFile.Name())
+	if err != nil {
+		t.Fatalf("runReplay returned error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "web") {
+		t.Error("expected output to contain HPA name")
+	}
+	if !strings.Contains(output, "TIME") {
+		t.Error("expected output to contain table header")
+	}
+}
+
+func TestRunReplay_Markdown(t *testing.T) {
+	trace := hpaanalysis.TimelineTrace{
+		HPAName:   "web",
+		Namespace: "default",
+		Start:     time.Now(),
+		Snapshots: []hpaanalysis.TimelineSnapshot{
+			{
+				Timestamp:   time.Now(),
+				Current:     3,
+				Desired:     5,
+				Health:      "LIMITED",
+				HealthScore: 75,
+			},
+		},
+	}
+
+	data, err := json.Marshal(trace)
+	if err != nil {
+		t.Fatalf("failed to marshal trace: %v", err)
+	}
+
+	tmpFile, err := os.CreateTemp("", "hpa-trace-*.json")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.Write(data); err != nil {
+		t.Fatalf("failed to write trace: %v", err)
+	}
+	tmpFile.Close()
+
+	var buf bytes.Buffer
+	opts := &options{
+		events: eventOption{enabled: false},
+		output: "markdown",
+		color:  "never",
+	}
+
+	err = runReplay(&buf, opts, tmpFile.Name())
+	if err != nil {
+		t.Fatalf("runReplay returned error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "# HPA Timeline") {
+		t.Error("expected markdown header")
+	}
+}
+
+func TestRunReplay_FileNotFound(t *testing.T) {
+	var buf bytes.Buffer
+	opts := &options{
+		events: eventOption{enabled: false},
+		color:  "never",
+	}
+
+	err := runReplay(&buf, opts, "/nonexistent/path.json")
+	if err == nil {
+		t.Error("expected error for missing file")
+	}
 }

@@ -34,8 +34,11 @@ type configFile struct {
 	ChunkSize     *int64                          `json:"chunkSize" yaml:"chunkSize"`
 	Templates     map[string]outputTemplateConfig `json:"templates" yaml:"templates"`
 	HealthWeights hpaanalysis.HealthWeights       `json:"healthWeights" yaml:"healthWeights"`
-	Keda          *bool                           `json:"keda" yaml:"keda"`
-	Vpa           *bool                           `json:"vpa" yaml:"vpa"`
+	Keda            *bool                           `json:"keda" yaml:"keda"`
+	Vpa             *bool                           `json:"vpa" yaml:"vpa"`
+	ExplainPods     *bool                           `json:"explainPods" yaml:"explainPods"`
+	Simulate        []string                        `json:"simulate" yaml:"simulate"`
+	CapacityContext *bool                           `json:"capacityContext" yaml:"capacityContext"`
 }
 
 // outputTemplateConfig defines a named output template entry in the config file.
@@ -164,6 +167,15 @@ func applyConfig(cmd *cobra.Command, opts *options, cfg configFile) {
 	}
 	if cfg.Vpa != nil && !persistentFlagChanged(cmd, "vpa") {
 		opts.vpa = *cfg.Vpa
+	}
+	if cfg.ExplainPods != nil && !persistentFlagChanged(cmd, "explain-pods") {
+		opts.explainPods = *cfg.ExplainPods
+	}
+	if len(cfg.Simulate) > 0 && !persistentFlagChanged(cmd, "simulate") {
+		opts.simulate = cfg.Simulate
+	}
+	if cfg.CapacityContext != nil && !persistentFlagChanged(cmd, "capacity-context") {
+		opts.capacityContext = *cfg.CapacityContext
 	}
 }
 

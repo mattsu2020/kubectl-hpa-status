@@ -237,6 +237,30 @@ func buildStatusReport(ctx context.Context, opts *options, name string, includeI
 		}
 	}
 
+	if opts.explainPods {
+		report.Analysis.PodAnalysis = fetchAndAnalyzePods(ctx, client, hpa)
+	}
+
+	if len(opts.simulate) > 0 {
+		overrides, simErr := parseSimulateOverrides(opts.simulate)
+		if simErr != nil {
+			report.Analysis.Interpretation = append(report.Analysis.Interpretation,
+				fmt.Sprintf("simulation error: %v", simErr))
+		} else {
+			sim, simErr := hpaanalysis.SimulateHPA(hpa, overrides, analysisOptions(opts).HealthWeights)
+			if simErr != nil {
+				report.Analysis.Interpretation = append(report.Analysis.Interpretation,
+					fmt.Sprintf("simulation error: %v", simErr))
+			} else {
+				report.Analysis.Simulation = sim
+			}
+		}
+	}
+
+	if opts.capacityContext {
+		report.Analysis.CapacityContext = buildCapacityContext(ctx, client, hpa)
+	}
+
 	return report, nil
 }
 
