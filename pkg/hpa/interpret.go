@@ -56,12 +56,6 @@ func collectInterpretationCases(hpa *autoscalingv2.HorizontalPodAutoscaler, minR
 				nextStep: "Do not rely on desiredReplicas=0 as a scale-down signal",
 				severity: "error",
 			},
-			interpretationCase{
-				reason:   "ScalingInactive",
-				message:  limitation,
-				nextStep: "This plugin uses observed status only; no internal controller data is exposed",
-				severity: "error",
-			},
 		)
 		return cases
 	}
@@ -76,10 +70,15 @@ func collectInterpretationCases(hpa *autoscalingv2.HorizontalPodAutoscaler, minR
 		})
 	} else if condition := FindCondition(hpa, "AbleToScale"); condition != nil && condition.Reason == "ScaleDownStabilized" {
 		if remaining := estimateStabilizationRemaining(hpa); remaining != nil && *remaining > 0 {
+			message := fmt.Sprintf("[confidence: medium] Scale down appears stabilized: %s (estimated ~%d seconds remaining before scale-down is allowed).", condition.Message, *remaining)
+			nextStep := fmt.Sprintf("Scale-down stabilized; estimated ~%d seconds remaining", *remaining)
+			if hpa.Spec.Behavior == nil || hpa.Spec.Behavior.ScaleDown == nil {
+				message += " Note: no spec.behavior.scaleDown is set; the controller-manager default (usually 300s) is used and may differ from this estimate."
+			}
 			cases = append(cases, interpretationCase{
 				reason:   "ScaleDownStabilized",
-				message:  fmt.Sprintf("[confidence: high] Scale down appears stabilized: %s (approximately %d seconds remaining before scale-down is allowed).", condition.Message, *remaining),
-				nextStep: fmt.Sprintf("Scale-down stabilized; approximately %d seconds remaining", *remaining),
+				message:  message,
+				nextStep: nextStep,
 				severity: "info",
 			})
 		} else {
@@ -265,6 +264,7 @@ func Interpret(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []
 	// Append diagnostic lines (not part of the shared case model)
 	lines = append(lines, ExternalMetricDiagnostics(hpa)...)
 	lines = append(lines, ObjectMetricDiagnostics(hpa)...)
+	lines = append(lines, KEDADiagnostics(hpa)...)
 	lines = append(lines, limitation)
 
 	return lines
@@ -283,7 +283,46 @@ func buildStructuredInterpretation(hpa *autoscalingv2.HorizontalPodAutoscaler, m
 			Severity: c.severity,
 		})
 	}
+
+	// Append diagnostic lines as structured messages for JSON/YAML parity.
+	for _, line := range ExternalMetricDiagnostics(hpa) {
+		msgs = append(msgs, StructuredMessage{
+			Reason:   "ExternalMetricDiagnostic",
+			Message:  line,
+			Severity: severityFromConfidence(line),
+		})
+	}
+	for _, line := range ObjectMetricDiagnostics(hpa) {
+		msgs = append(msgs, StructuredMessage{
+			Reason:   "ObjectMetricDiagnostic",
+			Message:  line,
+			Severity: severityFromConfidence(line),
+		})
+	}
+	for _, line := range KEDADiagnostics(hpa) {
+		msgs = append(msgs, StructuredMessage{
+			Reason:   "KEDADiagnostic",
+			Message:  line,
+			Severity: severityFromConfidence(line),
+		})
+	}
+	msgs = append(msgs, StructuredMessage{
+		Reason:   "Limitation",
+		Message:  limitation,
+		Severity: "info",
+	})
+
 	return msgs
+}
+
+// severityFromConfidence extracts severity from a confidence label embedded in
+// a diagnostic message string. This avoids duplicating the confidence→severity
+// mapping between text and structured output.
+func severityFromConfidence(message string) string {
+	if strings.Contains(message, "[confidence: high]") {
+		return "warning"
+	}
+	return "info"
 }
 
 // ExternalMetricDiagnostics generates diagnostic lines for external metric issues.
@@ -293,11 +332,11 @@ func ExternalMetricDiagnostics(hpa *autoscalingv2.HorizontalPodAutoscaler) []str
 		if spec.Type != autoscalingv2.ExternalMetricSourceType || spec.External == nil {
 			continue
 		}
-		if !hasCurrentExternalMetric(hpa, spec.External.Metric.Name) {
+		if !hasCurrentExternalMetric(hpa, spec.External.Metric.Name, spec.External.Metric.Selector) {
 			lines = append(lines, fmt.Sprintf("[confidence: high] External metric %q%s is configured but no matching current metric status is reported; check the external metrics adapter, selector, and metric freshness.", spec.External.Metric.Name, selectorSuffix(spec.External.Metric.Selector)))
 			continue
 		}
-		if metric, ok := currentExternalMetric(hpa, spec.External.Metric.Name); ok {
+		if metric, ok := currentExternalMetric(hpa, spec.External.Metric.Name, spec.External.Metric.Selector); ok {
 			formatted := FormatMetricStatus(hpa, metric)
 			if formatted.Ratio != nil {
 				lines = append(lines, fmt.Sprintf("[confidence: medium] External metric %q%s is %.3fx its target; stale or delayed adapter data can make HPA decisions lag behind workload demand.", spec.External.Metric.Name, selectorSuffix(spec.External.Metric.Selector), *formatted.Ratio))
@@ -314,7 +353,11 @@ func ObjectMetricDiagnostics(hpa *autoscalingv2.HorizontalPodAutoscaler) []strin
 		if spec.Type != autoscalingv2.ObjectMetricSourceType || spec.Object == nil {
 			continue
 		}
-		if metric, ok := currentObjectMetric(hpa, spec.Object.Metric.Name); ok {
+		describedObject := autoscalingv2.CrossVersionObjectReference{
+			Kind: spec.Object.DescribedObject.Kind,
+			Name: spec.Object.DescribedObject.Name,
+		}
+		if metric, ok := currentObjectMetric(hpa, spec.Object.Metric.Name, spec.Object.Metric.Selector, describedObject); ok {
 			formatted := FormatMetricStatus(hpa, metric)
 			object := fmt.Sprintf("%s/%s", spec.Object.DescribedObject.Kind, spec.Object.DescribedObject.Name)
 			if formatted.Ratio != nil {
@@ -384,7 +427,7 @@ func RecommendedActions(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas 
 	}
 	if condition := FindCondition(hpa, "AbleToScale"); condition != nil && condition.Reason == "ScaleDownStabilized" {
 		if window := scaleDownStabilizationWindow(hpa); window != nil {
-			actions = append(actions, fmt.Sprintf("CPU or memory may already be low, but scale-down is stabilized; wait up to about %ds or review spec.behavior.scaleDown.stabilizationWindowSeconds.", *window))
+			actions = append(actions, fmt.Sprintf("CPU or memory may already be low, but scale-down is stabilized; estimated wait up to ~%ds or review spec.behavior.scaleDown.stabilizationWindowSeconds.", *window))
 		} else {
 			actions = append(actions, "CPU or memory may already be low, but scale-down is stabilized; review HPA behavior and recent recommendations.")
 		}
@@ -446,7 +489,7 @@ func buildStructuredActions(hpa *autoscalingv2.HorizontalPodAutoscaler, minRepli
 	if condition := FindCondition(hpa, "AbleToScale"); condition != nil && condition.Reason == "ScaleDownStabilized" {
 		nextStep := "Review HPA behavior and recent recommendations"
 		if window := scaleDownStabilizationWindow(hpa); window != nil {
-			nextStep = fmt.Sprintf("Wait up to about %ds or review spec.behavior.scaleDown.stabilizationWindowSeconds", *window)
+			nextStep = fmt.Sprintf("Estimated wait up to ~%ds or review spec.behavior.scaleDown.stabilizationWindowSeconds", *window)
 		}
 		msgs = append(msgs, StructuredMessage{
 			Reason:   "WaitForStabilization",

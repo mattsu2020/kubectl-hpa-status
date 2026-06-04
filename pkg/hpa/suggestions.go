@@ -250,7 +250,7 @@ func metricMixSuggestions(hpa *autoscalingv2.HorizontalPodAutoscaler) []Suggesti
 		}
 	}
 	for _, spec := range hpa.Spec.Metrics {
-		if spec.Type == autoscalingv2.ExternalMetricSourceType && spec.External != nil && !hasCurrentExternalMetric(hpa, spec.External.Metric.Name) {
+		if spec.Type == autoscalingv2.ExternalMetricSourceType && spec.External != nil && !hasCurrentExternalMetric(hpa, spec.External.Metric.Name, spec.External.Metric.Selector) {
 			suggestions = append(suggestions, Suggestion{
 				Title:       "Investigate stale external metric",
 				Description: fmt.Sprintf("External metric %q is configured but missing from currentMetrics. Fix the adapter/selector or remove the metric if it is no longer used.", spec.External.Metric.Name),
@@ -318,10 +318,22 @@ func visibleScaleDownPressure(hpa *autoscalingv2.HorizontalPodAutoscaler) bool {
 	return false
 }
 
+// recommendedMaxReplicasCap is the absolute upper bound for suggested
+// maxReplicas regardless of the doubling formula. This prevents dangerous
+// suggestions on production clusters where maxReplicas is already large.
+const recommendedMaxReplicasCap int32 = 200
+
 func recommendedMaxReplicas(hpa *autoscalingv2.HorizontalPodAutoscaler) int32 {
 	next := hpa.Spec.MaxReplicas * 2
 	if hpa.Status.DesiredReplicas > next {
 		next = hpa.Status.DesiredReplicas
+	}
+	if next <= hpa.Spec.MaxReplicas {
+		next = hpa.Spec.MaxReplicas + 1
+	}
+	// Cap to prevent dangerous suggestions on production clusters.
+	if next > recommendedMaxReplicasCap {
+		next = recommendedMaxReplicasCap
 	}
 	if next <= hpa.Spec.MaxReplicas {
 		next = hpa.Spec.MaxReplicas + 1

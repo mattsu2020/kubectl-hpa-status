@@ -225,7 +225,7 @@ func applyListSuggestions(ctx context.Context, out io.Writer, opts *options, hpa
 	// Apply each patch; continue on individual failure.
 	var succeeded, failed int
 	for _, e := range entries {
-		results, err := applySuggestionsInNamespace(ctx, out, opts, e.Namespace, e.Name, []hpaanalysis.Suggestion{e.Suggestion})
+		results, err := applySuggestionsInNamespace(ctx, out, opts, e.Namespace, e.Name, []hpaanalysis.Suggestion{e.Suggestion}, true)
 		if err != nil {
 			if _, err := fmt.Fprintf(out, "  FAILED %s/%s: %v\n", e.Namespace, e.Name, err); err != nil {
 				return fmt.Errorf("write output: %w", err)

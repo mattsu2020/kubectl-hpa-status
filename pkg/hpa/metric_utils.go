@@ -225,6 +225,10 @@ func scaleDownStabilizationWindow(hpa *autoscalingv2.HorizontalPodAutoscaler) *i
 // estimateStabilizationRemaining estimates how many seconds remain before
 // the scale-down stabilization window expires. Returns nil if the HPA is
 // not in a ScaleDownStabilized state or required data is unavailable.
+//
+// Caveat: Kubernetes downscale stabilization uses the max recommendation
+// within the window, not simply LastScaleTime. This estimate is approximate
+// and based on LastScaleTime as the best available signal.
 func estimateStabilizationRemaining(hpa *autoscalingv2.HorizontalPodAutoscaler) *int64 {
 	condition := FindCondition(hpa, "AbleToScale")
 	if condition == nil || condition.Reason != "ScaleDownStabilized" {

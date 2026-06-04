@@ -295,6 +295,7 @@ type MetricsPipelineDiagnostics struct {
 type PerMetricHealthCheck struct {
 	MetricType  string `json:"metricType" yaml:"metricType"`
 	MetricName  string `json:"metricName" yaml:"metricName"`
+	Selector    string `json:"selector,omitempty" yaml:"selector,omitempty"`
 	Status      string `json:"status" yaml:"status"` // "healthy", "missing", "stale"
 	Details     string `json:"details,omitempty" yaml:"details,omitempty"`
 	Remediation string `json:"remediation,omitempty" yaml:"remediation,omitempty"`

@@ -249,7 +249,7 @@ func TestAnalyzeBehaviorAddsRecommendedScaleDownAction(t *testing.T) {
 	if !strings.Contains(got.Behavior[0].Text, "stabilizationWindow=300s") {
 		t.Fatalf("expected stabilization window text, got %s", got.Behavior[0].Text)
 	}
-	if !containsLine(got.Actions, "wait up to about 300s") {
+	if !containsLine(got.Actions, "estimated wait up to ~300s") {
 		t.Fatalf("expected scale-down action, got %#v", got.Actions)
 	}
 }
@@ -627,7 +627,7 @@ func TestAnalyzeStabilizationWindowSpecificRules(t *testing.T) {
 	}
 
 	got := Analyze(hpa, true)
-	if !containsLine(got.Actions, "wait up to about 600s") {
+	if !containsLine(got.Actions, "estimated wait up to ~600s") {
 		t.Fatalf("expected wait action referring to 600s window, got %#v", got.Actions)
 	}
 }
@@ -1527,5 +1527,390 @@ func TestBuildSuggestions_ShortenStabilizationAtExplicitlySetBelow300s(t *testin
 	suggestions := BuildSuggestions(hpa, minReplicas)
 	if !containsSuggestion(suggestions, "Shorten scale-down stabilization") {
 		t.Fatalf("expected Shorten suggestion at explicitly set 120s window, got %#v", suggestions)
+	}
+}
+
+func TestExternalMetricMatching_DistinguishesSelector(t *testing.T) {
+	target := resource.MustParse("10")
+	currentA := resource.MustParse("20")
+	currentB := resource.MustParse("5")
+	hpa := baseHPA()
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{
+		{
+			Type: autoscalingv2.ExternalMetricSourceType,
+			External: &autoscalingv2.ExternalMetricSource{
+				Metric: autoscalingv2.MetricIdentifier{
+					Name:     "queue_depth",
+					Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"queue": "payments"}},
+				},
+				Target: autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType, Value: &target},
+			},
+		},
+		{
+			Type: autoscalingv2.ExternalMetricSourceType,
+			External: &autoscalingv2.ExternalMetricSource{
+				Metric: autoscalingv2.MetricIdentifier{
+					Name:     "queue_depth",
+					Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"queue": "orders"}},
+				},
+				Target: autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType, Value: &target},
+			},
+		},
+	}
+	// Only the "payments" selector metric is present in currentMetrics.
+	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{
+		{
+			Type: autoscalingv2.ExternalMetricSourceType,
+			External: &autoscalingv2.ExternalMetricStatus{
+				Metric:  autoscalingv2.MetricIdentifier{Name: "queue_depth", Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"queue": "payments"}}},
+				Current: autoscalingv2.MetricValueStatus{Value: &currentA},
+			},
+		},
+		{
+			Type: autoscalingv2.ExternalMetricSourceType,
+			External: &autoscalingv2.ExternalMetricStatus{
+				Metric:  autoscalingv2.MetricIdentifier{Name: "queue_depth", Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"queue": "orders"}}},
+				Current: autoscalingv2.MetricValueStatus{Value: &currentB},
+			},
+		},
+	}
+
+	got := Analyze(hpa, true)
+
+	// Both metrics should be found (no "missing" diagnostic for either)
+	paymentsFound := false
+	ordersFound := false
+	for _, line := range got.Interpretation {
+		if strings.Contains(line, `queue_depth`) && strings.Contains(line, "payments") && strings.Contains(line, "is configured but no matching") {
+			t.Errorf("payments metric should not be reported missing: %s", line)
+		}
+		if strings.Contains(line, `queue_depth`) && strings.Contains(line, "2.000x") {
+			paymentsFound = true
+		}
+		if strings.Contains(line, `queue_depth`) && strings.Contains(line, "0.500x") {
+			ordersFound = true
+		}
+	}
+	if !paymentsFound {
+		t.Fatal("expected payments external metric ratio diagnostic")
+	}
+	if !ordersFound {
+		t.Fatal("expected orders external metric ratio diagnostic")
+	}
+
+	// Diagnostics should show "payments" selector and "orders" selector separately
+	pipeline := DiagnoseMetricsPipeline(hpa)
+	if pipeline.OverallStatus != "healthy" {
+		t.Fatalf("expected healthy pipeline, got %s", pipeline.OverallStatus)
+	}
+}
+
+func TestExternalMetricMatching_SameNameDifferentSelector_MissingDetected(t *testing.T) {
+	target := resource.MustParse("10")
+	currentA := resource.MustParse("20")
+	hpa := baseHPA()
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{
+		{
+			Type: autoscalingv2.ExternalMetricSourceType,
+			External: &autoscalingv2.ExternalMetricSource{
+				Metric: autoscalingv2.MetricIdentifier{
+					Name:     "queue_depth",
+					Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"queue": "payments"}},
+				},
+				Target: autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType, Value: &target},
+			},
+		},
+		{
+			Type: autoscalingv2.ExternalMetricSourceType,
+			External: &autoscalingv2.ExternalMetricSource{
+				Metric: autoscalingv2.MetricIdentifier{
+					Name:     "queue_depth",
+					Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"queue": "orders"}},
+				},
+				Target: autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType, Value: &target},
+			},
+		},
+	}
+	// Only "payments" is present — "orders" should be detected as missing.
+	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{
+		{
+			Type: autoscalingv2.ExternalMetricSourceType,
+			External: &autoscalingv2.ExternalMetricStatus{
+				Metric:  autoscalingv2.MetricIdentifier{Name: "queue_depth", Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"queue": "payments"}}},
+				Current: autoscalingv2.MetricValueStatus{Value: &currentA},
+			},
+		},
+	}
+
+	pipeline := DiagnoseMetricsPipeline(hpa)
+	if pipeline.OverallStatus != "degraded" {
+		t.Fatalf("expected degraded pipeline, got %s", pipeline.OverallStatus)
+	}
+	healthyCount := 0
+	missingCount := 0
+	for _, check := range pipeline.PerMetricChecks {
+		switch check.Status {
+		case "healthy":
+			healthyCount++
+		case "missing":
+			missingCount++
+		}
+	}
+	if healthyCount != 1 {
+		t.Fatalf("expected 1 healthy, got %d", healthyCount)
+	}
+	if missingCount != 1 {
+		t.Fatalf("expected 1 missing, got %d", missingCount)
+	}
+}
+
+func TestObjectMetricMatching_DistinguishesDescribedObject(t *testing.T) {
+	target := resource.MustParse("100")
+	currentA := resource.MustParse("150")
+	hpa := baseHPA()
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{
+		{
+			Type: autoscalingv2.ObjectMetricSourceType,
+			Object: &autoscalingv2.ObjectMetricSource{
+				DescribedObject: autoscalingv2.CrossVersionObjectReference{Kind: "Service", Name: "web"},
+				Metric:          autoscalingv2.MetricIdentifier{Name: "requests"},
+				Target:          autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType, Value: &target},
+			},
+		},
+		{
+			Type: autoscalingv2.ObjectMetricSourceType,
+			Object: &autoscalingv2.ObjectMetricSource{
+				DescribedObject: autoscalingv2.CrossVersionObjectReference{Kind: "Service", Name: "api"},
+				Metric:          autoscalingv2.MetricIdentifier{Name: "requests"},
+				Target:          autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType, Value: &target},
+			},
+		},
+	}
+	// Only the "web" object is present — "api" should be missing.
+	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{
+		{
+			Type: autoscalingv2.ObjectMetricSourceType,
+			Object: &autoscalingv2.ObjectMetricStatus{
+				DescribedObject: autoscalingv2.CrossVersionObjectReference{Kind: "Service", Name: "web"},
+				Metric:          autoscalingv2.MetricIdentifier{Name: "requests"},
+				Current:         autoscalingv2.MetricValueStatus{Value: &currentA},
+			},
+		},
+	}
+
+	got := Analyze(hpa, true)
+	if !containsLine(got.Interpretation, "Object metric \"requests\"") {
+		t.Fatal("expected object metric diagnostic")
+	}
+
+	// Diagnostics pipeline should detect "api" as missing.
+	pipeline := DiagnoseMetricsPipeline(hpa)
+	if pipeline.OverallStatus != "degraded" {
+		t.Fatalf("expected degraded pipeline, got %s", pipeline.OverallStatus)
+	}
+}
+
+func TestPodsMetricMatching_DistinguishesSelector(t *testing.T) {
+	averageTarget := resource.MustParse("100m")
+	averageCurrentA := resource.MustParse("120m")
+	hpa := baseHPA()
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{
+		{
+			Type: autoscalingv2.PodsMetricSourceType,
+			Pods: &autoscalingv2.PodsMetricSource{
+				Metric: autoscalingv2.MetricIdentifier{
+					Name:     "requests_per_second",
+					Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "web"}},
+				},
+				Target: autoscalingv2.MetricTarget{Type: autoscalingv2.AverageValueMetricType, AverageValue: &averageTarget},
+			},
+		},
+		{
+			Type: autoscalingv2.PodsMetricSourceType,
+			Pods: &autoscalingv2.PodsMetricSource{
+				Metric: autoscalingv2.MetricIdentifier{
+					Name:     "requests_per_second",
+					Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "api"}},
+				},
+				Target: autoscalingv2.MetricTarget{Type: autoscalingv2.AverageValueMetricType, AverageValue: &averageTarget},
+			},
+		},
+	}
+	// Only the "web" selector metric is present.
+	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{
+		{
+			Type: autoscalingv2.PodsMetricSourceType,
+			Pods: &autoscalingv2.PodsMetricStatus{
+				Metric:  autoscalingv2.MetricIdentifier{Name: "requests_per_second", Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "web"}}},
+				Current: autoscalingv2.MetricValueStatus{AverageValue: &averageCurrentA},
+			},
+		},
+	}
+
+	pipeline := DiagnoseMetricsPipeline(hpa)
+	if pipeline.OverallStatus != "degraded" {
+		t.Fatalf("expected degraded pipeline, got %s", pipeline.OverallStatus)
+	}
+	healthyCount := 0
+	missingCount := 0
+	for _, check := range pipeline.PerMetricChecks {
+		switch check.Status {
+		case "healthy":
+			healthyCount++
+		case "missing":
+			missingCount++
+		}
+	}
+	if healthyCount != 1 {
+		t.Fatalf("expected 1 healthy, got %d", healthyCount)
+	}
+	if missingCount != 1 {
+		t.Fatalf("expected 1 missing, got %d", missingCount)
+	}
+}
+
+func TestHealthScore_NoMinReplicasPenaltyWithoutScalingLimited(t *testing.T) {
+	hpa := baseHPA()
+	// At minReplicas=2 but no ScalingLimited condition — normal low-traffic state.
+	hpa.Status.CurrentReplicas = 2
+	hpa.Status.DesiredReplicas = 2
+	_, score := Health(hpa, 2)
+	if score != 100 {
+		t.Fatalf("expected no penalty at minReplicas without ScalingLimited, got score=%d", score)
+	}
+}
+
+func TestHealthScore_MinReplicasPenaltyWithScalingLimited(t *testing.T) {
+	hpa := baseHPA()
+	hpa.Status.CurrentReplicas = 2
+	hpa.Status.DesiredReplicas = 2
+	hpa.Status.Conditions = append(hpa.Status.Conditions,
+		autoscalingv2.HorizontalPodAutoscalerCondition{Type: "ScalingLimited", Status: corev1.ConditionTrue, Reason: "TooFewReplicas"},
+	)
+	_, score := Health(hpa, 2)
+	if score >= 100 {
+		t.Fatalf("expected penalty when at minReplicas with ScalingLimited=True, got score=%d", score)
+	}
+}
+
+func TestHealthScore_ImplicitMaxReplicas_NoPenaltyWithoutPressure(t *testing.T) {
+	hpa := baseHPA()
+	hpa.Status.CurrentReplicas = 10
+	hpa.Status.DesiredReplicas = 10
+	hpa.Spec.MaxReplicas = 10
+	// No ScalingLimited, no metric above target — no penalty expected.
+	_, score := Health(hpa, 2)
+	if score != 100 {
+		t.Fatalf("expected no implicit max penalty without pressure, got score=%d", score)
+	}
+}
+
+func TestHealthScore_ImplicitMaxReplicas_PenaltyWithMetricPressure(t *testing.T) {
+	hpa := baseHPA()
+	hpa.Status.CurrentReplicas = 10
+	hpa.Status.DesiredReplicas = 10
+	hpa.Spec.MaxReplicas = 10
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{resourceMetricSpec(corev1.ResourceCPU, 80)}
+	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{resourceMetricStatus(corev1.ResourceCPU, 90)} // ratio > 1.0
+	_, score := Health(hpa, 2)
+	if score >= 100 {
+		t.Fatalf("expected implicit max penalty with metric pressure, got score=%d", score)
+	}
+}
+
+func TestHealthScore_ImplicitMaxReplicas_PenaltyWithScalingLimited(t *testing.T) {
+	hpa := baseHPA()
+	hpa.Status.CurrentReplicas = 10
+	hpa.Status.DesiredReplicas = 10
+	hpa.Spec.MaxReplicas = 10
+	hpa.Status.Conditions = append(hpa.Status.Conditions,
+		autoscalingv2.HorizontalPodAutoscalerCondition{Type: "ScalingLimited", Status: corev1.ConditionTrue, Reason: "TooManyReplicas"},
+	)
+	_, score := Health(hpa, 2)
+	if score >= 100 {
+		t.Fatalf("expected implicit max penalty with ScalingLimited, got score=%d", score)
+	}
+}
+
+func TestStructuredInterpretation_IncludesExternalMetricDiagnostics(t *testing.T) {
+	hpa := baseHPA()
+	target := resource.MustParse("10")
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{
+		{
+			Type: autoscalingv2.ExternalMetricSourceType,
+			External: &autoscalingv2.ExternalMetricSource{
+				Metric: autoscalingv2.MetricIdentifier{Name: "queue_depth"},
+				Target: autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType, Value: &target},
+			},
+		},
+	}
+
+	got := Analyze(hpa, true)
+	found := false
+	for _, msg := range got.StructuredInterpretation {
+		if msg.Reason == "ExternalMetricDiagnostic" && strings.Contains(msg.Message, "queue_depth") {
+			found = true
+			if msg.Severity == "" {
+				t.Fatalf("expected non-empty severity for ExternalMetricDiagnostic")
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected StructuredMessage with reason=ExternalMetricDiagnostic, got %#v", got.StructuredInterpretation)
+	}
+}
+
+func TestStructuredInterpretation_IncludesLimitation(t *testing.T) {
+	hpa := baseHPA()
+	got := Analyze(hpa, true)
+	found := false
+	for _, msg := range got.StructuredInterpretation {
+		if msg.Reason == "Limitation" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected StructuredMessage with reason=Limitation, got %#v", got.StructuredInterpretation)
+	}
+}
+
+func TestInterpret_NoDuplicateLimitation(t *testing.T) {
+	hpa := baseHPA()
+	hpa.Status.CurrentReplicas = 3
+	hpa.Status.DesiredReplicas = 0
+	hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
+		{Type: "ScalingActive", Status: corev1.ConditionFalse, Reason: "FailedGetResourceMetric", Message: "missing cpu metrics"},
+	}
+	got := Analyze(hpa, true)
+	count := 0
+	for _, line := range got.Interpretation {
+		if strings.Contains(line, "This plugin uses existing HPA status") {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("expected exactly 1 limitation line, got %d", count)
+	}
+}
+
+func TestRecommendedMaxReplicas_RespectsCap(t *testing.T) {
+	hpa := baseHPA()
+	hpa.Spec.MaxReplicas = 200
+	hpa.Status.CurrentReplicas = 200
+	hpa.Status.DesiredReplicas = 200
+	hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
+		{Type: "ScalingActive", Status: corev1.ConditionTrue, Reason: "ValidMetricFound"},
+		{Type: "ScalingLimited", Status: corev1.ConditionTrue, Reason: "TooManyReplicas"},
+	}
+	minReplicas := *hpa.Spec.MinReplicas
+	suggestions := BuildSuggestions(hpa, minReplicas)
+	if !containsSuggestion(suggestions, "Raise maxReplicas") {
+		t.Fatalf("expected Raise maxReplicas suggestion, got %#v", suggestions)
+	}
+	// The suggested maxReplicas should not exceed the cap (200)
+	for _, s := range suggestions {
+		if s.Title == "Raise maxReplicas" && strings.Contains(s.Patch, `"maxReplicas":200`) {
+			t.Fatalf("expected suggested maxReplicas to be capped, not 200 (same as current)")
+		}
 	}
 }

@@ -193,7 +193,7 @@ func (podsHandler) FormatStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, metr
 	if metric.Pods == nil {
 		return Metric{Type: "Pods", Text: "Pods metric: <missing status>"}
 	}
-	targetSpec := FindPodsTargetSpec(hpa, metric.Pods.Metric.Name)
+	targetSpec := FindPodsTargetSpec(hpa, metric.Pods.Metric.Name, metric.Pods.Metric.Selector)
 	target := FormatMetricTarget(targetSpec)
 	current := FormatMetricValueStatus(metric.Pods.Current)
 	ratio, note := calculateRatioAndNote(metric.Pods.Current, targetSpec, target)
@@ -218,7 +218,7 @@ func (podsHandler) ImpactRatio(hpa *autoscalingv2.HorizontalPodAutoscaler, metri
 	if metric.Pods == nil {
 		return "", nil
 	}
-	targetSpec := FindPodsTargetSpec(hpa, metric.Pods.Metric.Name)
+	targetSpec := FindPodsTargetSpec(hpa, metric.Pods.Metric.Name, metric.Pods.Metric.Selector)
 	ratio, _ := calculateRatioAndNote(metric.Pods.Current, targetSpec, FormatMetricTarget(targetSpec))
 	return metric.Pods.Metric.Name, ratio
 }
@@ -231,7 +231,13 @@ func (podsHandler) SpecIdentity(spec autoscalingv2.MetricSpec) (string, string) 
 }
 
 func (podsHandler) MatchesCurrent(spec autoscalingv2.MetricSpec, current autoscalingv2.MetricStatus) bool {
-	return spec.Pods != nil && current.Pods != nil && spec.Pods.Metric.Name == current.Pods.Metric.Name
+	if spec.Pods == nil || current.Pods == nil {
+		return false
+	}
+	if spec.Pods.Metric.Name != current.Pods.Metric.Name {
+		return false
+	}
+	return selectorsEqual(spec.Pods.Metric.Selector, current.Pods.Metric.Selector)
 }
 
 func (podsHandler) Remediation(spec autoscalingv2.MetricSpec) string {
@@ -259,7 +265,7 @@ func (objectHandler) FormatStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, me
 	if metric.Object == nil {
 		return Metric{Type: "Object", Text: "Object metric: <missing status>"}
 	}
-	targetSpec := FindObjectTargetSpec(hpa, metric.Object.Metric.Name)
+	targetSpec := FindObjectTargetSpec(hpa, metric.Object.Metric.Name, metric.Object.Metric.Selector, metric.Object.DescribedObject)
 	target := FormatMetricTarget(targetSpec)
 	current := FormatMetricValueStatus(metric.Object.Current)
 	ratio, note := calculateRatioAndNote(metric.Object.Current, targetSpec, target)
@@ -285,7 +291,7 @@ func (objectHandler) ImpactRatio(hpa *autoscalingv2.HorizontalPodAutoscaler, met
 	if metric.Object == nil {
 		return "", nil
 	}
-	targetSpec := FindObjectTargetSpec(hpa, metric.Object.Metric.Name)
+	targetSpec := FindObjectTargetSpec(hpa, metric.Object.Metric.Name, metric.Object.Metric.Selector, metric.Object.DescribedObject)
 	ratio, _ := calculateRatioAndNote(metric.Object.Current, targetSpec, FormatMetricTarget(targetSpec))
 	return metric.Object.Metric.Name, ratio
 }
@@ -298,7 +304,17 @@ func (objectHandler) SpecIdentity(spec autoscalingv2.MetricSpec) (string, string
 }
 
 func (objectHandler) MatchesCurrent(spec autoscalingv2.MetricSpec, current autoscalingv2.MetricStatus) bool {
-	return spec.Object != nil && current.Object != nil && spec.Object.Metric.Name == current.Object.Metric.Name
+	if spec.Object == nil || current.Object == nil {
+		return false
+	}
+	if spec.Object.Metric.Name != current.Object.Metric.Name {
+		return false
+	}
+	if !selectorsEqual(spec.Object.Metric.Selector, current.Object.Metric.Selector) {
+		return false
+	}
+	return spec.Object.DescribedObject.Kind == current.Object.DescribedObject.Kind &&
+		spec.Object.DescribedObject.Name == current.Object.DescribedObject.Name
 }
 
 func (objectHandler) Remediation(spec autoscalingv2.MetricSpec) string {
@@ -326,7 +342,7 @@ func (externalHandler) FormatStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, 
 	if metric.External == nil {
 		return Metric{Type: "External", Text: "External metric: <missing status>"}
 	}
-	targetSpec := FindExternalTargetSpec(hpa, metric.External.Metric.Name)
+	targetSpec := FindExternalTargetSpec(hpa, metric.External.Metric.Name, metric.External.Metric.Selector)
 	target := FormatMetricTarget(targetSpec)
 	current := FormatMetricValueStatus(metric.External.Current)
 	ratio, note := calculateRatioAndNote(metric.External.Current, targetSpec, target)
@@ -351,7 +367,7 @@ func (externalHandler) ImpactRatio(hpa *autoscalingv2.HorizontalPodAutoscaler, m
 	if metric.External == nil {
 		return "", nil
 	}
-	targetSpec := FindExternalTargetSpec(hpa, metric.External.Metric.Name)
+	targetSpec := FindExternalTargetSpec(hpa, metric.External.Metric.Name, metric.External.Metric.Selector)
 	ratio, _ := calculateRatioAndNote(metric.External.Current, targetSpec, FormatMetricTarget(targetSpec))
 	return metric.External.Metric.Name, ratio
 }
@@ -364,7 +380,13 @@ func (externalHandler) SpecIdentity(spec autoscalingv2.MetricSpec) (string, stri
 }
 
 func (externalHandler) MatchesCurrent(spec autoscalingv2.MetricSpec, current autoscalingv2.MetricStatus) bool {
-	return spec.External != nil && current.External != nil && spec.External.Metric.Name == current.External.Metric.Name
+	if spec.External == nil || current.External == nil {
+		return false
+	}
+	if spec.External.Metric.Name != current.External.Metric.Name {
+		return false
+	}
+	return selectorsEqual(spec.External.Metric.Selector, current.External.Metric.Selector)
 }
 
 func (externalHandler) Remediation(spec autoscalingv2.MetricSpec) string {
@@ -461,6 +483,28 @@ func metricDisplayName(metric autoscalingv2.MetricStatus) string {
 	return handlerFor(metric.Type).DisplayName(metric)
 }
 
+// specMetricSelector returns the formatted selector string for a spec metric,
+// or empty string if the metric type does not support selectors.
+func specMetricSelector(spec autoscalingv2.MetricSpec) string {
+	switch {
+	case spec.External != nil:
+		return FormatMetricSelector(spec.External.Metric.Selector)
+	case spec.Object != nil:
+		return FormatMetricSelector(spec.Object.Metric.Selector)
+	case spec.Pods != nil:
+		return FormatMetricSelector(spec.Pods.Metric.Selector)
+	default:
+		return ""
+	}
+}
+
+// selectorsEqual compares two LabelSelectors for equality.
+// Both nil selectors are considered equal. Non-nil selectors are compared
+// by formatting them into stable string representations.
+func selectorsEqual(a, b *metav1.LabelSelector) bool {
+	return FormatMetricSelector(a) == FormatMetricSelector(b)
+}
+
 // --- Helper functions for metric value formatting ---
 
 // FormatMetricTarget returns a human-readable string for a metric target.
@@ -554,10 +598,10 @@ func FindContainerResourceTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, nam
 	return FormatMetricTarget(FindContainerResourceTargetSpec(hpa, name, container))
 }
 
-// FindPodsTargetSpec finds the MetricTarget for a Pods metric by name.
-func FindPodsTargetSpec(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) autoscalingv2.MetricTarget {
+// FindPodsTargetSpec finds the MetricTarget for a Pods metric by name and selector.
+func FindPodsTargetSpec(hpa *autoscalingv2.HorizontalPodAutoscaler, name string, selector *metav1.LabelSelector) autoscalingv2.MetricTarget {
 	for _, m := range hpa.Spec.Metrics {
-		if m.Type == autoscalingv2.PodsMetricSourceType && m.Pods != nil && m.Pods.Metric.Name == name {
+		if m.Type == autoscalingv2.PodsMetricSourceType && m.Pods != nil && m.Pods.Metric.Name == name && selectorsEqual(m.Pods.Metric.Selector, selector) {
 			return m.Pods.Target
 		}
 	}
@@ -565,14 +609,14 @@ func FindPodsTargetSpec(hpa *autoscalingv2.HorizontalPodAutoscaler, name string)
 }
 
 // FindPodsTarget returns the formatted target string for a Pods metric.
-func FindPodsTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) string {
-	return FormatMetricTarget(FindPodsTargetSpec(hpa, name))
+func FindPodsTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, name string, selector *metav1.LabelSelector) string {
+	return FormatMetricTarget(FindPodsTargetSpec(hpa, name, selector))
 }
 
-// FindObjectTargetSpec finds the MetricTarget for an Object metric by name.
-func FindObjectTargetSpec(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) autoscalingv2.MetricTarget {
+// FindObjectTargetSpec finds the MetricTarget for an Object metric by name, selector, and described object.
+func FindObjectTargetSpec(hpa *autoscalingv2.HorizontalPodAutoscaler, name string, selector *metav1.LabelSelector, describedObject autoscalingv2.CrossVersionObjectReference) autoscalingv2.MetricTarget {
 	for _, m := range hpa.Spec.Metrics {
-		if m.Type == autoscalingv2.ObjectMetricSourceType && m.Object != nil && m.Object.Metric.Name == name {
+		if m.Type == autoscalingv2.ObjectMetricSourceType && m.Object != nil && m.Object.Metric.Name == name && selectorsEqual(m.Object.Metric.Selector, selector) && m.Object.DescribedObject.Kind == describedObject.Kind && m.Object.DescribedObject.Name == describedObject.Name {
 			return m.Object.Target
 		}
 	}
@@ -580,14 +624,14 @@ func FindObjectTargetSpec(hpa *autoscalingv2.HorizontalPodAutoscaler, name strin
 }
 
 // FindObjectTarget returns the formatted target string for an Object metric.
-func FindObjectTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) string {
-	return FormatMetricTarget(FindObjectTargetSpec(hpa, name))
+func FindObjectTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, name string, selector *metav1.LabelSelector, describedObject autoscalingv2.CrossVersionObjectReference) string {
+	return FormatMetricTarget(FindObjectTargetSpec(hpa, name, selector, describedObject))
 }
 
-// FindExternalTargetSpec finds the MetricTarget for an External metric by name.
-func FindExternalTargetSpec(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) autoscalingv2.MetricTarget {
+// FindExternalTargetSpec finds the MetricTarget for an External metric by name and selector.
+func FindExternalTargetSpec(hpa *autoscalingv2.HorizontalPodAutoscaler, name string, selector *metav1.LabelSelector) autoscalingv2.MetricTarget {
 	for _, m := range hpa.Spec.Metrics {
-		if m.Type == autoscalingv2.ExternalMetricSourceType && m.External != nil && m.External.Metric.Name == name {
+		if m.Type == autoscalingv2.ExternalMetricSourceType && m.External != nil && m.External.Metric.Name == name && selectorsEqual(m.External.Metric.Selector, selector) {
 			return m.External.Target
 		}
 	}
@@ -595,37 +639,43 @@ func FindExternalTargetSpec(hpa *autoscalingv2.HorizontalPodAutoscaler, name str
 }
 
 // FindExternalTarget returns the formatted target string for an External metric.
-func FindExternalTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) string {
-	return FormatMetricTarget(FindExternalTargetSpec(hpa, name))
+func FindExternalTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, name string, selector *metav1.LabelSelector) string {
+	return FormatMetricTarget(FindExternalTargetSpec(hpa, name, selector))
 }
 
 // --- Metric lookup helpers ---
 
 // hasCurrentExternalMetric reports whether the HPA status contains an
-// External metric with the given name.
-func hasCurrentExternalMetric(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) bool {
-	_, ok := currentExternalMetric(hpa, name)
+// External metric matching the given spec metric's name and selector.
+func hasCurrentExternalMetric(hpa *autoscalingv2.HorizontalPodAutoscaler, name string, selector *metav1.LabelSelector) bool {
+	_, ok := currentExternalMetric(hpa, name, selector)
 	return ok
 }
 
-// currentExternalMetric returns the External metric status for the given name.
-func currentExternalMetric(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) (autoscalingv2.MetricStatus, bool) {
+// currentExternalMetric returns the External metric status matching the given
+// name and selector.
+func currentExternalMetric(hpa *autoscalingv2.HorizontalPodAutoscaler, name string, selector *metav1.LabelSelector) (autoscalingv2.MetricStatus, bool) {
 	for _, metric := range hpa.Status.CurrentMetrics {
 		if metric.Type == autoscalingv2.ExternalMetricSourceType &&
 			metric.External != nil &&
-			metric.External.Metric.Name == name {
+			metric.External.Metric.Name == name &&
+			selectorsEqual(metric.External.Metric.Selector, selector) {
 			return metric, true
 		}
 	}
 	return autoscalingv2.MetricStatus{}, false
 }
 
-// currentObjectMetric returns the Object metric status for the given name.
-func currentObjectMetric(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) (autoscalingv2.MetricStatus, bool) {
+// currentObjectMetric returns the Object metric status matching the given
+// name, selector, and described object.
+func currentObjectMetric(hpa *autoscalingv2.HorizontalPodAutoscaler, name string, selector *metav1.LabelSelector, describedObject autoscalingv2.CrossVersionObjectReference) (autoscalingv2.MetricStatus, bool) {
 	for _, metric := range hpa.Status.CurrentMetrics {
 		if metric.Type == autoscalingv2.ObjectMetricSourceType &&
 			metric.Object != nil &&
-			metric.Object.Metric.Name == name {
+			metric.Object.Metric.Name == name &&
+			selectorsEqual(metric.Object.Metric.Selector, selector) &&
+			metric.Object.DescribedObject.Kind == describedObject.Kind &&
+			metric.Object.DescribedObject.Name == describedObject.Name {
 			return metric, true
 		}
 	}

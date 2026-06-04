@@ -14,10 +14,10 @@ import (
 )
 
 func applySuggestions(ctx context.Context, out io.Writer, opts *options, name string, suggestions []hpaanalysis.Suggestion) ([]string, error) {
-	return applySuggestionsInNamespace(ctx, out, opts, "", name, suggestions)
+	return applySuggestionsInNamespace(ctx, out, opts, "", name, suggestions, false)
 }
 
-func applySuggestionsInNamespace(ctx context.Context, out io.Writer, opts *options, namespace string, name string, suggestions []hpaanalysis.Suggestion) ([]string, error) {
+func applySuggestionsInNamespace(ctx context.Context, out io.Writer, opts *options, namespace string, name string, suggestions []hpaanalysis.Suggestion, skipConfirm bool) ([]string, error) {
 	var patches []hpaanalysis.Suggestion
 	for _, suggestion := range suggestions {
 		if suggestion.Apply && suggestion.Patch != "" {
@@ -50,7 +50,7 @@ func applySuggestionsInNamespace(ctx context.Context, out io.Writer, opts *optio
 			return nil, err
 		}
 	}
-	if !opts.yes {
+	if !opts.yes && !skipConfirm {
 		if opts.in == nil {
 			opts.in = os.Stdin
 		}

@@ -40,6 +40,7 @@ func DiagnoseMetricsPipeline(hpa *autoscalingv2.HorizontalPodAutoscaler) *Metric
 		check := PerMetricHealthCheck{
 			MetricType: metricType,
 			MetricName: metricName,
+			Selector:   specMetricSelector(spec),
 		}
 
 		if allCurrentMissing {

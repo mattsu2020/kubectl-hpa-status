@@ -12,6 +12,28 @@ func Health(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) (stri
 	return HealthWithWeights(hpa, minReplicas, HealthWeights{})
 }
 
+// hasCondition reports whether the HPA has a condition with the given type and status.
+func hasCondition(conditions []autoscalingv2.HorizontalPodAutoscalerCondition, conditionType string, status corev1.ConditionStatus) bool {
+	for _, c := range conditions {
+		if string(c.Type) == conditionType && c.Status == status {
+			return true
+		}
+	}
+	return false
+}
+
+// hasMetricAboveTarget reports whether any current metric has a ratio above 1.0,
+// indicating visible scaling pressure.
+func hasMetricAboveTarget(currentMetrics []autoscalingv2.MetricStatus, hpa *autoscalingv2.HorizontalPodAutoscaler) bool {
+	for _, metric := range currentMetrics {
+		_, ratio := metricImpactRatio(hpa, metric)
+		if ratio != nil && *ratio > 1.0 {
+			return true
+		}
+	}
+	return false
+}
+
 // HealthWithWeights computes the health state and score using configurable penalty weights.
 func HealthWithWeights(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32, weights HealthWeights) (string, int) {
 	if hpa == nil {
@@ -42,12 +64,24 @@ func HealthWithWeights(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas i
 		}
 	}
 	if hpa.Status.CurrentReplicas == hpa.Status.DesiredReplicas && hpa.Status.DesiredReplicas == hpa.Spec.MaxReplicas {
-		score -= weights.ImplicitMaxReplicas
-		if health == "OK" {
-			health = "LIMITED"
+		// Only apply implicit max penalty when there is visible scaling
+		// pressure or a ScalingLimited condition. When the workload is
+		// running at maxReplicas without pressure, the ceiling may be
+		// intentional.
+		hasLimited := hasCondition(hpa.Status.Conditions, "ScalingLimited", corev1.ConditionTrue)
+		hasPressure := hasMetricAboveTarget(hpa.Status.CurrentMetrics, hpa)
+		if hasLimited || hasPressure {
+			score -= weights.ImplicitMaxReplicas
+			if health == "OK" {
+				health = "LIMITED"
+			}
 		}
 	}
-	if hpa.Status.DesiredReplicas == minReplicas {
+	// Only apply the AtMinimumReplicas penalty when the HPA is also
+	// reporting ScalingLimited=True. Running at minReplicas during
+	// low-traffic periods is normal and should not reduce the health
+	// score by itself.
+	if hpa.Status.DesiredReplicas == minReplicas && hasCondition(hpa.Status.Conditions, "ScalingLimited", corev1.ConditionTrue) {
 		score -= weights.AtMinimumReplicas
 	}
 	if score < 0 {
