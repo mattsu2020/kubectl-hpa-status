@@ -165,7 +165,6 @@ func AnalyzeWithOptions(src *autoscalingv2.HorizontalPodAutoscaler, includeInter
 		analysis.Actions = RecommendedActions(src, minReplicas)
 		analysis.Suggestions = BuildSuggestions(src, minReplicas)
 		analysis.Interpretation = Interpret(src, minReplicas)
-		analysis.Interpretation = append(analysis.Interpretation, KEDADiagnostics(src)...)
 		analysis.StructuredInterpretation = buildStructuredInterpretation(src, minReplicas)
 		analysis.StructuredActions = buildStructuredActions(src, minReplicas)
 	}
