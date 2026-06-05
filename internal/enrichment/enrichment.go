@@ -37,15 +37,39 @@ type Context struct {
 	crdAvail    kube.CRDAvailability
 	kedaEnabled bool
 	vpaEnabled  bool
+	status      EnrichmentStatus
+}
+
+// Status returns the enrichment status for diagnostic output.
+func (ec *Context) Status() EnrichmentStatus {
+	if ec == nil {
+		return EnrichmentStatus{}
+	}
+	return ec.status
 }
 
 // NewContext creates an enrichment context from the given config. It checks
 // CRD availability via API discovery and creates a dynamic client only when
-// at least one enrichment source is available. Returns nil when both KEDA
-// and VPA are disabled or when neither CRD is installed.
+// at least one enrichment source is available. Always returns a non-nil Context
+// with status populated to explain why enrichment may be unavailable.
 func NewContext(_ context.Context, cfg Config) *Context {
+	kedaEntry := &EnrichmentEntry{Source: EnrichmentSourceKEDA, State: EnrichmentStateDisabled}
+	vpaEntry := &EnrichmentEntry{Source: EnrichmentSourceVPA, State: EnrichmentStateDisabled}
+	if cfg.KEDA {
+		kedaEntry.State = EnrichmentStateUnavailable
+		kedaEntry.Reason = "not requested"
+	}
+	if cfg.VPA {
+		vpaEntry.State = EnrichmentStateUnavailable
+		vpaEntry.Reason = "not requested"
+	}
+
+	status := EnrichmentStatus{KEDA: kedaEntry, VPA: vpaEntry}
+
 	if !cfg.KEDA && !cfg.VPA {
-		return nil
+		kedaEntry.State = EnrichmentStateDisabled
+		vpaEntry.State = EnrichmentStateDisabled
+		return &Context{status: status}
 	}
 
 	disco, err := kube.NewDiscoveryClient(kube.Options{
@@ -55,7 +79,15 @@ func NewContext(_ context.Context, cfg Config) *Context {
 		Cluster:    cfg.Cluster,
 	})
 	if err != nil {
-		return nil
+		if cfg.KEDA {
+			kedaEntry.State = EnrichmentStateError
+			kedaEntry.Reason = fmt.Sprintf("discovery client creation failed: %v", err)
+		}
+		if cfg.VPA {
+			vpaEntry.State = EnrichmentStateError
+			vpaEntry.Reason = fmt.Sprintf("discovery client creation failed: %v", err)
+		}
+		return &Context{status: status}
 	}
 
 	crdAvail := kube.DetectCRDs(disco)
@@ -63,8 +95,25 @@ func NewContext(_ context.Context, cfg Config) *Context {
 	kedaEnabled := cfg.KEDA && crdAvail.KEDA
 	vpaEnabled := cfg.VPA && crdAvail.VPA
 
+	if cfg.KEDA {
+		if crdAvail.KEDA {
+			kedaEntry.State = EnrichmentStateUnavailable // will be updated per-HPA
+		} else {
+			kedaEntry.State = EnrichmentStateUnavailable
+			kedaEntry.Reason = "CRD keda.sh/v1alpha1 not found in API discovery"
+		}
+	}
+	if cfg.VPA {
+		if crdAvail.VPA {
+			vpaEntry.State = EnrichmentStateUnavailable // will be updated per-HPA
+		} else {
+			vpaEntry.State = EnrichmentStateUnavailable
+			vpaEntry.Reason = "CRD autoscaling.k8s.io/v1 not found in API discovery"
+		}
+	}
+
 	if !kedaEnabled && !vpaEnabled {
-		return nil
+		return &Context{status: status}
 	}
 
 	dynClient, ns, err := kube.NewDynamicClient(kube.Options{
@@ -74,7 +123,25 @@ func NewContext(_ context.Context, cfg Config) *Context {
 		Cluster:    cfg.Cluster,
 	})
 	if err != nil {
-		return nil
+		if kedaEnabled {
+			kedaEntry.State = EnrichmentStateError
+			kedaEntry.Reason = fmt.Sprintf("dynamic client creation failed: %v", err)
+		}
+		if vpaEnabled {
+			vpaEntry.State = EnrichmentStateError
+			vpaEntry.Reason = fmt.Sprintf("dynamic client creation failed: %v", err)
+		}
+		return &Context{status: status}
+	}
+
+	// Mark enabled sources as available (per-HPA state will be set during enrichment)
+	if kedaEnabled {
+		kedaEntry.State = EnrichmentStateUnavailable
+		kedaEntry.Reason = ""
+	}
+	if vpaEnabled {
+		vpaEntry.State = EnrichmentStateUnavailable
+		vpaEntry.Reason = ""
 	}
 
 	return &Context{
@@ -83,6 +150,7 @@ func NewContext(_ context.Context, cfg Config) *Context {
 		crdAvail:    crdAvail,
 		kedaEnabled: kedaEnabled,
 		vpaEnabled:  vpaEnabled,
+		status:      status,
 	}
 }
 
@@ -181,7 +249,7 @@ func EnrichVPA(ctx context.Context, ec *Context, hpa *autoscalingv2.HorizontalPo
 // EnrichReport applies KEDA and VPA enrichment to a StatusReport and
 // adjusts the health score with enrichment penalties.
 func EnrichReport(ctx context.Context, ec *Context, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, weights hpaanalysis.HealthWeights) {
-	if ec == nil {
+	if ec == nil || (!ec.kedaEnabled && !ec.vpaEnabled) {
 		return
 	}
 
@@ -196,6 +264,9 @@ func EnrichReport(ctx context.Context, ec *Context, hpa *autoscalingv2.Horizonta
 	if report.Analysis.KEDAInfo != nil || report.Analysis.VPAConflict != nil {
 		hpaanalysis.ApplyEnrichmentPenalties(&report.Analysis, weights)
 	}
+
+	// Attach enrichment status to analysis for diagnostic output.
+	report.Analysis.EnrichmentStatus = ec.status
 }
 
 // BatchKEDA performs batched KEDA enrichment for multiple HPAs.

@@ -158,6 +158,9 @@ type Analysis struct {
 	Simulation *SimulationResult `json:"simulation,omitempty" yaml:"simulation,omitempty"`
 	// CapacityContext holds infrastructure capacity analysis for the scale target.
 	CapacityContext *CapacityContext `json:"capacityContext,omitempty" yaml:"capacityContext,omitempty"`
+		// EnrichmentStatus holds KEDA/VPA enrichment skip reasons for diagnostic output.
+		// Populated during enrichment to explain why data may be absent.
+		EnrichmentStatus interface{} `json:"enrichmentStatus,omitempty" yaml:"enrichmentStatus,omitempty"`
 }
 
 // DecisionSignal is the stable internal shape for explicit controller scaling
