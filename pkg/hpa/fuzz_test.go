@@ -100,7 +100,7 @@ func FuzzAnalyze(f *testing.F) {
 		_ = analysis.HealthScore
 
 		_, _ = Health(hpa, int32(minVal))
-		_, _ = HealthWithWeights(hpa, int32(minVal), HealthWeights{})
+		_ = HealthWithWeights(hpa, int32(minVal), HealthWeights{})
 		_ = SummarizeDirection(hpa, int32(minVal))
 		_ = Interpret(hpa, int32(minVal))
 		_ = RecommendedActions(hpa, int32(minVal))

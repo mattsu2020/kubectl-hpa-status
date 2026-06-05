@@ -104,6 +104,9 @@ type Analysis struct {
 	Health string `json:"health" yaml:"health"`
 	// HealthScore is the numeric health score from 0 (worst) to 100 (best).
 	HealthScore int `json:"healthScore" yaml:"healthScore"`
+	// HealthResult holds the typed health state, score, and individual penalty
+	// signals. Populated when --debug is enabled or for JSON/YAML output.
+	HealthResult *HealthResult `json:"healthResult,omitempty" yaml:"healthResult,omitempty"`
 	// Summary is a one-line direction summary of the HPA scaling state.
 	Summary string `json:"summary" yaml:"summary"`
 	// Conditions lists the HPA conditions sorted by priority.
@@ -155,6 +158,9 @@ type Analysis struct {
 	Simulation *SimulationResult `json:"simulation,omitempty" yaml:"simulation,omitempty"`
 	// CapacityContext holds infrastructure capacity analysis for the scale target.
 	CapacityContext *CapacityContext `json:"capacityContext,omitempty" yaml:"capacityContext,omitempty"`
+		// EnrichmentStatus holds KEDA/VPA enrichment skip reasons for diagnostic output.
+		// Populated during enrichment to explain why data may be absent.
+		EnrichmentStatus interface{} `json:"enrichmentStatus,omitempty" yaml:"enrichmentStatus,omitempty"`
 }
 
 // DecisionSignal is the stable internal shape for explicit controller scaling
@@ -179,10 +185,11 @@ type DecisionSignal struct {
 // interpretation or action line, with a reason, human message, and
 // suggested next step.
 type StructuredMessage struct {
-	Reason   string `json:"reason" yaml:"reason"`
-	Message  string `json:"message" yaml:"message"`
-	NextStep string `json:"nextStep,omitempty" yaml:"nextStep,omitempty"`
-	Severity string `json:"severity,omitempty" yaml:"severity,omitempty"` // "warning", "error", "info"
+	Reason     string     `json:"reason" yaml:"reason"`
+	Message    string     `json:"message" yaml:"message"`
+	NextStep   string     `json:"nextStep,omitempty" yaml:"nextStep,omitempty"`
+	Severity   Severity   `json:"severity,omitempty" yaml:"severity,omitempty"`
+	Confidence Confidence `json:"confidence,omitempty" yaml:"confidence,omitempty"`
 }
 
 // Condition represents an HPA condition with type, status, reason, and message.

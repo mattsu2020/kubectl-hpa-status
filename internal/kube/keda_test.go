@@ -15,12 +15,18 @@ func TestDetectKEDA_ByLabel(t *testing.T) {
 			Labels: map[string]string{"scaledobject.keda.sh/name": "worker"},
 		},
 	}
-	isKEDA, name := DetectKEDA(hpa)
-	if !isKEDA {
+	det := DetectKEDA(hpa)
+	if !det.Managed {
 		t.Fatal("expected KEDA detection from label")
 	}
-	if name != "worker" {
-		t.Fatalf("expected scaledObject name 'worker', got %q", name)
+	if det.Name != "worker" {
+		t.Fatalf("expected scaledObject name 'worker', got %q", det.Name)
+	}
+	if det.Source != KEDADetectionLabel {
+		t.Fatalf("expected source 'label', got %q", det.Source)
+	}
+	if det.Confidence != KEDAConfidenceMedium {
+		t.Fatalf("expected confidence 'medium', got %q", det.Confidence)
 	}
 }
 
@@ -31,9 +37,12 @@ func TestDetectKEDA_ByAnnotation(t *testing.T) {
 			Annotations: map[string]string{"app.kubernetes.io/managed-by": "keda-operator"},
 		},
 	}
-	isKEDA, _ := DetectKEDA(hpa)
-	if !isKEDA {
+	det := DetectKEDA(hpa)
+	if !det.Managed {
 		t.Fatal("expected KEDA detection from annotation")
+	}
+	if det.Source != KEDADetectionAnnotation {
+		t.Fatalf("expected source 'annotation', got %q", det.Source)
 	}
 }
 
@@ -43,12 +52,18 @@ func TestDetectKEDA_ByNamePrefix(t *testing.T) {
 			Name: "keda-hpa-worker",
 		},
 	}
-	isKEDA, name := DetectKEDA(hpa)
-	if !isKEDA {
+	det := DetectKEDA(hpa)
+	if !det.Managed {
 		t.Fatal("expected KEDA detection from name prefix")
 	}
-	if name != "worker" {
-		t.Fatalf("expected scaledObject name 'worker', got %q", name)
+	if det.Name != "worker" {
+		t.Fatalf("expected scaledObject name 'worker', got %q", det.Name)
+	}
+	if det.Source != KEDADetectionNamePrefix {
+		t.Fatalf("expected source 'name-prefix', got %q", det.Source)
+	}
+	if det.Confidence != KEDAConfidenceLow {
+		t.Fatalf("expected confidence 'low', got %q", det.Confidence)
 	}
 }
 
@@ -58,15 +73,15 @@ func TestDetectKEDA_NotKEDA(t *testing.T) {
 			Name: "my-app-hpa",
 		},
 	}
-	isKEDA, _ := DetectKEDA(hpa)
-	if isKEDA {
+	det := DetectKEDA(hpa)
+	if det.Managed {
 		t.Fatal("expected no KEDA detection for plain HPA")
 	}
 }
 
 func TestDetectKEDA_Nil(t *testing.T) {
-	isKEDA, _ := DetectKEDA(nil)
-	if isKEDA {
+	det := DetectKEDA(nil)
+	if det.Managed {
 		t.Fatal("expected false for nil HPA")
 	}
 }
