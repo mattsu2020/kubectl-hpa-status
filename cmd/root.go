@@ -97,6 +97,30 @@ type options struct {
 	watchOptions
 }
 
+// Normalize resolves implied flag settings for the status command.
+// Instead of scattering this logic in PersistentPreRun, this method
+// centralizes the flag normalization rules:
+//   - --recommend implies --suggest
+//   - --fix or --apply implies --suggest + --explain
+//   - --diff implies --suggest
+//   - --no-interpret clears --interpret and --suggest
+func (o *statusOptions) Normalize() {
+	if o.recommend {
+		o.suggest = true
+	}
+	if o.fix || o.apply {
+		o.suggest = true
+		o.explain = true
+	}
+	if o.diff {
+		o.suggest = true
+	}
+	if o.noInterpret {
+		o.interpret = false
+		o.suggest = false
+	}
+}
+
 func (o *options) newClient() (*kube.Client, error) {
 	kopts := kube.Options{
 		Namespace:  o.namespace,
@@ -151,20 +175,7 @@ func NewRootCommand() *cobra.Command {
 			if err := applyHealthWeightOverrides(opts); err != nil {
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %v\n", err)
 			}
-			if opts.recommend {
-				opts.suggest = true
-			}
-			if opts.fix || opts.apply {
-				opts.suggest = true
-				opts.explain = true
-			}
-			if opts.diff {
-				opts.suggest = true
-			}
-			if opts.noInterpret {
-				opts.interpret = false
-				opts.suggest = false
-			}
+			opts.Normalize()
 			opts.in = cmd.InOrStdin()
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
