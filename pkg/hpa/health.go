@@ -13,6 +13,47 @@ func Health(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) (stri
 	return string(result.State), result.Score
 }
 
+// HealthAccumulator centralizes health score updates so that all penalties
+// (condition-based and enrichment-based) flow through a single mechanism.
+// This prevents score/signal drift and makes penalty application auditable.
+type HealthAccumulator struct {
+	result HealthResult
+}
+
+// NewHealthAccumulator creates an accumulator starting at the given base score.
+func NewHealthAccumulator(baseScore int) *HealthAccumulator {
+	return &HealthAccumulator{
+		result: HealthResult{Score: baseScore},
+	}
+}
+
+// AddPenalty records a health penalty with reason and severity.
+func (h *HealthAccumulator) AddPenalty(reason string, penalty int, severity HealthState) {
+	h.result.Score -= penalty
+	h.result.Signals = append(h.result.Signals, HealthSignal{
+		Reason:   reason,
+		Penalty:  penalty,
+		Severity: severity,
+	})
+}
+
+// SetState overrides the health state classification.
+func (h *HealthAccumulator) SetState(state HealthState) {
+	h.result.State = state
+}
+
+// Result returns a copy of the accumulated health result.
+func (h *HealthAccumulator) Result() HealthResult {
+	// Return a copy to preserve immutability
+	signals := make([]HealthSignal, len(h.result.Signals))
+	copy(signals, h.result.Signals)
+	return HealthResult{
+		State:   h.result.State,
+		Score:   h.result.Score,
+		Signals: signals,
+	}
+}
+
 // hasCondition reports whether the HPA has a condition with the given type and status.
 func hasCondition(conditions []autoscalingv2.HorizontalPodAutoscalerCondition, conditionType string, status corev1.ConditionStatus) bool {
 	for _, c := range conditions {
@@ -43,45 +84,24 @@ func HealthWithWeights(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas i
 	}
 	w := resolveWeights(weights)
 
-	score := healthScoreMax
+	acc := NewHealthAccumulator(healthScoreMax)
 	health := HealthOK
-	var signals []HealthSignal
 
 	for _, condition := range hpa.Status.Conditions {
 		switch {
 		case condition.Type == "ScalingActive" && condition.Status != corev1.ConditionTrue:
-			score -= w.scalingInactive
-			signals = append(signals, HealthSignal{
-				Reason:   "ScalingActive is not True",
-				Penalty:  w.scalingInactive,
-				Severity: HealthError,
-			})
+			acc.AddPenalty("ScalingActive is not True", w.scalingInactive, HealthError)
 			health = HealthError
 		case condition.Type == "AbleToScale" && condition.Status != corev1.ConditionTrue:
-			score -= w.unableToScale
-			signals = append(signals, HealthSignal{
-				Reason:   "AbleToScale is not True",
-				Penalty:  w.unableToScale,
-				Severity: HealthError,
-			})
+			acc.AddPenalty("AbleToScale is not True", w.unableToScale, HealthError)
 			health = HealthError
 		case condition.Type == "ScalingLimited" && condition.Status == corev1.ConditionTrue:
-			score -= w.scalingLimited
-			signals = append(signals, HealthSignal{
-				Reason:   "ScalingLimited is True",
-				Penalty:  w.scalingLimited,
-				Severity: HealthLimited,
-			})
+			acc.AddPenalty("ScalingLimited is True", w.scalingLimited, HealthLimited)
 			if health != HealthError {
 				health = HealthLimited
 			}
 		case condition.Type == "AbleToScale" && condition.Reason == "ScaleDownStabilized":
-			score -= w.scaleDownStabilized
-			signals = append(signals, HealthSignal{
-				Reason:   "ScaleDownStabilized",
-				Penalty:  w.scaleDownStabilized,
-				Severity: HealthStabilized,
-			})
+			acc.AddPenalty("ScaleDownStabilized", w.scaleDownStabilized, HealthStabilized)
 			if health == HealthOK {
 				health = HealthStabilized
 			}
@@ -91,33 +111,21 @@ func HealthWithWeights(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas i
 		hasLimited := hasCondition(hpa.Status.Conditions, "ScalingLimited", corev1.ConditionTrue)
 		hasPressure := hasMetricAboveTarget(hpa.Status.CurrentMetrics, hpa)
 		if hasLimited || hasPressure {
-			score -= w.implicitMaxReplicas
-			signals = append(signals, HealthSignal{
-				Reason:   "Implicit maxReplicas ceiling (current==desired==max with pressure)",
-				Penalty:  w.implicitMaxReplicas,
-				Severity: HealthLimited,
-			})
+			acc.AddPenalty("Implicit maxReplicas ceiling (current==desired==max with pressure)", w.implicitMaxReplicas, HealthLimited)
 			if health == HealthOK {
 				health = HealthLimited
 			}
 		}
 	}
 	if hpa.Status.DesiredReplicas == minReplicas && hasCondition(hpa.Status.Conditions, "ScalingLimited", corev1.ConditionTrue) {
-		score -= w.atMinimumReplicas
-		signals = append(signals, HealthSignal{
-			Reason:   "At minimum replicas with ScalingLimited",
-			Penalty:  w.atMinimumReplicas,
-			Severity: health,
-		})
+		acc.AddPenalty("At minimum replicas with ScalingLimited", w.atMinimumReplicas, health)
 	}
-	if score < 0 {
-		score = 0
+	acc.SetState(health)
+	result := acc.Result()
+	if result.Score < 0 {
+		result.Score = 0
 	}
-	return HealthResult{
-		State:   health,
-		Score:   score,
-		Signals: signals,
-	}
+	return result
 }
 
 // resolvedWeights is the internal resolved form of HealthWeights where all
@@ -162,21 +170,22 @@ func ApplyEnrichmentPenalties(a *Analysis, weights HealthWeights) {
 	}
 	w := resolveWeights(weights)
 
+	acc := NewHealthAccumulator(a.HealthScore)
+	if a.HealthResult != nil {
+		for _, s := range a.HealthResult.Signals {
+			acc.result.Signals = append(acc.result.Signals, s)
+		}
+	}
+
+	currentState := HealthState(a.Health)
+	finalState := currentState
+
 	if a.KEDAInfo != nil {
 		for _, t := range a.KEDAInfo.Triggers {
 			if strings.EqualFold(t.Status, "Inactive") || strings.EqualFold(t.Status, "False") {
-				a.HealthScore -= w.kedaInactiveTrigger
-				if a.Health != string(HealthError) {
-					a.Health = string(HealthLimited)
-				}
-				if a.HealthResult != nil {
-					a.HealthResult.Score = a.HealthScore
-					a.HealthResult.State = HealthLimited
-					a.HealthResult.Signals = append(a.HealthResult.Signals, HealthSignal{
-						Reason:   "KEDA trigger inactive",
-						Penalty:  w.kedaInactiveTrigger,
-						Severity: HealthLimited,
-					})
+				acc.AddPenalty("KEDA trigger inactive", w.kedaInactiveTrigger, HealthLimited)
+				if currentState != HealthError {
+					finalState = HealthLimited
 				}
 				break
 			}
@@ -184,25 +193,22 @@ func ApplyEnrichmentPenalties(a *Analysis, weights HealthWeights) {
 	}
 
 	if a.VPAConflict != nil {
-		a.HealthScore -= w.vpaConflict
-		if a.Health == string(HealthOK) || a.Health == string(HealthStabilized) {
-			a.Health = string(HealthLimited)
-		}
-		if a.HealthResult != nil {
-			a.HealthResult.Score = a.HealthScore
-			a.HealthResult.State = HealthLimited
-			a.HealthResult.Signals = append(a.HealthResult.Signals, HealthSignal{
-				Reason:   "VPA conflict detected",
-				Penalty:  w.vpaConflict,
-				Severity: HealthLimited,
-			})
+		acc.AddPenalty("VPA conflict detected", w.vpaConflict, HealthLimited)
+		if currentState == HealthOK || currentState == HealthStabilized {
+			finalState = HealthLimited
 		}
 	}
 
-	if a.HealthScore < 0 {
-		a.HealthScore = 0
+	acc.SetState(finalState)
+	enrichedResult := acc.Result()
+	if enrichedResult.Score < 0 {
+		enrichedResult.Score = 0
 	}
-	if a.HealthResult != nil && a.HealthScore < a.HealthResult.Score {
-		a.HealthResult.Score = a.HealthScore
+	a.HealthScore = enrichedResult.Score
+	a.Health = string(enrichedResult.State)
+	if a.HealthResult != nil {
+		a.HealthResult.Score = enrichedResult.Score
+		a.HealthResult.State = enrichedResult.State
+		a.HealthResult.Signals = enrichedResult.Signals
 	}
 }
