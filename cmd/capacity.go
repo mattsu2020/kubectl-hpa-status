@@ -37,30 +37,45 @@ func buildCapacityContext(ctx context.Context, client *kube.Client, hpa *autosca
 
 // capacitySelector resolves the label selector for the HPA scale target.
 func capacitySelector(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) string {
-	ref := hpa.Spec.ScaleTargetRef
+	selector, err := scaleTargetSelector(ctx, client, hpa.Namespace, hpa.Spec.ScaleTargetRef)
+	if err != nil || selector == nil {
+		return ""
+	}
+
+	return metav1.FormatLabelSelector(selector)
+}
+
+func scaleTargetSelector(
+	ctx context.Context,
+	client *kube.Client,
+	namespace string,
+	ref autoscalingv2.CrossVersionObjectReference,
+) (*metav1.LabelSelector, error) {
 	switch ref.Kind {
 	case "Deployment":
-		deploy, err := client.Interface.AppsV1().Deployments(hpa.Namespace).Get(ctx, ref.Name, metav1.GetOptions{})
+		deploy, err := client.Interface.AppsV1().Deployments(namespace).Get(ctx, ref.Name, metav1.GetOptions{})
 		if err != nil {
-			return ""
+			return nil, err
 		}
-		return metav1.FormatLabelSelector(deploy.Spec.Selector)
+		return deploy.Spec.Selector, nil
+
 	case "StatefulSet":
-		sts, err := client.Interface.AppsV1().StatefulSets(hpa.Namespace).Get(ctx, ref.Name, metav1.GetOptions{})
+		sts, err := client.Interface.AppsV1().StatefulSets(namespace).Get(ctx, ref.Name, metav1.GetOptions{})
 		if err != nil {
-			return ""
+			return nil, err
 		}
-		return metav1.FormatLabelSelector(sts.Spec.Selector)
+		return sts.Spec.Selector, nil
+
 	case "ReplicaSet":
-		rs, err := client.Interface.AppsV1().ReplicaSets(hpa.Namespace).Get(ctx, ref.Name, metav1.GetOptions{})
+		rs, err := client.Interface.AppsV1().ReplicaSets(namespace).Get(ctx, ref.Name, metav1.GetOptions{})
 		if err != nil {
-			return ""
+			return nil, err
 		}
-		if rs.Spec.Selector != nil {
-			return metav1.FormatLabelSelector(rs.Spec.Selector)
-		}
+		return rs.Spec.Selector, nil
+
+	default:
+		return nil, nil
 	}
-	return ""
 }
 
 func convertPendingPods(details []kube.PendingPodDetail) []hpaanalysis.PendingPodInfo {
