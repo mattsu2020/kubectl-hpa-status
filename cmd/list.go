@@ -45,10 +45,14 @@ func newScanCommand(opts *options) *cobra.Command {
 		Short:   "Scan all namespaces for HPAs with visible problems",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			opts.allNamespaces = true
-			opts.problem = true
-			opts.wide = true
-			return runList(cmd.Context(), cmd.OutOrStdout(), opts)
+			// Shallow copy to avoid mutating shared state.
+			// NOTE: reference fields (clientOverride, outputTemplates, etc.) are shared.
+			// This is safe because runList does not mutate them.
+			scanOpts := *opts
+			scanOpts.allNamespaces = true
+			scanOpts.problem = true
+			scanOpts.wide = true
+			return runList(cmd.Context(), cmd.OutOrStdout(), &scanOpts)
 		},
 	}
 }
@@ -89,7 +93,7 @@ func runList(ctx context.Context, out io.Writer, opts *options) error {
 	vpaResults := enrichListVPA(ctx, ec, hpas.Items)
 
 	for i := range hpas.Items {
-		analysis := hpaanalysis.AnalyzeWithOptions(&hpas.Items[i], opts.apply, analysisOptions(opts))
+		analysis := hpaanalysis.AnalyzeWithOptions(&hpas.Items[i], opts.apply, analysisOptions(opts.healthWeights, opts.debug))
 
 		// Apply enrichment from batched results.
 		key := analysis.Namespace + "/" + analysis.Name
@@ -128,14 +132,16 @@ func runList(ctx context.Context, out io.Writer, opts *options) error {
 	}
 
 	wide := opts.wide || opts.output == "wide"
-	format, templateStr := outputSelection(opts)
+	format, templateStr := outputSelection(outputConfig{
+			report: opts.report, output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates,
+		})
 	return writeOutput(out, format, templateStr, report, func() error {
 		return hpaanalysis.WriteListText(out, report, hpaanalysis.ListTextOptions{
 			Wide:   wide,
 			Color:  shouldColorize(opts.color, out),
 			Theme:  style.NewTheme(shouldColorize(opts.color, out)),
-			Lang:   outputLang(opts),
-			Labels: labelProviderForOpts(opts),
+			Lang:   outputLang(opts.lang, opts.output),
+			Labels: labelProviderForLang(opts.lang, opts.output),
 		})
 	})
 }
@@ -158,7 +164,7 @@ func applyListSuggestions(ctx context.Context, out io.Writer, opts *options, hpa
 		if !selected[hpa.Namespace+"/"+hpa.Name] {
 			continue
 		}
-		analysis := hpaanalysis.AnalyzeWithOptions(hpa, true, analysisOptions(opts))
+		analysis := hpaanalysis.AnalyzeWithOptions(hpa, true, analysisOptions(opts.healthWeights, opts.debug))
 		for _, s := range analysis.Suggestions {
 			if s.Apply && s.Patch != "" {
 				entries = append(entries, batchEntry{

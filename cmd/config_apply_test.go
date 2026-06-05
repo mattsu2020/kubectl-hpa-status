@@ -5,12 +5,12 @@ import "testing"
 func TestApplyEventsConfigPreservesExistingPrecedence(t *testing.T) {
 	limit := 10
 	enabled := false
-	opts := &options{events: eventOption{enabled: false, limit: 5}}
-
+	opts := &options{
+		statusOptions: statusOptions{events: eventOption{enabled: false, limit: 5}},
+	}
 	applyEventsConfig(opts, configFile{Events: &limit, EventsEnabled: &enabled}, neverChanged)
-
 	if opts.events.enabled {
-		t.Fatalf("expected eventsEnabled to override events enabled state")
+		t.Fatalf("expected eventsEnabled=false to keep events disabled, got enabled=%v", opts.events.enabled)
 	}
 	if opts.events.limit != 10 {
 		t.Fatalf("expected events limit from config, got %d", opts.events.limit)
@@ -19,40 +19,36 @@ func TestApplyEventsConfigPreservesExistingPrecedence(t *testing.T) {
 
 func TestApplyEventsConfigSkipsExplicitFlag(t *testing.T) {
 	limit := 10
-	opts := &options{events: eventOption{enabled: false, limit: 5}}
-
-	applyEventsConfig(opts, configFile{Events: &limit}, alwaysChanged)
-
-	if opts.events.enabled {
-		t.Fatalf("expected explicit events flag to keep enabled state")
+	opts := &options{
+		statusOptions: statusOptions{events: eventOption{enabled: false, limit: 5}},
 	}
+	applyEventsConfig(opts, configFile{Events: &limit}, alwaysChanged)
 	if opts.events.limit != 5 {
-		t.Fatalf("expected explicit events flag to keep limit, got %d", opts.events.limit)
+		t.Fatalf("expected explicit events flag to keep limit 5, got %d", opts.events.limit)
 	}
 }
 
 func TestApplyHealthScoreConfigPreservesExistingPrecedence(t *testing.T) {
 	maxScore := 80
 	healthScore := 60
-	opts := &options{healthScoreMax: -1}
-
-	applyHealthScoreConfig(opts, configFile{MaxScore: &maxScore, HealthScore: &healthScore}, neverChanged)
-
+	opts := &options{
+		listOptions: listOptions{healthScoreMax: -1},
+	}
+	applyHealthScoreConfig(opts, configFile{HealthScore: &healthScore, MaxScore: &maxScore}, neverChanged)
+	// HealthScore takes precedence over MaxScore when both are set.
 	if opts.healthScoreMax != 60 {
-		t.Fatalf("expected healthScore to override maxScore, got %d", opts.healthScoreMax)
+		t.Fatalf("expected healthScoreMax=60 from HealthScore config, got %d", opts.healthScoreMax)
 	}
 }
 
 func TestApplyHealthScoreConfigSkipsExplicitAliasFlag(t *testing.T) {
 	maxScore := 80
-	opts := &options{healthScoreMax: -1}
-
-	applyHealthScoreConfig(opts, configFile{MaxScore: &maxScore}, func(name string) bool {
-		return name == "health-score"
-	})
-
+	opts := &options{
+		listOptions: listOptions{healthScoreMax: -1},
+	}
+	applyHealthScoreConfig(opts, configFile{MaxScore: &maxScore}, alwaysChanged)
 	if opts.healthScoreMax != -1 {
-		t.Fatalf("expected explicit health-score flag to keep max score, got %d", opts.healthScoreMax)
+		t.Fatalf("expected healthScoreMax=-1 when flag is explicitly set, got %d", opts.healthScoreMax)
 	}
 }
 

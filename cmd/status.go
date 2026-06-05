@@ -80,14 +80,16 @@ func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []st
 			report.Analysis.Actions = append(report.Analysis.Actions, applied...)
 		}
 
-		format, templateStr := outputSelection(opts)
+		format, templateStr := outputSelection(outputConfig{
+			report: opts.report, output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates,
+		})
 		if err := writeOutput(out, format, templateStr, report, func() error {
 			return hpaanalysis.WriteStatusTextWithOptions(out, report, hpaanalysis.StatusTextOptions{
-				Theme: style.NewTheme(shouldColorize(opts.color, out)),
-				Lang:  outputLang(opts),
-				Fix:   opts.fix,
-				Diff:  opts.diff,
-				Labels: labelProviderForOpts(opts),
+				Theme:  style.NewTheme(shouldColorize(opts.color, out)),
+				Lang:   outputLang(opts.lang, opts.output),
+				Fix:    opts.fix,
+				Diff:   opts.diff,
+				Labels: labelProviderForLang(opts.lang, opts.output),
 			})
 		}); err != nil {
 			return err
@@ -137,7 +139,9 @@ func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []st
 		return err
 	}
 
-	format, templateStr := outputSelection(opts)
+	format, templateStr := outputSelection(outputConfig{
+		report: opts.report, output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates,
+	})
 	if err := writeOutput(out, format, templateStr, reports, func() error {
 		for i, report := range reports {
 			if i > 0 {
@@ -146,11 +150,11 @@ func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []st
 				}
 			}
 			if err := hpaanalysis.WriteStatusTextWithOptions(out, report, hpaanalysis.StatusTextOptions{
-				Theme: style.NewTheme(shouldColorize(opts.color, out)),
-				Lang:  outputLang(opts),
-				Fix:   opts.fix,
-				Diff:  opts.diff,
-				Labels: labelProviderForOpts(opts),
+				Theme:  style.NewTheme(shouldColorize(opts.color, out)),
+				Lang:   outputLang(opts.lang, opts.output),
+				Fix:    opts.fix,
+				Diff:   opts.diff,
+				Labels: labelProviderForLang(opts.lang, opts.output),
 			}); err != nil {
 				return err
 			}
@@ -198,7 +202,7 @@ func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, 
 	}
 
 	report := hpaanalysis.StatusReport{
-		Analysis: hpaanalysis.AnalyzeWithOptions(hpa, includeInterpretation, analysisOptions(opts)),
+		Analysis: hpaanalysis.AnalyzeWithOptions(hpa, includeInterpretation, analysisOptions(opts.healthWeights, opts.debug)),
 	}
 
 	if opts.events.enabled {
@@ -258,7 +262,7 @@ func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, 
 			report.Analysis.Interpretation = append(report.Analysis.Interpretation,
 				fmt.Sprintf("simulation error: %v", simErr))
 		} else {
-			sim, simErr := hpaanalysis.SimulateHPA(hpa, overrides, analysisOptions(opts).HealthWeights)
+			sim, simErr := hpaanalysis.SimulateHPA(hpa, overrides, analysisOptions(opts.healthWeights, opts.debug).HealthWeights)
 			if simErr != nil {
 				report.Analysis.Interpretation = append(report.Analysis.Interpretation,
 					fmt.Sprintf("simulation error: %v", simErr))

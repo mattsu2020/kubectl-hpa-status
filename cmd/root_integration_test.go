@@ -31,8 +31,12 @@ func TestRunStatus_OK(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: true, limit: 5},
+		commonOptions: commonOptions{
+			clientOverride: fakeClient,
+		},
+		statusOptions: statusOptions{
+			events: eventOption{enabled: true, limit: 5},
+		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "web", true)
 	if err != nil {
@@ -60,11 +64,14 @@ func TestRunStatus_ScalingLimited(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
+		commonOptions: commonOptions{
+			clientOverride: fakeClient,
+		},
+		statusOptions: statusOptions{
+			events: eventOption{enabled: false},
+		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "api", true)
-	// ScalingLimited produces LIMITED health -> ExitCodeError with code 2.
 	if err == nil {
 		t.Fatal("expected ExitCodeError for ScalingLimited, got nil")
 	}
@@ -94,12 +101,15 @@ func TestRunStatusSuggestShowsPatchCommand(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		suggest:        true,
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
+		commonOptions: commonOptions{
+			clientOverride: fakeClient,
+		},
+		statusOptions: statusOptions{
+			suggest: true,
+			events:  eventOption{enabled: false},
+		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "api", true)
-	// LIMITED health returns ExitCodeError; that is expected.
 	if !isExitCodeWarning(err) {
 		t.Fatalf("expected ExitCodeError with ExitWarning, got: %v", err)
 	}
@@ -119,15 +129,18 @@ func TestRunStatusApplyPatchesHPA(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		apply:          true,
-		dryRun:         false,
-		yes:            true,
-		in:             io.Reader(strings.NewReader("")),
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
+		commonOptions: commonOptions{
+			clientOverride: fakeClient,
+			in:             io.Reader(strings.NewReader("")),
+		},
+		statusOptions: statusOptions{
+			apply:  true,
+			dryRun: false,
+			yes:    true,
+			events: eventOption{enabled: false},
+		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "api", true)
-	// LIMITED health returns ExitCodeError; that is expected.
 	if !isExitCodeWarning(err) {
 		t.Fatalf("expected ExitCodeError with ExitWarning, got: %v", err)
 	}
@@ -150,15 +163,18 @@ func TestRunStatusApplyDefaultsToDryRun(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		apply:          true,
-		dryRun:         true,
-		yes:            true,
-		in:             io.Reader(strings.NewReader("")),
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
+		commonOptions: commonOptions{
+			clientOverride: fakeClient,
+			in:             io.Reader(strings.NewReader("")),
+		},
+		statusOptions: statusOptions{
+			apply:  true,
+			dryRun: true,
+			yes:    true,
+			events: eventOption{enabled: false},
+		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "api", true)
-	// LIMITED health returns ExitCodeError; that is expected.
 	if !isExitCodeWarning(err) {
 		t.Fatalf("expected ExitCodeError with ExitWarning, got: %v", err)
 	}
@@ -180,11 +196,14 @@ func TestRunStatus_MetricsFetchFailure(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
+		commonOptions: commonOptions{
+			clientOverride: fakeClient,
+		},
+		statusOptions: statusOptions{
+			events: eventOption{enabled: false},
+		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "broken", true)
-	// ERROR health returns ExitCodeError with code 2.
 	if !isExitCodeWarning(err) {
 		t.Fatalf("expected ExitCodeError with ExitWarning, got: %v", err)
 	}
@@ -202,8 +221,12 @@ func TestRunStatus_NotFound(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
+		commonOptions: commonOptions{
+			clientOverride: fakeClient,
+		},
+		statusOptions: statusOptions{
+			events: eventOption{enabled: false},
+		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "nonexistent", false)
 	if err == nil {
@@ -223,9 +246,13 @@ func TestRunStatus_JSONOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		output:         "json",
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
+		commonOptions: commonOptions{
+			output:         "json",
+			clientOverride: fakeClient,
+		},
+		statusOptions: statusOptions{
+			events: eventOption{enabled: false},
+		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "web", false)
 	if err != nil {
@@ -251,8 +278,12 @@ func TestRunStatusMany_TextOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
+		commonOptions: commonOptions{
+			clientOverride: fakeClient,
+		},
+		statusOptions: statusOptions{
+			events: eventOption{enabled: false},
+		},
 	}
 	err := runStatusMany(context.Background(), &buf, opts, []string{"web", "api"}, false)
 	if err != nil {
@@ -271,9 +302,13 @@ func TestRunStatusMany_JSONOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		output:         "json",
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
+		commonOptions: commonOptions{
+			output:         "json",
+			clientOverride: fakeClient,
+		},
+		statusOptions: statusOptions{
+			events: eventOption{enabled: false},
+		},
 	}
 	err := runStatusMany(context.Background(), &buf, opts, []string{"web", "api"}, false)
 	if err != nil {
@@ -297,9 +332,13 @@ func TestRunStatus_YAMLOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		output:         "yaml",
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
+		commonOptions: commonOptions{
+			output:         "yaml",
+			clientOverride: fakeClient,
+		},
+		statusOptions: statusOptions{
+			events: eventOption{enabled: false},
+		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "web", false)
 	if err != nil {
@@ -325,8 +364,12 @@ func TestRunStatus_WithEvents(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: true, limit: 5},
+		commonOptions: commonOptions{
+			clientOverride: fakeClient,
+		},
+		statusOptions: statusOptions{
+			events: eventOption{enabled: true, limit: 5},
+		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "web", false)
 	if err != nil {
@@ -352,8 +395,12 @@ func TestRunList_MultipleHPAs(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
+		commonOptions: commonOptions{
+			clientOverride: fakeClient,
+		},
+		statusOptions: statusOptions{
+			events: eventOption{enabled: false},
+		},
 	}
 	err := runList(context.Background(), &buf, opts)
 	if err != nil {
@@ -378,9 +425,15 @@ func TestRunList_Filter(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		filter:         "error",
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
+		commonOptions: commonOptions{
+			clientOverride: fakeClient,
+		},
+		statusOptions: statusOptions{
+			events: eventOption{enabled: false},
+		},
+		listOptions: listOptions{
+			filter: "error",
+		},
 	}
 	err := runList(context.Background(), &buf, opts)
 	if err != nil {
@@ -405,9 +458,15 @@ func TestRunListProblemFiltersVisibleIssues(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		problem:        true,
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
+		commonOptions: commonOptions{
+			clientOverride: fakeClient,
+		},
+		statusOptions: statusOptions{
+			events: eventOption{enabled: false},
+		},
+		listOptions: listOptions{
+			problem: true,
+		},
 	}
 	err := runList(context.Background(), &buf, opts)
 	if err != nil {
@@ -432,9 +491,15 @@ func TestRunListHealthScoreThresholdFiltersByScore(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		healthScoreMax: 80,
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
+		commonOptions: commonOptions{
+			clientOverride: fakeClient,
+		},
+		statusOptions: statusOptions{
+			events: eventOption{enabled: false},
+		},
+		listOptions: listOptions{
+			healthScoreMax: 80,
+		},
 	}
 	err := runList(context.Background(), &buf, opts)
 	if err != nil {
@@ -456,9 +521,15 @@ func TestRunList_SortByDesired(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		sortBy:         "desired",
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
+		commonOptions: commonOptions{
+			clientOverride: fakeClient,
+		},
+		statusOptions: statusOptions{
+			events: eventOption{enabled: false},
+		},
+		listOptions: listOptions{
+			sortBy: "desired",
+		},
 	}
 	err := runList(context.Background(), &buf, opts)
 	if err != nil {
@@ -484,9 +555,13 @@ func TestRunList_Wide(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		wide:           true,
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
+		commonOptions: commonOptions{
+			wide:           true,
+			clientOverride: fakeClient,
+		},
+		statusOptions: statusOptions{
+			events: eventOption{enabled: false},
+		},
 	}
 	err := runList(context.Background(), &buf, opts)
 	if err != nil {
@@ -509,9 +584,13 @@ func TestRunList_LabelSelector(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		selector:       "app=web",
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
+		commonOptions: commonOptions{
+			selector:       "app=web",
+			clientOverride: fakeClient,
+		},
+		statusOptions: statusOptions{
+			events: eventOption{enabled: false},
+		},
 	}
 	err := runList(context.Background(), &buf, opts)
 	if err != nil {
@@ -541,13 +620,19 @@ func TestRunListApplyBatchSummaryAndConfirmation(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		apply:          true,
-		dryRun:         true,
-		yes:            true,
-		in:             io.Reader(strings.NewReader("")),
-		problem:        true,
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
+		commonOptions: commonOptions{
+			clientOverride: fakeClient,
+			in:             io.Reader(strings.NewReader("")),
+		},
+		statusOptions: statusOptions{
+			apply:  true,
+			dryRun: true,
+			yes:    true,
+			events: eventOption{enabled: false},
+		},
+		listOptions: listOptions{
+			problem: true,
+		},
 	}
 	err := runList(context.Background(), &buf, opts)
 	if err != nil {
@@ -575,13 +660,19 @@ func TestRunListApplyBatchSkippedOnNoInput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		apply:          true,
-		dryRun:         true,
-		yes:            false,
-		in:             io.Reader(strings.NewReader("n\n")),
-		problem:        true,
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
+		commonOptions: commonOptions{
+			clientOverride: fakeClient,
+			in:             io.Reader(strings.NewReader("n\n")),
+		},
+		statusOptions: statusOptions{
+			apply:  true,
+			dryRun: true,
+			yes:    false,
+			events: eventOption{enabled: false},
+		},
+		listOptions: listOptions{
+			problem: true,
+		},
 	}
 	err := runList(context.Background(), &buf, opts)
 	if err != nil {
@@ -594,7 +685,6 @@ func TestRunListApplyBatchSkippedOnNoInput(t *testing.T) {
 }
 
 func TestRunListApplyBatchNoPatchesFound(t *testing.T) {
-	// Healthy HPA with no applicable suggestions
 	hpa := kube.BuildHPA("default", "web",
 		kube.WithReplicas(3, 3),
 		kube.WithResourceMetric("cpu", 80, 70),
@@ -603,16 +693,20 @@ func TestRunListApplyBatchNoPatchesFound(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		apply:          true,
-		dryRun:         true,
-		yes:            true,
-		in:             io.Reader(strings.NewReader("")),
-		healthScoreMax: 80, // will not match since health is 100
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
+		commonOptions: commonOptions{
+			clientOverride: fakeClient,
+			in:             io.Reader(strings.NewReader("")),
+		},
+		statusOptions: statusOptions{
+			apply:  true,
+			dryRun: true,
+			yes:    true,
+			events: eventOption{enabled: false},
+		},
+		listOptions: listOptions{
+			healthScoreMax: 80,
+		},
 	}
-	// The HPA is healthy (score 100) but we filter for score <= 80, so nothing matches.
-	// The apply flow runs only on filtered items, so no patches.
 	err := runList(context.Background(), &buf, opts)
 	if err != nil {
 		t.Fatalf("runList returned error: %v", err)
@@ -629,10 +723,16 @@ func TestRunWatch_TimeoutExpires(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
-		watchInterval:  100 * time.Millisecond,
-		watchTimeout:   250 * time.Millisecond,
+		commonOptions: commonOptions{
+			clientOverride: fakeClient,
+		},
+		statusOptions: statusOptions{
+			events: eventOption{enabled: false},
+		},
+		watchOptions: watchOptions{
+			watchInterval: 100 * time.Millisecond,
+			watchTimeout:  250 * time.Millisecond,
+		},
 	}
 	err := runWatch(context.Background(), &buf, opts, "web", false)
 	if err == nil {
@@ -657,10 +757,16 @@ func TestRunWatch_UntilCondition(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
-		watchInterval:  100 * time.Millisecond,
-		untilCondition: "scaling-limited",
+		commonOptions: commonOptions{
+			clientOverride: fakeClient,
+		},
+		statusOptions: statusOptions{
+			events: eventOption{enabled: false},
+		},
+		watchOptions: watchOptions{
+			watchInterval:  100 * time.Millisecond,
+			untilCondition: "scaling-limited",
+		},
 	}
 	err := runWatch(context.Background(), &buf, opts, "web", false)
 	if err != nil {
@@ -685,8 +791,12 @@ func TestRunStatus_ExitCode_HealthyHPA(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
+		commonOptions: commonOptions{
+			clientOverride: fakeClient,
+		},
+		statusOptions: statusOptions{
+			events: eventOption{enabled: false},
+		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "web", true)
 	if err != nil {
@@ -703,8 +813,12 @@ func TestRunStatus_ExitCode_ScalingInactive(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
+		commonOptions: commonOptions{
+			clientOverride: fakeClient,
+		},
+		statusOptions: statusOptions{
+			events: eventOption{enabled: false},
+		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "broken", true)
 	if err == nil {
@@ -724,14 +838,17 @@ func TestRunStatus_ExitCode_NotFound(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
+		commonOptions: commonOptions{
+			clientOverride: fakeClient,
+		},
+		statusOptions: statusOptions{
+			events: eventOption{enabled: false},
+		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "nonexistent", false)
 	if err == nil {
 		t.Fatal("expected error for nonexistent HPA, got nil")
 	}
-	// Not-found should be a regular error, not an ExitCodeError.
 	if _, ok := err.(*ExitCodeError); ok {
 		t.Fatalf("expected regular error for not-found, got *ExitCodeError")
 	}
@@ -750,8 +867,12 @@ func TestRunStatus_ExitCode_ScalingLimited(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
+		commonOptions: commonOptions{
+			clientOverride: fakeClient,
+		},
+		statusOptions: statusOptions{
+			events: eventOption{enabled: false},
+		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "api", true)
 	if err == nil {
@@ -785,9 +906,13 @@ func TestRunStatus_ExplainPods(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
-		explainPods:    true,
+		commonOptions: commonOptions{
+			clientOverride: fakeClient,
+		},
+		statusOptions: statusOptions{
+			events:      eventOption{enabled: false},
+			explainPods: true,
+		},
 	}
 
 	err := runStatus(context.Background(), &buf, opts, "web", false)
@@ -795,8 +920,6 @@ func TestRunStatus_ExplainPods(t *testing.T) {
 		t.Fatalf("runStatus returned error: %v", err)
 	}
 
-	// PodAnalysis should be nil when no pods are found (no deployment in fake client)
-	// This verifies the code path doesn't crash
 	output := buf.String()
 	if !strings.Contains(output, "web") {
 		t.Error("expected output to contain HPA name")
@@ -812,10 +935,14 @@ func TestRunStatus_ExplainPods_JSON(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
-		explainPods:    true,
-		output:         "json",
+		commonOptions: commonOptions{
+			clientOverride: fakeClient,
+			output:         "json",
+		},
+		statusOptions: statusOptions{
+			events:      eventOption{enabled: false},
+			explainPods: true,
+		},
 	}
 
 	err := runStatus(context.Background(), &buf, opts, "web", false)
@@ -828,7 +955,6 @@ func TestRunStatus_ExplainPods_JSON(t *testing.T) {
 		t.Fatalf("failed to parse JSON output: %v", err)
 	}
 
-	// PodAnalysis field should exist in the JSON output (may be nil or empty)
 	_ = report.Analysis.PodAnalysis
 }
 
@@ -846,10 +972,14 @@ func TestRunStatus_Simulate(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
-		simulate:       []string{"maxReplicas=20"},
-		output:         "json",
+		commonOptions: commonOptions{
+			clientOverride: fakeClient,
+			output:         "json",
+		},
+		statusOptions: statusOptions{
+			events:   eventOption{enabled: false},
+			simulate: []string{"maxReplicas=20"},
+		},
 	}
 
 	err := runStatus(context.Background(), &buf, opts, "web", false)
@@ -886,9 +1016,13 @@ func TestRunStatus_SimulateText(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
-		simulate:       []string{"maxReplicas=20"},
+		commonOptions: commonOptions{
+			clientOverride: fakeClient,
+		},
+		statusOptions: statusOptions{
+			events:   eventOption{enabled: false},
+			simulate: []string{"maxReplicas=20"},
+		},
 	}
 
 	err := runStatus(context.Background(), &buf, opts, "web", false)
@@ -971,10 +1105,14 @@ func TestRunStatus_CapacityContext(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
-		capacityContext: true,
-		output:         "json",
+		commonOptions: commonOptions{
+			clientOverride: fakeClient,
+			output:         "json",
+		},
+		statusOptions: statusOptions{
+			events:          eventOption{enabled: false},
+			capacityContext: true,
+		},
 	}
 
 	err := runStatus(context.Background(), &buf, opts, "web", false)
@@ -987,7 +1125,6 @@ func TestRunStatus_CapacityContext(t *testing.T) {
 		t.Fatalf("failed to parse JSON output: %v", err)
 	}
 
-	// CapacityContext should be non-nil (even if empty)
 	if report.Analysis.CapacityContext == nil {
 		t.Error("expected CapacityContext to be populated")
 	}
@@ -1036,8 +1173,12 @@ func TestRunReplay_FromFile(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		events: eventOption{enabled: false},
-		color:  "never",
+		commonOptions: commonOptions{
+			color: "never",
+		},
+		statusOptions: statusOptions{
+			events: eventOption{enabled: false},
+		},
 	}
 
 	err = runReplay(&buf, opts, tmpFile.Name())
@@ -1090,9 +1231,13 @@ func TestRunReplay_Markdown(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		events: eventOption{enabled: false},
-		output: "markdown",
-		color:  "never",
+		commonOptions: commonOptions{
+			output: "markdown",
+			color:  "never",
+		},
+		statusOptions: statusOptions{
+			events: eventOption{enabled: false},
+		},
 	}
 
 	err = runReplay(&buf, opts, tmpFile.Name())
@@ -1109,8 +1254,12 @@ func TestRunReplay_Markdown(t *testing.T) {
 func TestRunReplay_FileNotFound(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
-		events: eventOption{enabled: false},
-		color:  "never",
+		commonOptions: commonOptions{
+			color: "never",
+		},
+		statusOptions: statusOptions{
+			events: eventOption{enabled: false},
+		},
 	}
 
 	err := runReplay(&buf, opts, "/nonexistent/path.json")

@@ -18,22 +18,33 @@ var (
 	date    = "unknown"
 )
 
-type options struct {
-	namespace             string
-	allNamespaces         bool
-	contextName           string
-	kubeconfig            string
-	cluster               string
-	output                string
-	template              string
-	wide                  bool
-	selector              string
-	sortBy                string
-	filter                string
-	healthScoreMin        int
-	healthScoreMax        int
-	color                 string
-	events                eventOption
+// commonOptions holds CLI flags shared across all commands: Kubernetes
+// connection, output formatting, language, and debug settings.
+type commonOptions struct {
+	namespace       string
+	allNamespaces   bool
+	contextName     string
+	kubeconfig      string
+	cluster         string
+	output          string
+	template        string
+	wide            bool
+	selector        string
+	color           string
+	lang            string
+	debug           bool
+	config          string
+	chunkSize       int64
+	qps             float32
+	burst           int
+	outputTemplates map[string]outputTemplateConfig
+	clientOverride  kubernetes.Interface
+	in              io.Reader
+}
+
+// statusOptions holds flags for the status / analyze command: interpretation,
+// suggestions, apply workflow, enrichment, diagnostics, and simulation.
+type statusOptions struct {
 	interpret             bool
 	noInterpret           bool
 	explain               bool
@@ -43,32 +54,47 @@ type options struct {
 	diff                  bool
 	dryRun                bool
 	yes                   bool
-	lang                  string
-	debug                 bool
-	dashboard             bool
 	keda                  bool
 	vpa                   bool
-	config                string
-	chunkSize             int64
 	healthWeightOverrides []string
-	outputTemplates       map[string]outputTemplateConfig
 	healthWeights         hpaanalysis.HealthWeights
 	diagnoseMetrics       bool
-	problem               bool
-	recommend             bool
-	watch                 bool
-	watchInterval         time.Duration
-	watchTimeout          time.Duration
-	untilCondition        string
-	report                string
 	checkResources        bool
 	explainPods           bool
 	simulate              []string
 	capacityContext       bool
-	qps                   float32
-	burst                 int
-	clientOverride        kubernetes.Interface
-	in                    io.Reader
+	events                eventOption
+	recommend             bool
+	report                string
+}
+
+// listOptions holds flags specific to the list / scan commands.
+type listOptions struct {
+	sortBy         string
+	filter         string
+	healthScoreMin int
+	healthScoreMax int
+	problem        bool
+}
+
+// watchOptions holds flags specific to the watch / TUI commands.
+type watchOptions struct {
+	watch          bool
+	watchInterval  time.Duration
+	watchTimeout   time.Duration
+	untilCondition string
+	dashboard      bool
+}
+
+// options composes all option groups. Fields are accessed through the
+// embedded structs (e.g., opts.namespace, opts.apply) to preserve
+// backward compatibility with existing code while organizing flags
+// by command scope.
+type options struct {
+	commonOptions
+	statusOptions
+	listOptions
+	watchOptions
 }
 
 func (o *options) newClient() (*kube.Client, error) {
@@ -89,12 +115,20 @@ func (o *options) newClient() (*kube.Client, error) {
 // NewRootCommand creates and returns the root cobra command for kubectl-hpa-status.
 func NewRootCommand() *cobra.Command {
 	opts := &options{
-		events:         eventOption{enabled: true, limit: 5},
-		color:          "auto",
-		dryRun:         true,
-		healthScoreMax: -1,
-		chunkSize:      500,
-		watchInterval:  5 * time.Second,
+		commonOptions: commonOptions{
+			color:     "auto",
+			chunkSize: 500,
+		},
+		statusOptions: statusOptions{
+			events: eventOption{enabled: true, limit: 5},
+			dryRun: true,
+		},
+		listOptions: listOptions{
+			healthScoreMax: -1,
+		},
+		watchOptions: watchOptions{
+			watchInterval: 5 * time.Second,
+		},
 	}
 
 	root := &cobra.Command{

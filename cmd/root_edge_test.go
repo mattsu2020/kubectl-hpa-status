@@ -24,9 +24,7 @@ func TestRunStatus_ScalingInactiveWithExternalMetric(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		suggest:        true,
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
+		commonOptions: commonOptions{clientOverride: fakeClient},
 	}
 	err := runStatus(context.Background(), &buf, opts, "keda-worker", true)
 	// ScalingActive=False produces ERROR health -> ExitCodeError with code 2.
@@ -53,9 +51,7 @@ func TestRunStatus_ImplicitMaxReplicas(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		explain:        true,
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
+		commonOptions: commonOptions{clientOverride: fakeClient},
 	}
 	err := runStatus(context.Background(), &buf, opts, "capped", true)
 	// Implicit maxReplicas produces LIMITED health -> ExitCodeError with code 2.
@@ -78,9 +74,7 @@ func TestRunStatus_ScaleDownStabilized(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		explain:        true,
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
+		commonOptions: commonOptions{clientOverride: fakeClient},
 	}
 	err := runStatus(context.Background(), &buf, opts, "stable", true)
 	if err != nil {
@@ -106,9 +100,7 @@ func TestRunStatus_ExternalMetricPresent(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		explain:        true,
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
+		commonOptions: commonOptions{clientOverride: fakeClient},
 	}
 	err := runStatus(context.Background(), &buf, opts, "queue-worker", true)
 	if err != nil {
@@ -131,9 +123,7 @@ func TestRunStatus_KEDADetectionWithoutKEDAFlag(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		explain:        true,
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
+		commonOptions: commonOptions{clientOverride: fakeClient},
 	}
 	err := runStatus(context.Background(), &buf, opts, "keda-hpa-worker", true)
 	if err != nil {
@@ -157,9 +147,7 @@ func TestRunStatus_DebugMode(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		debug:          true,
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
+		commonOptions: commonOptions{clientOverride: fakeClient, debug: true},
 	}
 	err := runStatus(context.Background(), &buf, opts, "web", true)
 	if err != nil {
@@ -190,9 +178,7 @@ func TestRunList_MinScore(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		healthScoreMin: 50,
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
+		commonOptions: commonOptions{clientOverride: fakeClient},
 	}
 	err := runList(context.Background(), &buf, opts)
 	if err != nil {
@@ -226,9 +212,8 @@ func TestRunList_MinScoreFiltersLow(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		healthScoreMin: 90,
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
+		commonOptions: commonOptions{clientOverride: fakeClient},
+		listOptions:   listOptions{healthScoreMin: 90},
 	}
 	err := runList(context.Background(), &buf, opts)
 	if err != nil {
@@ -253,9 +238,7 @@ func TestRunStatus_BehaviorWithStabilizationWindow(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		suggest:        true,
-		clientOverride: fakeClient,
-		events:         eventOption{enabled: false},
+		commonOptions: commonOptions{clientOverride: fakeClient},
 	}
 	err := runStatus(context.Background(), &buf, opts, "slow", true)
 	if err != nil {

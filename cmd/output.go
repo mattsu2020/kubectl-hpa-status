@@ -29,11 +29,11 @@ func shouldColorize(mode string, out io.Writer) bool {
 	}
 }
 
-func outputLang(opts *options) string {
-	if opts.lang != "" {
-		return strings.ToLower(opts.lang)
+func outputLang(lang, output string) string {
+	if lang != "" {
+		return strings.ToLower(lang)
 	}
-	if strings.EqualFold(opts.output, "ja") {
+	if strings.EqualFold(output, "ja") {
 		return "ja"
 	}
 	return ""
@@ -48,18 +48,18 @@ func (p i18nLabels) Get(key string) string {
 	return i18n.Get(p.lang, key)
 }
 
-func labelProviderForOpts(opts *options) hpaanalysis.LabelProvider {
-	lang := outputLang(opts)
-	if lang == "" {
+func labelProviderForLang(lang, output string) hpaanalysis.LabelProvider {
+	l := outputLang(lang, output)
+	if l == "" {
 		return nil // use DefaultLabels
 	}
-	return i18nLabels{lang: lang}
+	return i18nLabels{lang: l}
 }
 
-func analysisOptions(opts *options) hpaanalysis.AnalysisOptions {
+func analysisOptions(hw hpaanalysis.HealthWeights, debug bool) hpaanalysis.AnalysisOptions {
 	return hpaanalysis.AnalysisOptions{
-		HealthWeights: opts.healthWeights,
-		Debug:         opts.debug,
+		HealthWeights: hw,
+		Debug:         debug,
 	}
 }
 
@@ -129,42 +129,51 @@ func writeOutput(out io.Writer, format string, templateStr string, value any, wr
 	}
 }
 
-func outputSelection(opts *options) (string, string) {
-	if opts.report != "" {
-		switch opts.report {
+// outputConfig holds the output-related fields needed by outputSelection,
+// decoupled from the full options struct.
+type outputConfig struct {
+	report          string
+	output          string
+	template        string
+	outputTemplates map[string]outputTemplateConfig
+}
+
+func outputSelection(cfg outputConfig) (string, string) {
+	if cfg.report != "" {
+		switch cfg.report {
 		case "markdown", "md":
 			return "markdown", ""
 		case "html":
 			return "html", ""
 		}
 	}
-	format := opts.output
-	templateStr := opts.template
-	if len(opts.outputTemplates) == 0 || format == "" {
+	format := cfg.output
+	templateStr := cfg.template
+	if len(cfg.outputTemplates) == 0 || format == "" {
 		return format, templateStr
 	}
-	if cfg, ok := opts.outputTemplates[format]; ok {
-		if cfg.Type == "" {
-			return "go-template", cfg.Template
+	if tpl, ok := cfg.outputTemplates[format]; ok {
+		if tpl.Type == "" {
+			return "go-template", tpl.Template
 		}
-		return normalizeTemplateType(cfg.Type), cfg.Template
+		return normalizeTemplateType(tpl.Type), tpl.Template
 	}
 	for _, prefix := range []string{"jsonpath=", "jsonpath:", "template=", "template:", "go-template=", "go-template:"} {
 		name, ok := strings.CutPrefix(format, prefix)
 		if !ok {
 			continue
 		}
-		cfg, exists := opts.outputTemplates[name]
+		tpl, exists := cfg.outputTemplates[name]
 		if !exists {
 			return format, templateStr
 		}
-		if cfg.Type == "" {
+		if tpl.Type == "" {
 			if strings.HasPrefix(prefix, "jsonpath") {
-				return "jsonpath", cfg.Template
+				return "jsonpath", tpl.Template
 			}
-			return "go-template", cfg.Template
+			return "go-template", tpl.Template
 		}
-		return normalizeTemplateType(cfg.Type), cfg.Template
+		return normalizeTemplateType(tpl.Type), tpl.Template
 	}
 	return format, templateStr
 }

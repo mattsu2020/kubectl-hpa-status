@@ -176,7 +176,7 @@ func runReplay(out io.Writer, opts *options, filePath string) error {
 		return fmt.Errorf("failed to parse trace file: %w", err)
 	}
 
-	format, _ := outputSelection(opts)
+	format, _ := outputSelection(outputConfig{report: opts.report, output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates})
 	switch format {
 	case "markdown", "md":
 		return hpaanalysis.WriteTimelineMarkdown(out, trace)

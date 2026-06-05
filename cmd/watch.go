@@ -63,7 +63,7 @@ func runWatch(ctx context.Context, out io.Writer, opts *options, name string, in
 		if err != nil {
 			return err
 		}
-		format, templateStr := outputSelection(opts)
+		format, templateStr := outputSelection(outputConfig{report: opts.report, output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates})
 		if err := writeOutput(out, format, templateStr, report, func() error {
 			if opts.dashboard {
 				return hpaanalysis.WriteStatusDashboard(out, report, theme)

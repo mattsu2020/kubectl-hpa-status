@@ -69,13 +69,17 @@ func TestWriteOutputTemplate(t *testing.T) {
 
 func TestOutputSelectionUsesNamedConfigTemplate(t *testing.T) {
 	opts := &options{
-		output: "names",
-		outputTemplates: map[string]outputTemplateConfig{
-			"names": {Type: "go-template", Template: "{{ .Analysis.Namespace }}/{{ .Analysis.Name }}"},
+		commonOptions: commonOptions{
+			output: "names",
+			outputTemplates: map[string]outputTemplateConfig{
+				"names": {Type: "go-template", Template: "{{ .Analysis.Namespace }}/{{ .Analysis.Name }}"},
+			},
 		},
 	}
 
-	format, templateStr := outputSelection(opts)
+	format, templateStr := outputSelection(outputConfig{
+		output: opts.output, outputTemplates: opts.outputTemplates,
+	})
 	if format != "go-template" {
 		t.Fatalf("expected go-template format, got %q", format)
 	}
@@ -86,13 +90,17 @@ func TestOutputSelectionUsesNamedConfigTemplate(t *testing.T) {
 
 func TestOutputSelectionUsesNamedJSONPathTemplate(t *testing.T) {
 	opts := &options{
-		output: "jsonpath:summary",
-		outputTemplates: map[string]outputTemplateConfig{
-			"summary": {Template: "{.analysis.summary}"},
+		commonOptions: commonOptions{
+			output: "jsonpath:summary",
+			outputTemplates: map[string]outputTemplateConfig{
+				"summary": {Template: "{.analysis.summary}"},
+			},
 		},
 	}
 
-	format, templateStr := outputSelection(opts)
+	format, templateStr := outputSelection(outputConfig{
+		output: opts.output, outputTemplates: opts.outputTemplates,
+	})
 	if format != "jsonpath" {
 		t.Fatalf("expected jsonpath format, got %q", format)
 	}
@@ -102,7 +110,7 @@ func TestOutputSelectionUsesNamedJSONPathTemplate(t *testing.T) {
 }
 
 func TestApplyHealthWeightOverrides(t *testing.T) {
-	opts := &options{healthWeightOverrides: []string{"scalingInactive=50", "atMinimumReplicas=0"}}
+	opts := &options{statusOptions: statusOptions{healthWeightOverrides: []string{"scalingInactive=50", "atMinimumReplicas=0"}}}
 	if err := applyHealthWeightOverrides(opts); err != nil {
 		t.Fatal(err)
 	}
@@ -301,7 +309,11 @@ func TestApplyConfigDefaultsDoesNotOverrideExplicitFlags(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	opts := &options{config: path, lang: "en", events: eventOption{enabled: true, limit: 5}, healthScoreMin: -1, healthScoreMax: -1}
+	opts := &options{
+		commonOptions: commonOptions{config: path, lang: "en"},
+		statusOptions: statusOptions{events: eventOption{enabled: true, limit: 5}},
+		listOptions:   listOptions{healthScoreMin: -1, healthScoreMax: -1},
+	}
 	if err := applyConfigDefaults(root, opts); err != nil {
 		t.Fatal(err)
 	}
