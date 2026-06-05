@@ -84,97 +84,23 @@ func resolveMinReplicas(src *autoscalingv2.HorizontalPodAutoscaler) int32 {
 }
 
 // AnalyzeWithOptions produces an Analysis with custom health weights and debug settings.
-//
-//nolint:gocyclo // Sequential analysis pipeline: validate, collect, enrich; each phase is independent.
+// The analysis is decomposed into sequential phases for testability and extensibility.
 func AnalyzeWithOptions(src *autoscalingv2.HorizontalPodAutoscaler, includeInterpretation bool, opts AnalysisOptions) Analysis {
 	if errResult := validateHPA(src); errResult != nil {
 		return *errResult
 	}
 
 	minReplicas := resolveMinReplicas(src)
-
-	analysis := Analysis{
-		Namespace:         src.Namespace,
-		Name:              src.Name,
-		Target:            fmt.Sprintf("%s/%s", src.Spec.ScaleTargetRef.Kind, src.Spec.ScaleTargetRef.Name),
-		Current:           src.Status.CurrentReplicas,
-		Desired:           src.Status.DesiredReplicas,
-		Min:               minReplicas,
-		Max:               src.Spec.MaxReplicas,
-		Summary:           SummarizeDirection(src, minReplicas),
-		CreationTimestamp: src.CreationTimestamp,
-	}
-
-	for _, condition := range prioritizedConditions(src.Status.Conditions) {
-		analysis.Conditions = append(analysis.Conditions, Condition{
-			Type:    string(condition.Type),
-			Status:  string(condition.Status),
-			Reason:  condition.Reason,
-			Message: condition.Message,
-		})
-	}
-
-	for _, metric := range src.Status.CurrentMetrics {
-		analysis.Metrics = append(analysis.Metrics, FormatMetricStatus(src, metric))
-	}
-
-	analysis.Behavior = FormatBehavior(src)
-
-	// Prefix summary with [STALE STATUS] when the controller has not yet observed the latest spec.
-	if src.Status.ObservedGeneration != nil && *src.Status.ObservedGeneration < src.Generation {
-		analysis.Summary = "[STALE STATUS] " + analysis.Summary
-		analysis.StaleStatus = &StaleStatusInfo{
-			ObservedGeneration: *src.Status.ObservedGeneration,
-			CurrentGeneration:  src.Generation,
-			Diff:               src.Generation - *src.Status.ObservedGeneration,
-		}
-	}
-
-	if guess, ok := MostInfluentialMetric(src); ok {
-		// When desiredReplicas == maxReplicas, the winner metric cannot be reliably determined
-		if src.Status.DesiredReplicas == src.Spec.MaxReplicas {
-			guess.Confidence = "low"
-			guess.Note = "desiredReplicas == maxReplicas so the winner metric cannot be reliably determined"
-		} else {
-			guess.Confidence = "medium"
-		}
-		analysis.ImpactMetric = &guess
-	}
-
-	// Scale-to-zero detection
-	if minReplicas == 0 {
-		info := &ScaleToZeroInfo{Enabled: true}
-		if src.Status.DesiredReplicas == 0 && src.Status.CurrentReplicas > 0 {
-			info.ColdStart = true
-			info.Note = "Cold start: scaling from 0 to 1 may experience additional delay; the first metric evaluation must complete before replicas are provisioned."
-		} else if src.Status.DesiredReplicas == 0 && src.Status.CurrentReplicas == 0 {
-			info.Note = "HPA is at zero replicas (scaled to zero). The next scale-up requires a cold start."
-		}
-		analysis.ScaleToZero = info
-	}
-
-	// Stabilization remaining time estimation
-	if remaining := estimateStabilizationRemaining(src); remaining != nil {
-		analysis.StabilizationRemaining = remaining
-	}
-	if window := scaleDownStabilizationWindow(src); window != nil {
-		analysis.StabilizationWindowSeconds = window
-	}
-
-	if includeInterpretation {
-		analysis.Actions = RecommendedActions(src, minReplicas)
-		analysis.Suggestions = BuildSuggestions(src, minReplicas)
-		analysis.Interpretation = Interpret(src, minReplicas)
-		analysis.StructuredInterpretation = buildStructuredInterpretation(src, minReplicas)
-		analysis.StructuredActions = buildStructuredActions(src, minReplicas)
-	}
-	healthResult := HealthWithWeights(src, minReplicas, opts.HealthWeights)
-	analysis.Health = string(healthResult.State)
-	analysis.HealthScore = healthResult.Score
-	if opts.Debug {
-		analysis.HealthResult = &healthResult
-		analysis.Debug = DebugLines(src, analysis)
-	}
-
-	return analysis
+	a := collectBase(src, minReplicas)
+	a = collectConditions(a, src)
+	a = collectMetrics(a, src)
+	a = collectBehavior(a, src)
+	a = detectStaleStatus(a, src)
+	a = detectImpactMetric(a, src)
+	a = detectScaleToZero(a, src, minReplicas)
+	a = detectStabilization(a, src)
+	a = attachInterpretation(a, src, minReplicas, includeInterpretation)
+	a = attachHealth(a, src, minReplicas, opts)
+	a = attachDebug(a, src, opts)
+	return a
 }
