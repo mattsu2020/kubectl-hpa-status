@@ -3,12 +3,12 @@ package cmd
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"strings"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/patch"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -104,7 +104,11 @@ func applySuggestionsInNamespace(ctx context.Context, out io.Writer, opts *optio
 	// partial application. If individual patch application is needed
 	// (patches target different paths), fall back to sequential apply
 	// but track which ones succeeded.
-	merged, mergeErr := mergePatches(patches)
+	patchItems := make([]patch.Patch, len(patches))
+	for i, s := range patches {
+		patchItems[i] = patch.Patch{Title: s.Title, JSON: s.Patch}
+	}
+	merged, mergeErr := patch.MergePatches(patchItems)
 	if mergeErr == nil {
 		// Single merged patch — atomic application.
 		_, err := client.Interface.AutoscalingV2().
@@ -132,62 +136,4 @@ func applySuggestionsInNamespace(ctx context.Context, out io.Writer, opts *optio
 		applied = append(applied, fmt.Sprintf("Applied: %s", suggestion.Title))
 	}
 	return applied, nil
-}
-
-// mergePatches merges multiple JSON merge patches into a single JSON object.
-// Returns an error if the patches conflict or cannot be merged.
-func mergePatches(patches []hpaanalysis.Suggestion) (string, error) {
-	if len(patches) == 1 {
-		return patches[0].Patch, nil
-	}
-	merged := map[string]any{}
-	for _, p := range patches {
-		var parsed map[string]any
-		if err := json.Unmarshal([]byte(p.Patch), &parsed); err != nil {
-			return "", err
-		}
-		for k, v := range parsed {
-			existing, exists := merged[k]
-			if !exists {
-				merged[k] = v
-				continue
-			}
-			// Deep merge nested maps (e.g., spec.behavior.scaleDown).
-			existingMap, ok1 := existing.(map[string]any)
-			vMap, ok2 := v.(map[string]any)
-			if ok1 && ok2 {
-				merged[k] = deepMerge(existingMap, vMap)
-				continue
-			}
-			// Last value wins for scalar conflicts.
-			merged[k] = v
-		}
-	}
-	data, err := json.Marshal(merged)
-	if err != nil {
-		return "", err
-	}
-	return string(data), nil
-}
-
-func deepMerge(a, b map[string]any) map[string]any {
-	result := make(map[string]any, len(a)+len(b))
-	for k, v := range a {
-		result[k] = v
-	}
-	for k, v := range b {
-		existing, exists := result[k]
-		if !exists {
-			result[k] = v
-			continue
-		}
-		aMap, ok1 := existing.(map[string]any)
-		bMap, ok2 := v.(map[string]any)
-		if ok1 && ok2 {
-			result[k] = deepMerge(aMap, bMap)
-			continue
-		}
-		result[k] = v
-	}
-	return result
 }

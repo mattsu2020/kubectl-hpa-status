@@ -8,7 +8,6 @@ import (
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	appsv1client "k8s.io/client-go/kubernetes/typed/apps/v1"
 )
 
 // buildCapacityContext gathers infrastructure capacity information relevant to
@@ -52,60 +51,14 @@ func scaleTargetSelector(
 	namespace string,
 	ref autoscalingv2.CrossVersionObjectReference,
 ) (*metav1.LabelSelector, error) {
-	apps := client.Interface.AppsV1()
-
-	switch ref.Kind {
-	case "Deployment":
-		return deploymentSelector(ctx, apps, namespace, ref.Name)
-
-	case "StatefulSet":
-		return statefulSetSelector(ctx, apps, namespace, ref.Name)
-
-	case "ReplicaSet":
-		return replicaSetSelector(ctx, apps, namespace, ref.Name)
-
-	default:
+	info, err := kube.FetchScaleTargetInfo(ctx, client.Interface, namespace, ref)
+	if err != nil {
+		return nil, err
+	}
+	if info == nil {
 		return nil, nil
 	}
-}
-
-func deploymentSelector(
-	ctx context.Context,
-	apps appsv1client.AppsV1Interface,
-	namespace string,
-	name string,
-) (*metav1.LabelSelector, error) {
-	deploy, err := apps.Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get Deployment %s/%s: %w", namespace, name, err)
-	}
-	return deploy.Spec.Selector, nil
-}
-
-func statefulSetSelector(
-	ctx context.Context,
-	apps appsv1client.AppsV1Interface,
-	namespace string,
-	name string,
-) (*metav1.LabelSelector, error) {
-	sts, err := apps.StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get StatefulSet %s/%s: %w", namespace, name, err)
-	}
-	return sts.Spec.Selector, nil
-}
-
-func replicaSetSelector(
-	ctx context.Context,
-	apps appsv1client.AppsV1Interface,
-	namespace string,
-	name string,
-) (*metav1.LabelSelector, error) {
-	rs, err := apps.ReplicaSets(namespace).Get(ctx, name, metav1.GetOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get ReplicaSet %s/%s: %w", namespace, name, err)
-	}
-	return rs.Spec.Selector, nil
+	return info.Selector, nil
 }
 
 func convertPendingPods(details []kube.PendingPodDetail) []hpaanalysis.PendingPodInfo {

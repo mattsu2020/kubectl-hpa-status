@@ -2,11 +2,10 @@ package kube
 
 import (
 	"context"
-	"fmt"
 
 	appsv1 "k8s.io/api/apps/v1"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -26,40 +25,15 @@ type ResourceRequests struct {
 // (Deployment, StatefulSet, or ReplicaSet) and extracts container resource
 // requests and limits. Returns nil for unsupported kinds without error.
 func FetchScaleTargetResources(ctx context.Context, client kubernetes.Interface, namespace, kind, name string) (*ResourceRequests, error) {
-	switch kind {
-	case "Deployment":
-		return fetchDeploymentResources(ctx, client, namespace, name)
-	case "StatefulSet":
-		return fetchStatefulSetResources(ctx, client, namespace, name)
-	case "ReplicaSet":
-		return fetchReplicaSetResources(ctx, client, namespace, name)
-	default:
+	ref := autoscalingv2.CrossVersionObjectReference{Kind: kind, Name: name}
+	info, err := FetchScaleTargetInfo(ctx, client, namespace, ref)
+	if err != nil {
+		return nil, err
+	}
+	if info == nil {
 		return nil, nil
 	}
-}
-
-func fetchDeploymentResources(ctx context.Context, client kubernetes.Interface, namespace, name string) (*ResourceRequests, error) {
-	deploy, err := client.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get Deployment %s/%s: %w", namespace, name, err)
-	}
-	return extractResourcesFromPodTemplate(&deploy.Spec.Template), nil
-}
-
-func fetchStatefulSetResources(ctx context.Context, client kubernetes.Interface, namespace, name string) (*ResourceRequests, error) {
-	sts, err := client.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get StatefulSet %s/%s: %w", namespace, name, err)
-	}
-	return extractResourcesFromPodTemplate(&sts.Spec.Template), nil
-}
-
-func fetchReplicaSetResources(ctx context.Context, client kubernetes.Interface, namespace, name string) (*ResourceRequests, error) {
-	rs, err := client.AppsV1().ReplicaSets(namespace).Get(ctx, name, metav1.GetOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get ReplicaSet %s/%s: %w", namespace, name, err)
-	}
-	return extractResourcesFromPodTemplate(&rs.Spec.Template), nil
+	return extractResourcesFromPodTemplate(info.PodTemplate), nil
 }
 
 // extractResourcesFromPodTemplate extracts resource requests and limits from

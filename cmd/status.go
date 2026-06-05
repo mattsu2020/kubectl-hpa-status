@@ -64,6 +64,10 @@ func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []st
 	watchMode := opts.watch
 	ec := newEnrichmentContext(ctx, opts)
 
+	if opts.apply && len(names) > 1 {
+		return fmt.Errorf("--apply supports only a single HPA at a time; use 'list --apply' for batch mode")
+	}
+
 	if len(names) == 1 {
 		report, err := buildStatusReportWithClient(ctx, opts, names[0], includeInterpretation, ec)
 		if err != nil {
@@ -280,68 +284,22 @@ func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, 
 }
 
 func fetchTargetReplicaInfo(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpaanalysis.TargetReplicaInfo {
-	ref := hpa.Spec.ScaleTargetRef
-	if ref.Kind != "Deployment" && ref.Kind != "StatefulSet" && ref.Kind != "ReplicaSet" {
+	info, err := kube.FetchScaleTargetInfo(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef)
+	if err != nil || info == nil {
 		return nil
 	}
 
-	switch ref.Kind {
-	case "Deployment":
-		deploy, err := client.Interface.AppsV1().Deployments(hpa.Namespace).Get(ctx, ref.Name, metav1.GetOptions{})
-		if err != nil {
-			return nil
-		}
-		total := deploy.Status.Replicas
-		ready := deploy.Status.ReadyReplicas
-		notReady := total - ready
-		info := &hpaanalysis.TargetReplicaInfo{
-			TotalReplicas: total,
-			ReadyReplicas: ready,
-			NotReady:      notReady,
-		}
-		enrichPendingPods(ctx, client, hpa.Namespace, metav1.FormatLabelSelector(deploy.Spec.Selector), info)
-		if info.NotReady <= 0 && info.Pending <= 0 && info.Unschedulable <= 0 {
-			return nil
-		}
-		return info
-	case "StatefulSet":
-		sts, err := client.Interface.AppsV1().StatefulSets(hpa.Namespace).Get(ctx, ref.Name, metav1.GetOptions{})
-		if err != nil {
-			return nil
-		}
-		total := sts.Status.Replicas
-		ready := sts.Status.ReadyReplicas
-		notReady := total - ready
-		info := &hpaanalysis.TargetReplicaInfo{
-			TotalReplicas: total,
-			ReadyReplicas: ready,
-			NotReady:      notReady,
-		}
-		enrichPendingPods(ctx, client, hpa.Namespace, metav1.FormatLabelSelector(sts.Spec.Selector), info)
-		if info.NotReady <= 0 && info.Pending <= 0 && info.Unschedulable <= 0 {
-			return nil
-		}
-		return info
-	case "ReplicaSet":
-		rs, err := client.Interface.AppsV1().ReplicaSets(hpa.Namespace).Get(ctx, ref.Name, metav1.GetOptions{})
-		if err != nil {
-			return nil
-		}
-		total := rs.Status.Replicas
-		ready := rs.Status.ReadyReplicas
-		notReady := total - ready
-		info := &hpaanalysis.TargetReplicaInfo{
-			TotalReplicas: total,
-			ReadyReplicas: ready,
-			NotReady:      notReady,
-		}
-		enrichPendingPods(ctx, client, hpa.Namespace, metav1.FormatLabelSelector(rs.Spec.Selector), info)
-		if info.NotReady <= 0 && info.Pending <= 0 && info.Unschedulable <= 0 {
-			return nil
-		}
-		return info
+	notReady := info.Replicas - info.ReadyReplicas
+	result := &hpaanalysis.TargetReplicaInfo{
+		TotalReplicas: info.Replicas,
+		ReadyReplicas: info.ReadyReplicas,
+		NotReady:      notReady,
 	}
-	return nil
+	enrichPendingPods(ctx, client, hpa.Namespace, info.SelectorStr, result)
+	if result.NotReady <= 0 && result.Pending <= 0 && result.Unschedulable <= 0 {
+		return nil
+	}
+	return result
 }
 
 func enrichPendingPods(ctx context.Context, client *kube.Client, namespace string, selector string, info *hpaanalysis.TargetReplicaInfo) {
