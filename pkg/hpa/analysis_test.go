@@ -1951,7 +1951,8 @@ func TestHealthWeightsExplicitZeroDisablesPenalty(t *testing.T) {
 	_, defaultScore := Health(hpa, 2)
 
 	// With ScalingLimited explicitly set to 0, penalty should be disabled.
-	_, zeroScore := HealthWithWeights(hpa, 2, HealthWeights{ScalingLimited: IntWeight(0)})
+	zeroResult := HealthWithWeights(hpa, 2, HealthWeights{ScalingLimited: IntWeight(0)})
+	zeroScore := zeroResult.Score
 	if zeroScore != defaultScore+healthPenaltyScalingLimited {
 		t.Fatalf("expected %d (score without ScalingLimited penalty), got %d", defaultScore+healthPenaltyScalingLimited, zeroScore)
 	}

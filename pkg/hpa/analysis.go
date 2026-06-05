@@ -19,7 +19,7 @@ func Analyze(src *autoscalingv2.HorizontalPodAutoscaler, includeInterpretation b
 func validateHPA(src *autoscalingv2.HorizontalPodAutoscaler) *Analysis {
 	if src == nil {
 		return &Analysis{
-			Health:      "ERROR",
+			Health:      string(HealthError),
 			HealthScore: 0,
 			Summary:     "HPA data is unavailable.",
 			Interpretation: []string{
@@ -32,7 +32,7 @@ func validateHPA(src *autoscalingv2.HorizontalPodAutoscaler) *Analysis {
 		return &Analysis{
 			Namespace:   src.Namespace,
 			Name:        src.Name,
-			Health:      "ERROR",
+			Health:      string(HealthError),
 			HealthScore: 0,
 			Summary:     "HPA spec.scaleTargetRef is empty or incomplete.",
 			Interpretation: []string{
@@ -45,7 +45,7 @@ func validateHPA(src *autoscalingv2.HorizontalPodAutoscaler) *Analysis {
 		return &Analysis{
 			Namespace:   src.Namespace,
 			Name:        src.Name,
-			Health:      "ERROR",
+			Health:      string(HealthError),
 			HealthScore: 0,
 			Summary:     "HPA spec.maxReplicas must be greater than zero.",
 			Interpretation: []string{
@@ -62,7 +62,7 @@ func validateHPA(src *autoscalingv2.HorizontalPodAutoscaler) *Analysis {
 		return &Analysis{
 			Namespace:   src.Namespace,
 			Name:        src.Name,
-			Health:      "ERROR",
+			Health:      string(HealthError),
 			HealthScore: 0,
 			Summary:     fmt.Sprintf("HPA spec.minReplicas (%d) exceeds spec.maxReplicas (%d).", minCheck, src.Spec.MaxReplicas),
 			Interpretation: []string{
@@ -169,8 +169,11 @@ func AnalyzeWithOptions(src *autoscalingv2.HorizontalPodAutoscaler, includeInter
 		analysis.StructuredInterpretation = buildStructuredInterpretation(src, minReplicas)
 		analysis.StructuredActions = buildStructuredActions(src, minReplicas)
 	}
-	analysis.Health, analysis.HealthScore = HealthWithWeights(src, minReplicas, opts.HealthWeights)
+	healthResult := HealthWithWeights(src, minReplicas, opts.HealthWeights)
+	analysis.Health = string(healthResult.State)
+	analysis.HealthScore = healthResult.Score
 	if opts.Debug {
+		analysis.HealthResult = &healthResult
 		analysis.Debug = DebugLines(src, analysis)
 	}
 

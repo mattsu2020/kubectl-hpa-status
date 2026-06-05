@@ -104,6 +104,9 @@ type Analysis struct {
 	Health string `json:"health" yaml:"health"`
 	// HealthScore is the numeric health score from 0 (worst) to 100 (best).
 	HealthScore int `json:"healthScore" yaml:"healthScore"`
+	// HealthResult holds the typed health state, score, and individual penalty
+	// signals. Populated when --debug is enabled or for JSON/YAML output.
+	HealthResult *HealthResult `json:"healthResult,omitempty" yaml:"healthResult,omitempty"`
 	// Summary is a one-line direction summary of the HPA scaling state.
 	Summary string `json:"summary" yaml:"summary"`
 	// Conditions lists the HPA conditions sorted by priority.
