@@ -215,8 +215,8 @@ func buildKEDAAnalysis(info kube.KEDAInfo, hpa *autoscalingv2.HorizontalPodAutos
 // EnrichKEDA performs KEDA ScaledObject enrichment for a single HPA.
 // Returns nil if the HPA is not KEDA-managed or enrichment fails.
 func EnrichKEDA(ctx context.Context, ec *Context, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpaanalysis.KEDAAnalysis {
-	isKEDA, _ := kube.DetectKEDA(hpa)
-	if !isKEDA {
+	det := kube.DetectKEDA(hpa)
+	if !det.Managed {
 		return nil
 	}
 
@@ -296,8 +296,8 @@ func BatchKEDA(ctx context.Context, ec *Context, hpas []autoscalingv2.Horizontal
 	results := map[string]*hpaanalysis.KEDAAnalysis{}
 	for i := range hpas {
 		hpa := &hpas[i]
-		isKEDA, _ := kube.DetectKEDA(hpa)
-		if !isKEDA {
+		det := kube.DetectKEDA(hpa)
+		if !det.Managed {
 			continue
 		}
 

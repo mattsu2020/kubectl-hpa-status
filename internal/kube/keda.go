@@ -74,34 +74,45 @@ type KEDAScalingPolicy struct {
 	PeriodSeconds int32  `json:"periodSeconds" yaml:"periodSeconds"`
 }
 
-// DetectKEDA checks whether an HPA is KEDA-managed by inspecting labels and annotations.
-func DetectKEDA(hpa *autoscalingv2.HorizontalPodAutoscaler) (isKEDA bool, scaledObjectName string) {
+// DetectKEDA checks whether an HPA is KEDA-managed by inspecting labels,
+// annotations, and name prefix. Returns a KEDADetectionResult with the
+// detection source, confidence level, and extracted ScaledObject name.
+func DetectKEDA(hpa *autoscalingv2.HorizontalPodAutoscaler) KEDADetectionResult {
 	if hpa == nil {
-		return false, ""
+		return KEDADetectionResult{}
 	}
 	for key, value := range hpa.Labels {
 		if strings.Contains(strings.ToLower(key), "keda.sh") || strings.Contains(strings.ToLower(value), "keda") {
-			if name, ok := extractScaledObjectName(hpa); ok {
-				return true, name
+			name, _ := extractScaledObjectName(hpa)
+			return KEDADetectionResult{
+				Managed:    true,
+				Source:     KEDADetectionLabel,
+				Confidence: KEDAConfidenceMedium,
+				Name:       name,
 			}
-			return true, ""
 		}
 	}
 	for key, value := range hpa.Annotations {
 		if strings.Contains(strings.ToLower(key), "keda.sh") || strings.Contains(strings.ToLower(value), "keda") {
-			if name, ok := extractScaledObjectName(hpa); ok {
-				return true, name
+			name, _ := extractScaledObjectName(hpa)
+			return KEDADetectionResult{
+				Managed:    true,
+				Source:     KEDADetectionAnnotation,
+				Confidence: KEDAConfidenceMedium,
+				Name:       name,
 			}
-			return true, ""
 		}
 	}
 	if strings.HasPrefix(hpa.Name, "keda-hpa-") {
-		if name, ok := extractScaledObjectName(hpa); ok {
-			return true, name
+		name, _ := extractScaledObjectName(hpa)
+		return KEDADetectionResult{
+			Managed:    true,
+			Source:     KEDADetectionNamePrefix,
+			Confidence: KEDAConfidenceLow,
+			Name:       name,
 		}
-		return true, ""
 	}
-	return false, ""
+	return KEDADetectionResult{}
 }
 
 // FetchScaledObject retrieves a KEDA ScaledObject using the dynamic client.
@@ -174,8 +185,8 @@ func NewDynamicClient(opts Options) (dynamic.Interface, string, error) {
 // FindScaledObjectForHPA attempts to locate the ScaledObject that owns the given HPA.
 // It tries the label-based name first, then falls back to listing ScaledObjects in the namespace.
 func FindScaledObjectForHPA(ctx context.Context, dynClient dynamic.Interface, _ kubernetes.Interface, hpa *autoscalingv2.HorizontalPodAutoscaler) (*unstructured.Unstructured, error) {
-	if _, name := DetectKEDA(hpa); name != "" {
-		return FetchScaledObject(ctx, dynClient, hpa.Namespace, name)
+	if det := DetectKEDA(hpa); det.Name != "" {
+		return FetchScaledObject(ctx, dynClient, hpa.Namespace, det.Name)
 	}
 
 	// Fallback: list ScaledObjects and find one that references this HPA's scaleTargetRef.
