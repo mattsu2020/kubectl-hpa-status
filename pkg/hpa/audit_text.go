@@ -9,30 +9,52 @@ import (
 func WriteAuditText(w io.Writer, report *AuditReport, provider LabelProvider) error {
 	labels := resolveLabels(provider)
 
-	fmt.Fprintf(w, "%s: %s/%s (%s)\n", labels.Target, report.Namespace, report.Name, report.Target)
-	fmt.Fprintf(w, "%s: %d/100\n", labels.AuditScore, report.Score)
-	fmt.Fprintf(w, "%s\n\n", report.Summary)
+	if _, err := fmt.Fprintf(w, "%s: %s/%s (%s)\n", labels.Target, report.Namespace, report.Name, report.Target); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "%s: %d/100\n", labels.AuditScore, report.Score); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "%s\n\n", report.Summary); err != nil {
+		return err
+	}
 
 	if len(report.Findings) == 0 {
-		fmt.Fprintln(w, "No findings.")
+		if _, err := fmt.Fprintln(w, "No findings."); err != nil {
+			return err
+		}
 		return nil
 	}
 
 	for i, f := range report.Findings {
 		severity := string(f.Severity)
-		fmt.Fprintf(w, "%d. [%s] %s (%s)\n", i+1, severity, f.Title, f.ID)
-		fmt.Fprintf(w, "   %s\n", f.Description)
+		if _, err := fmt.Fprintf(w, "%d. [%s] %s (%s)\n", i+1, severity, f.Title, f.ID); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(w, "   %s\n", f.Description); err != nil {
+			return err
+		}
 		if f.Current != "" {
-			fmt.Fprintf(w, "   Current: %s", f.Current)
-			if f.Recommended != "" {
-				fmt.Fprintf(w, " → Recommended: %s", f.Recommended)
+			if _, err := fmt.Fprintf(w, "   Current: %s", f.Current); err != nil {
+				return err
 			}
-			fmt.Fprintln(w)
+			if f.Recommended != "" {
+				if _, err := fmt.Fprintf(w, " → Recommended: %s", f.Recommended); err != nil {
+					return err
+				}
+			}
+			if _, err := fmt.Fprintln(w); err != nil {
+				return err
+			}
 		}
 		if f.Command != "" {
-			fmt.Fprintf(w, "   Command: %s\n", f.Command)
+			if _, err := fmt.Fprintf(w, "   Command: %s\n", f.Command); err != nil {
+				return err
+			}
 		}
-		fmt.Fprintln(w)
+		if _, err := fmt.Fprintln(w); err != nil {
+			return err
+		}
 	}
 	return nil
 }

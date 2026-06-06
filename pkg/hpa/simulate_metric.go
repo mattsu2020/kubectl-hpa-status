@@ -74,7 +74,8 @@ func applyMetricOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, name, value
 	switch spec.Type {
 	case autoscalingv2.ResourceMetricSourceType:
 		resName := spec.Resource.Name
-		if strings.HasSuffix(value, "%") {
+		switch {
+		case strings.HasSuffix(value, "%"):
 			parsed, err := strconv.ParseInt(strings.TrimSuffix(value, "%"), 10, 32)
 			if err != nil {
 				return fmt.Errorf("invalid utilization value %q: %w", value, err)
@@ -86,7 +87,7 @@ func applyMetricOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, name, value
 					AverageUtilization: &util,
 				},
 			}
-		} else if isResourceQuantity(value) {
+		case isResourceQuantity(value):
 			q := resource.MustParse(value)
 			hpa.Status.CurrentMetrics[idx].Resource = &autoscalingv2.ResourceMetricStatus{
 				Name: resName,
@@ -94,7 +95,7 @@ func applyMetricOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, name, value
 					AverageValue: &q,
 				},
 			}
-		} else {
+		default:
 			parsed, err := strconv.ParseInt(value, 10, 32)
 			if err != nil {
 				return fmt.Errorf("invalid resource metric value %q: expected utilization%%, quantity, or integer", value)

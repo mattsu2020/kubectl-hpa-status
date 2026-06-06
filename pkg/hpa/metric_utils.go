@@ -67,13 +67,14 @@ func calculateRatioAndNote(currentVal autoscalingv2.MetricValueStatus, targetVal
 	var ratio *float64
 	var note string
 
-	if currentVal.AverageUtilization != nil {
+	switch {
+	case currentVal.AverageUtilization != nil:
 		ratio = utilizationRatio(currentVal.AverageUtilization, targetStr)
 		note = CompareMetricToTarget(currentVal.AverageUtilization, targetStr)
-	} else if currentVal.AverageValue != nil && targetVal.AverageValue != nil {
+	case currentVal.AverageValue != nil && targetVal.AverageValue != nil:
 		ratio = quantityRatio(currentVal.AverageValue, targetVal.AverageValue)
 		note = CompareQuantityToTarget(currentVal.AverageValue, targetVal.AverageValue)
-	} else if currentVal.Value != nil && targetVal.Value != nil {
+	case currentVal.Value != nil && targetVal.Value != nil:
 		ratio = quantityRatio(currentVal.Value, targetVal.Value)
 		note = CompareQuantityToTarget(currentVal.Value, targetVal.Value)
 	}
