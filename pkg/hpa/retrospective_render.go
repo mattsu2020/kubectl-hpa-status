@@ -129,6 +129,24 @@ func WriteRetrospectiveHTML(w io.Writer, tl RetrospectiveTimeline) error {
 	return err
 }
 
+func categoryPrefix(category string) string {
+	switch category {
+	case "rescale":
+		return "rescale "
+	case "metric-change":
+		return "metrics "
+	case "stabilized":
+		return "stabilized "
+	case "policy-limited":
+		return "limited "
+	default:
+		if category == "" {
+			return ""
+		}
+		return category + " "
+	}
+}
+
 // formatDuration returns a human-readable duration string like "30m" or "1h30m".
 func formatDuration(d time.Duration) string {
 	d = d.Round(time.Minute)

@@ -6,6 +6,7 @@ Detailed usage instructions for kubectl-hpa-status.
 
 ```sh
 kubectl hpa status <hpa-name> [<hpa-name>...] [-n namespace] [--context context] [--events=false]
+kubectl hpa status doctor <hpa-name> -n <namespace>
 kubectl hpa status <hpa-name> --watch --interval 5s
 kubectl hpa status <hpa-name> --watch --timeout 2m --until-condition scaling-limited
 kubectl hpa status list [-A] [--selector app=web] [--sort-by desired] [--filter scaling-limited]
@@ -19,6 +20,7 @@ Direct binary usage is also supported:
 
 ```sh
 kubectl-hpa-status status <hpa-name> -n <namespace>
+kubectl-hpa-status doctor <hpa-name> -n <namespace>
 kubectl-hpa-status status <hpa-name> --suggest
 kubectl-hpa-status status <hpa-name> --fix --apply
 kubectl-hpa-status scan
@@ -37,7 +39,7 @@ kubectl-hpa-status completion zsh
 | `--config` | all commands | Read defaults from a YAML/JSON config file. Defaults to `~/.kube/hpa-status.yaml` when present. |
 | `--chunk-size` | `list`, `scan`, `tui` | Kubernetes list page size. Defaults to 500; set 0 to disable pagination. |
 | `--health-weight name=value` | all analysis commands | Override one health score penalty from the CLI. Repeatable; names include `scalingInactive`, `unableToScale`, `scalingLimited`, `implicitMaxReplicas`, `scaleDownStabilized`, and `atMinimumReplicas`. |
-| `-o table\|wide\|json\|yaml\|jsonpath=...\|template=...` | status, analyze, list, scan | Output format. YAML is supported for both single and multiple HPA output. For the JSON schema, see [output-schema.json](output-schema.json). |
+| `-o table\|wide\|json\|yaml\|jsonpath=...\|template=...` | status, doctor, analyze, list, scan | Output format. YAML is supported for both single and multiple HPA output. For the JSON schema, see [output-schema.json](output-schema.json). |
 | `--wide` | table output | Show target, min, max, and replica delta columns where applicable. |
 | `--sort-by namespace\|name\|current\|desired\|diff\|health-score\|issue\|problem` | `list`, `scan` | Sort list output. `problem` puts the lowest health score and largest replica delta first. |
 | `--filter all\|ok\|error\|limited\|scaling-limited\|issue` | `list`, `scan` | Filter by health or issue text. |
@@ -46,21 +48,21 @@ kubectl-hpa-status completion zsh
 | `--problem` | `list`, `scan` | Show only HPAs with a visible issue. |
 | `--color auto\|always\|never` | text output | Control terminal color output. |
 | `--interpret` | `status` | Include diagnostic interpretation in compact status output. |
-| `--explain` | `status`, `analyze` | Include detailed interpretation and recommended actions. |
-| `--suggest`, `--recommend` | `status`, `analyze` | Include concrete `kubectl patch` commands when a safe HPA spec suggestion is visible. `--recommend` is an alias for `--suggest`. |
-| `--fix` | `status`, `analyze` | Show a stronger fix plan with applicable patches. |
-| `--diff` | `status`, `analyze` | Include field-level diffs for suggested HPA spec patches. |
-| `--apply` | `status`, `analyze`, `list`, `scan` | Validate suggested HPA patches with server-side dry-run by default. For `list`, combine it with `--problem`, `--filter`, or a score filter. |
+| `--explain` | `status`, `doctor`, `analyze` | Include detailed interpretation and recommended actions. `doctor` enables this by default. |
+| `--suggest`, `--recommend` | `status`, `doctor`, `analyze` | Include concrete `kubectl patch` commands when a safe HPA spec suggestion is visible. `--recommend` is an alias for `--suggest`. |
+| `--fix` | `status`, `doctor`, `analyze` | Show a stronger fix plan with applicable patches. |
+| `--diff` | `status`, `doctor`, `analyze` | Include field-level diffs for suggested HPA spec patches. |
+| `--apply` | `status`, `doctor`, `analyze`, `list`, `scan` | Validate suggested HPA patches with server-side dry-run by default. For `list`, combine it with `--problem`, `--filter`, or a score filter. |
 | `--dry-run=false` | `--apply` workflow | Persist changes; still shows a diff and asks for confirmation unless `-y` is set. |
-| `--keda` | `status`, `analyze` | For KEDA-managed HPAs, look up the matching ScaledObject and include trigger details (metric name, threshold, current value, auth ref). |
-| `--vpa` | `status`, `analyze` | Detect VerticalPodAutoscaler conflicts with the HPA target. |
-| `--diagnose-metrics` | `status`, `analyze` | Run comprehensive metrics pipeline health checks with per-metric status and remediation steps. |
-| `--check-resources` | `status`, `analyze` | Validate HPA target utilization against pod resource requests/limits. |
-| `--report markdown\|html` | `status`, `list` | Generate standalone reports in Markdown or HTML format. |
+| `--keda` | `status`, `doctor`, `analyze` | For KEDA-managed HPAs, look up the matching ScaledObject and include trigger details (metric name, threshold, current value, auth ref). |
+| `--vpa` | `status`, `doctor`, `analyze` | Detect VerticalPodAutoscaler conflicts with the HPA target. |
+| `--diagnose-metrics` | `status`, `doctor`, `analyze` | Run comprehensive metrics pipeline health checks with per-metric status and remediation steps. `doctor` enables this by default. |
+| `--check-resources` | `status`, `doctor`, `analyze` | Validate HPA target utilization against pod resource requests/limits. `doctor` enables this by default. |
+| `--report markdown\|html` | `status`, `doctor`, `list` | Generate standalone reports in Markdown or HTML format. |
 | `--lang=ja`, `-o ja` | text output | Show Japanese text labels. |
-| `--no-interpret` | `status`, `analyze` | Omit interpretation and show status-derived data only. |
-| `--events=false` | `status`, `analyze` | Omit recent HPA Events. |
-| `--events=3` | `status`, `analyze` | Show the latest 3 HPA Events. |
+| `--no-interpret` | `status`, `doctor`, `analyze` | Omit interpretation and show status-derived data only. |
+| `--events=false` | `status`, `doctor`, `analyze` | Omit recent HPA Events. |
+| `--events=3` | `status`, `doctor`, `analyze` | Show the latest 3 HPA Events. |
 | `--watch --interval 5s` | `status`, `watch` | Refresh one HPA periodically. Watch mode accepts exactly one HPA name. |
 | `--dashboard` | `watch` | Render watch output as a compact terminal dashboard. |
 | `--timeout 2m` | watch mode | Stop watch after a duration. |

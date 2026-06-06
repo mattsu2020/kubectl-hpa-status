@@ -201,6 +201,7 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().Lookup("events").NoOptDefVal = "true"
 
 	root.AddCommand(newStatusCommand(opts))
+	root.AddCommand(newDoctorCommand(opts))
 	root.AddCommand(newAnalyzeCommand(opts))
 	root.AddCommand(newListCommand(opts))
 	root.AddCommand(newScanCommand(opts))

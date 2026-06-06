@@ -123,6 +123,7 @@ Social preview source file: [images/social-preview.svg](images/social-preview.sv
 
 ```sh
 kubectl hpa status <hpa-name> -n <namespace>
+kubectl hpa status doctor <hpa-name> -n <namespace>
 kubectl hpa status <hpa-name> --explain
 kubectl hpa status <hpa-name> --suggest
 kubectl hpa status <hpa-name> --fix --apply
@@ -139,6 +140,25 @@ kubectl hpa status scan --apply --yes
 kubectl hpa status <hpa-name> --watch --timeout=2m --until-condition=scaling-limited
 kubectl hpa status <hpa-name> -o 'jsonpath={.analysis.summary}'
 ```
+
+### Doctor command
+
+Start with `doctor` when an HPA is not scaling and you need the surrounding failure context, not just the HPA object:
+
+```sh
+kubectl hpa status doctor <hpa-name> -n <namespace>
+```
+
+`doctor` bundles `--explain`, `--diagnose-metrics`, `--metrics-freshness`, `--check-resources`, `--explain-pods`, `--capacity-context`, recent Events, and KEDA enrichment.
+
+| Viewpoint | What it checks | Example output |
+| --- | --- | --- |
+| Metrics | metrics-server, custom metrics, external metrics | `External metric http_requests is unavailable` |
+| Target workload | Deployment, StatefulSet, ReplicaSet | `Pods are Pending; HPA wants 8 replicas but only 3 Ready` |
+| Pod state | Pending, CrashLoopBackOff, NotReady | `Scale-out blocked by image pull error` |
+| Resource requests | Missing CPU/memory requests | `CPU utilization target cannot work because container has no cpu request` |
+| Events | HPA, Pod, Deployment events | `FailedGetResourceMetric seen 5 times in 10m` |
+| KEDA | ScaledObject and trigger health | `KEDA trigger inactive or auth error` |
 
 How to read the output:
 
@@ -167,6 +187,7 @@ Usage:
 Available Commands:
   analyze     Analyze one HPA using visible Kubernetes API signals
   completion  Generate shell completion
+  doctor      Diagnose HPA scaling failures across metrics, workload, pods, resources, events, and KEDA
   list        List HPAs and highlight visible issues
   scan        Scan all namespaces for HPAs with visible problems
   status      Show concise status for one HPA
@@ -262,6 +283,7 @@ kubectl delete namespace hpa-status-examples
 
 ```sh
 kubectl hpa status <hpa-name> [<hpa-name>...] [-n namespace] [--context context] [--events=false]
+kubectl hpa status doctor <hpa-name> -n <namespace>
 kubectl hpa status <hpa-name> --watch --interval 5s
 kubectl hpa status <hpa-name> --watch --dashboard
 kubectl hpa status <hpa-name> --watch --timeout 2m --until-condition scaling-limited
@@ -279,6 +301,7 @@ You can also run the binary directly:
 ```sh
 kubectl-hpa-status analyze <hpa-name> -n <namespace>
 kubectl-hpa-status status <hpa-name> -n <namespace>
+kubectl-hpa-status doctor <hpa-name> -n <namespace>
 kubectl-hpa-status status <hpa-name> --suggest
 kubectl-hpa-status status <hpa-name> --fix --apply
 kubectl-hpa-status status <hpa-name> --fix --apply --dry-run=false
@@ -305,7 +328,7 @@ Detailed flags:
 | `--config <file>` | All commands | Load a YAML/JSON config file. Defaults to `~/.kube/hpa-status.yaml` if it exists. |
 | `--chunk-size` | `list`, `scan`, `tui` | Kubernetes list API page size. Default is 500. Set to 0 to disable pagination. |
 | `--health-weight name=value` | All analysis commands | Override health score penalties from the CLI. Repeatable. Names: `scalingInactive`, `unableToScale`, `scalingLimited`, `implicitMaxReplicas`, `scaleDownStabilized`, `atMinimumReplicas`. |
-| `-o table\|wide\|json\|yaml\|jsonpath=...\|template=...` | status, analyze, list, scan | Output format. Supports YAML output for single and multiple HPAs. |
+| `-o table\|wide\|json\|yaml\|jsonpath=...\|template=...` | status, doctor, analyze, list, scan | Output format. Supports YAML output for single and multiple HPAs. |
 | `--wide` | table output | Show additional columns including target, min, max, and desired-current diff. |
 | `--sort-by namespace\|name\|current\|desired\|diff\|health-score\|issue\|problem` | `list`, `scan` | Sort list output. `problem` prioritizes low scores and replica diffs. |
 | `--filter all\|ok\|error\|limited\|scaling-limited\|issue` | `list`, `scan` | Filter by health or issue string. |
@@ -314,21 +337,21 @@ Detailed flags:
 | `--problem` | `list`, `scan` | Show only HPAs with visible problems. |
 | `--color auto\|always\|never` | text output | Terminal color control. |
 | `--interpret` | `status` | Include diagnostic interpretation in compact status output. |
-| `--explain` | `status`, `analyze` | Include detailed interpretation and recommended actions. |
-| `--suggest`, `--recommend` | `status`, `analyze` | Show safe-looking fixes as `kubectl patch` commands. `--recommend` is an alias for `--suggest`. |
-| `--fix` | `status`, `analyze` | Show a stronger fix plan with applicable patches. |
-| `--diff` | `status`, `analyze` | Show field-level diff of the proposed HPA spec patch. |
-| `--apply` | `status`, `analyze`, `list`, `scan` | Validate HPA patch as server-side dry-run by default. For `list`, combine with `--problem`, `--filter`, or a score filter. |
+| `--explain` | `status`, `doctor`, `analyze` | Include detailed interpretation and recommended actions. `doctor` enables this by default. |
+| `--suggest`, `--recommend` | `status`, `doctor`, `analyze` | Show safe-looking fixes as `kubectl patch` commands. `--recommend` is an alias for `--suggest`. |
+| `--fix` | `status`, `doctor`, `analyze` | Show a stronger fix plan with applicable patches. |
+| `--diff` | `status`, `doctor`, `analyze` | Show field-level diff of the proposed HPA spec patch. |
+| `--apply` | `status`, `doctor`, `analyze`, `list`, `scan` | Validate HPA patch as server-side dry-run by default. For `list`, combine with `--problem`, `--filter`, or a score filter. |
 | `--dry-run=false` | `--apply` flow | Persist changes. Without `-y`, shows a diff and confirmation prompt. |
-| `--keda` | `status`, `analyze` | Reference the corresponding ScaledObject for KEDA-managed HPAs, adding trigger/condition context. |
-| `--debug`, `-v` | `status`, `analyze`, `list` | Show internal calculations including metric ratio, health score inputs, and condition evidence. |
+| `--keda` | `status`, `doctor`, `analyze` | Reference the corresponding ScaledObject for KEDA-managed HPAs, adding trigger/condition context. Enabled by default when the CRD is available. |
+| `--debug`, `-v` | `status`, `doctor`, `analyze`, `list` | Show internal calculations including metric ratio, health score inputs, and condition evidence. |
 | `--lang=ja`, `-o ja` | text output | Display labels in Japanese. |
-| `--no-interpret` | `status`, `analyze` | Omit interpretation and show only status-derived data. |
-| `--events=false` | `status`, `analyze` | Omit recent Events. |
-| `--events=3` | `status`, `analyze` | Show the 3 most recent HPA Events. |
-| `--diagnose-metrics` | `status`, `analyze` | Show per-metric-type retrieval status, adapter/APIService verification hints, and next troubleshooting steps. |
-| `--check-resources` | `status`, `analyze` | Check consistency between HPA target utilization and pod resource requests/limits. |
-| `--report markdown\|html` | `status`, `list` | Generate a standalone or cluster-wide diagnostic report in Markdown or HTML. |
+| `--no-interpret` | `status`, `doctor`, `analyze` | Omit interpretation and show only status-derived data. |
+| `--events=false` | `status`, `doctor`, `analyze` | Omit recent Events. |
+| `--events=3` | `status`, `doctor`, `analyze` | Show the 3 most recent HPA Events. |
+| `--diagnose-metrics` | `status`, `doctor`, `analyze` | Show per-metric-type retrieval status, adapter/APIService verification hints, and next troubleshooting steps. `doctor` enables this by default. |
+| `--check-resources` | `status`, `doctor`, `analyze` | Check consistency between HPA target utilization and pod resource requests/limits. `doctor` enables this by default. |
+| `--report markdown\|html` | `status`, `doctor`, `list` | Generate a standalone or cluster-wide diagnostic report in Markdown or HTML. |
 | `--watch --interval 5s` | `status`, `watch` | Periodically refresh a single HPA. Watch supports only one HPA name. |
 | `--dashboard` | `watch` | Display as a compact terminal dashboard. |
 | `--timeout 2m` | watch mode | Stop watching after the specified duration. |
@@ -356,7 +379,7 @@ Shell completion:
 
 - Generate completion scripts with `kubectl-hpa-status completion bash|zsh|fish|powershell`.
 - Supports Cobra's standard `__complete` interface; `kubectl hpa-status __complete status ""` returns HPA name candidates.
-- HPA name completion for `status` / `analyze` / `watch` uses the current namespace. With `-A`, candidates are returned in `namespace/name` format.
+- HPA name completion for `status` / `doctor` / `analyze` / `watch` uses the current namespace. With `-A`, candidates are returned in `namespace/name` format.
 
 Configuration file:
 
@@ -582,7 +605,8 @@ The dashboard auto-refreshes every 5 seconds by default; change the interval wit
 
 | Symptom | Command | Key signals | Next step |
 | --- | --- | --- | --- |
-| Not scaling, metrics unavailable | `kubectl hpa status <name> --explain` | `ScalingActive=False`, Events | Check metrics-server or custom/external metrics adapter |
+| Unsure why scaling failed | `kubectl hpa status doctor <name>` | Metrics diagnostics, target workload, Pod state, resource requests, Events, KEDA | Start here for incident triage |
+| Not scaling, metrics unavailable | `kubectl hpa status doctor <name>` | `ScalingActive=False`, metrics diagnostics, Events | Check metrics-server or custom/external metrics adapter |
 | metrics-server slow or post-restart | `kubectl hpa status <name> --explain --events=10` | Stale `currentMetrics`, `FailedGetResourceMetric`, old `lastTransitionTime` | Wait one scrape interval, check `kubectl top pods` and metrics-server logs |
 | Replicas stuck at max | `kubectl hpa status <name> --suggest` | `ScalingLimited=True`, `desiredReplicas == maxReplicas` | Verify capacity, dry-run the proposed maxReplicas patch |
 | Scale-down is slow | `kubectl hpa status <name> --explain` | `ScaleDownStabilized`, `spec.behavior.scaleDown` | Wait for stabilization window or adjust it |
@@ -595,8 +619,8 @@ The dashboard auto-refreshes every 5 seconds by default; change the interval wit
 | Summary shows `[STALE STATUS]` | `kubectl hpa status <name> --explain` | `observedGeneration < metadata.generation` | Wait for HPA controller reconciliation; check kube-controller-manager health |
 | KEDA-managed HPA with stale external metrics | `kubectl hpa status <name> --keda --explain` | External metric missing from `currentMetrics`, KEDA trigger state | Check `kubectl get scaledobject -n <ns>`, keda-operator Pod logs, and TriggerAuthentication |
 | minReplicas=0 cold-start delay | `kubectl hpa status <name> --explain` | `ScaleToZero` shown, no immediate scale-up | Expected behavior; first metric evaluation after scale-to-zero incurs a polling interval delay |
-| All metrics show `<unknown>` | `kubectl hpa status <name> --diagnose-metrics` | Per-metric health check, status missing | Check metrics-server, custom metrics adapter registration, and APIService health |
-| HPA target utilization differs from expectation | `kubectl hpa status <name> --check-resources` | Resource request warnings, unset requests, target mismatch | Check pod template resource requests. HPA utilization is calculated as usage/request. |
+| All metrics show `<unknown>` | `kubectl hpa status doctor <name>` | Per-metric health check, status missing | Check metrics-server, custom metrics adapter registration, and APIService health |
+| HPA target utilization differs from expectation | `kubectl hpa status doctor <name>` | Resource request warnings, unset requests, target mismatch | Check pod template resource requests. HPA utilization is calculated as usage/request. |
 | Incident report needed | `kubectl hpa status <name> --report markdown` | Full single-HPA report | Share to Slack, Notion, or incident management tools |
 | Cluster-wide health summary needed | `kubectl hpa status list -A --report markdown` | Cluster-wide report, health scores, top issues | Share for on-call handoff or platform review |
 | Batch-fix multiple HPAs | `kubectl hpa status list -A --problem --fix --apply` | All patch summary table | Review the batch summary and apply all at once |
@@ -605,7 +629,7 @@ The dashboard auto-refreshes every 5 seconds by default; change the interval wit
 
 **Can I tell which metric "won" in a multi-metric HPA?** Not with certainty. The plugin estimates from visible `currentMetrics` and `spec.metrics`, but per-metric replica recommendations, missing metric conservative corrections, and the final selection are not exposed by the API.
 
-**What should I run first when I see `Metrics unavailable`?** Start with `kubectl hpa status <name> --explain --diagnose-metrics`. For CPU/memory, check `kubectl top pods` and metrics-server. For custom/external metrics, check the adapter's `APIService`, adapter logs, and metric selector semantics.
+**What should I run first when I see `Metrics unavailable`?** Start with `kubectl hpa status doctor <name>`. It bundles `--explain`, `--diagnose-metrics`, `--metrics-freshness`, `--check-resources`, `--explain-pods`, `--capacity-context`, Events, and KEDA enrichment. For CPU/memory, check `kubectl top pods` and metrics-server. For custom/external metrics, check the adapter's `APIService`, adapter logs, and metric selector semantics.
 
 **Can I tell if the stabilization window is holding?** Use `kubectl hpa status <name> --explain` or the TUI/watch view. The plugin shows `ScaleDownStabilized` and stabilization window timing to the extent visible from HPA status, behavior policy, and recent events.
 
@@ -805,6 +829,7 @@ Interpretation lines include confidence levels to distinguish directly observabl
 - [x] **Stabilization window countdown:** Shows remaining time and visual progress in TUI and text output.
 - [x] **Metrics pipeline diagnostics:** `--diagnose-metrics` shows per-metric health checks and repair hints.
 - [x] **Resource consistency check:** `--check-resources` verifies HPA target vs pod resource requests/limits.
+- [x] **Doctor command:** `doctor <name>` bundles metrics, workload, pod, resource, event, capacity, and KEDA diagnostics for incident triage.
 - [x] **Report output:** `--report markdown` / `--report html` generates single and list diagnostic reports.
 - [x] **TUI multi-select:** TUI supports `space` / `a` / `A` for multi-select and CLI batch apply guidance for selected HPAs.
 - [x] **Multi-Metric Decision Deep Trace:** Per-metric analysis with tolerance/stabilization impact.

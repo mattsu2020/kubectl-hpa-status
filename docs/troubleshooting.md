@@ -4,7 +4,8 @@ Common HPA issues and how to diagnose them with kubectl-hpa-status.
 
 | Symptom | Command | Primary signals | Likely next step |
 | --- | --- | --- | --- |
-| HPA is not scaling and metrics are missing | `kubectl hpa status <name> --explain` | `ScalingActive=False`, Events | Check metrics-server or custom/external metrics adapters |
+| Unsure why scaling failed | `kubectl hpa status doctor <name>` | Metrics diagnostics, target workload, Pod state, resource requests, Events, KEDA | Start here for incident triage |
+| HPA is not scaling and metrics are missing | `kubectl hpa status doctor <name>` | `ScalingActive=False`, metrics diagnostics, Events | Check metrics-server or custom/external metrics adapters |
 | metrics-server is slow or recently restarted | `kubectl hpa status <name> --explain --events=10` | stale `currentMetrics`, `FailedGetResourceMetric`, old `lastTransitionTime` | Wait for the scrape interval, then check `kubectl top pods` and metrics-server logs |
 | Replicas are capped at the top | `kubectl hpa status <name> --suggest` | `ScalingLimited=True`, `desiredReplicas == maxReplicas` | Review capacity, then validate the suggested maxReplicas patch |
 | Scale-down looks delayed | `kubectl hpa status <name> --explain` | `AbleToScale=True`, `ScaleDownStabilized`, `spec.behavior.scaleDown` | Wait for or tune stabilization window |
@@ -16,8 +17,8 @@ Common HPA issues and how to diagnose them with kubectl-hpa-status.
 | `[STALE STATUS]` prefix in summary | `kubectl hpa status <name> --explain` | `observedGeneration < metadata.generation` | Wait for HPA controller reconciliation; check kube-controller-manager health |
 | KEDA external metric stale on managed HPA | `kubectl hpa status <name> --keda --explain` | Missing external metric in `currentMetrics`, KEDA trigger status | Verify `kubectl get scaledobject -n <ns>`, check keda-operator pod logs, verify TriggerAuthentication |
 | minReplicas=0 cold start delay | `kubectl hpa status <name> --explain` | `ScaleToZero` indicator, no immediate scale-up | Expected behavior; first metric evaluation after scale-to-zero introduces a delay equal to the polling interval |
-| All metrics show `<unknown>` | `kubectl hpa status <name> --diagnose-metrics` | Per-metric health checks, missing status | Check metrics-server deployment, custom metrics adapter registration, API service health |
-| HPA target utilization seems wrong | `kubectl hpa status <name> --check-resources` | Resource request warnings, zero requests, target mismatch | Review pod template resource requests; HPA utilization = usage / request |
+| All metrics show `<unknown>` | `kubectl hpa status doctor <name>` | Per-metric health checks, missing status | Check metrics-server deployment, custom metrics adapter registration, API service health |
+| HPA target utilization seems wrong | `kubectl hpa status doctor <name>` | Resource request warnings, zero requests, target mismatch | Review pod template resource requests; HPA utilization = usage / request |
 | Need an incident report | `kubectl hpa status <name> --report markdown` | Standalone report with all sections | Paste into Slack, Notion, or incident tracking tool |
 | Batch fix multiple HPAs | `kubectl hpa status list -A --problem --fix --apply` | Summary table of all patches | Review the batch summary, confirm once to apply all |
 
@@ -29,10 +30,12 @@ per-metric replica recommendations, missing-metric dampening, or final
 selection before min/max and stabilization constraints.
 
 **My HPA says `Metrics unavailable`. What should I run first?** Start with
-`kubectl hpa status <name> --explain --diagnose-metrics`. For CPU and memory,
-confirm `kubectl top pods` works and inspect metrics-server. For custom or
-external metrics, verify the adapter `APIService`, adapter logs, and metric
-selector semantics.
+`kubectl hpa status doctor <name>`. It bundles `--explain`,
+`--diagnose-metrics`, `--metrics-freshness`, `--check-resources`,
+`--explain-pods`, `--capacity-context`, Events, and KEDA enrichment. For CPU
+and memory, confirm `kubectl top pods` works and inspect metrics-server. For
+custom or external metrics, verify the adapter `APIService`, adapter logs, and
+metric selector semantics.
 
 **How do I tell whether stabilization is the reason scale-down is delayed?**
 Run `kubectl hpa status <name> --explain` or open the TUI/watch view. The
