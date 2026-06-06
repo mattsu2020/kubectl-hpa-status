@@ -17,6 +17,7 @@ label_risk: "リスク"
 label_precondition: "前提条件"
 label_warning: "警告"
 label_metrics_diagnostics: "メトリクス診断"
+label_metric_freshness: "メトリクス鮮度"
 
 # ヘルス状態
 health_ok: "OK"

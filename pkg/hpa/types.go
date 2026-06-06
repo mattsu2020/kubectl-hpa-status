@@ -150,6 +150,9 @@ type Analysis struct {
 	StabilizationWindowSeconds *int32 `json:"stabilizationWindowSeconds,omitempty" yaml:"stabilizationWindowSeconds,omitempty"`
 	// MetricsDiagnostics holds per-metric health check results for the metrics pipeline.
 	MetricsDiagnostics *MetricsPipelineDiagnostics `json:"metricsDiagnostics,omitempty" yaml:"metricsDiagnostics,omitempty"`
+	// MetricFreshnessEntries holds per-metric freshness analysis results.
+	// Populated when --metrics-freshness is enabled.
+	MetricFreshnessEntries []MetricFreshness `json:"metricFreshness,omitempty" yaml:"metricFreshness,omitempty"`
 	// ResourceCheck holds warnings about resource request/limit consistency with HPA targets.
 	ResourceCheck *ResourceCheckResult `json:"resourceCheck,omitempty" yaml:"resourceCheck,omitempty"`
 	// PodAnalysis holds per-pod readiness and resource analysis for the scale target.
@@ -316,6 +319,45 @@ type PerMetricHealthCheck struct {
 	Status      string `json:"status" yaml:"status"` // "healthy", "missing", "stale"
 	Details     string `json:"details,omitempty" yaml:"details,omitempty"`
 	Remediation string `json:"remediation,omitempty" yaml:"remediation,omitempty"`
+}
+
+// MetricFreshnessStatus represents the freshness state of a single HPA metric.
+type MetricFreshnessStatus string
+
+const (
+	// FreshnessOK means the metric has recent data available.
+	FreshnessOK MetricFreshnessStatus = "OK"
+	// FreshnessStale means the metric data is older than expected.
+	FreshnessStale MetricFreshnessStatus = "Stale"
+	// FreshnessMissing means the metric has no current data in HPA status.
+	FreshnessMissing MetricFreshnessStatus = "Missing"
+	// FreshnessUnknown means freshness cannot be determined.
+	FreshnessUnknown MetricFreshnessStatus = "Unknown"
+)
+
+// MetricFreshness holds the freshness analysis for a single HPA metric.
+type MetricFreshness struct {
+	// Name is the metric display name (e.g., "cpu", "queue_depth").
+	Name string `json:"name" yaml:"name"`
+	// Type is the metric source type (Resource, Pods, Object, External, ContainerResource).
+	Type string `json:"type" yaml:"type"`
+	// Status is the freshness state: OK, Stale, Missing, Unknown.
+	Status string `json:"status" yaml:"status"`
+	// LastSeen is the timestamp when the metric was last observed, if available.
+	LastSeen *metav1.Time `json:"lastSeen,omitempty" yaml:"lastSeen,omitempty"`
+	// Age is the duration since LastSeen. Zero if LastSeen is nil.
+	Age time.Duration `json:"age,omitempty" yaml:"age,omitempty"`
+	// Source is the metrics API serving this metric (e.g., metrics.k8s.io,
+	// custom.metrics.k8s.io, external.metrics.k8s.io).
+	Source string `json:"source,omitempty" yaml:"source,omitempty"`
+	// Window is the expected metric collection window (e.g., "30s" for resource metrics).
+	Window string `json:"window,omitempty" yaml:"window,omitempty"`
+	// Risk describes the HPA behavior risk from stale/missing data.
+	Risk string `json:"risk,omitempty" yaml:"risk,omitempty"`
+	// Evidence lists observed signals supporting the freshness status.
+	Evidence []string `json:"evidence,omitempty" yaml:"evidence,omitempty"`
+	// NextSteps lists kubectl commands or actions for remediation.
+	NextSteps []string `json:"nextSteps,omitempty" yaml:"nextSteps,omitempty"`
 }
 
 // ResourceCheckResult holds warnings about resource request/limit consistency with HPA targets.

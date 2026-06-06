@@ -41,6 +41,7 @@ func registerStatusFlags(cmd *cobra.Command, opts *options) {
 	cmd.PersistentFlags().Var(&opts.events, "events", "show recent HPA events: true, false, or a number")
 	cmd.PersistentFlags().BoolVar(&opts.keda, "keda", true, "enable KEDA ScaledObject integration (auto-detected when CRD is present; use --keda=false to disable)")
 	cmd.PersistentFlags().BoolVar(&opts.diagnoseMetrics, "diagnose-metrics", false, "run comprehensive metrics pipeline health checks")
+	cmd.PersistentFlags().BoolVar(&opts.metricsFreshness, "metrics-freshness", false, "analyze per-metric data freshness, source, and staleness risk")
 	cmd.PersistentFlags().BoolVar(&opts.vpa, "vpa", true, "detect VerticalPodAutoscaler conflicts (auto-detected when CRD is present; use --vpa=false to disable)")
 	cmd.PersistentFlags().BoolVar(&opts.checkResources, "check-resources", false, "check HPA target utilization against pod resource requests")
 	cmd.PersistentFlags().BoolVar(&opts.explainPods, "explain-pods", false, "analyze scale target pods for readiness, resource requests, and metric coverage")

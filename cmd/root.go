@@ -59,6 +59,7 @@ type statusOptions struct {
 	healthWeightOverrides []string
 	healthWeights         hpaanalysis.HealthWeights
 	diagnoseMetrics       bool
+	metricsFreshness      bool
 	checkResources        bool
 	explainPods           bool
 	simulate              []string

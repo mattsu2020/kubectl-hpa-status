@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/style"
@@ -326,6 +327,40 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 		}
 	}
 
+	if len(a.MetricFreshnessEntries) > 0 {
+		out = append(out, '\n')
+		out = fmt.Appendf(out, "%s:\n", labels.MetricFreshness)
+		for _, mf := range a.MetricFreshnessEntries {
+			indicator := metricFreshnessIndicator(mf.Status, theme)
+			out = fmt.Appendf(out, "  %s %s/%s:\n", indicator, mf.Name, strings.ToLower(mf.Type))
+			out = fmt.Appendf(out, "    status: %s\n", metricFreshnessStatusDisplay(mf.Status, theme))
+			if mf.LastSeen != nil {
+				out = fmt.Appendf(out, "    lastSeen: %s ago\n", formatFreshnessDuration(mf.Age))
+			}
+			if mf.Source != "" {
+				out = fmt.Appendf(out, "    source: %s\n", mf.Source)
+			}
+			if mf.Window != "" {
+				out = fmt.Appendf(out, "    window: %s\n", mf.Window)
+			}
+			if mf.Risk != "" {
+				out = fmt.Appendf(out, "    risk: %s\n", theme.ActionLine(mf.Risk))
+			}
+			if len(mf.Evidence) > 0 {
+				out = append(out, "    evidence:\n"...)
+				for _, e := range mf.Evidence {
+					out = fmt.Appendf(out, "      - %s\n", e)
+				}
+			}
+			if len(mf.NextSteps) > 0 {
+				out = append(out, "    next:\n"...)
+				for _, ns := range mf.NextSteps {
+					out = fmt.Appendf(out, "      %s\n", theme.ActionLine(ns))
+				}
+			}
+		}
+	}
+
 	if a.ResourceCheck != nil && len(a.ResourceCheck.Warnings) > 0 {
 		out = append(out, '\n')
 		out = append(out, "Resource Check:\n"...)
@@ -458,6 +493,7 @@ type labels struct {
 	Precondition       string
 	Warning            string
 	MetricsDiagnostics string
+	MetricFreshness    string
 	PodAnalysis        string
 	Simulation         string
 	CapacityContext    string
@@ -489,6 +525,7 @@ func textLabels(lang string) labels {
 			Precondition:       "前提条件",
 			Warning:            "警告",
 			MetricsDiagnostics: "メトリクス診断",
+			MetricFreshness:    "メトリクス鮮度",
 			PodAnalysis:        "Pod分析",
 			Simulation:         "シミュレーション",
 			CapacityContext:    "キャパシティコンテキスト",
@@ -518,6 +555,7 @@ func textLabels(lang string) labels {
 		Precondition:       "precondition",
 		Warning:            "warning",
 		MetricsDiagnostics: "Metrics Diagnostics",
+		MetricFreshness:    "Metrics Freshness",
 		PodAnalysis:        "Pod Analysis",
 		Simulation:         "Simulation",
 		CapacityContext:    "Capacity Context",
@@ -907,4 +945,54 @@ func compactBehavior(behavior []BehaviorRule) string {
 		parts = append(parts, value)
 	}
 	return strings.Join(parts, " ")
+}
+
+// metricFreshnessIndicator returns a themed status indicator for a metric
+// freshness entry.
+func metricFreshnessIndicator(status string, theme style.Theme) string {
+	switch status {
+	case string(FreshnessOK):
+		return theme.OK.Render("✓")
+	case string(FreshnessMissing):
+		return theme.Error.Render("✗")
+	case string(FreshnessStale):
+		return theme.Bold.Render("!")
+	default:
+		return theme.Dim.Render("?")
+	}
+}
+
+// metricFreshnessStatusDisplay returns a themed display string for the
+// freshness status label.
+func metricFreshnessStatusDisplay(status string, theme style.Theme) string {
+	switch status {
+	case string(FreshnessOK):
+		return theme.OK.Render("OK")
+	case string(FreshnessMissing):
+		return theme.Error.Render("MISSING")
+	case string(FreshnessStale):
+		return theme.Bold.Render("STALE")
+	default:
+		return theme.Dim.Render("UNKNOWN")
+	}
+}
+
+// formatFreshnessDuration returns a human-readable duration string
+// (e.g., "12s", "4m32s", "1h5m").
+func formatFreshnessDuration(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	seconds := int64(d.Seconds())
+	if seconds < 60 {
+		return fmt.Sprintf("%ds", seconds)
+	}
+	minutes := seconds / 60
+	secs := seconds % 60
+	if minutes < 60 {
+		return fmt.Sprintf("%dm%ds", minutes, secs)
+	}
+	hours := minutes / 60
+	mins := minutes % 60
+	return fmt.Sprintf("%dh%dm", hours, mins)
 }

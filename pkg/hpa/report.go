@@ -193,6 +193,36 @@ func WriteMarkdownReport(w io.Writer, report StatusReport) error {
 		out.WriteString("\n")
 	}
 
+	// Metrics Freshness
+	if len(a.MetricFreshnessEntries) > 0 {
+		out.WriteString("## Metrics Freshness\n\n")
+		for _, mf := range a.MetricFreshnessEntries {
+			out.WriteString(fmt.Sprintf("### %s (%s) — %s\n\n", mf.Name, mf.Type, mf.Status))
+			if mf.Source != "" {
+				out.WriteString(fmt.Sprintf("- **Source:** %s\n", mf.Source))
+			}
+			if mf.Window != "" {
+				out.WriteString(fmt.Sprintf("- **Window:** %s\n", mf.Window))
+			}
+			if mf.Risk != "" {
+				out.WriteString(fmt.Sprintf("- **Risk:** %s\n", mf.Risk))
+			}
+			if len(mf.Evidence) > 0 {
+				out.WriteString("- **Evidence:**\n")
+				for _, e := range mf.Evidence {
+					out.WriteString(fmt.Sprintf("  - %s\n", e))
+				}
+			}
+			if len(mf.NextSteps) > 0 {
+				out.WriteString("- **Next Steps:**\n")
+				for _, ns := range mf.NextSteps {
+					out.WriteString(fmt.Sprintf("  - `%s`\n", ns))
+				}
+			}
+			out.WriteString("\n")
+		}
+	}
+
 	// Capacity Context
 	if a.CapacityContext != nil {
 		cc := a.CapacityContext
@@ -432,6 +462,37 @@ func WriteHTMLReport(w io.Writer, report StatusReport) error {
 		}
 	}
 
+	// Metrics Freshness
+	if len(a.MetricFreshnessEntries) > 0 {
+		out.WriteString("<h2>Metrics Freshness</h2>\n")
+		out.WriteString("<table>\n<tr><th>Metric</th><th>Type</th><th>Status</th><th>Source</th><th>Window</th><th>Risk</th></tr>\n")
+		for _, mf := range a.MetricFreshnessEntries {
+			statusBadge := htmlFreshnessBadge(mf.Status)
+			out.WriteString(fmt.Sprintf("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",
+				htmlEscape(mf.Name), htmlEscape(mf.Type), statusBadge, htmlEscape(mf.Source), htmlEscape(mf.Window), htmlEscape(mf.Risk)))
+		}
+		out.WriteString("</table>\n")
+		for _, mf := range a.MetricFreshnessEntries {
+			if len(mf.Evidence) > 0 || len(mf.NextSteps) > 0 {
+				out.WriteString(fmt.Sprintf("<h3>%s (%s) Details</h3>\n", htmlEscape(mf.Name), htmlEscape(mf.Type)))
+				if len(mf.Evidence) > 0 {
+					out.WriteString("<p><strong>Evidence:</strong></p>\n<ul>\n")
+					for _, e := range mf.Evidence {
+						out.WriteString(fmt.Sprintf("<li>%s</li>\n", htmlEscape(e)))
+					}
+					out.WriteString("</ul>\n")
+				}
+				if len(mf.NextSteps) > 0 {
+					out.WriteString("<p><strong>Next Steps:</strong></p>\n<ul>\n")
+					for _, ns := range mf.NextSteps {
+						out.WriteString(fmt.Sprintf("<li><code>%s</code></li>\n", htmlEscape(ns)))
+					}
+					out.WriteString("</ul>\n")
+				}
+			}
+		}
+	}
+
 	// Capacity Context
 	if a.CapacityContext != nil {
 		cc := a.CapacityContext
@@ -613,6 +674,20 @@ func htmlConditionStatus(status string) string {
 		class = "cond-true"
 	case "False":
 		class = "cond-false"
+	}
+	return fmt.Sprintf(`<span class="%s">%s</span>`, class, htmlEscape(status))
+}
+
+// htmlFreshnessBadge returns a color-coded freshness status badge for HTML.
+func htmlFreshnessBadge(status string) string {
+	class := "cond-unknown"
+	switch status {
+	case "OK":
+		class = "cond-true"
+	case "Missing":
+		class = "cond-false"
+	case "Stale":
+		class = "health-limited"
 	}
 	return fmt.Sprintf(`<span class="%s">%s</span>`, class, htmlEscape(status))
 }
