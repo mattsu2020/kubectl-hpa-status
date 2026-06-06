@@ -301,7 +301,93 @@ func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, 
 		report.Analysis.CapacityContext = buildCapacityContext(ctx, client, hpa)
 	}
 
+	if opts.scalePath {
+		report.Analysis.ScalePath = buildScalePath(ctx, client, hpa)
+	}
+
 	return report, nil
+}
+
+func buildScalePath(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpaanalysis.ScalePath {
+	input := hpaanalysis.ScalePathInput{}
+	info, err := kube.FetchScaleTargetInfo(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef)
+	if err == nil && info != nil {
+		input.Target = &hpaanalysis.ScalePathTarget{
+			Kind:            info.Kind,
+			Name:            info.Name,
+			DesiredReplicas: info.DesiredReplicas,
+			CurrentReplicas: info.Replicas,
+			ReadyReplicas:   info.ReadyReplicas,
+		}
+		if pods, podErr := kube.FetchPodInfosForSelector(ctx, client.Interface, hpa.Namespace, info.SelectorStr); podErr == nil {
+			input.Pods = convertScalePathPods(pods)
+		}
+		if replicaSets, rsErr := kube.FetchReplicaSetsForScaleTarget(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef, info.SelectorStr); rsErr == nil {
+			input.ReplicaSets = convertScalePathReplicaSets(replicaSets)
+		}
+		objectNames := scalePathEventObjectNames(hpa, input.Pods, input.ReplicaSets)
+		input.Events = convertScalePathEvents(kube.FetchRecentEventsForObjects(ctx, client.Interface, hpa.Namespace, objectNames, 10))
+	}
+	return hpaanalysis.AnalyzeScalePath(hpa, input)
+}
+
+func convertScalePathPods(pods []kube.PodInfo) []hpaanalysis.ScalePathPod {
+	if len(pods) == 0 {
+		return nil
+	}
+	result := make([]hpaanalysis.ScalePathPod, 0, len(pods))
+	for _, pod := range pods {
+		result = append(result, hpaanalysis.ScalePathPod{
+			Name:          pod.Name,
+			Phase:         pod.Phase,
+			Ready:         pod.Ready,
+			Unschedulable: pod.Unschedulable,
+			Reasons:       pod.Reasons,
+		})
+	}
+	return result
+}
+
+func convertScalePathReplicaSets(replicaSets []kube.ReplicaSetInfo) []hpaanalysis.ScalePathReplicaSet {
+	if len(replicaSets) == 0 {
+		return nil
+	}
+	result := make([]hpaanalysis.ScalePathReplicaSet, 0, len(replicaSets))
+	for _, rs := range replicaSets {
+		result = append(result, hpaanalysis.ScalePathReplicaSet{
+			Name:            rs.Name,
+			DesiredReplicas: rs.DesiredReplicas,
+			CurrentReplicas: rs.CurrentReplicas,
+			ReadyReplicas:   rs.ReadyReplicas,
+		})
+	}
+	return result
+}
+
+func convertScalePathEvents(events []kube.EventInfo) []hpaanalysis.Event {
+	if len(events) == 0 {
+		return nil
+	}
+	result := make([]hpaanalysis.Event, 0, len(events))
+	for _, event := range events {
+		result = append(result, hpaanalysis.Event{
+			Reason:    event.Reason,
+			Message:   event.Message,
+			Timestamp: event.Timestamp,
+		})
+	}
+	return result
+}
+
+func scalePathEventObjectNames(hpa *autoscalingv2.HorizontalPodAutoscaler, pods []hpaanalysis.ScalePathPod, replicaSets []hpaanalysis.ScalePathReplicaSet) []string {
+	names := []string{hpa.Name, hpa.Spec.ScaleTargetRef.Name}
+	for _, pod := range pods {
+		names = append(names, pod.Name)
+	}
+	for _, rs := range replicaSets {
+		names = append(names, rs.Name)
+	}
+	return names
 }
 
 func fetchTargetReplicaInfo(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpaanalysis.TargetReplicaInfo {

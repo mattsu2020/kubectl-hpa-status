@@ -48,6 +48,7 @@ func registerStatusFlags(cmd *cobra.Command, opts *options) {
 	cmd.PersistentFlags().StringArrayVar(&opts.simulate, "simulate", nil, "simulate HPA spec changes (e.g. maxReplicas=20); repeatable")
 	cmd.PersistentFlags().StringArrayVar(&opts.simulateMetric, "simulate-metric", nil, "simulate metric value changes (e.g. cpu=80%, memory=4Gi, http_requests=+20%); repeatable")
 	cmd.PersistentFlags().BoolVar(&opts.capacityContext, "capacity-context", false, "check infrastructure capacity constraints affecting HPA scaling")
+	cmd.PersistentFlags().BoolVar(&opts.scalePath, "scale-path", false, "explain the path from HPA desired replicas to pods and scheduler capacity")
 	cmd.PersistentFlags().StringVar(&opts.report, "report", "", "generate standalone report: markdown or html")
 }
 

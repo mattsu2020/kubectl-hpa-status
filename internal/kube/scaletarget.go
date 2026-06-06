@@ -12,14 +12,15 @@ import (
 
 // ScaleTargetInfo holds the resolved information about an HPA's scale target.
 type ScaleTargetInfo struct {
-	Kind          string
-	Name          string
-	Namespace     string
-	Selector      *metav1.LabelSelector
-	SelectorStr   string
-	Replicas      int32
-	ReadyReplicas int32
-	PodTemplate   *corev1.PodTemplateSpec
+	Kind            string
+	Name            string
+	Namespace       string
+	Selector        *metav1.LabelSelector
+	SelectorStr     string
+	DesiredReplicas int32
+	Replicas        int32
+	ReadyReplicas   int32
+	PodTemplate     *corev1.PodTemplateSpec
 }
 
 // FetchScaleTargetInfo resolves the HPA scale target reference into a
@@ -33,14 +34,15 @@ func FetchScaleTargetInfo(ctx context.Context, client kubernetes.Interface, name
 			return nil, fmt.Errorf("failed to get Deployment %s/%s: %w", namespace, ref.Name, err)
 		}
 		return &ScaleTargetInfo{
-			Kind:          ref.Kind,
-			Name:          ref.Name,
-			Namespace:     namespace,
-			Selector:      deploy.Spec.Selector,
-			SelectorStr:   metav1.FormatLabelSelector(deploy.Spec.Selector),
-			Replicas:      deploy.Status.Replicas,
-			ReadyReplicas: deploy.Status.ReadyReplicas,
-			PodTemplate:   &deploy.Spec.Template,
+			Kind:            ref.Kind,
+			Name:            ref.Name,
+			Namespace:       namespace,
+			Selector:        deploy.Spec.Selector,
+			SelectorStr:     metav1.FormatLabelSelector(deploy.Spec.Selector),
+			DesiredReplicas: replicasValue(deploy.Spec.Replicas),
+			Replicas:        deploy.Status.Replicas,
+			ReadyReplicas:   deploy.Status.ReadyReplicas,
+			PodTemplate:     &deploy.Spec.Template,
 		}, nil
 	case "StatefulSet":
 		sts, err := client.AppsV1().StatefulSets(namespace).Get(ctx, ref.Name, metav1.GetOptions{})
@@ -48,14 +50,15 @@ func FetchScaleTargetInfo(ctx context.Context, client kubernetes.Interface, name
 			return nil, fmt.Errorf("failed to get StatefulSet %s/%s: %w", namespace, ref.Name, err)
 		}
 		return &ScaleTargetInfo{
-			Kind:          ref.Kind,
-			Name:          ref.Name,
-			Namespace:     namespace,
-			Selector:      sts.Spec.Selector,
-			SelectorStr:   metav1.FormatLabelSelector(sts.Spec.Selector),
-			Replicas:      sts.Status.Replicas,
-			ReadyReplicas: sts.Status.ReadyReplicas,
-			PodTemplate:   &sts.Spec.Template,
+			Kind:            ref.Kind,
+			Name:            ref.Name,
+			Namespace:       namespace,
+			Selector:        sts.Spec.Selector,
+			SelectorStr:     metav1.FormatLabelSelector(sts.Spec.Selector),
+			DesiredReplicas: replicasValue(sts.Spec.Replicas),
+			Replicas:        sts.Status.Replicas,
+			ReadyReplicas:   sts.Status.ReadyReplicas,
+			PodTemplate:     &sts.Spec.Template,
 		}, nil
 	case "ReplicaSet":
 		rs, err := client.AppsV1().ReplicaSets(namespace).Get(ctx, ref.Name, metav1.GetOptions{})
@@ -63,16 +66,24 @@ func FetchScaleTargetInfo(ctx context.Context, client kubernetes.Interface, name
 			return nil, fmt.Errorf("failed to get ReplicaSet %s/%s: %w", namespace, ref.Name, err)
 		}
 		return &ScaleTargetInfo{
-			Kind:          ref.Kind,
-			Name:          ref.Name,
-			Namespace:     namespace,
-			Selector:      rs.Spec.Selector,
-			SelectorStr:   metav1.FormatLabelSelector(rs.Spec.Selector),
-			Replicas:      rs.Status.Replicas,
-			ReadyReplicas: rs.Status.ReadyReplicas,
-			PodTemplate:   &rs.Spec.Template,
+			Kind:            ref.Kind,
+			Name:            ref.Name,
+			Namespace:       namespace,
+			Selector:        rs.Spec.Selector,
+			SelectorStr:     metav1.FormatLabelSelector(rs.Spec.Selector),
+			DesiredReplicas: replicasValue(rs.Spec.Replicas),
+			Replicas:        rs.Status.Replicas,
+			ReadyReplicas:   rs.Status.ReadyReplicas,
+			PodTemplate:     &rs.Spec.Template,
 		}, nil
 	default:
 		return nil, nil
 	}
+}
+
+func replicasValue(replicas *int32) int32 {
+	if replicas == nil {
+		return 1
+	}
+	return *replicas
 }

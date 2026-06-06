@@ -65,6 +65,7 @@ type statusOptions struct {
 	simulate              []string
 	simulateMetric        []string
 	capacityContext       bool
+	scalePath             bool
 	events                eventOption
 	recommend             bool
 	report                string
@@ -208,6 +209,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newWatchCommand(opts))
 	root.AddCommand(newTUICommand(opts))
 	root.AddCommand(newTimelineCommand(opts))
+	root.AddCommand(newPathCommand(opts))
 	root.AddCommand(newRecordCommand(opts))
 	root.AddCommand(newReplayCommand(opts))
 	root.AddCommand(newRecommendCommand(opts))

@@ -165,6 +165,8 @@ type Analysis struct {
 	Simulation *SimulationResult `json:"simulation,omitempty" yaml:"simulation,omitempty"`
 	// CapacityContext holds infrastructure capacity analysis for the scale target.
 	CapacityContext *CapacityContext `json:"capacityContext,omitempty" yaml:"capacityContext,omitempty"`
+	// ScalePath explains the visible path from HPA desired replicas to scheduled pods.
+	ScalePath *ScalePath `json:"scalePath,omitempty" yaml:"scalePath,omitempty"`
 	// EnrichmentStatus holds KEDA/VPA enrichment skip reasons for diagnostic output.
 	// Populated during enrichment to explain why data may be absent.
 	EnrichmentStatus interface{} `json:"enrichmentStatus,omitempty" yaml:"enrichmentStatus,omitempty"`
@@ -573,6 +575,56 @@ type CapacityContext struct {
 	QuotaConstraints []QuotaConstraint `json:"quotaConstraints,omitempty" yaml:"quotaConstraints,omitempty"`
 	PDBInterference  []PDBInterference `json:"pdbInterference,omitempty" yaml:"pdbInterference,omitempty"`
 	NodeHints        []string          `json:"nodeHints,omitempty" yaml:"nodeHints,omitempty"`
+}
+
+// ScalePath describes the visible scale-up path from the HPA recommendation
+// through the workload, ReplicaSets, pods, and scheduler-facing signals.
+type ScalePath struct {
+	Steps         []ScalePathStep `json:"steps" yaml:"steps"`
+	BlockingPoint string          `json:"blockingPoint,omitempty" yaml:"blockingPoint,omitempty"`
+	Evidence      []string        `json:"evidence,omitempty" yaml:"evidence,omitempty"`
+	NextActions   []string        `json:"nextActions,omitempty" yaml:"nextActions,omitempty"`
+}
+
+// ScalePathStep is one hop in the HPA-to-pod scaling path.
+type ScalePathStep struct {
+	Name    string `json:"name" yaml:"name"`
+	Summary string `json:"summary" yaml:"summary"`
+}
+
+// ScalePathTarget is the observed HPA scale target.
+type ScalePathTarget struct {
+	Kind            string
+	Name            string
+	DesiredReplicas int32
+	CurrentReplicas int32
+	ReadyReplicas   int32
+}
+
+// ScalePathReplicaSet is a ReplicaSet participating in the target path.
+type ScalePathReplicaSet struct {
+	Name            string
+	DesiredReplicas int32
+	CurrentReplicas int32
+	ReadyReplicas   int32
+}
+
+// ScalePathPod is the pod-level state used by scale path analysis.
+type ScalePathPod struct {
+	Name          string
+	Phase         string
+	Ready         bool
+	Unschedulable bool
+	Reasons       []string
+}
+
+// ScalePathInput contains the observable Kubernetes API signals used to build
+// a scale path. It intentionally excludes controller-internal calculations.
+type ScalePathInput struct {
+	Target      *ScalePathTarget
+	ReplicaSets []ScalePathReplicaSet
+	Pods        []ScalePathPod
+	Events      []Event
 }
 
 // PendingPodInfo describes a pending pod and its scheduling constraints.

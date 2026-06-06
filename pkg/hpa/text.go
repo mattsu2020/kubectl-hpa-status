@@ -37,6 +37,18 @@ func WriteStatusText(w io.Writer, report StatusReport, theme style.Theme) error 
 	return WriteStatusTextWithOptions(w, report, StatusTextOptions{Theme: theme})
 }
 
+// WriteScalePathText writes only the scale path section.
+func WriteScalePathText(w io.Writer, path *ScalePath) error {
+	if path == nil {
+		_, err := fmt.Fprintln(w, "Scale Path:\n  No scale path data available.")
+		return err
+	}
+	var out []byte
+	appendScalePathText(&out, path, style.Theme{})
+	_, err := w.Write(out)
+	return err
+}
+
 // WriteStatusDashboard writes a compact dashboard format status report.
 func WriteStatusDashboard(w io.Writer, report StatusReport, theme style.Theme) error {
 	a := report.Analysis
@@ -464,6 +476,11 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 		}
 	}
 
+	if a.ScalePath != nil {
+		out = append(out, '\n')
+		appendScalePathText(&out, a.ScalePath, theme)
+	}
+
 	out = append(out, '\n')
 	out = fmt.Appendf(out, "%s:\n", labels.Events)
 	if len(report.Events) == 0 {
@@ -476,6 +493,29 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 
 	_, err := w.Write(out)
 	return err
+}
+
+func appendScalePathText(out *[]byte, path *ScalePath, theme style.Theme) {
+	*out = append(*out, "Scale Path:\n"...)
+	for _, step := range path.Steps {
+		*out = fmt.Appendf(*out, "  %s: %s\n", step.Name, step.Summary)
+	}
+	if path.BlockingPoint != "" {
+		*out = append(*out, "\nBlocking point:\n"...)
+		*out = fmt.Appendf(*out, "  %s\n", theme.InterpretationLine(path.BlockingPoint))
+	}
+	if len(path.Evidence) > 0 {
+		*out = append(*out, "\nEvidence:\n"...)
+		for _, evidence := range path.Evidence {
+			*out = fmt.Appendf(*out, "  - %s\n", evidence)
+		}
+	}
+	if len(path.NextActions) > 0 {
+		*out = append(*out, "\nNext actions:\n"...)
+		for _, action := range path.NextActions {
+			*out = fmt.Appendf(*out, "  - %s\n", theme.ActionLine(action))
+		}
+	}
 }
 
 func emptyAsUnknown(value string) string {
