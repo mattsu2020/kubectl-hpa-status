@@ -181,11 +181,8 @@ Common flags include -n/--namespace, -A/--all-namespaces, -o/--output,
 ### Krew (recommended)
 
 ```sh
-# Install via Krew (after publishing to the official krew-index)
+# Install from the official krew-index
 kubectl krew install hpa-status
-
-# Before publishing, install directly from the manifest:
-kubectl krew install --manifest https://raw.githubusercontent.com/mattsu2020/kubectl-hpa-status/main/.krew.yaml
 ```
 
 ```sh
@@ -194,13 +191,15 @@ kubectl hpa status list -A --wide
 kubectl hpa status <hpa-name> --suggest
 ```
 
+To test unreleased manifest changes locally, install directly from `.krew.yaml`.
+
 With Krew, the plugin is registered as `hpa-status`. kubectl discovers hyphenated
 plugins via the underscore form `kubectl hpa_status`.
 **Important: When installed via Krew, you typically use `kubectl hpa_status status <name>`
 instead of `kubectl hpa status <name>`.** This README uses `kubectl hpa status` as the
 recommended form for environments where kubectl's nested plugin discovery is supported.
 If it does not work, use `kubectl hpa_status status <hpa-name>` or
-`kubectl-hpa-status status <hpa-name>`.**
+`kubectl-hpa-status status <hpa-name>`.
 
 ### Homebrew
 

@@ -181,11 +181,8 @@ Common flags include -n/--namespace, -A/--all-namespaces, -o/--output,
 ### Krew (推奨)
 
 ```sh
-# Krewでインストール（公式krew-indexへの公開後）
+# 公式krew-indexからインストール
 kubectl krew install hpa-status
-
-# 公開前の場合、マニフェストから直接インストール:
-kubectl krew install --manifest https://raw.githubusercontent.com/mattsu2020/kubectl-hpa-status/main/.krew.yaml
 ```
 
 ```sh
@@ -194,13 +191,15 @@ kubectl hpa status list -A --wide
 kubectl hpa status <hpa-name> --suggest
 ```
 
+未リリースのマニフェスト変更をローカルで検証する場合は、`.krew.yaml` から直接インストールしてください。
+
 Krewではプラグイン名は `hpa-status` として入ります。kubectlはハイフンを含む
 プラグインを `kubectl hpa_status` として検出できます。
 **重要: Krewで入れた場合は通常 `kubectl hpa status <name>` ではなく
 `kubectl hpa_status status <name>` を使います。** このREADMEでは、kubectlのnested plugin discoveryが対応している環境向けに
 `kubectl hpa status` を推奨形として書いています。動かない場合は
 `kubectl hpa_status status <hpa-name>` または
-`kubectl-hpa-status status <hpa-name>` を使ってください。**
+`kubectl-hpa-status status <hpa-name>` を使ってください。
 
 ### Homebrew
 
