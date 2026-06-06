@@ -133,6 +133,16 @@ func attachHealth(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler, minRep
 	return a
 }
 
+// detectMetricDecisionTrace builds a comprehensive per-metric decision trace
+// when multiple current metrics are present.
+func detectMetricDecisionTrace(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) Analysis {
+	if len(src.Status.CurrentMetrics) <= 1 {
+		return a
+	}
+	a.MetricDecisionTrace = BuildMetricDecisionTrace(src, minReplicas)
+	return a
+}
+
 // attachDebug adds verbose debug lines when enabled.
 func attachDebug(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler, opts AnalysisOptions) Analysis {
 	if !opts.Debug {

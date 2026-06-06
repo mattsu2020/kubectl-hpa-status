@@ -97,6 +97,7 @@ func AnalyzeWithOptions(src *autoscalingv2.HorizontalPodAutoscaler, includeInter
 	a = collectBehavior(a, src)
 	a = detectStaleStatus(a, src)
 	a = detectImpactMetric(a, src)
+	a = detectMetricDecisionTrace(a, src, minReplicas)
 	a = detectScaleToZero(a, src, minReplicas)
 	a = detectStabilization(a, src)
 	a = attachInterpretation(a, src, minReplicas, includeInterpretation)

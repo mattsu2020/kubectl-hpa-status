@@ -276,6 +276,22 @@ func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, 
 		}
 	}
 
+	if len(opts.simulateMetric) > 0 {
+		metricOverrides, metricErr := parseSimulateMetricOverrides(opts.simulateMetric)
+		if metricErr != nil {
+			return hpaanalysis.StatusReport{}, fmt.Errorf("parsing --simulate-metric: %w", metricErr)
+		}
+		sim, simErr := hpaanalysis.SimulateMetricChange(hpa, metricOverrides, opts.healthWeights)
+		if simErr != nil {
+			return hpaanalysis.StatusReport{}, fmt.Errorf("metric simulation: %w", simErr)
+		}
+		if report.Analysis.Simulation == nil {
+			report.Analysis.Simulation = sim
+		} else {
+			report.Analysis.Simulation.MetricSimulations = sim.MetricSimulations
+		}
+	}
+
 	if opts.capacityContext {
 		report.Analysis.CapacityContext = buildCapacityContext(ctx, client, hpa)
 	}

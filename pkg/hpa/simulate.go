@@ -70,6 +70,7 @@ func simulationStateFromAnalysis(a *Analysis) SimulationState {
 		HealthScore:     a.HealthScore,
 		Summary:         a.Summary,
 		ScalingLimited:  limited,
+		Metrics:         a.Metrics,
 	}
 }
 

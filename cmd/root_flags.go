@@ -45,6 +45,7 @@ func registerStatusFlags(cmd *cobra.Command, opts *options) {
 	cmd.PersistentFlags().BoolVar(&opts.checkResources, "check-resources", false, "check HPA target utilization against pod resource requests")
 	cmd.PersistentFlags().BoolVar(&opts.explainPods, "explain-pods", false, "analyze scale target pods for readiness, resource requests, and metric coverage")
 	cmd.PersistentFlags().StringArrayVar(&opts.simulate, "simulate", nil, "simulate HPA spec changes (e.g. maxReplicas=20); repeatable")
+	cmd.PersistentFlags().StringArrayVar(&opts.simulateMetric, "simulate-metric", nil, "simulate metric value changes (e.g. cpu=80%, memory=4Gi, http_requests=+20%); repeatable")
 	cmd.PersistentFlags().BoolVar(&opts.capacityContext, "capacity-context", false, "check infrastructure capacity constraints affecting HPA scaling")
 	cmd.PersistentFlags().StringVar(&opts.report, "report", "", "generate standalone report: markdown or html")
 }
