@@ -5,6 +5,7 @@ Common HPA issues and how to diagnose them with kubectl-hpa-status.
 | Symptom | Command | Primary signals | Likely next step |
 | --- | --- | --- | --- |
 | Unsure why scaling failed | `kubectl hpa status doctor <name>` | Metrics diagnostics, target workload, Pod state, resource requests, Events, KEDA | Start here for incident triage |
+| Need to know when scaling changed | `kubectl hpa status timeline <name> --since=30m` | Rescale events, metric failures, limits, stabilization | Reconstruct the incident sequence before tuning |
 | HPA is not scaling and metrics are missing | `kubectl hpa status doctor <name>` | `ScalingActive=False`, metrics diagnostics, Events | Check metrics-server or custom/external metrics adapters |
 | metrics-server is slow or recently restarted | `kubectl hpa status <name> --explain --events=10` | stale `currentMetrics`, `FailedGetResourceMetric`, old `lastTransitionTime` | Wait for the scrape interval, then check `kubectl top pods` and metrics-server logs |
 | Replicas are capped at the top | `kubectl hpa status <name> --suggest` | `ScalingLimited=True`, `desiredReplicas == maxReplicas` | Review capacity, then validate the suggested maxReplicas patch |

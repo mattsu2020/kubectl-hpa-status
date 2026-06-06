@@ -7,6 +7,7 @@ Detailed usage instructions for kubectl-hpa-status.
 ```sh
 kubectl hpa status <hpa-name> [<hpa-name>...] [-n namespace] [--context context] [--events=false]
 kubectl hpa status doctor <hpa-name> -n <namespace>
+kubectl hpa status timeline <hpa-name> --since=30m
 kubectl hpa status <hpa-name> --watch --interval 5s
 kubectl hpa status <hpa-name> --watch --timeout 2m --until-condition scaling-limited
 kubectl hpa status list [-A] [--selector app=web] [--sort-by desired] [--filter scaling-limited]
@@ -21,6 +22,7 @@ Direct binary usage is also supported:
 ```sh
 kubectl-hpa-status status <hpa-name> -n <namespace>
 kubectl-hpa-status doctor <hpa-name> -n <namespace>
+kubectl-hpa-status timeline <hpa-name> --since=30m
 kubectl-hpa-status status <hpa-name> --suggest
 kubectl-hpa-status status <hpa-name> --fix --apply
 kubectl-hpa-status scan
@@ -67,6 +69,7 @@ kubectl-hpa-status completion zsh
 | `--dashboard` | `watch` | Render watch output as a compact terminal dashboard. |
 | `--timeout 2m` | watch mode | Stop watch after a duration. |
 | `--until-condition scaling-limited` | watch mode | Stop watch once the normalized condition type is present. |
+| `--since=30m` | `timeline` | Reconstruct an HPA decision timeline from recent Kubernetes Events. Supports `30m`, `1h`, etc. |
 | `--qps` | all commands | Client-side rate limiting queries per second (0 uses client-go default). |
 | `--burst` | all commands | Client-side rate limiting burst size (0 uses client-go default). |
 | `--version` | root | Print the plugin version. |

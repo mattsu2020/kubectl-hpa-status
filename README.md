@@ -124,6 +124,7 @@ Social preview source file: [images/social-preview.svg](images/social-preview.sv
 ```sh
 kubectl hpa status <hpa-name> -n <namespace>
 kubectl hpa status doctor <hpa-name> -n <namespace>
+kubectl hpa status timeline <hpa-name> --since=30m
 kubectl hpa status <hpa-name> --explain
 kubectl hpa status <hpa-name> --suggest
 kubectl hpa status <hpa-name> --fix --apply
@@ -191,10 +192,11 @@ Available Commands:
   list        List HPAs and highlight visible issues
   scan        Scan all namespaces for HPAs with visible problems
   status      Show concise status for one HPA
+  timeline    Show HPA scaling decisions over time
   watch       Watch one HPA status
 
 Common flags include -n/--namespace, -A/--all-namespaces, -o/--output,
---events, --explain, --watch, --interval, --timeout, and --until-condition.
+--events, --explain, --watch, --interval, --timeout, --since, and --until-condition.
 ```
 
 ## Install
@@ -284,6 +286,7 @@ kubectl delete namespace hpa-status-examples
 ```sh
 kubectl hpa status <hpa-name> [<hpa-name>...] [-n namespace] [--context context] [--events=false]
 kubectl hpa status doctor <hpa-name> -n <namespace>
+kubectl hpa status timeline <hpa-name> --since=30m
 kubectl hpa status <hpa-name> --watch --interval 5s
 kubectl hpa status <hpa-name> --watch --dashboard
 kubectl hpa status <hpa-name> --watch --timeout 2m --until-condition scaling-limited
@@ -302,6 +305,7 @@ You can also run the binary directly:
 kubectl-hpa-status analyze <hpa-name> -n <namespace>
 kubectl-hpa-status status <hpa-name> -n <namespace>
 kubectl-hpa-status doctor <hpa-name> -n <namespace>
+kubectl-hpa-status timeline <hpa-name> --since=30m
 kubectl-hpa-status status <hpa-name> --suggest
 kubectl-hpa-status status <hpa-name> --fix --apply
 kubectl-hpa-status status <hpa-name> --fix --apply --dry-run=false
@@ -606,6 +610,7 @@ The dashboard auto-refreshes every 5 seconds by default; change the interval wit
 | Symptom | Command | Key signals | Next step |
 | --- | --- | --- | --- |
 | Unsure why scaling failed | `kubectl hpa status doctor <name>` | Metrics diagnostics, target workload, Pod state, resource requests, Events, KEDA | Start here for incident triage |
+| Need to know when scaling changed | `kubectl hpa status timeline <name> --since=30m` | Rescale events, metric failures, limits, stabilization | Reconstruct the incident sequence before tuning |
 | Not scaling, metrics unavailable | `kubectl hpa status doctor <name>` | `ScalingActive=False`, metrics diagnostics, Events | Check metrics-server or custom/external metrics adapter |
 | metrics-server slow or post-restart | `kubectl hpa status <name> --explain --events=10` | Stale `currentMetrics`, `FailedGetResourceMetric`, old `lastTransitionTime` | Wait one scrape interval, check `kubectl top pods` and metrics-server logs |
 | Replicas stuck at max | `kubectl hpa status <name> --suggest` | `ScalingLimited=True`, `desiredReplicas == maxReplicas` | Verify capacity, dry-run the proposed maxReplicas patch |
@@ -729,7 +734,7 @@ Events are useful as recent diagnostic context, but this POC does not treat them
 
 ### Retrospective Scaling Timeline
 
-Show estimated past scaling decisions using `timeline --since`:
+Show estimated past scaling decisions using the HPA decision timeline:
 
 ```bash
 kubectl hpa status timeline web -n production --since=30m
@@ -740,11 +745,10 @@ Output:
 ```text
 HPA Scaling Timeline: web (production)  since 30m ago
 
-10:01 desired 3 -> 5   cpu 142% over target
-10:02 scaleUp limited by policy: +2 pods / 60s
-10:05 desired 5 -> 5   within tolerance
-10:12 desired 5 -> 3   scaleDown suppressed by stabilization window (120s)
-10:20 desired 5 -> 3   applied scale down
+21:05:00 CPU 92% > target 60%     desired 3 -> 5
+21:06:00 ScalingLimited=True      capped by maxReplicas=5
+21:10:00 FailedGetResourceMetric  metrics unavailable
+21:15:00 ScaleDownStabilized      scale-down suppressed, ~180s remaining
 
 Note: Best-effort reconstruction from Kubernetes events and current HPA status.
 ```

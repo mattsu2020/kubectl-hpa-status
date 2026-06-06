@@ -7,6 +7,7 @@ import (
 	"time"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	corev1 "k8s.io/api/core/v1"
 )
 
 // newSizeRegex extracts the new replica count from HPA event messages like:
@@ -84,7 +85,7 @@ func classifyEvent(event Event, prevDesired int32, hpa *autoscalingv2.Horizontal
 
 		msg := fmt.Sprintf("desired %d -> %d", prevDesired, newSize)
 		if metricCtx != "" {
-			msg += "   " + metricCtx
+			msg = fmt.Sprintf("%s     desired %d -> %d", metricCtx, prevDesired, newSize)
 		}
 
 		return &RetrospectiveEntry{
@@ -102,6 +103,33 @@ func classifyEvent(event Event, prevDesired int32, hpa *autoscalingv2.Horizontal
 			Message:    fmt.Sprintf("failed to rescale: %s", truncateMessageRetro(event.Message, 80)),
 			Source:     "event",
 			Confidence: "high",
+		}
+
+	case "FailedGetResourceMetric", "FailedGetExternalMetric", "FailedGetObjectMetric":
+		return &RetrospectiveEntry{
+			Timestamp:  event.Timestamp,
+			Category:   "metrics-unavailable",
+			Message:    fmt.Sprintf("%s  metrics unavailable", event.Reason),
+			Source:     "event",
+			Confidence: "high",
+		}
+
+	case "ScalingLimited", "TooManyReplicas", "TooFewReplicas":
+		return &RetrospectiveEntry{
+			Timestamp:  event.Timestamp,
+			Category:   "scaling-limited",
+			Message:    fmt.Sprintf("ScalingLimited=True      capped by maxReplicas=%d", hpa.Spec.MaxReplicas),
+			Source:     "event",
+			Confidence: "medium",
+		}
+
+	case "ScaleDownStabilized":
+		return &RetrospectiveEntry{
+			Timestamp:  event.Timestamp,
+			Category:   "stabilized",
+			Message:    formatScaleDownStabilizedTimelineMessage(hpa, event.Timestamp),
+			Source:     "event",
+			Confidence: "medium",
 		}
 
 	default:
@@ -146,7 +174,14 @@ func formatMetricContext(message string, hpa *autoscalingv2.HorizontalPodAutosca
 			name := strings.ToLower(string(metric.Resource.Name))
 			if strings.Contains(reasonLower, name) {
 				if metric.Resource.Current.AverageUtilization != nil {
-					return fmt.Sprintf("%s %d%%", string(metric.Resource.Name), *metric.Resource.Current.AverageUtilization)
+					if target := resourceMetricTargetUtilization(hpa, metric.Resource.Name); target != nil {
+						return fmt.Sprintf("%s %d%% %s target %d%%",
+							strings.ToUpper(string(metric.Resource.Name)),
+							*metric.Resource.Current.AverageUtilization,
+							compareInt32(*metric.Resource.Current.AverageUtilization, *target),
+							*target)
+					}
+					return fmt.Sprintf("%s %d%%", strings.ToUpper(string(metric.Resource.Name)), *metric.Resource.Current.AverageUtilization)
 				}
 			}
 		}
@@ -157,6 +192,48 @@ func formatMetricContext(message string, hpa *autoscalingv2.HorizontalPodAutosca
 		reason = reason[:47] + "..."
 	}
 	return reason
+}
+
+func resourceMetricTargetUtilization(hpa *autoscalingv2.HorizontalPodAutoscaler, name corev1.ResourceName) *int32 {
+	if hpa == nil {
+		return nil
+	}
+	for _, spec := range hpa.Spec.Metrics {
+		if spec.Type != autoscalingv2.ResourceMetricSourceType || spec.Resource == nil {
+			continue
+		}
+		if spec.Resource.Name == name {
+			return spec.Resource.Target.AverageUtilization
+		}
+	}
+	return nil
+}
+
+func compareInt32(current, target int32) string {
+	switch {
+	case current > target:
+		return ">"
+	case current < target:
+		return "<"
+	default:
+		return "="
+	}
+}
+
+func formatScaleDownStabilizedTimelineMessage(hpa *autoscalingv2.HorizontalPodAutoscaler, ts time.Time) string {
+	remaining := scaleDownStabilizationWindowSeconds(hpa)
+	cond := FindCondition(hpa, "AbleToScale")
+	if cond != nil && !cond.LastTransitionTime.IsZero() && remaining > 0 {
+		elapsed := ts.Sub(cond.LastTransitionTime.Time)
+		left := time.Duration(remaining)*time.Second - elapsed
+		if left > 0 {
+			return fmt.Sprintf("ScaleDownStabilized      scale-down suppressed, ~%ds remaining", int(left.Seconds()))
+		}
+	}
+	if remaining > 0 {
+		return fmt.Sprintf("ScaleDownStabilized      scale-down suppressed, ~%ds remaining", remaining)
+	}
+	return "ScaleDownStabilized      scale-down suppressed"
 }
 
 // insertSuppressionEntries adds estimated stabilization and policy-limited

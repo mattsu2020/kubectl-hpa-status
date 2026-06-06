@@ -131,14 +131,8 @@ func WriteRetrospectiveHTML(w io.Writer, tl RetrospectiveTimeline) error {
 
 func categoryPrefix(category string) string {
 	switch category {
-	case "rescale":
-		return "rescale "
-	case "metric-change":
-		return "metrics "
-	case "stabilized":
-		return "stabilized "
-	case "policy-limited":
-		return "limited "
+	case "rescale", "metric-change", "metrics-unavailable", "scaling-limited", "stabilized", "policy-limited":
+		return ""
 	default:
 		if category == "" {
 			return ""

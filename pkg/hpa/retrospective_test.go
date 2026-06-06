@@ -51,6 +51,59 @@ func TestBuildRetrospectiveTimeline_BasicScaleUp(t *testing.T) {
 	}
 }
 
+func TestBuildRetrospectiveTimeline_DecisionTimelineMessages(t *testing.T) {
+	now := time.Now()
+	hpa := buildRetrospectiveTestHPA("default", "web")
+	targetCPU := int32(60)
+	currentCPU := int32(92)
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{
+		{
+			Type: autoscalingv2.ResourceMetricSourceType,
+			Resource: &autoscalingv2.ResourceMetricSource{
+				Name: corev1.ResourceCPU,
+				Target: autoscalingv2.MetricTarget{
+					Type:               autoscalingv2.UtilizationMetricType,
+					AverageUtilization: &targetCPU,
+				},
+			},
+		},
+	}
+	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{
+		{
+			Type: autoscalingv2.ResourceMetricSourceType,
+			Resource: &autoscalingv2.ResourceMetricStatus{
+				Name: corev1.ResourceCPU,
+				Current: autoscalingv2.MetricValueStatus{
+					AverageUtilization: &currentCPU,
+				},
+			},
+		},
+	}
+
+	events := []Event{
+		{Reason: "SuccessfulRescale", Message: "New size: 5; reason: cpu resource utilization above target", Timestamp: now.Add(-20 * time.Minute)},
+		{Reason: "ScalingLimited", Message: "desired replica count larger than max replica count", Timestamp: now.Add(-19 * time.Minute)},
+		{Reason: "FailedGetResourceMetric", Message: "missing request for cpu", Timestamp: now.Add(-10 * time.Minute)},
+	}
+
+	tl := BuildRetrospectiveTimeline(events, hpa, now.Add(-30*time.Minute))
+	if len(tl.Entries) != 3 {
+		t.Fatalf("expected 3 entries, got %#v", tl.Entries)
+	}
+	if !strings.Contains(tl.Entries[0].Message, "CPU 92% > target 60%") ||
+		!strings.Contains(tl.Entries[0].Message, "desired 3 -> 5") {
+		t.Fatalf("unexpected rescale message: %q", tl.Entries[0].Message)
+	}
+	if !strings.Contains(tl.Entries[1].Message, "ScalingLimited=True") ||
+		!strings.Contains(tl.Entries[1].Message, "maxReplicas=10") {
+		t.Fatalf("unexpected scaling limited message: %q", tl.Entries[1].Message)
+	}
+	if !strings.Contains(tl.Entries[2].Message, "FailedGetResourceMetric") ||
+		!strings.Contains(tl.Entries[2].Message, "metrics unavailable") {
+		t.Fatalf("unexpected metrics message: %q", tl.Entries[2].Message)
+	}
+}
+
 func TestBuildRetrospectiveTimeline_FailedRescale(t *testing.T) {
 	now := time.Now()
 	hpa := buildRetrospectiveTestHPA("default", "web")
@@ -133,8 +186,8 @@ func TestBuildRetrospectiveTimeline_MetricContext(t *testing.T) {
 	if len(tl.Entries) < 1 {
 		t.Fatalf("expected at least 1 entry, got %d", len(tl.Entries))
 	}
-	if !strings.Contains(tl.Entries[0].Message, "cpu") {
-		t.Errorf("expected 'cpu' in message for metric context, got %q", tl.Entries[0].Message)
+	if !strings.Contains(tl.Entries[0].Message, "CPU") {
+		t.Errorf("expected 'CPU' in message for metric context, got %q", tl.Entries[0].Message)
 	}
 }
 
