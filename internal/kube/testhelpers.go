@@ -1,6 +1,9 @@
 package kube
 
 import (
+	"fmt"
+	"time"
+
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -160,6 +163,26 @@ func BuildEvent(namespace, hpaName, reason, message string) *corev1.Event {
 		},
 		Reason:  reason,
 		Message: message,
+	}
+}
+
+// BuildEventWithTimestamp creates a corev1.Event for the given HPA with
+// explicit timestamps, suitable for testing retrospective timeline features.
+func BuildEventWithTimestamp(namespace, hpaName, reason, message string, t time.Time) *corev1.Event {
+	return &corev1.Event{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: namespace,
+			Name:      hpaName + "." + reason + "." + fmt.Sprintf("%d", t.UnixNano()),
+		},
+		InvolvedObject: corev1.ObjectReference{
+			Kind:      "HorizontalPodAutoscaler",
+			Namespace: namespace,
+			Name:      hpaName,
+		},
+		Reason:       reason,
+		Message:      message,
+		LastTimestamp: metav1.NewTime(t),
+		EventTime:    metav1.NewMicroTime(t),
 	}
 }
 

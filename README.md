@@ -296,6 +296,7 @@ Detailed flags:
 | `--dashboard` | `watch` | Display as a compact terminal dashboard. |
 | `--timeout 2m` | watch mode | Stop watching after the specified duration. |
 | `--until-condition scaling-limited` | watch mode | Stop watching when the normalized Condition type appears. |
+| `--since=30m` | `timeline` | Show retrospective scaling timeline reconstructed from past events. Supports `30m`, `1h`, etc. |
 | `--simulate-metric cpu=80%` | `status` | Simulate metric value changes to preview scaling impact. Repeatable. See [What-If Scaling Simulator](#what-if-scaling-simulator). |
 | `--version` | root | Show version. |
 
@@ -665,7 +666,36 @@ E2E runs on a matrix of Kubernetes 1.26 / 1.28 / 1.30 / latest-tracking kind ima
 
 Events are useful as recent diagnostic context, but this POC does not treat them as a stable decision record.
 
-## Example output
+### Retrospective Scaling Timeline
+
+Show estimated past scaling decisions using `timeline --since`:
+
+```bash
+kubectl hpa status timeline web -n production --since=30m
+```
+
+Output:
+
+```text
+HPA Scaling Timeline: web (production)  since 30m ago
+
+10:01 desired 3 -> 5   cpu 142% over target
+10:02 scaleUp limited by policy: +2 pods / 60s
+10:05 desired 5 -> 5   within tolerance
+10:12 desired 5 -> 3   scaleDown suppressed by stabilization window (120s)
+10:20 desired 5 -> 3   applied scale down
+
+Note: Best-effort reconstruction from Kubernetes events and current HPA status.
+```
+
+Limitations:
+- The HPA controller's internal decision history is not fully visible through the Kubernetes API
+- Multi-metric winner determination is estimated
+- Exact metric values at decision time are not available
+- Suppressed scaling decisions that did not produce events may be missing
+- Kubernetes events typically expire after ~1 hour, so `--since` values beyond that may return empty results
+
+Supports all output formats: `--since=30m -o json`, `--since=30m -o yaml`, `--since=30m --report markdown`, `--since=30m --report html`.
 
 List view:
 
@@ -743,6 +773,7 @@ Interpretation lines include confidence levels to distinguish directly observabl
 - [x] **Multi-Metric Decision Deep Trace:** Per-metric analysis with tolerance/stabilization impact.
 - [x] **What-If Scaling Simulator:** `--simulate-metric` to preview metric value changes.
 - [x] **Best Practice Auditor:** `recommend` subcommand for HPA configuration audit with compliance scoring.
+- [x] **Retrospective Scaling Timeline:** `timeline --since=30m` reconstructs past scaling decisions from Kubernetes events.
 - [ ] **TUI batch apply workflow:** Add in-TUI suggest and safe-confirmed apply for multiple HPAs, equivalent to CLI `list --problem --fix --apply`.
 - [ ] **Custom / External Metrics deep dive:** Extend beyond HPA status visibility to add APIService health, adapter estimation, and Prometheus/custom metrics verification hints.
 - [ ] **Report summary enhancement:** Add cluster-wide summary, bottom-N health scores, and recommended actions list.

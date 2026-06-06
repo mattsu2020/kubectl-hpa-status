@@ -11,18 +11,26 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/internal/style"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/spf13/cobra"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/yaml"
 )
 
 func newTimelineCommand(opts *options) *cobra.Command {
 	var duration time.Duration
 	var interval time.Duration
+	var since time.Duration
 
 	cmd := &cobra.Command{
 		Use:               "timeline NAME",
-		Short:             "Show HPA scaling decisions over time as a live table",
+		Short:             "Show HPA scaling decisions over time (live or retrospective)",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: hpaNameCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Retrospective mode takes priority when --since is provided.
+			if since > 0 {
+				return runRetrospectiveTimeline(cmd.Context(), cmd.OutOrStdout(), opts, args[0], since)
+			}
+			// Existing live-polling behavior.
 			if duration > 0 {
 				var cancel context.CancelFunc
 				ctx, cancel := context.WithTimeout(cmd.Context(), duration)
@@ -34,6 +42,7 @@ func newTimelineCommand(opts *options) *cobra.Command {
 	}
 	cmd.Flags().DurationVar(&duration, "duration", 10*time.Minute, "total observation duration")
 	cmd.Flags().DurationVar(&interval, "interval", 5*time.Second, "polling interval")
+	cmd.Flags().DurationVar(&since, "since", 0, "show retrospective timeline for the given duration (e.g. 30m, 1h); 0 means live mode")
 	return cmd
 }
 
@@ -78,6 +87,57 @@ func newReplayCommand(opts *options) *cobra.Command {
 		},
 	}
 	return cmd
+}
+
+func runRetrospectiveTimeline(ctx context.Context, out io.Writer, opts *options, name string, since time.Duration) error {
+	client, err := opts.newClient()
+	if err != nil {
+		return fmt.Errorf("failed to create Kubernetes client: %w", err)
+	}
+
+	// 1. Fetch the HPA object (needed for behavior, conditions, metrics).
+	hpa, err := client.Interface.AutoscalingV2().
+		HorizontalPodAutoscalers(client.Namespace).
+		Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to get HPA %s/%s: %w", client.Namespace, name, err)
+	}
+
+	// 2. Fetch events since the cutoff time.
+	sinceTime := time.Now().Add(-since)
+	events, err := hpaanalysis.RecentEventsSince(ctx, client.Interface, hpa.Namespace, hpa.Name, sinceTime)
+	if err != nil {
+		return fmt.Errorf("failed to fetch events: %w", err)
+	}
+
+	// 3. Build the retrospective timeline.
+	tl := hpaanalysis.BuildRetrospectiveTimeline(events, hpa, sinceTime)
+
+	// 4. Render based on output format.
+	format, _ := outputSelection(outputConfig{
+		report: opts.report, output: opts.output, template: opts.template,
+		outputTemplates: opts.outputTemplates,
+	})
+	switch format {
+	case "json":
+		encoder := json.NewEncoder(out)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(tl)
+	case "yaml":
+		data, marshalErr := yaml.Marshal(tl)
+		if marshalErr != nil {
+			return marshalErr
+		}
+		_, err = out.Write(data)
+		return err
+	case "markdown", "md":
+		return hpaanalysis.WriteRetrospectiveMarkdown(out, tl)
+	case "html":
+		return hpaanalysis.WriteRetrospectiveHTML(out, tl)
+	default:
+		theme := style.NewTheme(shouldColorize(opts.color, out))
+		return hpaanalysis.WriteRetrospectiveTimeline(out, tl, theme)
+	}
 }
 
 func runTimeline(ctx context.Context, out io.Writer, opts *options, name string, interval time.Duration) error {

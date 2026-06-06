@@ -1267,3 +1267,97 @@ func TestRunReplay_FileNotFound(t *testing.T) {
 		t.Error("expected error for missing file")
 	}
 }
+
+// --------------------------------------------------------------------------
+// Timeline --since (retrospective) integration tests
+// --------------------------------------------------------------------------
+
+func TestRunTimeline_Retrospective(t *testing.T) {
+	now := time.Now()
+	hpa := kube.BuildHPA("default", "web", kube.WithReplicas(3, 5))
+
+	ev1 := kube.BuildEventWithTimestamp("default", "web", "SuccessfulRescale",
+		"New size: 5; reason: cpu resource utilization above target", now.Add(-20*time.Minute))
+	ev2 := kube.BuildEventWithTimestamp("default", "web", "SuccessfulRescale",
+		"New size: 3", now.Add(-5*time.Minute))
+
+	fakeClient := kube.NewFakeClientWithEvents(
+		[]*autoscalingv2.HorizontalPodAutoscaler{hpa},
+		[]*corev1.Event{ev1, ev2},
+	)
+
+	var buf bytes.Buffer
+	err := runRetrospectiveTimeline(context.Background(), &buf, &options{
+		commonOptions: commonOptions{
+			clientOverride: fakeClient,
+			color:         "never",
+		},
+	}, "web", 30*time.Minute)
+	if err != nil {
+		t.Fatalf("runRetrospectiveTimeline returned error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "HPA Scaling Timeline: web (default)") {
+		t.Errorf("expected timeline header in output, got:\n%s", output)
+	}
+	if !strings.Contains(output, "desired 3 -> 5") {
+		t.Errorf("expected scale-up entry in output, got:\n%s", output)
+	}
+	if !strings.Contains(output, "Best-effort") {
+		t.Errorf("expected disclaimer in output, got:\n%s", output)
+	}
+}
+
+func TestRunTimeline_Retrospective_JSON(t *testing.T) {
+	now := time.Now()
+	hpa := kube.BuildHPA("default", "web", kube.WithReplicas(3, 5))
+
+	ev1 := kube.BuildEventWithTimestamp("default", "web", "SuccessfulRescale",
+		"New size: 5", now.Add(-10*time.Minute))
+
+	fakeClient := kube.NewFakeClientWithEvents(
+		[]*autoscalingv2.HorizontalPodAutoscaler{hpa},
+		[]*corev1.Event{ev1},
+	)
+
+	var buf bytes.Buffer
+	err := runRetrospectiveTimeline(context.Background(), &buf, &options{
+		commonOptions: commonOptions{
+			clientOverride: fakeClient,
+			output:        "json",
+		},
+	}, "web", 30*time.Minute)
+	if err != nil {
+		t.Fatalf("runRetrospectiveTimeline JSON returned error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, `"hpaName": "web"`) {
+		t.Errorf("expected hpaName in JSON output, got:\n%s", output)
+	}
+	if !strings.Contains(output, `"entries"`) {
+		t.Errorf("expected entries in JSON output, got:\n%s", output)
+	}
+}
+
+func TestRunTimeline_Retrospective_NoEvents(t *testing.T) {
+	hpa := kube.BuildHPA("default", "web", kube.WithReplicas(3, 5))
+	fakeClient := kube.NewFakeClient(hpa)
+
+	var buf bytes.Buffer
+	err := runRetrospectiveTimeline(context.Background(), &buf, &options{
+		commonOptions: commonOptions{
+			clientOverride: fakeClient,
+			color:         "never",
+		},
+	}, "web", 30*time.Minute)
+	if err != nil {
+		t.Fatalf("runRetrospectiveTimeline returned error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "No scaling events found") {
+		t.Errorf("expected 'No scaling events found' when no events exist, got:\n%s", output)
+	}
+}
