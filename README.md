@@ -28,6 +28,44 @@ This tool quickly answers three common HPA operations questions:
 - Which condition or metric best explains the current behavior?
 - What command should I run next, and can I safely dry-run it?
 
+## Before / After
+
+<table>
+<tr>
+<th>Before: raw <code>kubectl describe hpa</code></th>
+<th>After: <code>kubectl hpa status --explain</code></th>
+</tr>
+<tr>
+<td>
+<pre><code>Name: web
+Namespace: production
+Metrics: cpu: 92% / 60%
+Min replicas: 2
+Max replicas: 10
+Deployment pods: 10 current / 10 desired
+Conditions:
+  AbleToScale=True
+  ScalingActive=True
+  ScalingLimited=True
+Events:
+  SuccessfulRescale New size: 10</code></pre>
+</td>
+<td>
+<pre><code>web production
+Summary: limited at maxReplicas
+Replicas: 10 current / 10 desired
+CPU: 92% / 60% target
+
+Interpretation:
+- HPA wants more replicas, but maxReplicas=10 caps it.
+- ScalingActive=True, so metrics are available.
+
+Recommended actions:
+- Check capacity, then raise maxReplicas with --suggest.</code></pre>
+</td>
+</tr>
+</table>
+
 The repository name and binary name are `kubectl-hpa-status`. `kubehpa_cli` is an early development directory name/nickname and is not used in release artifacts, Go module path, or install commands.
 
 ## Demo

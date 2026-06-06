@@ -28,6 +28,44 @@ English README: [README.md](README.md)
 - どのConditionやメトリクスが現在の挙動を説明しているか。
 - 次に実行すべきコマンドは何か、安全にdry-run検証できるか。
 
+## Before / After
+
+<table>
+<tr>
+<th>Before: 生の <code>kubectl describe hpa</code></th>
+<th>After: <code>kubectl hpa status --explain</code></th>
+</tr>
+<tr>
+<td>
+<pre><code>Name: web
+Namespace: production
+Metrics: cpu: 92% / 60%
+Min replicas: 2
+Max replicas: 10
+Deployment pods: 10 current / 10 desired
+Conditions:
+  AbleToScale=True
+  ScalingActive=True
+  ScalingLimited=True
+Events:
+  SuccessfulRescale New size: 10</code></pre>
+</td>
+<td>
+<pre><code>web production
+Summary: maxReplicasの上限に到達
+Replicas: 10 current / 10 desired
+CPU: 92% / 60% target
+
+Interpretation:
+- HPAはさらに増やしたいが、maxReplicas=10で制限されています。
+- ScalingActive=Trueのため、メトリクスは取得できています。
+
+Recommended actions:
+- 容量を確認し、--suggestでmaxReplicas引き上げ案をdry-runします。</code></pre>
+</td>
+</tr>
+</table>
+
 リポジトリ名とバイナリ名は `kubectl-hpa-status` です。`kubehpa_cli` は初期開発時の作業ディレクトリ名/愛称であり、リリース成果物、Go module path、インストールコマンドでは使いません。
 
 ## デモ
