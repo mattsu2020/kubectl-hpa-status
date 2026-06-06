@@ -518,3 +518,765 @@ func TestIntervalDown_MinimumStep(t *testing.T) {
 		t.Fatalf("expected interval 2s after - from 1s, got %v", m2.interval)
 	}
 }
+
+// --- View rendering tests ---
+
+func TestView_LoadingNoWidth(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	output := m.View()
+	if output != "Loading..." {
+		t.Fatalf("expected 'Loading...' for zero-width, got %q", output)
+	}
+}
+
+func TestView_LoadingWithWidth(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.width = 120
+	m.height = 40
+	// loading is true, items empty
+	output := m.View()
+	if output != "Loading HPA data..." {
+		t.Fatalf("expected 'Loading HPA data...', got %q", output)
+	}
+}
+
+func TestView_Error(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.width = 120
+	m.height = 40
+	m.loading = false
+	m.err = fmt.Errorf("connection refused")
+	output := m.View()
+	if !containsSubstring(output, "connection refused") {
+		t.Fatalf("expected error message in output, got %q", output)
+	}
+}
+
+func TestView_ListView(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.width = 120
+	m.height = 40
+	m.loading = false
+	m.items = []hpaanalysis.ListItem{
+		{Namespace: "default", Name: "web", Health: "OK", HealthScore: 100},
+	}
+	output := m.View()
+	if !containsSubstring(output, "web") {
+		t.Fatalf("expected 'web' in list view, got %q", output)
+	}
+	if !containsSubstring(output, "LIVE") {
+		t.Fatalf("expected LIVE status bar, got %q", output)
+	}
+}
+
+func TestView_ListViewEmpty(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.width = 120
+	m.height = 40
+	m.loading = false
+	output := m.View()
+	if !containsSubstring(output, "No HPAs found") {
+		t.Fatalf("expected 'No HPAs found', got %q", output)
+	}
+}
+
+func TestView_ListViewEmptyWithFilter(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.width = 120
+	m.height = 40
+	m.loading = false
+	m.filter = "nonexistent"
+	output := m.View()
+	if !containsSubstring(output, "No HPAs matching filter") {
+		t.Fatalf("expected filter empty message, got %q", output)
+	}
+}
+
+func TestView_DetailView(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.width = 120
+	m.height = 40
+	m.loading = false
+	m.viewMode = detailView
+	m.items = []hpaanalysis.ListItem{
+		{Namespace: "default", Name: "web", Health: "OK", HealthScore: 90,
+			Target: "Deployment/web", Current: 3, Desired: 5, Min: 1, Max: 10,
+			Summary: "Scaling up"},
+	}
+	m.reports = map[string]*hpaanalysis.StatusReport{
+		"default/web": {Analysis: hpaanalysis.Analysis{
+			Name: "web", Namespace: "default", Target: "Deployment/web",
+			Health: "OK", HealthScore: 90, Current: 3, Desired: 5, Min: 1, Max: 10,
+			Summary: "Scaling up",
+		}},
+	}
+	output := m.View()
+	if !containsSubstring(output, "HPA default/web") {
+		t.Fatalf("expected HPA header, got %q", output)
+	}
+	if !containsSubstring(output, "Scaling up") {
+		t.Fatalf("expected summary, got %q", output)
+	}
+}
+
+func TestView_DetailViewWithKEDAInfo(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.width = 120
+	m.height = 40
+	m.loading = false
+	m.viewMode = detailView
+	m.items = []hpaanalysis.ListItem{
+		{Namespace: "default", Name: "keda-worker", Health: "OK", HealthScore: 100,
+			Target: "Deployment/keda-worker", Current: 3, Desired: 3, Min: 1, Max: 10,
+			Summary: "OK"},
+	}
+	polling := int32(30)
+	m.reports = map[string]*hpaanalysis.StatusReport{
+		"default/keda-worker": {Analysis: hpaanalysis.Analysis{
+			Name: "keda-worker", Namespace: "default",
+			KEDAInfo: &hpaanalysis.KEDAAnalysis{
+				ScaledObjectName: "worker-so",
+				Triggers: []hpaanalysis.KEDATriggerSummary{
+					{Type: "prometheus", Name: "http-rate", Status: "Active", MetricName: "http_requests", Threshold: "100", CurrentValue: "250"},
+				},
+				PollingInterval: &polling,
+			},
+		}},
+	}
+	output := m.View()
+	if !containsSubstring(output, "KEDA") {
+		t.Fatalf("expected KEDA section, got output:\n%s", output)
+	}
+	if !containsSubstring(output, "worker-so") {
+		t.Fatalf("expected ScaledObject name, got output:\n%s", output)
+	}
+}
+
+func TestView_DetailViewWithVPAConflict(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.width = 120
+	m.height = 40
+	m.loading = false
+	m.viewMode = detailView
+	m.items = []hpaanalysis.ListItem{
+		{Namespace: "default", Name: "web", Health: "WARN", HealthScore: 80,
+			Target: "Deployment/web", Current: 3, Desired: 3, Min: 1, Max: 10,
+			Summary: "OK"},
+	}
+	m.reports = map[string]*hpaanalysis.StatusReport{
+		"default/web": {Analysis: hpaanalysis.Analysis{
+			Name: "web", Namespace: "default",
+			VPAConflict: &hpaanalysis.VPAConflictInfo{
+				VPAName:    "web-vpa",
+				UpdateMode: "Auto",
+				Recommendations: []hpaanalysis.VPARecommendation{
+					{Container: "app", Resource: "cpu", Target: "500m"},
+				},
+			},
+		}},
+	}
+	output := m.View()
+	if !containsSubstring(output, "VPA") {
+		t.Fatalf("expected VPA section, got output:\n%s", output)
+	}
+	if !containsSubstring(output, "web-vpa") {
+		t.Fatalf("expected VPA name, got output:\n%s", output)
+	}
+}
+
+func TestView_DetailViewWithConditions(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.width = 120
+	m.height = 40
+	m.loading = false
+	m.viewMode = detailView
+	m.items = []hpaanalysis.ListItem{
+		{Namespace: "default", Name: "web", Health: "OK", HealthScore: 100,
+			Target: "Deployment/web", Current: 3, Desired: 3, Min: 1, Max: 10,
+			Summary: "OK"},
+	}
+	m.reports = map[string]*hpaanalysis.StatusReport{
+		"default/web": {Analysis: hpaanalysis.Analysis{
+			Name: "web", Namespace: "default",
+			Conditions: []hpaanalysis.Condition{
+				{Type: "ScalingActive", Status: "True", Reason: "ValidMetricFound"},
+				{Type: "AbleToScale", Status: "True", Reason: "ReadyForNewScale"},
+			},
+		}},
+	}
+	output := m.View()
+	if !containsSubstring(output, "Conditions") {
+		t.Fatalf("expected Conditions section, got output:\n%s", output)
+	}
+}
+
+func TestView_DetailViewWithMetrics(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.width = 120
+	m.height = 40
+	m.loading = false
+	m.viewMode = detailView
+	m.items = []hpaanalysis.ListItem{
+		{Namespace: "default", Name: "web", Health: "OK", HealthScore: 100,
+			Target: "Deployment/web", Current: 3, Desired: 3, Min: 1, Max: 10,
+			Summary: "OK"},
+	}
+	ratio := 0.85
+	m.reports = map[string]*hpaanalysis.StatusReport{
+		"default/web": {Analysis: hpaanalysis.Analysis{
+			Name: "web", Namespace: "default",
+			Metrics: []hpaanalysis.Metric{
+				{Name: "cpu", Type: "Resource", Current: "85%", Target: "80%", Ratio: &ratio},
+			},
+		}},
+	}
+	output := m.View()
+	if !containsSubstring(output, "Metrics") {
+		t.Fatalf("expected Metrics section, got output:\n%s", output)
+	}
+	if !containsSubstring(output, "cpu") {
+		t.Fatalf("expected cpu metric, got output:\n%s", output)
+	}
+}
+
+func TestView_DetailViewWithInterpretation(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.width = 120
+	m.height = 40
+	m.loading = false
+	m.viewMode = detailView
+	m.items = []hpaanalysis.ListItem{
+		{Namespace: "default", Name: "web", Health: "OK", HealthScore: 100,
+			Target: "Deployment/web", Current: 3, Desired: 3, Min: 1, Max: 10,
+			Summary: "OK"},
+	}
+	lines := make([]string, 8)
+	for i := range lines {
+		lines[i] = fmt.Sprintf("Interpretation line %d", i)
+	}
+	m.reports = map[string]*hpaanalysis.StatusReport{
+		"default/web": {Analysis: hpaanalysis.Analysis{
+			Name:           "web",
+			Namespace:      "default",
+			Interpretation: lines,
+		}},
+	}
+	output := m.View()
+	if !containsSubstring(output, "Interpretation") {
+		t.Fatalf("expected Interpretation section, got output:\n%s", output)
+	}
+	if !containsSubstring(output, "... and 3 more") {
+		t.Fatalf("expected truncation at 5 lines, got output:\n%s", output)
+	}
+}
+
+func TestView_MetricsView(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.width = 120
+	m.height = 40
+	m.loading = false
+	m.viewMode = metricsView
+	m.items = []hpaanalysis.ListItem{
+		{Namespace: "default", Name: "web", Health: "OK", HealthScore: 100,
+			Target: "Deployment/web", Current: 3, Desired: 3, Min: 1, Max: 10,
+			Summary: "OK"},
+	}
+	ratio := 1.2
+	m.reports = map[string]*hpaanalysis.StatusReport{
+		"default/web": {Analysis: hpaanalysis.Analysis{
+			Name: "web", Namespace: "default",
+			Metrics: []hpaanalysis.Metric{
+				{Name: "cpu", Type: "Resource", Current: "120%", Target: "80%", Ratio: &ratio, Note: "within tolerance"},
+			},
+		}},
+	}
+	output := m.View()
+	if !containsSubstring(output, "Metrics Diagnostics") {
+		t.Fatalf("expected Metrics Diagnostics header, got output:\n%s", output)
+	}
+	if !containsSubstring(output, "above target") {
+		t.Fatalf("expected 'above target' for ratio 1.2, got output:\n%s", output)
+	}
+}
+
+func TestView_MetricsViewBelowTarget(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.width = 120
+	m.height = 40
+	m.loading = false
+	m.viewMode = metricsView
+	m.items = []hpaanalysis.ListItem{
+		{Namespace: "default", Name: "web", Health: "OK", HealthScore: 100,
+			Target: "Deployment/web"},
+	}
+	ratio := 0.5
+	m.reports = map[string]*hpaanalysis.StatusReport{
+		"default/web": {Analysis: hpaanalysis.Analysis{
+			Name:      "web",
+			Namespace: "default",
+			Metrics: []hpaanalysis.Metric{
+				{Name: "cpu", Type: "Resource", Current: "50%", Target: "80%", Ratio: &ratio},
+			},
+		}},
+	}
+	output := m.View()
+	if !containsSubstring(output, "below target") {
+		t.Fatalf("expected 'below target' for ratio 0.5, got output:\n%s", output)
+	}
+}
+
+func TestView_HelpView(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.width = 120
+	m.height = 40
+	m.loading = false
+	m.viewMode = helpView
+	m.items = []hpaanalysis.ListItem{{Name: "web"}}
+	output := m.View()
+	if !containsSubstring(output, "Key Bindings") {
+		t.Fatalf("expected Key Bindings header, got output:\n%s", output)
+	}
+	if !containsSubstring(output, "Quit") {
+		t.Fatalf("expected Quit binding, got output:\n%s", output)
+	}
+}
+
+func TestView_PausedStatusBar(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.width = 120
+	m.height = 40
+	m.loading = false
+	m.paused = true
+	m.items = []hpaanalysis.ListItem{{Name: "web"}}
+	output := m.View()
+	if !containsSubstring(output, "PAUSED") {
+		t.Fatalf("expected PAUSED status, got output:\n%s", output)
+	}
+}
+
+func TestView_FilterStatusBar(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.width = 120
+	m.height = 40
+	m.loading = false
+	m.filter = "web"
+	m.items = []hpaanalysis.ListItem{{Name: "web"}}
+	output := m.View()
+	if !containsSubstring(output, "filter: web") {
+		t.Fatalf("expected filter in status bar, got output:\n%s", output)
+	}
+}
+
+func TestView_SelectedStatusBar(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.width = 120
+	m.height = 40
+	m.loading = false
+	m.selected = map[string]bool{"default/web": true}
+	m.items = []hpaanalysis.ListItem{{Namespace: "default", Name: "web"}}
+	output := m.View()
+	if !containsSubstring(output, "selected: 1") {
+		t.Fatalf("expected selected count in status bar, got output:\n%s", output)
+	}
+}
+
+func TestView_SortFieldStatusBar(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.width = 120
+	m.height = 40
+	m.loading = false
+	m.sortField = "name"
+	m.items = []hpaanalysis.ListItem{{Name: "web"}}
+	output := m.View()
+	if !containsSubstring(output, "sort:name") {
+		t.Fatalf("expected sort field in status bar, got output:\n%s", output)
+	}
+}
+
+func TestView_FilteringStatusBar(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.width = 120
+	m.height = 40
+	m.loading = false
+	m.filtering = true
+	m.items = []hpaanalysis.ListItem{{Name: "web"}}
+	output := m.View()
+	// When filtering, the status bar shows filter input view.
+	if !containsSubstring(output, "filter by name") {
+		t.Fatalf("expected filter input placeholder, got output:\n%s", output)
+	}
+}
+
+// --- Filter input tests ---
+
+func TestHandleFilterInput_Enter(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.width = 120
+	m.height = 40
+	m.filtering = true
+	m.filterInput.SetValue("test-filter")
+	// Simulate the Update dispatch: when filtering, key messages go to handleFilterInput.
+	// We use the main Update path to press /, then type, then enter.
+	// First activate filter mode
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	m2 := updated.(Model)
+	if !m2.filtering {
+		t.Fatal("expected filtering to be true after /")
+	}
+	// Type into filter
+	m2.filterInput.SetValue("test-filter")
+	// Press enter through Update (which dispatches to handleFilterInput since filtering is true)
+	updated2, _ := m2.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m3 := updated2.(Model)
+	if m3.filtering {
+		t.Fatal("expected filtering to be false after enter")
+	}
+	if m3.filter != "test-filter" {
+		t.Fatalf("expected filter to be 'test-filter', got %q", m3.filter)
+	}
+}
+
+func TestHandleFilterInput_Escape(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.filtering = true
+	m.filterInput.SetValue("test")
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m2 := updated.(Model)
+	if m2.filtering {
+		t.Fatal("expected filtering to be false after escape")
+	}
+}
+
+func TestUpdate_FilterActivation(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.width = 120
+	m.height = 40
+	m.items = []hpaanalysis.ListItem{{Name: "web"}}
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	m2 := updated.(Model)
+	if !m2.filtering {
+		t.Fatal("expected filtering to be true after pressing /")
+	}
+}
+
+// --- Selection tests ---
+
+func TestUpdate_ToggleSelect(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.width = 120
+	m.height = 40
+	m.items = []hpaanalysis.ListItem{
+		{Namespace: "default", Name: "web"},
+	}
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+	m2 := updated.(Model)
+	if !m2.selected["default/web"] {
+		t.Fatal("expected web to be selected after space")
+	}
+	// Toggle again
+	updated2, _ := m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+	m3 := updated2.(Model)
+	if m3.selected["default/web"] {
+		t.Fatal("expected web to be deselected after second space")
+	}
+}
+
+func TestUpdate_SelectAll(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.width = 120
+	m.height = 40
+	m.items = []hpaanalysis.ListItem{
+		{Namespace: "default", Name: "web"},
+		{Namespace: "default", Name: "api"},
+	}
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	m2 := updated.(Model)
+	if !m2.selected["default/web"] || !m2.selected["default/api"] {
+		t.Fatal("expected all items selected after 'a'")
+	}
+}
+
+func TestUpdate_DeselectAll(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.width = 120
+	m.height = 40
+	m.items = []hpaanalysis.ListItem{
+		{Namespace: "default", Name: "web"},
+	}
+	m.selected = map[string]bool{"default/web": true}
+	// Press 'A' (shift+a) for deselect all
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'A'}})
+	m2 := updated.(Model)
+	if len(m2.selected) != 0 {
+		t.Fatal("expected all items deselected after 'A'")
+	}
+}
+
+func TestUpdate_ApplySelected(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.width = 120
+	m.height = 40
+	m.items = []hpaanalysis.ListItem{
+		{Namespace: "default", Name: "web"},
+	}
+	m.selected = map[string]bool{"default/web": true}
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	m2 := updated.(Model)
+	if m2.err == nil {
+		t.Fatal("expected error with apply instructions")
+	}
+	if !containsSubstring(m2.err.Error(), "apply for") {
+		t.Fatalf("expected apply message, got %v", m2.err)
+	}
+}
+
+func TestUpdate_MetricsKeyFromListView(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.width = 120
+	m.height = 40
+	m.items = []hpaanalysis.ListItem{
+		{Namespace: "default", Name: "web"},
+	}
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
+	m2 := updated.(Model)
+	if m2.viewMode != metricsView {
+		t.Fatalf("expected metricsView, got %d", m2.viewMode)
+	}
+}
+
+func TestUpdate_RefreshKey(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.width = 120
+	m.height = 40
+	m.items = []hpaanalysis.ListItem{{Name: "web"}}
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	m2 := updated.(Model)
+	if !m2.loading {
+		t.Fatal("expected loading after refresh key")
+	}
+}
+
+// --- Helper function tests ---
+
+func TestHealthStyle(t *testing.T) {
+	tests := []struct {
+		health string
+		name   string
+	}{
+		{"OK", "ok"},
+		{"ERROR", "error"},
+		{"WARN", "warn"},
+	}
+	for _, tt := range tests {
+		// healthStyle should not panic for any health string
+		_ = healthStyle(tt.health).String()
+	}
+}
+
+func TestTruncate(t *testing.T) {
+	tests := []struct {
+		input  string
+		maxLen int
+		want   string
+	}{
+		{"hello", 10, "hello"},
+		{"hello world", 8, "hello w…"},
+		{"short", 5, "short"},
+	}
+	for _, tt := range tests {
+		got := truncate(tt.input, tt.maxLen)
+		if got != tt.want {
+			t.Errorf("truncate(%q, %d) = %q, want %q", tt.input, tt.maxLen, got, tt.want)
+		}
+	}
+}
+
+func TestPadRight(t *testing.T) {
+	tests := []struct {
+		input string
+		width int
+		want  string
+	}{
+		{"hi", 5, "hi   "},
+		{"hello", 3, "hel"},
+		{"abc", 3, "abc"},
+	}
+	for _, tt := range tests {
+		got := padRight(tt.input, tt.width)
+		if got != tt.want {
+			t.Errorf("padRight(%q, %d) = %q, want %q", tt.input, tt.width, got, tt.want)
+		}
+	}
+}
+
+func TestRenderScoreBar(t *testing.T) {
+	tests := []struct {
+		score int
+	}{
+		{100}, {80}, {75}, {49}, {0}, {-5}, {150},
+	}
+	for _, tt := range tests {
+		bar := renderScoreBar(tt.score)
+		if len(bar) == 0 {
+			t.Errorf("renderScoreBar(%d) returned empty string", tt.score)
+		}
+	}
+}
+
+func TestRenderCountdownBar(t *testing.T) {
+	tests := []struct {
+		remaining int
+		total     int
+		empty     bool
+	}{
+		{5, 10, false},
+		{0, 10, false},
+		{10, 10, false},
+		{5, 0, true},  // total <= 0 returns empty
+		{-1, -1, true}, // total <= 0 returns empty
+	}
+	for _, tt := range tests {
+		bar := renderCountdownBar(tt.remaining, tt.total)
+		if tt.empty && bar != "" {
+			t.Errorf("renderCountdownBar(%d, %d) expected empty, got %q", tt.remaining, tt.total, bar)
+		}
+		if !tt.empty && bar == "" {
+			t.Errorf("renderCountdownBar(%d, %d) expected non-empty", tt.remaining, tt.total)
+		}
+	}
+}
+
+func TestTUITriggerStatusBadge(t *testing.T) {
+	tests := []struct {
+		status string
+	}{
+		{"Active"},
+		{"Inactive"},
+		{"Unknown"},
+		{"SomethingElse"},
+	}
+	for _, tt := range tests {
+		badge := tuiTriggerStatusBadge(tt.status)
+		if badge == "" {
+			t.Errorf("tuiTriggerStatusBadge(%q) returned empty string", tt.status)
+		}
+	}
+}
+
+func TestCmpInt(t *testing.T) {
+	tests := []struct {
+		a, b, want int
+	}{
+		{1, 2, -1},
+		{2, 1, 1},
+		{1, 1, 0},
+	}
+	for _, tt := range tests {
+		got := cmpInt(tt.a, tt.b)
+		if got != tt.want {
+			t.Errorf("cmpInt(%d, %d) = %d, want %d", tt.a, tt.b, got, tt.want)
+		}
+	}
+}
+
+func TestSortItems_Namespace(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.items = []hpaanalysis.ListItem{
+		{Namespace: "prod", Name: "api"},
+		{Namespace: "default", Name: "web"},
+	}
+	m.sortField = "namespace"
+	m.sortDescending = false
+	m.sortItems()
+	if m.items[0].Namespace != "default" {
+		t.Fatalf("expected default first, got %s", m.items[0].Namespace)
+	}
+}
+
+func TestSortItems_Issue(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.items = []hpaanalysis.ListItem{
+		{Namespace: "default", Name: "api", Issue: "ScalingLimited"},
+		{Namespace: "default", Name: "web", Issue: "OK"},
+	}
+	m.sortField = "issue"
+	m.sortDescending = false
+	m.sortItems()
+	if m.items[0].Name != "web" {
+		t.Fatalf("expected web (OK) first alphabetically, got %s", m.items[0].Name)
+	}
+}
+
+func TestSortItems_EmptySortField(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.items = []hpaanalysis.ListItem{
+		{Name: "beta"}, {Name: "alpha"},
+	}
+	m.sortField = ""
+	m.sortItems()
+	// Should not reorder
+	if m.items[0].Name != "beta" {
+		t.Fatal("expected no sort when sortField is empty")
+	}
+}
+
+func TestUpdate_TickWhilePaused(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.paused = true
+	updated, cmd := m.Update(tickMsg{})
+	m2 := updated.(Model)
+	if !m2.paused {
+		t.Fatal("expected still paused")
+	}
+	if cmd == nil {
+		t.Fatal("expected tick cmd to continue even when paused")
+	}
+}
+
+func TestUpdate_TickWhileNotPaused(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.paused = false
+	updated, cmd := m.Update(tickMsg{})
+	_ = updated.(Model)
+	if cmd == nil {
+		t.Fatal("expected batch cmd on tick")
+	}
+}
+
+func TestUpdate_FetchResultClampsCursor(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.cursor = 5
+	updated, _ := m.Update(fetchResultMsg{
+		items: []hpaanalysis.ListItem{
+			{Name: "web"}, {Name: "api"},
+		},
+		reports: map[string]*hpaanalysis.StatusReport{},
+	})
+	m2 := updated.(Model)
+	if m2.cursor != 1 {
+		t.Fatalf("expected cursor clamped to 1 (last item), got %d", m2.cursor)
+	}
+}
+
+func TestUpdate_FetchResultClampsCursorNegative(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.cursor = -1
+	updated, _ := m.Update(fetchResultMsg{
+		items: []hpaanalysis.ListItem{},
+		reports: map[string]*hpaanalysis.StatusReport{},
+	})
+	m2 := updated.(Model)
+	if m2.cursor != 0 {
+		t.Fatalf("expected cursor clamped to 0, got %d", m2.cursor)
+	}
+}
+
+// helper to avoid importing strings
+func containsSubstring(s, sub string) bool {
+	for i := 0; i <= len(s)-len(sub); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
+}
