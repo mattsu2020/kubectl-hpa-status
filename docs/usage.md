@@ -59,6 +59,7 @@ kubectl-hpa-status completion zsh
 | `--keda` | `status`, `doctor`, `analyze` | For KEDA-managed HPAs, look up the matching ScaledObject and include trigger details (metric name, threshold, current value, auth ref). |
 | `--vpa` | `status`, `doctor`, `analyze` | Detect VerticalPodAutoscaler conflicts with the HPA target. |
 | `--diagnose-metrics` | `status`, `doctor`, `analyze` | Run comprehensive metrics pipeline health checks with per-metric status and remediation steps. `doctor` enables this by default. |
+| `--metrics-freshness` | `status`, `doctor`, `analyze` | Check currentMetrics presence, FailedGet*Metric Events, metrics API discovery, resource PodMetrics sample timestamp/window, and KEDA trigger context. `doctor` enables this by default. |
 | `--check-resources` | `status`, `doctor`, `analyze` | Validate HPA target utilization against pod resource requests/limits. `doctor` enables this by default. |
 | `--report markdown\|html` | `status`, `doctor`, `list` | Generate standalone reports in Markdown or HTML format. |
 | `--lang=ja`, `-o ja` | text output | Show Japanese text labels. |

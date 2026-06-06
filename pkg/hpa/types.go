@@ -352,6 +352,13 @@ type MetricFreshness struct {
 	Source string `json:"source,omitempty" yaml:"source,omitempty"`
 	// Window is the expected metric collection window (e.g., "30s" for resource metrics).
 	Window string `json:"window,omitempty" yaml:"window,omitempty"`
+	// APIServiceAvailable records whether the backing metrics API was visible
+	// through Kubernetes API discovery at analysis time.
+	APIServiceAvailable *bool `json:"apiServiceAvailable,omitempty" yaml:"apiServiceAvailable,omitempty"`
+	// APIServiceMessage explains API discovery or APIService availability evidence.
+	APIServiceMessage string `json:"apiServiceMessage,omitempty" yaml:"apiServiceMessage,omitempty"`
+	// LastEvent is the latest HPA event related to this metric, if one was visible.
+	LastEvent *Event `json:"lastEvent,omitempty" yaml:"lastEvent,omitempty"`
 	// Risk describes the HPA behavior risk from stale/missing data.
 	Risk string `json:"risk,omitempty" yaml:"risk,omitempty"`
 	// Evidence lists observed signals supporting the freshness status.
@@ -381,7 +388,7 @@ type PodAnalysis struct {
 	Unready         int32              `json:"unready" yaml:"unready"`
 	Pending         int32              `json:"pending" yaml:"pending"`
 	Terminating     int32              `json:"terminating" yaml:"terminating"`
-	ResourceIssues []PodResourceIssue `json:"resourceIssues,omitempty" yaml:"resourceIssues,omitempty"`
+	ResourceIssues  []PodResourceIssue `json:"resourceIssues,omitempty" yaml:"resourceIssues,omitempty"`
 	ContainerChecks []ContainerCheck   `json:"containerChecks,omitempty" yaml:"containerChecks,omitempty"`
 }
 

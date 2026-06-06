@@ -226,6 +226,7 @@ func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, 
 
 	if opts.metricsFreshness {
 		report.Analysis.MetricFreshnessEntries = hpaanalysis.AnalyzeMetricFreshness(hpa, report.Events)
+		enrichMetricFreshness(ctx, client, hpa, &report)
 	}
 
 	if opts.checkResources {

@@ -127,6 +127,7 @@ func metricsDiagnosticsIndicator(status string, theme style.Theme) string {
 }
 
 // WriteStatusTextWithOptions writes a status report with full rendering options.
+//
 //nolint:gocyclo // Sequential text rendering of independent status sections; splitting would reduce readability.
 func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTextOptions) error {
 	a := report.Analysis
@@ -335,16 +336,34 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 			out = fmt.Appendf(out, "  %s %s/%s:\n", indicator, mf.Name, strings.ToLower(mf.Type))
 			out = fmt.Appendf(out, "    status: %s\n", metricFreshnessStatusDisplay(mf.Status, theme))
 			if mf.LastSeen != nil {
-				out = fmt.Appendf(out, "    lastSeen: %s ago\n", formatFreshnessDuration(mf.Age))
+				out = fmt.Appendf(out, "    last sample: %s ago\n", formatFreshnessDuration(mf.Age))
 			}
 			if mf.Source != "" {
 				out = fmt.Appendf(out, "    source: %s\n", mf.Source)
 			}
+			if mf.APIServiceAvailable != nil {
+				status := "unavailable"
+				if *mf.APIServiceAvailable {
+					status = "available"
+				}
+				out = fmt.Appendf(out, "    apiservice: %s", status)
+				if mf.APIServiceMessage != "" {
+					out = fmt.Appendf(out, " (%s)", mf.APIServiceMessage)
+				}
+				out = append(out, '\n')
+			}
 			if mf.Window != "" {
 				out = fmt.Appendf(out, "    window: %s\n", mf.Window)
 			}
+			if mf.LastEvent != nil {
+				out = fmt.Appendf(out, "    last HPA event: %s", mf.LastEvent.Reason)
+				if !mf.LastEvent.Timestamp.IsZero() {
+					out = fmt.Appendf(out, " %s ago", formatFreshnessDuration(time.Since(mf.LastEvent.Timestamp)))
+				}
+				out = append(out, '\n')
+			}
 			if mf.Risk != "" {
-				out = fmt.Appendf(out, "    risk: %s\n", theme.ActionLine(mf.Risk))
+				out = fmt.Appendf(out, "    likely cause: %s\n", theme.ActionLine(mf.Risk))
 			}
 			if len(mf.Evidence) > 0 {
 				out = append(out, "    evidence:\n"...)
@@ -353,7 +372,7 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 				}
 			}
 			if len(mf.NextSteps) > 0 {
-				out = append(out, "    next:\n"...)
+				out = append(out, "    next checks:\n"...)
 				for _, ns := range mf.NextSteps {
 					out = fmt.Appendf(out, "      %s\n", theme.ActionLine(ns))
 				}
@@ -475,29 +494,29 @@ func indentBlock(text string, prefix string) string {
 }
 
 type labels struct {
-	Target             string
-	Replicas           string
-	Health             string
-	Summary            string
-	Conditions         string
-	Metrics            string
-	Behavior           string
-	Actions            string
-	Suggestions        string
-	Fix                string
-	Interpretation     string
-	Debug              string
-	KEDA               string
-	Events             string
-	Risk               string
-	Precondition       string
-	Warning            string
-	MetricsDiagnostics string
-	MetricFreshness    string
-	PodAnalysis        string
-	Simulation         string
-	CapacityContext    string
-	Timeline           string
+	Target              string
+	Replicas            string
+	Health              string
+	Summary             string
+	Conditions          string
+	Metrics             string
+	Behavior            string
+	Actions             string
+	Suggestions         string
+	Fix                 string
+	Interpretation      string
+	Debug               string
+	KEDA                string
+	Events              string
+	Risk                string
+	Precondition        string
+	Warning             string
+	MetricsDiagnostics  string
+	MetricFreshness     string
+	PodAnalysis         string
+	Simulation          string
+	CapacityContext     string
+	Timeline            string
 	MetricDecisionTrace string
 	AuditFindings       string
 	AuditScore          string
@@ -507,29 +526,29 @@ type labels struct {
 func textLabels(lang string) labels {
 	if strings.EqualFold(lang, "ja") {
 		return labels{
-			Target:             "対象",
-			Replicas:           "レプリカ",
-			Health:             "ヘルススコア",
-			Summary:            "要約",
-			Conditions:         "状態",
-			Metrics:            "メトリクス",
-			Behavior:           "挙動",
-			Actions:            "推奨アクション",
-			Suggestions:        "推奨コマンド",
-			Fix:                "修正プラン",
-			Interpretation:     "解釈",
-			Debug:              "デバッグ",
-			KEDA:               "KEDA",
-			Events:             "最近のイベント",
-			Risk:               "リスク",
-			Precondition:       "前提条件",
-			Warning:            "警告",
-			MetricsDiagnostics: "メトリクス診断",
-			MetricFreshness:    "メトリクス鮮度",
-			PodAnalysis:        "Pod分析",
-			Simulation:         "シミュレーション",
-			CapacityContext:    "キャパシティコンテキスト",
-			Timeline:           "タイムライン",
+			Target:              "対象",
+			Replicas:            "レプリカ",
+			Health:              "ヘルススコア",
+			Summary:             "要約",
+			Conditions:          "状態",
+			Metrics:             "メトリクス",
+			Behavior:            "挙動",
+			Actions:             "推奨アクション",
+			Suggestions:         "推奨コマンド",
+			Fix:                 "修正プラン",
+			Interpretation:      "解釈",
+			Debug:               "デバッグ",
+			KEDA:                "KEDA",
+			Events:              "最近のイベント",
+			Risk:                "リスク",
+			Precondition:        "前提条件",
+			Warning:             "警告",
+			MetricsDiagnostics:  "メトリクス診断",
+			MetricFreshness:     "メトリクス鮮度",
+			PodAnalysis:         "Pod分析",
+			Simulation:          "シミュレーション",
+			CapacityContext:     "キャパシティコンテキスト",
+			Timeline:            "タイムライン",
 			MetricDecisionTrace: "メトリクス決定トレース",
 			AuditFindings:       "監査結果",
 			AuditScore:          "コンプライアンススコア",
@@ -537,29 +556,29 @@ func textLabels(lang string) labels {
 		}
 	}
 	return labels{
-		Target:             "Target",
-		Replicas:           "Replicas",
-		Health:             "Health score",
-		Summary:            "Summary",
-		Conditions:         "Conditions",
-		Metrics:            "Metrics",
-		Behavior:           "Behavior",
-		Actions:            "Recommended actions",
-		Suggestions:        "Recommended commands",
-		Fix:                "Fix plan",
-		Interpretation:     "Interpretation",
-		Debug:              "Debug",
-		KEDA:               "KEDA",
-		Events:             "Recent events",
-		Risk:               "risk",
-		Precondition:       "precondition",
-		Warning:            "warning",
-		MetricsDiagnostics: "Metrics Diagnostics",
-		MetricFreshness:    "Metrics Freshness",
-		PodAnalysis:        "Pod Analysis",
-		Simulation:         "Simulation",
-		CapacityContext:    "Capacity Context",
-		Timeline:           "Timeline",
+		Target:              "Target",
+		Replicas:            "Replicas",
+		Health:              "Health score",
+		Summary:             "Summary",
+		Conditions:          "Conditions",
+		Metrics:             "Metrics",
+		Behavior:            "Behavior",
+		Actions:             "Recommended actions",
+		Suggestions:         "Recommended commands",
+		Fix:                 "Fix plan",
+		Interpretation:      "Interpretation",
+		Debug:               "Debug",
+		KEDA:                "KEDA",
+		Events:              "Recent events",
+		Risk:                "risk",
+		Precondition:        "precondition",
+		Warning:             "warning",
+		MetricsDiagnostics:  "Metrics Diagnostics",
+		MetricFreshness:     "Metrics Freshness",
+		PodAnalysis:         "Pod Analysis",
+		Simulation:          "Simulation",
+		CapacityContext:     "Capacity Context",
+		Timeline:            "Timeline",
 		MetricDecisionTrace: "Metric Decision Trace",
 		AuditFindings:       "Audit Findings",
 		AuditScore:          "Compliance Score",

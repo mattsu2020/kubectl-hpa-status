@@ -152,6 +152,25 @@ kubectl hpa status doctor <hpa-name> -n <namespace>
 
 `doctor` bundles `--explain`, `--diagnose-metrics`, `--metrics-freshness`, `--check-resources`, `--explain-pods`, `--capacity-context`, recent Events, and KEDA enrichment.
 
+Metrics freshness output highlights missing or stale adapter data:
+
+```text
+Metrics Freshness:
+  ! keda-http-requests/external:
+    status: Stale
+    source: external.metrics.k8s.io
+    apiservice: available (external.metrics.k8s.io/v1beta1)
+    last HPA event: FailedGetExternalMetric 3m58s ago
+    likely cause: KEDA trigger is inactive or authentication is failing
+    evidence:
+      - KEDA ScaledObject "web" is linked to this HPA
+      - KEDA trigger "http" (http-requests) status=Inactive: authentication failed
+    next checks:
+      kubectl get apiservice | grep external.metrics
+      kubectl describe hpa <name>
+      kubectl get scaledobject web -n production
+```
+
 | Viewpoint | What it checks | Example output |
 | --- | --- | --- |
 | Metrics | metrics-server, custom metrics, external metrics | `External metric http_requests is unavailable` |
@@ -354,6 +373,7 @@ Detailed flags:
 | `--events=false` | `status`, `doctor`, `analyze` | Omit recent Events. |
 | `--events=3` | `status`, `doctor`, `analyze` | Show the 3 most recent HPA Events. |
 | `--diagnose-metrics` | `status`, `doctor`, `analyze` | Show per-metric-type retrieval status, adapter/APIService verification hints, and next troubleshooting steps. `doctor` enables this by default. |
+| `--metrics-freshness` | `status`, `doctor`, `analyze` | Check whether HPA metrics are present, stale, backed by a discoverable metrics API, and correlated with recent FailedGet*Metric Events. `doctor` enables this by default. |
 | `--check-resources` | `status`, `doctor`, `analyze` | Check consistency between HPA target utilization and pod resource requests/limits. `doctor` enables this by default. |
 | `--report markdown\|html` | `status`, `doctor`, `list` | Generate a standalone or cluster-wide diagnostic report in Markdown or HTML. |
 | `--watch --interval 5s` | `status`, `watch` | Periodically refresh a single HPA. Watch supports only one HPA name. |
@@ -832,6 +852,7 @@ Interpretation lines include confidence levels to distinguish directly observabl
 - [x] **Enhanced KEDA integration:** Shows trigger type, metric name, threshold, current value, auth ref, and HPA metric correspondence.
 - [x] **Stabilization window countdown:** Shows remaining time and visual progress in TUI and text output.
 - [x] **Metrics pipeline diagnostics:** `--diagnose-metrics` shows per-metric health checks and repair hints.
+- [x] **Metrics freshness / staleness analyzer:** `--metrics-freshness` checks HPA currentMetrics, FailedGet*Metric Events, metrics API discovery, PodMetrics timestamps/windows, and KEDA trigger context.
 - [x] **Resource consistency check:** `--check-resources` verifies HPA target vs pod resource requests/limits.
 - [x] **Doctor command:** `doctor <name>` bundles metrics, workload, pod, resource, event, capacity, and KEDA diagnostics for incident triage.
 - [x] **Report output:** `--report markdown` / `--report html` generates single and list diagnostic reports.
@@ -841,7 +862,7 @@ Interpretation lines include confidence levels to distinguish directly observabl
 - [x] **Best Practice Auditor:** `recommend` subcommand for HPA configuration audit with compliance scoring.
 - [x] **Retrospective Scaling Timeline:** `timeline --since=30m` reconstructs past scaling decisions from Kubernetes events.
 - [ ] **TUI batch apply workflow:** Add in-TUI suggest and safe-confirmed apply for multiple HPAs, equivalent to CLI `list --problem --fix --apply`.
-- [ ] **Custom / External Metrics deep dive:** Extend beyond HPA status visibility to add APIService health, adapter estimation, and Prometheus/custom metrics verification hints.
+- [ ] **Custom / External Metrics deep dive:** Extend beyond API discovery and HPA-visible freshness signals to add adapter-specific estimation and Prometheus/custom metrics verification hints.
 - [ ] **Report summary enhancement:** Add cluster-wide summary, bottom-N health scores, and recommended actions list.
 - [ ] **Informer-based watch:** Maintain current polling while adding opt-in informer updates for large-scale clusters.
 - [ ] **KEP-6111 structured decision adapter:** Maintain a small adapter boundary to convert future structured HPA decision fields into existing Analysis.
