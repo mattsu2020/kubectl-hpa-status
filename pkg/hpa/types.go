@@ -154,13 +154,17 @@ type Analysis struct {
 	ResourceCheck *ResourceCheckResult `json:"resourceCheck,omitempty" yaml:"resourceCheck,omitempty"`
 	// PodAnalysis holds per-pod readiness and resource analysis for the scale target.
 	PodAnalysis *PodAnalysis `json:"podAnalysis,omitempty" yaml:"podAnalysis,omitempty"`
+	// MetricDecisionTrace holds a comprehensive per-metric analysis explaining
+	// which metric drove the HPA scaling decision and why. Populated when
+	// multiple current metrics are present.
+	MetricDecisionTrace *MetricDecisionTrace `json:"metricDecisionTrace,omitempty" yaml:"metricDecisionTrace,omitempty"`
 	// Simulation holds what-if analysis results from --simulate.
 	Simulation *SimulationResult `json:"simulation,omitempty" yaml:"simulation,omitempty"`
 	// CapacityContext holds infrastructure capacity analysis for the scale target.
 	CapacityContext *CapacityContext `json:"capacityContext,omitempty" yaml:"capacityContext,omitempty"`
-		// EnrichmentStatus holds KEDA/VPA enrichment skip reasons for diagnostic output.
-		// Populated during enrichment to explain why data may be absent.
-		EnrichmentStatus interface{} `json:"enrichmentStatus,omitempty" yaml:"enrichmentStatus,omitempty"`
+	// EnrichmentStatus holds KEDA/VPA enrichment skip reasons for diagnostic output.
+	// Populated during enrichment to explain why data may be absent.
+	EnrichmentStatus interface{} `json:"enrichmentStatus,omitempty" yaml:"enrichmentStatus,omitempty"`
 }
 
 // DecisionSignal is the stable internal shape for explicit controller scaling
@@ -356,22 +360,162 @@ type ContainerCheck struct {
 
 // SimulationResult holds the before/after comparison of an HPA simulation.
 type SimulationResult struct {
-	Parameter      string           `json:"parameter" yaml:"parameter"`
-	OriginalValue  string           `json:"originalValue" yaml:"originalValue"`
-	SimulatedValue string           `json:"simulatedValue" yaml:"simulatedValue"`
-	Before         SimulationState  `json:"before" yaml:"before"`
-	After          SimulationState  `json:"after" yaml:"after"`
-	RiskAssessment string           `json:"riskAssessment,omitempty" yaml:"riskAssessment,omitempty"`
-	Interpretation []string         `json:"interpretation,omitempty" yaml:"interpretation,omitempty"`
+	Parameter         string             `json:"parameter" yaml:"parameter"`
+	OriginalValue     string             `json:"originalValue" yaml:"originalValue"`
+	SimulatedValue    string             `json:"simulatedValue" yaml:"simulatedValue"`
+	Before            SimulationState    `json:"before" yaml:"before"`
+	After             SimulationState    `json:"after" yaml:"after"`
+	RiskAssessment    string             `json:"riskAssessment,omitempty" yaml:"riskAssessment,omitempty"`
+	Interpretation    []string           `json:"interpretation,omitempty" yaml:"interpretation,omitempty"`
+	MetricSimulations []MetricSimulation `json:"metricSimulations,omitempty" yaml:"metricSimulations,omitempty"`
 }
 
 // SimulationState is a snapshot of key analysis fields for before/after comparison.
 type SimulationState struct {
-	DesiredReplicas int32  `json:"desiredReplicas" yaml:"desiredReplicas"`
-	Health          string `json:"health" yaml:"health"`
-	HealthScore     int    `json:"healthScore" yaml:"healthScore"`
-	Summary         string `json:"summary" yaml:"summary"`
-	ScalingLimited  bool   `json:"scalingLimited" yaml:"scalingLimited"`
+	DesiredReplicas int32    `json:"desiredReplicas" yaml:"desiredReplicas"`
+	Health          string   `json:"health" yaml:"health"`
+	HealthScore     int      `json:"healthScore" yaml:"healthScore"`
+	Summary         string   `json:"summary" yaml:"summary"`
+	ScalingLimited  bool     `json:"scalingLimited" yaml:"scalingLimited"`
+	Metrics         []Metric `json:"metrics,omitempty" yaml:"metrics,omitempty"`
+}
+
+// MetricDecisionTrace holds a comprehensive per-metric analysis explaining
+// which metric drove the HPA scaling decision and why.
+type MetricDecisionTrace struct {
+	// Metrics holds the per-metric analysis for every current metric.
+	Metrics []MetricTraceEntry `json:"metrics" yaml:"metrics"`
+	// Winner is the name of the metric estimated to have driven the decision.
+	Winner string `json:"winner,omitempty" yaml:"winner,omitempty"`
+	// WinnerConfidence is the confidence in the winner determination.
+	WinnerConfidence Confidence `json:"winnerConfidence,omitempty" yaml:"winnerConfidence,omitempty"`
+	// SelectPolicy is the resolved selectPolicy (Max, Min, Disabled) for the
+	// direction that won (scaleUp or scaleDown).
+	SelectPolicy string `json:"selectPolicy,omitempty" yaml:"selectPolicy,omitempty"`
+	// StabilizationEffect describes how the stabilization window affected the decision.
+	StabilizationEffect *StabilizationEffect `json:"stabilizationEffect,omitempty" yaml:"stabilizationEffect,omitempty"`
+	// ToleranceEffect describes whether tolerance suppressed scaling.
+	ToleranceEffect *ToleranceEffect `json:"toleranceEffect,omitempty" yaml:"toleranceEffect,omitempty"`
+	// Summary is a human-readable one-line explanation of the decision.
+	Summary string `json:"summary" yaml:"summary"`
+}
+
+// MetricTraceEntry holds the analysis for a single metric in the decision trace.
+type MetricTraceEntry struct {
+	// Name is the metric display name (e.g. "cpu", "http_requests").
+	Name string `json:"name" yaml:"name"`
+	// Type is the metric source type (Resource, External, Pods, Object, ContainerResource).
+	Type string `json:"type" yaml:"type"`
+	// Ratio is the current/target ratio. nil if unavailable.
+	Ratio *float64 `json:"ratio,omitempty" yaml:"ratio,omitempty"`
+	// DistanceFromTarget is |ratio - 1.0|. 0 means at target.
+	DistanceFromTarget float64 `json:"distanceFromTarget,omitempty" yaml:"distanceFromTarget,omitempty"`
+	// ReplicaImpact estimates how many replicas this metric would add/remove.
+	ReplicaImpact float64 `json:"replicaImpact,omitempty" yaml:"replicaImpact,omitempty"`
+	// DesiredDirection indicates whether this metric wants scale-up, scale-down, or no-change.
+	DesiredDirection string `json:"desiredDirection" yaml:"desiredDirection"` // "up", "down", "none"
+	// WithinTolerance indicates whether the metric is within the tolerance band.
+	WithinTolerance bool `json:"withinTolerance,omitempty" yaml:"withinTolerance,omitempty"`
+	// Note is a human-readable explanation for this metric's state.
+	Note string `json:"note,omitempty" yaml:"note,omitempty"`
+}
+
+// StabilizationEffect describes how the stabilization window affected the decision.
+type StabilizationEffect struct {
+	// WindowSeconds is the configured stabilization window duration.
+	WindowSeconds int32 `json:"windowSeconds,omitempty" yaml:"windowSeconds,omitempty"`
+	// RemainingSeconds estimates how many seconds remain in the window.
+	RemainingSeconds *int64 `json:"remainingSeconds,omitempty" yaml:"remainingSeconds,omitempty"`
+	// SuppressedScaleDown indicates whether scale-down was suppressed by the window.
+	SuppressedScaleDown bool `json:"suppressedScaleDown,omitempty" yaml:"suppressedScaleDown,omitempty"`
+	// Note is a human-readable explanation.
+	Note string `json:"note,omitempty" yaml:"note,omitempty"`
+}
+
+// ToleranceEffect describes whether tolerance suppressed scaling.
+type ToleranceEffect struct {
+	// DefaultTolerance is the Kubernetes default tolerance (0.1).
+	DefaultTolerance float64 `json:"defaultTolerance" yaml:"defaultTolerance"`
+	// ConfiguredTolerance is the explicitly configured tolerance, if any.
+	ConfiguredTolerance *float64 `json:"configuredTolerance,omitempty" yaml:"configuredTolerance,omitempty"`
+	// SuppressedMetrics lists metric names whose scaling was suppressed by tolerance.
+	SuppressedMetrics []string `json:"suppressedMetrics,omitempty" yaml:"suppressedMetrics,omitempty"`
+	// Note is a human-readable explanation.
+	Note string `json:"note,omitempty" yaml:"note,omitempty"`
+}
+
+// MetricSimulation holds the result of simulating a metric value change.
+type MetricSimulation struct {
+	// MetricName is the name of the simulated metric.
+	MetricName string `json:"metricName" yaml:"metricName"`
+	// OriginalValue is the current metric value before simulation.
+	OriginalValue string `json:"originalValue" yaml:"originalValue"`
+	// SimulatedValue is the simulated metric value.
+	SimulatedValue string `json:"simulatedValue" yaml:"simulatedValue"`
+	// ProjectedRatio is the estimated ratio after simulation.
+	ProjectedRatio *float64 `json:"projectedRatio,omitempty" yaml:"projectedRatio,omitempty"`
+	// ProjectedReplicas is the estimated desired replica count.
+	ProjectedReplicas int32 `json:"projectedReplicas" yaml:"projectedReplicas"`
+	// ToleranceImpact describes whether tolerance would suppress this change.
+	ToleranceImpact string `json:"toleranceImpact,omitempty" yaml:"toleranceImpact,omitempty"`
+	// StabilizationImpact describes whether stabilization would delay this change.
+	StabilizationImpact string `json:"stabilizationImpact,omitempty" yaml:"stabilizationImpact,omitempty"`
+	// RiskAssessment for this specific metric simulation.
+	RiskAssessment string `json:"riskAssessment,omitempty" yaml:"riskAssessment,omitempty"`
+}
+
+// AuditSeverity represents the severity of an audit finding.
+type AuditSeverity string
+
+const (
+	// AuditCritical indicates a critical finding requiring immediate attention.
+	AuditCritical AuditSeverity = "critical"
+	// AuditWarning indicates a finding that warrants operator attention.
+	AuditWarning AuditSeverity = "warning"
+	// AuditInfo indicates an informational finding or best-practice suggestion.
+	AuditInfo AuditSeverity = "info"
+)
+
+// AuditFinding represents a single best-practice audit finding.
+type AuditFinding struct {
+	// ID is a unique identifier for the audit rule that produced this finding.
+	ID string `json:"id" yaml:"id"`
+	// Title is a short description of the finding.
+	Title string `json:"title" yaml:"title"`
+	// Description provides detailed context about the finding.
+	Description string `json:"description" yaml:"description"`
+	// Severity is the severity level: critical, warning, or info.
+	Severity AuditSeverity `json:"severity" yaml:"severity"`
+	// Category groups related findings (e.g. "stabilization", "replica-range").
+	Category string `json:"category" yaml:"category"`
+	// Current shows the current configuration value.
+	Current string `json:"current,omitempty" yaml:"current,omitempty"`
+	// Recommended shows the recommended configuration value.
+	Recommended string `json:"recommended,omitempty" yaml:"recommended,omitempty"`
+	// Patch is a JSON merge patch to fix the finding, if applicable.
+	Patch string `json:"patch,omitempty" yaml:"patch,omitempty"`
+	// Command is the kubectl command to apply the patch.
+	Command string `json:"command,omitempty" yaml:"command,omitempty"`
+	// Risk indicates the risk level of applying the patch.
+	Risk string `json:"risk,omitempty" yaml:"risk,omitempty"`
+	// References lists URLs or docs for further reading.
+	References []string `json:"references,omitempty" yaml:"references,omitempty"`
+}
+
+// AuditReport holds the complete audit result for an HPA.
+type AuditReport struct {
+	// Namespace is the HPA namespace.
+	Namespace string `json:"namespace" yaml:"namespace"`
+	// Name is the HPA name.
+	Name string `json:"name" yaml:"name"`
+	// Target is the scaleTargetRef in "Kind/Name" format.
+	Target string `json:"target" yaml:"target"`
+	// Score is the compliance score from 0 (worst) to 100 (fully compliant).
+	Score int `json:"score" yaml:"score"`
+	// Findings lists all audit findings.
+	Findings []AuditFinding `json:"findings" yaml:"findings"`
+	// Summary is a human-readable one-line summary of the audit.
+	Summary string `json:"summary" yaml:"summary"`
 }
 
 // CapacityContext holds infrastructure capacity analysis for the HPA scale target.
@@ -392,11 +536,11 @@ type PendingPodInfo struct {
 
 // QuotaConstraint describes a ResourceQuota that limits the scale target.
 type QuotaConstraint struct {
-	Name    string `json:"name" yaml:"name"`
+	Name     string `json:"name" yaml:"name"`
 	Resource string `json:"resource" yaml:"resource"`
-	Used    string `json:"used" yaml:"used"`
-	Hard    string `json:"hard" yaml:"hard"`
-	Message string `json:"message" yaml:"message"`
+	Used     string `json:"used" yaml:"used"`
+	Hard     string `json:"hard" yaml:"hard"`
+	Message  string `json:"message" yaml:"message"`
 }
 
 // PDBInterference describes a PodDisruptionBudget that may interfere with scaling.

@@ -462,6 +462,10 @@ type labels struct {
 	Simulation         string
 	CapacityContext    string
 	Timeline           string
+	MetricDecisionTrace string
+	AuditFindings       string
+	AuditScore          string
+	AuditSeverity       string
 }
 
 func textLabels(lang string) labels {
@@ -489,6 +493,10 @@ func textLabels(lang string) labels {
 			Simulation:         "シミュレーション",
 			CapacityContext:    "キャパシティコンテキスト",
 			Timeline:           "タイムライン",
+			MetricDecisionTrace: "メトリクス決定トレース",
+			AuditFindings:       "監査結果",
+			AuditScore:          "コンプライアンススコア",
+			AuditSeverity:       "重要度",
 		}
 	}
 	return labels{
@@ -514,6 +522,10 @@ func textLabels(lang string) labels {
 		Simulation:         "Simulation",
 		CapacityContext:    "Capacity Context",
 		Timeline:           "Timeline",
+		MetricDecisionTrace: "Metric Decision Trace",
+		AuditFindings:       "Audit Findings",
+		AuditScore:          "Compliance Score",
+		AuditSeverity:       "Severity",
 	}
 }
 
