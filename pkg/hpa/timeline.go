@@ -1,8 +1,10 @@
 package hpa
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -44,6 +46,14 @@ func WriteTimelineTable(w io.Writer, trace TimelineTrace, theme style.Theme) err
 
 	out.WriteString(fmt.Sprintf("HPA Timeline: %s/%s  interval=%s  snapshots=%d\n\n",
 		trace.Namespace, trace.HPAName, trace.Interval, len(trace.Snapshots)))
+	anomalies := DetectTimelineAnomalies(trace)
+	if len(anomalies) > 0 {
+		out.WriteString("Anomalies:\n")
+		for _, anomaly := range anomalies {
+			out.WriteString(fmt.Sprintf("  - %s\n", anomaly))
+		}
+		out.WriteString("\n")
+	}
 
 	// Header
 	out.WriteString(fmt.Sprintf("%-10s %-14s %-14s %-30s %s\n",
@@ -110,6 +120,14 @@ func WriteTimelineMarkdown(w io.Writer, trace TimelineTrace) error {
 		out.WriteString(fmt.Sprintf("- **End:** %s\n", trace.End.Format(time.RFC3339)))
 	}
 	out.WriteString("\n")
+	anomalies := DetectTimelineAnomalies(trace)
+	if len(anomalies) > 0 {
+		out.WriteString("## Anomalies\n\n")
+		for _, anomaly := range anomalies {
+			out.WriteString(fmt.Sprintf("- %s\n", escapeMarkdown(anomaly)))
+		}
+		out.WriteString("\n")
+	}
 
 	out.WriteString("| Time | Current | Desired | Health | Score | Top Metric | Summary |\n")
 	out.WriteString("|------|---------|---------|--------|-------|------------|--------|\n")
@@ -160,6 +178,14 @@ func WriteTimelineHTML(w io.Writer, trace TimelineTrace) error {
 		out.WriteString(fmt.Sprintf(" | End: %s", trace.End.Format(time.RFC3339)))
 	}
 	out.WriteString("</p>\n")
+	anomalies := DetectTimelineAnomalies(trace)
+	if len(anomalies) > 0 {
+		out.WriteString("<h2>Anomalies</h2>\n<ul>\n")
+		for _, anomaly := range anomalies {
+			out.WriteString(fmt.Sprintf("<li>%s</li>\n", htmlEscape(anomaly)))
+		}
+		out.WriteString("</ul>\n")
+	}
 
 	if len(trace.Snapshots) > 0 {
 		out.WriteString("<table>\n<tr><th>Time</th><th>Current</th><th>Desired</th><th>Health</th><th>Score</th><th>Top Metric</th><th>Summary</th></tr>\n")
@@ -223,4 +249,77 @@ func timelineConditionMap(conditions []Condition) map[string]Condition {
 		m[c.Type] = c
 	}
 	return m
+}
+
+// LoadTimelineTrace reads a TimelineTrace from a JSON file.
+func LoadTimelineTrace(path string) (*TimelineTrace, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading trace file %s: %w", path, err)
+	}
+	var trace TimelineTrace
+	if err := json.Unmarshal(data, &trace); err != nil {
+		return nil, fmt.Errorf("parsing trace file %s: %w", path, err)
+	}
+	return &trace, nil
+}
+
+// DetectTimelineAnomalies flags suspicious scaling patterns in a recorded trace.
+func DetectTimelineAnomalies(trace TimelineTrace) []string {
+	if len(trace.Snapshots) < 3 {
+		return nil
+	}
+	var anomalies []string
+	directionFlips := 0
+	lastDirection := int32(0)
+	largeJumps := 0
+	errorSnapshots := 0
+	for i := 1; i < len(trace.Snapshots); i++ {
+		prev := trace.Snapshots[i-1]
+		curr := trace.Snapshots[i]
+		delta := curr.Desired - prev.Desired
+		direction := int32(0)
+		if delta > 0 {
+			direction = 1
+		}
+		if delta < 0 {
+			direction = -1
+		}
+		if direction != 0 && lastDirection != 0 && direction != lastDirection {
+			directionFlips++
+		}
+		if direction != 0 {
+			lastDirection = direction
+		}
+		if absInt32(delta) >= maxInt32(3, prev.Desired/2) {
+			largeJumps++
+		}
+		if curr.Health == "ERROR" {
+			errorSnapshots++
+		}
+	}
+	if directionFlips >= 3 {
+		anomalies = append(anomalies, fmt.Sprintf("possible thrashing: desiredReplicas direction changed %d times", directionFlips))
+	}
+	if largeJumps > 0 {
+		anomalies = append(anomalies, fmt.Sprintf("abrupt scaling: %d large desiredReplicas jump(s) detected", largeJumps))
+	}
+	if errorSnapshots > 0 {
+		anomalies = append(anomalies, fmt.Sprintf("unstable metrics/control signal: %d snapshot(s) reported ERROR health", errorSnapshots))
+	}
+	return anomalies
+}
+
+func absInt32(v int32) int32 {
+	if v < 0 {
+		return -v
+	}
+	return v
+}
+
+func maxInt32(a, b int32) int32 {
+	if a > b {
+		return a
+	}
+	return b
 }

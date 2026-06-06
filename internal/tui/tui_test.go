@@ -1012,7 +1012,7 @@ func TestUpdate_DeselectAll(t *testing.T) {
 	}
 }
 
-func TestUpdate_ApplySelected(t *testing.T) {
+func TestUpdate_SimulateKeyFromListViewDoesNothing(t *testing.T) {
 	m := NewModel(nil, "default", Options{})
 	m.width = 120
 	m.height = 40
@@ -1022,11 +1022,11 @@ func TestUpdate_ApplySelected(t *testing.T) {
 	m.selected = map[string]bool{"default/web": true}
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
 	m2 := updated.(Model)
-	if m2.err == nil {
-		t.Fatal("expected error with apply instructions")
+	if m2.err != nil {
+		t.Fatalf("expected no error from simulation shortcut in list view, got %v", m2.err)
 	}
-	if !containsSubstring(m2.err.Error(), "apply for") {
-		t.Fatalf("expected apply message, got %v", m2.err)
+	if m2.viewMode != listView {
+		t.Fatalf("expected list view to remain active, got %d", m2.viewMode)
 	}
 }
 
@@ -1132,7 +1132,7 @@ func TestRenderCountdownBar(t *testing.T) {
 		{5, 10, false},
 		{0, 10, false},
 		{10, 10, false},
-		{5, 0, true},  // total <= 0 returns empty
+		{5, 0, true},   // total <= 0 returns empty
 		{-1, -1, true}, // total <= 0 returns empty
 	}
 	for _, tt := range tests {
@@ -1262,7 +1262,7 @@ func TestUpdate_FetchResultClampsCursorNegative(t *testing.T) {
 	m := NewModel(nil, "default", Options{})
 	m.cursor = -1
 	updated, _ := m.Update(fetchResultMsg{
-		items: []hpaanalysis.ListItem{},
+		items:   []hpaanalysis.ListItem{},
 		reports: map[string]*hpaanalysis.StatusReport{},
 	})
 	m2 := updated.(Model)

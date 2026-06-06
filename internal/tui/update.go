@@ -1,12 +1,16 @@
 package tui
 
 import (
+	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // Update handles all bubbletea messages.
@@ -25,6 +29,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// If filter input is active, handle filter input keys.
 		if m.filtering {
 			return m.handleFilterInput(msg)
+		}
+		// If in simulation view and textinput is focused, delegate.
+		if m.viewMode == simView && m.simState != nil && m.simState.metricMode && m.simState.metricInput.Focused() {
+			return m.handleSimInput(msg)
+		}
+		if m.viewMode == simView && m.simState != nil && !m.simState.metricMode {
+			if updated, cmd, handled := m.handleSimFieldInput(msg); handled {
+				return updated, cmd
+			}
 		}
 		return m.handleKey(msg)
 
@@ -60,6 +73,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cursor = 0
 		}
 		return m, nil
+
+	case simResultMsg:
+		if m.simState != nil {
+			m.simState.result = msg.result
+			m.simState.err = msg.err
+		}
+		return m, nil
+
+	case applyResultMsg:
+		if m.fixState != nil {
+			m.fixState.applied = true
+			m.fixState.applyErr = msg.err
+		}
+		return m, nil
+
+	case replayLoadedMsg:
+		if m.replayState != nil {
+			m.replayState.loading = false
+			m.replayState.trace = msg.trace
+			m.replayState.err = msg.err
+		}
+		return m, nil
 	}
 
 	return m, nil
@@ -72,16 +107,26 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 
 	case key.Matches(msg, m.keys.Up):
-		if m.viewMode == listView {
+		switch m.viewMode {
+		case listView:
 			m.cursor--
 			if m.cursor < 0 {
 				m.cursor = 0
+			}
+		case fixView:
+			if m.fixState != nil && m.fixState.selected > 0 {
+				m.fixState.selected--
+			}
+		case replayView:
+			if m.replayState != nil && m.replayState.scrollPos > 0 {
+				m.replayState.scrollPos--
 			}
 		}
 		return m, nil
 
 	case key.Matches(msg, m.keys.Down):
-		if m.viewMode == listView {
+		switch m.viewMode {
+		case listView:
 			filtered := m.filteredItems()
 			m.cursor++
 			if m.cursor >= len(filtered) {
@@ -90,25 +135,25 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.cursor < 0 {
 				m.cursor = 0
 			}
-		}
-		return m, nil
-
-	case key.Matches(msg, m.keys.Enter):
-		if m.viewMode == listView {
-			filtered := m.filteredItems()
-			if m.cursor >= 0 && m.cursor < len(filtered) {
-				m.viewMode = detailView
+		case fixView:
+			if m.fixState != nil && m.fixState.selected < len(m.fixState.suggestions)-1 {
+				m.fixState.selected++
+			}
+		case replayView:
+			if m.replayState != nil && m.replayState.trace != nil {
+				maxScroll := len(m.replayState.trace.Snapshots) - 1
+				if m.replayState.scrollPos < maxScroll {
+					m.replayState.scrollPos++
+				}
 			}
 		}
 		return m, nil
 
+	case key.Matches(msg, m.keys.Enter):
+		return m.handleEnter()
+
 	case key.Matches(msg, m.keys.Escape):
-		switch m.viewMode {
-		case helpView, detailView, metricsView:
-			m.viewMode = listView
-			return m, nil
-		}
-		return m, nil
+		return m.handleEscape()
 
 	case key.Matches(msg, m.keys.Refresh):
 		m.loading = true
@@ -169,8 +214,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.viewMode == listView {
 			filtered := m.filteredItems()
 			if m.cursor >= 0 && m.cursor < len(filtered) {
-				key := filtered[m.cursor].Namespace + "/" + filtered[m.cursor].Name
-				m.selected[key] = !m.selected[key]
+				k := filtered[m.cursor].Namespace + "/" + filtered[m.cursor].Name
+				m.selected[k] = !m.selected[k]
 			}
 		}
 		return m, nil
@@ -189,19 +234,57 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case key.Matches(msg, m.keys.ApplySelected):
-		if m.viewMode == listView && len(m.selected) > 0 {
-			filtered := m.filteredItems()
-			selectedNames := make([]string, 0, len(m.selected))
-			for _, item := range filtered {
-				key := item.Namespace + "/" + item.Name
-				if m.selected[key] {
-					selectedNames = append(selectedNames, item.Name)
-				}
+	case key.Matches(msg, m.keys.Simulate):
+		return m.handleSimulateKey()
+
+	case key.Matches(msg, m.keys.Fix):
+		return m.handleFixKey()
+
+	case key.Matches(msg, m.keys.Replay):
+		return m.handleReplayKey()
+
+	case key.Matches(msg, m.keys.MetricMode):
+		if m.viewMode == simView && m.simState != nil {
+			m.simState.metricMode = !m.simState.metricMode
+			if m.simState.metricMode {
+				m.simState.metricInput.Focus()
+			} else {
+				m.simState.metricInput.Blur()
 			}
-			m.selected = map[string]bool{}
-			m.err = fmt.Errorf("apply for %d HPA(s): use CLI instead (kubectl-hpa-status list --problem --fix --apply). Selected: %s", len(selectedNames), strings.Join(selectedNames, ", "))
-			return m, nil
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.DryRun):
+		if m.viewMode == fixView && m.fixState != nil && len(m.fixState.suggestions) > 0 {
+			suggestion := m.fixState.suggestions[m.fixState.selected]
+			switch {
+			case suggestion.Patch != "":
+				m.fixState.dryRunResult = "patch preview: " + suggestion.Patch
+			case suggestion.Command != "":
+				m.fixState.dryRunResult = "command preview: " + suggestion.Command
+			default:
+				m.fixState.dryRunResult = "no patch or command available for this suggestion"
+			}
+			m.fixState.applied = false
+			m.fixState.applyErr = nil
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.TabField):
+		if m.viewMode == simView && m.simState != nil && !m.simState.metricMode {
+			m.simState.focusIndex++
+			if m.simState.focusIndex >= len(m.simState.fields) {
+				m.simState.focusIndex = 0
+			}
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.ShiftTabField):
+		if m.viewMode == simView && m.simState != nil && !m.simState.metricMode {
+			m.simState.focusIndex--
+			if m.simState.focusIndex < 0 {
+				m.simState.focusIndex = len(m.simState.fields) - 1
+			}
 		}
 		return m, nil
 
@@ -231,6 +314,372 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func (m Model) handleSimFieldInput(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
+	if m.simState == nil || len(m.simState.fields) == 0 {
+		return m, nil, false
+	}
+	switch msg.Type {
+	case tea.KeyBackspace, tea.KeyCtrlH:
+		field := &m.simState.fields[m.simState.focusIndex]
+		if len(field.Value) > 0 {
+			field.Value = field.Value[:len(field.Value)-1]
+		}
+		return m, nil, true
+	case tea.KeyRunes:
+		if len(msg.Runes) == 0 {
+			return m, nil, false
+		}
+		changed := false
+		for _, r := range msg.Runes {
+			if (r >= '0' && r <= '9') || r == '-' || r == '.' {
+				field := &m.simState.fields[m.simState.focusIndex]
+				field.Value += string(r)
+				changed = true
+			}
+		}
+		return m, nil, changed
+	}
+	return m, nil, false
+}
+
+// handleEnter processes the Enter key based on the current view mode.
+func (m Model) handleEnter() (tea.Model, tea.Cmd) {
+	switch m.viewMode {
+	case listView:
+		filtered := m.filteredItems()
+		if m.cursor >= 0 && m.cursor < len(filtered) {
+			m.viewMode = detailView
+		}
+		return m, nil
+
+	case simView:
+		if m.simState == nil {
+			return m, nil
+		}
+		return m, m.runSimulation()
+
+	case fixView:
+		if m.fixState == nil || len(m.fixState.suggestions) == 0 {
+			return m, nil
+		}
+		return m, m.applyFix()
+	}
+
+	return m, nil
+}
+
+// handleEscape processes the Escape key based on the current view mode.
+func (m Model) handleEscape() (tea.Model, tea.Cmd) {
+	switch m.viewMode {
+	case helpView, detailView, metricsView:
+		m.viewMode = listView
+	case simView, fixView, replayView:
+		m.simState = nil
+		m.fixState = nil
+		m.replayState = nil
+		m.viewMode = detailView
+	default:
+		return m, nil
+	}
+	return m, nil
+}
+
+// handleSimulateKey activates the simulation panel from detail view.
+func (m Model) handleSimulateKey() (tea.Model, tea.Cmd) {
+	if m.viewMode == detailView {
+		return m, m.initSimState()
+	}
+	return m, nil
+}
+
+// handleFixKey activates the fix wizard from detail view.
+func (m Model) handleFixKey() (tea.Model, tea.Cmd) {
+	if m.viewMode != detailView {
+		return m, nil
+	}
+
+	report := m.currentReport()
+	if report == nil || len(report.Analysis.Suggestions) == 0 {
+		m.err = fmt.Errorf("no suggestions available for this HPA")
+		return m, nil
+	}
+
+	m.fixState = &fixState{
+		suggestions: report.Analysis.Suggestions,
+		selected:    0,
+	}
+	m.viewMode = fixView
+	return m, nil
+}
+
+// handleReplayKey activates the replay viewer from detail view.
+func (m Model) handleReplayKey() (tea.Model, tea.Cmd) {
+	if m.viewMode != detailView {
+		return m, nil
+	}
+
+	m.replayState = &replayState{
+		loading:  true,
+		filePath: "hpa-trace.json",
+	}
+	m.viewMode = replayView
+
+	// Attempt to load the default trace file.
+	return m, loadReplayTrace(m.replayState.filePath)
+}
+
+// initSimState creates simulation state from the currently selected HPA.
+func (m Model) initSimState() tea.Cmd {
+	filtered := m.filteredItems()
+	if m.cursor < 0 || m.cursor >= len(filtered) {
+		return nil
+	}
+
+	report := m.currentReport()
+	if report == nil {
+		return nil
+	}
+
+	// Get the original HPA from the report's analysis.
+	hpa := buildHPAFromAnalysis(report.Analysis)
+
+	fields := []simField{
+		{Label: "maxReplicas", Path: "maxReplicas", Value: "", Original: fmt.Sprintf("%d", hpa.Spec.MaxReplicas)},
+	}
+	if hpa.Spec.MinReplicas != nil {
+		fields = append(fields, simField{Label: "minReplicas", Path: "minReplicas", Value: "", Original: fmt.Sprintf("%d", *hpa.Spec.MinReplicas)})
+	} else {
+		fields = append(fields, simField{Label: "minReplicas", Path: "minReplicas", Value: "", Original: "1"})
+	}
+
+	mi := textinput.New()
+	mi.Placeholder = "cpu=80%, memory=4Gi"
+	mi.CharLimit = 100
+
+	m.simState = &simState{
+		hpa:         hpa,
+		fields:      fields,
+		metricInput: mi,
+		focusIndex:  0,
+	}
+	m.viewMode = simView
+	return nil
+}
+
+// runSimulation executes the simulation as a background tea.Cmd.
+func (m Model) runSimulation() tea.Cmd {
+	if m.simState == nil || m.simState.hpa == nil {
+		return nil
+	}
+
+	if m.simState.metricMode {
+		return m.runMetricSimulation()
+	}
+	return m.runParamSimulation()
+}
+
+// runParamSimulation runs a parameter-based simulation.
+func (m Model) runParamSimulation() tea.Cmd {
+	overrides := make(map[string]string)
+	for _, field := range m.simState.fields {
+		if field.Value != "" && field.Value != field.Original {
+			overrides[field.Path] = field.Value
+		}
+	}
+
+	if len(overrides) == 0 {
+		return func() tea.Msg {
+			return simResultMsg{err: fmt.Errorf("no parameters changed")}
+		}
+	}
+
+	hpa := m.simState.hpa.DeepCopy()
+	weights := m.opts.HealthWeights
+
+	return func() tea.Msg {
+		result, err := hpaanalysis.SimulateHPA(hpa, overrides, weights)
+		return simResultMsg{result: result, err: err}
+	}
+}
+
+// runMetricSimulation runs a metric value simulation.
+func (m Model) runMetricSimulation() tea.Cmd {
+	input := m.simState.metricInput.Value()
+	if input == "" {
+		return func() tea.Msg {
+			return simResultMsg{err: fmt.Errorf("no metric override provided")}
+		}
+	}
+
+	overrides, err := parseMetricInput(input)
+	if err != nil {
+		return func() tea.Msg {
+			return simResultMsg{err: err}
+		}
+	}
+
+	hpa := m.simState.hpa.DeepCopy()
+	weights := m.opts.HealthWeights
+
+	return func() tea.Msg {
+		result, simErr := hpaanalysis.SimulateMetricChange(hpa, overrides, weights)
+		return simResultMsg{result: result, err: simErr}
+	}
+}
+
+// applyFix applies the currently selected fix suggestion.
+func (m Model) applyFix() tea.Cmd {
+	if m.fixState == nil || len(m.fixState.suggestions) == 0 {
+		return nil
+	}
+	if m.opts.ApplyFn == nil {
+		m.fixState.applyErr = fmt.Errorf("apply not available (no Kubernetes client)")
+		return nil
+	}
+
+	suggestion := m.fixState.suggestions[m.fixState.selected]
+	if suggestion.Patch == "" {
+		m.fixState.applyErr = fmt.Errorf("no patch available for this suggestion")
+		return nil
+	}
+
+	filtered := m.filteredItems()
+	if m.cursor < 0 || m.cursor >= len(filtered) {
+		return nil
+	}
+
+	namespace := filtered[m.cursor].Namespace
+	name := filtered[m.cursor].Name
+	patch := suggestion.Patch
+	applyFn := m.opts.ApplyFn
+
+	return func() tea.Msg {
+		err := applyFn(context.Background(), namespace, name, patch)
+		return applyResultMsg{title: suggestion.Title, err: err}
+	}
+}
+
+// loadReplayTrace loads a timeline trace JSON file as a background tea.Cmd.
+func loadReplayTrace(path string) tea.Cmd {
+	return func() tea.Msg {
+		trace, err := hpaanalysis.LoadTimelineTrace(path)
+		return replayLoadedMsg{trace: trace, err: err}
+	}
+}
+
+// handleSimInput handles text input when in simulation metric mode.
+func (m Model) handleSimInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.simState == nil {
+		return m, nil
+	}
+
+	switch msg.String() {
+	case "enter":
+		m.simState.metricInput.Blur()
+		return m, m.runSimulation()
+	case "esc":
+		m.simState.metricInput.Blur()
+		m.simState.metricMode = false
+		return m, nil
+	default:
+		var cmd tea.Cmd
+		m.simState.metricInput, cmd = m.simState.metricInput.Update(msg)
+		return m, cmd
+	}
+}
+
+// currentReport returns the report for the currently selected item.
+func (m Model) currentReport() *hpaanalysis.StatusReport {
+	filtered := m.filteredItems()
+	if m.cursor < 0 || m.cursor >= len(filtered) {
+		return nil
+	}
+	item := filtered[m.cursor]
+	k := item.Namespace + "/" + item.Name
+	return m.reports[k]
+}
+
+// buildHPAFromAnalysis creates a minimal HPA object from analysis data
+// for use in simulation. The HPA will have correct spec fields but
+// simplified status.
+func buildHPAFromAnalysis(a hpaanalysis.Analysis) *autoscalingv2.HorizontalPodAutoscaler {
+	hpa := &autoscalingv2.HorizontalPodAutoscaler{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: a.Namespace,
+			Name:      a.Name,
+		},
+		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+			MaxReplicas: a.Max,
+			MinReplicas: int32Ptr(a.Min),
+		},
+		Status: autoscalingv2.HorizontalPodAutoscalerStatus{
+			CurrentReplicas: a.Current,
+			DesiredReplicas: a.Desired,
+		},
+	}
+	return hpa
+}
+
+func int32Ptr(v int32) *int32 {
+	return &v
+}
+
+// parseMetricInput parses a metric input string like "cpu=80%" into
+// the format expected by SimulateMetricChange.
+func parseMetricInput(input string) (map[string]string, error) {
+	if input == "" {
+		return nil, fmt.Errorf("empty metric input")
+	}
+	parts := splitPairs(input)
+	if len(parts) == 0 {
+		return nil, fmt.Errorf("invalid metric format; use name=value (e.g. cpu=80%%)")
+	}
+	return parts, nil
+}
+
+func splitPairs(input string) map[string]string {
+	result := make(map[string]string)
+	current := ""
+	for _, ch := range input {
+		if ch == ',' {
+			pair := splitKeyValue(current)
+			if pair != nil {
+				result[pair[0]] = pair[1]
+			}
+			current = ""
+		} else {
+			current += string(ch)
+		}
+	}
+	pair := splitKeyValue(current)
+	if pair != nil {
+		result[pair[0]] = pair[1]
+	}
+	return result
+}
+
+func splitKeyValue(s string) []string {
+	s = trimSpaces(s)
+	for i, ch := range s {
+		if ch == '=' {
+			return []string{s[:i], s[i+1:]}
+		}
+	}
+	return nil
+}
+
+func trimSpaces(s string) string {
+	start := 0
+	for start < len(s) && s[start] == ' ' {
+		start++
+	}
+	end := len(s)
+	for end > start && s[end-1] == ' ' {
+		end--
+	}
+	return s[start:end]
 }
 
 func (m Model) handleFilterInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {

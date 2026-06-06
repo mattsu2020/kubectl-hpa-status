@@ -13,6 +13,8 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 func newTUICommand(opts *options) *cobra.Command {
@@ -72,6 +74,15 @@ func runTUI(ctx context.Context, out io.Writer, opts *options, initialName strin
 		StartInDetail: startInDetail,
 		EnrichHPAs:    enrichFn,
 		HealthWeights: opts.healthWeights,
+		ApplyFn: func(applyCtx context.Context, ns, name, patch string) error {
+			_, err := client.Interface.AutoscalingV2().
+				HorizontalPodAutoscalers(ns).
+				Patch(applyCtx, name, types.MergePatchType, []byte(patch), metav1.PatchOptions{})
+			if err != nil {
+				return fmt.Errorf("patch failed: %w", err)
+			}
+			return nil
+		},
 	})
 
 	_, err = tea.NewProgram(model, tea.WithAltScreen(), tea.WithContext(ctx), tea.WithOutput(out)).Run()

@@ -29,6 +29,12 @@ func (m Model) View() string {
 		content = m.renderHelpView()
 	case metricsView:
 		content = m.renderMetricsView()
+	case simView:
+		content = m.renderSimView()
+	case fixView:
+		content = m.renderFixView()
+	case replayView:
+		content = m.renderReplayView()
 	}
 
 	statusBar := m.renderStatusBar()
@@ -48,6 +54,11 @@ func (m Model) renderHelpView() string {
 		{"/", "Filter by name, namespace, health, or issue"},
 		{"S", "Cycle sort: name → health-score → issue → namespace"},
 		{"g", "Jump to first problematic HPA"},
+		{"s", "Open simulation panel"},
+		{"f", "Open fix wizard"},
+		{"T", "Open replay timeline"},
+		{"M", "Toggle metric simulation mode"},
+		{"Tab", "Cycle simulation fields"},
 		{"r", "Refresh data now"},
 		{"p", "Pause/resume auto-refresh"},
 		{"+/=", "Decrease refresh interval (faster)"},

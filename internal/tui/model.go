@@ -24,6 +24,9 @@ const (
 	detailView
 	helpView
 	metricsView
+	simView    // Interactive simulation panel
+	fixView    // Fix wizard for problematic HPAs
+	replayView // Replay timeline visualization
 )
 
 // Model is the top-level bubbletea model for the TUI dashboard.
@@ -50,6 +53,11 @@ type Model struct {
 	sortDescending bool
 	selected       map[string]bool
 	initialFocused bool
+
+	// Interactive mode states (nil when inactive).
+	simState    *simState
+	fixState    *fixState
+	replayState *replayState
 
 	keys keyMap
 }
@@ -78,6 +86,10 @@ type Options struct {
 	// health score adjustments. When zero-valued, ApplyEnrichmentPenalties
 	// uses its defaults.
 	HealthWeights hpaanalysis.HealthWeights
+
+	// ApplyFn is an optional callback for applying patches from the TUI.
+	// When nil, the fix wizard apply action is disabled.
+	ApplyFn ApplyFunc
 }
 
 // keyMap defines the keyboard shortcuts.
@@ -97,7 +109,13 @@ type keyMap struct {
 	ToggleSelect  key.Binding
 	SelectAll     key.Binding
 	DeselectAll   key.Binding
-	ApplySelected key.Binding
+	Simulate      key.Binding
+	Fix           key.Binding
+	Replay        key.Binding
+	MetricMode    key.Binding
+	TabField      key.Binding
+	ShiftTabField key.Binding
+	DryRun        key.Binding
 	IntervalUp    key.Binding
 	IntervalDown  key.Binding
 }
@@ -164,9 +182,33 @@ func defaultKeys() keyMap {
 			key.WithKeys("A"),
 			key.WithHelp("A", "deselect all"),
 		),
-		ApplySelected: key.NewBinding(
+		Simulate: key.NewBinding(
 			key.WithKeys("s"),
-			key.WithHelp("s", "apply to selected"),
+			key.WithHelp("s", "simulate"),
+		),
+		Fix: key.NewBinding(
+			key.WithKeys("f"),
+			key.WithHelp("f", "fix wizard"),
+		),
+		Replay: key.NewBinding(
+			key.WithKeys("T"),
+			key.WithHelp("T", "replay timeline"),
+		),
+		MetricMode: key.NewBinding(
+			key.WithKeys("M"),
+			key.WithHelp("M", "metric simulation"),
+		),
+		TabField: key.NewBinding(
+			key.WithKeys("tab"),
+			key.WithHelp("tab", "next field"),
+		),
+		ShiftTabField: key.NewBinding(
+			key.WithKeys("shift+tab"),
+			key.WithHelp("shift+tab", "previous field"),
+		),
+		DryRun: key.NewBinding(
+			key.WithKeys("d"),
+			key.WithHelp("d", "preview dry-run"),
 		),
 		IntervalUp: key.NewBinding(
 			key.WithKeys("+", "="),

@@ -209,6 +209,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newRecordCommand(opts))
 	root.AddCommand(newReplayCommand(opts))
 	root.AddCommand(newRecommendCommand(opts))
+	root.AddCommand(newPolicyCommand(opts))
 	root.AddCommand(newVersionCommand())
 	root.AddCommand(newCompletionCommand(root))
 
