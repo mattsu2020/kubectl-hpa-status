@@ -23,6 +23,7 @@ type QuotaInfo struct {
 	Resource string
 	Used     string
 	Hard     string
+	Ratio    float64
 }
 
 // PDBInfo holds information about a PodDisruptionBudget.
@@ -90,6 +91,7 @@ func FetchResourceQuotas(ctx context.Context, client kubernetes.Interface, names
 						Resource: string(resourceName),
 						Used:     used.String(),
 						Hard:     hard.String(),
+						Ratio:    ratio,
 					})
 				}
 			}

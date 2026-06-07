@@ -18,6 +18,10 @@ label_precondition: "前提条件"
 label_warning: "警告"
 label_metrics_diagnostics: "メトリクス診断"
 label_metric_freshness: "メトリクス鮮度"
+label_blockers: "スケールアウトブロッカー"
+label_blocker_summary: "概要"
+label_blocker_interpretation: "解釈"
+label_blocker_next_commands: "次のコマンド"
 
 # ヘルス状態
 health_ok: "OK"

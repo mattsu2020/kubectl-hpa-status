@@ -18,6 +18,10 @@ label_precondition: "precondition"
 label_warning: "warning"
 label_metrics_diagnostics: "Metrics Diagnostics"
 label_metric_freshness: "Metrics Freshness"
+label_blockers: "Scale-out blockers"
+label_blocker_summary: "Summary"
+label_blocker_interpretation: "Interpretation"
+label_blocker_next_commands: "Next commands"
 
 # Health states
 health_ok: "OK"

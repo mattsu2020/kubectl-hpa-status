@@ -43,6 +43,10 @@ func (DefaultLabels) Get(key string) string {
 		"label_audit_findings":       "Audit Findings",
 		"label_audit_score":          "Compliance Score",
 		"label_audit_severity":       "Severity",
+		"label_blockers":             "Scale-out blockers",
+		"label_blocker_summary":      "Summary",
+		"label_blocker_interpretation": "Interpretation",
+		"label_blocker_next_commands": "Next commands",
 	}
 	if v, ok := defaults[key]; ok {
 		return v
@@ -84,5 +88,7 @@ func resolveLabels(provider LabelProvider) labels {
 		AuditFindings:       provider.Get("label_audit_findings"),
 		AuditScore:          provider.Get("label_audit_score"),
 		AuditSeverity:       provider.Get("label_audit_severity"),
+		Blockers:            provider.Get("label_blockers"),
+		NextCommands:        provider.Get("label_blocker_next_commands"),
 	}
 }

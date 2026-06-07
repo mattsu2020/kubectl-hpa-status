@@ -22,7 +22,7 @@ func AnalyzeMetricFreshness(hpa *autoscalingv2.HorizontalPodAutoscaler, events [
 	}
 
 	currentMetrics := hpa.Status.CurrentMetrics
-	scalingActive := isScalingActive(hpa)
+	scalingActive := IsScalingActive(hpa)
 
 	var entries []MetricFreshness
 	for _, spec := range specMetrics {
@@ -80,8 +80,8 @@ func analyzeSingleMetricFreshness(
 	return entry
 }
 
-// isScalingActive checks whether the HPA ScalingActive condition is True.
-func isScalingActive(hpa *autoscalingv2.HorizontalPodAutoscaler) bool {
+// IsScalingActive checks whether the HPA ScalingActive condition is True.
+func IsScalingActive(hpa *autoscalingv2.HorizontalPodAutoscaler) bool {
 	for _, c := range hpa.Status.Conditions {
 		if c.Type == autoscalingv2.ScalingActive && c.Status == "True" {
 			return true

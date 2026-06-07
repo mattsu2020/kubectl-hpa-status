@@ -305,6 +305,10 @@ func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, 
 		report.Analysis.ScalePath = buildScalePath(ctx, client, hpa)
 	}
 
+	if opts.capacityDeep {
+		report.Analysis.BlockerReport = buildBlockerReportForStatus(ctx, client, hpa, report.Analysis.Target)
+	}
+
 	return report, nil
 }
 

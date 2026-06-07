@@ -481,6 +481,10 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 		appendScalePathText(&out, a.ScalePath, theme)
 	}
 
+	if a.BlockerReport != nil {
+		AppendBlockerText(&out, a.BlockerReport, theme, labels)
+	}
+
 	out = append(out, '\n')
 	out = fmt.Appendf(out, "%s:\n", labels.Events)
 	if len(report.Events) == 0 {
@@ -561,6 +565,8 @@ type labels struct {
 	AuditFindings       string
 	AuditScore          string
 	AuditSeverity       string
+	Blockers            string
+	NextCommands        string
 }
 
 func textLabels(lang string) labels {
@@ -593,6 +599,8 @@ func textLabels(lang string) labels {
 			AuditFindings:       "監査結果",
 			AuditScore:          "コンプライアンススコア",
 			AuditSeverity:       "重要度",
+			Blockers:            "スケールアウトブロッカー",
+			NextCommands:        "次のコマンド",
 		}
 	}
 	return labels{
@@ -623,6 +631,8 @@ func textLabels(lang string) labels {
 		AuditFindings:       "Audit Findings",
 		AuditScore:          "Compliance Score",
 		AuditSeverity:       "Severity",
+		Blockers:            "Scale-out blockers",
+		NextCommands:        "Next commands",
 	}
 }
 
