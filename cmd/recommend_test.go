@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 )
 
@@ -19,7 +20,7 @@ func TestRunRecommend_WellConfiguredHPA(t *testing.T) {
 	opts := &options{
 		commonOptions: commonOptions{clientOverride: fakeClient},
 	}
-	err := runRecommend(context.Background(), &buf, opts, []string{"web"})
+	err := runRecommend(context.Background(), &buf, opts, []string{"web"}, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -46,7 +47,7 @@ func TestRunRecommend_PoorlyConfiguredHPA(t *testing.T) {
 	opts := &options{
 		commonOptions: commonOptions{clientOverride: fakeClient},
 	}
-	err := runRecommend(context.Background(), &buf, opts, []string{"bad-hpa"})
+	err := runRecommend(context.Background(), &buf, opts, []string{"bad-hpa"}, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -68,7 +69,7 @@ func TestRunRecommend_NonExistentHPA(t *testing.T) {
 	opts := &options{
 		commonOptions: commonOptions{clientOverride: fakeClient},
 	}
-	err := runRecommend(context.Background(), &buf, opts, []string{"nonexistent"})
+	err := runRecommend(context.Background(), &buf, opts, []string{"nonexistent"}, "")
 	if err == nil {
 		t.Fatal("expected error for non-existent HPA, got nil")
 	}
@@ -88,7 +89,7 @@ func TestRunRecommend_KEDAManagedHPA(t *testing.T) {
 	opts := &options{
 		commonOptions: commonOptions{clientOverride: fakeClient},
 	}
-	err := runRecommend(context.Background(), &buf, opts, []string{"keda-worker"})
+	err := runRecommend(context.Background(), &buf, opts, []string{"keda-worker"}, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -108,7 +109,7 @@ func TestRunRecommend_JSONOutput(t *testing.T) {
 	opts := &options{
 		commonOptions: commonOptions{clientOverride: fakeClient, output: "json"},
 	}
-	err := runRecommend(context.Background(), &buf, opts, []string{"web"})
+	err := runRecommend(context.Background(), &buf, opts, []string{"web"}, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -134,7 +135,7 @@ func TestRunRecommend_YAMLOutput(t *testing.T) {
 	opts := &options{
 		commonOptions: commonOptions{clientOverride: fakeClient, output: "yaml"},
 	}
-	err := runRecommend(context.Background(), &buf, opts, []string{"web"})
+	err := runRecommend(context.Background(), &buf, opts, []string{"web"}, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -161,7 +162,7 @@ func TestRunRecommend_ScoreToZeroWarning(t *testing.T) {
 	opts := &options{
 		commonOptions: commonOptions{clientOverride: fakeClient},
 	}
-	err := runRecommend(context.Background(), &buf, opts, []string{"scale-to-zero"})
+	err := runRecommend(context.Background(), &buf, opts, []string{"scale-to-zero"}, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -185,7 +186,7 @@ func TestRunRecommend_ExtractsMinReplicasFromSpec(t *testing.T) {
 	opts := &options{
 		commonOptions: commonOptions{clientOverride: fakeClient},
 	}
-	err := runRecommend(context.Background(), &buf, opts, []string{"explicit-min"})
+	err := runRecommend(context.Background(), &buf, opts, []string{"explicit-min"}, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -219,7 +220,7 @@ func TestRunRecommend_UsesNamespaceFromOptions(t *testing.T) {
 			namespace:      "team-a",
 		},
 	}
-	err := runRecommend(context.Background(), &buf, opts, []string{"web"})
+	err := runRecommend(context.Background(), &buf, opts, []string{"web"}, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -239,12 +240,66 @@ func TestRunRecommend_HighUtilizationWarning(t *testing.T) {
 	opts := &options{
 		commonOptions: commonOptions{clientOverride: fakeClient},
 	}
-	err := runRecommend(context.Background(), &buf, opts, []string{"high-util"})
+	err := runRecommend(context.Background(), &buf, opts, []string{"high-util"}, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	output := buf.String()
 	if !strings.Contains(output, "High cpu target utilization") {
 		t.Fatalf("expected high utilization warning in output, got:\n%s", output)
+	}
+}
+
+func TestRunRecommend_WithProfile(t *testing.T) {
+	hpa := kube.BuildHPA("default", "web",
+		kube.WithMinMax(2, 10),
+		kube.WithResourceMetric("cpu", 70, 65),
+	)
+	fakeClient := kube.NewFakeClient(hpa)
+
+	var buf bytes.Buffer
+	opts := &options{
+		commonOptions: commonOptions{clientOverride: fakeClient},
+	}
+	err := runRecommend(context.Background(), &buf, opts, []string{"web"}, hpaanalysis.ProfileCritical)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	output := buf.String()
+	if !strings.Contains(output, "Profile: critical") {
+		t.Fatalf("expected profile badge in output, got:\n%s", output)
+	}
+}
+
+func TestRunRecommend_WithProfileLatency(t *testing.T) {
+	hpa := kube.BuildHPA("default", "web",
+		kube.WithMinMax(2, 10),
+		kube.WithResourceMetric("cpu", 70, 65),
+	)
+	fakeClient := kube.NewFakeClient(hpa)
+
+	var buf bytes.Buffer
+	opts := &options{
+		commonOptions: commonOptions{clientOverride: fakeClient},
+	}
+	err := runRecommend(context.Background(), &buf, opts, []string{"web"}, hpaanalysis.ProfileLatency)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	output := buf.String()
+	if !strings.Contains(output, "Profile: latency") {
+		t.Fatalf("expected profile badge in output, got:\n%s", output)
+	}
+}
+
+func TestRunRecommend_ProfileFlagRegistered(t *testing.T) {
+	opts := &options{}
+	cmd := newRecommendCommand(opts)
+	flag := cmd.Flags().Lookup("profile")
+	if flag == nil {
+		t.Fatal("expected --profile flag to be registered")
+	}
+	if flag.DefValue != "" {
+		t.Fatalf("expected default value '', got %q", flag.DefValue)
 	}
 }

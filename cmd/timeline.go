@@ -19,6 +19,7 @@ func newTimelineCommand(opts *options) *cobra.Command {
 	var duration time.Duration
 	var interval time.Duration
 	var since time.Duration
+	var replay bool
 
 	cmd := &cobra.Command{
 		Use:               "timeline NAME",
@@ -28,7 +29,7 @@ func newTimelineCommand(opts *options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Retrospective mode takes priority when --since is provided.
 			if since > 0 {
-				return runRetrospectiveTimeline(cmd.Context(), cmd.OutOrStdout(), opts, args[0], since)
+				return runRetrospectiveTimeline(cmd.Context(), cmd.OutOrStdout(), opts, args[0], since, replay)
 			}
 			// Existing live-polling behavior.
 			if duration > 0 {
@@ -43,6 +44,7 @@ func newTimelineCommand(opts *options) *cobra.Command {
 	cmd.Flags().DurationVar(&duration, "duration", 10*time.Minute, "total observation duration")
 	cmd.Flags().DurationVar(&interval, "interval", 5*time.Second, "polling interval")
 	cmd.Flags().DurationVar(&since, "since", 0, "show retrospective timeline for the given duration (e.g. 30m, 1h); 0 means live mode")
+	cmd.Flags().BoolVar(&replay, "replay", false, "enhanced retrospective replay with bottleneck markers and control cycle analysis")
 	return cmd
 }
 
@@ -89,7 +91,7 @@ func newReplayCommand(opts *options) *cobra.Command {
 	return cmd
 }
 
-func runRetrospectiveTimeline(ctx context.Context, out io.Writer, opts *options, name string, since time.Duration) error {
+func runRetrospectiveTimeline(ctx context.Context, out io.Writer, opts *options, name string, since time.Duration, replay bool) error {
 	client, err := opts.newClient()
 	if err != nil {
 		return fmt.Errorf("failed to create Kubernetes client: %w", err)
@@ -113,11 +115,43 @@ func runRetrospectiveTimeline(ctx context.Context, out io.Writer, opts *options,
 	// 3. Build the retrospective timeline.
 	tl := hpaanalysis.BuildRetrospectiveTimeline(events, hpa, sinceTime)
 
-	// 4. Render based on output format.
+	// 4. If replay mode is enabled, perform replay analysis.
+	var replayAnalysis *hpaanalysis.ReplayAnalysis
+	if replay {
+		replayAnalysis = hpaanalysis.AnalyzeReplay(tl, hpa)
+	}
+
+	// 5. Render based on output format.
 	format, _ := outputSelection(outputConfig{
 		report: opts.report, output: opts.output, template: opts.template,
 		outputTemplates: opts.outputTemplates,
 	})
+
+	// Replay mode rendering.
+	if replay && replayAnalysis != nil {
+		switch format {
+		case "json":
+			encoder := json.NewEncoder(out)
+			encoder.SetIndent("", "  ")
+			return encoder.Encode(replayAnalysis)
+		case "yaml":
+			data, marshalErr := yaml.Marshal(replayAnalysis)
+			if marshalErr != nil {
+				return marshalErr
+			}
+			_, err = out.Write(data)
+			return err
+		case "markdown", "md":
+			return hpaanalysis.WriteReplayMarkdown(out, replayAnalysis, tl)
+		case "html":
+			return hpaanalysis.WriteReplayHTML(out, replayAnalysis, tl)
+		default:
+			theme := style.NewTheme(shouldColorize(opts.color, out))
+			return hpaanalysis.WriteReplayText(out, replayAnalysis, tl, theme)
+		}
+	}
+
+	// Normal retrospective rendering.
 	switch format {
 	case "json":
 		encoder := json.NewEncoder(out)

@@ -157,3 +157,306 @@ func formatDuration(d time.Duration) string {
 	}
 	return fmt.Sprintf("%dm", m)
 }
+
+// WriteReplayText renders a ReplayAnalysis as a text timeline with
+// bottleneck markers, control cycles, and stabilization windows.
+func WriteReplayText(w io.Writer, analysis *ReplayAnalysis, tl RetrospectiveTimeline, theme style.Theme) error {
+	var out strings.Builder
+
+	out.WriteString(fmt.Sprintf("HPA Replay Analysis: %s (%s)\n", tl.HPAName, tl.Namespace))
+	out.WriteString(fmt.Sprintf("Period: %s - %s\n\n",
+		tl.Since.Format("15:04"), tl.Until.Format("15:04")))
+
+	// Bottlenecks section.
+	if len(analysis.Bottlenecks) > 0 {
+		out.WriteString(fmt.Sprintf("Bottlenecks (%d):\n", len(analysis.Bottlenecks)))
+		for _, b := range analysis.Bottlenecks {
+			severityPrefix := "[LOW] "
+			switch b.Severity {
+			case "high":
+				severityPrefix = "[HIGH] "
+			case "medium":
+				severityPrefix = "[MED] "
+			}
+			timeStr := b.Timestamp.Format("15:04")
+			durationStr := ""
+			if b.Duration > 0 {
+				durationStr = fmt.Sprintf(" (duration: %s)", formatDuration(b.Duration))
+			}
+			out.WriteString(fmt.Sprintf("  %s%s %s — %s%s\n",
+				severityPrefix, timeStr, b.Type, b.Message, durationStr))
+		}
+		out.WriteString("\n")
+	}
+
+	// Control Cycles section.
+	if len(analysis.ControlCycles) > 0 {
+		out.WriteString(fmt.Sprintf("Control Cycles (%d):\n", len(analysis.ControlCycles)))
+		for _, c := range analysis.ControlCycles {
+			startStr := c.Start.Format("15:04")
+			endStr := c.End.Format("15:04")
+			decisionText := c.Decision
+			if c.Decision == "no-change" && c.MetricDriver != "unknown" {
+				decisionText = fmt.Sprintf("no-change (%s within tolerance)", c.MetricDriver)
+			} else if c.Decision == "capped" {
+				decisionText = fmt.Sprintf("scale-up capped by maxReplicas")
+			} else if c.MetricDriver != "unknown" {
+				decisionText = fmt.Sprintf("%s (%s above target)", c.Decision, c.MetricDriver)
+			}
+
+			// Check for stabilization effect.
+			stabNote := ""
+			for _, sw := range analysis.StabilizationWindows {
+				if c.End.After(sw.Start) && c.End.Before(sw.End) {
+					stabNote = fmt.Sprintf(" (stabilization active, suppressed: -%d)", sw.SuppressedScaleDown)
+					break
+				}
+			}
+
+			out.WriteString(fmt.Sprintf("  %s-%s %s (%d → %d) — %s%s\n",
+				startStr, endStr, decisionText, c.InputReplicas, c.OutputReplicas,
+				decisionText, stabNote))
+		}
+		out.WriteString("\n")
+	}
+
+	// Stabilization Windows section.
+	if len(analysis.StabilizationWindows) > 0 {
+		out.WriteString(fmt.Sprintf("Stabilization Windows (%d):\n", len(analysis.StabilizationWindows)))
+		for _, sw := range analysis.StabilizationWindows {
+			startStr := sw.Start.Format("15:04")
+			endStr := sw.End.Format("15:04")
+			durationStr := formatDuration(sw.Duration)
+			out.WriteString(fmt.Sprintf("  %s - %s (%s) — suppressed scale-down of %d replicas\n",
+				startStr, endStr, durationStr, sw.SuppressedScaleDown))
+		}
+		out.WriteString("\n")
+	}
+
+	// Tolerance Effects section.
+	if len(analysis.ReplayToleranceEffects) > 0 {
+		out.WriteString(fmt.Sprintf("Tolerance Effects (%d):\n", len(analysis.ReplayToleranceEffects)))
+		for _, te := range analysis.ReplayToleranceEffects {
+			timeStr := te.Timestamp.Format("15:04")
+			suppressedText := "suppressed"
+			if !te.Suppressed {
+				suppressedText = "not suppressed"
+			}
+			out.WriteString(fmt.Sprintf("  %s %s ratio %.2f tolerance %.2f — %s\n",
+				timeStr, te.MetricName, te.ActualRatio, te.Tolerance, suppressedText))
+		}
+		out.WriteString("\n")
+	}
+
+	// Summary.
+	out.WriteString(analysis.Summary)
+	out.WriteString("\n\n")
+	out.WriteString("Note: " + tl.Disclaimer + "\n")
+
+	_, err := io.WriteString(w, out.String())
+	return err
+}
+
+// WriteReplayMarkdown renders a ReplayAnalysis as a Markdown document.
+func WriteReplayMarkdown(w io.Writer, analysis *ReplayAnalysis, tl RetrospectiveTimeline) error {
+	var out strings.Builder
+
+	out.WriteString(fmt.Sprintf("# HPA Replay Analysis: %s/%s\n\n", tl.Namespace, tl.HPAName))
+	out.WriteString(fmt.Sprintf("- **Period:** %s - %s\n", tl.Since.Format(time.RFC3339), tl.Until.Format(time.RFC3339)))
+	out.WriteString(fmt.Sprintf("- **Bottlenecks:** %d\n", len(analysis.Bottlenecks)))
+	out.WriteString(fmt.Sprintf("- **Control Cycles:** %d\n", len(analysis.ControlCycles)))
+	out.WriteString(fmt.Sprintf("- **Stabilization Windows:** %d\n", len(analysis.StabilizationWindows)))
+	out.WriteString(fmt.Sprintf("- **Tolerance Effects:** %d\n\n", len(analysis.ReplayToleranceEffects)))
+
+	// Bottlenecks section.
+	if len(analysis.Bottlenecks) > 0 {
+		out.WriteString("## Bottlenecks\n\n")
+		out.WriteString("| Time | Type | Severity | Message | Duration |\n")
+		out.WriteString("|------|------|----------|---------|----------|\n")
+		for _, b := range analysis.Bottlenecks {
+			durationStr := "0s"
+			if b.Duration > 0 {
+				durationStr = formatDuration(b.Duration)
+			}
+			out.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s |\n",
+				b.Timestamp.Format("15:04"),
+				b.Type,
+				b.Severity,
+				escapeMarkdown(b.Message),
+				durationStr))
+		}
+		out.WriteString("\n")
+	}
+
+	// Control Cycles section.
+	if len(analysis.ControlCycles) > 0 {
+		out.WriteString("## Control Cycles\n\n")
+		out.WriteString("| Start | End | Decision | Input Replicas | Output Replicas | Metric Driver |\n")
+		out.WriteString("|-------|-----|----------|----------------|-----------------|----------------|\n")
+		for _, c := range analysis.ControlCycles {
+			out.WriteString(fmt.Sprintf("| %s | %s | %s | %d | %d | %s |\n",
+				c.Start.Format("15:04"),
+				c.End.Format("15:04"),
+				c.Decision,
+				c.InputReplicas,
+				c.OutputReplicas,
+				c.MetricDriver))
+		}
+		out.WriteString("\n")
+	}
+
+	// Stabilization Windows section.
+	if len(analysis.StabilizationWindows) > 0 {
+		out.WriteString("## Stabilization Windows\n\n")
+		out.WriteString("| Start | End | Duration | Suppressed Scale-Down |\n")
+		out.WriteString("|-------|-----|----------|----------------------|\n")
+		for _, sw := range analysis.StabilizationWindows {
+			out.WriteString(fmt.Sprintf("| %s | %s | %s | %d |\n",
+				sw.Start.Format("15:04"),
+				sw.End.Format("15:04"),
+				formatDuration(sw.Duration),
+				sw.SuppressedScaleDown))
+		}
+		out.WriteString("\n")
+	}
+
+	// Tolerance Effects section.
+	if len(analysis.ReplayToleranceEffects) > 0 {
+		out.WriteString("## Tolerance Effects\n\n")
+		out.WriteString("| Time | Metric | Actual Ratio | Tolerance | Suppressed |\n")
+		out.WriteString("|------|--------|--------------|------------|------------|\n")
+		for _, te := range analysis.ReplayToleranceEffects {
+			suppressed := "No"
+			if te.Suppressed {
+				suppressed = "Yes"
+			}
+			out.WriteString(fmt.Sprintf("| %s | %s | %.2f | %.2f | %s |\n",
+				te.Timestamp.Format("15:04"),
+				te.MetricName,
+				te.ActualRatio,
+				te.Tolerance,
+				suppressed))
+		}
+		out.WriteString("\n")
+	}
+
+	// Summary.
+	out.WriteString(fmt.Sprintf("## Summary\n\n%s\n\n", escapeMarkdown(analysis.Summary)))
+	out.WriteString(fmt.Sprintf("> %s\n", escapeMarkdown(tl.Disclaimer)))
+
+	_, err := io.WriteString(w, out.String())
+	return err
+}
+
+// WriteReplayHTML renders a ReplayAnalysis as a standalone HTML page.
+func WriteReplayHTML(w io.Writer, analysis *ReplayAnalysis, tl RetrospectiveTimeline) error {
+	var out strings.Builder
+
+	out.WriteString(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HPA Replay Analysis: `)
+	out.WriteString(htmlEscape(tl.HPAName))
+	out.WriteString("</title>\n<style>\n")
+	out.WriteString(htmlCSS())
+	out.WriteString(`
+.severity-high { color: #d32f2f; font-weight: bold; }
+.severity-medium { color: #f57c00; font-weight: bold; }
+.severity-low { color: #388e3c; }
+.bottleneck-row { margin-bottom: 8px; }
+.control-cycle-row { margin-bottom: 8px; }
+`)
+	out.WriteString("</style>\n</head>\n<body>\n")
+
+	out.WriteString(fmt.Sprintf("<h1>HPA Replay Analysis: %s/%s</h1>\n", htmlEscape(tl.Namespace), htmlEscape(tl.HPAName)))
+	out.WriteString(fmt.Sprintf("<p>Period: %s - %s</p>\n",
+		tl.Since.Format(time.RFC3339), tl.Until.Format(time.RFC3339)))
+
+	// Summary stats.
+	out.WriteString("<div class=\"summary\">\n")
+	out.WriteString(fmt.Sprintf("<p><strong>Bottlenecks:</strong> %d\n", len(analysis.Bottlenecks)))
+	out.WriteString(fmt.Sprintf("<strong>Control Cycles:</strong> %d\n", len(analysis.ControlCycles)))
+	out.WriteString(fmt.Sprintf("<strong>Stabilization Windows:</strong> %d\n", len(analysis.StabilizationWindows)))
+	out.WriteString(fmt.Sprintf("<strong>Tolerance Effects:</strong> %d</p>\n", len(analysis.ReplayToleranceEffects)))
+	out.WriteString("</div>\n")
+
+	// Bottlenecks section.
+	if len(analysis.Bottlenecks) > 0 {
+		out.WriteString("<h2>Bottlenecks</h2>\n<table>\n<tr><th>Time</th><th>Type</th><th>Severity</th><th>Message</th><th>Duration</th></tr>\n")
+		for _, b := range analysis.Bottlenecks {
+			severityClass := "severity-" + strings.ToLower(b.Severity)
+			durationStr := "0s"
+			if b.Duration > 0 {
+				durationStr = formatDuration(b.Duration)
+			}
+			out.WriteString("<tr>")
+			out.WriteString(fmt.Sprintf("<td>%s</td>", b.Timestamp.Format("15:04")))
+			out.WriteString(fmt.Sprintf("<td>%s</td>", htmlEscape(b.Type)))
+			out.WriteString(fmt.Sprintf("<td class=\"%s\">%s</td>", severityClass, htmlEscape(b.Severity)))
+			out.WriteString(fmt.Sprintf("<td>%s</td>", htmlEscape(b.Message)))
+			out.WriteString(fmt.Sprintf("<td>%s</td>", durationStr))
+			out.WriteString("</tr>\n")
+		}
+		out.WriteString("</table>\n")
+	}
+
+	// Control Cycles section.
+	if len(analysis.ControlCycles) > 0 {
+		out.WriteString("<h2>Control Cycles</h2>\n<table>\n<tr><th>Start</th><th>End</th><th>Decision</th><th>Input</th><th>Output</th><th>Metric Driver</th></tr>\n")
+		for _, c := range analysis.ControlCycles {
+			out.WriteString("<tr>")
+			out.WriteString(fmt.Sprintf("<td>%s</td>", c.Start.Format("15:04")))
+			out.WriteString(fmt.Sprintf("<td>%s</td>", c.End.Format("15:04")))
+			out.WriteString(fmt.Sprintf("<td>%s</td>", htmlEscape(c.Decision)))
+			out.WriteString(fmt.Sprintf("<td>%d</td>", c.InputReplicas))
+			out.WriteString(fmt.Sprintf("<td>%d</td>", c.OutputReplicas))
+			out.WriteString(fmt.Sprintf("<td>%s</td>", htmlEscape(c.MetricDriver)))
+			out.WriteString("</tr>\n")
+		}
+		out.WriteString("</table>\n")
+	}
+
+	// Stabilization Windows section.
+	if len(analysis.StabilizationWindows) > 0 {
+		out.WriteString("<h2>Stabilization Windows</h2>\n<table>\n<tr><th>Start</th><th>End</th><th>Duration</th><th>Suppressed Scale-Down</th></tr>\n")
+		for _, sw := range analysis.StabilizationWindows {
+			out.WriteString("<tr>")
+			out.WriteString(fmt.Sprintf("<td>%s</td>", sw.Start.Format("15:04")))
+			out.WriteString(fmt.Sprintf("<td>%s</td>", sw.End.Format("15:04")))
+			out.WriteString(fmt.Sprintf("<td>%s</td>", formatDuration(sw.Duration)))
+			out.WriteString(fmt.Sprintf("<td>%d</td>", sw.SuppressedScaleDown))
+			out.WriteString("</tr>\n")
+		}
+		out.WriteString("</table>\n")
+	}
+
+	// Tolerance Effects section.
+	if len(analysis.ReplayToleranceEffects) > 0 {
+		out.WriteString("<h2>Tolerance Effects</h2>\n<table>\n<tr><th>Time</th><th>Metric</th><th>Actual Ratio</th><th>Tolerance</th><th>Suppressed</th></tr>\n")
+		for _, te := range analysis.ReplayToleranceEffects {
+			suppressed := "No"
+			if te.Suppressed {
+				suppressed = "Yes"
+			}
+			out.WriteString("<tr>")
+			out.WriteString(fmt.Sprintf("<td>%s</td>", te.Timestamp.Format("15:04")))
+			out.WriteString(fmt.Sprintf("<td>%s</td>", htmlEscape(te.MetricName)))
+			out.WriteString(fmt.Sprintf("<td>%.2f</td>", te.ActualRatio))
+			out.WriteString(fmt.Sprintf("<td>%.2f</td>", te.Tolerance))
+			out.WriteString(fmt.Sprintf("<td>%s</td>", suppressed))
+			out.WriteString("</tr>\n")
+		}
+		out.WriteString("</table>\n")
+	}
+
+	// Summary.
+	out.WriteString(fmt.Sprintf("<h2>Summary</h2>\n<p>%s</p>\n", htmlEscape(analysis.Summary)))
+	out.WriteString(fmt.Sprintf("<p class=\"disclaimer\">%s</p>\n", htmlEscape(tl.Disclaimer)))
+	out.WriteString("<footer>Generated by kubectl-hpa-status</footer>\n")
+	out.WriteString("</body>\n</html>\n")
+
+	_, err := io.WriteString(w, out.String())
+	return err
+}

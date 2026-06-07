@@ -48,6 +48,7 @@ func (DefaultLabels) Get(key string) string {
 		"label_blocker_interpretation": "Interpretation",
 		"label_blocker_next_commands": "Next commands",
 		"label_capacity_plan":        "Capacity Plan",
+		"label_metric_contract":      "Metrics Contract",
 	}
 	if v, ok := defaults[key]; ok {
 		return v
@@ -92,5 +93,6 @@ func resolveLabels(provider LabelProvider) labels {
 		Blockers:            provider.Get("label_blockers"),
 		NextCommands:        provider.Get("label_blocker_next_commands"),
 		CapacityPlan:        provider.Get("label_capacity_plan"),
+		MetricContract:      provider.Get("label_metric_contract"),
 	}
 }

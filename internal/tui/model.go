@@ -24,9 +24,10 @@ const (
 	detailView
 	helpView
 	metricsView
-	simView    // Interactive simulation panel
-	fixView    // Fix wizard for problematic HPAs
-	replayView // Replay timeline visualization
+	simView       // Interactive simulation panel
+	fixView       // Fix wizard for problematic HPAs
+	replayView    // Replay timeline visualization
+	batchAuditView // Batch auditor results for selected HPAs
 )
 
 // Model is the top-level bubbletea model for the TUI dashboard.
@@ -55,9 +56,10 @@ type Model struct {
 	initialFocused bool
 
 	// Interactive mode states (nil when inactive).
-	simState    *simState
-	fixState    *fixState
-	replayState *replayState
+	simState       *simState
+	fixState       *fixState
+	replayState    *replayState
+	batchAuditState *batchAuditState
 
 	keys keyMap
 }
@@ -90,6 +92,10 @@ type Options struct {
 	// ApplyFn is an optional callback for applying patches from the TUI.
 	// When nil, the fix wizard apply action is disabled.
 	ApplyFn ApplyFunc
+
+	// AuditFn is an optional callback for running the best-practice auditor
+	// on an HPA. When nil, the batch auditor action is disabled.
+	AuditFn AuditFunc
 }
 
 // keyMap defines the keyboard shortcuts.
@@ -118,6 +124,8 @@ type keyMap struct {
 	DryRun        key.Binding
 	IntervalUp    key.Binding
 	IntervalDown  key.Binding
+	BatchAudit    key.Binding
+	BatchApply    key.Binding
 }
 
 func defaultKeys() keyMap {
@@ -217,6 +225,14 @@ func defaultKeys() keyMap {
 		IntervalDown: key.NewBinding(
 			key.WithKeys("-"),
 			key.WithHelp("-", "slower refresh"),
+		),
+		BatchAudit: key.NewBinding(
+			key.WithKeys("B"),
+			key.WithHelp("B", "batch auditor"),
+		),
+		BatchApply: key.NewBinding(
+			key.WithKeys("x"),
+			key.WithHelp("x", "batch apply"),
 		),
 	}
 }

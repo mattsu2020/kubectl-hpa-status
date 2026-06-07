@@ -72,6 +72,9 @@ type statusOptions struct {
 	events                eventOption
 	recommend             bool
 	report                string
+	gitopsCheck           bool
+	manifestPath          string
+	metricContract        bool
 }
 
 // listOptions holds flags specific to the list / scan commands.
@@ -219,6 +222,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newReplayCommand(opts))
 	root.AddCommand(newRecommendCommand(opts))
 	root.AddCommand(newPolicyCommand(opts))
+	root.AddCommand(newSnapshotCommand(opts))
 	root.AddCommand(newVersionCommand())
 	root.AddCommand(newCompletionCommand(root))
 

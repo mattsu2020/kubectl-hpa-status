@@ -13,6 +13,11 @@ import (
 // free of direct Kubernetes patch imports.
 type ApplyFunc func(ctx context.Context, namespace, name, patch string) error
 
+// AuditFunc runs the best-practice auditor on an HPA and returns the report.
+// Injected from the cmd layer to keep the TUI package free of direct
+// Kubernetes client dependencies.
+type AuditFunc func(ctx context.Context, namespace, name string) (*hpaanalysis.AuditReport, error)
+
 // simState holds the interactive simulation panel state.
 type simState struct {
 	hpa        *autoscalingv2.HorizontalPodAutoscaler
@@ -44,11 +49,32 @@ type fixState struct {
 
 // replayState holds the replay timeline viewer state.
 type replayState struct {
-	trace     *hpaanalysis.TimelineTrace
+	trace          *hpaanalysis.TimelineTrace
+	replayAnalysis *hpaanalysis.ReplayAnalysis
+	scrollPos      int
+	err            error
+	loading        bool
+	filePath       string
+}
+
+// batchAuditState holds the batch auditor results for selected HPAs.
+type batchAuditState struct {
+	reports   map[string]*hpaanalysis.AuditReport
+	results   []batchAuditEntry
 	scrollPos int
 	err       error
 	loading   bool
-	filePath  string
+}
+
+// batchAuditEntry is a single entry in the batch audit results.
+type batchAuditEntry struct {
+	Namespace string
+	Name      string
+	Score     int
+	Findings  int
+	Critical  int
+	Warnings  int
+	Summary   string
 }
 
 // Bubble Tea message types for asynchronous operations.
@@ -69,4 +95,10 @@ type applyResultMsg struct {
 type replayLoadedMsg struct {
 	trace *hpaanalysis.TimelineTrace
 	err   error
+}
+
+// batchAuditMsg carries the results of a batch audit operation.
+type batchAuditMsg struct {
+	reports map[string]*hpaanalysis.AuditReport
+	err     error
 }

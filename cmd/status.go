@@ -313,6 +313,17 @@ func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, 
 		report.Analysis.CapacityPlan = buildCapacityPlanForStatus(ctx, client, hpa, report.Analysis.Target, opts.targetMax)
 	}
 
+	if opts.gitopsCheck || opts.manifestPath != "" {
+		if conflict, err := buildGitOpsConflict(ctx, client, hpa, opts.manifestPath); err == nil && conflict != nil {
+			report.Analysis.GitOpsConflict = conflict
+		}
+	}
+
+	if opts.metricContract {
+		input := buildMetricContractInput(ctx, client, hpa)
+		report.Analysis.MetricContract = hpaanalysis.AnalyzeMetricContract(input)
+	}
+
 	return report, nil
 }
 

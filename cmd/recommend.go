@@ -17,24 +17,26 @@ func newRecommendCommand(opts *options) *cobra.Command {
 		Args:              cobra.MinimumNArgs(1),
 		ValidArgsFunction: hpaNameCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runRecommend(cmd.Context(), cmd.OutOrStdout(), opts, args)
+			profile, _ := cmd.Flags().GetString("profile")
+			return runRecommend(cmd.Context(), cmd.OutOrStdout(), opts, args, hpaanalysis.AuditProfile(profile))
 		},
 	}
+	cmd.Flags().String("profile", "", "workload profile for threshold adjustments: latency, cost, batch, keda, critical")
 	return cmd
 }
 
-func runRecommend(ctx context.Context, out io.Writer, opts *options, args []string) error {
+func runRecommend(ctx context.Context, out io.Writer, opts *options, args []string, profile hpaanalysis.AuditProfile) error {
 	client, err := opts.newClient()
 	if err != nil {
 		return fmt.Errorf("creating client: %w", err)
 	}
 
-	for _, name := range args {
+	for _, hpaName := range args {
 		hpa, err := client.Interface.AutoscalingV2().
 			HorizontalPodAutoscalers(client.Namespace).
-			Get(ctx, name, metav1.GetOptions{})
+			Get(ctx, hpaName, metav1.GetOptions{})
 		if err != nil {
-			return fmt.Errorf("getting HPA %s: %w", name, err)
+			return fmt.Errorf("getting HPA %s: %w", hpaName, err)
 		}
 
 		minReplicas := hpaanalysis.DefaultMinReplicas
@@ -42,7 +44,12 @@ func runRecommend(ctx context.Context, out io.Writer, opts *options, args []stri
 			minReplicas = *hpa.Spec.MinReplicas
 		}
 
-		report := hpaanalysis.AuditHPA(hpa, minReplicas)
+		var report *hpaanalysis.AuditReport
+		if profile != "" {
+			report = hpaanalysis.AuditHPAWithProfile(hpa, minReplicas, profile)
+		} else {
+			report = hpaanalysis.AuditHPA(hpa, minReplicas)
+		}
 
 		format, templateStr := outputSelection(outputConfig{
 			report: opts.report, output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates,

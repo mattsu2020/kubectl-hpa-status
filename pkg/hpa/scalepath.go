@@ -56,6 +56,11 @@ func AnalyzeScalePath(hpa *autoscalingv2.HorizontalPodAutoscaler, input ScalePat
 	}
 
 	addScalePathAssessment(path, hpa, input, counts, targetDesired)
+	analyzeProbeConfiguration(path, input, counts, targetDesired)
+	analyzeSchedulerConstraints(path, input)
+	analyzeQuotaBlocking(path, input)
+	detectAutoscalerEvents(path, input)
+	analyzeNotReadyPods(path, input, counts)
 	return path
 }
 
@@ -171,4 +176,118 @@ func firstSchedulingEvent(events []Event) string {
 		}
 	}
 	return ""
+}
+
+// analyzeProbeConfiguration checks readiness and startup probes for slow
+// configurations that could delay pod readiness during scale-up.
+func analyzeProbeConfiguration(path *ScalePath, input ScalePathInput, counts scalePathPodCounts, desired int32) {
+	tpl := input.PodTemplate
+	if tpl == nil {
+		return
+	}
+
+	// Check for pods that are created but not yet ready
+	if counts.total == 0 || counts.ready >= desired {
+		return
+	}
+
+	if tpl.ReadinessProbe != nil {
+		totalDelay := tpl.ReadinessProbe.InitialDelaySeconds + tpl.ReadinessProbe.PeriodSeconds*tpl.ReadinessProbe.FailureThreshold
+		if totalDelay > 120 {
+			path.ProbeWarnings = append(path.ProbeWarnings,
+				fmt.Sprintf("readinessProbe may delay pod ready state by up to %ds (initialDelay=%d + period×failures=%d). This can slow scale-up.", totalDelay, tpl.ReadinessProbe.InitialDelaySeconds, tpl.ReadinessProbe.PeriodSeconds*tpl.ReadinessProbe.FailureThreshold))
+		}
+	}
+
+	if tpl.StartupProbe != nil {
+		totalDelay := tpl.StartupProbe.InitialDelaySeconds + tpl.StartupProbe.PeriodSeconds*tpl.StartupProbe.FailureThreshold
+		if totalDelay > 180 {
+			path.ProbeWarnings = append(path.ProbeWarnings,
+				fmt.Sprintf("startupProbe may delay pod ready state by up to %ds (initialDelay=%d + period×failures=%d). Slow startup probes increase scale-up latency.", totalDelay, tpl.StartupProbe.InitialDelaySeconds, tpl.StartupProbe.PeriodSeconds*tpl.StartupProbe.FailureThreshold))
+		}
+	}
+}
+
+// analyzeSchedulerConstraints checks for nodeSelector, affinity, toleration,
+// and topology spread constraints that may limit pod placement during scale-up.
+func analyzeSchedulerConstraints(path *ScalePath, input ScalePathInput) {
+	tpl := input.PodTemplate
+	if tpl == nil {
+		return
+	}
+
+	info := &ScalePathSchedulerInfo{}
+
+	if len(tpl.NodeSelector) > 0 {
+		info.NodeSelectorLabels = len(tpl.NodeSelector)
+	}
+
+	if tpl.AffinitySummary != "" {
+		info.AffinityConstraints = append(info.AffinityConstraints, tpl.AffinitySummary)
+	}
+
+	if len(tpl.TopologySpread) > 0 {
+		info.TopologySpreadConstraints = tpl.TopologySpread
+	}
+
+	// Only set SchedulerInfo if there are actual constraints
+	if info.NodeSelectorLabels > 0 || len(info.AffinityConstraints) > 0 || len(info.TopologySpreadConstraints) > 0 {
+		if countsHaveUnschedulable(input.Pods) {
+			info.Warning = "Scheduling constraints may contribute to Unschedulable pods"
+		}
+		path.SchedulerInfo = info
+	}
+}
+
+// analyzeQuotaBlocking checks ResourceQuotas for constraints that may block
+// pod creation during scale-up.
+func analyzeQuotaBlocking(path *ScalePath, input ScalePathInput) {
+	for i := range input.ResourceQuotas {
+		q := input.ResourceQuotas[i]
+		if q.Blocking {
+			path.QuotaChecks = append(path.QuotaChecks, q)
+			path.Evidence = append(path.Evidence,
+				fmt.Sprintf("ResourceQuota %q may block scale-up: %s %s/%s", q.Name, q.Resource, q.Used, q.Hard))
+		}
+	}
+	if len(path.QuotaChecks) > 0 {
+		path.NextActions = append(path.NextActions, "Check kubectl describe quota -n <namespace> for remaining capacity")
+	}
+}
+
+// detectAutoscalerEvents looks for Cluster Autoscaler or Karpenter events
+// indicating node provisioning in progress.
+func detectAutoscalerEvents(path *ScalePath, input ScalePathInput) {
+	for _, msg := range input.AutoscalerEvents {
+		path.AutoscalerEvents = append(path.AutoscalerEvents, msg)
+		path.Evidence = append(path.Evidence, fmt.Sprintf("autoscaler: %s", msg))
+	}
+	if len(path.AutoscalerEvents) > 0 {
+		path.NextActions = append(path.NextActions, "Node provisioning in progress — monitor node readiness")
+	}
+}
+
+// analyzeNotReadyPods provides deeper analysis of pods that are created but
+// not yet ready, distinguishing between different causes.
+func analyzeNotReadyPods(path *ScalePath, input ScalePathInput, counts scalePathPodCounts) {
+	if len(input.NotReadyPods) == 0 {
+		return
+	}
+
+	for _, pod := range input.NotReadyPods {
+		if strings.EqualFold(pod.Phase, "Running") && !pod.Ready {
+			path.Evidence = append(path.Evidence,
+				fmt.Sprintf("pod %s is Running but not Ready — may be passing readiness/startup probe", pod.Name))
+		}
+	}
+}
+
+// countsHaveUnschedulable returns true if any pod in the list is unschedulable.
+func countsHaveUnschedulable(pods []ScalePathPod) bool {
+	for _, pod := range pods {
+		if pod.Unschedulable {
+			return true
+		}
+	}
+	return false
 }

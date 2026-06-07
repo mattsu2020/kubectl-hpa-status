@@ -53,6 +53,9 @@ func registerStatusFlags(cmd *cobra.Command, opts *options) {
 	cmd.PersistentFlags().BoolVar(&opts.capacityPlan, "capacity-plan", false, "run capacity plan analysis when HPA is at maxReplicas")
 	cmd.PersistentFlags().Int32Var(&opts.targetMax, "target-max", 0, "target maxReplicas for capacity plan (default: 2x current max, capped at 200)")
 	cmd.PersistentFlags().StringVar(&opts.report, "report", "", "generate standalone report: markdown or html")
+	cmd.PersistentFlags().BoolVar(&opts.gitopsCheck, "gitops-check", false, "detect GitOps manifest conflicts with HPA-managed replicas")
+	cmd.PersistentFlags().StringVar(&opts.manifestPath, "manifest", "", "path to manifest file or directory for GitOps conflict detection")
+	cmd.PersistentFlags().BoolVar(&opts.metricContract, "metric-contract", false, "verify HPA metric references are queryable from metrics APIs")
 }
 
 // registerWatchFlags registers flags specific to the watch / TUI commands.

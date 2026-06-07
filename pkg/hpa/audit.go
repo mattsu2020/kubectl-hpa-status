@@ -11,6 +11,12 @@ type AuditRule func(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int3
 
 // AuditHPA runs all audit rules against the HPA and returns a compliance report.
 func AuditHPA(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) *AuditReport {
+	return AuditHPAWithProfile(hpa, minReplicas, "")
+}
+
+// AuditHPAWithProfile runs all audit rules against the HPA using the given
+// workload profile to adjust thresholds. An empty profile uses defaults.
+func AuditHPAWithProfile(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32, profile AuditProfile) *AuditReport {
 	if hpa == nil {
 		return &AuditReport{Score: 0, Summary: "HPA is nil"}
 	}
@@ -20,9 +26,10 @@ func AuditHPA(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) *Au
 		Name:      hpa.Name,
 		Target:    fmt.Sprintf("%s/%s", hpa.Spec.ScaleTargetRef.Kind, hpa.Spec.ScaleTargetRef.Name),
 		Score:     healthScoreMax, // start at 100
+		Profile:   profile,
 	}
 
-	for _, rule := range coreAuditRules() {
+	for _, rule := range coreAuditRulesWithProfile(profile) {
 		findings := rule(hpa, minReplicas)
 		report.Findings = append(report.Findings, findings...)
 	}
@@ -47,7 +54,13 @@ func AuditHPA(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) *Au
 
 // coreAuditRules returns the ordered list of best-practice audit rules.
 func coreAuditRules() []AuditRule {
-	return []AuditRule{
+	return coreAuditRulesWithProfile("")
+}
+
+// coreAuditRulesWithProfile returns the base audit rules plus any
+// profile-specific rules that apply for the given workload profile.
+func coreAuditRulesWithProfile(profile AuditProfile) []AuditRule {
+	base := []AuditRule{
 		stabilizationWindowAuditRule,
 		replicaRangeAuditRule,
 		behaviorPolicyAuditRule,
@@ -58,6 +71,9 @@ func coreAuditRules() []AuditRule {
 		kedaAuditRule,
 		targetUtilizationAuditRule,
 	}
+
+	profileRules := profileSpecificRules(profile)
+	return append(base, profileRules...)
 }
 
 func buildAuditSummary(report *AuditReport) string {

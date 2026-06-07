@@ -26,6 +26,8 @@ func runDoctor(ctx context.Context, out io.Writer, opts *options, names []string
 	opts.checkResources = true
 	opts.explainPods = true
 	opts.capacityContext = true
+	opts.gitopsCheck = true
+	opts.metricContract = true
 
 	return runStatusMany(ctx, out, opts, names, !opts.noInterpret)
 }

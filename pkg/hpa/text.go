@@ -489,6 +489,11 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 		AppendCapacityPlanText(&out, a.CapacityPlan, theme, labels)
 	}
 
+	if a.MetricContract != nil {
+		out = append(out, '\n')
+		appendMetricContractText(&out, a.MetricContract, theme)
+	}
+
 	out = append(out, '\n')
 	out = fmt.Appendf(out, "%s:\n", labels.Events)
 	if len(report.Events) == 0 {
@@ -516,6 +521,43 @@ func appendScalePathText(out *[]byte, path *ScalePath, theme style.Theme) {
 		*out = append(*out, "\nEvidence:\n"...)
 		for _, evidence := range path.Evidence {
 			*out = fmt.Appendf(*out, "  - %s\n", evidence)
+		}
+	}
+	if len(path.ProbeWarnings) > 0 {
+		*out = append(*out, "\nProbe warnings:\n"...)
+		for _, warning := range path.ProbeWarnings {
+			*out = fmt.Appendf(*out, "  - %s\n", theme.InterpretationLine(warning))
+		}
+	}
+	if path.SchedulerInfo != nil {
+		*out = append(*out, "\nScheduler constraints:\n"...)
+		if path.SchedulerInfo.NodeSelectorLabels > 0 {
+			*out = fmt.Appendf(*out, "  nodeSelector: %d labels\n", path.SchedulerInfo.NodeSelectorLabels)
+		}
+		for _, ac := range path.SchedulerInfo.AffinityConstraints {
+			*out = fmt.Appendf(*out, "  affinity: %s\n", ac)
+		}
+		for _, ts := range path.SchedulerInfo.TopologySpreadConstraints {
+			*out = fmt.Appendf(*out, "  topologySpread: %s\n", ts)
+		}
+		if path.SchedulerInfo.Warning != "" {
+			*out = fmt.Appendf(*out, "  %s\n", theme.InterpretationLine(path.SchedulerInfo.Warning))
+		}
+	}
+	if len(path.QuotaChecks) > 0 {
+		*out = append(*out, "\nQuota checks:\n"...)
+		for _, q := range path.QuotaChecks {
+			status := "OK"
+			if q.Blocking {
+				status = "BLOCKING"
+			}
+			*out = fmt.Appendf(*out, "  [%s] %s: %s %s/%s\n", status, q.Name, q.Resource, q.Used, q.Hard)
+		}
+	}
+	if len(path.AutoscalerEvents) > 0 {
+		*out = append(*out, "\nAutoscaler events:\n"...)
+		for _, event := range path.AutoscalerEvents {
+			*out = fmt.Appendf(*out, "  - %s\n", event)
 		}
 	}
 	if len(path.NextActions) > 0 {
@@ -572,6 +614,7 @@ type labels struct {
 	Blockers            string
 	NextCommands        string
 	CapacityPlan        string
+	MetricContract      string
 }
 
 func textLabels(lang string) labels {
@@ -607,6 +650,7 @@ func textLabels(lang string) labels {
 			Blockers:            "スケールアウトブロッカー",
 			NextCommands:        "次のコマンド",
 			CapacityPlan:        "キャパシティプラン",
+			MetricContract:      "メトリクスコントラクト",
 		}
 	}
 	return labels{
@@ -640,6 +684,7 @@ func textLabels(lang string) labels {
 		Blockers:            "Scale-out blockers",
 		NextCommands:        "Next commands",
 		CapacityPlan:        "Capacity Plan",
+		MetricContract:      "Metrics Contract",
 	}
 }
 

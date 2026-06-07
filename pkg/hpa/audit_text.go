@@ -12,6 +12,11 @@ func WriteAuditText(w io.Writer, report *AuditReport, provider LabelProvider) er
 	if _, err := fmt.Fprintf(w, "%s: %s/%s (%s)\n", labels.Target, report.Namespace, report.Name, report.Target); err != nil {
 		return err
 	}
+	if report.Profile != "" {
+		if _, err := fmt.Fprintf(w, "Profile: %s\n", report.Profile); err != nil {
+			return err
+		}
+	}
 	if _, err := fmt.Fprintf(w, "%s: %d/100\n", labels.AuditScore, report.Score); err != nil {
 		return err
 	}

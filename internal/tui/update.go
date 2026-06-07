@@ -95,6 +95,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.replayState.err = msg.err
 		}
 		return m, nil
+
+	case batchAuditMsg:
+		if m.batchAuditState != nil {
+			m.batchAuditState.loading = false
+			if msg.err != nil {
+				m.batchAuditState.err = msg.err
+			} else {
+				m.batchAuditState.reports = msg.reports
+				m.batchAuditState.results = buildBatchAuditEntries(msg.reports)
+			}
+		}
+		return m, nil
 	}
 
 	return m, nil
@@ -243,6 +255,12 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.Replay):
 		return m.handleReplayKey()
 
+	case key.Matches(msg, m.keys.BatchAudit):
+		return m.handleBatchAuditKey()
+
+	case key.Matches(msg, m.keys.BatchApply):
+		return m.handleBatchApplyKey()
+
 	case key.Matches(msg, m.keys.MetricMode):
 		if m.viewMode == simView && m.simState != nil {
 			m.simState.metricMode = !m.simState.metricMode
@@ -380,6 +398,9 @@ func (m Model) handleEscape() (tea.Model, tea.Cmd) {
 		m.fixState = nil
 		m.replayState = nil
 		m.viewMode = detailView
+	case batchAuditView:
+		m.batchAuditState = nil
+		m.viewMode = listView
 	default:
 		return m, nil
 	}
@@ -699,4 +720,170 @@ func (m Model) handleFilterInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.filterInput, cmd = m.filterInput.Update(msg)
 		return m, cmd
 	}
+}
+
+// handleBatchAuditKey starts the batch auditor for all selected HPAs.
+func (m Model) handleBatchAuditKey() (tea.Model, tea.Cmd) {
+	if m.viewMode != listView {
+		return m, nil
+	}
+	if m.opts.AuditFn == nil {
+		m.err = fmt.Errorf("auditor not available")
+		return m, nil
+	}
+	selected := m.selectedHPANames()
+	if len(selected) == 0 {
+		m.err = fmt.Errorf("no HPAs selected; use space to select, a to select all")
+		return m, nil
+	}
+
+	m.batchAuditState = &batchAuditState{
+		loading: true,
+		reports: map[string]*hpaanalysis.AuditReport{},
+	}
+	m.viewMode = batchAuditView
+
+	auditFn := m.opts.AuditFn
+	namespace := m.namespace
+
+	return m, func() tea.Msg {
+		reports := make(map[string]*hpaanalysis.AuditReport)
+		var lastErr error
+		for _, name := range selected {
+			ns := namespace
+			if ns == "" {
+				parts := splitNamespaceName(name)
+				if len(parts) == 2 {
+					ns = parts[0]
+					name = parts[1]
+				}
+			}
+			report, err := auditFn(context.Background(), ns, name)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			reports[name] = report
+		}
+		return batchAuditMsg{reports: reports, err: lastErr}
+	}
+}
+
+// handleBatchApplyKey runs batch suggest+apply for all selected HPAs.
+func (m Model) handleBatchApplyKey() (tea.Model, tea.Cmd) {
+	if m.viewMode != listView {
+		return m, nil
+	}
+	if m.opts.ApplyFn == nil {
+		m.err = fmt.Errorf("apply not available (no Kubernetes client)")
+		return m, nil
+	}
+	selected := m.selectedHPANames()
+	if len(selected) == 0 {
+		m.err = fmt.Errorf("no HPAs selected; use space to select, a to select all")
+		return m, nil
+	}
+
+	type patchEntry struct {
+		namespace string
+		name      string
+		patch     string
+		title     string
+	}
+	var patches []patchEntry
+	for _, itemKey := range selected {
+		report, ok := m.reports[itemKey]
+		if !ok || report == nil {
+			continue
+		}
+		for _, s := range report.Analysis.Suggestions {
+			if s.Apply && s.Patch != "" {
+				patches = append(patches, patchEntry{
+					namespace: report.Analysis.Namespace,
+					name:      report.Analysis.Name,
+					patch:     s.Patch,
+					title:     s.Title,
+				})
+			}
+		}
+	}
+
+	if len(patches) == 0 {
+		m.err = fmt.Errorf("no applicable patches found in %d selected HPA(s)", len(selected))
+		return m, nil
+	}
+
+	applyFn := m.opts.ApplyFn
+	return m, func() tea.Msg {
+		var errs []string
+		for _, p := range patches {
+			if err := applyFn(context.Background(), p.namespace, p.name, p.patch); err != nil {
+				errs = append(errs, fmt.Sprintf("%s/%s: %v", p.namespace, p.name, err))
+			}
+		}
+		if len(errs) > 0 {
+			return applyResultMsg{title: fmt.Sprintf("batch: %d/%d failed", len(errs), len(patches)), err: fmt.Errorf("%s", joinStrings(errs, "; "))}
+		}
+		return applyResultMsg{title: fmt.Sprintf("batch: %d patches applied", len(patches)), err: nil}
+	}
+}
+
+// selectedHPANames returns the keys of selected HPAs.
+func (m Model) selectedHPANames() []string {
+	var names []string
+	for k, v := range m.selected {
+		if v {
+			names = append(names, k)
+		}
+	}
+	return names
+}
+
+// splitNamespaceName splits "namespace/name" into [namespace, name].
+func splitNamespaceName(key string) []string {
+	for i, ch := range key {
+		if ch == '/' {
+			return []string{key[:i], key[i+1:]}
+		}
+	}
+	return []string{key}
+}
+
+// buildBatchAuditEntries converts audit reports into display entries.
+func buildBatchAuditEntries(reports map[string]*hpaanalysis.AuditReport) []batchAuditEntry {
+	entries := make([]batchAuditEntry, 0, len(reports))
+	for _, report := range reports {
+		critical := 0
+		warnings := 0
+		for _, f := range report.Findings {
+			switch f.Severity {
+			case hpaanalysis.AuditCritical:
+				critical++
+			case hpaanalysis.AuditWarning:
+				warnings++
+			}
+		}
+		entries = append(entries, batchAuditEntry{
+			Namespace: report.Namespace,
+			Name:      report.Name,
+			Score:     report.Score,
+			Findings:  len(report.Findings),
+			Critical:  critical,
+			Warnings:  warnings,
+			Summary:   report.Summary,
+		})
+	}
+	return entries
+}
+
+// joinStrings concatenates strings with a separator.
+func joinStrings(ss []string, sep string) string {
+	if len(ss) == 0 {
+		return ""
+	}
+	result := ss[0]
+	for _, s := range ss[1:] {
+		result += sep + s
+	}
+	return result
 }

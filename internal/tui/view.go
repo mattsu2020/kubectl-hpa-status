@@ -35,6 +35,8 @@ func (m Model) View() string {
 		content = m.renderFixView()
 	case replayView:
 		content = m.renderReplayView()
+	case batchAuditView:
+		content = m.renderBatchAuditView()
 	}
 
 	statusBar := m.renderStatusBar()
@@ -54,6 +56,11 @@ func (m Model) renderHelpView() string {
 		{"/", "Filter by name, namespace, health, or issue"},
 		{"S", "Cycle sort: name → health-score → issue → namespace"},
 		{"g", "Jump to first problematic HPA"},
+		{"space", "Toggle select current HPA"},
+		{"a", "Select all visible HPAs"},
+		{"A", "Deselect all"},
+		{"B", "Batch auditor on selected HPAs"},
+		{"x", "Batch apply patches to selected HPAs"},
 		{"s", "Open simulation panel"},
 		{"f", "Open fix wizard"},
 		{"T", "Open replay timeline"},

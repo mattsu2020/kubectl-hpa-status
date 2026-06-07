@@ -1292,7 +1292,7 @@ func TestRunTimeline_Retrospective(t *testing.T) {
 			clientOverride: fakeClient,
 			color:         "never",
 		},
-	}, "web", 30*time.Minute)
+	}, "web", 30*time.Minute, false)
 	if err != nil {
 		t.Fatalf("runRetrospectiveTimeline returned error: %v", err)
 	}
@@ -1327,7 +1327,7 @@ func TestRunTimeline_Retrospective_JSON(t *testing.T) {
 			clientOverride: fakeClient,
 			output:        "json",
 		},
-	}, "web", 30*time.Minute)
+	}, "web", 30*time.Minute, false)
 	if err != nil {
 		t.Fatalf("runRetrospectiveTimeline JSON returned error: %v", err)
 	}
@@ -1351,7 +1351,7 @@ func TestRunTimeline_Retrospective_NoEvents(t *testing.T) {
 			clientOverride: fakeClient,
 			color:         "never",
 		},
-	}, "web", 30*time.Minute)
+	}, "web", 30*time.Minute, false)
 	if err != nil {
 		t.Fatalf("runRetrospectiveTimeline returned error: %v", err)
 	}

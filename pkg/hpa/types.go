@@ -177,6 +177,12 @@ type Analysis struct {
 	// EnrichmentStatus holds KEDA/VPA enrichment skip reasons for diagnostic output.
 	// Populated during enrichment to explain why data may be absent.
 	EnrichmentStatus interface{} `json:"enrichmentStatus,omitempty" yaml:"enrichmentStatus,omitempty"`
+	// MetricContract holds metrics contract validation results, populated when
+	// --metric-contract is enabled.
+	MetricContract *MetricContractReport `json:"metricContract,omitempty" yaml:"metricContract,omitempty"`
+	// GitOpsConflict holds GitOps manifest conflict detection results, populated when
+	// --gitops-check is enabled or --manifest is provided.
+	GitOpsConflict *GitOpsConflict `json:"gitopsConflict,omitempty" yaml:"gitopsConflict,omitempty"`
 }
 
 // DecisionSignal is the stable internal shape for explicit controller scaling
@@ -560,6 +566,22 @@ type AuditFinding struct {
 	References []string `json:"references,omitempty" yaml:"references,omitempty"`
 }
 
+// AuditProfile represents a workload profile that adjusts audit rule thresholds.
+type AuditProfile string
+
+const (
+	// ProfileLatency optimizes for low-latency workloads: fast scale-up, slow scale-down.
+	ProfileLatency AuditProfile = "latency"
+	// ProfileCost optimizes for cost efficiency: low minReplicas, aggressive scale-down.
+	ProfileCost AuditProfile = "cost"
+	// ProfileBatch is for batch workloads: high CPU tolerance, no urgent scale-up.
+	ProfileBatch AuditProfile = "batch"
+	// ProfileKEDA is for KEDA-managed workloads: scale-to-zero, trigger/cooldown focus.
+	ProfileKEDA AuditProfile = "keda"
+	// ProfileCritical is for critical workloads: maxReplicas headroom, capacity checks.
+	ProfileCritical AuditProfile = "critical"
+)
+
 // AuditReport holds the complete audit result for an HPA.
 type AuditReport struct {
 	// Namespace is the HPA namespace.
@@ -574,6 +596,8 @@ type AuditReport struct {
 	Findings []AuditFinding `json:"findings" yaml:"findings"`
 	// Summary is a human-readable one-line summary of the audit.
 	Summary string `json:"summary" yaml:"summary"`
+	// Profile indicates the workload profile used for threshold adjustments, if any.
+	Profile AuditProfile `json:"profile,omitempty" yaml:"profile,omitempty"`
 }
 
 // CapacityContext holds infrastructure capacity analysis for the HPA scale target.
@@ -587,10 +611,14 @@ type CapacityContext struct {
 // ScalePath describes the visible scale-up path from the HPA recommendation
 // through the workload, ReplicaSets, pods, and scheduler-facing signals.
 type ScalePath struct {
-	Steps         []ScalePathStep `json:"steps" yaml:"steps"`
-	BlockingPoint string          `json:"blockingPoint,omitempty" yaml:"blockingPoint,omitempty"`
-	Evidence      []string        `json:"evidence,omitempty" yaml:"evidence,omitempty"`
-	NextActions   []string        `json:"nextActions,omitempty" yaml:"nextActions,omitempty"`
+	Steps         []ScalePathStep          `json:"steps" yaml:"steps"`
+	BlockingPoint string                   `json:"blockingPoint,omitempty" yaml:"blockingPoint,omitempty"`
+	Evidence      []string                 `json:"evidence,omitempty" yaml:"evidence,omitempty"`
+	NextActions   []string                 `json:"nextActions,omitempty" yaml:"nextActions,omitempty"`
+	ProbeWarnings []string                 `json:"probeWarnings,omitempty" yaml:"probeWarnings,omitempty"`
+	SchedulerInfo *ScalePathSchedulerInfo  `json:"schedulerInfo,omitempty" yaml:"schedulerInfo,omitempty"`
+	QuotaChecks   []ScalePathQuotaCheck    `json:"quotaChecks,omitempty" yaml:"quotaChecks,omitempty"`
+	AutoscalerEvents []string              `json:"autoscalerEvents,omitempty" yaml:"autoscalerEvents,omitempty"`
 }
 
 // ScalePathStep is one hop in the HPA-to-pod scaling path.
@@ -625,13 +653,56 @@ type ScalePathPod struct {
 	Reasons       []string
 }
 
+// ProbeInfo describes a probe (readiness or startup) on the pod template.
+type ProbeInfo struct {
+	InitialDelaySeconds int32 `json:"initialDelaySeconds,omitempty" yaml:"initialDelaySeconds,omitempty"`
+	PeriodSeconds       int32 `json:"periodSeconds,omitempty" yaml:"periodSeconds,omitempty"`
+	TimeoutSeconds      int32 `json:"timeoutSeconds,omitempty" yaml:"timeoutSeconds,omitempty"`
+	FailureThreshold    int32 `json:"failureThreshold,omitempty" yaml:"failureThreshold,omitempty"`
+	SuccessThreshold    int32 `json:"successThreshold,omitempty" yaml:"successThreshold,omitempty"`
+}
+
+// ScalePathPodTemplate captures the pod template configuration relevant to
+// scale-path analysis (probes, scheduling constraints).
+type ScalePathPodTemplate struct {
+	ReadinessProbe     *ProbeInfo          `json:"readinessProbe,omitempty" yaml:"readinessProbe,omitempty"`
+	StartupProbe       *ProbeInfo          `json:"startupProbe,omitempty" yaml:"startupProbe,omitempty"`
+	NodeSelector       map[string]string   `json:"nodeSelector,omitempty" yaml:"nodeSelector,omitempty"`
+	Tolerations        []string            `json:"tolerations,omitempty" yaml:"tolerations,omitempty"`
+	AffinitySummary    string              `json:"affinitySummary,omitempty" yaml:"affinitySummary,omitempty"`
+	TopologySpread     []string            `json:"topologySpread,omitempty" yaml:"topologySpread,omitempty"`
+}
+
+// ScalePathSchedulerInfo describes scheduling constraints that may affect
+// pod placement during scale-up.
+type ScalePathSchedulerInfo struct {
+	TaintConflicts            []string `json:"taintConflicts,omitempty" yaml:"taintConflicts,omitempty"`
+	NodeSelectorLabels        int      `json:"nodeSelectorLabels,omitempty" yaml:"nodeSelectorLabels,omitempty"`
+	AffinityConstraints       []string `json:"affinityConstraints,omitempty" yaml:"affinityConstraints,omitempty"`
+	TopologySpreadConstraints []string `json:"topologySpreadConstraints,omitempty" yaml:"topologySpreadConstraints,omitempty"`
+	Warning                   string   `json:"warning,omitempty" yaml:"warning,omitempty"`
+}
+
+// ScalePathQuotaCheck describes a ResourceQuota that may block scale-up.
+type ScalePathQuotaCheck struct {
+	Name     string `json:"name" yaml:"name"`
+	Resource string `json:"resource" yaml:"resource"`
+	Used     string `json:"used" yaml:"used"`
+	Hard     string `json:"hard" yaml:"hard"`
+	Blocking bool   `json:"blocking" yaml:"blocking"`
+}
+
 // ScalePathInput contains the observable Kubernetes API signals used to build
 // a scale path. It intentionally excludes controller-internal calculations.
 type ScalePathInput struct {
-	Target      *ScalePathTarget
-	ReplicaSets []ScalePathReplicaSet
-	Pods        []ScalePathPod
-	Events      []Event
+	Target           *ScalePathTarget
+	ReplicaSets      []ScalePathReplicaSet
+	Pods             []ScalePathPod
+	Events           []Event
+	PodTemplate      *ScalePathPodTemplate
+	ResourceQuotas   []ScalePathQuotaCheck
+	AutoscalerEvents []string
+	NotReadyPods     []ScalePathPod
 }
 
 // PendingPodInfo describes a pending pod and its scheduling constraints.

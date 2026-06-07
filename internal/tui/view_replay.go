@@ -32,12 +32,49 @@ func (m Model) renderReplayView() string {
 	sb.WriteString(headerStyle.Render(fmt.Sprintf("Replay Timeline: %s/%s", trace.Namespace, trace.HPAName)))
 	sb.WriteString(fmt.Sprintf("  %d snapshots  interval=%s", len(trace.Snapshots), trace.Interval))
 	sb.WriteString("\n\n")
-	anomalies := hpaanalysis.DetectTimelineAnomalies(*trace)
-	for _, anomaly := range anomalies {
-		sb.WriteString(warnStyle.Render("! " + anomaly))
+
+	// Show replay analysis if available.
+	if m.replayState.replayAnalysis != nil {
+		analysis := m.replayState.replayAnalysis
+		sb.WriteString(headerStyle.Render("Replay Analysis:"))
 		sb.WriteString("\n")
-	}
-	if len(anomalies) > 0 {
+
+		// Show bottleneck count.
+		if len(analysis.Bottlenecks) > 0 {
+			highCount := 0
+			medCount := 0
+			for _, b := range analysis.Bottlenecks {
+				if b.Severity == "high" {
+					highCount++
+				} else if b.Severity == "medium" {
+					medCount++
+				}
+			}
+			bottleneckText := fmt.Sprintf("  Bottlenecks: %d (", len(analysis.Bottlenecks))
+			if highCount > 0 {
+				bottleneckText += errorStyle.Render(fmt.Sprintf("%d HIGH", highCount))
+			}
+			if medCount > 0 {
+				if highCount > 0 {
+					bottleneckText += ", "
+				}
+				bottleneckText += warnStyle.Render(fmt.Sprintf("%d MED", medCount))
+			}
+			bottleneckText += ")"
+			sb.WriteString(bottleneckText)
+			sb.WriteString("\n")
+		}
+
+		// Show control cycle count.
+		if len(analysis.ControlCycles) > 0 {
+			sb.WriteString(fmt.Sprintf("  Control Cycles: %d\n", len(analysis.ControlCycles)))
+		}
+
+		// Show stabilization window count.
+		if len(analysis.StabilizationWindows) > 0 {
+			sb.WriteString(fmt.Sprintf("  Stabilization Windows: %d\n", len(analysis.StabilizationWindows)))
+		}
+
 		sb.WriteString("\n")
 	}
 
@@ -57,6 +94,24 @@ func (m Model) renderReplayView() string {
 	for _, snap := range trace.Snapshots {
 		if snap.Desired > maxReplicas {
 			maxReplicas = snap.Desired
+		}
+	}
+
+	// Show bottleneck markers inline in the timeline.
+	bottleneckMarkers := make(map[string]string)
+	if m.replayState.replayAnalysis != nil {
+		for _, b := range m.replayState.replayAnalysis.Bottlenecks {
+			timeKey := b.Timestamp.Format("15:04:05")
+			marker := ""
+			switch b.Severity {
+			case "high":
+				marker = errorStyle.Render("[" + b.Type + "]")
+			case "medium":
+				marker = warnStyle.Render("[" + b.Type + "]")
+			default:
+				marker = dimStyle.Render("[" + b.Type + "]")
+			}
+			bottleneckMarkers[timeKey] = marker
 		}
 	}
 
@@ -91,6 +146,34 @@ func (m Model) renderReplayView() string {
 			}
 		}
 
+		// Show bottleneck marker if present.
+		if marker, ok := bottleneckMarkers[timeStr]; ok {
+			sb.WriteString("  " + marker)
+		}
+
+		sb.WriteString("\n")
+	}
+
+	// Bottlenecks section if replay analysis is available.
+	if m.replayState.replayAnalysis != nil && len(m.replayState.replayAnalysis.Bottlenecks) > 0 {
+		sb.WriteString("\n")
+		sb.WriteString(headerStyle.Render("Bottlenecks:"))
+		sb.WriteString("\n")
+
+		for _, b := range m.replayState.replayAnalysis.Bottlenecks {
+			timeStr := b.Timestamp.Format("15:04:05")
+			var severityMarker string
+			switch b.Severity {
+			case "high":
+				severityMarker = errorStyle.Render("[" + b.Severity + "]")
+			case "medium":
+				severityMarker = warnStyle.Render("[" + b.Severity + "]")
+			default:
+				severityMarker = dimStyle.Render("[" + b.Severity + "]")
+			}
+			sb.WriteString(fmt.Sprintf("  %s  %s %s — %s\n",
+				timeStr, severityMarker, b.Type, b.Message))
+		}
 		sb.WriteString("\n")
 	}
 

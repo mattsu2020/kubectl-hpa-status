@@ -83,6 +83,19 @@ func runTUI(ctx context.Context, out io.Writer, opts *options, initialName strin
 			}
 			return nil
 		},
+		AuditFn: func(auditCtx context.Context, ns, name string) (*hpaanalysis.AuditReport, error) {
+			hpa, err := client.Interface.AutoscalingV2().
+				HorizontalPodAutoscalers(ns).
+				Get(auditCtx, name, metav1.GetOptions{})
+			if err != nil {
+				return nil, fmt.Errorf("getting HPA %s: %w", name, err)
+			}
+			minReplicas := hpaanalysis.DefaultMinReplicas
+			if hpa.Spec.MinReplicas != nil {
+				minReplicas = *hpa.Spec.MinReplicas
+			}
+			return hpaanalysis.AuditHPA(hpa, minReplicas), nil
+		},
 	})
 
 	_, err = tea.NewProgram(model, tea.WithAltScreen(), tea.WithContext(ctx), tea.WithOutput(out)).Run()

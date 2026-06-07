@@ -1028,6 +1028,237 @@ func TestCoreAuditRules(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Profile-specific rule tests
+// ---------------------------------------------------------------------------
+
+func TestProfileSpecificRules(t *testing.T) {
+	tests := []struct {
+		profile        AuditProfile
+		wantRuleCount  int
+	}{
+		{ProfileLatency, 2},
+		{ProfileCost, 2},
+		{ProfileBatch, 1},
+		{ProfileKEDA, 2},
+		{ProfileCritical, 2},
+		{AuditProfile(""), 0},
+		{AuditProfile("unknown"), 0},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.profile), func(t *testing.T) {
+			rules := profileSpecificRules(tt.profile)
+			if len(rules) != tt.wantRuleCount {
+				t.Fatalf("expected %d profile rules for %q, got %d", tt.wantRuleCount, tt.profile, len(rules))
+			}
+		})
+	}
+}
+
+func TestLatencyStabilizationRule(t *testing.T) {
+	tests := []struct {
+		name         string
+		hpa          *autoscalingv2.HorizontalPodAutoscaler
+		wantFindings int
+	}{
+		{
+			name: "scaleUp stabilization > 60s returns warning",
+			hpa: &autoscalingv2.HorizontalPodAutoscaler{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-hpa", Namespace: "default"},
+				Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+					Behavior: &autoscalingv2.HorizontalPodAutoscalerBehavior{
+						ScaleUp: &autoscalingv2.HPAScalingRules{
+							StabilizationWindowSeconds: int32Ptr(120),
+						},
+					},
+				},
+			},
+			wantFindings: 1,
+		},
+		{
+			name: "scaleUp stabilization <= 60s returns no findings",
+			hpa: &autoscalingv2.HorizontalPodAutoscaler{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-hpa", Namespace: "default"},
+				Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+					Behavior: &autoscalingv2.HorizontalPodAutoscalerBehavior{
+						ScaleUp: &autoscalingv2.HPAScalingRules{
+							StabilizationWindowSeconds: int32Ptr(30),
+						},
+					},
+				},
+			},
+			wantFindings: 0,
+		},
+		{
+			name: "no behavior returns no findings",
+			hpa: &autoscalingv2.HorizontalPodAutoscaler{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-hpa", Namespace: "default"},
+			},
+			wantFindings: 0,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := latencyStabilizationRule(tt.hpa, 1)
+			if len(got) != tt.wantFindings {
+				t.Fatalf("expected %d findings, got %d", tt.wantFindings, len(got))
+			}
+			if tt.wantFindings > 0 && got[0].Category != "profile-latency" {
+				t.Fatalf("expected category profile-latency, got %q", got[0].Category)
+			}
+		})
+	}
+}
+
+func TestCostMinReplicasRule(t *testing.T) {
+	tests := []struct {
+		name         string
+		minReplicas  int32
+		wantFindings int
+	}{
+		{name: "minReplicas 5 returns finding", minReplicas: 5, wantFindings: 1},
+		{name: "minReplicas 2 returns no findings", minReplicas: 2, wantFindings: 0},
+		{name: "minReplicas 1 returns no findings", minReplicas: 1, wantFindings: 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := costMinReplicasRule(nil, tt.minReplicas)
+			if len(got) != tt.wantFindings {
+				t.Fatalf("expected %d findings, got %d", tt.wantFindings, len(got))
+			}
+		})
+	}
+}
+
+func TestCriticalMaxHeadroomRule(t *testing.T) {
+	tests := []struct {
+		name         string
+		current      int32
+		maxReplicas  int32
+		wantFindings int
+	}{
+		{name: "50% headroom OK", current: 4, maxReplicas: 8, wantFindings: 0},
+		{name: "insufficient headroom", current: 8, maxReplicas: 10, wantFindings: 1},
+		{name: "at max returns finding", current: 10, maxReplicas: 10, wantFindings: 1},
+		{name: "zero current returns no findings", current: 0, maxReplicas: 10, wantFindings: 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hpa := &autoscalingv2.HorizontalPodAutoscaler{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-hpa"},
+				Spec:       autoscalingv2.HorizontalPodAutoscalerSpec{MaxReplicas: tt.maxReplicas},
+				Status:     autoscalingv2.HorizontalPodAutoscalerStatus{CurrentReplicas: tt.current},
+			}
+			got := criticalMaxHeadroomRule(hpa, 1)
+			if len(got) != tt.wantFindings {
+				t.Fatalf("expected %d findings, got %d", tt.wantFindings, len(got))
+			}
+			if tt.wantFindings > 0 && got[0].Severity != AuditWarning {
+				t.Fatalf("expected warning severity, got %q", got[0].Severity)
+			}
+		})
+	}
+}
+
+func TestCriticalMinReplicasRule(t *testing.T) {
+	tests := []struct {
+		name         string
+		minReplicas  int32
+		wantFindings int
+	}{
+		{name: "minReplicas 1 returns warning", minReplicas: 1, wantFindings: 1},
+		{name: "minReplicas 0 returns warning", minReplicas: 0, wantFindings: 1},
+		{name: "minReplicas 2 returns no findings", minReplicas: 2, wantFindings: 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := criticalMinReplicasRule(nil, tt.minReplicas)
+			if len(got) != tt.wantFindings {
+				t.Fatalf("expected %d findings, got %d", tt.wantFindings, len(got))
+			}
+		})
+	}
+}
+
+func TestAuditHPAWithProfile(t *testing.T) {
+	t.Run("empty profile behaves like AuditHPA", func(t *testing.T) {
+		hpa := &autoscalingv2.HorizontalPodAutoscaler{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-hpa", Namespace: "default"},
+			Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+				MinReplicas: int32Ptr(2),
+				MaxReplicas: 10,
+				Metrics: []autoscalingv2.MetricSpec{
+					{
+						Type: autoscalingv2.ResourceMetricSourceType,
+						Resource: &autoscalingv2.ResourceMetricSource{
+							Name: corev1.ResourceCPU,
+							Target: autoscalingv2.MetricTarget{
+								Type:               autoscalingv2.UtilizationMetricType,
+								AverageUtilization: int32Ptr(70),
+							},
+						},
+					},
+				},
+				Behavior: &autoscalingv2.HorizontalPodAutoscalerBehavior{
+					ScaleDown: &autoscalingv2.HPAScalingRules{
+						StabilizationWindowSeconds: int32Ptr(300),
+						Policies: []autoscalingv2.HPAScalingPolicy{
+							{Type: autoscalingv2.PodsScalingPolicy, Value: 1, PeriodSeconds: 60},
+						},
+					},
+					ScaleUp: &autoscalingv2.HPAScalingRules{
+						Policies: []autoscalingv2.HPAScalingPolicy{
+							{Type: autoscalingv2.PodsScalingPolicy, Value: 4, PeriodSeconds: 60},
+						},
+					},
+				},
+			},
+		}
+		reportDefault := AuditHPA(hpa, 2)
+		reportEmpty := AuditHPAWithProfile(hpa, 2, "")
+		if reportDefault.Score != reportEmpty.Score {
+			t.Fatalf("expected same score, got %d vs %d", reportDefault.Score, reportEmpty.Score)
+		}
+	})
+
+	t.Run("critical profile adds extra findings", func(t *testing.T) {
+		hpa := &autoscalingv2.HorizontalPodAutoscaler{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-hpa", Namespace: "default"},
+			Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+				MinReplicas: int32Ptr(1),
+				MaxReplicas: 5,
+				Metrics: []autoscalingv2.MetricSpec{
+					{
+						Type: autoscalingv2.ResourceMetricSourceType,
+						Resource: &autoscalingv2.ResourceMetricSource{
+							Name: corev1.ResourceCPU,
+							Target: autoscalingv2.MetricTarget{
+								Type:               autoscalingv2.UtilizationMetricType,
+								AverageUtilization: int32Ptr(70),
+							},
+						},
+					},
+				},
+			},
+			Status: autoscalingv2.HorizontalPodAutoscalerStatus{CurrentReplicas: 4},
+		}
+		report := AuditHPAWithProfile(hpa, 1, ProfileCritical)
+		found := false
+		for _, f := range report.Findings {
+			if f.ID == "critical-min-replicas" || f.ID == "critical-max-headroom" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatal("expected at least one critical profile finding")
+		}
+		if report.Profile != ProfileCritical {
+			t.Fatalf("expected profile critical, got %q", report.Profile)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
 // 12. WriteAuditText
 // ---------------------------------------------------------------------------
 
