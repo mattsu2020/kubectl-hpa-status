@@ -485,6 +485,10 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 		AppendBlockerText(&out, a.BlockerReport, theme, labels)
 	}
 
+	if a.CapacityPlan != nil {
+		AppendCapacityPlanText(&out, a.CapacityPlan, theme, labels)
+	}
+
 	out = append(out, '\n')
 	out = fmt.Appendf(out, "%s:\n", labels.Events)
 	if len(report.Events) == 0 {
@@ -567,6 +571,7 @@ type labels struct {
 	AuditSeverity       string
 	Blockers            string
 	NextCommands        string
+	CapacityPlan        string
 }
 
 func textLabels(lang string) labels {
@@ -601,6 +606,7 @@ func textLabels(lang string) labels {
 			AuditSeverity:       "重要度",
 			Blockers:            "スケールアウトブロッカー",
 			NextCommands:        "次のコマンド",
+			CapacityPlan:        "キャパシティプラン",
 		}
 	}
 	return labels{
@@ -633,6 +639,7 @@ func textLabels(lang string) labels {
 		AuditSeverity:       "Severity",
 		Blockers:            "Scale-out blockers",
 		NextCommands:        "Next commands",
+		CapacityPlan:        "Capacity Plan",
 	}
 }
 

@@ -50,6 +50,8 @@ func registerStatusFlags(cmd *cobra.Command, opts *options) {
 	cmd.PersistentFlags().BoolVar(&opts.capacityContext, "capacity-context", false, "check infrastructure capacity constraints affecting HPA scaling")
 	cmd.PersistentFlags().BoolVar(&opts.scalePath, "scale-path", false, "explain the path from HPA desired replicas to pods and scheduler capacity")
 	cmd.PersistentFlags().BoolVar(&opts.capacityDeep, "capacity-deep", false, "deep capacity analysis for scale-out blockers including node capacity and container failures")
+	cmd.PersistentFlags().BoolVar(&opts.capacityPlan, "capacity-plan", false, "run capacity plan analysis when HPA is at maxReplicas")
+	cmd.PersistentFlags().Int32Var(&opts.targetMax, "target-max", 0, "target maxReplicas for capacity plan (default: 2x current max, capped at 200)")
 	cmd.PersistentFlags().StringVar(&opts.report, "report", "", "generate standalone report: markdown or html")
 }
 

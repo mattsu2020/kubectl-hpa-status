@@ -309,6 +309,10 @@ func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, 
 		report.Analysis.BlockerReport = buildBlockerReportForStatus(ctx, client, hpa, report.Analysis.Target)
 	}
 
+	if opts.capacityPlan && hpa.Status.CurrentReplicas >= hpa.Spec.MaxReplicas {
+		report.Analysis.CapacityPlan = buildCapacityPlanForStatus(ctx, client, hpa, report.Analysis.Target, opts.targetMax)
+	}
+
 	return report, nil
 }
 

@@ -126,6 +126,111 @@ func FetchPodDisruptionBudgets(ctx context.Context, client kubernetes.Interface,
 	return matches
 }
 
+// LimitRangeInfo holds parsed LimitRange constraints relevant to pod scheduling.
+type LimitRangeInfo struct {
+	Name     string
+	Type     string // "Container" or "Pod"
+	Resource string // "cpu", "memory", etc.
+	Min      string // empty if no minimum
+	Max      string // empty if no maximum
+}
+
+// FetchLimitRanges lists LimitRange objects in the namespace and returns
+// min/max constraints for Container and Pod types.
+func FetchLimitRanges(ctx context.Context, client kubernetes.Interface, namespace string) []LimitRangeInfo {
+	ranges, err := client.CoreV1().LimitRanges(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil
+	}
+
+	var constraints []LimitRangeInfo
+	for _, lr := range ranges.Items {
+		for _, item := range lr.Spec.Limits {
+			lrType := string(item.Type)
+			if lrType != "Container" && lrType != "Pod" {
+				continue
+			}
+			for resourceName, minVal := range item.Min {
+				maxVal := item.Max[resourceName]
+				constraints = append(constraints, LimitRangeInfo{
+					Name:     lr.Name,
+					Type:     lrType,
+					Resource: string(resourceName),
+					Min:      minVal.String(),
+					Max:      maxVal.String(),
+				})
+			}
+			// Also include max-only constraints (no min defined).
+			for resourceName, maxVal := range item.Max {
+				if _, hasMin := item.Min[resourceName]; hasMin {
+					continue // already added above
+				}
+				constraints = append(constraints, LimitRangeInfo{
+					Name:     lr.Name,
+					Type:     lrType,
+					Resource: string(resourceName),
+					Max:      maxVal.String(),
+				})
+			}
+		}
+	}
+	return constraints
+}
+
+// FetchAllResourceQuotas lists all ResourceQuotas in the namespace regardless
+// of usage ratio. Unlike FetchResourceQuotas (which filters to >= 80%), this
+// returns all quotas so the caller can compute remaining headroom.
+func FetchAllResourceQuotas(ctx context.Context, client kubernetes.Interface, namespace string) []QuotaInfo {
+	quotas, err := client.CoreV1().ResourceQuotas(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil
+	}
+
+	var all []QuotaInfo
+	for _, quota := range quotas.Items {
+		for resourceName, hard := range quota.Spec.Hard {
+			used := quota.Status.Used[resourceName]
+			var ratio float64
+			if !hard.IsZero() {
+				ratio = used.AsApproximateFloat64() / hard.AsApproximateFloat64()
+			}
+			all = append(all, QuotaInfo{
+				Name:     quota.Name,
+				Resource: string(resourceName),
+				Used:     used.String(),
+				Hard:     hard.String(),
+				Ratio:    ratio,
+			})
+		}
+	}
+	return all
+}
+
+// DetectClusterAutoscaler attempts to detect whether Cluster Autoscaler is
+// active in the cluster. It uses two heuristics: (1) nodes with the CA-specific
+// annotation "cluster-autoscaler.kubernetes.io/safe-to-evict", and (2) a
+// Deployment named "cluster-autoscaler" in kube-system. Returns true if either
+// signal is found. This is best-effort and may produce false negatives.
+func DetectClusterAutoscaler(ctx context.Context, client kubernetes.Interface) bool {
+	// Check nodes for CA annotation.
+	nodes, err := client.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	if err == nil {
+		for _, node := range nodes.Items {
+			if _, ok := node.Annotations["cluster-autoscaler.kubernetes.io/safe-to-evict"]; ok {
+				return true
+			}
+		}
+	}
+
+	// Check for CA deployment in kube-system.
+	deploy, err := client.AppsV1().Deployments("kube-system").Get(ctx, "cluster-autoscaler", metav1.GetOptions{})
+	if err == nil && deploy != nil {
+		return true
+	}
+
+	return false
+}
+
 // GenerateNodeHints produces capacity hints based on pending pods and quota state.
 func GenerateNodeHints(pending []PendingPodDetail, quotas []QuotaInfo) []string {
 	var hints []string
