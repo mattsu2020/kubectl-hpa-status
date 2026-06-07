@@ -83,10 +83,10 @@ type ReplayToleranceEffect struct {
 // bottleneck markers, control cycles, stabilization windows, and tolerance effects.
 func AnalyzeReplay(tl RetrospectiveTimeline, hpa *autoscalingv2.HorizontalPodAutoscaler) *ReplayAnalysis {
 	analysis := &ReplayAnalysis{
-		Bottlenecks:         []BottleneckMarker{},
-		ControlCycles:       []ControlCycle{},
-		StabilizationWindows: []StabilizationWindow{},
-		ReplayToleranceEffects:    []ReplayToleranceEffect{},
+		Bottlenecks:            []BottleneckMarker{},
+		ControlCycles:          []ControlCycle{},
+		StabilizationWindows:   []StabilizationWindow{},
+		ReplayToleranceEffects: []ReplayToleranceEffect{},
 	}
 
 	if len(tl.Entries) == 0 {
@@ -113,8 +113,12 @@ func AnalyzeReplay(tl RetrospectiveTimeline, hpa *autoscalingv2.HorizontalPodAut
 			if from == 0 || to == 0 {
 				// Try to extract from "desired A -> B" format
 				if match := desiredRangeRegex.FindStringSubmatch(entry.Message); len(match) >= 3 {
-					fmt.Sscanf(match[1], "%d", &from)
-					fmt.Sscanf(match[2], "%d", &to)
+					if _, err := fmt.Sscanf(match[1], "%d", &from); err != nil {
+						from = 0
+					}
+					if _, err := fmt.Sscanf(match[2], "%d", &to); err != nil {
+						to = 0
+					}
 				}
 			}
 

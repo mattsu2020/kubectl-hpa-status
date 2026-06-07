@@ -60,11 +60,7 @@ func newScanCommand(opts *options) *cobra.Command {
 func runList(ctx context.Context, out io.Writer, opts *options) error {
 	client, err := opts.newClient()
 	if err != nil {
-		listErr := fmt.Errorf("failed to create Kubernetes client from kubeconfig/context flags: %w", err)
-		if opts.output == "json" || opts.output == "yaml" {
-			writeError(out, opts.output, listErr)
-		}
-		return listErr
+		return reportListError(out, opts.output, fmt.Errorf("failed to create Kubernetes client from kubeconfig/context flags: %w", err))
 	}
 
 	namespace := client.Namespace
@@ -78,24 +74,55 @@ func runList(ctx context.Context, out io.Writer, opts *options) error {
 
 	hpas, err := client.ListHPAs(ctx, namespace, metav1.ListOptions{LabelSelector: opts.selector}, opts.chunkSize)
 	if err != nil {
-		listErr := fmt.Errorf("failed to list HPAs: %w", err)
-		if opts.output == "json" || opts.output == "yaml" {
-			writeError(out, opts.output, listErr)
-		}
-		return listErr
+		return reportListError(out, opts.output, fmt.Errorf("failed to list HPAs: %w", err))
 	}
 
-	report := hpaanalysis.ListReport{}
+	report := hpaanalysis.ListReport{Items: buildListItems(ctx, opts, hpas.Items, filter)}
 
-	// Run batched KEDA/VPA enrichment when enabled.
+	sortBy := opts.sortBy
+	if opts.problem && sortBy == "" {
+		sortBy = "problem"
+	}
+	sortListItems(report.Items, sortBy)
+
+	if opts.apply {
+		if err := validateListApply(opts, filter); err != nil {
+			return err
+		}
+		if err := applyListSuggestions(ctx, out, opts, hpas.Items, report.Items); err != nil {
+			return err
+		}
+	}
+
+	return writeListResult(out, opts, report)
+}
+
+// reportListError writes the error in the requested output format when applicable.
+func reportListError(out io.Writer, output string, listErr error) error {
+	if output == "json" || output == "yaml" {
+		writeError(out, output, listErr)
+	}
+	return listErr
+}
+
+// validateListApply ensures --apply is used with a bounded filter.
+func validateListApply(opts *options, filter string) error {
+	if !opts.problem && filter == "" && opts.healthScoreMin <= 0 && opts.healthScoreMax <= 0 {
+		return fmt.Errorf("--apply with list requires --problem, --filter, --health-score, --max-score, or --min-score to avoid applying suggestions to an unbounded set")
+	}
+	return nil
+}
+
+// buildListItems analyzes each HPA and returns filtered list items.
+func buildListItems(ctx context.Context, opts *options, hpas []autoscalingv2.HorizontalPodAutoscaler, filter string) []hpaanalysis.ListItem {
 	ec := newEnrichmentContext(ctx, opts)
-	kedaResults := enrichListKEDA(ctx, ec, hpas.Items)
-	vpaResults := enrichListVPA(ctx, ec, hpas.Items)
+	kedaResults := enrichListKEDA(ctx, ec, hpas)
+	vpaResults := enrichListVPA(ctx, ec, hpas)
 
-	for i := range hpas.Items {
-		analysis := hpaanalysis.AnalyzeWithOptions(&hpas.Items[i], opts.apply, analysisOptions(opts.healthWeights, opts.debug))
+	var items []hpaanalysis.ListItem
+	for i := range hpas {
+		analysis := hpaanalysis.AnalyzeWithOptions(&hpas[i], opts.apply, analysisOptions(opts.healthWeights, opts.debug))
 
-		// Apply enrichment from batched results.
 		key := analysis.Namespace + "/" + analysis.Name
 		if kedaResults != nil {
 			if keda, ok := kedaResults[key]; ok {
@@ -113,28 +140,18 @@ func runList(ctx context.Context, out io.Writer, opts *options) error {
 
 		item := hpaanalysis.NewListItem(analysis)
 		if matchesListFilter(item, filter) && matchesHealthScoreRange(item, opts.healthScoreMin, opts.healthScoreMax) {
-			report.Items = append(report.Items, item)
+			items = append(items, item)
 		}
 	}
-	sortBy := opts.sortBy
-	if opts.problem && sortBy == "" {
-		sortBy = "problem"
-	}
-	sortListItems(report.Items, sortBy)
+	return items
+}
 
-	if opts.apply {
-		if !opts.problem && filter == "" && opts.healthScoreMin <= 0 && opts.healthScoreMax <= 0 {
-			return fmt.Errorf("--apply with list requires --problem, --filter, --health-score, --max-score, or --min-score to avoid applying suggestions to an unbounded set")
-		}
-		if err := applyListSuggestions(ctx, out, opts, hpas.Items, report.Items); err != nil {
-			return err
-		}
-	}
-
+// writeListResult renders the list report in the selected output format.
+func writeListResult(out io.Writer, opts *options, report hpaanalysis.ListReport) error {
 	wide := opts.wide || opts.output == "wide"
 	format, templateStr := outputSelection(outputConfig{
-			report: opts.report, output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates,
-		})
+		report: opts.report, output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates,
+	})
 	return writeOutput(out, format, templateStr, report, func() error {
 		return hpaanalysis.WriteListText(out, report, hpaanalysis.ListTextOptions{
 			Wide:   wide,
@@ -146,18 +163,45 @@ func runList(ctx context.Context, out io.Writer, opts *options) error {
 	})
 }
 
+// batchEntry holds a single HPA suggestion for batch patch application.
+type batchEntry struct {
+	Namespace  string
+	Name       string
+	Suggestion hpaanalysis.Suggestion
+}
+
 func applyListSuggestions(ctx context.Context, out io.Writer, opts *options, hpas []autoscalingv2.HorizontalPodAutoscaler, items []hpaanalysis.ListItem) error {
 	selected := map[string]bool{}
 	for _, item := range items {
 		selected[item.Namespace+"/"+item.Name] = true
 	}
 
-	// Collect selected HPAs with their applicable suggestions.
-	type batchEntry struct {
-		Namespace  string
-		Name       string
-		Suggestion hpaanalysis.Suggestion
+	entries := collectBatchEntries(opts, hpas, selected)
+
+	if len(entries) == 0 {
+		if _, err := fmt.Fprintln(out, "No applicable HPA patches found."); err != nil {
+			return fmt.Errorf("write output: %w", err)
+		}
+		return nil
 	}
+
+	if err := printBatchSummary(out, entries); err != nil {
+		return err
+	}
+
+	confirmed, err := confirmBatchApply(out, opts, len(entries))
+	if err != nil {
+		return err
+	}
+	if !confirmed {
+		return nil
+	}
+
+	return executeBatchPatches(ctx, out, opts, entries)
+}
+
+// collectBatchEntries gathers applicable suggestions from selected HPAs.
+func collectBatchEntries(opts *options, hpas []autoscalingv2.HorizontalPodAutoscaler, selected map[string]bool) []batchEntry {
 	var entries []batchEntry
 	for i := range hpas {
 		hpa := &hpas[i]
@@ -175,15 +219,11 @@ func applyListSuggestions(ctx context.Context, out io.Writer, opts *options, hpa
 			}
 		}
 	}
+	return entries
+}
 
-	if len(entries) == 0 {
-		if _, err := fmt.Fprintln(out, "No applicable HPA patches found."); err != nil {
-			return fmt.Errorf("write output: %w", err)
-		}
-		return nil
-	}
-
-	// Display summary table of all patches.
+// printBatchSummary displays a summary table of all patches to apply.
+func printBatchSummary(out io.Writer, entries []batchEntry) error {
 	seenHPAs := make(map[string]bool)
 	for _, e := range entries {
 		seenHPAs[e.Namespace+"/"+e.Name] = true
@@ -202,39 +242,47 @@ func applyListSuggestions(ctx context.Context, out io.Writer, opts *options, hpa
 	if _, err := fmt.Fprintln(out); err != nil {
 		return fmt.Errorf("write output: %w", err)
 	}
+	return nil
+}
 
-	// Single confirmation for the entire batch.
-	if !opts.yes {
-		action := "dry-run"
-		if !opts.dryRun {
-			action = "apply"
-		}
-		if _, err := fmt.Fprintf(out, "%s %d patches? [y/N]: ", action, len(entries)); err != nil {
-			return fmt.Errorf("write output: %w", err)
-		}
-		if opts.in == nil {
-			opts.in = os.Stdin
-		}
-		scanner := bufio.NewScanner(opts.in)
-		if !scanner.Scan() {
-			return nil
-		}
-		answer := strings.ToLower(strings.TrimSpace(scanner.Text()))
-		if answer != "y" && answer != "yes" {
-			if _, err := fmt.Fprintln(out, "Batch apply skipped."); err != nil {
-				return fmt.Errorf("write output: %w", err)
-			}
-			return nil
-		}
+// confirmBatchApply prompts the user to confirm the batch operation.
+func confirmBatchApply(out io.Writer, opts *options, count int) (bool, error) {
+	if opts.yes {
+		return true, nil
 	}
+	action := "dry-run"
+	if !opts.dryRun {
+		action = "apply"
+	}
+	if _, err := fmt.Fprintf(out, "%s %d patches? [y/N]: ", action, count); err != nil {
+		return false, fmt.Errorf("write output: %w", err)
+	}
+	in := opts.in
+	if in == nil {
+		in = os.Stdin
+	}
+	scanner := bufio.NewScanner(in)
+	if !scanner.Scan() {
+		return false, nil
+	}
+	answer := strings.ToLower(strings.TrimSpace(scanner.Text()))
+	if answer != "y" && answer != "yes" {
+		if _, err := fmt.Fprintln(out, "Batch apply skipped."); err != nil {
+			return false, fmt.Errorf("write output: %w", err)
+		}
+		return false, nil
+	}
+	return true, nil
+}
 
-	// Apply each patch; continue on individual failure.
+// executeBatchPatches applies each patch entry and reports results.
+func executeBatchPatches(ctx context.Context, out io.Writer, opts *options, entries []batchEntry) error {
 	var succeeded, failed int
 	for _, e := range entries {
 		results, err := applySuggestionsInNamespace(ctx, out, opts, e.Namespace, e.Name, []hpaanalysis.Suggestion{e.Suggestion}, true)
 		if err != nil {
-			if _, err := fmt.Fprintf(out, "  FAILED %s/%s: %v\n", e.Namespace, e.Name, err); err != nil {
-				return fmt.Errorf("write output: %w", err)
+			if _, ferr := fmt.Fprintf(out, "  FAILED %s/%s: %v\n", e.Namespace, e.Name, err); ferr != nil {
+				return fmt.Errorf("write output: %w", ferr)
 			}
 			failed++
 			continue

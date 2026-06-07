@@ -120,15 +120,16 @@ func AnalyzeMetricContract(input MetricContractInput) *MetricContractReport {
 	}
 
 	// Build overall status and remediation
-	if anyMissingAPI {
+	switch {
+	case anyMissingAPI:
 		report.OverallStatus = "broken"
 		report.Summary = "Metrics API unavailable; HPA cannot compute desired replicas"
 		report.Remediation = append(report.Remediation, "Install and configure the missing metrics adapter or metrics-server")
-	} else if anyMissingData {
+	case anyMissingData:
 		report.OverallStatus = "degraded"
 		report.Summary = "Metrics APIs are available but not returning current data"
 		report.Remediation = append(report.Remediation, "Verify the metric source is healthy and exporting data")
-	} else {
+	default:
 		report.OverallStatus = "healthy"
 		report.Summary = "All metric references are queryable from metrics APIs"
 	}

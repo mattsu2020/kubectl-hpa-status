@@ -196,11 +196,12 @@ func WriteReplayText(w io.Writer, analysis *ReplayAnalysis, tl RetrospectiveTime
 			startStr := c.Start.Format("15:04")
 			endStr := c.End.Format("15:04")
 			decisionText := c.Decision
-			if c.Decision == "no-change" && c.MetricDriver != "unknown" {
+			switch {
+			case c.Decision == "no-change" && c.MetricDriver != "unknown":
 				decisionText = fmt.Sprintf("no-change (%s within tolerance)", c.MetricDriver)
-			} else if c.Decision == "capped" {
-				decisionText = fmt.Sprintf("scale-up capped by maxReplicas")
-			} else if c.MetricDriver != "unknown" {
+			case c.Decision == "capped":
+				decisionText = "scale-up capped by maxReplicas"
+			case c.MetricDriver != "unknown":
 				decisionText = fmt.Sprintf("%s (%s above target)", c.Decision, c.MetricDriver)
 			}
 
@@ -216,6 +217,7 @@ func WriteReplayText(w io.Writer, analysis *ReplayAnalysis, tl RetrospectiveTime
 			out.WriteString(fmt.Sprintf("  %s-%s %s (%d → %d) — %s%s\n",
 				startStr, endStr, decisionText, c.InputReplicas, c.OutputReplicas,
 				decisionText, stabNote))
+
 		}
 		out.WriteString("\n")
 	}

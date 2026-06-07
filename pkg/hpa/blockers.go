@@ -113,11 +113,12 @@ func buildBlockerInterpretation(input BlockerInput, hpaWantsScale bool, findings
 		parts = append(parts, "Some pods are failing due to application or image issues (not an infrastructure problem).")
 	}
 
-	if hasScheduling && hasQuota {
+	switch {
+	case hasScheduling && hasQuota:
 		parts = append(parts, "The scale-out is blocked after the HPA decision, likely by a combination of cluster capacity and namespace quota constraints.")
-	} else if hasScheduling {
+	case hasScheduling:
 		parts = append(parts, "The scale-out is blocked after the HPA decision, likely by cluster capacity or scheduling constraints.")
-	} else if hasQuota {
+	case hasQuota:
 		parts = append(parts, "The scale-out may be blocked by namespace ResourceQuota limits.")
 	}
 

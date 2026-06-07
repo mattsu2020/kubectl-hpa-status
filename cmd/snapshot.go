@@ -68,7 +68,9 @@ func runSnapshot(ctx context.Context, out io.Writer, opts *options, name, output
 		return fmt.Errorf("writing snapshot zip: %w", err)
 	}
 
-	fmt.Fprintf(out, "Snapshot saved to %s\n", outputPath)
+	if _, err := fmt.Fprintf(out, "Snapshot saved to %s\n", outputPath); err != nil {
+		return fmt.Errorf("writing output: %w", err)
+	}
 	return nil
 }
 
@@ -117,10 +119,10 @@ func writeSnapshotZip(data *snapshotData, outputPath string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
- zw := zip.NewWriter(file)
-	defer zw.Close()
+	zw := zip.NewWriter(file)
+	defer func() { _ = zw.Close() }()
 
 	entries := []struct {
 		Name    string
