@@ -340,6 +340,14 @@ func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, 
 			hpa, report.Events, report.Analysis.MetricFreshnessEntries, report.Analysis.MetricContract)
 	}
 
+	if opts.containerAdvisor {
+		report.Analysis.ContainerAdvisor = buildContainerAdvisor(ctx, client, hpa)
+	}
+
+	if opts.behaviorAdvisor {
+		report.Analysis.BehaviorAdvisor = hpaanalysis.AnalyzeBehaviorAdvisor(hpa)
+	}
+
 	return report, nil
 }
 
@@ -471,4 +479,38 @@ func podUnschedulable(pod corev1.Pod) bool {
 		}
 	}
 	return false
+}
+
+// buildContainerAdvisor builds the ContainerResource advisor result.
+func buildContainerAdvisor(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpaanalysis.ContainerAdvisorResult {
+	resources, err := kube.FetchScaleTargetResources(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef.Kind, hpa.Spec.ScaleTargetRef.Name)
+	if err != nil || resources == nil {
+		return nil
+	}
+
+	containerCount := len(resources.Containers)
+	var containerNames []string
+	for _, c := range resources.Containers {
+		containerNames = append(containerNames, c.Name)
+	}
+
+	usesResource := false
+	usesContainerResource := false
+	for _, spec := range hpa.Spec.Metrics {
+		switch spec.Type {
+		case autoscalingv2.ResourceMetricSourceType:
+			usesResource = true
+		case autoscalingv2.ContainerResourceMetricSourceType:
+			usesContainerResource = true
+		}
+	}
+
+	input := hpaanalysis.ContainerAdvisorInput{
+		ContainerCount:              containerCount,
+		ContainerNames:              containerNames,
+		UsesResourceMetric:          usesResource,
+		UsesContainerResourceMetric: usesContainerResource,
+	}
+
+	return hpaanalysis.AnalyzeContainerAdvisor(hpa, input)
 }

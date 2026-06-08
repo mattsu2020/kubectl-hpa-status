@@ -50,6 +50,8 @@ func (DefaultLabels) Get(key string) string {
 		"label_capacity_plan":        "Capacity Plan",
 		"label_metric_contract":      "Metrics Contract",
 		"label_warmup":               "Warmup Analysis",
+		"label_container_advisor":    "Container Resource Advisor",
+		"label_behavior_advisor":     "Behavior Tuning Advisor",
 	}
 	if v, ok := defaults[key]; ok {
 		return v
@@ -96,5 +98,7 @@ func resolveLabels(provider LabelProvider) labels {
 		CapacityPlan:        provider.Get("label_capacity_plan"),
 		MetricContract:      provider.Get("label_metric_contract"),
 		Warmup:              provider.Get("label_warmup"),
+		ContainerAdvisor:    provider.Get("label_container_advisor"),
+		BehaviorAdvisor:     provider.Get("label_behavior_advisor"),
 	}
 }

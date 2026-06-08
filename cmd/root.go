@@ -77,6 +77,8 @@ type statusOptions struct {
 	metricContract        bool
 	churnDetect           bool
 	metricHints           bool
+	containerAdvisor      bool
+	behaviorAdvisor       bool
 }
 
 // listOptions holds flags specific to the list / scan commands.
@@ -226,6 +228,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newRecommendCommand(opts))
 	root.AddCommand(newPolicyCommand(opts))
 	root.AddCommand(newSnapshotCommand(opts))
+	root.AddCommand(newLintCommand(opts))
 	root.AddCommand(newVersionCommand())
 	root.AddCommand(newCompletionCommand(root))
 

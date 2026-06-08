@@ -30,6 +30,9 @@ func runDoctor(ctx context.Context, out io.Writer, opts *options, names []string
 	opts.metricContract = true
 	opts.churnDetect = true
 	opts.metricHints = true
+	opts.containerAdvisor = true
+	opts.behaviorAdvisor = true
+	opts.capacityDeep = true
 
 	return runStatusMany(ctx, out, opts, names, !opts.noInterpret)
 }

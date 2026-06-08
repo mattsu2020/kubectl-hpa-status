@@ -494,6 +494,14 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 		appendMetricContractText(&out, a.MetricContract, theme)
 	}
 
+	if a.ContainerAdvisor != nil {
+		AppendContainerAdvisorText(&out, a.ContainerAdvisor, labels)
+	}
+
+	if a.BehaviorAdvisor != nil {
+		AppendBehaviorAdvisorText(&out, a.BehaviorAdvisor, labels)
+	}
+
 	out = append(out, '\n')
 	out = fmt.Appendf(out, "%s:\n", labels.Events)
 	if len(report.Events) == 0 {
@@ -616,6 +624,8 @@ type labels struct {
 	CapacityPlan        string
 	MetricContract      string
 	Warmup              string
+	ContainerAdvisor    string
+	BehaviorAdvisor     string
 }
 
 func textLabels(lang string) labels {
@@ -653,6 +663,8 @@ func textLabels(lang string) labels {
 			CapacityPlan:        "キャパシティプラン",
 			MetricContract:      "メトリクスコントラクト",
 			Warmup:              "ウォームアップ分析",
+			ContainerAdvisor:    "コンテナリソースアドバイザー",
+			BehaviorAdvisor:     "ビヘイビアチューニングアドバイザー",
 		}
 	}
 	return labels{
@@ -688,6 +700,8 @@ func textLabels(lang string) labels {
 		CapacityPlan:        "Capacity Plan",
 		MetricContract:      "Metrics Contract",
 		Warmup:              "Warmup Analysis",
+		ContainerAdvisor:    "Container Resource Advisor",
+		BehaviorAdvisor:     "Behavior Tuning Advisor",
 	}
 }
 

@@ -204,6 +204,14 @@ type Analysis struct {
 	// are not yet ready after HPA scales out. Populated when --warmup is enabled
 	// or during the doctor command.
 	WarmupAnalysis *WarmupAnalysis `json:"warmupAnalysis,omitempty" yaml:"warmupAnalysis,omitempty"`
+	// ContainerAdvisor holds the ContainerResource advisor result, suggesting
+	// ContainerResource metrics for multi-container workloads.
+	// Populated when --container-advisor is enabled.
+	ContainerAdvisor *ContainerAdvisorResult `json:"containerAdvisor,omitempty" yaml:"containerAdvisor,omitempty"`
+	// BehaviorAdvisor holds the behavior tuning advisor result, analyzing
+	// scaleUp/scaleDown policies, stabilization windows, and tolerance.
+	// Populated when --behavior-advisor is enabled.
+	BehaviorAdvisor *BehaviorAdvisorResult `json:"behaviorAdvisor,omitempty" yaml:"behaviorAdvisor,omitempty"`
 }
 
 // DecisionSignal is the stable internal shape for explicit controller scaling

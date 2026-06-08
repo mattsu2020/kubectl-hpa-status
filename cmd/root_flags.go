@@ -58,6 +58,8 @@ func registerStatusFlags(cmd *cobra.Command, opts *options) {
 	cmd.PersistentFlags().BoolVar(&opts.metricContract, "metric-contract", false, "verify HPA metric references are queryable from metrics APIs")
 	cmd.PersistentFlags().BoolVar(&opts.churnDetect, "churn-detect", false, "detect replica thrashing and recommend stabilization adjustments")
 	cmd.PersistentFlags().BoolVar(&opts.metricHints, "metric-hints", false, "troubleshoot custom/external metric issues with common failure pattern hints")
+	cmd.PersistentFlags().BoolVar(&opts.containerAdvisor, "container-advisor", false, "suggest ContainerResource metrics for multi-container HPA targets")
+	cmd.PersistentFlags().BoolVar(&opts.behaviorAdvisor, "behavior-advisor", false, "analyze behavior config and suggest stabilization/policy tuning")
 }
 
 // registerWatchFlags registers flags specific to the watch / TUI commands.
