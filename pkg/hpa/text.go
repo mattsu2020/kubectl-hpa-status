@@ -615,6 +615,7 @@ type labels struct {
 	NextCommands        string
 	CapacityPlan        string
 	MetricContract      string
+	Warmup              string
 }
 
 func textLabels(lang string) labels {
@@ -651,6 +652,7 @@ func textLabels(lang string) labels {
 			NextCommands:        "次のコマンド",
 			CapacityPlan:        "キャパシティプラン",
 			MetricContract:      "メトリクスコントラクト",
+			Warmup:              "ウォームアップ分析",
 		}
 	}
 	return labels{
@@ -685,6 +687,7 @@ func textLabels(lang string) labels {
 		NextCommands:        "Next commands",
 		CapacityPlan:        "Capacity Plan",
 		MetricContract:      "Metrics Contract",
+		Warmup:              "Warmup Analysis",
 	}
 }
 
