@@ -28,6 +28,11 @@ type LintFinding struct {
 	Rule string `json:"rule" yaml:"rule"`
 	// Message is a human-readable description.
 	Message string `json:"message" yaml:"message"`
+	// Recommendation is an optional rationale explaining why the finding matters
+	// and what the fix does.
+	Recommendation string `json:"recommendation,omitempty" yaml:"recommendation,omitempty"`
+	// AutoFix is an optional proposed auto-fix for this finding.
+	AutoFix *LintAutoFix `json:"autoFix,omitempty" yaml:"autoFix,omitempty"`
 }
 
 // LintResult holds the complete lint result for one or more HPA manifests.
@@ -151,8 +156,8 @@ func lintMissingCPURequest(hpa *autoscalingv2.HorizontalPodAutoscaler) []LintFin
 				findings = append(findings, LintFinding{
 					Severity: LintWarning,
 					Rule:     "resource-requests",
-					Message: fmt.Sprintf("HPA uses CPU utilization but target container cpu requests cannot be verified offline. "+
-						"Ensure containers have cpu requests set; missing requests produce misleading utilization percentages."),
+					Message: "HPA uses CPU utilization but target container cpu requests cannot be verified offline. " +
+						"Ensure containers have cpu requests set; missing requests produce misleading utilization percentages.",
 				})
 			}
 		}
@@ -182,9 +187,11 @@ func lintMultiContainerResource(hpa *autoscalingv2.HorizontalPodAutoscaler) []Li
 func lintNoScaleDownBehavior(hpa *autoscalingv2.HorizontalPodAutoscaler) []LintFinding {
 	if hpa.Spec.Behavior == nil || hpa.Spec.Behavior.ScaleDown == nil {
 		return []LintFinding{{
-			Severity: LintWarning,
-			Rule:     "behavior-scaledown",
-			Message:  "No scaleDown behavior configured. The controller uses default behavior which may cause aggressive downscaling.",
+			Severity:       LintWarning,
+			Rule:           "behavior-scaledown",
+			Message:        "No scaleDown behavior configured. The controller uses default behavior which may cause aggressive downscaling.",
+			Recommendation: "Configure explicit scaleDown behavior to prevent aggressive downscaling and replica churn. See https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/#default-behavior",
+			AutoFix:        generateAutoFix("behavior-scaledown", hpa),
 		}}
 	}
 	return nil
@@ -205,10 +212,11 @@ func lintHighUtilizationTarget(hpa *autoscalingv2.HorizontalPodAutoscaler) []Lin
 		name := string(spec.Resource.Name)
 		if util > 90 {
 			findings = append(findings, LintFinding{
-				Severity: LintWarning,
-				Rule:     "target-utilization",
-				Message: fmt.Sprintf("%s target utilization is %d%%, which leaves little headroom for traffic bursts.",
-					name, util),
+				Severity:       LintWarning,
+				Rule:           "target-utilization",
+				Message:        fmt.Sprintf("%s target utilization is %d%%, which leaves little headroom for traffic bursts.", name, util),
+				Recommendation: "Lower the target utilization to 70-80% to provide headroom for traffic bursts and avoid saturating pods before scaling catches up.",
+				AutoFix:        generateAutoFix("target-utilization", hpa),
 			})
 		}
 		if util < 20 {
@@ -262,10 +270,11 @@ func lintStabilizationWindow(hpa *autoscalingv2.HorizontalPodAutoscaler) []LintF
 	window := hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds
 	if window != nil && *window > 900 {
 		return []LintFinding{{
-			Severity: LintWarning,
-			Rule:     "stabilization-window",
-			Message: fmt.Sprintf("scaleDown stabilizationWindowSeconds is %ds (>15 minutes). "+
-				"Scale-down may remain suppressed for a very long time.", *window),
+			Severity:       LintWarning,
+			Rule:           "stabilization-window",
+			Message:        fmt.Sprintf("scaleDown stabilizationWindowSeconds is %ds (>15 minutes). Scale-down may remain suppressed for a very long time.", *window),
+			Recommendation: "Reduce the stabilization window to 300s (5 minutes) to allow faster recovery from traffic spikes while still preventing rapid oscillation.",
+			AutoFix:        generateAutoFix("stabilization-window", hpa),
 		}}
 	}
 	return nil
@@ -285,10 +294,11 @@ func lintTolerance(hpa *autoscalingv2.HorizontalPodAutoscaler) []LintFinding {
 		val := tol.AsApproximateFloat64()
 		if val < 0.01 {
 			findings = append(findings, LintFinding{
-				Severity: LintWarning,
-				Rule:     "tolerance",
-				Message: fmt.Sprintf("%s tolerance is %.2f%%, which is very tight. "+
-					"This may cause frequent scaling oscillations.", name, val*100),
+				Severity:       LintWarning,
+				Rule:           "tolerance",
+				Message:        fmt.Sprintf("%s tolerance is %.2f%%, which is very tight. This may cause frequent scaling oscillations.", name, val*100),
+				Recommendation: "Increase tolerance to 0.1 (10%) to reduce scaling noise. A tight tolerance causes the HPA to react to minor metric fluctuations.",
+				AutoFix:        generateAutoFix("tolerance", hpa),
 			})
 		}
 	}

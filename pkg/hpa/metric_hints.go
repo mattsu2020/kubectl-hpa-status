@@ -26,6 +26,7 @@ type MetricHintsReport struct {
 	Name      string       `json:"name" yaml:"name"`
 	Hints     []MetricHint `json:"hints,omitempty" yaml:"hints,omitempty"`
 	Summary   string       `json:"summary" yaml:"summary"`
+	TroubleshootingFlows []MetricHintTroubleshooting `json:"troubleshootingFlows,omitempty" yaml:"troubleshootingFlows,omitempty"`
 }
 
 // AnalyzeMetricHints examines HPA metric specs against events, freshness data,

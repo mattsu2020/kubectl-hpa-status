@@ -59,6 +59,9 @@ func WriteStatusDashboard(w io.Writer, report StatusReport, theme style.Theme) e
 	out = fmt.Appendf(out, "Target   %s\n", a.Target)
 	out = fmt.Appendf(out, "Health   %s %d/100\n", theme.HealthLabel(a.Health, a.HealthScore), a.HealthScore)
 	out = fmt.Appendf(out, "Replicas current=%d desired=%d diff=%+d min=%d max=%d\n", a.Current, a.Desired, diff, a.Min, a.Max)
+	if a.StabilizationRemaining != nil && *a.StabilizationRemaining > 0 {
+		out = fmt.Appendf(out, "Stabilizing %s\n", FormatStabilizationProgress(a.StabilizationRemaining, a.StabilizationWindowSeconds))
+	}
 	out = fmt.Appendf(out, "Summary  %s\n", theme.SummaryColor(a.Summary))
 
 	out = append(out, "\nConditions\n"...)
@@ -180,6 +183,13 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 		}
 	}
 
+
+		// Stabilization window section.
+		if a.StabilizationRemaining != nil && *a.StabilizationRemaining > 0 {
+			out = append(out, '\n')
+			progress := FormatStabilizationProgress(a.StabilizationRemaining, a.StabilizationWindowSeconds)
+			out = fmt.Appendf(out, "Stabilization: %s\n", theme.Warning.Render(progress))
+		}
 	if len(a.Behavior) > 0 {
 		out = append(out, '\n')
 		out = fmt.Appendf(out, "%s:\n", labels.Behavior)
@@ -500,6 +510,20 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 
 	if a.BehaviorAdvisor != nil {
 		AppendBehaviorAdvisorText(&out, a.BehaviorAdvisor, labels)
+	}
+
+	if a.MetricHints != nil && len(a.MetricHints.TroubleshootingFlows) > 0 {
+		out = append(out, '\n')
+		out = append(out, "Metric Troubleshooting:\n"...)
+		for _, flow := range a.MetricHints.TroubleshootingFlows {
+			out = fmt.Appendf(out, "  [%s] %s (%s/%s)\n", flow.Severity, flow.Title, flow.MetricType, flow.MetricName)
+			for _, step := range flow.Steps {
+				out = fmt.Appendf(out, "    %d. %s\n", step.StepNumber, step.Description)
+				if step.Command != "" {
+					out = fmt.Appendf(out, "       $ %s\n", step.Command)
+				}
+			}
+		}
 	}
 
 	out = append(out, '\n')
@@ -851,6 +875,14 @@ type ListItem struct {
 	Behavior          string      `json:"behavior,omitempty" yaml:"behavior,omitempty"`
 	Conditions        string      `json:"conditions,omitempty" yaml:"conditions,omitempty"`
 	CreationTimestamp metav1.Time `json:"creationTimestamp,omitempty" yaml:"creationTimestamp,omitempty"`
+	// Stabilizing is true when StabilizationRemaining > 0.
+	Stabilizing bool `json:"stabilizing,omitempty" yaml:"stabilizing,omitempty"`
+	// StabilizationLabel is a human-readable countdown like "4m12s".
+	StabilizationLabel string `json:"stabilizationLabel,omitempty" yaml:"stabilizationLabel,omitempty"`
+	// ChurnLevel is the churn severity (LOW/MEDIUM/HIGH/CRITICAL) if churn was detected.
+	ChurnLevel string `json:"churnLevel,omitempty" yaml:"churnLevel,omitempty"`
+	// ChurnScore is the numeric churn score 0-100.
+	ChurnScore int `json:"churnScore,omitempty" yaml:"churnScore,omitempty"`
 }
 
 // ListReport holds the list of HPA items for table output.
@@ -922,21 +954,25 @@ func NewListItem(src Analysis) ListItem {
 	}
 
 	return ListItem{
-		Namespace:         src.Namespace,
-		Name:              src.Name,
-		Target:            src.Target,
-		Current:           src.Current,
-		Desired:           src.Desired,
-		Min:               src.Min,
-		Max:               src.Max,
-		Summary:           src.Summary,
-		Health:            health,
-		HealthScore:       src.HealthScore,
-		Issue:             issue,
-		Metrics:           metrics,
-		Behavior:          behavior,
-		Conditions:        conditions,
-		CreationTimestamp: src.CreationTimestamp,
+		Namespace:           src.Namespace,
+		Name:                src.Name,
+		Target:              src.Target,
+		Current:             src.Current,
+		Desired:             src.Desired,
+		Min:                 src.Min,
+		Max:                 src.Max,
+		Summary:             src.Summary,
+		Health:              health,
+		HealthScore:         src.HealthScore,
+		Issue:               issue,
+		Metrics:             metrics,
+		Behavior:            behavior,
+		Conditions:          conditions,
+		CreationTimestamp:   src.CreationTimestamp,
+		Stabilizing:         src.StabilizationRemaining != nil && *src.StabilizationRemaining > 0,
+		StabilizationLabel:  FormatCountdownBadge(src.StabilizationRemaining),
+		ChurnLevel:          churnLevelFromAnalysis(src.ChurnAnalysis),
+		ChurnScore:          churnScoreFromAnalysis(src.ChurnAnalysis),
 	}
 }
 
@@ -951,6 +987,20 @@ func healthFromAnalysis(src Analysis) (string, int) {
 		score = 90
 	}
 	return src.Health, score
+}
+
+func churnLevelFromAnalysis(ca *ChurnAnalysis) string {
+	if ca == nil {
+		return ""
+	}
+	return string(ca.Level)
+}
+
+func churnScoreFromAnalysis(ca *ChurnAnalysis) int {
+	if ca == nil {
+		return 0
+	}
+	return ca.Score
 }
 
 func padRight(s string, width int) string {

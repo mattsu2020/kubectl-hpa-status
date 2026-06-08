@@ -57,6 +57,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.items = msg.items
 		m.reports = msg.reports
 		m.err = nil
+
+		// Update replica history for sparklines.
+		const maxReplicaHistoryPoints = 15
+		for _, item := range m.items {
+			key := item.Namespace + "/" + item.Name
+			history := m.replicaHistory[key]
+			history = append(history, float64(item.Desired))
+			if len(history) > maxReplicaHistoryPoints {
+				history = history[len(history)-maxReplicaHistoryPoints:]
+			}
+			m.replicaHistory[key] = history
+		}
+
 		if m.sortField != "" {
 			m.sortItems()
 		}
@@ -133,6 +146,14 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.replayState != nil && m.replayState.scrollPos > 0 {
 				m.replayState.scrollPos--
 			}
+		case historyView:
+			if m.historyState != nil && m.historyState.scrollPos > 0 {
+				m.historyState.scrollPos--
+			}
+		case hintsView:
+			if m.hintsState != nil && m.hintsState.selected > 0 {
+				m.hintsState.selected--
+			}
 		}
 		return m, nil
 
@@ -157,6 +178,17 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if m.replayState.scrollPos < maxScroll {
 					m.replayState.scrollPos++
 				}
+			}
+		case historyView:
+			if m.historyState != nil {
+				maxScroll := len(m.historyState.snapshots) - 1
+				if m.historyState.scrollPos < maxScroll {
+					m.historyState.scrollPos++
+				}
+			}
+		case hintsView:
+			if m.hintsState != nil && m.hintsState.selected < len(m.hintsState.flows)-1 {
+				m.hintsState.selected++
 			}
 		}
 		return m, nil
@@ -250,6 +282,29 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.viewMode == detailView {
 			m.viewMode = historyView
 			m.historyState = &historyState{}
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.Hints):
+		if m.viewMode == detailView {
+			filtered := m.filteredItems()
+			if m.cursor >= 0 && m.cursor < len(filtered) {
+				item := filtered[m.cursor]
+				k := item.Namespace + "/" + item.Name
+				if report, ok := m.reports[k]; ok && report.Analysis.MetricHints != nil {
+					flows := hpaanalysis.BuildTroubleshootingFlows(report.Analysis.MetricHints.Hints)
+					if len(flows) > 0 {
+						m.hintsState = &hintsState{flows: flows}
+						m.viewMode = hintsView
+					}
+				}
+			}
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.Overview):
+		if m.viewMode == listView {
+			m.viewMode = overviewView
 		}
 		return m, nil
 
@@ -408,8 +463,13 @@ func (m Model) handleEscape() (tea.Model, tea.Cmd) {
 	case historyView:
 		m.historyState = nil
 		m.viewMode = detailView
+	case hintsView:
+		m.hintsState = nil
+		m.viewMode = detailView
 	case batchAuditView:
 		m.batchAuditState = nil
+		m.viewMode = listView
+	case overviewView:
 		m.viewMode = listView
 	default:
 		return m, nil

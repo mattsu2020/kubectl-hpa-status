@@ -24,16 +24,18 @@ func newLintCommand(opts *options) *cobra.Command {
 			filePath, _ := cmd.Flags().GetString("file")
 			outputFmt, _ := cmd.Flags().GetString("output")
 			sarif, _ := cmd.Flags().GetBool("sarif")
-			return runLint(cmd.Context(), cmd.OutOrStdout(), opts, filePath, outputFmt, sarif)
+			fix, _ := cmd.Flags().GetBool("fix")
+			return runLint(cmd.Context(), cmd.OutOrStdout(), opts, filePath, outputFmt, sarif, fix)
 		},
 	}
 	cmd.Flags().StringP("file", "f", "", "path to HPA manifest file or directory")
 	cmd.Flags().Bool("sarif", false, "output in SARIF format for CI integration")
+	cmd.Flags().Bool("fix", false, "show auto-fix proposals (dry-run only)")
 	_ = cmd.MarkFlagRequired("file")
 	return cmd
 }
 
-func runLint(ctx context.Context, out io.Writer, opts *options, filePath, outputFmt string, sarif bool) error {
+func runLint(ctx context.Context, out io.Writer, opts *options, filePath, outputFmt string, sarif, fix bool) error {
 	info, err := os.Stat(filePath)
 	if err != nil {
 		return fmt.Errorf("cannot access %s: %w", filePath, err)
@@ -150,6 +152,12 @@ func runLint(ctx context.Context, out io.Writer, opts *options, filePath, output
 			return err
 		}
 		_, _ = fmt.Fprintln(out)
+
+		if fix {
+			if err := hpaanalysis.WriteLintDiff(out, r.Result); err != nil {
+				return err
+			}
+		}
 	}
 
 	_ = ctx

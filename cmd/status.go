@@ -338,6 +338,9 @@ func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, 
 	if opts.metricHints {
 		report.Analysis.MetricHints = hpaanalysis.AnalyzeMetricHints(
 			hpa, report.Events, report.Analysis.MetricFreshnessEntries, report.Analysis.MetricContract)
+		if report.Analysis.MetricHints != nil && len(report.Analysis.MetricHints.Hints) > 0 {
+			report.Analysis.MetricHints.TroubleshootingFlows = hpaanalysis.BuildTroubleshootingFlows(report.Analysis.MetricHints.Hints)
+		}
 	}
 
 	if opts.containerAdvisor {

@@ -77,6 +77,13 @@ type batchAuditEntry struct {
 	Summary   string
 }
 
+// hintsState holds the metric hints troubleshooting view state.
+type hintsState struct {
+	flows      []hpaanalysis.MetricHintTroubleshooting
+	selected   int
+	stepScroll int
+}
+
 // Bubble Tea message types for asynchronous operations.
 
 // simResultMsg carries simulation results from a background computation.

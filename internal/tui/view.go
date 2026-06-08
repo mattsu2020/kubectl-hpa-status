@@ -3,6 +3,9 @@ package tui
 import (
 	"fmt"
 	"strings"
+
+	"github.com/charmbracelet/lipgloss"
+	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
 
 // View renders the current state of the TUI.
@@ -39,6 +42,10 @@ func (m Model) View() string {
 		content = m.renderBatchAuditView()
 	case historyView:
 		content = m.renderHistoryView()
+	case overviewView:
+		content = m.renderOverviewView()
+	case hintsView:
+		content = m.renderHintsView()
 	}
 
 	statusBar := m.renderStatusBar()
@@ -67,6 +74,8 @@ func (m Model) renderHelpView() string {
 		{"f", "Open fix wizard"},
 		{"T", "Open replay timeline"},
 		{"H", "Open history/sparkline view"},
+		{"h", "Open metric hints troubleshooting"},
+		{"O", "Open cluster overview"},
 		{"M", "Toggle metric simulation mode"},
 		{"Tab", "Cycle simulation fields"},
 		{"r", "Refresh data now"},
@@ -108,9 +117,9 @@ func (m Model) renderListView() string {
 
 	// Calculate column widths.
 	availWidth := m.width - 2 // account for cursor marker
-	nsW, nameW := 12, 24
-	healthW, scoreW, issueW := 10, 6, 20
-	summaryW := availWidth - nsW - nameW - healthW - scoreW - issueW - 5*2 // 5 gaps
+	nsW, nameW := 12, 20
+	healthW, scoreW, stabW, sparkW, issueW := 10, 8, 8, 15, 14
+	summaryW := availWidth - nsW - nameW - healthW - scoreW - stabW - sparkW - issueW - 7*2 // 7 gaps
 	if summaryW < 10 {
 		summaryW = 10
 	}
@@ -123,6 +132,8 @@ func (m Model) renderListView() string {
 			padRight("NAME", nameW) + "  " +
 			padRight("HEALTH", healthW) + "  " +
 			padRight("SCORE", scoreW) + "  " +
+			padRight("STAB", stabW) + "  " +
+			padRight("TREND", sparkW) + "  " +
 			padRight("ISSUE", issueW) + "  " +
 			"SUMMARY",
 	))
@@ -149,15 +160,29 @@ func (m Model) renderListView() string {
 		ns := truncate(item.Namespace, nsW)
 		name := truncate(item.Name, nameW)
 		health := healthStyle(item.Health).Render(padRight(item.Health, healthW))
-		score := padRight(fmt.Sprintf("%d", item.HealthScore), scoreW)
-		issue := truncate(item.Issue, issueW)
+		score := renderMiniScoreBar(item.HealthScore, scoreW)
+		stab := renderStabBadge(item, stabW)
+
+		// Inline sparkline from replica history.
+		sparkline := renderInlineSparkline(m.replicaHistory[itemKey], sparkW, item.ChurnLevel)
+
+		// Churn indicator prefix for ISSUE column.
+		issueText := truncate(item.Issue, issueW)
+		if item.ChurnLevel == "HIGH" || item.ChurnLevel == "CRITICAL" {
+			issueText = errorStyle.Render("●") + " " + truncate(item.Issue, issueW-4)
+		} else if item.ChurnLevel == "MEDIUM" {
+			issueText = warnStyle.Render("⚠") + " " + truncate(item.Issue, issueW-4)
+		}
+
 		summary := truncate(item.Summary, summaryW)
 
 		row := padRight(ns, nsW) + "  " +
 			padRight(name, nameW) + "  " +
 			health + "  " +
-			dimStyle.Render(score) + "  " +
-			dimStyle.Render(padRight(issue, issueW)) + "  " +
+			score + "  " +
+			padRight(stab, stabW) + "  " +
+			sparkline + "  " +
+			padRight(issueText, issueW) + "  " +
 			summary
 
 		sb.WriteString(cursor + row + "\n")
@@ -209,12 +234,12 @@ func (m Model) renderDetailView() string {
 
 		// Stabilization countdown.
 		if a.StabilizationRemaining != nil && *a.StabilizationRemaining > 0 {
-			remaining := fmt.Sprintf("%ds", *a.StabilizationRemaining)
+			progress := hpaanalysis.FormatStabilizationProgress(a.StabilizationRemaining, a.StabilizationWindowSeconds)
 			sb.WriteString("\n")
-			sb.WriteString(warnStyle.Render(fmt.Sprintf("Scale-down stabilized: %s remaining", remaining)))
+			sb.WriteString(warnStyle.Render(fmt.Sprintf("Scale-down stabilized: %s", progress)))
 			sb.WriteString("\n")
 			if a.StabilizationWindowSeconds != nil && *a.StabilizationWindowSeconds > 0 {
-				bar := renderCountdownBar(int(*a.StabilizationRemaining), int(*a.StabilizationWindowSeconds))
+				bar := renderEnhancedCountdownBar(int(*a.StabilizationRemaining), int(*a.StabilizationWindowSeconds))
 				sb.WriteString(bar)
 				sb.WriteString("\n")
 			}
@@ -543,3 +568,106 @@ func renderCountdownBar(remaining, total int) string {
 	bar := strings.Repeat("█", filled) + strings.Repeat("░", width-filled)
 	return warnStyle.Render(bar) + dimStyle.Render(fmt.Sprintf(" %ds/%ds", remaining, total))
 }
+
+// renderEnhancedCountdownBar renders a color-graded stabilization countdown bar
+// with human-readable duration labels. The bar color transitions from green
+// (>60% remaining) to yellow (30–60%) to red (<30%).
+func renderEnhancedCountdownBar(remaining int, total int) string {
+	const width = 20
+	if total <= 0 {
+		return ""
+	}
+	elapsed := total - remaining
+	if elapsed < 0 {
+		elapsed = 0
+	}
+	filled := elapsed * width / total
+	if filled < 0 {
+		filled = 0
+	}
+	if filled > width {
+		filled = width
+	}
+
+	bar := strings.Repeat("█", filled) + strings.Repeat("░", width-filled)
+
+	remainingRatio := float64(remaining) / float64(total)
+	var style lipgloss.Style
+	switch {
+	case remainingRatio > 0.6:
+		style = okStyle
+	case remainingRatio > 0.3:
+		style = warnStyle
+	default:
+		style = errorStyle
+	}
+
+	label := hpaanalysis.FormatStabilizationProgress(
+		ptrInt64(int64(remaining)), ptrInt32(int32(total)),
+	)
+	return style.Render(bar) + " " + dimStyle.Render(label)
+}
+
+func ptrInt64(v int64) *int64  { return &v }
+func ptrInt32(v int32) *int32 { return &v }
+
+// renderMiniScoreBar renders a compact colored bar for the list view SCORE column.
+// Width is typically 8 characters.
+func renderMiniScoreBar(score int, width int) string {
+	if width <= 0 {
+		width = 8
+	}
+	barW := width - 3 // reserve 3 chars for the numeric score
+	if barW < 3 {
+		barW = 3
+	}
+	filled := score * barW / 100
+	if filled < 0 {
+		filled = 0
+	}
+	if filled > barW {
+		filled = barW
+	}
+
+	bar := strings.Repeat("█", filled) + strings.Repeat("░", barW-filled)
+	var style lipgloss.Style
+	switch {
+	case score >= 80:
+		style = okStyle
+	case score >= 50:
+		style = warnStyle
+	default:
+		style = errorStyle
+	}
+	return style.Render(bar) + fmt.Sprintf("%3d", score)
+}
+
+// renderStabBadge renders the stabilization countdown badge for a list row.
+func renderStabBadge(item hpaanalysis.ListItem, width int) string {
+	if !item.Stabilizing || item.StabilizationLabel == "" {
+		return dimStyle.Render(padRight("-", width))
+	}
+	label := item.StabilizationLabel
+	if len(label) > width {
+		label = label[:width]
+	}
+	return warnStyle.Render(padRight(label, width))
+}
+
+// renderInlineSparkline renders a compact sparkline for the list view TREND column.
+func renderInlineSparkline(history []float64, width int, churnLevel string) string {
+	if len(history) < 2 {
+		return dimStyle.Render(padRight("·", width))
+	}
+	var style lipgloss.Style
+	switch churnLevel {
+	case "HIGH", "CRITICAL":
+		style = errorStyle
+	case "MEDIUM":
+		style = warnStyle
+	default:
+		style = okStyle
+	}
+	return renderSparkline(history, width, style)
+}
+

@@ -29,7 +29,12 @@ const (
 	replayView     // Replay timeline visualization
 	batchAuditView // Batch auditor results for selected HPAs
 	historyView    // History/sparkline view for scaling trends
+	overviewView   // Cluster-wide health overview
+	hintsView      // Metric hints troubleshooting
 )
+
+// maxReplicaHistoryPoints is the rolling window size for inline sparklines.
+const maxReplicaHistoryPoints = 15
 
 // Model is the top-level bubbletea model for the TUI dashboard.
 type Model struct {
@@ -62,6 +67,12 @@ type Model struct {
 	replayState    *replayState
 	batchAuditState *batchAuditState
 	historyState    *historyState
+	hintsState      *hintsState
+
+	// replicaHistory holds recent replica snapshots per HPA for inline sparklines.
+	// Keyed by "namespace/name", value is a slice of desired replica counts
+	// from the last N refresh cycles.
+	replicaHistory map[string][]float64
 
 	keys keyMap
 }
@@ -129,6 +140,8 @@ type keyMap struct {
 	BatchAudit    key.Binding
 	BatchApply    key.Binding
 		History       key.Binding
+	Hints         key.Binding
+	Overview      key.Binding
 }
 
 func defaultKeys() keyMap {
@@ -241,6 +254,14 @@ func defaultKeys() keyMap {
 				key.WithKeys("H"),
 				key.WithHelp("H", "history/sparkline"),
 			),
+		Hints: key.NewBinding(
+			key.WithKeys("h"),
+			key.WithHelp("h", "metric hints"),
+		),
+		Overview: key.NewBinding(
+			key.WithKeys("O"),
+			key.WithHelp("O", "cluster overview"),
+		),
 	}
 }
 
@@ -270,7 +291,8 @@ func NewModel(client kubernetes.Interface, namespace string, opts Options) Model
 		namespace:   namespace,
 		opts:        opts,
 		items:       []hpaanalysis.ListItem{},
-		reports:     map[string]*hpaanalysis.StatusReport{},
+		reports:        map[string]*hpaanalysis.StatusReport{},
+		replicaHistory: map[string][]float64{},
 		cursor:      0,
 		viewMode:    listView,
 		interval:    interval,

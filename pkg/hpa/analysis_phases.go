@@ -143,11 +143,46 @@ func detectMetricDecisionTrace(a Analysis, src *autoscalingv2.HorizontalPodAutos
 	return a
 }
 
+// correlateStabilizationChurn adds an interpretation line when both
+// stabilization is active AND churn is detected, warning that the
+// stabilization window may be too short.
+func correlateStabilizationChurn(a Analysis) Analysis {
+	if a.StabilizationRemaining == nil || *a.StabilizationRemaining <= 0 {
+		return a
+	}
+	if a.ChurnAnalysis == nil {
+		return a
+	}
+	if a.ChurnAnalysis.Level != ChurnHigh && a.ChurnAnalysis.Level != ChurnCritical {
+		return a
+	}
+	line := "[confidence: medium] Churn detected while stabilization window is active — consider increasing scaleDown.stabilizationWindowSeconds to reduce thrashing."
+	a.Interpretation = append(a.Interpretation, line)
+	return a
+}
+
 // attachDebug adds verbose debug lines when enabled.
 func attachDebug(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler, opts AnalysisOptions) Analysis {
 	if !opts.Debug {
 		return a
 	}
 	a.Debug = DebugLines(src, a)
+	return a
+}
+
+// attachDecisionSignals populates DecisionSignals using the given adapter.
+// When structured output is available, it uses FromStructuredOutput.
+// Otherwise, it falls back to FromEstimation.
+func attachDecisionSignals(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler, adapter DecisionAdapter) Analysis {
+	if src == nil {
+		return a
+	}
+	signals := adapter.FromStructuredOutput(src)
+	if signals == nil {
+		signals = adapter.FromEstimation(src)
+	}
+	if len(signals) > 0 {
+		a.DecisionSignals = signals
+	}
 	return a
 }
