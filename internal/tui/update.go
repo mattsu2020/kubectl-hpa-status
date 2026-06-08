@@ -246,6 +246,13 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case key.Matches(msg, m.keys.History):
+		if m.viewMode == detailView {
+			m.viewMode = historyView
+			m.historyState = &historyState{}
+		}
+		return m, nil
+
 	case key.Matches(msg, m.keys.Simulate):
 		return m.handleSimulateKey()
 
@@ -397,6 +404,9 @@ func (m Model) handleEscape() (tea.Model, tea.Cmd) {
 		m.simState = nil
 		m.fixState = nil
 		m.replayState = nil
+		m.viewMode = detailView
+	case historyView:
+		m.historyState = nil
 		m.viewMode = detailView
 	case batchAuditView:
 		m.batchAuditState = nil

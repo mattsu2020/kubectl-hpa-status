@@ -37,6 +37,8 @@ func (m Model) View() string {
 		content = m.renderReplayView()
 	case batchAuditView:
 		content = m.renderBatchAuditView()
+	case historyView:
+		content = m.renderHistoryView()
 	}
 
 	statusBar := m.renderStatusBar()
@@ -64,6 +66,7 @@ func (m Model) renderHelpView() string {
 		{"s", "Open simulation panel"},
 		{"f", "Open fix wizard"},
 		{"T", "Open replay timeline"},
+		{"H", "Open history/sparkline view"},
 		{"M", "Toggle metric simulation mode"},
 		{"Tab", "Cycle simulation fields"},
 		{"r", "Refresh data now"},

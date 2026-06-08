@@ -24,10 +24,11 @@ const (
 	detailView
 	helpView
 	metricsView
-	simView       // Interactive simulation panel
-	fixView       // Fix wizard for problematic HPAs
-	replayView    // Replay timeline visualization
+	simView        // Interactive simulation panel
+	fixView        // Fix wizard for problematic HPAs
+	replayView     // Replay timeline visualization
 	batchAuditView // Batch auditor results for selected HPAs
+	historyView    // History/sparkline view for scaling trends
 )
 
 // Model is the top-level bubbletea model for the TUI dashboard.
@@ -60,6 +61,7 @@ type Model struct {
 	fixState       *fixState
 	replayState    *replayState
 	batchAuditState *batchAuditState
+	historyState    *historyState
 
 	keys keyMap
 }
@@ -126,6 +128,7 @@ type keyMap struct {
 	IntervalDown  key.Binding
 	BatchAudit    key.Binding
 	BatchApply    key.Binding
+		History       key.Binding
 }
 
 func defaultKeys() keyMap {
@@ -234,6 +237,10 @@ func defaultKeys() keyMap {
 			key.WithKeys("x"),
 			key.WithHelp("x", "batch apply"),
 		),
+			History: key.NewBinding(
+				key.WithKeys("H"),
+				key.WithHelp("H", "history/sparkline"),
+			),
 	}
 }
 

@@ -56,6 +56,8 @@ func registerStatusFlags(cmd *cobra.Command, opts *options) {
 	cmd.PersistentFlags().BoolVar(&opts.gitopsCheck, "gitops-check", false, "detect GitOps manifest conflicts with HPA-managed replicas")
 	cmd.PersistentFlags().StringVar(&opts.manifestPath, "manifest", "", "path to manifest file or directory for GitOps conflict detection")
 	cmd.PersistentFlags().BoolVar(&opts.metricContract, "metric-contract", false, "verify HPA metric references are queryable from metrics APIs")
+	cmd.PersistentFlags().BoolVar(&opts.churnDetect, "churn-detect", false, "detect replica thrashing and recommend stabilization adjustments")
+	cmd.PersistentFlags().BoolVar(&opts.metricHints, "metric-hints", false, "troubleshoot custom/external metric issues with common failure pattern hints")
 }
 
 // registerWatchFlags registers flags specific to the watch / TUI commands.

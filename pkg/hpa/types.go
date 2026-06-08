@@ -58,6 +58,11 @@ const (
 	// same resource (CPU/memory) on the same workload, which can cause
 	// conflicting scaling decisions.
 	healthPenaltyVPAConflict = 20
+
+	// healthPenaltyChurn is applied when the HPA exhibits high replica churn
+	// (thrashing), indicating frequent scaling direction reversals that
+	// suggest the stabilization window or tolerance needs adjustment.
+	healthPenaltyChurn = 15
 )
 
 // AnalysisOptions configures the analysis behavior.
@@ -78,6 +83,7 @@ type HealthWeights struct {
 	AtMinimumReplicas   *int `json:"atMinimumReplicas,omitempty" yaml:"atMinimumReplicas,omitempty"`
 	KEDAInactiveTrigger *int `json:"kedaInactiveTrigger,omitempty" yaml:"kedaInactiveTrigger,omitempty"`
 	VPAConflict         *int `json:"vpaConflict,omitempty" yaml:"vpaConflict,omitempty"`
+	Churn               *int `json:"churn,omitempty" yaml:"churn,omitempty"`
 }
 
 // IntWeight returns a pointer to the given int value. Use this to set
@@ -183,6 +189,17 @@ type Analysis struct {
 	// GitOpsConflict holds GitOps manifest conflict detection results, populated when
 	// --gitops-check is enabled or --manifest is provided.
 	GitOpsConflict *GitOpsConflict `json:"gitopsConflict,omitempty" yaml:"gitopsConflict,omitempty"`
+	// ChurnAnalysis holds the thrashing/churn detection result for the HPA timeline.
+	// Populated when --churn-detect is enabled or during doctor command.
+	ChurnAnalysis *ChurnAnalysis `json:"churnAnalysis,omitempty" yaml:"churnAnalysis,omitempty"`
+	// VPAAdvisory holds the VPA-HPA coexistence advisory result, providing
+	// structured recommendations when VPA and HPA target the same workload.
+	// Populated when --vpa is enabled and a VPA conflict is detected.
+	VPAAdvisory *VPAAdvisory `json:"vpaAdvisory,omitempty" yaml:"vpaAdvisory,omitempty"`
+	// MetricHints holds troubleshooting hints for custom/external metrics,
+	// identifying common failure patterns with remediation steps.
+	// Populated when --metric-hints is enabled.
+	MetricHints *MetricHintsReport `json:"metricHints,omitempty" yaml:"metricHints,omitempty"`
 }
 
 // DecisionSignal is the stable internal shape for explicit controller scaling

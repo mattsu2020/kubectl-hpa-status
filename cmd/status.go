@@ -324,6 +324,22 @@ func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, 
 		report.Analysis.MetricContract = hpaanalysis.AnalyzeMetricContract(input)
 	}
 
+	if opts.churnDetect && opts.events.enabled {
+		report.Analysis.ChurnAnalysis = hpaanalysis.AnalyzeChurnFromEvents(report.Events, hpa)
+		if report.Analysis.ChurnAnalysis != nil {
+			hpaanalysis.ApplyChurnPenalty(&report.Analysis, opts.healthWeights)
+		}
+	}
+
+	if report.Analysis.VPAConflict != nil {
+		report.Analysis.VPAAdvisory = hpaanalysis.AnalyzeVPAAdvisory(hpa, report.Analysis.VPAConflict)
+	}
+
+	if opts.metricHints {
+		report.Analysis.MetricHints = hpaanalysis.AnalyzeMetricHints(
+			hpa, report.Events, report.Analysis.MetricFreshnessEntries, report.Analysis.MetricContract)
+	}
+
 	return report, nil
 }
 

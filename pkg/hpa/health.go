@@ -139,6 +139,7 @@ type resolvedWeights struct {
 	atMinimumReplicas   int
 	kedaInactiveTrigger int
 	vpaConflict         int
+	churn               int
 }
 
 func resolveWeights(w HealthWeights) resolvedWeights {
@@ -151,6 +152,7 @@ func resolveWeights(w HealthWeights) resolvedWeights {
 		atMinimumReplicas:   weightOr(w.AtMinimumReplicas, healthPenaltyAtMinimumReplicas),
 		kedaInactiveTrigger: weightOr(w.KEDAInactiveTrigger, healthPenaltyKEDAInactiveTrigger),
 		vpaConflict:         weightOr(w.VPAConflict, healthPenaltyVPAConflict),
+		churn:               weightOr(w.Churn, healthPenaltyChurn),
 	}
 }
 
@@ -197,6 +199,50 @@ func ApplyEnrichmentPenalties(a *Analysis, weights HealthWeights) {
 		if currentState == HealthOK || currentState == HealthStabilized {
 			finalState = HealthLimited
 		}
+	}
+
+	acc.SetState(finalState)
+	enrichedResult := acc.Result()
+	if enrichedResult.Score < 0 {
+		enrichedResult.Score = 0
+	}
+	a.HealthScore = enrichedResult.Score
+	a.Health = string(enrichedResult.State)
+	if a.HealthResult != nil {
+		a.HealthResult.Score = enrichedResult.Score
+		a.HealthResult.State = enrichedResult.State
+		a.HealthResult.Signals = enrichedResult.Signals
+	}
+}
+
+// ApplyChurnPenalty adjusts the health score when high replica churn (thrashing)
+// is detected. It uses the resolved churn weight and only applies a penalty when
+// the ChurnAnalysis level is HIGH or CRITICAL.
+func ApplyChurnPenalty(a *Analysis, weights HealthWeights) {
+	if a == nil || a.ChurnAnalysis == nil {
+		return
+	}
+
+	level := a.ChurnAnalysis.Level
+	if level != ChurnHigh && level != ChurnCritical {
+		return
+	}
+
+	w := resolveWeights(weights)
+
+	acc := NewHealthAccumulator(a.HealthScore)
+	if a.HealthResult != nil {
+		for _, s := range a.HealthResult.Signals {
+			acc.result.Signals = append(acc.result.Signals, s)
+		}
+	}
+
+	currentState := HealthState(a.Health)
+	finalState := currentState
+
+	acc.AddPenalty("High replica churn (thrashing) detected", w.churn, HealthLimited)
+	if currentState == HealthOK || currentState == HealthStabilized {
+		finalState = HealthLimited
 	}
 
 	acc.SetState(finalState)

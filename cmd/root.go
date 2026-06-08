@@ -75,6 +75,8 @@ type statusOptions struct {
 	gitopsCheck           bool
 	manifestPath          string
 	metricContract        bool
+	churnDetect           bool
+	metricHints           bool
 }
 
 // listOptions holds flags specific to the list / scan commands.
@@ -210,6 +212,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newStatusCommand(opts))
 	root.AddCommand(newDoctorCommand(opts))
 	root.AddCommand(newAnalyzeCommand(opts))
+	root.AddCommand(newAssumptionsCommand(opts))
 	root.AddCommand(newListCommand(opts))
 	root.AddCommand(newScanCommand(opts))
 	root.AddCommand(newWatchCommand(opts))

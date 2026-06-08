@@ -1,0 +1,261 @@
+package hpa
+
+import (
+	"fmt"
+
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	"k8s.io/apimachinery/pkg/api/resource"
+)
+
+// Assumption represents a single detected HPA controller assumption with its
+// source, confidence level, and impact description.
+type Assumption struct {
+	Name        string `json:"name" yaml:"name"`
+	Value       string `json:"value" yaml:"value"`
+	Source      string `json:"source" yaml:"source"`          // "hpa.spec" or "kubernetes-default"
+	Confidence  string `json:"confidence" yaml:"confidence"`  // high / medium / low
+	Impact      string `json:"impact" yaml:"impact"`
+	Description string `json:"description" yaml:"description"`
+}
+
+// ControllerAssumptions holds all detected assumptions about the HPA controller
+// configuration, including both explicitly set values and inferred defaults.
+type ControllerAssumptions struct {
+	Namespace               string      `json:"namespace" yaml:"namespace"`
+	Name                    string      `json:"name" yaml:"name"`
+	SyncPeriod              Assumption  `json:"syncPeriod" yaml:"syncPeriod"`
+	GlobalTolerance         Assumption  `json:"globalTolerance" yaml:"globalTolerance"`
+	CPUInitializationPeriod Assumption  `json:"cpuInitializationPeriod" yaml:"cpuInitializationPeriod"`
+	InitialReadinessDelay   Assumption  `json:"initialReadinessDelay" yaml:"initialReadinessDelay"`
+	DownscaleStabilization  Assumption  `json:"downscaleStabilization" yaml:"downscaleStabilization"`
+	UpscaleStabilization    Assumption  `json:"upscaleStabilization" yaml:"upscaleStabilization"`
+	Summary                 string      `json:"summary" yaml:"summary"`
+	Warnings                []string    `json:"warnings,omitempty" yaml:"warnings,omitempty"`
+}
+
+// DetectControllerAssumptions examines an HPA resource and reports the
+// controller assumptions that affect its scaling behavior. It distinguishes
+// between values explicitly set in the HPA spec (high confidence) and
+// Kubernetes controller-manager defaults (medium or low confidence).
+//
+// Returns nil if hpa is nil.
+func DetectControllerAssumptions(hpa *autoscalingv2.HorizontalPodAutoscaler) *ControllerAssumptions {
+	if hpa == nil {
+		return nil
+	}
+
+	result := &ControllerAssumptions{
+		Namespace: hpa.Namespace,
+		Name:      hpa.Name,
+	}
+
+	result.SyncPeriod = detectSyncPeriod()
+	result.GlobalTolerance = detectTolerance(hpa)
+	result.CPUInitializationPeriod = detectCPUInitializationPeriod()
+	result.InitialReadinessDelay = detectInitialReadinessDelay()
+	result.DownscaleStabilization = detectDownscaleStabilization(hpa)
+	result.UpscaleStabilization = detectUpscaleStabilization(hpa)
+
+	result.Summary = buildAssumptionsSummary(result)
+	result.Warnings = buildAssumptionsWarnings(result)
+
+	return result
+}
+
+// detectSyncPeriod returns the HPA controller sync period assumption.
+// This is a controller-manager flag not observable via the HPA API.
+func detectSyncPeriod() Assumption {
+	return Assumption{
+		Name:        "SyncPeriod",
+		Value:       "15s",
+		Source:      "kubernetes-default",
+		Confidence:  "medium",
+		Impact:      "HPA re-evaluates scaling decisions every sync period",
+		Description: "The horizontal-pod-autoscaler-sync-period flag (default 15s) controls how often the HPA controller checks metrics and computes desired replicas.",
+	}
+}
+
+// detectTolerance checks the HPA spec for explicitly configured tolerance
+// values on scaleDown or scaleUp behavior, falling back to the Kubernetes
+// default of 0.1 (10%).
+func detectTolerance(hpa *autoscalingv2.HorizontalPodAutoscaler) Assumption {
+	tolerance := extractSpecTolerance(hpa)
+	if tolerance != nil {
+		return Assumption{
+			Name:        "GlobalTolerance",
+			Value:       tolerance.String(),
+			Source:      "hpa.spec",
+			Confidence:  "high",
+			Impact:      "Scaling is suppressed when the metric ratio is within the tolerance band around the target",
+			Description: "The tolerance value defines the band around the target metric within which the HPA will not trigger scaling. Default is 0.1 (10%).",
+		}
+	}
+
+	return Assumption{
+		Name:        "GlobalTolerance",
+		Value:       "0.1 (10%)",
+		Source:      "kubernetes-default",
+		Confidence:  "medium",
+		Impact:      "Scaling is suppressed when the metric ratio is within the tolerance band around the target",
+		Description: "The tolerance value defines the band around the target metric within which the HPA will not trigger scaling. Default is 0.1 (10%).",
+	}
+}
+
+// detectCPUInitializationPeriod returns the CPU initialization period assumption.
+// This is a controller-manager flag not observable via the HPA API.
+func detectCPUInitializationPeriod() Assumption {
+	return Assumption{
+		Name:        "CPUInitializationPeriod",
+		Value:       "5m0s",
+		Source:      "kubernetes-default",
+		Confidence:  "low",
+		Impact:      "CPU metrics from pods younger than this period may be ignored during scaling calculations",
+		Description: "The horizontal-pod-autoscaler-cpu-initialization-period flag (default 5m) specifies the period after pod start during which CPU metrics are not considered.",
+	}
+}
+
+// detectInitialReadinessDelay returns the initial readiness delay assumption.
+// This is a controller-manager flag not observable via the HPA API.
+func detectInitialReadinessDelay() Assumption {
+	return Assumption{
+		Name:        "InitialReadinessDelay",
+		Value:       "30s",
+		Source:      "kubernetes-default",
+		Confidence:  "low",
+		Impact:      "Pods that become ready within this delay after start may be considered unready for scaling calculations",
+		Description: "The horizontal-pod-autoscaler-initial-readiness-delay flag (default 30s) specifies the time after pod start during which readiness is not considered stable.",
+	}
+}
+
+// detectDownscaleStabilization checks the HPA spec for the scaleDown
+// stabilization window, falling back to the Kubernetes default of 300s.
+func detectDownscaleStabilization(hpa *autoscalingv2.HorizontalPodAutoscaler) Assumption {
+	if hpa.Spec.Behavior != nil && hpa.Spec.Behavior.ScaleDown != nil &&
+		hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds != nil {
+		val := *hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds
+		return Assumption{
+			Name:        "DownscaleStabilization",
+			Value:       fmt.Sprintf("%ds", val),
+			Source:      "hpa.spec",
+			Confidence:  "high",
+			Impact:      "Scale-down decisions are held for the stabilization window to prevent flapping",
+			Description: "The scaleDown stabilizationWindowSeconds prevents repeated scale-down by remembering past recommendations. Default is 300s.",
+		}
+	}
+
+	return Assumption{
+		Name:        "DownscaleStabilization",
+		Value:       "300s",
+		Source:      "kubernetes-default",
+		Confidence:  "medium",
+		Impact:      "Scale-down decisions are held for the stabilization window to prevent flapping",
+		Description: "The scaleDown stabilizationWindowSeconds prevents repeated scale-down by remembering past recommendations. Default is 300s.",
+	}
+}
+
+// detectUpscaleStabilization checks the HPA spec for the scaleUp
+// stabilization window, falling back to the Kubernetes default of 0s.
+func detectUpscaleStabilization(hpa *autoscalingv2.HorizontalPodAutoscaler) Assumption {
+	if hpa.Spec.Behavior != nil && hpa.Spec.Behavior.ScaleUp != nil &&
+		hpa.Spec.Behavior.ScaleUp.StabilizationWindowSeconds != nil {
+		val := *hpa.Spec.Behavior.ScaleUp.StabilizationWindowSeconds
+		return Assumption{
+			Name:        "UpscaleStabilization",
+			Value:       fmt.Sprintf("%ds", val),
+			Source:      "hpa.spec",
+			Confidence:  "high",
+			Impact:      "Scale-up decisions can be delayed by this stabilization window",
+			Description: "The scaleUp stabilizationWindowSeconds prevents repeated scale-up. Default is 0s (immediate).",
+		}
+	}
+
+	return Assumption{
+		Name:        "UpscaleStabilization",
+		Value:       "0s",
+		Source:      "kubernetes-default",
+		Confidence:  "medium",
+		Impact:      "Scale-up decisions can be delayed by this stabilization window",
+		Description: "The scaleUp stabilizationWindowSeconds prevents repeated scale-up. Default is 0s (immediate).",
+	}
+}
+
+// extractSpecTolerance looks for an explicitly configured tolerance in the HPA
+// behavior spec. It checks scaleDown first, then scaleUp, returning the first
+// non-nil, non-zero tolerance found.
+func extractSpecTolerance(hpa *autoscalingv2.HorizontalPodAutoscaler) *resource.Quantity {
+	if hpa.Spec.Behavior == nil {
+		return nil
+	}
+	if hpa.Spec.Behavior.ScaleDown != nil && hpa.Spec.Behavior.ScaleDown.Tolerance != nil &&
+		!hpa.Spec.Behavior.ScaleDown.Tolerance.IsZero() {
+		return hpa.Spec.Behavior.ScaleDown.Tolerance
+	}
+	if hpa.Spec.Behavior.ScaleUp != nil && hpa.Spec.Behavior.ScaleUp.Tolerance != nil &&
+		!hpa.Spec.Behavior.ScaleUp.Tolerance.IsZero() {
+		return hpa.Spec.Behavior.ScaleUp.Tolerance
+	}
+	return nil
+}
+
+// buildAssumptionsSummary generates a one-line summary describing the overall
+// confidence level of the detected assumptions.
+func buildAssumptionsSummary(ca *ControllerAssumptions) string {
+	lowCount := 0
+	mediumCount := 0
+	highCount := 0
+
+	assumptions := []Assumption{
+		ca.SyncPeriod,
+		ca.GlobalTolerance,
+		ca.CPUInitializationPeriod,
+		ca.InitialReadinessDelay,
+		ca.DownscaleStabilization,
+		ca.UpscaleStabilization,
+	}
+
+	for _, a := range assumptions {
+		switch a.Confidence {
+		case "low":
+			lowCount++
+		case "medium":
+			mediumCount++
+		case "high":
+			highCount++
+		}
+	}
+
+	total := len(assumptions)
+	explicit := highCount
+
+	switch {
+	case explicit == total:
+		return fmt.Sprintf("All %d assumptions are explicitly configured (high confidence).", total)
+	case explicit > 0:
+		return fmt.Sprintf("%d of %d assumptions are explicitly configured; %d use documented defaults; %d rely on unobservable controller-manager flags.",
+			explicit, total, mediumCount, lowCount)
+	default:
+		return fmt.Sprintf("No assumptions are explicitly configured; %d use documented defaults; %d rely on unobservable controller-manager flags.",
+			mediumCount, lowCount)
+	}
+}
+
+// buildAssumptionsWarnings generates warning strings for assumptions that
+// carry operational risk due to default or low-confidence values.
+func buildAssumptionsWarnings(ca *ControllerAssumptions) []string {
+	var warnings []string
+
+	if ca.CPUInitializationPeriod.Confidence == "low" {
+		warnings = append(warnings, "CPU metrics from recently started pods may be ignored.")
+	}
+	if ca.GlobalTolerance.Source == "kubernetes-default" {
+		warnings = append(warnings, "Ratio within 10% of target may not trigger scaling.")
+	}
+	if ca.InitialReadinessDelay.Confidence == "low" {
+		warnings = append(warnings, "Pods becoming ready shortly after start may not be counted.")
+	}
+	if ca.DownscaleStabilization.Source == "kubernetes-default" {
+		warnings = append(warnings, "Scale-down may be delayed by default 300s stabilization.")
+	}
+
+	return warnings
+}
