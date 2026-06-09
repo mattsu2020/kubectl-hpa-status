@@ -228,6 +228,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newRecommendCommand(opts))
 	root.AddCommand(newPolicyCommand(opts))
 	root.AddCommand(newSnapshotCommand(opts))
+	root.AddCommand(newBundleCommand(opts))
 	root.AddCommand(newLintCommand(opts))
 	root.AddCommand(newVersionCommand())
 	root.AddCommand(newCompletionCommand(root))
