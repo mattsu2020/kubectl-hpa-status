@@ -154,6 +154,12 @@ type Analysis struct {
 	DecisionSignals []DecisionSignal `json:"decisionSignals,omitempty" yaml:"decisionSignals,omitempty"`
 	// StabilizationWindowSeconds is the configured scale-down stabilization window.
 	StabilizationWindowSeconds *int32 `json:"stabilizationWindowSeconds,omitempty" yaml:"stabilizationWindowSeconds,omitempty"`
+	// StabilizationSource indicates which behavior direction caused stabilization:
+	// "scaleDown" or "scaleUp". Populated when StabilizationRemaining > 0.
+	StabilizationSource string `json:"stabilizationSource,omitempty" yaml:"stabilizationSource,omitempty"`
+	// StabilizationConfidence is the confidence label for stabilization estimates.
+	// Always "medium (API limitation)" since the estimate is based on LastScaleTime.
+	StabilizationConfidence string `json:"stabilizationConfidence,omitempty" yaml:"stabilizationConfidence,omitempty"`
 	// MetricsDiagnostics holds per-metric health check results for the metrics pipeline.
 	MetricsDiagnostics *MetricsPipelineDiagnostics `json:"metricsDiagnostics,omitempty" yaml:"metricsDiagnostics,omitempty"`
 	// MetricFreshnessEntries holds per-metric freshness analysis results.
@@ -212,6 +218,9 @@ type Analysis struct {
 	// scaleUp/scaleDown policies, stabilization windows, and tolerance.
 	// Populated when --behavior-advisor is enabled.
 	BehaviorAdvisor *BehaviorAdvisorResult `json:"behaviorAdvisor,omitempty" yaml:"behaviorAdvisor,omitempty"`
+	// HealthTrend holds the health score trend analysis over time.
+	// Populated when --trend is enabled and sufficient history is available.
+	HealthTrend *HealthTrendResult `json:"healthTrend,omitempty" yaml:"healthTrend,omitempty"`
 }
 
 // DecisionSignal is the stable internal shape for explicit controller scaling
@@ -230,6 +239,10 @@ type DecisionSignal struct {
 	MetricName string `json:"metricName,omitempty" yaml:"metricName,omitempty"`
 	Source     string `json:"source,omitempty" yaml:"source,omitempty"`
 	Confidence string `json:"confidence,omitempty" yaml:"confidence,omitempty"`
+	// AdapterVersion identifies which adapter produced this signal.
+	// "estimation-v1" for the current inference-based adapter.
+	// "kep6111-v1" for the future structured output adapter.
+	AdapterVersion string `json:"adapterVersion,omitempty" yaml:"adapterVersion,omitempty"`
 }
 
 // StructuredMessage provides a machine-readable representation of an
@@ -444,6 +457,29 @@ type PodResourceIssue struct {
 	Category  string `json:"category" yaml:"category"` // "missing-request", "missing-limit"
 }
 
+// HealthSnapshot records a single health observation for trend tracking.
+type HealthSnapshot struct {
+	Timestamp       time.Time `json:"timestamp" yaml:"timestamp"`
+	HealthScore     int       `json:"healthScore" yaml:"healthScore"`
+	HealthState     string    `json:"healthState" yaml:"healthState"`
+	DesiredReplicas int32     `json:"desiredReplicas" yaml:"desiredReplicas"`
+	CurrentReplicas int32     `json:"currentReplicas" yaml:"currentReplicas"`
+	Stabilizing     bool      `json:"stabilizing,omitempty" yaml:"stabilizing,omitempty"`
+}
+
+// HealthTrendResult holds the analysis of health score history over time.
+type HealthTrendResult struct {
+	Snapshots        []HealthSnapshot `json:"snapshots" yaml:"snapshots"`
+	Variance         float64          `json:"variance" yaml:"variance"`
+	MinScore         int              `json:"minScore" yaml:"minScore"`
+	MaxScore         int              `json:"maxScore" yaml:"maxScore"`
+	MeanScore        float64          `json:"meanScore" yaml:"meanScore"`
+	DegradationRate  float64          `json:"degradationRate" yaml:"degradationRate"`
+	FlappingDetected bool             `json:"flappingDetected" yaml:"flappingDetected"`
+	FlappingSeverity string           `json:"flappingSeverity,omitempty" yaml:"flappingSeverity,omitempty"`
+	Sparkline        string           `json:"sparkline,omitempty" yaml:"sparkline,omitempty"`
+}
+
 // ContainerCheck verifies that a ContainerResource metric target container exists in pods.
 type ContainerCheck struct {
 	Container string `json:"container" yaml:"container"`
@@ -453,14 +489,16 @@ type ContainerCheck struct {
 
 // SimulationResult holds the before/after comparison of an HPA simulation.
 type SimulationResult struct {
-	Parameter         string             `json:"parameter" yaml:"parameter"`
-	OriginalValue     string             `json:"originalValue" yaml:"originalValue"`
-	SimulatedValue    string             `json:"simulatedValue" yaml:"simulatedValue"`
-	Before            SimulationState    `json:"before" yaml:"before"`
-	After             SimulationState    `json:"after" yaml:"after"`
-	RiskAssessment    string             `json:"riskAssessment,omitempty" yaml:"riskAssessment,omitempty"`
-	Interpretation    []string           `json:"interpretation,omitempty" yaml:"interpretation,omitempty"`
-	MetricSimulations []MetricSimulation `json:"metricSimulations,omitempty" yaml:"metricSimulations,omitempty"`
+	Parameter            string             `json:"parameter" yaml:"parameter"`
+	OriginalValue        string             `json:"originalValue" yaml:"originalValue"`
+	SimulatedValue       string             `json:"simulatedValue" yaml:"simulatedValue"`
+	Before               SimulationState    `json:"before" yaml:"before"`
+	After                SimulationState    `json:"after" yaml:"after"`
+	RiskAssessment       string             `json:"riskAssessment,omitempty" yaml:"riskAssessment,omitempty"`
+	Interpretation       []string           `json:"interpretation,omitempty" yaml:"interpretation,omitempty"`
+	MetricSimulations    []MetricSimulation `json:"metricSimulations,omitempty" yaml:"metricSimulations,omitempty"`
+	TimeSeriesProjection []ProjectedState   `json:"timeSeriesProjection,omitempty" yaml:"timeSeriesProjection,omitempty"`
+	RiskWarnings         []string           `json:"riskWarnings,omitempty" yaml:"riskWarnings,omitempty"`
 }
 
 // SimulationState is a snapshot of key analysis fields for before/after comparison.
@@ -471,6 +509,21 @@ type SimulationState struct {
 	Summary         string   `json:"summary" yaml:"summary"`
 	ScalingLimited  bool     `json:"scalingLimited" yaml:"scalingLimited"`
 	Metrics         []Metric `json:"metrics,omitempty" yaml:"metrics,omitempty"`
+}
+
+// ProjectedState holds a single point in a time-series projection showing
+// estimated replica count at a given time offset.
+type ProjectedState struct {
+	TimeOffset           int32   `json:"timeOffset" yaml:"timeOffset"`
+	ProjectedReplicas    int32   `json:"projectedReplicas" yaml:"projectedReplicas"`
+	ProjectedMetricRatio float64 `json:"projectedMetricRatio,omitempty" yaml:"projectedMetricRatio,omitempty"`
+}
+
+// SimulationExtendedOptions configures extended simulation with time-series
+// projection and additional parameter overrides.
+type SimulationExtendedOptions struct {
+	DurationSeconds int32 `json:"durationSeconds" yaml:"durationSeconds"`
+	StepSeconds     int32 `json:"stepSeconds" yaml:"stepSeconds"`
 }
 
 // MetricDecisionTrace holds a comprehensive per-metric analysis explaining
@@ -640,14 +693,14 @@ type CapacityContext struct {
 // ScalePath describes the visible scale-up path from the HPA recommendation
 // through the workload, ReplicaSets, pods, and scheduler-facing signals.
 type ScalePath struct {
-	Steps         []ScalePathStep          `json:"steps" yaml:"steps"`
-	BlockingPoint string                   `json:"blockingPoint,omitempty" yaml:"blockingPoint,omitempty"`
-	Evidence      []string                 `json:"evidence,omitempty" yaml:"evidence,omitempty"`
-	NextActions   []string                 `json:"nextActions,omitempty" yaml:"nextActions,omitempty"`
-	ProbeWarnings []string                 `json:"probeWarnings,omitempty" yaml:"probeWarnings,omitempty"`
-	SchedulerInfo *ScalePathSchedulerInfo  `json:"schedulerInfo,omitempty" yaml:"schedulerInfo,omitempty"`
-	QuotaChecks   []ScalePathQuotaCheck    `json:"quotaChecks,omitempty" yaml:"quotaChecks,omitempty"`
-	AutoscalerEvents []string              `json:"autoscalerEvents,omitempty" yaml:"autoscalerEvents,omitempty"`
+	Steps            []ScalePathStep         `json:"steps" yaml:"steps"`
+	BlockingPoint    string                  `json:"blockingPoint,omitempty" yaml:"blockingPoint,omitempty"`
+	Evidence         []string                `json:"evidence,omitempty" yaml:"evidence,omitempty"`
+	NextActions      []string                `json:"nextActions,omitempty" yaml:"nextActions,omitempty"`
+	ProbeWarnings    []string                `json:"probeWarnings,omitempty" yaml:"probeWarnings,omitempty"`
+	SchedulerInfo    *ScalePathSchedulerInfo `json:"schedulerInfo,omitempty" yaml:"schedulerInfo,omitempty"`
+	QuotaChecks      []ScalePathQuotaCheck   `json:"quotaChecks,omitempty" yaml:"quotaChecks,omitempty"`
+	AutoscalerEvents []string                `json:"autoscalerEvents,omitempty" yaml:"autoscalerEvents,omitempty"`
 }
 
 // ScalePathStep is one hop in the HPA-to-pod scaling path.
@@ -694,12 +747,12 @@ type ProbeInfo struct {
 // ScalePathPodTemplate captures the pod template configuration relevant to
 // scale-path analysis (probes, scheduling constraints).
 type ScalePathPodTemplate struct {
-	ReadinessProbe     *ProbeInfo          `json:"readinessProbe,omitempty" yaml:"readinessProbe,omitempty"`
-	StartupProbe       *ProbeInfo          `json:"startupProbe,omitempty" yaml:"startupProbe,omitempty"`
-	NodeSelector       map[string]string   `json:"nodeSelector,omitempty" yaml:"nodeSelector,omitempty"`
-	Tolerations        []string            `json:"tolerations,omitempty" yaml:"tolerations,omitempty"`
-	AffinitySummary    string              `json:"affinitySummary,omitempty" yaml:"affinitySummary,omitempty"`
-	TopologySpread     []string            `json:"topologySpread,omitempty" yaml:"topologySpread,omitempty"`
+	ReadinessProbe  *ProbeInfo        `json:"readinessProbe,omitempty" yaml:"readinessProbe,omitempty"`
+	StartupProbe    *ProbeInfo        `json:"startupProbe,omitempty" yaml:"startupProbe,omitempty"`
+	NodeSelector    map[string]string `json:"nodeSelector,omitempty" yaml:"nodeSelector,omitempty"`
+	Tolerations     []string          `json:"tolerations,omitempty" yaml:"tolerations,omitempty"`
+	AffinitySummary string            `json:"affinitySummary,omitempty" yaml:"affinitySummary,omitempty"`
+	TopologySpread  []string          `json:"topologySpread,omitempty" yaml:"topologySpread,omitempty"`
 }
 
 // ScalePathSchedulerInfo describes scheduling constraints that may affect

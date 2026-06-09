@@ -80,6 +80,23 @@ func runWatch(ctx context.Context, out io.Writer, opts *options, name string, in
 		}
 		previous = &report.Analysis
 
+		// Prominent stabilization countdown in watch mode.
+		if report.Analysis.StabilizationRemaining != nil && *report.Analysis.StabilizationRemaining > 0 {
+			source := report.Analysis.StabilizationSource
+			if source == "" {
+				source = "scaleDown"
+			}
+			confidence := report.Analysis.StabilizationConfidence
+			if confidence == "" {
+				confidence = "medium (API limitation)"
+			}
+			progress := hpaanalysis.FormatStabilizationProgress(
+				report.Analysis.StabilizationRemaining,
+				report.Analysis.StabilizationWindowSeconds,
+			)
+			_, _ = fmt.Fprintf(out, "\n  STABILIZING: %s [%s] [confidence: %s]\n", progress, source, confidence)
+		}
+
 		if opts.untilCondition != "" && reportHasCondition(report, opts.untilCondition) {
 			_, err := fmt.Fprintf(out, "\nStopped: condition %q is present.\n", opts.untilCondition)
 			return err

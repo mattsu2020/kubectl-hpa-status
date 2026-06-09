@@ -30,45 +30,11 @@ func (DefaultDecisionAdapter) FromStructuredOutput(_ *autoscalingv2.HorizontalPo
 	return nil
 }
 
-// FromEstimation derives decision signals from HPA status data.
-// This is the legacy path used when the API server does not support
-// KEP-6111 structured decision output.
+// FromEstimation derives decision signals from HPA status data using the
+// comprehensive inference pipeline. This is the legacy path used when the
+// API server does not support KEP-6111 structured decision output.
 func (DefaultDecisionAdapter) FromEstimation(hpa *autoscalingv2.HorizontalPodAutoscaler) []DecisionSignal {
-	if hpa == nil {
-		return nil
-	}
-	var signals []DecisionSignal
-
-	// Stabilization signal.
-	if remaining := estimateStabilizationRemaining(hpa); remaining != nil && *remaining > 0 {
-		window := scaleDownStabilizationWindow(hpa)
-		message := "Scale-down is within the stabilization cooldown window"
-		if window != nil {
-			message = formatStabilizationMessage(int64(*remaining), int64(*window))
-		}
-		signals = append(signals, DecisionSignal{
-			Reason:     "ScaleDownStabilized",
-			Message:    message,
-			MetricName: "",
-			Source:     "StabilizationWindow",
-			Confidence: "medium",
-		})
-	}
-
-	// Scaling conditions signal.
-	for _, condition := range hpa.Status.Conditions {
-		if condition.Type == autoscalingv2.ScalingActive && condition.Status != "True" {
-			signals = append(signals, DecisionSignal{
-				Reason:     string(condition.Reason),
-				Message:    condition.Message,
-				MetricName: "",
-				Source:     "HPAController",
-				Confidence: "high",
-			})
-		}
-	}
-
-	return signals
+	return EstimateDecisionSignals(hpa)
 }
 
 func formatStabilizationMessage(remaining, window int64) string {

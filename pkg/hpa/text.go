@@ -60,7 +60,8 @@ func WriteStatusDashboard(w io.Writer, report StatusReport, theme style.Theme) e
 	out = fmt.Appendf(out, "Health   %s %d/100\n", theme.HealthLabel(a.Health, a.HealthScore), a.HealthScore)
 	out = fmt.Appendf(out, "Replicas current=%d desired=%d diff=%+d min=%d max=%d\n", a.Current, a.Desired, diff, a.Min, a.Max)
 	if a.StabilizationRemaining != nil && *a.StabilizationRemaining > 0 {
-		out = fmt.Appendf(out, "Stabilizing %s\n", FormatStabilizationProgress(a.StabilizationRemaining, a.StabilizationWindowSeconds))
+		progress := FormatStabilizationWithSource(a.StabilizationRemaining, a.StabilizationWindowSeconds, a.StabilizationSource)
+		out = fmt.Appendf(out, "Stabilizing %s\n", progress)
 	}
 	out = fmt.Appendf(out, "Summary  %s\n", theme.SummaryColor(a.Summary))
 
@@ -183,19 +184,30 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 		}
 	}
 
-
-		// Stabilization window section.
-		if a.StabilizationRemaining != nil && *a.StabilizationRemaining > 0 {
-			out = append(out, '\n')
+	// Stabilization window section.
+	if a.StabilizationRemaining != nil && *a.StabilizationRemaining > 0 {
+		out = append(out, '\n')
+		if a.StabilizationConfidence != "" {
+			// Enhanced display with progress bar, source, and confidence.
+			explain := FormatStabilizationExplain(a)
+			out = fmt.Appendf(out, "%s\n", theme.Warning.Render(explain))
+		} else {
 			progress := FormatStabilizationProgress(a.StabilizationRemaining, a.StabilizationWindowSeconds)
 			out = fmt.Appendf(out, "Stabilization: %s\n", theme.Warning.Render(progress))
 		}
+	}
 	if len(a.Behavior) > 0 {
 		out = append(out, '\n')
 		out = fmt.Appendf(out, "%s:\n", labels.Behavior)
 		for _, behavior := range a.Behavior {
 			out = fmt.Appendf(out, "  - %s\n", behavior.Text)
 		}
+	}
+
+	if a.HealthTrend != nil && len(a.HealthTrend.Snapshots) > 0 {
+		out = append(out, '\n')
+		trendText := FormatTrendText(*a.HealthTrend)
+		out = fmt.Appendf(out, "%s\n", trendText)
 	}
 
 	if len(a.Actions) > 0 {
@@ -249,6 +261,11 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 		for _, line := range a.Debug {
 			out = fmt.Appendf(out, "  - %s\n", theme.Dim.Render(line))
 		}
+	}
+
+	if len(a.DecisionSignals) > 0 {
+		out = append(out, '\n')
+		out = fmt.Appendf(out, "%s\n", FormatDecisionSignals(a.DecisionSignals))
 	}
 
 	if a.KEDAInfo != nil {
@@ -444,6 +461,14 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 		}
 		for _, line := range sim.Interpretation {
 			out = fmt.Appendf(out, "  - %s\n", theme.InterpretationLine(line))
+		}
+
+		// Extended simulation output: trajectory and risk warnings.
+		if sim.TimeSeriesProjection != nil || len(sim.RiskWarnings) > 0 {
+			extText := FormatSimulationExtended(sim)
+			if extText != "" {
+				out = fmt.Appendf(out, "%s\n", extText)
+			}
 		}
 	}
 
@@ -883,6 +908,10 @@ type ListItem struct {
 	ChurnLevel string `json:"churnLevel,omitempty" yaml:"churnLevel,omitempty"`
 	// ChurnScore is the numeric churn score 0-100.
 	ChurnScore int `json:"churnScore,omitempty" yaml:"churnScore,omitempty"`
+	// TrendSparkline is a pre-formatted sparkline showing health score trend.
+	TrendSparkline string `json:"trendSparkline,omitempty" yaml:"trendSparkline,omitempty"`
+	// TrendFlapping indicates whether flapping was detected in health history.
+	TrendFlapping bool `json:"trendFlapping,omitempty" yaml:"trendFlapping,omitempty"`
 }
 
 // ListReport holds the list of HPA items for table output.
@@ -954,26 +983,39 @@ func NewListItem(src Analysis) ListItem {
 	}
 
 	return ListItem{
-		Namespace:           src.Namespace,
-		Name:                src.Name,
-		Target:              src.Target,
-		Current:             src.Current,
-		Desired:             src.Desired,
-		Min:                 src.Min,
-		Max:                 src.Max,
-		Summary:             src.Summary,
-		Health:              health,
-		HealthScore:         src.HealthScore,
-		Issue:               issue,
-		Metrics:             metrics,
-		Behavior:            behavior,
-		Conditions:          conditions,
-		CreationTimestamp:   src.CreationTimestamp,
-		Stabilizing:         src.StabilizationRemaining != nil && *src.StabilizationRemaining > 0,
-		StabilizationLabel:  FormatCountdownBadge(src.StabilizationRemaining),
-		ChurnLevel:          churnLevelFromAnalysis(src.ChurnAnalysis),
-		ChurnScore:          churnScoreFromAnalysis(src.ChurnAnalysis),
+		Namespace:          src.Namespace,
+		Name:               src.Name,
+		Target:             src.Target,
+		Current:            src.Current,
+		Desired:            src.Desired,
+		Min:                src.Min,
+		Max:                src.Max,
+		Summary:            src.Summary,
+		Health:             health,
+		HealthScore:        src.HealthScore,
+		Issue:              issue,
+		Metrics:            metrics,
+		Behavior:           behavior,
+		Conditions:         conditions,
+		CreationTimestamp:  src.CreationTimestamp,
+		Stabilizing:        src.StabilizationRemaining != nil && *src.StabilizationRemaining > 0,
+		StabilizationLabel: FormatCountdownBadge(src.StabilizationRemaining),
+		ChurnLevel:         churnLevelFromAnalysis(src.ChurnAnalysis),
+		ChurnScore:         churnScoreFromAnalysis(src.ChurnAnalysis),
+		TrendSparkline:     trendSparklineFromAnalysis(src.HealthTrend),
+		TrendFlapping:      trendFlappingFromAnalysis(src.HealthTrend),
 	}
+}
+
+func trendSparklineFromAnalysis(trend *HealthTrendResult) string {
+	if trend == nil {
+		return ""
+	}
+	return FormatTrendListRow(*trend)
+}
+
+func trendFlappingFromAnalysis(trend *HealthTrendResult) bool {
+	return trend != nil && trend.FlappingDetected
 }
 
 func healthFromAnalysis(src Analysis) (string, int) {
@@ -1015,8 +1057,9 @@ func padRight(s string, width int) string {
 func WriteListText(w io.Writer, report ListReport, opts ListTextOptions) error {
 	t := opts.theme()
 	var out []byte
+	showTrend := listHasTrend(report.Items)
 	if opts.Wide {
-		out = fmt.Appendf(out, "%s %s %s %s %s %s %s %s %s %s %s %s %s %s %s\n",
+		header := fmt.Sprintf("%s %s %s %s %s %s %s %s %s %s %s %s %s %s",
 			padRight("NAMESPACE", 20),
 			padRight("NAME", 32),
 			padRight("TARGET", 28),
@@ -1030,10 +1073,13 @@ func WriteListText(w io.Writer, report ListReport, opts ListTextOptions) error {
 			padRight("METRICS", 20),
 			padRight("BEHAVIOR", 28),
 			padRight("ISSUE", 32),
-			padRight("CONDITIONS", 36),
-			"SUMMARY")
+			padRight("CONDITIONS", 36))
+		if showTrend {
+			header = fmt.Sprintf("%s %s", header, padRight("TREND", 20))
+		}
+		out = fmt.Appendf(out, "%s %s\n", header, "SUMMARY")
 		for _, item := range report.Items {
-			out = fmt.Appendf(out, "%s %s %s %s %s %s %s %s %s %s %s %s %s %s %s\n",
+			row := fmt.Sprintf("%s %s %s %s %s %s %s %s %s %s %s %s %s %s",
 				padRight(item.Namespace, 20),
 				padRight(item.Name, 32),
 				padRight(item.Target, 28),
@@ -1047,35 +1093,53 @@ func WriteListText(w io.Writer, report ListReport, opts ListTextOptions) error {
 				padRight(item.Metrics, 20),
 				padRight(item.Behavior, 28),
 				padRight(t.Issue(item.Issue, item.Health), 32),
-				padRight(item.Conditions, 36),
-				item.Summary)
+				padRight(item.Conditions, 36))
+			if showTrend {
+				row = fmt.Sprintf("%s %s", row, padRight(item.TrendSparkline, 20))
+			}
+			out = fmt.Appendf(out, "%s %s\n", row, item.Summary)
 		}
 		_, err := w.Write(out)
 		return err
 	}
 
-	out = fmt.Appendf(out, "%s %s %s %s %s %s %s %s\n",
+	header := fmt.Sprintf("%s %s %s %s %s %s %s",
 		padRight("NAMESPACE", 20),
 		padRight("NAME", 32),
 		padRight("CURRENT", 8),
 		padRight("DESIRED", 8),
 		padRight("HEALTH", 12),
 		padRight("SCORE", 8),
-		padRight("ISSUE", 32),
-		"SUMMARY")
+		padRight("ISSUE", 32))
+	if showTrend {
+		header = fmt.Sprintf("%s %s", header, padRight("TREND", 20))
+	}
+	out = fmt.Appendf(out, "%s %s\n", header, "SUMMARY")
 	for _, item := range report.Items {
-		out = fmt.Appendf(out, "%s %s %s %s %s %s %s %s\n",
+		row := fmt.Sprintf("%s %s %s %s %s %s %s",
 			padRight(item.Namespace, 20),
 			padRight(item.Name, 32),
 			padRight(fmt.Sprintf("%d", item.Current), 8),
 			padRight(fmt.Sprintf("%d", item.Desired), 8),
 			padRight(t.HealthLabel(item.Health, item.HealthScore), 12),
 			padRight(fmt.Sprintf("%d", item.HealthScore), 8),
-			padRight(t.Issue(item.Issue, item.Health), 32),
-			item.Summary)
+			padRight(t.Issue(item.Issue, item.Health), 32))
+		if showTrend {
+			row = fmt.Sprintf("%s %s", row, padRight(item.TrendSparkline, 20))
+		}
+		out = fmt.Appendf(out, "%s %s\n", row, item.Summary)
 	}
 	_, err := w.Write(out)
 	return err
+}
+
+func listHasTrend(items []ListItem) bool {
+	for _, item := range items {
+		if item.TrendSparkline != "" || item.TrendFlapping {
+			return true
+		}
+	}
+	return false
 }
 
 func formatReplicaDiff(diff int32) string {

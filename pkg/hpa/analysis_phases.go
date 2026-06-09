@@ -97,13 +97,17 @@ func detectScaleToZero(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler, m
 }
 
 // detectStabilization estimates remaining seconds in the scale-down
-// stabilization window.
+// stabilization window and populates the source and confidence fields.
 func detectStabilization(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler) Analysis {
 	if remaining := estimateStabilizationRemaining(src); remaining != nil {
 		a.StabilizationRemaining = remaining
 	}
 	if window := scaleDownStabilizationWindow(src); window != nil {
 		a.StabilizationWindowSeconds = window
+	}
+	if a.StabilizationRemaining != nil && *a.StabilizationRemaining > 0 {
+		a.StabilizationSource = detectStabilizationSource(src)
+		a.StabilizationConfidence = stabilizationConfidenceLabel
 	}
 	return a
 }
@@ -170,13 +174,28 @@ func attachDebug(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler, opts An
 	return a
 }
 
-// attachDecisionSignals populates DecisionSignals using the given adapter.
-// When structured output is available, it uses FromStructuredOutput.
-// Otherwise, it falls back to FromEstimation.
+// attachDecisionSignals populates DecisionSignals using the versioned adapter.
+// When KEP-6111 structured output is available, it uses FromStructuredOutput.
+// Otherwise, it falls back to the rich estimation pipeline.
 func attachDecisionSignals(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler, adapter DecisionAdapter) Analysis {
 	if src == nil {
 		return a
 	}
+
+	// Use the new DecisionSignals interface if the adapter implements it.
+	signalsAdapter, ok := adapter.(DecisionSignals)
+	if ok {
+		signals := signalsAdapter.FromStructuredOutput(src)
+		if signals == nil {
+			signals = signalsAdapter.FromEstimation(src)
+		}
+		if len(signals) > 0 {
+			a.DecisionSignals = signals
+		}
+		return a
+	}
+
+	// Fallback to legacy adapter interface.
 	signals := adapter.FromStructuredOutput(src)
 	if signals == nil {
 		signals = adapter.FromEstimation(src)

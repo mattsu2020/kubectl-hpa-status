@@ -8,7 +8,9 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/history"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/style"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/spf13/cobra"
@@ -118,6 +120,12 @@ func buildListItems(ctx context.Context, opts *options, hpas []autoscalingv2.Hor
 	ec := newEnrichmentContext(ctx, opts)
 	kedaResults := enrichListKEDA(ctx, ec, hpas)
 	vpaResults := enrichListVPA(ctx, ec, hpas)
+	var store *history.HealthStore
+	if opts.trend {
+		if s, err := history.NewHealthStore(); err == nil {
+			store = s
+		}
+	}
 
 	var items []hpaanalysis.ListItem
 	for i := range hpas {
@@ -137,6 +145,9 @@ func buildListItems(ctx context.Context, opts *options, hpas []autoscalingv2.Hor
 		if analysis.KEDAInfo != nil || analysis.VPAConflict != nil {
 			hpaanalysis.ApplyEnrichmentPenalties(&analysis, opts.healthWeights)
 		}
+		if store != nil {
+			attachHealthTrend(store, &analysis, opts.trendSince, opts.trendRetain)
+		}
 
 		item := hpaanalysis.NewListItem(analysis)
 		if matchesListFilter(item, filter) && matchesHealthScoreRange(item, opts.healthScoreMin, opts.healthScoreMax) {
@@ -144,6 +155,28 @@ func buildListItems(ctx context.Context, opts *options, hpas []autoscalingv2.Hor
 		}
 	}
 	return items
+}
+
+func attachHealthTrend(store *history.HealthStore, analysis *hpaanalysis.Analysis, since, retention time.Duration) {
+	if store == nil || analysis == nil {
+		return
+	}
+	snapshot := hpaanalysis.HealthSnapshot{
+		Timestamp:       time.Now(),
+		HealthScore:     analysis.HealthScore,
+		HealthState:     analysis.Health,
+		DesiredReplicas: analysis.Desired,
+		CurrentReplicas: analysis.Current,
+		Stabilizing:     analysis.StabilizationRemaining != nil && *analysis.StabilizationRemaining > 0,
+	}
+	_ = store.Append(analysis.Namespace, analysis.Name, snapshot)
+	_ = store.Prune(analysis.Namespace, analysis.Name, retention)
+	snapshots, err := store.Load(analysis.Namespace, analysis.Name, since)
+	if err != nil || len(snapshots) == 0 {
+		return
+	}
+	trend := hpaanalysis.AnalyzeHealthTrend(snapshots)
+	analysis.HealthTrend = &trend
 }
 
 // writeListResult renders the list report in the selected output format.

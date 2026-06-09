@@ -64,9 +64,10 @@ type statusOptions struct {
 	explainPods           bool
 	simulate              []string
 	simulateMetric        []string
+	simulateDuration      int32
 	capacityContext       bool
-	capacityDeep         bool
-	capacityPlan         bool
+	capacityDeep          bool
+	capacityPlan          bool
 	targetMax             int32
 	scalePath             bool
 	events                eventOption
@@ -79,6 +80,9 @@ type statusOptions struct {
 	metricHints           bool
 	containerAdvisor      bool
 	behaviorAdvisor       bool
+	trend                 bool
+	trendSince            time.Duration
+	trendRetain           time.Duration
 }
 
 // listOptions holds flags specific to the list / scan commands.

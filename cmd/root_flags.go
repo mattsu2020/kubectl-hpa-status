@@ -1,7 +1,11 @@
 // Package cmd implements the CLI commands for kubectl-hpa-status.
 package cmd
 
-import "github.com/spf13/cobra"
+import (
+	"time"
+
+	"github.com/spf13/cobra"
+)
 
 // registerCommonFlags registers flags that are shared across all commands:
 // Kubernetes connection, output formatting, language, and debug settings.
@@ -47,6 +51,7 @@ func registerStatusFlags(cmd *cobra.Command, opts *options) {
 	cmd.PersistentFlags().BoolVar(&opts.explainPods, "explain-pods", false, "analyze scale target pods for readiness, resource requests, and metric coverage")
 	cmd.PersistentFlags().StringArrayVar(&opts.simulate, "simulate", nil, "simulate HPA spec changes (e.g. maxReplicas=20); repeatable")
 	cmd.PersistentFlags().StringArrayVar(&opts.simulateMetric, "simulate-metric", nil, "simulate metric value changes (e.g. cpu=80%, memory=4Gi, http_requests=+20%); repeatable")
+	cmd.PersistentFlags().Int32Var(&opts.simulateDuration, "simulate-duration", 0, "duration in seconds for time-series projection in simulation (default: 0, disabled)")
 	cmd.PersistentFlags().BoolVar(&opts.capacityContext, "capacity-context", false, "check infrastructure capacity constraints affecting HPA scaling")
 	cmd.PersistentFlags().BoolVar(&opts.scalePath, "scale-path", false, "explain the path from HPA desired replicas to pods and scheduler capacity")
 	cmd.PersistentFlags().BoolVar(&opts.capacityDeep, "capacity-deep", false, "deep capacity analysis for scale-out blockers including node capacity and container failures")
@@ -60,6 +65,9 @@ func registerStatusFlags(cmd *cobra.Command, opts *options) {
 	cmd.PersistentFlags().BoolVar(&opts.metricHints, "metric-hints", false, "troubleshoot custom/external metric issues with common failure pattern hints")
 	cmd.PersistentFlags().BoolVar(&opts.containerAdvisor, "container-advisor", false, "suggest ContainerResource metrics for multi-container HPA targets")
 	cmd.PersistentFlags().BoolVar(&opts.behaviorAdvisor, "behavior-advisor", false, "analyze behavior config and suggest stabilization/policy tuning")
+	cmd.PersistentFlags().BoolVar(&opts.trend, "trend", false, "show health score trend with flapping detection")
+	cmd.PersistentFlags().DurationVar(&opts.trendSince, "trend-since", 24*time.Hour, "lookback window for health trend (default: 24h)")
+	cmd.PersistentFlags().DurationVar(&opts.trendRetain, "trend-retain", 72*time.Hour, "retention period for health history (default: 72h)")
 }
 
 // registerWatchFlags registers flags specific to the watch / TUI commands.

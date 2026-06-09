@@ -76,7 +76,7 @@ func simulationStateFromAnalysis(a *Analysis) SimulationState {
 
 // applySimulationOverride modifies a single field on the HPA spec using dot-notation path.
 func applySimulationOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, path, value string) error {
-	switch strings.ToLower(path) {
+	switch normalizeSimulationPath(path) {
 	case "maxreplicas":
 		v, err := parseInt32(value)
 		if err != nil {
@@ -120,10 +120,42 @@ func applySimulationOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, path, v
 		ensureBehavior(hpa)
 		p := selectPolicy(value)
 		hpa.Spec.Behavior.ScaleUp.SelectPolicy = &p
+	case "targetaverageutilization":
+		v, err := parseInt32(value)
+		if err != nil {
+			return err
+		}
+		if v <= 0 {
+			return fmt.Errorf("targetAverageUtilization must be > 0")
+		}
+		for i := range hpa.Spec.Metrics {
+			if hpa.Spec.Metrics[i].Type == autoscalingv2.ResourceMetricSourceType {
+				hpa.Spec.Metrics[i].Resource.Target.AverageUtilization = &v
+				hpa.Spec.Metrics[i].Resource.Target.Type = autoscalingv2.UtilizationMetricType
+			}
+		}
+	case "tolerance":
+		if _, err := strconv.ParseFloat(value, 64); err != nil {
+			return fmt.Errorf("invalid tolerance %q: %w", value, err)
+		}
+		// Kubernetes HPA tolerance is controller-wide in current APIs. Keep this
+		// accepted so extended projections can describe the intended scenario.
 	default:
-		return fmt.Errorf("unsupported path %q; supported: maxReplicas, minReplicas, scaleDown.stabilizationWindowSeconds, scaleUp.stabilizationWindowSeconds, scaleDown.selectPolicy, scaleUp.selectPolicy", path)
+		return fmt.Errorf("unsupported path %q; supported: maxReplicas, minReplicas, scaleDown.stabilizationWindowSeconds, scaleDown.stabilizationWindow, scaleUp.stabilizationWindowSeconds, scaleUp.stabilizationWindow, scaleDown.selectPolicy, scaleUp.selectPolicy, targetAverageUtilization, tolerance", path)
 	}
 	return nil
+}
+
+func normalizeSimulationPath(path string) string {
+	p := strings.ToLower(strings.TrimSpace(path))
+	switch p {
+	case "scaledown.stabilizationwindow":
+		return "scaledown.stabilizationwindowseconds"
+	case "scaleup.stabilizationwindow":
+		return "scaleup.stabilizationwindowseconds"
+	default:
+		return p
+	}
 }
 
 // ensureBehavior initializes the behavior struct if nil.
@@ -164,7 +196,7 @@ func parseInt32(value string) (int32, error) {
 
 // originalValue returns the current value for the given path on the original HPA.
 func originalValue(hpa *autoscalingv2.HorizontalPodAutoscaler, path string) string {
-	switch strings.ToLower(path) {
+	switch normalizeSimulationPath(path) {
 	case "maxreplicas":
 		return fmt.Sprintf("%d", hpa.Spec.MaxReplicas)
 	case "minreplicas":
@@ -182,6 +214,15 @@ func originalValue(hpa *autoscalingv2.HorizontalPodAutoscaler, path string) stri
 			return fmt.Sprintf("%d", *hpa.Spec.Behavior.ScaleUp.StabilizationWindowSeconds)
 		}
 		return "0"
+	case "targetaverageutilization":
+		for _, m := range hpa.Spec.Metrics {
+			if m.Type == autoscalingv2.ResourceMetricSourceType && m.Resource.Target.AverageUtilization != nil {
+				return fmt.Sprintf("%d", *m.Resource.Target.AverageUtilization)
+			}
+		}
+		return "<not set>"
+	case "tolerance":
+		return "<controller default>"
 	default:
 		return "<unknown>"
 	}

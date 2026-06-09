@@ -234,15 +234,25 @@ func (m Model) renderDetailView() string {
 
 		// Stabilization countdown.
 		if a.StabilizationRemaining != nil && *a.StabilizationRemaining > 0 {
+			source := a.StabilizationSource
+			if source == "" {
+				source = "scaleDown"
+			}
+			confidence := a.StabilizationConfidence
+			if confidence == "" {
+				confidence = "medium (API limitation)"
+			}
 			progress := hpaanalysis.FormatStabilizationProgress(a.StabilizationRemaining, a.StabilizationWindowSeconds)
 			sb.WriteString("\n")
-			sb.WriteString(warnStyle.Render(fmt.Sprintf("Scale-down stabilized: %s", progress)))
+			sb.WriteString(warnStyle.Render(fmt.Sprintf("Stabilized (%s): %s", source, progress)))
 			sb.WriteString("\n")
 			if a.StabilizationWindowSeconds != nil && *a.StabilizationWindowSeconds > 0 {
 				bar := renderEnhancedCountdownBar(int(*a.StabilizationRemaining), int(*a.StabilizationWindowSeconds))
 				sb.WriteString(bar)
 				sb.WriteString("\n")
 			}
+			sb.WriteString(dimStyle.Render(fmt.Sprintf("  [confidence: %s]", confidence)))
+			sb.WriteString("\n")
 		}
 
 		// Conditions.
@@ -297,6 +307,23 @@ func (m Model) renderDetailView() string {
 					break
 				}
 				sb.WriteString(dimStyle.Render("  " + line + "\n"))
+			}
+		}
+
+		// Decision signals.
+		if len(a.DecisionSignals) > 0 {
+			sb.WriteString("\n")
+			sb.WriteString(warnStyle.Render("Decision Signals:") + "\n")
+			for _, sig := range a.DecisionSignals {
+				confidence := sig.Confidence
+				if confidence == "" {
+					confidence = "unknown"
+				}
+				metricPart := ""
+				if sig.MetricName != "" {
+					metricPart = fmt.Sprintf(" metric=%s", sig.MetricName)
+				}
+				sb.WriteString(dimStyle.Render(fmt.Sprintf("  - %s: %s%s [%s]\n", sig.Reason, sig.Message, metricPart, confidence)))
 			}
 		}
 
@@ -608,7 +635,7 @@ func renderEnhancedCountdownBar(remaining int, total int) string {
 	return style.Render(bar) + " " + dimStyle.Render(label)
 }
 
-func ptrInt64(v int64) *int64  { return &v }
+func ptrInt64(v int64) *int64 { return &v }
 func ptrInt32(v int32) *int32 { return &v }
 
 // renderMiniScoreBar renders a compact colored bar for the list view SCORE column.
@@ -670,4 +697,3 @@ func renderInlineSparkline(history []float64, width int, churnLevel string) stri
 	}
 	return renderSparkline(history, width, style)
 }
-

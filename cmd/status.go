@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"runtime"
+	"time"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/history"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/style"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
@@ -270,6 +272,18 @@ func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, 
 		if simErr != nil {
 			report.Analysis.Interpretation = append(report.Analysis.Interpretation,
 				fmt.Sprintf("simulation error: %v", simErr))
+		} else if opts.simulateDuration > 0 {
+			sim, simErr := hpaanalysis.SimulateExtended(hpa, overrides,
+				analysisOptions(opts.healthWeights, opts.debug).HealthWeights,
+				hpaanalysis.SimulationExtendedOptions{
+					DurationSeconds: opts.simulateDuration,
+				})
+			if simErr != nil {
+				report.Analysis.Interpretation = append(report.Analysis.Interpretation,
+					fmt.Sprintf("simulation error: %v", simErr))
+			} else {
+				report.Analysis.Simulation = sim
+			}
 		} else {
 			sim, simErr := hpaanalysis.SimulateHPA(hpa, overrides, analysisOptions(opts.healthWeights, opts.debug).HealthWeights)
 			if simErr != nil {
@@ -349,6 +363,28 @@ func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, 
 
 	if opts.behaviorAdvisor {
 		report.Analysis.BehaviorAdvisor = hpaanalysis.AnalyzeBehaviorAdvisor(hpa)
+	}
+
+	// Health trend: record snapshot and optionally display trend.
+	if store, storeErr := history.NewHealthStore(); storeErr == nil {
+		snapshot := hpaanalysis.HealthSnapshot{
+			Timestamp:       time.Now(),
+			HealthScore:     report.Analysis.HealthScore,
+			HealthState:     report.Analysis.Health,
+			DesiredReplicas: report.Analysis.Desired,
+			CurrentReplicas: report.Analysis.Current,
+			Stabilizing:     report.Analysis.StabilizationRemaining != nil && *report.Analysis.StabilizationRemaining > 0,
+		}
+		_ = store.Append(hpa.Namespace, hpa.Name, snapshot)
+		_ = store.Prune(hpa.Namespace, hpa.Name, opts.trendRetain)
+
+		if opts.trend {
+			snapshots, loadErr := store.Load(hpa.Namespace, hpa.Name, opts.trendSince)
+			if loadErr == nil && len(snapshots) > 0 {
+				trend := hpaanalysis.AnalyzeHealthTrend(snapshots)
+				report.Analysis.HealthTrend = &trend
+			}
+		}
 	}
 
 	return report, nil
