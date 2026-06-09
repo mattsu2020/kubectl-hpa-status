@@ -173,12 +173,20 @@ type Analysis struct {
 	// which metric drove the HPA scaling decision and why. Populated when
 	// multiple current metrics are present.
 	MetricDecisionTrace *MetricDecisionTrace `json:"metricDecisionTrace,omitempty" yaml:"metricDecisionTrace,omitempty"`
+	// DecisionTrace holds the human-oriented step-by-step HPA decision trace.
+	// It is best-effort and uses only stable Kubernetes API fields.
+	DecisionTrace *DecisionTrace `json:"decisionTrace,omitempty" yaml:"decisionTrace,omitempty"`
 	// Simulation holds what-if analysis results from --simulate.
 	Simulation *SimulationResult `json:"simulation,omitempty" yaml:"simulation,omitempty"`
 	// CapacityContext holds infrastructure capacity analysis for the scale target.
 	CapacityContext *CapacityContext `json:"capacityContext,omitempty" yaml:"capacityContext,omitempty"`
+	// CapacityHeadroom estimates whether the cluster can absorb additional pods
+	// up to maxReplicas.
+	CapacityHeadroom *CapacityHeadroom `json:"capacityHeadroom,omitempty" yaml:"capacityHeadroom,omitempty"`
 	// ScalePath explains the visible path from HPA desired replicas to scheduled pods.
 	ScalePath *ScalePath `json:"scalePath,omitempty" yaml:"scalePath,omitempty"`
+	// RolloutDiagnosis holds Deployment/StatefulSet rollout context for HPA diagnosis.
+	RolloutDiagnosis *RolloutDiagnosis `json:"rolloutDiagnosis,omitempty" yaml:"rolloutDiagnosis,omitempty"`
 	// BlockerReport holds scale-out blocker analysis for the HPA scale target.
 	// Populated when --capacity-deep is enabled or via the blockers subcommand.
 	BlockerReport *BlockerReport `json:"blockerReport,omitempty" yaml:"blockerReport,omitempty"`
@@ -566,6 +574,39 @@ type MetricTraceEntry struct {
 	Note string `json:"note,omitempty" yaml:"note,omitempty"`
 }
 
+// DecisionTrace is a readable, step-by-step explanation of the visible HPA
+// decision path. It intentionally avoids reimplementing the controller and
+// marks inferred steps with confidence.
+type DecisionTrace struct {
+	Namespace           string                `json:"namespace,omitempty" yaml:"namespace,omitempty"`
+	Name                string                `json:"name,omitempty" yaml:"name,omitempty"`
+	CurrentReplicas     int32                 `json:"currentReplicas" yaml:"currentReplicas"`
+	VisibleDesired      int32                 `json:"visibleDesiredReplicas" yaml:"visibleDesiredReplicas"`
+	EstimatedRawDesired int32                 `json:"estimatedRawDesiredReplicas,omitempty" yaml:"estimatedRawDesiredReplicas,omitempty"`
+	MaxReplicas         int32                 `json:"maxReplicas" yaml:"maxReplicas"`
+	MinReplicas         int32                 `json:"minReplicas" yaml:"minReplicas"`
+	Metrics             []DecisionTraceMetric `json:"metrics,omitempty" yaml:"metrics,omitempty"`
+	LimitCheck          string                `json:"limitCheck,omitempty" yaml:"limitCheck,omitempty"`
+	Stabilization       string                `json:"stabilization,omitempty" yaml:"stabilization,omitempty"`
+	FinalInterpretation string                `json:"finalInterpretation" yaml:"finalInterpretation"`
+	Confidence          Confidence            `json:"confidence" yaml:"confidence"`
+	Notes               []string              `json:"notes,omitempty" yaml:"notes,omitempty"`
+}
+
+// DecisionTraceMetric describes one metric's visible ratio and estimated
+// desired replica count.
+type DecisionTraceMetric struct {
+	Name       string     `json:"name" yaml:"name"`
+	Type       string     `json:"type" yaml:"type"`
+	Current    string     `json:"current,omitempty" yaml:"current,omitempty"`
+	Target     string     `json:"target,omitempty" yaml:"target,omitempty"`
+	Ratio      *float64   `json:"ratio,omitempty" yaml:"ratio,omitempty"`
+	RawDesired *int32     `json:"rawDesiredReplicas,omitempty" yaml:"rawDesiredReplicas,omitempty"`
+	Formula    string     `json:"formula,omitempty" yaml:"formula,omitempty"`
+	Direction  string     `json:"direction,omitempty" yaml:"direction,omitempty"`
+	Confidence Confidence `json:"confidence" yaml:"confidence"`
+}
+
 // StabilizationEffect describes how the stabilization window affected the decision.
 type StabilizationEffect struct {
 	// WindowSeconds is the configured stabilization window duration.
@@ -688,6 +729,40 @@ type CapacityContext struct {
 	QuotaConstraints []QuotaConstraint `json:"quotaConstraints,omitempty" yaml:"quotaConstraints,omitempty"`
 	PDBInterference  []PDBInterference `json:"pdbInterference,omitempty" yaml:"pdbInterference,omitempty"`
 	NodeHints        []string          `json:"nodeHints,omitempty" yaml:"nodeHints,omitempty"`
+}
+
+// CapacityHeadroom estimates the extra pod resources required to reach
+// maxReplicas and summarizes visible cluster headroom signals.
+type CapacityHeadroom struct {
+	HPAName                    string   `json:"hpaName,omitempty" yaml:"hpaName,omitempty"`
+	Target                     string   `json:"target,omitempty" yaml:"target,omitempty"`
+	MaxReplicas                int32    `json:"maxReplicas" yaml:"maxReplicas"`
+	CurrentDesired             int32    `json:"currentDesired" yaml:"currentDesired"`
+	AdditionalReplicasToMax    int32    `json:"additionalReplicasToMax" yaml:"additionalReplicasToMax"`
+	PodRequestCPU              string   `json:"podRequestCpu,omitempty" yaml:"podRequestCpu,omitempty"`
+	PodRequestMemory           string   `json:"podRequestMemory,omitempty" yaml:"podRequestMemory,omitempty"`
+	AdditionalCPUToMax         string   `json:"additionalCpuToMax,omitempty" yaml:"additionalCpuToMax,omitempty"`
+	AdditionalMemoryToMax      string   `json:"additionalMemoryToMax,omitempty" yaml:"additionalMemoryToMax,omitempty"`
+	ClusterSchedulableHeadroom string   `json:"clusterSchedulableHeadroom" yaml:"clusterSchedulableHeadroom"`
+	Risk                       string   `json:"risk" yaml:"risk"`
+	Evidence                   []string `json:"evidence,omitempty" yaml:"evidence,omitempty"`
+}
+
+// RolloutDiagnosis summarizes rollout state that can make an HPA look broken
+// even when the HPA decision itself is reasonable.
+type RolloutDiagnosis struct {
+	Kind                string   `json:"kind" yaml:"kind"`
+	Name                string   `json:"name" yaml:"name"`
+	DesiredReplicas     int32    `json:"desiredReplicas" yaml:"desiredReplicas"`
+	UpdatedReplicas     int32    `json:"updatedReplicas,omitempty" yaml:"updatedReplicas,omitempty"`
+	ReadyReplicas       int32    `json:"readyReplicas,omitempty" yaml:"readyReplicas,omitempty"`
+	AvailableReplicas   int32    `json:"availableReplicas,omitempty" yaml:"availableReplicas,omitempty"`
+	UnavailableReplicas int32    `json:"unavailableReplicas,omitempty" yaml:"unavailableReplicas,omitempty"`
+	InProgress          bool     `json:"inProgress" yaml:"inProgress"`
+	Reason              string   `json:"reason,omitempty" yaml:"reason,omitempty"`
+	Conditions          []string `json:"conditions,omitempty" yaml:"conditions,omitempty"`
+	PodIssues           []string `json:"podIssues,omitempty" yaml:"podIssues,omitempty"`
+	NextActions         []string `json:"nextActions,omitempty" yaml:"nextActions,omitempty"`
 }
 
 // ScalePath describes the visible scale-up path from the HPA recommendation

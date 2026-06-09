@@ -33,6 +33,7 @@ func runDoctor(ctx context.Context, out io.Writer, opts *options, names []string
 	opts.containerAdvisor = true
 	opts.behaviorAdvisor = true
 	opts.capacityDeep = true
+	opts.rollout = true
 
 	return runStatusMany(ctx, out, opts, names, !opts.noInterpret)
 }

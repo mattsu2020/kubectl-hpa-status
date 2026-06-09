@@ -268,6 +268,11 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 		out = fmt.Appendf(out, "%s\n", FormatDecisionSignals(a.DecisionSignals))
 	}
 
+	if a.DecisionTrace != nil {
+		out = append(out, '\n')
+		AppendDecisionTraceText(&out, a.DecisionTrace)
+	}
+
 	if a.KEDAInfo != nil {
 		out = append(out, '\n')
 		out = fmt.Appendf(out, "%s:\n", labels.KEDA)
@@ -511,9 +516,19 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 		}
 	}
 
+	if a.CapacityHeadroom != nil {
+		out = append(out, '\n')
+		appendCapacityHeadroomText(&out, a.CapacityHeadroom, theme)
+	}
+
 	if a.ScalePath != nil {
 		out = append(out, '\n')
 		appendScalePathText(&out, a.ScalePath, theme)
+	}
+
+	if a.RolloutDiagnosis != nil {
+		out = append(out, '\n')
+		appendRolloutDiagnosisText(&out, a.RolloutDiagnosis, theme)
 	}
 
 	if a.BlockerReport != nil {
@@ -621,6 +636,64 @@ func appendScalePathText(out *[]byte, path *ScalePath, theme style.Theme) {
 		*out = append(*out, "\nNext actions:\n"...)
 		for _, action := range path.NextActions {
 			*out = fmt.Appendf(*out, "  - %s\n", theme.ActionLine(action))
+		}
+	}
+}
+
+func appendCapacityHeadroomText(out *[]byte, headroom *CapacityHeadroom, theme style.Theme) {
+	if headroom == nil {
+		return
+	}
+	*out = append(*out, "Capacity headroom:\n"...)
+	*out = fmt.Appendf(*out, "  HPA maxReplicas: %d\n", headroom.MaxReplicas)
+	*out = fmt.Appendf(*out, "  current desired: %d\n", headroom.CurrentDesired)
+	if headroom.PodRequestCPU != "" {
+		*out = fmt.Appendf(*out, "  pod request cpu: %s\n", headroom.PodRequestCPU)
+	}
+	if headroom.PodRequestMemory != "" {
+		*out = fmt.Appendf(*out, "  pod request memory: %s\n", headroom.PodRequestMemory)
+	}
+	if headroom.AdditionalCPUToMax != "" {
+		*out = fmt.Appendf(*out, "  additional CPU needed to reach maxReplicas: %s\n", headroom.AdditionalCPUToMax)
+	}
+	if headroom.AdditionalMemoryToMax != "" {
+		*out = fmt.Appendf(*out, "  additional memory needed to reach maxReplicas: %s\n", headroom.AdditionalMemoryToMax)
+	}
+	*out = fmt.Appendf(*out, "  cluster schedulable headroom: %s\n", headroom.ClusterSchedulableHeadroom)
+	*out = fmt.Appendf(*out, "  risk: %s\n", theme.ActionLine(headroom.Risk))
+	if len(headroom.Evidence) > 0 {
+		*out = append(*out, "  evidence:\n"...)
+		for _, evidence := range headroom.Evidence {
+			*out = fmt.Appendf(*out, "    - %s\n", evidence)
+		}
+	}
+}
+
+func appendRolloutDiagnosisText(out *[]byte, diagnosis *RolloutDiagnosis, theme style.Theme) {
+	if diagnosis == nil {
+		return
+	}
+	*out = fmt.Appendf(*out, "Rollout diagnosis: %s/%s\n", diagnosis.Kind, diagnosis.Name)
+	*out = fmt.Appendf(*out, "  desired replicas: %d\n", diagnosis.DesiredReplicas)
+	if diagnosis.Kind == "Deployment" {
+		*out = fmt.Appendf(*out, "  updated replicas: %d\n", diagnosis.UpdatedReplicas)
+	}
+	*out = fmt.Appendf(*out, "  ready replicas: %d\n", diagnosis.ReadyReplicas)
+	*out = fmt.Appendf(*out, "  available replicas: %d\n", diagnosis.AvailableReplicas)
+	*out = fmt.Appendf(*out, "  unavailable replicas: %d\n", diagnosis.UnavailableReplicas)
+	if diagnosis.Reason != "" {
+		*out = fmt.Appendf(*out, "  reason: %s\n", theme.InterpretationLine(diagnosis.Reason))
+	}
+	for _, condition := range diagnosis.Conditions {
+		*out = fmt.Appendf(*out, "  condition: %s\n", condition)
+	}
+	for _, issue := range diagnosis.PodIssues {
+		*out = fmt.Appendf(*out, "  pod issue: %s\n", theme.ActionLine(issue))
+	}
+	if len(diagnosis.NextActions) > 0 {
+		*out = append(*out, "  next actions:\n"...)
+		for _, action := range diagnosis.NextActions {
+			*out = fmt.Appendf(*out, "    - %s\n", action)
 		}
 	}
 }

@@ -1,0 +1,124 @@
+package cmd
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"strconv"
+	"strings"
+
+	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/spf13/cobra"
+	"k8s.io/client-go/discovery"
+)
+
+type compatReport struct {
+	ClusterVersion string              `json:"clusterVersion" yaml:"clusterVersion"`
+	HPAAPI         string              `json:"hpaApi" yaml:"hpaApi"`
+	Checks         []compatCheckResult `json:"checks" yaml:"checks"`
+}
+
+type compatCheckResult struct {
+	Status  string `json:"status" yaml:"status"`
+	Feature string `json:"feature" yaml:"feature"`
+	Message string `json:"message" yaml:"message"`
+}
+
+func newCompatCommand(opts *options) *cobra.Command {
+	return &cobra.Command{
+		Use:   "compat",
+		Short: "Check Kubernetes/HPA feature compatibility",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runCompat(cmd.Context(), cmd.OutOrStdout(), opts)
+		},
+	}
+}
+
+func runCompat(ctx context.Context, out io.Writer, opts *options) error {
+	disco, err := kube.NewDiscoveryClient(kube.Options{
+		Namespace:  opts.namespace,
+		Context:    opts.contextName,
+		Kubeconfig: opts.kubeconfig,
+		Cluster:    opts.cluster,
+		QPS:        opts.qps,
+		Burst:      opts.burst,
+	})
+	if err != nil {
+		return err
+	}
+	report := buildCompatReport(ctx, disco)
+	return writeOutput(out, opts.output, opts.template, report, func() error {
+		_, err := fmt.Fprintf(out, "Cluster: %s\nHPA API: %s\n\nCompatibility:\n", report.ClusterVersion, report.HPAAPI)
+		if err != nil {
+			return err
+		}
+		for _, check := range report.Checks {
+			if _, err := fmt.Fprintf(out, "  %s: %s", check.Status, check.Feature); err != nil {
+				return err
+			}
+			if check.Message != "" {
+				if _, err := fmt.Fprintf(out, " - %s", check.Message); err != nil {
+					return err
+				}
+			}
+			if _, err := fmt.Fprintln(out); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func buildCompatReport(_ context.Context, disco discovery.DiscoveryInterface) compatReport {
+	report := compatReport{HPAAPI: "unknown"}
+	if version, err := disco.ServerVersion(); err == nil {
+		report.ClusterVersion = version.GitVersion
+	}
+	if report.ClusterVersion == "" {
+		report.ClusterVersion = "unknown"
+	}
+	if resources, err := disco.ServerResourcesForGroupVersion("autoscaling/v2"); err == nil {
+		for _, r := range resources.APIResources {
+			if r.Kind == "HorizontalPodAutoscaler" {
+				report.HPAAPI = "autoscaling/v2"
+				break
+			}
+		}
+	}
+	major, minor := parseKubeMinor(report.ClusterVersion)
+	_ = major
+	report.Checks = append(report.Checks,
+		compatCheck("OK", "multiple metrics", "supported by autoscaling/v2"),
+		compatCheck("OK", "containerResource metrics", "stable in Kubernetes v1.30+"),
+	)
+	if minor >= 35 {
+		report.Checks = append(report.Checks, compatCheck("OK", "behavior scaleUp/scaleDown tolerance", "available as Kubernetes v1.35+ beta field when feature gate is enabled"))
+	} else if minor > 0 {
+		report.Checks = append(report.Checks, compatCheck("WARN", "behavior scaleUp/scaleDown tolerance", "requires Kubernetes v1.35+ and HPAConfigurableTolerance"))
+	} else {
+		report.Checks = append(report.Checks, compatCheck("WARN", "behavior scaleUp/scaleDown tolerance", "cluster version unknown; requires Kubernetes v1.35+"))
+	}
+	if report.HPAAPI != "autoscaling/v2" {
+		report.Checks = append(report.Checks, compatCheck("ERROR", "HPA API", "autoscaling/v2 was not discovered"))
+	}
+	return report
+}
+
+func compatCheck(status, feature, message string) compatCheckResult {
+	return compatCheckResult{Status: status, Feature: feature, Message: message}
+}
+
+func parseKubeMinor(version string) (int, int) {
+	version = strings.TrimPrefix(version, "v")
+	parts := strings.Split(version, ".")
+	if len(parts) < 2 {
+		return 0, 0
+	}
+	major, _ := strconv.Atoi(parts[0])
+	minorStr := strings.TrimRightFunc(parts[1], func(r rune) bool {
+		return r < '0' || r > '9'
+	})
+	minor, _ := strconv.Atoi(minorStr)
+	return major, minor
+}

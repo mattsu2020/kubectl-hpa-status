@@ -272,6 +272,60 @@ func WriteMarkdownReport(w io.Writer, report StatusReport) error {
 	return err
 }
 
+// WriteIncidentReport writes a concise Markdown handoff suitable for incident
+// comments in PagerDuty, Slack, or ticket systems.
+func WriteIncidentReport(w io.Writer, report StatusReport) error {
+	a := report.Analysis
+	var out strings.Builder
+	out.WriteString("# HPA Incident Summary\n\n")
+	out.WriteString("## Summary\n\n")
+	if a.Summary != "" {
+		out.WriteString(a.Summary)
+	} else {
+		out.WriteString(fmt.Sprintf("%s/%s needs HPA review.", a.Namespace, a.Name))
+	}
+	out.WriteString("\n\n")
+	out.WriteString("## Evidence\n\n")
+	out.WriteString(fmt.Sprintf("- HPA: %s/%s\n", a.Namespace, a.Name))
+	out.WriteString(fmt.Sprintf("- target: %s\n", a.Target))
+	out.WriteString(fmt.Sprintf("- current replicas: %d\n", a.Current))
+	out.WriteString(fmt.Sprintf("- desired replicas: %d\n", a.Desired))
+	out.WriteString(fmt.Sprintf("- minReplicas: %d\n", a.Min))
+	out.WriteString(fmt.Sprintf("- maxReplicas: %d\n", a.Max))
+	for _, metric := range a.Metrics {
+		name := metric.Name
+		if name == "" {
+			name = metric.Type
+		}
+		out.WriteString(fmt.Sprintf("- %s: %s / %s\n", name, metric.Current, metric.Target))
+	}
+	for _, condition := range a.Conditions {
+		if condition.Status == "True" || condition.Type == "ScalingActive" {
+			out.WriteString(fmt.Sprintf("- %s=%s reason=%s\n", condition.Type, condition.Status, condition.Reason))
+		}
+	}
+	if a.RolloutDiagnosis != nil && a.RolloutDiagnosis.InProgress {
+		out.WriteString(fmt.Sprintf("- rollout: %s\n", a.RolloutDiagnosis.Reason))
+	}
+	if a.CapacityHeadroom != nil {
+		out.WriteString(fmt.Sprintf("- capacity headroom: %s (%s)\n", a.CapacityHeadroom.ClusterSchedulableHeadroom, a.CapacityHeadroom.Risk))
+	}
+	out.WriteString("\n## Recommended next actions\n\n")
+	actions := a.Actions
+	if len(actions) == 0 {
+		actions = []string{
+			"Check node capacity and pending Pods.",
+			"Review whether maxReplicas should be temporarily raised.",
+			"Inspect scaleUp behavior and metric availability.",
+		}
+	}
+	for i, action := range actions {
+		out.WriteString(fmt.Sprintf("%d. %s\n", i+1, action))
+	}
+	_, err := io.WriteString(w, out.String())
+	return err
+}
+
 // WriteHTMLReport writes a single StatusReport as a standalone HTML document
 // with inline CSS for portable viewing.
 //

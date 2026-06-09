@@ -106,6 +106,8 @@ func writeOutput(out io.Writer, format string, templateStr string, value any, wr
 		return writeMarkdown(out, value)
 	case "html":
 		return writeHTML(out, value)
+	case "incident":
+		return writeIncident(out, value)
 	default:
 		if expression, ok := strings.CutPrefix(format, "jsonpath="); ok {
 			return writeJSONPath(out, expression, value)
@@ -145,6 +147,8 @@ func outputSelection(cfg outputConfig) (string, string) {
 			return "markdown", ""
 		case "html":
 			return "html", ""
+		case "incident":
+			return "incident", ""
 		}
 	}
 	format := cfg.output
@@ -308,6 +312,27 @@ func writeHTML(out io.Writer, value any) error {
 		return hpaanalysis.WriteHTMLListReport(out, report)
 	default:
 		return fmt.Errorf("html output requires a StatusReport or ListReport, got %T", value)
+	}
+}
+
+func writeIncident(out io.Writer, value any) error {
+	switch report := value.(type) {
+	case hpaanalysis.StatusReport:
+		return hpaanalysis.WriteIncidentReport(out, report)
+	case []hpaanalysis.StatusReport:
+		for i, r := range report {
+			if i > 0 {
+				if _, err := fmt.Fprintln(out); err != nil {
+					return err
+				}
+			}
+			if err := hpaanalysis.WriteIncidentReport(out, r); err != nil {
+				return err
+			}
+		}
+		return nil
+	default:
+		return fmt.Errorf("incident report requires a StatusReport, got %T", value)
 	}
 }
 

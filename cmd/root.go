@@ -66,10 +66,13 @@ type statusOptions struct {
 	simulateMetric        []string
 	simulateDuration      int32
 	capacityContext       bool
+	capacityHeadroom      bool
 	capacityDeep          bool
 	capacityPlan          bool
 	targetMax             int32
 	scalePath             bool
+	decisionTrace         bool
+	rollout               bool
 	events                eventOption
 	recommend             bool
 	report                string
@@ -224,6 +227,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newWatchCommand(opts))
 	root.AddCommand(newTUICommand(opts))
 	root.AddCommand(newTimelineCommand(opts))
+	root.AddCommand(newTraceCommand(opts))
 	root.AddCommand(newPathCommand(opts))
 	root.AddCommand(newBlockersCommand(opts))
 	root.AddCommand(newCapacityPlanCommand(opts))
@@ -234,6 +238,8 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newSnapshotCommand(opts))
 	root.AddCommand(newBundleCommand(opts))
 	root.AddCommand(newLintCommand(opts))
+	root.AddCommand(newGitOpsCommand(opts))
+	root.AddCommand(newCompatCommand(opts))
 	root.AddCommand(newVersionCommand())
 	root.AddCommand(newCompletionCommand(root))
 

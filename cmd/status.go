@@ -211,6 +211,10 @@ func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, 
 		Analysis: hpaanalysis.AnalyzeWithOptions(hpa, includeInterpretation, analysisOptions(opts.healthWeights, opts.debug)),
 	}
 
+	if opts.decisionTrace {
+		report.Analysis.DecisionTrace = hpaanalysis.BuildDecisionTrace(hpa, report.Analysis.Min)
+	}
+
 	if opts.events.enabled {
 		events, err := hpaanalysis.RecentEvents(ctx, client.Interface, hpa.Namespace, hpa.Name, int64(opts.events.limit))
 		if err != nil {
@@ -315,8 +319,16 @@ func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, 
 		report.Analysis.CapacityContext = buildCapacityContext(ctx, client, hpa)
 	}
 
+	if opts.capacityHeadroom {
+		report.Analysis.CapacityHeadroom = buildCapacityHeadroom(ctx, client, hpa, report.Analysis.Target)
+	}
+
 	if opts.scalePath {
 		report.Analysis.ScalePath = buildScalePath(ctx, client, hpa)
+	}
+
+	if opts.rollout {
+		report.Analysis.RolloutDiagnosis = buildRolloutDiagnosis(ctx, client, hpa)
 	}
 
 	if opts.capacityDeep {

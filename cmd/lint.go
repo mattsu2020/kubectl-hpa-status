@@ -10,7 +10,10 @@ import (
 
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/spf13/cobra"
+	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/kubernetes/scheme"
 )
@@ -71,6 +74,7 @@ func runLint(ctx context.Context, out io.Writer, opts *options, filePath, output
 	decoder := serializer.NewCodecFactory(scheme.Scheme).UniversalDeserializer()
 	var allResults []lintFileResult
 	exitCode := 0
+	workloads := collectLintWorkloads(files, decoder)
 
 	for _, f := range files {
 		data, readErr := os.ReadFile(f)
@@ -112,6 +116,7 @@ func runLint(ctx context.Context, out io.Writer, opts *options, filePath, output
 			foundHPA = true
 
 			result := hpaanalysis.LintHPA(hpa)
+			addGitOpsLintFindings(result, hpa, workloads)
 			allResults = append(allResults, lintFileResult{
 				File:   f,
 				HPA:    hpa.Name,
@@ -165,6 +170,72 @@ func runLint(ctx context.Context, out io.Writer, opts *options, filePath, output
 		return &exitCodeError{code: exitCode}
 	}
 	return nil
+}
+
+type lintWorkloadKey struct {
+	Namespace string
+	Kind      string
+	Name      string
+}
+
+type lintWorkloadInfo struct {
+	Replicas *int32
+}
+
+func collectLintWorkloads(files []string, decoder runtimeDecoder) map[lintWorkloadKey]lintWorkloadInfo {
+	workloads := make(map[lintWorkloadKey]lintWorkloadInfo)
+	for _, f := range files {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			continue
+		}
+		for _, doc := range splitYAMLDocuments(data) {
+			doc = []byte(strings.TrimSpace(string(doc)))
+			if len(doc) == 0 {
+				continue
+			}
+			obj, _, decodeErr := decoder.Decode(doc, nil, nil)
+			if decodeErr != nil {
+				continue
+			}
+			switch workload := obj.(type) {
+			case *appsv1.Deployment:
+				workloads[lintObjectKey(workload.Namespace, "Deployment", workload.Name)] = lintWorkloadInfo{Replicas: workload.Spec.Replicas}
+			case *appsv1.StatefulSet:
+				workloads[lintObjectKey(workload.Namespace, "StatefulSet", workload.Name)] = lintWorkloadInfo{Replicas: workload.Spec.Replicas}
+			}
+		}
+	}
+	return workloads
+}
+
+type runtimeDecoder interface {
+	Decode(data []byte, defaults *schema.GroupVersionKind, into runtime.Object) (runtime.Object, *schema.GroupVersionKind, error)
+}
+
+func lintObjectKey(namespace, kind, name string) lintWorkloadKey {
+	if namespace == "" {
+		namespace = "default"
+	}
+	return lintWorkloadKey{Namespace: namespace, Kind: kind, Name: name}
+}
+
+func addGitOpsLintFindings(result *hpaanalysis.LintResult, hpa *autoscalingv2.HorizontalPodAutoscaler, workloads map[lintWorkloadKey]lintWorkloadInfo) {
+	if result == nil || hpa == nil {
+		return
+	}
+	info, ok := workloads[lintObjectKey(hpa.Namespace, hpa.Spec.ScaleTargetRef.Kind, hpa.Spec.ScaleTargetRef.Name)]
+	if !ok || info.Replicas == nil {
+		return
+	}
+	result.Findings = append(result.Findings, hpaanalysis.LintFinding{
+		Severity: hpaanalysis.LintWarning,
+		Rule:     "gitops-replicas",
+		Message: fmt.Sprintf("%s/%s sets spec.replicas=%d while HPA %s exists. GitOps apply may reset HPA-managed replicas.",
+			hpa.Spec.ScaleTargetRef.Kind, hpa.Spec.ScaleTargetRef.Name, *info.Replicas, hpa.Name),
+		Recommendation: "Remove spec.replicas from the workload manifest after the HPA is created, or manage replica ownership explicitly in GitOps.",
+	})
+	result.Warnings++
 }
 
 type lintFileResult struct {
