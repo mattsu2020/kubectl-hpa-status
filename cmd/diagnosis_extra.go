@@ -2,7 +2,11 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
+	"strings"
+	"time"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
@@ -11,7 +15,133 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/yaml"
 )
+
+const (
+	defaultCPUInitializationPeriod = 5 * time.Minute
+)
+
+func buildReadinessImpact(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpaanalysis.ReadinessImpact {
+	if client == nil || hpa == nil {
+		return nil
+	}
+	profile := hpaanalysis.DefaultControllerProfile()
+	impact := &hpaanalysis.ReadinessImpact{
+		InitialReadinessDelay:   profile.InitialReadinessDelay,
+		CPUInitializationPeriod: profile.CPUInitializationPeriod,
+		NextChecks: []string{
+			fmt.Sprintf("kubectl get pod -n %s -l <scale-target-selector>", hpa.Namespace),
+			fmt.Sprintf("kubectl top pod -n %s -l <scale-target-selector>", hpa.Namespace),
+		},
+	}
+	info, err := kube.FetchScaleTargetInfo(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef)
+	if err != nil || info == nil || info.SelectorStr == "" {
+		impact.Evidence = append(impact.Evidence, "scale target selector could not be resolved")
+		return impact
+	}
+	impact.NextChecks = []string{
+		fmt.Sprintf("kubectl get pod -n %s -l %q", hpa.Namespace, info.SelectorStr),
+		fmt.Sprintf("kubectl top pod -n %s -l %q", hpa.Namespace, info.SelectorStr),
+	}
+	pods, err := client.Interface.CoreV1().Pods(hpa.Namespace).List(ctx, metav1.ListOptions{LabelSelector: info.SelectorStr})
+	if err != nil {
+		impact.Evidence = append(impact.Evidence, fmt.Sprintf("failed to list pods: %v", err))
+		return impact
+	}
+	now := time.Now()
+	impact.TotalPods = int32(len(pods.Items))
+	for _, pod := range pods.Items {
+		if podReadyForImpact(pod) {
+			continue
+		}
+		age := time.Duration(0)
+		if pod.Status.StartTime != nil {
+			age = now.Sub(pod.Status.StartTime.Time).Round(time.Second)
+		}
+		if age == 0 || age <= defaultCPUInitializationPeriod {
+			impact.NotYetReadyPods++
+			impact.Evidence = append(impact.Evidence, fmt.Sprintf("pod/%s: Ready=False, age=%s", pod.Name, age))
+			if len(impact.NextChecks) < 4 {
+				impact.NextChecks = append(impact.NextChecks, fmt.Sprintf("kubectl describe pod %s -n %s", pod.Name, hpa.Namespace))
+			}
+		}
+	}
+	metricPods, metricErr := fetchPodMetricNames(ctx, client, hpa.Namespace, info.SelectorStr)
+	if metricErr != nil {
+		impact.Evidence = append(impact.Evidence, fmt.Sprintf("PodMetrics not checked: %v", metricErr))
+	} else {
+		seen := make(map[string]struct{}, len(metricPods))
+		for _, name := range metricPods {
+			seen[name] = struct{}{}
+		}
+		for _, pod := range pods.Items {
+			if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
+				continue
+			}
+			if _, ok := seen[pod.Name]; !ok {
+				impact.MissingMetricPods++
+				impact.Evidence = append(impact.Evidence, fmt.Sprintf("metrics window missing for pod/%s", pod.Name))
+			}
+		}
+	}
+	impact.LikelyAffected = impact.NotYetReadyPods > 0 || impact.MissingMetricPods > 0
+	if impact.NotYetReadyPods > 0 {
+		impact.PossibleEffects = append(impact.PossibleEffects,
+			fmt.Sprintf("scale-up may be dampened because %d pod(s) are still initializing", impact.NotYetReadyPods))
+	}
+	if impact.MissingMetricPods > 0 {
+		impact.PossibleEffects = append(impact.PossibleEffects,
+			fmt.Sprintf("scale direction may be conservative because %d pod(s) have no visible PodMetrics sample", impact.MissingMetricPods))
+	}
+	if impact.LikelyAffected {
+		impact.PossibleEffects = append(impact.PossibleEffects,
+			"HPA status.currentMetrics may not show the adjusted value used internally")
+	}
+	return impact
+}
+
+func podReadyForImpact(pod corev1.Pod) bool {
+	for _, condition := range pod.Status.Conditions {
+		if condition.Type == corev1.PodReady {
+			return condition.Status == corev1.ConditionTrue
+		}
+	}
+	return false
+}
+
+type podMetricsNamesJSON struct {
+	Items []struct {
+		Metadata struct {
+			Name string `json:"name"`
+		} `json:"metadata"`
+	} `json:"items"`
+}
+
+func fetchPodMetricNames(ctx context.Context, client *kube.Client, namespace, selector string) ([]string, error) {
+	restClient := client.Interface.Discovery().RESTClient()
+	if restClient == nil {
+		return nil, fmt.Errorf("discovery REST client is unavailable")
+	}
+	raw, err := restClient.Get().
+		AbsPath("/apis/metrics.k8s.io/v1beta1/namespaces", namespace, "pods").
+		Param("labelSelector", selector).
+		DoRaw(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var list podMetricsNamesJSON
+	if err := json.Unmarshal(raw, &list); err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(list.Items))
+	for _, item := range list.Items {
+		if item.Metadata.Name != "" {
+			names = append(names, item.Metadata.Name)
+		}
+	}
+	return names, nil
+}
 
 func buildRolloutDiagnosis(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpaanalysis.RolloutDiagnosis {
 	if client == nil || hpa == nil {
@@ -79,6 +209,8 @@ func fillRolloutReasonAndPods(ctx context.Context, client *kube.Client, hpa *aut
 	if diag.InProgress {
 		diag.Reason = "rollout in progress; new pods may not be Ready yet"
 		diag.NextActions = append(diag.NextActions, "Inspect rollout status and new pod readiness before changing HPA thresholds.")
+	} else {
+		diag.Reason = "rollout is not visibly blocking HPA scale-out"
 	}
 	info, err := kube.FetchScaleTargetInfo(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef)
 	if err != nil || info == nil || info.SelectorStr == "" {
@@ -101,6 +233,91 @@ func fillRolloutReasonAndPods(ctx context.Context, client *kube.Client, hpa *aut
 		if pod.Status.Phase == corev1.PodPending {
 			diag.PodIssues = append(diag.PodIssues, fmt.Sprintf("%s is Pending", pod.Name))
 		}
+	}
+}
+
+func buildControllerProfile(ctx context.Context, client *kube.Client, opts *options) *hpaanalysis.ControllerProfile {
+	profile := hpaanalysis.DefaultControllerProfile()
+	if opts != nil && opts.assumeProfile != "" {
+		profile.Source = "assumed:" + opts.assumeProfile
+		return &profile
+	}
+	if opts != nil && opts.controllerProfileFile != "" {
+		if loaded, err := loadControllerProfileFile(opts.controllerProfileFile); err == nil {
+			return loaded
+		} else {
+			profile.Warnings = append(profile.Warnings, fmt.Sprintf("failed to load controller profile file: %v", err))
+		}
+	}
+	if client == nil {
+		return &profile
+	}
+	observed, ok := observeControllerManagerProfile(ctx, client)
+	if !ok {
+		profile.Warnings = append(profile.Warnings, "kube-controller-manager args were not visible; using Kubernetes defaults")
+		return &profile
+	}
+	return observed
+}
+
+func loadControllerProfileFile(path string) (*hpaanalysis.ControllerProfile, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	profile := hpaanalysis.DefaultControllerProfile()
+	if err := yaml.Unmarshal(data, &profile); err != nil {
+		return nil, err
+	}
+	if profile.Source == "" {
+		profile.Source = "file:" + path
+	}
+	return &profile, nil
+}
+
+func observeControllerManagerProfile(ctx context.Context, client *kube.Client) (*hpaanalysis.ControllerProfile, bool) {
+	pods, err := client.Interface.CoreV1().Pods("kube-system").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, false
+	}
+	for _, pod := range pods.Items {
+		if !strings.Contains(pod.Name, "kube-controller-manager") {
+			continue
+		}
+		profile := hpaanalysis.DefaultControllerProfile()
+		profile.Source = "kube-system/" + pod.Name
+		for _, container := range pod.Spec.Containers {
+			for _, arg := range container.Command {
+				applyControllerArg(&profile, arg)
+			}
+			for _, arg := range container.Args {
+				applyControllerArg(&profile, arg)
+			}
+		}
+		return &profile, true
+	}
+	return nil, false
+}
+
+func applyControllerArg(profile *hpaanalysis.ControllerProfile, arg string) {
+	if profile == nil || !strings.HasPrefix(arg, "--") {
+		return
+	}
+	key, value, ok := strings.Cut(strings.TrimPrefix(arg, "--"), "=")
+	if !ok {
+		return
+	}
+	switch key {
+	case "horizontal-pod-autoscaler-sync-period":
+		profile.SyncPeriod = value
+	case "horizontal-pod-autoscaler-downscale-stabilization":
+		profile.DownscaleStabilization = value
+	case "horizontal-pod-autoscaler-initial-readiness-delay":
+		profile.InitialReadinessDelay = value
+	case "horizontal-pod-autoscaler-cpu-initialization-period":
+		profile.CPUInitializationPeriod = value
+	case "horizontal-pod-autoscaler-tolerance":
+		profile.Tolerance = value
 	}
 }
 

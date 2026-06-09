@@ -210,6 +210,11 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 		out = fmt.Appendf(out, "%s\n", trendText)
 	}
 
+	if a.ControllerProfile != nil {
+		out = append(out, '\n')
+		appendControllerProfileText(&out, a.ControllerProfile)
+	}
+
 	if len(a.Actions) > 0 {
 		out = append(out, '\n')
 		out = fmt.Appendf(out, "%s:\n", labels.Actions)
@@ -521,6 +526,11 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 		appendCapacityHeadroomText(&out, a.CapacityHeadroom, theme)
 	}
 
+	if a.ReadinessImpact != nil {
+		out = append(out, '\n')
+		appendReadinessImpactText(&out, a.ReadinessImpact, theme)
+	}
+
 	if a.ScalePath != nil {
 		out = append(out, '\n')
 		appendScalePathText(&out, a.ScalePath, theme)
@@ -533,6 +543,7 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 
 	if a.BlockerReport != nil {
 		AppendBlockerText(&out, a.BlockerReport, theme, labels)
+		appendScaleoutBlockersText(&out, a.BlockerReport, theme)
 	}
 
 	if a.CapacityPlan != nil {
@@ -669,11 +680,46 @@ func appendCapacityHeadroomText(out *[]byte, headroom *CapacityHeadroom, theme s
 	}
 }
 
+func appendReadinessImpactText(out *[]byte, impact *ReadinessImpact, theme style.Theme) {
+	if impact == nil {
+		return
+	}
+	affected := "no"
+	if impact.LikelyAffected {
+		affected = "yes"
+	}
+	*out = append(*out, "Readiness Impact:\n"...)
+	*out = fmt.Appendf(*out, "  likely affected: %s\n", affected)
+	*out = fmt.Appendf(*out, "  pods: %d total, %d not-yet-ready, %d missing metrics\n",
+		impact.TotalPods, impact.NotYetReadyPods, impact.MissingMetricPods)
+	*out = fmt.Appendf(*out, "  controller defaults: initial-readiness-delay=%s cpu-initialization-period=%s\n",
+		impact.InitialReadinessDelay, impact.CPUInitializationPeriod)
+	if len(impact.PossibleEffects) > 0 {
+		*out = append(*out, "  possible effect:\n"...)
+		for _, effect := range impact.PossibleEffects {
+			*out = fmt.Appendf(*out, "    - %s\n", theme.InterpretationLine(effect))
+		}
+	}
+	if len(impact.Evidence) > 0 {
+		*out = append(*out, "\nEvidence:\n"...)
+		for _, evidence := range impact.Evidence {
+			*out = fmt.Appendf(*out, "  - %s\n", evidence)
+		}
+	}
+	if len(impact.NextChecks) > 0 {
+		*out = append(*out, "\nNext checks:\n"...)
+		for _, check := range impact.NextChecks {
+			*out = fmt.Appendf(*out, "  %s\n", theme.ActionLine(check))
+		}
+	}
+}
+
 func appendRolloutDiagnosisText(out *[]byte, diagnosis *RolloutDiagnosis, theme style.Theme) {
 	if diagnosis == nil {
 		return
 	}
-	*out = fmt.Appendf(*out, "Rollout diagnosis: %s/%s\n", diagnosis.Kind, diagnosis.Name)
+	*out = fmt.Appendf(*out, "Rollout Impact: %s/%s\n", diagnosis.Kind, diagnosis.Name)
+	*out = fmt.Appendf(*out, "  rollout in progress: %t\n", diagnosis.InProgress)
 	*out = fmt.Appendf(*out, "  desired replicas: %d\n", diagnosis.DesiredReplicas)
 	if diagnosis.Kind == "Deployment" {
 		*out = fmt.Appendf(*out, "  updated replicas: %d\n", diagnosis.UpdatedReplicas)
@@ -695,6 +741,42 @@ func appendRolloutDiagnosisText(out *[]byte, diagnosis *RolloutDiagnosis, theme 
 		for _, action := range diagnosis.NextActions {
 			*out = fmt.Appendf(*out, "    - %s\n", action)
 		}
+	}
+}
+
+func appendScaleoutBlockersText(out *[]byte, report *BlockerReport, theme style.Theme) {
+	if report == nil || len(report.Blockers) == 0 {
+		return
+	}
+	*out = append(*out, '\n')
+	*out = append(*out, "Scale-out blockers:\n"...)
+	for i, blocker := range report.Blockers {
+		if blocker.Severity == BlockerInfo && i > 2 {
+			continue
+		}
+		*out = fmt.Appendf(*out, "  %d. %s\n", i+1, blocker.Message)
+		if blocker.Detail != "" {
+			*out = fmt.Appendf(*out, "     evidence: %s\n", blocker.Detail)
+		}
+		if blocker.NextCommand != "" {
+			*out = fmt.Appendf(*out, "     next: %s\n", theme.ActionLine(blocker.NextCommand))
+		}
+	}
+}
+
+func appendControllerProfileText(out *[]byte, profile *ControllerProfile) {
+	if profile == nil {
+		return
+	}
+	*out = append(*out, "Controller profile:\n"...)
+	*out = fmt.Appendf(*out, "  source: %s\n", profile.Source)
+	*out = fmt.Appendf(*out, "  sync period: %s\n", profile.SyncPeriod)
+	*out = fmt.Appendf(*out, "  downscale stabilization: %s\n", profile.DownscaleStabilization)
+	*out = fmt.Appendf(*out, "  initial readiness delay: %s\n", profile.InitialReadinessDelay)
+	*out = fmt.Appendf(*out, "  cpu initialization period: %s\n", profile.CPUInitializationPeriod)
+	*out = fmt.Appendf(*out, "  tolerance: %s\n", profile.Tolerance)
+	for _, warning := range profile.Warnings {
+		*out = fmt.Appendf(*out, "  warning: %s\n", warning)
 	}
 }
 

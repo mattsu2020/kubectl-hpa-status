@@ -85,6 +85,9 @@ func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []st
 			}
 			report.Analysis.Actions = append(report.Analysis.Actions, applied...)
 		}
+		if opts.export != "" {
+			return writeGitOpsExport(out, opts.export, report)
+		}
 
 		format, templateStr := outputSelection(outputConfig{
 			report: opts.report, output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates,
@@ -148,6 +151,19 @@ func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []st
 	format, templateStr := outputSelection(outputConfig{
 		report: opts.report, output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates,
 	})
+	if opts.export != "" {
+		for i, report := range reports {
+			if i > 0 {
+				if _, err := fmt.Fprintln(out); err != nil {
+					return err
+				}
+			}
+			if err := writeGitOpsExport(out, opts.export, report); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 	if err := writeOutput(out, format, templateStr, reports, func() error {
 		for i, report := range reports {
 			if i > 0 {
@@ -323,16 +339,24 @@ func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, 
 		report.Analysis.CapacityHeadroom = buildCapacityHeadroom(ctx, client, hpa, report.Analysis.Target)
 	}
 
+	if opts.readinessImpact {
+		report.Analysis.ReadinessImpact = buildReadinessImpact(ctx, client, hpa)
+	}
+
 	if opts.scalePath {
 		report.Analysis.ScalePath = buildScalePath(ctx, client, hpa)
 	}
 
-	if opts.rollout {
+	if opts.rollout || opts.rolloutImpact {
 		report.Analysis.RolloutDiagnosis = buildRolloutDiagnosis(ctx, client, hpa)
 	}
 
-	if opts.capacityDeep {
+	if opts.capacityDeep || opts.scaleoutBlockers {
 		report.Analysis.BlockerReport = buildBlockerReportForStatus(ctx, client, hpa, report.Analysis.Target)
+	}
+
+	if opts.controllerProfile || opts.assumeProfile != "" || opts.controllerProfileFile != "" {
+		report.Analysis.ControllerProfile = buildControllerProfile(ctx, client, opts)
 	}
 
 	if opts.capacityPlan && hpa.Status.CurrentReplicas >= hpa.Spec.MaxReplicas {

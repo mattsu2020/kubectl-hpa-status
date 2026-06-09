@@ -131,6 +131,10 @@ func collectBundleData(ctx context.Context, client *kube.Client, opts *options, 
 	bundleOpts.containerAdvisor = true
 	bundleOpts.behaviorAdvisor = true
 	bundleOpts.capacityDeep = true
+	bundleOpts.readinessImpact = true
+	bundleOpts.rolloutImpact = true
+	bundleOpts.scaleoutBlockers = true
+	bundleOpts.controllerProfile = true
 	bundleOpts.keda = true
 	bundleOpts.vpa = true
 	bundleOpts.scalePath = true

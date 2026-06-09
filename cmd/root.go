@@ -73,6 +73,13 @@ type statusOptions struct {
 	scalePath             bool
 	decisionTrace         bool
 	rollout               bool
+	rolloutImpact         bool
+	readinessImpact       bool
+	scaleoutBlockers      bool
+	controllerProfile     bool
+	assumeProfile         string
+	controllerProfileFile string
+	export                string
 	events                eventOption
 	recommend             bool
 	report                string
@@ -133,6 +140,9 @@ func (o *statusOptions) Normalize() {
 		o.explain = true
 	}
 	if o.diff {
+		o.suggest = true
+	}
+	if o.export != "" {
 		o.suggest = true
 	}
 	if o.noInterpret {
@@ -228,6 +238,8 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newTUICommand(opts))
 	root.AddCommand(newTimelineCommand(opts))
 	root.AddCommand(newTraceCommand(opts))
+	root.AddCommand(newCompareCommand(opts))
+	root.AddCommand(newProfileCommand(opts))
 	root.AddCommand(newPathCommand(opts))
 	root.AddCommand(newBlockersCommand(opts))
 	root.AddCommand(newCapacityPlanCommand(opts))
@@ -237,6 +249,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newPolicyCommand(opts))
 	root.AddCommand(newSnapshotCommand(opts))
 	root.AddCommand(newBundleCommand(opts))
+	root.AddCommand(newIncidentBundleCommand(opts))
 	root.AddCommand(newLintCommand(opts))
 	root.AddCommand(newGitOpsCommand(opts))
 	root.AddCommand(newCompatCommand(opts))

@@ -183,10 +183,15 @@ type Analysis struct {
 	// CapacityHeadroom estimates whether the cluster can absorb additional pods
 	// up to maxReplicas.
 	CapacityHeadroom *CapacityHeadroom `json:"capacityHeadroom,omitempty" yaml:"capacityHeadroom,omitempty"`
+	// ReadinessImpact explains how not-yet-ready pods and missing PodMetrics may
+	// affect HPA CPU/resource decisions.
+	ReadinessImpact *ReadinessImpact `json:"readinessImpact,omitempty" yaml:"readinessImpact,omitempty"`
 	// ScalePath explains the visible path from HPA desired replicas to scheduled pods.
 	ScalePath *ScalePath `json:"scalePath,omitempty" yaml:"scalePath,omitempty"`
 	// RolloutDiagnosis holds Deployment/StatefulSet rollout context for HPA diagnosis.
 	RolloutDiagnosis *RolloutDiagnosis `json:"rolloutDiagnosis,omitempty" yaml:"rolloutDiagnosis,omitempty"`
+	// ControllerProfile holds cluster-wide HPA controller timing assumptions.
+	ControllerProfile *ControllerProfile `json:"controllerProfile,omitempty" yaml:"controllerProfile,omitempty"`
 	// BlockerReport holds scale-out blocker analysis for the HPA scale target.
 	// Populated when --capacity-deep is enabled or via the blockers subcommand.
 	BlockerReport *BlockerReport `json:"blockerReport,omitempty" yaml:"blockerReport,omitempty"`
@@ -748,6 +753,20 @@ type CapacityHeadroom struct {
 	Evidence                   []string `json:"evidence,omitempty" yaml:"evidence,omitempty"`
 }
 
+// ReadinessImpact summarizes visible pod readiness and metrics gaps that may
+// make HPA controller decisions differ from status.currentMetrics.
+type ReadinessImpact struct {
+	LikelyAffected          bool     `json:"likelyAffected" yaml:"likelyAffected"`
+	TotalPods               int32    `json:"totalPods" yaml:"totalPods"`
+	NotYetReadyPods         int32    `json:"notYetReadyPods" yaml:"notYetReadyPods"`
+	MissingMetricPods       int32    `json:"missingMetricPods,omitempty" yaml:"missingMetricPods,omitempty"`
+	InitialReadinessDelay   string   `json:"initialReadinessDelay" yaml:"initialReadinessDelay"`
+	CPUInitializationPeriod string   `json:"cpuInitializationPeriod" yaml:"cpuInitializationPeriod"`
+	PossibleEffects         []string `json:"possibleEffects,omitempty" yaml:"possibleEffects,omitempty"`
+	Evidence                []string `json:"evidence,omitempty" yaml:"evidence,omitempty"`
+	NextChecks              []string `json:"nextChecks,omitempty" yaml:"nextChecks,omitempty"`
+}
+
 // RolloutDiagnosis summarizes rollout state that can make an HPA look broken
 // even when the HPA decision itself is reasonable.
 type RolloutDiagnosis struct {
@@ -763,6 +782,32 @@ type RolloutDiagnosis struct {
 	Conditions          []string `json:"conditions,omitempty" yaml:"conditions,omitempty"`
 	PodIssues           []string `json:"podIssues,omitempty" yaml:"podIssues,omitempty"`
 	NextActions         []string `json:"nextActions,omitempty" yaml:"nextActions,omitempty"`
+}
+
+// ControllerProfile describes HPA controller-manager settings that affect
+// controller decisions. Values may be observed from kube-controller-manager
+// arguments or default assumptions.
+type ControllerProfile struct {
+	Source                  string   `json:"source" yaml:"source"`
+	SyncPeriod              string   `json:"syncPeriod" yaml:"syncPeriod"`
+	DownscaleStabilization  string   `json:"downscaleStabilization" yaml:"downscaleStabilization"`
+	InitialReadinessDelay   string   `json:"initialReadinessDelay" yaml:"initialReadinessDelay"`
+	CPUInitializationPeriod string   `json:"cpuInitializationPeriod" yaml:"cpuInitializationPeriod"`
+	Tolerance               string   `json:"tolerance" yaml:"tolerance"`
+	Warnings                []string `json:"warnings,omitempty" yaml:"warnings,omitempty"`
+}
+
+// DefaultControllerProfile returns the Kubernetes controller-manager default
+// HPA timing settings that matter for user-facing interpretation.
+func DefaultControllerProfile() ControllerProfile {
+	return ControllerProfile{
+		Source:                  "defaults",
+		SyncPeriod:              "15s",
+		DownscaleStabilization:  "5m",
+		InitialReadinessDelay:   "30s",
+		CPUInitializationPeriod: "5m",
+		Tolerance:               "0.1",
+	}
 }
 
 // ScalePath describes the visible scale-up path from the HPA recommendation
