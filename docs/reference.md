@@ -425,12 +425,23 @@ E2E runs on a matrix of Kubernetes 1.26 / 1.28 / 1.30 / latest-tracking kind ima
 
 ## Demo Recordings
 
+Asciinema recordings (`.cast`) can be viewed on [asciinema.org](https://asciinema.org) or converted to animated SVGs.
+
+| Command | Recording | SVG |
+| --- | --- | --- |
+| `status --explain` | [status-explain.cast](status-explain.cast) | [status-explain.svg](../images/status-explain.svg) |
+| `doctor` full diagnostics | [doctor.cast](doctor.cast) | [doctor.svg](../images/doctor.svg) |
+| `list -A --wide` | [list-wide.cast](list-wide.cast) | [list-wide.svg](../images/list-wide.svg) |
+| `scan` cluster triage | [scan.cast](scan.cast) | [scan-demo.svg](../images/scan-demo.svg) |
+| `timeline --since=30m` | [timeline.cast](timeline.cast) | [timeline.svg](../images/timeline.svg) |
+| `recommend` audit | [recommend.cast](recommend.cast) | [recommend.svg](../images/recommend.svg) |
+| `--simulate-metric` what-if | [simulate.cast](simulate.cast) | [simulate.svg](../images/simulate.svg) |
+| TUI interactive dashboard | [tui.cast](tui.cast) | [tui.svg](../images/tui.svg) |
+| `watch --interval 5s` | [watch.cast](watch.cast) | [watch-mode.svg](../images/watch-mode.svg) |
+| `--suggest` → `--fix --apply` | [fix-flow.cast](fix-flow.cast) | [apply-diff.svg](../images/apply-diff.svg) |
+
 - Screenshot: [images/demo.png](../images/demo.png)
 - Comparison image: [images/describe-vs-hpa-status.svg](../images/describe-vs-hpa-status.svg)
-- status explain demo: [docs/status-explain.cast](status-explain.cast)
-- wide list demo: [docs/list-wide.cast](list-wide.cast)
-- watch demo: [docs/watch.cast](watch.cast)
-- `--explain` to `--suggest` and `--fix --apply` flow: [docs/fix-flow.cast](fix-flow.cast)
 - Zenn article draft: [docs/zenn-hpa-status-ja.md](zenn-hpa-status-ja.md)
 
 Social preview source file: [images/social-preview.svg](../images/social-preview.svg)

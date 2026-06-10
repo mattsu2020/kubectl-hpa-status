@@ -70,19 +70,23 @@ Recommended actions:
 
 ![kubectl describe hpa versus kubectl-hpa-status](images/describe-vs-hpa-status.svg)
 
-| Workflow | Visual |
-| --- | --- |
-| `status --explain` | [status-explain.svg](images/status-explain.svg) |
-| `list -A --wide --problem` | [list-wide.svg](images/list-wide.svg) |
-| `watch --interval 5s` | [watch-mode.svg](images/watch-mode.svg) |
-| `--suggest` dry-run command | [suggest-dry-run.svg](images/suggest-dry-run.svg) |
-| `--fix --apply` diff prompt | [apply-diff.svg](images/apply-diff.svg) |
-| Japanese labels (`--lang=ja`) | [ja-output.svg](images/ja-output.svg) |
-| `scan` cluster triage | [scan-output.svg](images/scan-output.svg) |
-| JSON output | [json-output.svg](images/json-output.svg) |
-| Metrics failure | [metrics-failure.svg](images/metrics-failure.svg) |
-| Scale-down stabilization | [stabilized-output.svg](images/stabilized-output.svg) |
-| Multi-metric estimation | [multi-metric-output.svg](images/multi-metric-output.svg) |
+| Workflow | Visual | Recording |
+| --- | --- | --- |
+| `status --explain` | [status-explain.svg](images/status-explain.svg) | [cast](docs/status-explain.cast) |
+| `doctor` full diagnostics | [doctor.svg](images/doctor.svg) | [cast](docs/doctor.cast) |
+| `list -A --wide --problem` | [list-wide.svg](images/list-wide.svg) | [cast](docs/list-wide.cast) |
+| `scan` cluster triage | [scan-demo.svg](images/scan-demo.svg) | [cast](docs/scan.cast) |
+| `timeline --since=30m` | [timeline.svg](images/timeline.svg) | [cast](docs/timeline.cast) |
+| `recommend` best practice audit | [recommend.svg](images/recommend.svg) | [cast](docs/recommend.cast) |
+| `--simulate-metric` what-if | [simulate.svg](images/simulate.svg) | [cast](docs/simulate.cast) |
+| TUI interactive dashboard | [tui.svg](images/tui.svg) | [cast](docs/tui.cast) |
+| `watch --interval 5s` | [watch-mode.svg](images/watch-mode.svg) | [cast](docs/watch.cast) |
+| `--suggest` → `--fix --apply` | [apply-diff.svg](images/apply-diff.svg) | [cast](docs/fix-flow.cast) |
+| Japanese labels (`--lang=ja`) | [ja-output.svg](images/ja-output.svg) | |
+| JSON output | [json-output.svg](images/json-output.svg) | |
+| Metrics failure | [metrics-failure.svg](images/metrics-failure.svg) | |
+| Scale-down stabilization | [stabilized-output.svg](images/stabilized-output.svg) | |
+| Multi-metric estimation | [multi-metric-output.svg](images/multi-metric-output.svg) | |
 
 ## Install
 

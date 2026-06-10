@@ -1,0 +1,12 @@
+{"version":2,"width":100,"height":26,"timestamp":1780070400,"env":{"SHELL":"/bin/zsh","TERM":"xterm-256color"}}
+[0.1,"o","$ kubectl hpa status timeline web -n production --since=30m\n"]
+[0.2,"o","\nHPA Scaling Timeline: web (production)  since 30m ago\n\n"]
+[0.3,"o","21:05:00  CPU 92% > target 60%       desired 3 -> 5      SuccessfulRescale\n"]
+[0.4,"o","21:06:00  ScalingLimited=True         capped by maxReplicas=5\n"]
+[0.5,"o","21:08:30  CPU 78% > target 60%        desired remains 5  within tolerance\n"]
+[0.6,"o","21:10:00  FailedGetResourceMetric     metrics unavailable\n"]
+[0.7,"o","21:12:00  CPU metrics restored         desired remains 5\n"]
+[0.8,"o","21:15:00  ScaleDownStabilized          scale-down suppressed, ~180s remaining\n"]
+[0.9,"o","21:18:00  CPU 55% < target 60%        desired 5 -> 3      ScaleDownStabilized (suppressed)\n"]
+[0.10,"o","21:21:00  CPU 48% < target 60%        desired 5 -> 3      SuccessfulRescale\n"]
+[0.11,"o","\nNote: Best-effort reconstruction from Kubernetes events and current HPA status.\nEvents typically expire after ~1 hour; older entries may be incomplete.\n"]

@@ -1,0 +1,10 @@
+{"version":2,"width":130,"height":32,"timestamp":1780070400,"env":{"SHELL":"/bin/zsh","TERM":"xterm-256color"}}
+[0.1,"o","$ kubectl hpa status scan\n"]
+[0.2,"o","Scanning HPAs across all namespaces...\n\n"]
+[0.3,"o","NAMESPACE            NAME                             TARGET                       CURRENT  DESIRED  HEALTH              SCORE    ISSUE                            SUMMARY\n"]
+[0.4,"o","default              web                              Deployment/web               3        5        🟢 Healthy          100                                       HPA currently wants to scale up.\n"]
+[0.5,"o","default              api                              Deployment/api               10       10       🔴 ScalingLimited   75       LIMITED: TooManyReplicas         HPA is at maxReplicas.\n"]
+[0.6,"o","payments             worker                           Deployment/worker            2        0        🔴 ERROR            55       ERROR: FailedGetResourceMetric   HPA cannot currently compute a scaling recommendation from metrics.\n"]
+[0.7,"o","monitoring           prometheus                       StatefulSet/prometheus       3        3        🟡 STABILIZED      90       STABILIZED: ScaleDown            Scale-down is suppressed by stabilization window.\n"]
+[0.8,"o","\nScan Results: 4 HPAs found\n  🟢 Healthy:       1\n  🟡 Stabilized:    1\n  🔴 Limited:       1\n  🔴 Error:         1\n\n"]
+[0.9,"o","Top issues:\n  1. [ERROR]    payments/worker — Metrics unavailable, check metrics-server\n  2. [LIMITED]  default/api — Capped at maxReplicas=10, consider raising\n"]

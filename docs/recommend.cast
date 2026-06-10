@@ -1,0 +1,8 @@
+{"version":2,"width":100,"height":30,"timestamp":1780070400,"env":{"SHELL":"/bin/zsh","TERM":"xterm-256color"}}
+[0.1,"o","$ kubectl hpa status recommend web -n production\n"]
+[0.2,"o","\nHPA production/web\nTarget: Deployment/web\nCompliance Score: 70/100\nSummary: Found 1 critical, 2 warnings, 0 informational findings\n\n"]
+[0.3,"o","Audit Findings:\n\n"]
+[0.4,"o","  [CRITICAL] minReplicas is set to 0 without scale-to-zero safeguards\n    Impact: Pods may fail to start when scaling from zero, causing cold-start latency\n    Suggestion: Set minReplicas to at least 1, or add readiness checks and pre-warming\n\n"]
+[0.5,"o","  [WARNING] No scale-down behavior policy configured; defaults may cause rapid scale-down\n    Impact: Default behavior allows rapid pod termination\n    Suggestion: Add spec.behavior.scaleDown with stabilizationWindowSeconds: 300\n\n"]
+[0.6,"o","  [WARNING] Target CPU utilization (95%) is above recommended maximum (85%)\n    Impact: Leaves very little headroom before saturation\n    Suggestion: Consider lowering targetUtilization to 80-85% for safety margin\n\n"]
+[0.7,"o","Compliance Breakdown:\n  ✓ Stabilization window     OK (300s configured)\n  ✗ Replica range            CRITICAL (minReplicas=0)\n  ✗ Behavior policy          WARNING (no scaleDown policy)\n  ✓ Metric coverage          OK (2 metrics: cpu, memory)\n  ✓ Resource requests        OK (all containers have requests)\n  ✓ Target utilization       WARNING (cpu=95%)\n"]

@@ -70,19 +70,23 @@ Recommended actions:
 
 ![kubectl describe hpa と kubectl-hpa-status の比較](images/describe-vs-hpa-status.svg)
 
-| ワークフロー | 画像 |
-| --- | --- |
-| `status --explain` | [status-explain.svg](images/status-explain.svg) |
-| `list -A --wide --problem` | [list-wide.svg](images/list-wide.svg) |
-| `watch --interval 5s` | [watch-mode.svg](images/watch-mode.svg) |
-| `--suggest` dry-runコマンド | [suggest-dry-run.svg](images/suggest-dry-run.svg) |
-| `--fix --apply` 差分確認 | [apply-diff.svg](images/apply-diff.svg) |
-| 日本語ラベル (`--lang=ja`) | [ja-output.svg](images/ja-output.svg) |
-| `scan` クラスタ診断 | [scan-output.svg](images/scan-output.svg) |
-| JSON出力 | [json-output.svg](images/json-output.svg) |
-| メトリクス取得失敗 | [metrics-failure.svg](images/metrics-failure.svg) |
-| スケールダウン安定化 | [stabilized-output.svg](images/stabilized-output.svg) |
-| 複数メトリクス推定 | [multi-metric-output.svg](images/multi-metric-output.svg) |
+| ワークフロー | 画像 | 録画 |
+| --- | --- | --- |
+| `status --explain` | [status-explain.svg](images/status-explain.svg) | [cast](docs/status-explain.cast) |
+| `doctor` 包括診断 | [doctor.svg](images/doctor.svg) | [cast](docs/doctor.cast) |
+| `list -A --wide --problem` | [list-wide.svg](images/list-wide.svg) | [cast](docs/list-wide.cast) |
+| `scan` クラスタ診断 | [scan-demo.svg](images/scan-demo.svg) | [cast](docs/scan.cast) |
+| `timeline --since=30m` | [timeline.svg](images/timeline.svg) | [cast](docs/timeline.cast) |
+| `recommend` ベストプラクティス監査 | [recommend.svg](images/recommend.svg) | [cast](docs/recommend.cast) |
+| `--simulate-metric` シミュレーション | [simulate.svg](images/simulate.svg) | [cast](docs/simulate.cast) |
+| TUI インタラクティブダッシュボード | [tui.svg](images/tui.svg) | [cast](docs/tui.cast) |
+| `watch --interval 5s` | [watch-mode.svg](images/watch-mode.svg) | [cast](docs/watch.cast) |
+| `--suggest` → `--fix --apply` | [apply-diff.svg](images/apply-diff.svg) | [cast](docs/fix-flow.cast) |
+| 日本語ラベル (`--lang=ja`) | [ja-output.svg](images/ja-output.svg) | |
+| JSON出力 | [json-output.svg](images/json-output.svg) | |
+| メトリクス取得失敗 | [metrics-failure.svg](images/metrics-failure.svg) | |
+| スケールダウン安定化 | [stabilized-output.svg](images/stabilized-output.svg) | |
+| 複数メトリクス推定 | [multi-metric-output.svg](images/multi-metric-output.svg) | |
 
 ## インストール
 
