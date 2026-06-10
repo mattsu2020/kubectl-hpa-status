@@ -42,6 +42,15 @@ func applySuggestionsInNamespace(ctx context.Context, out io.Writer, opts *optio
 		return nil, fmt.Errorf("failed to get HPA %s/%s: %w", namespace, name, err)
 	}
 
+	guardedPatches, err := guardPatches(out, opts, current, patches)
+	if err != nil {
+		return nil, err
+	}
+	patches = guardedPatches
+	if len(patches) == 0 {
+		return []string{"No applicable HPA patch was allowed by policy guard."}, nil
+	}
+
 	if err := printProposedPatches(out, current, patches); err != nil {
 		return nil, err
 	}
@@ -70,6 +79,30 @@ func applySuggestionsInNamespace(ctx context.Context, out io.Writer, opts *optio
 	}
 
 	return executePatches(ctx, client, namespace, name, patches)
+}
+
+func guardPatches(out io.Writer, opts *options, current *autoscalingv2.HorizontalPodAutoscaler, patches []hpaanalysis.Suggestion) ([]hpaanalysis.Suggestion, error) {
+	if opts.policyGuard == "" {
+		return patches, nil
+	}
+	policyFile, err := hpaanalysis.LoadPolicyFile(opts.policyGuard)
+	if err != nil {
+		return nil, err
+	}
+	result := hpaanalysis.GuardFix(patches, policyFile, current)
+	if err := hpaanalysis.WritePolicyGuardText(out, result); err != nil {
+		return nil, err
+	}
+	switch opts.policyGuardMode {
+	case "", "block":
+		if len(result.Blocked) > 0 {
+			return nil, fmt.Errorf("policy guard blocked %d patch(es)", len(result.Blocked))
+		}
+	case "warn":
+	default:
+		return nil, fmt.Errorf("invalid --policy-guard-mode %q; use block or warn", opts.policyGuardMode)
+	}
+	return result.Allowed, nil
 }
 
 func collectApplicablePatches(suggestions []hpaanalysis.Suggestion) []hpaanalysis.Suggestion {

@@ -42,6 +42,7 @@ func AnalyzeHealthTrend(snapshots []HealthSnapshot) HealthTrendResult {
 		FlappingDetected: flapping,
 		FlappingSeverity: severity,
 		Sparkline:        sparkline,
+		Anomalies:        DetectAnomalies(sorted),
 	}
 }
 

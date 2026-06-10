@@ -78,6 +78,13 @@ func registerStatusFlags(cmd *cobra.Command, opts *options) {
 	cmd.PersistentFlags().BoolVar(&opts.trend, "trend", false, "show health score trend with flapping detection")
 	cmd.PersistentFlags().DurationVar(&opts.trendSince, "trend-since", 24*time.Hour, "lookback window for health trend (default: 24h)")
 	cmd.PersistentFlags().DurationVar(&opts.trendRetain, "trend-retain", 72*time.Hour, "retention period for health history (default: 72h)")
+	cmd.PersistentFlags().StringVar(&opts.decisionTraceFormat, "decision-trace-format", "", "structured decision trace output format: text, json, or yaml")
+	cmd.PersistentFlags().BoolVar(&opts.flappingAdvisor, "flapping-advisor", false, "recommend stabilization window changes to reduce replica flapping")
+	cmd.PersistentFlags().BoolVar(&opts.trendAnomaly, "trend-anomaly", false, "detect anomalies in health score history (enabled by default with --trend)")
+	cmd.PersistentFlags().StringVar(&opts.incidentTemplate, "incident-template", "", "path to a custom incident report template file")
+	cmd.PersistentFlags().StringVar(&opts.policyGuard, "policy-guard", "", "path to a policy file used to guard --apply patches")
+	cmd.PersistentFlags().StringVar(&opts.policyGuardMode, "policy-guard-mode", "block", "policy guard mode for --apply: block or warn")
+	cmd.PersistentFlags().BoolVar(&opts.adapterDiagnostics, "adapter-diagnostics", false, "diagnose custom/external metrics adapter signals")
 }
 
 // registerWatchFlags registers flags specific to the watch / TUI commands.

@@ -34,6 +34,9 @@ func runDoctor(ctx context.Context, out io.Writer, opts *options, names []string
 	opts.behaviorAdvisor = true
 	opts.capacityDeep = true
 	opts.rollout = true
+	opts.flappingAdvisor = true
+	opts.trendAnomaly = true
+	opts.adapterDiagnostics = true
 
 	return runStatusMany(ctx, out, opts, names, !opts.noInterpret)
 }

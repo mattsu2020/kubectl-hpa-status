@@ -278,6 +278,16 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 		AppendDecisionTraceText(&out, a.DecisionTrace)
 	}
 
+	if a.StructuredDecisionTrace != nil {
+		out = append(out, '\n')
+		AppendStructuredDecisionTraceText(&out, a.StructuredDecisionTrace, opts.Labels)
+	}
+
+	if a.AdapterDiagnostics != nil {
+		out = append(out, '\n')
+		AppendAdapterDiagnosticsText(&out, a.AdapterDiagnostics)
+	}
+
 	if a.KEDAInfo != nil {
 		out = append(out, '\n')
 		out = fmt.Appendf(out, "%s:\n", labels.KEDA)
@@ -563,6 +573,10 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 		AppendBehaviorAdvisorText(&out, a.BehaviorAdvisor, labels)
 	}
 
+	if a.FlappingPrevention != nil {
+		AppendFlappingPreventionText(&out, a.FlappingPrevention, labels)
+	}
+
 	if a.MetricHints != nil && len(a.MetricHints.TroubleshootingFlows) > 0 {
 		out = append(out, '\n')
 		out = append(out, "Metric Troubleshooting:\n"...)
@@ -830,6 +844,7 @@ type labels struct {
 	Warmup              string
 	ContainerAdvisor    string
 	BehaviorAdvisor     string
+	FlappingPrevention  string
 }
 
 func textLabels(lang string) labels {
@@ -869,6 +884,7 @@ func textLabels(lang string) labels {
 			Warmup:              "ウォームアップ分析",
 			ContainerAdvisor:    "コンテナリソースアドバイザー",
 			BehaviorAdvisor:     "ビヘイビアチューニングアドバイザー",
+			FlappingPrevention:  "フラッピング防止アドバイザー",
 		}
 	}
 	return labels{
@@ -906,6 +922,7 @@ func textLabels(lang string) labels {
 		Warmup:              "Warmup Analysis",
 		ContainerAdvisor:    "Container Resource Advisor",
 		BehaviorAdvisor:     "Behavior Tuning Advisor",
+		FlappingPrevention:  "Flapping Prevention Advisor",
 	}
 }
 

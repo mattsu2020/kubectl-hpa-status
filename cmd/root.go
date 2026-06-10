@@ -93,6 +93,13 @@ type statusOptions struct {
 	trend                 bool
 	trendSince            time.Duration
 	trendRetain           time.Duration
+	decisionTraceFormat   string
+	flappingAdvisor       bool
+	trendAnomaly          bool
+	incidentTemplate      string
+	policyGuard           string
+	policyGuardMode       string
+	adapterDiagnostics    bool
 }
 
 // listOptions holds flags specific to the list / scan commands.
@@ -144,6 +151,12 @@ func (o *statusOptions) Normalize() {
 	}
 	if o.export != "" {
 		o.suggest = true
+	}
+	if o.decisionTraceFormat != "" {
+		o.decisionTrace = true
+	}
+	if o.trend && !o.trendAnomaly {
+		o.trendAnomaly = true
 	}
 	if o.noInterpret {
 		o.interpret = false

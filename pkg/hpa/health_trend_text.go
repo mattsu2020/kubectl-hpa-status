@@ -39,6 +39,61 @@ func FormatTrendText(result HealthTrendResult) string {
 	return "Health Trend: " + strings.Join(parts, " ")
 }
 
+// FormatTrendAnomalyText renders anomaly detection results as text.
+// Returns an empty string if no anomalies were detected.
+func FormatTrendAnomalyText(result HealthTrendResult) string {
+	if len(result.Anomalies) == 0 {
+		return ""
+	}
+
+	var lines []string
+
+	lines = append(lines, fmt.Sprintf("Anomalies: %d detected", len(result.Anomalies)))
+
+	for i, anomaly := range result.Anomalies {
+		lines = append(lines, fmt.Sprintf("  [%d] %s (%s) score %d->%d duration=%s",
+			i+1,
+			anomaly.Type,
+			anomaly.Severity,
+			anomaly.ScoreBefore,
+			anomaly.ScoreAfter,
+			anomaly.Duration,
+		))
+		if anomaly.CauseEstimate != "" {
+			lines = append(lines, fmt.Sprintf("      cause: %s", anomaly.CauseEstimate))
+		}
+		if anomaly.Remediation != "" {
+			lines = append(lines, fmt.Sprintf("      fix:   %s", anomaly.Remediation))
+		}
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+// FormatTrendAnomalyGraph renders the full trend text plus anomaly section
+// and ASCII graph. Returns an empty string if no snapshots are available.
+func FormatTrendAnomalyGraph(result HealthTrendResult, graphWidth int) string {
+	trendText := FormatTrendText(result)
+	if trendText == "" {
+		return ""
+	}
+
+	var sections []string
+	sections = append(sections, trendText)
+
+	anomalyText := FormatTrendAnomalyText(result)
+	if anomalyText != "" {
+		sections = append(sections, anomalyText)
+	}
+
+	graph := RenderHealthTrendASCII(result.Snapshots, graphWidth)
+	if graph != "" {
+		sections = append(sections, graph)
+	}
+
+	return strings.Join(sections, "\n\n")
+}
+
 // FormatTrendListRow renders a compact trend indicator for list view.
 func FormatTrendListRow(result HealthTrendResult) string {
 	if len(result.Snapshots) == 0 {

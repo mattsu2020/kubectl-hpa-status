@@ -234,6 +234,17 @@ type Analysis struct {
 	// HealthTrend holds the health score trend analysis over time.
 	// Populated when --trend is enabled and sufficient history is available.
 	HealthTrend *HealthTrendResult `json:"healthTrend,omitempty" yaml:"healthTrend,omitempty"`
+	// StructuredDecisionTrace holds the comprehensive structured decision trace
+	// with schema version, winner metric, tolerance/stabilization effects, and
+	// full condition evaluation. Populated when --decision-trace-format is set.
+	StructuredDecisionTrace *StructuredDecisionTrace `json:"structuredDecisionTrace,omitempty" yaml:"structuredDecisionTrace,omitempty"`
+	// FlappingPrevention holds the flapping prevention advisor result with
+	// what-if simulations for different stabilization window values.
+	// Populated when --flapping-advisor is enabled.
+	FlappingPrevention *FlappingPreventionReport `json:"flappingPrevention,omitempty" yaml:"flappingPrevention,omitempty"`
+	// AdapterDiagnostics holds custom/external metrics adapter diagnostics.
+	// Populated when --adapter-diagnostics is enabled.
+	AdapterDiagnostics *AdapterDiagnosticsReport `json:"adapterDiagnostics,omitempty" yaml:"adapterDiagnostics,omitempty"`
 }
 
 // DecisionSignal is the stable internal shape for explicit controller scaling
@@ -333,6 +344,27 @@ type Suggestion struct {
 	Apply         bool     `json:"apply,omitempty" yaml:"apply,omitempty"`
 }
 
+// GuardResult holds policy guard decisions for suggested patches.
+type GuardResult struct {
+	Allowed  []Suggestion   `json:"allowed,omitempty" yaml:"allowed,omitempty"`
+	Blocked  []GuardBlocked `json:"blocked,omitempty" yaml:"blocked,omitempty"`
+	Warnings []GuardWarning `json:"warnings,omitempty" yaml:"warnings,omitempty"`
+}
+
+// GuardBlocked describes a suggestion blocked by a policy rule.
+type GuardBlocked struct {
+	Suggestion Suggestion `json:"suggestion" yaml:"suggestion"`
+	Reason     string     `json:"reason" yaml:"reason"`
+	PolicyRule string     `json:"policyRule" yaml:"policyRule"`
+}
+
+// GuardWarning describes a suggestion allowed with a policy warning.
+type GuardWarning struct {
+	Suggestion Suggestion `json:"suggestion" yaml:"suggestion"`
+	Reason     string     `json:"reason" yaml:"reason"`
+	PolicyRule string     `json:"policyRule" yaml:"policyRule"`
+}
+
 // KEDAAnalysis holds KEDA-specific information attached to an HPA Analysis.
 // Populated only when --keda is enabled and the HPA is KEDA-managed.
 type KEDAAnalysis struct {
@@ -389,6 +421,32 @@ type PerMetricHealthCheck struct {
 	Status      string `json:"status" yaml:"status"` // "healthy", "missing", "stale"
 	Details     string `json:"details,omitempty" yaml:"details,omitempty"`
 	Remediation string `json:"remediation,omitempty" yaml:"remediation,omitempty"`
+}
+
+// AdapterDiagnosticsReport summarizes visible custom/external metrics adapter health.
+type AdapterDiagnosticsReport struct {
+	AdapterType          string                `json:"adapterType" yaml:"adapterType"`
+	EndpointHealthy      bool                  `json:"endpointHealthy" yaml:"endpointHealthy"`
+	AvailableMetrics     []string              `json:"availableMetrics,omitempty" yaml:"availableMetrics,omitempty"`
+	AuthenticationErrors []string              `json:"authenticationErrors,omitempty" yaml:"authenticationErrors,omitempty"`
+	QueryProposals       []MetricQueryProposal `json:"queryProposals,omitempty" yaml:"queryProposals,omitempty"`
+	Checks               []AdapterCheck        `json:"checks,omitempty" yaml:"checks,omitempty"`
+	Summary              string                `json:"summary" yaml:"summary"`
+}
+
+// AdapterCheck describes one visible adapter diagnostic check.
+type AdapterCheck struct {
+	Name        string `json:"name" yaml:"name"`
+	Status      string `json:"status" yaml:"status"`
+	Details     string `json:"details,omitempty" yaml:"details,omitempty"`
+	Remediation string `json:"remediation,omitempty" yaml:"remediation,omitempty"`
+}
+
+// MetricQueryProposal suggests a metrics API query for troubleshooting.
+type MetricQueryProposal struct {
+	MetricName    string `json:"metricName" yaml:"metricName"`
+	ProposedQuery string `json:"proposedQuery" yaml:"proposedQuery"`
+	Adapter       string `json:"adapter" yaml:"adapter"`
 }
 
 // MetricFreshnessStatus represents the freshness state of a single HPA metric.
@@ -482,15 +540,16 @@ type HealthSnapshot struct {
 
 // HealthTrendResult holds the analysis of health score history over time.
 type HealthTrendResult struct {
-	Snapshots        []HealthSnapshot `json:"snapshots" yaml:"snapshots"`
-	Variance         float64          `json:"variance" yaml:"variance"`
-	MinScore         int              `json:"minScore" yaml:"minScore"`
-	MaxScore         int              `json:"maxScore" yaml:"maxScore"`
-	MeanScore        float64          `json:"meanScore" yaml:"meanScore"`
-	DegradationRate  float64          `json:"degradationRate" yaml:"degradationRate"`
-	FlappingDetected bool             `json:"flappingDetected" yaml:"flappingDetected"`
-	FlappingSeverity string           `json:"flappingSeverity,omitempty" yaml:"flappingSeverity,omitempty"`
-	Sparkline        string           `json:"sparkline,omitempty" yaml:"sparkline,omitempty"`
+	Snapshots        []HealthSnapshot   `json:"snapshots" yaml:"snapshots"`
+	Variance         float64            `json:"variance" yaml:"variance"`
+	MinScore         int                `json:"minScore" yaml:"minScore"`
+	MaxScore         int                `json:"maxScore" yaml:"maxScore"`
+	MeanScore        float64            `json:"meanScore" yaml:"meanScore"`
+	DegradationRate  float64            `json:"degradationRate" yaml:"degradationRate"`
+	FlappingDetected bool               `json:"flappingDetected" yaml:"flappingDetected"`
+	FlappingSeverity string             `json:"flappingSeverity,omitempty" yaml:"flappingSeverity,omitempty"`
+	Sparkline        string             `json:"sparkline,omitempty" yaml:"sparkline,omitempty"`
+	Anomalies        []AnomalyDetection `json:"anomalies,omitempty" yaml:"anomalies,omitempty"`
 }
 
 // ContainerCheck verifies that a ContainerResource metric target container exists in pods.
@@ -1358,4 +1417,177 @@ type WarmupEventInfo struct {
 	Reason string `json:"reason" yaml:"reason"`
 	// Count is the number of times this event occurred.
 	Count int32 `json:"count" yaml:"count"`
+}
+
+// StructuredDecisionTrace holds a comprehensive, schema-versioned decision
+// trace that integrates per-metric analysis, tolerance/stabilization effects,
+// and the winning metric determination into a single exportable document.
+// Populated when --decision-trace-format is set.
+type StructuredDecisionTrace struct {
+	// SchemaVersion is the version of the structured trace schema.
+	SchemaVersion string `json:"schemaVersion" yaml:"schemaVersion"`
+	// Namespace is the HPA namespace.
+	Namespace string `json:"namespace" yaml:"namespace"`
+	// Name is the HPA name.
+	Name string `json:"name" yaml:"name"`
+	// CurrentReplicas is the current replica count from HPA status.
+	CurrentReplicas int32 `json:"currentReplicas" yaml:"currentReplicas"`
+	// VisibleDesiredReplicas is the desired replica count from HPA status.
+	VisibleDesiredReplicas int32 `json:"visibleDesiredReplicas" yaml:"visibleDesiredReplicas"`
+	// EstimatedRawDesired is the estimated raw desired count before clamping.
+	EstimatedRawDesired int32 `json:"estimatedRawDesiredReplicas,omitempty" yaml:"estimatedRawDesiredReplicas,omitempty"`
+	// MinReplicas is the HPA minimum replica count.
+	MinReplicas int32 `json:"minReplicas" yaml:"minReplicas"`
+	// MaxReplicas is the HPA maximum replica count.
+	MaxReplicas int32 `json:"maxReplicas" yaml:"maxReplicas"`
+	// Metrics holds the per-metric trace entries with full evaluation.
+	Metrics []StructuredMetricTrace `json:"metrics,omitempty" yaml:"metrics,omitempty"`
+	// WinnerMetric is the name of the metric that drove the scaling decision.
+	WinnerMetric string `json:"winnerMetric,omitempty" yaml:"winnerMetric,omitempty"`
+	// WinnerConfidence is the confidence level of the winner determination.
+	WinnerConfidence Confidence `json:"winnerConfidence,omitempty" yaml:"winnerConfidence,omitempty"`
+	// LimitClamp describes whether the desired was clamped by min/max.
+	LimitClamp string `json:"limitClamp,omitempty" yaml:"limitClamp,omitempty"`
+	// ToleranceEffect describes whether tolerance suppressed scaling.
+	ToleranceEffect *ToleranceTrace `json:"toleranceEffect,omitempty" yaml:"toleranceEffect,omitempty"`
+	// StabilizationEffect describes whether stabilization delayed the decision.
+	StabilizationEffect *StabilizationTrace `json:"stabilizationEffect,omitempty" yaml:"stabilizationEffect,omitempty"`
+	// DecisionPath lists the ordered evaluation steps that produced the result.
+	DecisionPath []DecisionStep `json:"decisionPath,omitempty" yaml:"decisionPath,omitempty"`
+	// Summary is a human-readable one-line explanation.
+	Summary string `json:"summary" yaml:"summary"`
+	// Confidence is the overall confidence of the trace.
+	Confidence Confidence `json:"confidence" yaml:"confidence"`
+}
+
+// StructuredMetricTrace holds per-metric analysis within the structured decision trace.
+type StructuredMetricTrace struct {
+	// Name is the metric display name.
+	Name string `json:"name" yaml:"name"`
+	// Type is the metric source type.
+	Type string `json:"type" yaml:"type"`
+	// Current is the current metric value as a string.
+	Current string `json:"current,omitempty" yaml:"current,omitempty"`
+	// Target is the target metric value as a string.
+	Target string `json:"target,omitempty" yaml:"target,omitempty"`
+	// Ratio is the current/target ratio.
+	Ratio *float64 `json:"ratio,omitempty" yaml:"ratio,omitempty"`
+	// DistanceFromTarget is |ratio - 1.0|.
+	DistanceFromTarget float64 `json:"distanceFromTarget,omitempty" yaml:"distanceFromTarget,omitempty"`
+	// DesiredDirection is the desired scaling direction: "up", "down", or "none".
+	DesiredDirection string `json:"desiredDirection" yaml:"desiredDirection"`
+	// WithinTolerance indicates whether the metric is within the tolerance band.
+	WithinTolerance bool `json:"withinTolerance,omitempty" yaml:"withinTolerance,omitempty"`
+	// EstimatedDesiredReplicas is the raw desired replica count from this metric alone.
+	EstimatedDesiredReplicas *int32 `json:"estimatedDesiredReplicas,omitempty" yaml:"estimatedDesiredReplicas,omitempty"`
+	// Formula describes the computation used to derive the desired count.
+	Formula string `json:"formula,omitempty" yaml:"formula,omitempty"`
+	// Confidence is the confidence level for this metric's estimation.
+	Confidence Confidence `json:"confidence,omitempty" yaml:"confidence,omitempty"`
+}
+
+// ToleranceTrace describes tolerance impact on the decision within the structured trace.
+type ToleranceTrace struct {
+	// DefaultTolerance is the Kubernetes default tolerance (0.1).
+	DefaultTolerance float64 `json:"defaultTolerance" yaml:"defaultTolerance"`
+	// ConfiguredTolerance is the explicitly configured tolerance, if any.
+	ConfiguredTolerance *float64 `json:"configuredTolerance,omitempty" yaml:"configuredTolerance,omitempty"`
+	// EffectiveTolerance is the tolerance value used for evaluation.
+	EffectiveTolerance float64 `json:"effectiveTolerance" yaml:"effectiveTolerance"`
+	// SuppressedMetrics lists metrics whose scaling was suppressed by tolerance.
+	SuppressedMetrics []string `json:"suppressedMetrics,omitempty" yaml:"suppressedMetrics,omitempty"`
+	// Note is a human-readable explanation.
+	Note string `json:"note,omitempty" yaml:"note,omitempty"`
+}
+
+// StabilizationTrace describes stabilization window impact on the decision.
+type StabilizationTrace struct {
+	// WindowSeconds is the configured stabilization window duration.
+	WindowSeconds int32 `json:"windowSeconds,omitempty" yaml:"windowSeconds,omitempty"`
+	// Direction is the direction of stabilization: "scaleDown" or "scaleUp".
+	Direction string `json:"direction,omitempty" yaml:"direction,omitempty"`
+	// RemainingSeconds estimates seconds remaining in the window.
+	RemainingSeconds *int64 `json:"remainingSeconds,omitempty" yaml:"remainingSeconds,omitempty"`
+	// SuppressedDirection indicates which direction was suppressed.
+	SuppressedDirection string `json:"suppressedDirection,omitempty" yaml:"suppressedDirection,omitempty"`
+	// Note is a human-readable explanation.
+	Note string `json:"note,omitempty" yaml:"note,omitempty"`
+}
+
+// DecisionStep represents a single step in the HPA decision evaluation path.
+type DecisionStep struct {
+	// Step is the step number in the evaluation sequence.
+	Step int `json:"step" yaml:"step"`
+	// Description describes what was evaluated at this step.
+	Description string `json:"description" yaml:"description"`
+	// Result is the outcome of this evaluation step.
+	Result string `json:"result" yaml:"result"`
+	// Impact describes how this step affected the final decision.
+	Impact string `json:"impact,omitempty" yaml:"impact,omitempty"`
+	// Confidence is the confidence level for this step.
+	Confidence Confidence `json:"confidence,omitempty" yaml:"confidence,omitempty"`
+}
+
+// FlappingPreventionReport holds the result of flapping prevention analysis
+// with what-if simulations for different stabilization window values.
+type FlappingPreventionReport struct {
+	// CurrentWindow is the current stabilization window in seconds.
+	CurrentWindow int32 `json:"currentWindow" yaml:"currentWindow"`
+	// CurrentDirectionFlips is the number of direction changes observed.
+	CurrentDirectionFlips int `json:"currentDirectionFlips" yaml:"currentDirectionFlips"`
+	// ObservationWindow is the time range analyzed.
+	ObservationWindow string `json:"observationWindow" yaml:"observationWindow"`
+	// Recommendations holds the what-if simulation results for different window values.
+	Recommendations []FlappingSimulation `json:"recommendations,omitempty" yaml:"recommendations,omitempty"`
+	// Summary is a human-readable summary of the analysis.
+	Summary string `json:"summary" yaml:"summary"`
+}
+
+// FlappingSimulation holds a single what-if simulation result for a specific
+// stabilization window value.
+type FlappingSimulation struct {
+	// WindowSeconds is the simulated stabilization window duration.
+	WindowSeconds int32 `json:"windowSeconds" yaml:"windowSeconds"`
+	// EstimatedFlapReduction is the estimated percentage reduction in flapping.
+	EstimatedFlapReduction float64 `json:"estimatedFlapReduction" yaml:"estimatedFlapReduction"`
+	// EstimatedDirectionFlips is the estimated number of direction flips at this window.
+	EstimatedDirectionFlips int `json:"estimatedDirectionFlips" yaml:"estimatedDirectionFlips"`
+	// Rationale explains why this window value would reduce flapping.
+	Rationale string `json:"rationale" yaml:"rationale"`
+	// Patch is the JSON merge patch to apply this window value.
+	Patch string `json:"patch,omitempty" yaml:"patch,omitempty"`
+	// Confidence is the confidence level for this estimate.
+	Confidence string `json:"confidence" yaml:"confidence"`
+}
+
+// AnomalyType identifies the kind of anomaly detected in health score history.
+type AnomalyType string
+
+const (
+	// AnomalySuddenDegradation indicates a rapid health score drop.
+	AnomalySuddenDegradation AnomalyType = "sudden-degradation"
+	// AnomalyStuckState indicates the health score has not changed for an extended period.
+	AnomalyStuckState AnomalyType = "stuck-state"
+	// AnomalyOscillationEscalation indicates increasing oscillation in health scores.
+	AnomalyOscillationEscalation AnomalyType = "oscillation-escalation"
+)
+
+// AnomalyDetection holds a single anomaly detected in health score history.
+type AnomalyDetection struct {
+	// Timestamp is when the anomaly was detected.
+	Timestamp time.Time `json:"timestamp" yaml:"timestamp"`
+	// Type is the anomaly type.
+	Type AnomalyType `json:"type" yaml:"type"`
+	// Severity is the severity: "critical", "warning", or "info".
+	Severity string `json:"severity" yaml:"severity"`
+	// ScoreBefore is the health score before the anomaly.
+	ScoreBefore int `json:"scoreBefore" yaml:"scoreBefore"`
+	// ScoreAfter is the health score after the anomaly.
+	ScoreAfter int `json:"scoreAfter" yaml:"scoreAfter"`
+	// Duration describes how long the anomaly condition persisted.
+	Duration string `json:"duration,omitempty" yaml:"duration,omitempty"`
+	// CauseEstimate is the estimated root cause of the anomaly.
+	CauseEstimate string `json:"causeEstimate,omitempty" yaml:"causeEstimate,omitempty"`
+	// Remediation suggests actions to address the anomaly.
+	Remediation string `json:"remediation,omitempty" yaml:"remediation,omitempty"`
 }

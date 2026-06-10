@@ -231,7 +231,11 @@ func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, 
 		report.Analysis.DecisionTrace = hpaanalysis.BuildDecisionTrace(hpa, report.Analysis.Min)
 	}
 
-	if opts.events.enabled {
+	if opts.decisionTraceFormat != "" {
+		report.Analysis.StructuredDecisionTrace = hpaanalysis.ExportStructuredDecisionTrace(hpa, report.Analysis)
+	}
+
+	if opts.events.enabled || opts.flappingAdvisor {
 		events, err := hpaanalysis.RecentEvents(ctx, client.Interface, hpa.Namespace, hpa.Name, int64(opts.events.limit))
 		if err != nil {
 			report.Events = []hpaanalysis.Event{{Reason: "Error", Message: fmt.Sprintf("failed to list events: %v", err)}}
@@ -374,11 +378,23 @@ func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, 
 		report.Analysis.MetricContract = hpaanalysis.AnalyzeMetricContract(input)
 	}
 
+	if opts.adapterDiagnostics {
+		if len(report.Analysis.MetricFreshnessEntries) == 0 {
+			report.Analysis.MetricFreshnessEntries = hpaanalysis.AnalyzeMetricFreshness(hpa, report.Events)
+		}
+		report.Analysis.AdapterDiagnostics = hpaanalysis.DiagnoseAdapter(
+			hpa, report.Analysis.MetricFreshnessEntries, report.Analysis.MetricContract)
+	}
+
 	if opts.churnDetect && opts.events.enabled {
 		report.Analysis.ChurnAnalysis = hpaanalysis.AnalyzeChurnFromEvents(report.Events, hpa)
 		if report.Analysis.ChurnAnalysis != nil {
 			hpaanalysis.ApplyChurnPenalty(&report.Analysis, opts.healthWeights)
 		}
+	}
+
+	if opts.flappingAdvisor {
+		report.Analysis.FlappingPrevention = hpaanalysis.AnalyzeFlappingPrevention(report.Events, hpa)
 	}
 
 	if report.Analysis.VPAConflict != nil {
