@@ -34,7 +34,7 @@ func staleStatusRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32, ctx *d
 	}
 	ctx.cases = append(ctx.cases, interpretationCase{
 		reason:     "StaleStatus",
-		message:    fmt.Sprintf("[confidence: high] Warning: status.observedGeneration=%d is behind metadata.generation=%d; the status may not reflect the latest spec.", *hpa.Status.ObservedGeneration, hpa.Generation),
+		message:    fmt.Sprintf("[observed] Warning: status.observedGeneration=%d is behind metadata.generation=%d; the status may not reflect the latest spec.", *hpa.Status.ObservedGeneration, hpa.Generation),
 		nextStep:   "Wait for HPA controller to process latest spec",
 		severity:   SeverityWarning,
 		confidence: ConfidenceHigh,
@@ -49,21 +49,21 @@ func scalingActiveDiagnosticRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ i
 	ctx.cases = append(ctx.cases,
 		interpretationCase{
 			reason:     "ScalingInactive",
-			message:    fmt.Sprintf("[confidence: high] ScalingActive is %s: %s - %s", condition.Status, condition.Reason, condition.Message),
+			message:    fmt.Sprintf("[observed] ScalingActive is %s: %s - %s", condition.Status, condition.Reason, condition.Message),
 			nextStep:   "Check metrics-server or custom metrics adapters",
 			severity:   SeverityError,
 			confidence: ConfidenceHigh,
 		},
 		interpretationCase{
 			reason:     "ScalingInactive",
-			message:    "[confidence: high] The HPA is not reporting a reliable scale direction while metric evaluation is inactive.",
+			message:    "[observed] The HPA is not reporting a reliable scale direction while metric evaluation is inactive.",
 			nextStep:   "Restore metric availability before tuning HPA parameters",
 			severity:   SeverityError,
 			confidence: ConfidenceHigh,
 		},
 		interpretationCase{
 			reason:     "ScalingInactive",
-			message:    "[confidence: high] This plugin avoids treating desiredReplicas=0 as a scale-down recommendation in this state.",
+			message:    "[observed] This plugin avoids treating desiredReplicas=0 as a scale-down recommendation in this state.",
 			nextStep:   "Do not rely on desiredReplicas=0 as a scale-down signal",
 			severity:   SeverityError,
 			confidence: ConfidenceHigh,
@@ -80,7 +80,7 @@ func ableToScaleDiagnosticRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int
 	if condition.Status != corev1.ConditionTrue {
 		ctx.cases = append(ctx.cases, interpretationCase{
 			reason:     "UnableToScale",
-			message:    fmt.Sprintf("[confidence: high] AbleToScale is %s: %s - %s", condition.Status, condition.Reason, condition.Message),
+			message:    fmt.Sprintf("[observed] AbleToScale is %s: %s - %s", condition.Status, condition.Reason, condition.Message),
 			nextStep:   "Check scaleTargetRef, RBAC, and scale subresource",
 			severity:   SeverityError,
 			confidence: ConfidenceHigh,
@@ -91,7 +91,7 @@ func ableToScaleDiagnosticRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int
 		return
 	}
 	if remaining := estimateStabilizationRemaining(hpa); remaining != nil && *remaining > 0 {
-		message := fmt.Sprintf("[confidence: medium] Scale down appears stabilized: %s (estimated ~%d seconds remaining before scale-down is allowed).", condition.Message, *remaining)
+		message := fmt.Sprintf("[estimated] Scale down appears stabilized: %s (estimated ~%d seconds remaining before scale-down is allowed).", condition.Message, *remaining)
 		nextStep := fmt.Sprintf("Scale-down stabilized; estimated ~%d seconds remaining", *remaining)
 		if hpa.Spec.Behavior == nil || hpa.Spec.Behavior.ScaleDown == nil {
 			message += " Note: no spec.behavior.scaleDown is set; the controller-manager default (usually 300s) is used and may differ from this estimate."
@@ -107,7 +107,7 @@ func ableToScaleDiagnosticRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int
 	}
 	ctx.cases = append(ctx.cases, interpretationCase{
 		reason:     "ScaleDownStabilized",
-		message:    fmt.Sprintf("[confidence: medium] Scale down appears stabilized: %s", condition.Message),
+		message:    fmt.Sprintf("[estimated] Scale down appears stabilized: %s", condition.Message),
 		severity:   SeverityInfo,
 		confidence: ConfidenceMedium,
 	})
@@ -122,7 +122,7 @@ func scalingLimitedDiagnosticRule(hpa *autoscalingv2.HorizontalPodAutoscaler, mi
 	case hpa.Spec.MaxReplicas:
 		ctx.cases = append(ctx.cases, interpretationCase{
 			reason:     "LimitedByMaxReplicas",
-			message:    "[confidence: high] ScalingLimited reports that the visible desired replica count is constrained by maxReplicas.",
+			message:    "[observed] ScalingLimited reports that the visible desired replica count is constrained by maxReplicas.",
 			nextStep:   "Raise maxReplicas or reduce load/target utilization",
 			severity:   SeverityWarning,
 			confidence: ConfidenceHigh,
@@ -130,7 +130,7 @@ func scalingLimitedDiagnosticRule(hpa *autoscalingv2.HorizontalPodAutoscaler, mi
 	case minReplicas:
 		ctx.cases = append(ctx.cases, interpretationCase{
 			reason:     "LimitedByMinReplicas",
-			message:    "[confidence: high] ScalingLimited reports that the visible desired replica count is constrained by minReplicas.",
+			message:    "[observed] ScalingLimited reports that the visible desired replica count is constrained by minReplicas.",
 			nextStep:   "Lower minReplicas if scale-down below this point is expected",
 			severity:   SeverityWarning,
 			confidence: ConfidenceHigh,
@@ -138,7 +138,7 @@ func scalingLimitedDiagnosticRule(hpa *autoscalingv2.HorizontalPodAutoscaler, mi
 	default:
 		ctx.cases = append(ctx.cases, interpretationCase{
 			reason:     "ScalingLimited",
-			message:    "[confidence: high] The recommendation is reported as limited.",
+			message:    "[observed] The recommendation is reported as limited.",
 			severity:   SeverityWarning,
 			confidence: ConfidenceHigh,
 		})
@@ -150,21 +150,21 @@ func replicaDirectionRule(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplica
 	case hpa.Status.DesiredReplicas > hpa.Status.CurrentReplicas:
 		ctx.cases = append(ctx.cases, interpretationCase{
 			reason:     "ScaleUpRecommended",
-			message:    "[confidence: high] desiredReplicas is greater than currentReplicas, so the HPA is recommending scale up.",
+			message:    "[observed] desiredReplicas is greater than currentReplicas, so the HPA is recommending scale up.",
 			severity:   SeverityInfo,
 			confidence: ConfidenceHigh,
 		})
 	case hpa.Status.DesiredReplicas < hpa.Status.CurrentReplicas:
 		ctx.cases = append(ctx.cases, interpretationCase{
 			reason:     "ScaleDownRecommended",
-			message:    "[confidence: high] desiredReplicas is less than currentReplicas, so the HPA is recommending scale down.",
+			message:    "[observed] desiredReplicas is less than currentReplicas, so the HPA is recommending scale down.",
 			severity:   SeverityInfo,
 			confidence: ConfidenceHigh,
 		})
 	default:
 		ctx.cases = append(ctx.cases, interpretationCase{
 			reason:     "NoScaleVisible",
-			message:    "[confidence: high] desiredReplicas equals currentReplicas, so no immediate replica change is visible from status.",
+			message:    "[observed] desiredReplicas equals currentReplicas, so no immediate replica change is visible from status.",
 			severity:   SeverityInfo,
 			confidence: ConfidenceHigh,
 		})
@@ -187,7 +187,7 @@ func toleranceDiagnosticRule(hpa *autoscalingv2.HorizontalPodAutoscaler, minRepl
 	if deviation < 0.1 {
 		ctx.cases = append(ctx.cases, interpretationCase{
 			reason:     "ToleranceNoScale",
-			message:    fmt.Sprintf("[tolerance-confirmed] [confidence: high] %s metric ratio is %.3f (within ±10%% of target); the Kubernetes default tolerance band of 0.1 (10%%) explains why replicas are unchanged despite %s being %.1f%% %s target.", metric.Name, metric.Ratio, metric.Name, (metric.Ratio-1)*100, metric.Note),
+			message:    fmt.Sprintf("[tolerance-confirmed] [observed] %s metric ratio is %.3f (within ±10%% of target); the Kubernetes default tolerance band of 0.1 (10%%) explains why replicas are unchanged despite %s being %.1f%% %s target.", metric.Name, metric.Ratio, metric.Name, (metric.Ratio-1)*100, metric.Note),
 			severity:   SeverityInfo,
 			confidence: ConfidenceHigh,
 		})
@@ -195,13 +195,13 @@ func toleranceDiagnosticRule(hpa *autoscalingv2.HorizontalPodAutoscaler, minRepl
 		ctx.cases = append(ctx.cases,
 			interpretationCase{
 				reason:     "ToleranceNoScale",
-				message:    fmt.Sprintf("[confidence: medium] %s metric ratio is approximately %.3f, which is close to the target.", metric.Name, metric.Ratio),
+				message:    fmt.Sprintf("[estimated] %s metric ratio is approximately %.3f, which is close to the target.", metric.Name, metric.Ratio),
 				severity:   SeverityInfo,
 				confidence: ConfidenceMedium,
 			},
 			interpretationCase{
 				reason:     "ToleranceNoScale",
-				message:    "[confidence: medium] This is consistent with tolerance-based no-scale. Kubernetes commonly uses a tolerance band around the target, but HPA status does not expose tolerance as an explicit reason.",
+				message:    "[estimated] This is consistent with tolerance-based no-scale. Kubernetes commonly uses a tolerance band around the target, but HPA status does not expose tolerance as an explicit reason.",
 				severity:   SeverityInfo,
 				confidence: ConfidenceMedium,
 			},
@@ -209,7 +209,7 @@ func toleranceDiagnosticRule(hpa *autoscalingv2.HorizontalPodAutoscaler, minRepl
 	}
 	ctx.cases = append(ctx.cases, interpretationCase{
 		reason:     "ToleranceNoScale",
-		message:    "[confidence: high] The plugin avoids claiming the exact internal reason because rounding, stabilization, or conservative metric handling may also affect the final result.",
+		message:    "[observed] The plugin avoids claiming the exact internal reason because rounding, stabilization, or conservative metric handling may also affect the final result.",
 		severity:   SeverityInfo,
 		confidence: ConfidenceHigh,
 	})
@@ -219,7 +219,7 @@ func multiMetricRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32, ctx *d
 	if hpa.Status.DesiredReplicas == hpa.Spec.MaxReplicas && len(hpa.Status.CurrentMetrics) > 1 {
 		ctx.cases = append(ctx.cases, interpretationCase{
 			reason:     "MaxReplicasWinnerHidden",
-			message:    "[confidence: high] desiredReplicas == maxReplicas; the winning metric cannot be reliably determined because the replica cap may hide the true metric winner.",
+			message:    "[observed] desiredReplicas == maxReplicas; the winning metric cannot be reliably determined because the replica cap may hide the true metric winner.",
 			severity:   SeverityInfo,
 			confidence: ConfidenceHigh,
 		})
@@ -229,13 +229,13 @@ func multiMetricRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32, ctx *d
 		ctx.cases = append(ctx.cases,
 			interpretationCase{
 				reason:     "MetricImpactEstimate",
-				message:    fmt.Sprintf("[confidence: medium] Among visible metrics, %s has the largest distance from target (ratio %.3f).", guess.Name, guess.Ratio),
+				message:    fmt.Sprintf("[estimated] Among visible metrics, %s has the largest distance from target (ratio %.3f).", guess.Name, guess.Ratio),
 				severity:   SeverityInfo,
 				confidence: ConfidenceMedium,
 			},
 			interpretationCase{
 				reason:     "MetricImpactEstimate",
-				message:    "[confidence: high] This is only an impact estimate; the API does not expose per-metric replica recommendations or the final metric winner.",
+				message:    "[observed] This is only an impact estimate; the API does not expose per-metric replica recommendations or the final metric winner.",
 				severity:   SeverityInfo,
 				confidence: ConfidenceHigh,
 			},
@@ -246,13 +246,13 @@ func multiMetricRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32, ctx *d
 		ctx.cases = append(ctx.cases,
 			interpretationCase{
 				reason:     "MultiMetricNoWinner",
-				message:    "[confidence: high] Multiple current metrics are reported, but the API does not expose per-metric replica recommendations or which metric would have selected the recommendation before replica limits were applied.",
+				message:    "[observed] Multiple current metrics are reported, but the API does not expose per-metric replica recommendations or which metric would have selected the recommendation before replica limits were applied.",
 				severity:   SeverityInfo,
 				confidence: ConfidenceHigh,
 			},
 			interpretationCase{
 				reason:     "MultiMetricNoWinner",
-				message:    "[confidence: high] Events and human-readable messages can hint at the contributing metric, but they are not a stable decision record.",
+				message:    "[observed] Events and human-readable messages can hint at the contributing metric, but they are not a stable decision record.",
 				severity:   SeverityInfo,
 				confidence: ConfidenceHigh,
 			},
@@ -280,7 +280,7 @@ func metricDisagreementRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32,
 	if len(scaleUp) > 0 && len(scaleDown) > 0 {
 		ctx.cases = append(ctx.cases, interpretationCase{
 			reason:     "MetricDisagreement",
-			message:    fmt.Sprintf("[confidence: medium] Metric disagreement detected: %s want scale-up (ratio > 1.0) while %s want scale-down (ratio < 1.0). The HPA controller will use its selectPolicy to resolve this, but consider whether the metric targets are well-tuned.", strings.Join(scaleUp, ", "), strings.Join(scaleDown, ", ")),
+			message:    fmt.Sprintf("[estimated] Metric disagreement detected: %s want scale-up (ratio > 1.0) while %s want scale-down (ratio < 1.0). The HPA controller will use its selectPolicy to resolve this, but consider whether the metric targets are well-tuned.", strings.Join(scaleUp, ", "), strings.Join(scaleDown, ", ")),
 			severity:   SeverityWarning,
 			confidence: ConfidenceMedium,
 		})
@@ -294,7 +294,7 @@ func scaleToZeroRule(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int
 	if hpa.Status.DesiredReplicas == 0 && hpa.Status.CurrentReplicas == 0 {
 		ctx.cases = append(ctx.cases, interpretationCase{
 			reason:     "ScaleToZero",
-			message:    "[confidence: high] Scale-to-zero is enabled (minReplicas=0) and the workload is currently at zero replicas. The next scale-up requires a cold start which may introduce additional latency.",
+			message:    "[observed] Scale-to-zero is enabled (minReplicas=0) and the workload is currently at zero replicas. The next scale-up requires a cold start which may introduce additional latency.",
 			nextStep:   "Next scale-up requires a cold start which may introduce additional latency",
 			severity:   SeverityInfo,
 			confidence: ConfidenceHigh,
@@ -302,7 +302,7 @@ func scaleToZeroRule(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int
 	} else if hpa.Status.DesiredReplicas == 0 && hpa.Status.CurrentReplicas > 0 {
 		ctx.cases = append(ctx.cases, interpretationCase{
 			reason:     "ScaleToZero",
-			message:    "[confidence: high] Scale-to-zero is enabled (minReplicas=0) and the HPA wants to scale to zero. Note: scaling from 0 back to 1 requires a cold start.",
+			message:    "[observed] Scale-to-zero is enabled (minReplicas=0) and the HPA wants to scale to zero. Note: scaling from 0 back to 1 requires a cold start.",
 			nextStep:   "Scaling from 0 back to 1 requires a cold start",
 			severity:   SeverityInfo,
 			confidence: ConfidenceHigh,

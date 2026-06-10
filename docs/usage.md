@@ -183,8 +183,14 @@ For the full JSON schema, see [output-schema.json](output-schema.json).
 - `Summary` is the visible state derived from HPA status.
 - `Recommended actions` are operational hints based on visible conditions and behavior settings.
 - `Interpretation` is diagnostic inference, not the controller's private decision trace.
-- `confidence: high` means the line is based on explicit status fields; `confidence: medium` means the status is consistent with the explanation but the API does not expose the exact internal reason.
-- Multi-metric "winner" lines are intentionally labeled as estimates. Kubernetes HPA status does not expose per-metric replica recommendations today, so the plugin highlights the metric with the largest visible distance from target instead of claiming the exact controller winner.
+
+Every interpretation line carries a classification label:
+
+- `[observed]` — directly read from HPA status fields (conditions, replicas, metrics).
+- `[estimated]` — inferred from visible signals but not directly confirmable via the API.
+- `[unknown]` — the Kubernetes HPA controller does not expose this information (e.g., missing-metric dampening, not-ready pod adjustments).
+
+Multi-metric "winner" lines are intentionally labeled `[estimated]`. Kubernetes HPA status does not expose per-metric replica recommendations, so the plugin highlights the metric with the largest visible distance from target. For the full rationale, see [Reference — Decision Confidence Model](reference.md#decision-confidence-model).
 
 ## Examples
 

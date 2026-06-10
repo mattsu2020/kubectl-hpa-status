@@ -2,6 +2,20 @@
 
 Detailed reference for `kubectl-hpa-status`. For flag reference, config file, TUI key bindings, and JSONPath examples, see [Usage Guide](usage.md). For troubleshooting symptoms and FAQ, see [Troubleshooting](troubleshooting.md).
 
+## Decision Confidence Model
+
+Every diagnostic finding is classified into one of three evidence tiers so you can immediately distinguish facts from estimates:
+
+| Tier | Label | Meaning | Example |
+| --- | --- | --- | --- |
+| Observed | `[observed]` | Directly read from HPA status fields (conditions, replicas, metrics) | `ScalingLimited=True`, `desiredReplicas == maxReplicas` |
+| Estimated | `[estimated]` | Inferred from visible signals but not directly confirmable via the API | Multi-metric winner estimate, tolerance-based no-scale |
+| Unknown | `[unknown]` | The Kubernetes HPA controller does not expose this information | Missing-metric dampening, not-ready pod internal adjustments |
+
+**Why this matters:** The Kubernetes HPA controller applies conservative corrections for missing metrics and not-yet-ready pods that are not reflected in `status.currentMetrics`. The utilization values you see may differ from what the controller actually uses internally. This plugin annotates each finding so you can distinguish directly observable facts from estimates and known unknowns.
+
+In text output, `[estimated]` and `[unknown]` lines are dimmed to draw your eye to the high-confidence `[observed]` findings first. In JSON/YAML output, each `structuredInterpretation` entry includes a `classification` field alongside the existing `confidence` field.
+
 ## Why use `kubectl-hpa-status`?
 
 | Feature | `kubectl describe hpa` | `kubectl hpa status` (this plugin) |
@@ -393,35 +407,65 @@ Interpretation lines include confidence levels to distinguish directly observabl
 CI uploads coverage to Codecov. Release Homebrew updates use the dedicated Tap [mattsu2020/homebrew-kubectl-hpa-status](https://github.com/mattsu2020/homebrew-kubectl-hpa-status).
 E2E runs on a matrix of Kubernetes 1.26 / 1.28 / 1.30 / latest-tracking kind image to continuously verify `autoscaling/v2` compatibility across the supported range.
 
-## Roadmap
+## Feature Status
 
-- [x] **Integration testing:** `kind`-based E2E tests for CI verification.
-- [x] **Demo visuals:** Screenshots added to documentation.
-- [x] **Homebrew distribution:** GoReleaser generates Homebrew Cask and SBOM for the dedicated Tap.
-- [x] **Interactive TUI monitor:** Extended watch mode into a rich terminal dashboard.
-- [x] **Batch analysis:** `scan` / `list -A --problem` for bulk diagnosis of problematic HPAs.
-- [x] **Selector / multiple HPA targets:** `--selector` on `list` / `scan` and `status hpa-a hpa-b` support.
-- [x] **Suggest/Fix feature:** `--suggest` / `--fix --apply` shows concrete patch suggestions and an apply flow.
-- [x] **KEDA ScaledObject reference:** `--keda` references ScaledObject and shows trigger/condition context.
-- [x] **Shell completion:** Generates flag, namespace, context, and HPA name completion for bash/zsh/fish/powershell.
-- [x] **Enhanced KEDA integration:** Shows trigger type, metric name, threshold, current value, auth ref, and HPA metric correspondence.
-- [x] **Stabilization window countdown:** Shows remaining time and visual progress in TUI and text output.
-- [x] **Metrics pipeline diagnostics:** `--diagnose-metrics` shows per-metric health checks and repair hints.
-- [x] **Metrics freshness / staleness analyzer:** `--metrics-freshness` checks HPA currentMetrics, FailedGet*Metric Events, metrics API discovery, PodMetrics timestamps/windows, and KEDA trigger context.
-- [x] **Resource consistency check:** `--check-resources` verifies HPA target vs pod resource requests/limits.
-- [x] **Doctor command:** `doctor <name>` bundles metrics, workload, pod, resource, event, capacity, and KEDA diagnostics for incident triage.
-- [x] **Report output:** `--report markdown` / `--report html` generates single and list diagnostic reports.
-- [x] **TUI multi-select:** TUI supports `space` / `a` / `A` for multi-select and CLI batch apply guidance for selected HPAs.
-- [x] **Multi-Metric Decision Deep Trace:** Per-metric analysis with tolerance/stabilization impact.
-- [x] **What-If Scaling Simulator:** `--simulate-metric` to preview metric value changes.
-- [x] **Best Practice Auditor:** `recommend` subcommand for HPA configuration audit with compliance scoring.
-- [x] **Retrospective Scaling Timeline:** `timeline --since=30m` reconstructs past scaling decisions from Kubernetes events.
-- [ ] **TUI batch apply workflow:** Add in-TUI suggest and safe-confirmed apply for multiple HPAs, equivalent to CLI `list --problem --fix --apply`.
-- [ ] **Custom / External Metrics deep dive:** Extend beyond API discovery and HPA-visible freshness signals to add adapter-specific estimation and Prometheus/custom metrics verification hints.
-- [ ] **Report summary enhancement:** Add cluster-wide summary, bottom-N health scores, and recommended actions list.
-- [ ] **Informer-based watch:** Maintain current polling while adding opt-in informer updates for large-scale clusters.
-- [ ] **KEP-6111 structured decision adapter:** Maintain a small adapter boundary to convert future structured HPA decision fields into existing Analysis.
-- [ ] **Supply-chain hardening:** Add SLSA provenance and cosign signing to GoReleaser for enterprise verification.
+### Available Now
+
+**Status & Diagnostics:**
+- `status --explain` — HPA status with interpretation and recommended actions
+- `doctor` — Full diagnostics bundling metrics, workload, pod, resource, event, capacity, and KEDA analysis
+- `list -A --problem --sort-by problem` — Cluster-wide HPA inventory with health scores
+- `scan` — Prioritized cluster triage for problematic HPAs
+- `timeline --since=30m` — Retrospective scaling timeline reconstructed from events
+- `--diagnose-metrics` — Per-metric health checks and adapter verification hints
+- `--metrics-freshness` — Staleness detection for HPA currentMetrics
+- `--check-resources` — Consistency check between HPA targets and pod resource requests
+- `--debug` / `-v` — Internal calculation details including metric ratio and condition evidence
+
+**Safe Fix & Automation:**
+- `--suggest` — Concrete `kubectl patch` commands with server-side dry-run
+- `--fix --apply` — Patch preview with diff, warnings, and confirmation prompt
+- `--dry-run=false` — Explicit opt-in to persist changes
+- `list -A --problem --fix --apply` — Batch fix for multiple HPAs
+
+**Analysis & Simulation:**
+- Multi-Metric Decision Deep Trace — Per-metric ratio, tolerance/stabilization impact, winner estimate
+- `--simulate-metric` — Client-side what-if scaling preview without cluster changes
+- `recommend` — Best Practice Auditor with 9-rule compliance scoring
+
+**Integrations:**
+- KEDA — Auto-detects ScaledObjects; shows trigger type, metric name, threshold, current value, auth ref, polling interval
+- VPA — Detects CPU/Memory dual management conflicts
+- `--report markdown` / `--report html` — Standalone diagnostic reports for single or cluster-wide analysis
+- JSONPath / Go template / JSON / YAML output for automation
+
+**Interactive:**
+- TUI dashboard — Real-time monitoring with cursor navigation, filtering, sorting, metric detail view, and multi-select
+- `watch --interval 5s --until-condition` — Watch with highlighted deltas from previous state
+- Shell completion for bash, zsh, fish, PowerShell (HPA names, namespaces, contexts)
+- Japanese labels (`--lang=ja`)
+
+**Distribution:**
+- Krew plugin (`kubectl krew install hpa-status`)
+- Homebrew Cask via dedicated Tap
+- GoReleaser binaries with SBOM
+
+### Experimental
+
+These features are available but have known limitations — see [Limitations](#limitations) for details.
+
+- **Multi-metric winner detection:** Best-effort estimate from visible `currentMetrics`. The HPA API does not expose per-metric replica recommendations or the controller's final metric selection. Confidence levels are attached to each inference.
+- **TUI multi-select batch apply:** `space` / `a` / `A` for selection and CLI batch apply guidance. In-TUI direct apply is not yet available.
+- **Retrospective timeline:** Reconstructed from Kubernetes events which typically expire after ~1 hour. Suppressed scaling decisions that did not produce events may be missing.
+
+### Planned
+
+- **TUI batch apply workflow:** In-TUI suggest and safe-confirmed apply for multiple HPAs, equivalent to CLI `list --problem --fix --apply`.
+- **Custom / External Metrics deep dive:** Adapter-specific estimation and Prometheus/custom metrics verification hints beyond API discovery and HPA-visible freshness signals.
+- **Report summary enhancement:** Cluster-wide summary, bottom-N health scores, and recommended actions list.
+- **Informer-based watch:** Opt-in informer updates for large-scale clusters alongside current polling.
+- **KEP-6111 structured decision adapter:** Adapter boundary to convert future structured HPA decision fields into existing Analysis.
+- **Supply-chain hardening:** SLSA provenance and cosign signing for enterprise verification.
 
 ## Demo Recordings
 

@@ -160,7 +160,7 @@ func correlateStabilizationChurn(a Analysis) Analysis {
 	if a.ChurnAnalysis.Level != ChurnHigh && a.ChurnAnalysis.Level != ChurnCritical {
 		return a
 	}
-	line := "[confidence: medium] Churn detected while stabilization window is active — consider increasing scaleDown.stabilizationWindowSeconds to reduce thrashing."
+	line := "[estimated] Churn detected while stabilization window is active — consider increasing scaleDown.stabilizationWindowSeconds to reduce thrashing."
 	a.Interpretation = append(a.Interpretation, line)
 	return a
 }

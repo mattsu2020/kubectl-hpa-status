@@ -12,7 +12,7 @@ const (
 	// estimates. The Kubernetes HPA controller uses the max recommendation within
 	// the window rather than a simple LastScaleTime timer, so the estimate is
 	// approximate.
-	stabilizationConfidenceLabel = "medium (API limitation)"
+	stabilizationConfidenceLabel = "estimated (API limitation)"
 
 	// StabilizationSourceScaleDown indicates stabilization from scaleDown behavior.
 	StabilizationSourceScaleDown = "scaleDown"
@@ -127,7 +127,7 @@ func FormatStabilizationExplain(a Analysis) string {
 	if source == "" {
 		source = StabilizationSourceScaleDown
 	}
-	lines = append(lines, fmt.Sprintf("  source: %s behavior  [confidence: %s]", source, a.StabilizationConfidence))
+	lines = append(lines, fmt.Sprintf("  source: %s behavior  [%s]", source, a.StabilizationConfidence))
 
 	// Join with newlines and indent continuation lines.
 	result := lines[0]

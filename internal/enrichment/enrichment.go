@@ -223,7 +223,7 @@ func EnrichKEDA(ctx context.Context, ec *Context, hpa *autoscalingv2.HorizontalP
 	scaledObject, err := kube.FindScaledObjectForHPA(ctx, ec.dynClient, nil, hpa)
 	if err != nil {
 		return &hpaanalysis.KEDAAnalysis{
-			Lines: []string{fmt.Sprintf("[confidence: high] HPA appears KEDA-managed but no ScaledObject found: %v", err)},
+			Lines: []string{fmt.Sprintf("[observed] HPA appears KEDA-managed but no ScaledObject found: %v", err)},
 		}
 	}
 
@@ -312,7 +312,7 @@ func BatchKEDA(ctx context.Context, ec *Context, hpas []autoscalingv2.Horizontal
 		key := hpa.Namespace + "/" + hpa.Name
 		if scaledObj == nil {
 			results[key] = &hpaanalysis.KEDAAnalysis{
-				Lines: []string{"[confidence: high] HPA appears KEDA-managed but no matching ScaledObject found"},
+				Lines: []string{"[observed] HPA appears KEDA-managed but no matching ScaledObject found"},
 			}
 			continue
 		}

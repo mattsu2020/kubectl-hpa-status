@@ -94,7 +94,7 @@ func runWatch(ctx context.Context, out io.Writer, opts *options, name string, in
 				report.Analysis.StabilizationRemaining,
 				report.Analysis.StabilizationWindowSeconds,
 			)
-			_, _ = fmt.Fprintf(out, "\n  STABILIZING: %s [%s] [confidence: %s]\n", progress, source, confidence)
+			_, _ = fmt.Fprintf(out, "\n  STABILIZING: %s [%s] [estimated]\n", progress, source)
 		}
 
 		if opts.untilCondition != "" && reportHasCondition(report, opts.untilCondition) {

@@ -23,7 +23,7 @@ func validateHPA(src *autoscalingv2.HorizontalPodAutoscaler) *Analysis {
 			HealthScore: 0,
 			Summary:     "HPA data is unavailable.",
 			Interpretation: []string{
-				"[confidence: high] HPA input was nil; no Kubernetes status can be analyzed.",
+				"[observed] HPA input was nil; no Kubernetes status can be analyzed.",
 			},
 		}
 	}
@@ -36,7 +36,7 @@ func validateHPA(src *autoscalingv2.HorizontalPodAutoscaler) *Analysis {
 			HealthScore: 0,
 			Summary:     "HPA spec.scaleTargetRef is empty or incomplete.",
 			Interpretation: []string{
-				"[confidence: high] This HPA has no valid scaleTargetRef; it cannot function.",
+				"[observed] This HPA has no valid scaleTargetRef; it cannot function.",
 			},
 		}
 	}
@@ -49,7 +49,7 @@ func validateHPA(src *autoscalingv2.HorizontalPodAutoscaler) *Analysis {
 			HealthScore: 0,
 			Summary:     "HPA spec.maxReplicas must be greater than zero.",
 			Interpretation: []string{
-				"[confidence: high] This HPA has spec.maxReplicas set to 0 or negative; it cannot scale.",
+				"[observed] This HPA has spec.maxReplicas set to 0 or negative; it cannot scale.",
 			},
 		}
 	}
@@ -66,7 +66,7 @@ func validateHPA(src *autoscalingv2.HorizontalPodAutoscaler) *Analysis {
 			HealthScore: 0,
 			Summary:     fmt.Sprintf("HPA spec.minReplicas (%d) exceeds spec.maxReplicas (%d).", minCheck, src.Spec.MaxReplicas),
 			Interpretation: []string{
-				fmt.Sprintf("[confidence: high] spec.minReplicas (%d) is greater than spec.maxReplicas (%d); the HPA configuration is contradictory.", minCheck, src.Spec.MaxReplicas),
+				fmt.Sprintf("[observed] spec.minReplicas (%d) is greater than spec.maxReplicas (%d); the HPA configuration is contradictory.", minCheck, src.Spec.MaxReplicas),
 			},
 		}
 	}

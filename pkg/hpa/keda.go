@@ -15,7 +15,7 @@ func AnalyzeKEDA(hpa *autoscalingv2.HorizontalPodAutoscaler, keda *KEDAAnalysis)
 
 	var lines []string
 
-	lines = append(lines, fmt.Sprintf("[confidence: high] HPA is owned by KEDA ScaledObject %q in the same namespace.", keda.ScaledObjectName))
+	lines = append(lines, fmt.Sprintf("[observed] HPA is owned by KEDA ScaledObject %q in the same namespace.", keda.ScaledObjectName))
 
 	// Trigger cross-reference with HPA external metrics.
 	lines = append(lines, analyzeKEDATriggers(hpa, keda)...)
@@ -37,7 +37,7 @@ func AnalyzeKEDA(hpa *autoscalingv2.HorizontalPodAutoscaler, keda *KEDAAnalysis)
 
 func analyzeKEDATriggers(hpa *autoscalingv2.HorizontalPodAutoscaler, keda *KEDAAnalysis) []string {
 	if len(keda.Triggers) == 0 {
-		return []string{"[confidence: medium] ScaledObject has no triggers defined; verify the ScaledObject spec."}
+		return []string{"[estimated] ScaledObject has no triggers defined; verify the ScaledObject spec."}
 	}
 
 	var lines []string
@@ -56,12 +56,12 @@ func analyzeKEDATriggers(hpa *autoscalingv2.HorizontalPodAutoscaler, keda *KEDAA
 					if t.CurrentValue != "" {
 						triggerDesc += fmt.Sprintf(" current=%s", t.CurrentValue)
 					}
-					lines = append(lines, fmt.Sprintf("[confidence: high] %s produces external metric %q which matches HPA spec.metrics entry.", triggerDesc, spec.External.Metric.Name))
+					lines = append(lines, fmt.Sprintf("[observed] %s produces external metric %q which matches HPA spec.metrics entry.", triggerDesc, spec.External.Metric.Name))
 					break
 				}
 			}
 			if !matched {
-				lines = append(lines, fmt.Sprintf("[confidence: medium] HPA external metric %q has no matching KEDA trigger; the metric name may not align with the scaler output.", spec.External.Metric.Name))
+				lines = append(lines, fmt.Sprintf("[estimated] HPA external metric %q has no matching KEDA trigger; the metric name may not align with the scaler output.", spec.External.Metric.Name))
 			}
 		}
 	}
@@ -71,7 +71,7 @@ func analyzeKEDATriggers(hpa *autoscalingv2.HorizontalPodAutoscaler, keda *KEDAA
 	for _, t := range keda.Triggers {
 		names = append(names, t.Type)
 	}
-	lines = append(lines, fmt.Sprintf("[confidence: high] ScaledObject defines %d trigger(s): %s.", len(keda.Triggers), strings.Join(names, ", ")))
+	lines = append(lines, fmt.Sprintf("[observed] ScaledObject defines %d trigger(s): %s.", len(keda.Triggers), strings.Join(names, ", ")))
 
 	return lines
 }
@@ -85,7 +85,7 @@ func analyzeKEDAPolling(hpa *autoscalingv2.HorizontalPodAutoscaler, keda *KEDAAn
 	if hpa.Spec.Behavior != nil && hpa.Spec.Behavior.ScaleDown != nil {
 		if window := hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds; window != nil && *window > interval {
 			return []string{
-				fmt.Sprintf("[confidence: medium] KEDA polling interval is %ds but HPA scaleDown stabilization is %ds; the stabilization window delays reaction to KEDA metric updates.", interval, *window),
+				fmt.Sprintf("[estimated] KEDA polling interval is %ds but HPA scaleDown stabilization is %ds; the stabilization window delays reaction to KEDA metric updates.", interval, *window),
 			}
 		}
 	}
@@ -100,10 +100,10 @@ func analyzeKEDAReplicaBounds(hpa *autoscalingv2.HorizontalPodAutoscaler, keda *
 	}
 
 	if keda.MinReplicaCount != nil && *keda.MinReplicaCount != minReplicas {
-		lines = append(lines, fmt.Sprintf("[confidence: high] KEDA minReplicaCount=%d differs from HPA minReplicas=%d; KEDA reconciliation may override manual HPA changes.", *keda.MinReplicaCount, minReplicas))
+		lines = append(lines, fmt.Sprintf("[observed] KEDA minReplicaCount=%d differs from HPA minReplicas=%d; KEDA reconciliation may override manual HPA changes.", *keda.MinReplicaCount, minReplicas))
 	}
 	if keda.MaxReplicaCount != nil && *keda.MaxReplicaCount != hpa.Spec.MaxReplicas {
-		lines = append(lines, fmt.Sprintf("[confidence: high] KEDA maxReplicaCount=%d differs from HPA maxReplicas=%d; KEDA reconciliation may override manual HPA changes.", *keda.MaxReplicaCount, hpa.Spec.MaxReplicas))
+		lines = append(lines, fmt.Sprintf("[observed] KEDA maxReplicaCount=%d differs from HPA maxReplicas=%d; KEDA reconciliation may override manual HPA changes.", *keda.MaxReplicaCount, hpa.Spec.MaxReplicas))
 	}
 
 	return lines
@@ -119,13 +119,13 @@ func analyzeKEDATriggerStatus(keda *KEDAAnalysis) []string {
 	// Check for inactive triggers.
 	for _, t := range keda.Triggers {
 		if t.Status == "Inactive" {
-			lines = append(lines, fmt.Sprintf("[confidence: high] KEDA trigger %q (type %s) is Inactive; the scaler may not be receiving events or the external source may be unavailable.", t.Name, t.Type))
+			lines = append(lines, fmt.Sprintf("[observed] KEDA trigger %q (type %s) is Inactive; the scaler may not be receiving events or the external source may be unavailable.", t.Name, t.Type))
 		}
 	}
 
 	// Note fallback configuration.
 	if keda.Fallback != nil {
-		lines = append(lines, fmt.Sprintf("[confidence: high] ScaledObject has fallback configured: failureThreshold=%d, replicas=%d. KEDA will fall back to %d replicas if the scaler fails %d consecutive checks.", keda.Fallback.FailureThreshold, keda.Fallback.Replicas, keda.Fallback.Replicas, keda.Fallback.FailureThreshold))
+		lines = append(lines, fmt.Sprintf("[observed] ScaledObject has fallback configured: failureThreshold=%d, replicas=%d. KEDA will fall back to %d replicas if the scaler fails %d consecutive checks.", keda.Fallback.FailureThreshold, keda.Fallback.Replicas, keda.Fallback.Replicas, keda.Fallback.FailureThreshold))
 	}
 
 	return lines

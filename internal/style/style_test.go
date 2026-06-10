@@ -119,13 +119,13 @@ func TestMetricNote(t *testing.T) {
 
 func TestInterpretationLine(t *testing.T) {
 	theme := NewTheme(true)
-	medium := theme.InterpretationLine("[confidence: medium] something")
-	if !strings.Contains(medium, "\x1b[") {
-		t.Error("expected ANSI for medium confidence")
+	estimated := theme.InterpretationLine("[estimated] something")
+	if !strings.Contains(estimated, "\x1b[") {
+		t.Error("expected ANSI for estimated classification")
 	}
-	high := theme.InterpretationLine("[confidence: high] something")
-	if strings.Contains(high, "\x1b[") {
-		t.Error("expected no ANSI for high confidence")
+	observed := theme.InterpretationLine("[observed] something")
+	if strings.Contains(observed, "\x1b[") {
+		t.Error("expected no ANSI for observed classification")
 	}
 }
 

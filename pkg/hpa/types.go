@@ -8,7 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-const limitation = "[confidence: high] This plugin uses existing HPA status, conditions, metrics, and events. It does not expose internal controller calculations."
+const limitation = "[observed] This plugin uses existing HPA status, conditions, metrics, and events. It does not expose internal controller calculations."
 
 const (
 	healthScoreMax = 100
@@ -273,11 +273,12 @@ type DecisionSignal struct {
 // interpretation or action line, with a reason, human message, and
 // suggested next step.
 type StructuredMessage struct {
-	Reason     string     `json:"reason" yaml:"reason"`
-	Message    string     `json:"message" yaml:"message"`
-	NextStep   string     `json:"nextStep,omitempty" yaml:"nextStep,omitempty"`
-	Severity   Severity   `json:"severity,omitempty" yaml:"severity,omitempty"`
-	Confidence Confidence `json:"confidence,omitempty" yaml:"confidence,omitempty"`
+	Reason         string         `json:"reason" yaml:"reason"`
+	Message        string         `json:"message" yaml:"message"`
+	NextStep       string         `json:"nextStep,omitempty" yaml:"nextStep,omitempty"`
+	Severity       Severity       `json:"severity,omitempty" yaml:"severity,omitempty"`
+	Confidence     Confidence     `json:"confidence,omitempty" yaml:"confidence,omitempty"`
+	Classification Classification `json:"classification,omitempty" yaml:"classification,omitempty"`
 }
 
 // Condition represents an HPA condition with type, status, reason, and message.

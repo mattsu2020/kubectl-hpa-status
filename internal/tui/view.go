@@ -251,7 +251,7 @@ func (m Model) renderDetailView() string {
 				sb.WriteString(bar)
 				sb.WriteString("\n")
 			}
-			sb.WriteString(dimStyle.Render(fmt.Sprintf("  [confidence: %s]", confidence)))
+			sb.WriteString(dimStyle.Render("  [estimated]"))
 			sb.WriteString("\n")
 		}
 

@@ -266,7 +266,7 @@ func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, 
 	if report.Analysis.TargetReplicas != nil && report.Analysis.TargetReplicas.NotReady > 0 {
 		tr := report.Analysis.TargetReplicas
 		report.Analysis.Interpretation = append(report.Analysis.Interpretation,
-			fmt.Sprintf("[confidence: high] %d of %d pods on the scale target are not ready — HPA excludes not-ready pods from utilization calculations, so scaling decisions may not reflect actual workload pressure.", tr.NotReady, tr.TotalReplicas),
+			fmt.Sprintf("[observed] %d of %d pods on the scale target are not ready — HPA excludes not-ready pods from utilization calculations, so scaling decisions may not reflect actual workload pressure.", tr.NotReady, tr.TotalReplicas),
 		)
 		report.Analysis.Actions = append(report.Analysis.Actions,
 			fmt.Sprintf("Investigate why %d pod(s) are not ready on the scale target; not-ready pods can cause misleading metric utilization ratios.", tr.NotReady),
@@ -275,11 +275,11 @@ func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, 
 	if report.Analysis.TargetReplicas != nil && report.Analysis.TargetReplicas.Pending > 0 {
 		tr := report.Analysis.TargetReplicas
 		report.Analysis.Interpretation = append(report.Analysis.Interpretation,
-			fmt.Sprintf("[confidence: high] %d pod(s) for the scale target are Pending; HPA may be requesting capacity that the cluster has not scheduled yet.", tr.Pending),
+			fmt.Sprintf("[observed] %d pod(s) for the scale target are Pending; HPA may be requesting capacity that the cluster has not scheduled yet.", tr.Pending),
 		)
 		if tr.Unschedulable > 0 {
 			report.Analysis.Interpretation = append(report.Analysis.Interpretation,
-				fmt.Sprintf("[confidence: high] %d Pending pod(s) are marked Unschedulable, which points to node capacity, taint/toleration, affinity, or quota constraints rather than HPA math.", tr.Unschedulable),
+				fmt.Sprintf("[observed] %d Pending pod(s) are marked Unschedulable, which points to node capacity, taint/toleration, affinity, or quota constraints rather than HPA math.", tr.Unschedulable),
 			)
 			report.Analysis.Actions = append(report.Analysis.Actions,
 				"Check pending Pods, node capacity, Cluster Autoscaler/Karpenter events, quotas, affinity, and taints before raising HPA bounds.",

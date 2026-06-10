@@ -167,12 +167,12 @@ func (t Theme) MetricNote(note string) string {
 	return note
 }
 
-// InterpretationLine renders an interpretation line, dimming medium-confidence lines.
+// InterpretationLine renders an interpretation line, dimming estimated and unknown findings.
 func (t Theme) InterpretationLine(line string) string {
 	if !t.enabled {
 		return line
 	}
-	if containsAny(line, "confidence: medium") {
+	if containsAny(line, "[estimated]") || containsAny(line, "[unknown]") {
 		return t.Dim.Render(line)
 	}
 	return line

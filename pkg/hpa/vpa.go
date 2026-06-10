@@ -47,18 +47,18 @@ func AnalyzeVPA(hpa *autoscalingv2.HorizontalPodAutoscaler, vpa *kube.VPAInfo) [
 
 	var lines []string
 
-	lines = append(lines, fmt.Sprintf("[confidence: high] VPA %q targets the same resource %s/%s as this HPA.", vpa.Name, vpa.TargetKind, vpa.TargetName))
-	lines = append(lines, "[confidence: high] Both VPA and HPA managing CPU or memory on the same workload can cause conflicting scaling decisions and instability.")
-	lines = append(lines, "[confidence: high] Consider setting the VPA updateMode to \"Recommender\" so it only provides recommendations without applying pod overrides, or remove the overlapping resource metric from one of the autoscalers.")
+	lines = append(lines, fmt.Sprintf("[observed] VPA %q targets the same resource %s/%s as this HPA.", vpa.Name, vpa.TargetKind, vpa.TargetName))
+	lines = append(lines, "[observed] Both VPA and HPA managing CPU or memory on the same workload can cause conflicting scaling decisions and instability.")
+	lines = append(lines, "[observed] Consider setting the VPA updateMode to \"Recommender\" so it only provides recommendations without applying pod overrides, or remove the overlapping resource metric from one of the autoscalers.")
 
 	if vpa.UpdateMode == "Auto" {
-		lines = append(lines, fmt.Sprintf("[confidence: high] VPA %q is in \"Auto\" mode, which will evict and resize pods — this directly conflicts with HPA replica-based scaling.", vpa.Name))
+		lines = append(lines, fmt.Sprintf("[observed] VPA %q is in \"Auto\" mode, which will evict and resize pods — this directly conflicts with HPA replica-based scaling.", vpa.Name))
 	}
 	for _, rec := range vpa.Recommendations {
 		if !hpaUsesResourceMetric(hpa, rec.Resource) {
 			continue
 		}
-		lines = append(lines, fmt.Sprintf("[confidence: medium] VPA %q recommends %s target=%s for container %q while HPA also scales on %s; compare requests, limits, and HPA target utilization before applying both controllers.", vpa.Name, rec.Resource, valueOrUnknown(rec.Target), rec.Container, rec.Resource))
+		lines = append(lines, fmt.Sprintf("[estimated] VPA %q recommends %s target=%s for container %q while HPA also scales on %s; compare requests, limits, and HPA target utilization before applying both controllers.", vpa.Name, rec.Resource, valueOrUnknown(rec.Target), rec.Container, rec.Resource))
 	}
 
 	return lines
