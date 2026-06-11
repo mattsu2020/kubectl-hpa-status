@@ -65,6 +65,11 @@ func runStatus(ctx context.Context, out io.Writer, opts *options, name string, i
 func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []string, includeInterpretation bool) error {
 	watchMode := opts.watch
 	ec := newEnrichmentContext(ctx, opts)
+	if opts.format == "structured" && opts.decisionTraceFormat == "" {
+		opts.decisionTrace = true
+		opts.decisionTraceFormat = "json"
+		includeInterpretation = true
+	}
 
 	if opts.apply && len(names) > 1 {
 		return fmt.Errorf("--apply supports only a single HPA at a time; use 'list --apply' for batch mode")
@@ -77,6 +82,15 @@ func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []st
 				writeError(out, opts.output, err)
 			}
 			return err
+		}
+		if opts.format == "structured" {
+			if report.Analysis.StructuredDecisionTrace == nil {
+				report.Analysis.StructuredDecisionTrace = hpaanalysis.ExportStructuredDecisionTrace(nil, report.Analysis)
+			}
+			return writeOutput(out, "json", "", report.Analysis.StructuredDecisionTrace, nil)
+		}
+		if opts.contextForAI || opts.ask != "" {
+			return writeAIContext(out, report, opts.ask)
 		}
 		if opts.apply {
 			applied, err := applySuggestions(ctx, out, opts, names[0], report.Analysis.Suggestions)
@@ -164,6 +178,16 @@ func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []st
 			}
 		}
 		return nil
+	}
+	if opts.format == "structured" {
+		traces := make([]*hpaanalysis.StructuredDecisionTrace, 0, len(reports))
+		for i := range reports {
+			traces = append(traces, reports[i].Analysis.StructuredDecisionTrace)
+		}
+		return writeOutput(out, "json", "", traces, nil)
+	}
+	if opts.contextForAI || opts.ask != "" {
+		return writeAIContextMany(out, reports, opts.ask)
 	}
 	if err := writeOutput(out, format, templateStr, reports, func() error {
 		for i, report := range reports {

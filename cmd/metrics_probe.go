@@ -17,6 +17,8 @@ type metricsProbeOutput struct {
 	Contract           *hpaanalysis.MetricContractReport     `json:"contract,omitempty" yaml:"contract,omitempty"`
 	AdapterDiagnostics *hpaanalysis.AdapterDiagnosticsReport `json:"adapterDiagnostics,omitempty" yaml:"adapterDiagnostics,omitempty"`
 	Hints              *hpaanalysis.MetricHintsReport        `json:"hints,omitempty" yaml:"hints,omitempty"`
+	PrometheusURL      string                                `json:"prometheusURL,omitempty" yaml:"prometheusURL,omitempty"`
+	PrometheusChecks   []string                              `json:"prometheusChecks,omitempty" yaml:"prometheusChecks,omitempty"`
 }
 
 func newMetricsCommand(opts *options) *cobra.Command {
@@ -30,18 +32,21 @@ func newMetricsCommand(opts *options) *cobra.Command {
 }
 
 func newMetricsProbeCommand(opts *options) *cobra.Command {
-	return &cobra.Command{
+	var prometheusURL string
+	cmd := &cobra.Command{
 		Use:               "probe NAME",
 		Short:             "Probe custom and external metrics adapter availability for an HPA",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: hpaNameCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runMetricsProbe(cmd.Context(), cmd.OutOrStdout(), opts, args[0])
+			return runMetricsProbe(cmd.Context(), cmd.OutOrStdout(), opts, args[0], prometheusURL)
 		},
 	}
+	cmd.Flags().StringVar(&prometheusURL, "prometheus-url", "", "Prometheus base URL for adapter query follow-up checks")
+	return cmd
 }
 
-func runMetricsProbe(ctx context.Context, out io.Writer, opts *options, name string) error {
+func runMetricsProbe(ctx context.Context, out io.Writer, opts *options, name string, prometheusURL string) error {
 	local := *opts
 	local.diagnoseMetrics = true
 	local.metricsFreshness = true
@@ -61,6 +66,8 @@ func runMetricsProbe(ctx context.Context, out io.Writer, opts *options, name str
 		Contract:           report.Analysis.MetricContract,
 		AdapterDiagnostics: report.Analysis.AdapterDiagnostics,
 		Hints:              report.Analysis.MetricHints,
+		PrometheusURL:      prometheusURL,
+		PrometheusChecks:   prometheusMetricChecks(prometheusURL, report.Analysis.Metrics),
 	}
 
 	format, templateStr := outputSelection(outputConfig{output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates})
@@ -126,5 +133,24 @@ func writeMetricsProbeText(out io.Writer, result metricsProbeOutput) error {
 			_, _ = fmt.Fprintf(out, "- [%s] %s\n", hint.Severity, hint.Title)
 		}
 	}
+	if len(result.PrometheusChecks) > 0 {
+		_, _ = fmt.Fprintln(out, "\nPrometheus follow-up checks:")
+		for _, check := range result.PrometheusChecks {
+			_, _ = fmt.Fprintf(out, "- %s\n", check)
+		}
+	}
 	return nil
+}
+
+func prometheusMetricChecks(base string, metrics []hpaanalysis.Metric) []string {
+	if base == "" {
+		return nil
+	}
+	checks := []string{"GET " + base + "/api/v1/query?query=up"}
+	for _, metric := range metrics {
+		if metric.Name != "" {
+			checks = append(checks, "query metric freshness for "+metric.Name)
+		}
+	}
+	return checks
 }

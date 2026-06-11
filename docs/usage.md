@@ -12,9 +12,19 @@ kubectl hpa status record -A --interval=15s --duration=1h -o hpa-history.jsonl
 kubectl hpa status timeline <hpa-name> --from-record hpa-history.jsonl
 kubectl hpa status preflight <hpa-name> --raise-max 20
 kubectl hpa status metrics probe <hpa-name>
+kubectl hpa status metrics probe <hpa-name> --prometheus-url http://prometheus:9090
 kubectl hpa status behavior <hpa-name>
-kubectl hpa status estimate <hpa-name> --max-replicas 30 --pod-cost 0.12
+kubectl hpa status estimate <hpa-name> --max-replicas 30 --pod-cost 0.12 --carbon-kg-per-pod-hour 0.01
+kubectl hpa status explain <hpa-name>
+kubectl hpa status <hpa-name> --explain --format structured
+kubectl hpa status history <hpa-name> --since=6h --prometheus http://prometheus:9090
+kubectl hpa status tune <hpa-name> --goal stable --suggest
+kubectl hpa status slo <hpa-name> --metric latency_p95 --target 300ms
 kubectl hpa status compare -A --from-context stg --to-context prod --only-drift
+kubectl hpa status list -A --gitops-drift
+kubectl hpa status scan -A --report junit > hpa-health.xml
+kubectl hpa status list -A --problem --report sarif > hpa-health.sarif
+kubectl hpa status export --prometheus
 kubectl hpa status alerts generate --format prometheus
 kubectl hpa status analyze-record hpa-history.jsonl --detect flapping
 kubectl hpa status <hpa-name> --watch --interval 5s
@@ -51,7 +61,7 @@ kubectl-hpa-status completion zsh
 | `--config` | all commands | Read defaults from a YAML/JSON config file. Defaults to `~/.kube/hpa-status.yaml` when present. |
 | `--chunk-size` | `list`, `scan`, `tui` | Kubernetes list page size. Defaults to 500; set 0 to disable pagination. |
 | `--health-weight name=value` | all analysis commands | Override one health score penalty from the CLI. Repeatable; names include `scalingInactive`, `unableToScale`, `scalingLimited`, `implicitMaxReplicas`, `scaleDownStabilized`, and `atMinimumReplicas`. |
-| `-o table\|wide\|json\|yaml\|jsonpath=...\|template=...` | status, doctor, analyze, list, scan | Output format. YAML is supported for both single and multiple HPA output. For the JSON schema, see [output-schema.json](output-schema.json). |
+| `-o table\|wide\|json\|yaml\|jsonpath=...\|template=...\|prometheus\|junit\|sarif` | status, doctor, analyze, list, scan | Output format. YAML is supported for both single and multiple HPA output. `junit` and `sarif` are intended for `list`/`scan`. For the JSON schema, see [output-schema.json](output-schema.json). |
 | `--wide` | table output | Show target, min, max, and replica delta columns where applicable. |
 | `--sort-by namespace\|name\|current\|desired\|diff\|health-score\|issue\|problem` | `list`, `scan` | Sort list output. `problem` puts the lowest health score and largest replica delta first. |
 | `--filter all\|ok\|error\|limited\|scaling-limited\|issue` | `list`, `scan` | Filter by health or issue text. |
@@ -72,7 +82,7 @@ kubectl-hpa-status completion zsh
 | `--diagnose-metrics` | `status`, `doctor`, `analyze` | Run comprehensive metrics pipeline health checks with per-metric status and remediation steps. `doctor` enables this by default. |
 | `--metrics-freshness` | `status`, `doctor`, `analyze` | Check currentMetrics presence, FailedGet*Metric Events, metrics API discovery, resource PodMetrics sample timestamp/window, and KEDA trigger context. `doctor` enables this by default. |
 | `--check-resources` | `status`, `doctor`, `analyze` | Validate HPA target utilization against pod resource requests/limits. `doctor` enables this by default. |
-| `--report markdown\|html` | `status`, `doctor`, `list` | Generate standalone reports in Markdown or HTML format. |
+| `--report markdown\|html\|incident\|junit\|sarif` | `status`, `doctor`, `list`, `scan` | Generate standalone reports. `markdown`, `html`, and `incident` are general report formats; `junit` and `sarif` are for CI/CD health gates on `list`/`scan`. |
 | `--summary` | `scan` with `--report markdown\|html` | Include cluster summary, worst HPAs, and prioritized actions. |
 | `--lang=ja`, `-o ja` | text output | Show Japanese text labels. |
 | `--no-interpret` | `status`, `doctor`, `analyze` | Omit interpretation and show status-derived data only. |
@@ -87,9 +97,13 @@ kubectl-hpa-status completion zsh
 | `--output-file FILE` | `record` | Write durable HPA decision snapshots to JSONL. `record` also accepts `-o FILE` as a convenience. |
 | `--raise-max N` | `preflight` | Validate quota and capacity before raising `maxReplicas` to `N`. |
 | `--hidden-factors` | `status`, `doctor` | Show partially visible controller factors such as missing metrics, tolerance, not-yet-ready pods, and stabilization. |
+| `--format structured` | `status`, `explain` | Emit the KEP-6111-oriented structured decision trace JSON. |
+| `--context-for-ai`, `--ask QUESTION` | `status`, `doctor` | Emit a compact local-AI context pack. No external LLM call is made. |
+| `--gitops-drift` | `list`, `scan` | Detect Argo CD / Flux-managed HPAs that should be compared against Git manifests. |
 | `--node-autoscaler`, `--karpenter` | `status`, `doctor`, `capacity` | Include node provisioning and scheduler/capacity context for scale-out failures. |
 | `--max-replicas N` | `estimate` | Proposed `maxReplicas` for cost and availability impact estimation. |
 | `--pod-cost N` | `estimate` | Optional per-pod hourly cost used by the cost estimate. |
+| `--carbon-kg-per-pod-hour N` | `estimate` | Optional kgCO2e per additional pod-hour for sustainability impact estimation. |
 | `--qps` | all commands | Client-side rate limiting queries per second (0 uses client-go default). |
 | `--burst` | all commands | Client-side rate limiting burst size (0 uses client-go default). |
 | `--version` | root | Print the plugin version. |

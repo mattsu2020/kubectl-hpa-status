@@ -4,15 +4,13 @@ This roadmap tracks planned work that is visible to users and contributors. It i
 
 ## Near Term
 
-- **TUI batch apply workflow:** Add in-TUI suggestion review and safe-confirmed apply for multiple selected HPAs, equivalent to `list --problem --fix --apply`.
-- **Health score explainability:** Add deeper score breakdowns in `--explain` and the TUI, including the rule name, evidence, and point deduction for each penalty.
 - **E2E scenario coverage:** Expand kind E2E coverage for multi-metric HPAs, behavior policies, KEDA-style external metrics, VPA conflict detection, and stabilization boundary cases.
 - **README sync quality gate:** Keep `README.md` and `README.ja.md` structurally aligned through `make docs-check` and CI.
 
 ## Medium Term
 
 - **Informer-based watch:** Add an opt-in informer update path for large clusters alongside the current polling mode.
-- **KEP-6111 structured decision adapter:** Maintain an adapter boundary that can map future structured HPA decision fields into the existing analysis model without rewriting the CLI output layer.
+- **KEP-6111 upstream adapter:** Replace the current visible-signal structured export with native upstream structured HPA decision fields when they become available.
 
 ## Recently Added
 
@@ -22,6 +20,9 @@ This roadmap tracks planned work that is visible to users and contributors. It i
 - **CI/report outputs:** `lint -o github` emits GitHub Actions annotations and `scan --summary --report markdown|html` produces cluster summary reports.
 - **GitOps and policy workflows:** `--export-patch`, `recommend --policy`, and `compare -A --only-drift` support PR-based operations and environment drift review.
 - **Operationalization:** `alerts generate` creates starter monitoring rules and `analyze-record --detect flapping` turns durable records into churn insights.
+- **Explainability and TUI safety:** `--format structured`, `explain`, score breakdowns, hidden decision factors, and in-TUI two-step batch apply preview improve operator confidence.
+- **Trend and tuning workflows:** `history`, `tune`, `slo`, Prometheus query links, and carbon-aware `estimate` connect HPA behavior to incidents, SLOs, cost, and sustainability.
+- **CI/CD and GitOps reporting:** `scan/list --report junit|sarif`, `list --gitops-drift`, `export --prometheus`, and local AI context packs make HPA health easier to automate and share.
 
 ## Release and Supply Chain
 

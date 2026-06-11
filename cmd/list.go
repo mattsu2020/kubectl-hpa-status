@@ -37,6 +37,7 @@ func newListCommand(opts *options) *cobra.Command {
 	cmd.Flags().IntVar(&opts.healthScoreMax, "max-score", -1, "show only HPAs with health score at or below this threshold")
 	cmd.Flags().IntVar(&opts.healthScoreMin, "min-score", -1, "show only HPAs with health score at or above this threshold")
 	cmd.Flags().BoolVar(&opts.problem, "problem", false, "show only HPAs with visible problems")
+	cmd.Flags().BoolVar(&opts.gitopsDrift, "gitops-drift", false, "detect Argo CD/Flux-managed HPAs that should be checked for live-vs-Git drift")
 	return cmd
 }
 
@@ -82,6 +83,9 @@ func runList(ctx context.Context, out io.Writer, opts *options) error {
 	}
 
 	report := hpaanalysis.ListReport{Items: buildListItems(ctx, opts, hpas.Items, filter)}
+	if opts.gitopsDrift {
+		report.GitOpsDrift = buildGitOpsDriftSignals(hpas.Items)
+	}
 
 	sortBy := opts.sortBy
 	if opts.problem && sortBy == "" {
@@ -196,15 +200,73 @@ func writeListResult(out io.Writer, opts *options, report hpaanalysis.ListReport
 	if opts.summary && format == "html" {
 		return writeClusterSummaryHTML(out, report)
 	}
+	if format == "junit" {
+		return writeListJUnit(out, report)
+	}
+	if format == "sarif" {
+		return writeListSARIF(out, report)
+	}
 	return writeOutput(out, format, templateStr, report, func() error {
-		return hpaanalysis.WriteListText(out, report, hpaanalysis.ListTextOptions{
+		if err := hpaanalysis.WriteListText(out, report, hpaanalysis.ListTextOptions{
 			Wide:   wide,
 			Color:  shouldColorize(opts.color, out),
 			Theme:  style.NewTheme(shouldColorize(opts.color, out)),
 			Lang:   outputLang(opts.lang, opts.output),
 			Labels: labelProviderForLang(opts.lang, opts.output),
-		})
+		}); err != nil {
+			return err
+		}
+		if len(report.GitOpsDrift) > 0 {
+			if _, err := fmt.Fprintln(out, "\nGitOps drift candidates:"); err != nil {
+				return err
+			}
+			for _, item := range report.GitOpsDrift {
+				if _, err := fmt.Fprintf(out, "- %s/%s [%s]: %s\n", item.Namespace, item.Name, item.Tool, item.Advice); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
 	})
+}
+
+func buildGitOpsDriftSignals(hpas []autoscalingv2.HorizontalPodAutoscaler) []hpaanalysis.GitOpsDriftSignal {
+	var signals []hpaanalysis.GitOpsDriftSignal
+	for i := range hpas {
+		hpa := hpas[i]
+		tool, evidence := gitOpsToolEvidence(hpa.Annotations, hpa.Labels)
+		if tool == "" {
+			continue
+		}
+		signals = append(signals, hpaanalysis.GitOpsDriftSignal{
+			Namespace: hpa.Namespace,
+			Name:      hpa.Name,
+			Tool:      tool,
+			Evidence:  evidence,
+			Advice:    "compare live spec with the declared Git manifest; use status --gitops-check --manifest for field-level conflict checks",
+		})
+	}
+	return signals
+}
+
+func gitOpsToolEvidence(annotations, labels map[string]string) (string, []string) {
+	var evidence []string
+	if v := annotations["argocd.argoproj.io/tracking-id"]; v != "" {
+		return "argocd", []string{"argocd.argoproj.io/tracking-id=" + v}
+	}
+	if v := labels["app.kubernetes.io/managed-by"]; strings.EqualFold(v, "argocd") {
+		return "argocd", []string{"app.kubernetes.io/managed-by=" + v}
+	}
+	if v := annotations["kustomize.toolkit.fluxcd.io/name"]; v != "" {
+		evidence = append(evidence, "kustomize.toolkit.fluxcd.io/name="+v)
+	}
+	if v := annotations["helm.toolkit.fluxcd.io/name"]; v != "" {
+		evidence = append(evidence, "helm.toolkit.fluxcd.io/name="+v)
+	}
+	if len(evidence) > 0 {
+		return "flux", evidence
+	}
+	return "", nil
 }
 
 // batchEntry holds a single HPA suggestion for batch patch application.

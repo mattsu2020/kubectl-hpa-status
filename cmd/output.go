@@ -149,6 +149,10 @@ func outputSelection(cfg outputConfig) (string, string) {
 			return "html", ""
 		case "incident":
 			return "incident", ""
+		case "junit":
+			return "junit", ""
+		case "sarif":
+			return "sarif", ""
 		}
 	}
 	format := cfg.output

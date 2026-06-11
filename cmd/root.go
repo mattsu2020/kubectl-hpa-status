@@ -81,9 +81,12 @@ type statusOptions struct {
 	controllerProfileFile string
 	export                string
 	exportPatch           string
+	format                string
 	hiddenFactors         bool
 	nodeAutoscaler        bool
 	karpenter             bool
+	contextForAI          bool
+	ask                   string
 	events                eventOption
 	recommend             bool
 	report                string
@@ -114,6 +117,7 @@ type listOptions struct {
 	healthScoreMax int
 	problem        bool
 	summary        bool
+	gitopsDrift    bool
 }
 
 // watchOptions holds flags specific to the watch / TUI commands.
@@ -163,6 +167,17 @@ func (o *statusOptions) Normalize() {
 	}
 	if o.decisionTraceFormat != "" {
 		o.decisionTrace = true
+	}
+	if o.format == "structured" {
+		o.explain = true
+		o.decisionTrace = true
+		o.decisionTraceFormat = "json"
+	}
+	if o.contextForAI || o.ask != "" {
+		o.explain = true
+		o.diagnoseMetrics = true
+		o.metricHints = true
+		o.hiddenFactors = true
 	}
 	if o.hiddenFactors {
 		o.readinessImpact = true
@@ -260,6 +275,7 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().Lookup("events").NoOptDefVal = "true"
 
 	root.AddCommand(newStatusCommand(opts))
+	root.AddCommand(newExplainCommand(opts))
 	root.AddCommand(newDoctorCommand(opts))
 	root.AddCommand(newAnalyzeCommand(opts))
 	root.AddCommand(newAssumptionsCommand(opts))
@@ -278,8 +294,12 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newRecordCommand(opts))
 	root.AddCommand(newReplayCommand(opts))
 	root.AddCommand(newMetricsCommand(opts))
+	root.AddCommand(newHistoryCommand(opts))
 	root.AddCommand(newBehaviorCommand(opts))
+	root.AddCommand(newTuneCommand(opts))
 	root.AddCommand(newEstimateCommand(opts))
+	root.AddCommand(newSLOCommand(opts))
+	root.AddCommand(newExportCommand(opts))
 	root.AddCommand(newRecommendCommand(opts))
 	root.AddCommand(newPolicyCommand(opts))
 	root.AddCommand(newSnapshotCommand(opts))

@@ -171,6 +171,71 @@ The trace output includes:
 
 This is a best-effort estimate based on visible `currentMetrics` and `spec.metrics`. The Kubernetes HPA API does not expose per-metric replica recommendations or the controller's final metric selection.
 
+## Structured Decision Export
+
+Use structured export when you need machine-readable explainability or want to experiment with future KEP-6111-style HPA decision fields.
+
+```sh
+kubectl hpa status explain web -n production
+kubectl hpa status web -n production --explain --format structured
+```
+
+The JSON includes schema version, per-metric target/current values, estimated desired replicas, tolerance effect, stabilization effect, limit clamp, winner metric, and an ordered decision path. It is still derived from visible Kubernetes API fields, so unavailable controller internals remain marked as estimates or unknowns.
+
+## History and Trend
+
+`history` combines current HPA analysis, Events-derived churn detection, health trend storage, and optional Prometheus query links:
+
+```sh
+kubectl hpa status history web -n production --since=6h --prometheus http://prometheus:9090
+```
+
+The command does not require Prometheus to be reachable. When `--prometheus` is set, it emits query_range URLs that can be opened or reused by incident tooling.
+
+## HPA Tuning Advisor
+
+`tune` recommends behavior, stabilization window, and tolerance settings for common goals:
+
+```sh
+kubectl hpa status tune web -n production --goal stable --suggest
+kubectl hpa status tune web -n production --goal fast-scale-up --suggest
+kubectl hpa status tune web -n production --goal cost-saving --suggest
+```
+
+The advisor does not mutate the cluster. Validate suggested behavior with server-side dry-run before applying, especially when using configurable tolerance fields.
+
+## CI/CD Reports
+
+`list` and `scan` can emit CI-friendly reports:
+
+```sh
+kubectl hpa status scan -A --report junit > hpa-health.xml
+kubectl hpa status list -A --problem --report sarif > hpa-health.sarif
+```
+
+JUnit marks non-OK or low-score HPAs as failures for pipeline gates. SARIF emits HPA health findings that can be consumed by GitHub Code Scanning and similar tools.
+
+## GitOps Drift Candidates
+
+`list --gitops-drift` detects Argo CD / Flux-managed HPAs from labels and annotations:
+
+```sh
+kubectl hpa status list -A --gitops-drift
+```
+
+This is a live-object signal, not a Git checkout diff. For field-level manifest conflict detection, combine status analysis with `--gitops-check --manifest`.
+
+## Local AI Context
+
+For local LLM workflows, `--context-for-ai` and `--ask` emit a compact Markdown context pack without calling any external model:
+
+```sh
+kubectl hpa status web --context-for-ai
+kubectl hpa status web --ask "why did scale-up stall?"
+```
+
+The context includes replica state, health score, conditions, metrics, hidden decision factors, and safe suggestions.
+
 ## What-If Scaling Simulator
 
 The `--simulate-metric` flag lets you preview how an HPA would behave if a metric value changed, without modifying any cluster state.

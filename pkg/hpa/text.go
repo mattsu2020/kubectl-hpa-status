@@ -1110,7 +1110,18 @@ type ListItem struct {
 
 // ListReport holds the list of HPA items for table output.
 type ListReport struct {
-	Items []ListItem `json:"items" yaml:"items"`
+	Items       []ListItem          `json:"items" yaml:"items"`
+	GitOpsDrift []GitOpsDriftSignal `json:"gitOpsDrift,omitempty" yaml:"gitOpsDrift,omitempty"`
+}
+
+// GitOpsDriftSignal describes an HPA that appears to be GitOps-managed and
+// should be compared against the declared Git manifest.
+type GitOpsDriftSignal struct {
+	Namespace string   `json:"namespace" yaml:"namespace"`
+	Name      string   `json:"name" yaml:"name"`
+	Tool      string   `json:"tool" yaml:"tool"`
+	Evidence  []string `json:"evidence,omitempty" yaml:"evidence,omitempty"`
+	Advice    string   `json:"advice" yaml:"advice"`
 }
 
 // ListTextOptions configures list output with wide, color, language, and theme.

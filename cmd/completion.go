@@ -75,6 +75,8 @@ func outputCompletions(_ *cobra.Command, _ []string, _ string) ([]string, cobra.
 		"jsonpath=\tJSONPath expression",
 		"template=\tGo template",
 		"prometheus\tPrometheus exposition format",
+		"junit\tJUnit XML for CI reports",
+		"sarif\tSARIF for code scanning",
 	}, cobra.ShellCompDirectiveNoFileComp
 }
 

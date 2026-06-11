@@ -48,11 +48,11 @@ func TestRunEstimate_TextOutput(t *testing.T) {
 	opts := &options{commonOptions: commonOptions{clientOverride: fakeClient}}
 
 	var buf bytes.Buffer
-	if err := runEstimate(context.Background(), &buf, opts, "web", 30, 0.12); err != nil {
+	if err := runEstimate(context.Background(), &buf, opts, "web", 30, 0.12, 0.01); err != nil {
 		t.Fatalf("runEstimate returned error: %v", err)
 	}
 	output := buf.String()
-	if !strings.Contains(output, "Additional worst-case pods: 20") || !strings.Contains(output, "$2.40/hour") {
+	if !strings.Contains(output, "Additional worst-case pods: 20") || !strings.Contains(output, "$2.40/hour") || !strings.Contains(output, "0.2000 kgCO2e/hour") {
 		t.Fatalf("expected cost estimate, got:\n%s", output)
 	}
 }
@@ -194,5 +194,90 @@ func TestStatusHiddenFactorsText(t *testing.T) {
 	output := buf.String()
 	if !strings.Contains(output, "Score Breakdown") || !strings.Contains(output, "Hidden decision factors") {
 		t.Fatalf("expected score breakdown and hidden factors, got:\n%s", output)
+	}
+}
+
+func TestStatusStructuredFormat(t *testing.T) {
+	hpa := kube.BuildHPA("default", "web",
+		kube.WithReplicas(3, 5),
+		kube.WithResourceMetric("cpu", 80, 120),
+	)
+	fakeClient := kube.NewFakeClient(hpa)
+	opts := &options{
+		commonOptions: commonOptions{clientOverride: fakeClient},
+		statusOptions: statusOptions{
+			events: eventOption{enabled: false},
+			format: "structured",
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := runStatus(context.Background(), &buf, opts, "web", true); err != nil {
+		t.Fatalf("runStatus returned error: %v", err)
+	}
+	output := buf.String()
+	if !strings.Contains(output, `"schemaVersion": "v1"`) || !strings.Contains(output, `"decisionPath"`) {
+		t.Fatalf("expected structured decision trace, got:\n%s", output)
+	}
+}
+
+func TestWriteListCIReports(t *testing.T) {
+	report := hpaanalysis.ListReport{Items: []hpaanalysis.ListItem{
+		{Namespace: "prod", Name: "web", Health: "OK", HealthScore: 100},
+		{Namespace: "prod", Name: "api", Health: "LIMITED", HealthScore: 70, Issue: "at maxReplicas"},
+	}}
+
+	var junit bytes.Buffer
+	if err := writeListJUnit(&junit, report); err != nil {
+		t.Fatalf("writeListJUnit returned error: %v", err)
+	}
+	if !strings.Contains(junit.String(), `failures="1"`) || !strings.Contains(junit.String(), "prod/api") {
+		t.Fatalf("expected junit failure, got:\n%s", junit.String())
+	}
+
+	var sarif bytes.Buffer
+	if err := writeListSARIF(&sarif, report); err != nil {
+		t.Fatalf("writeListSARIF returned error: %v", err)
+	}
+	if !strings.Contains(sarif.String(), `"version": "2.1.0"`) || !strings.Contains(sarif.String(), "kubernetes://prod/horizontalpodautoscalers/api") {
+		t.Fatalf("expected sarif result, got:\n%s", sarif.String())
+	}
+}
+
+func TestRunTuneSuggest(t *testing.T) {
+	hpa := kube.BuildHPA("default", "web", kube.WithMinMax(2, 10))
+	fakeClient := kube.NewFakeClient(hpa)
+	opts := &options{commonOptions: commonOptions{clientOverride: fakeClient}}
+
+	var buf bytes.Buffer
+	if err := runTune(context.Background(), &buf, opts, "web", "stable", true); err != nil {
+		t.Fatalf("runTune returned error: %v", err)
+	}
+	output := buf.String()
+	if !strings.Contains(output, "HPA Tuning Advisor") || !strings.Contains(output, "stabilizationWindowSeconds: 300") {
+		t.Fatalf("expected tune advisor output, got:\n%s", output)
+	}
+}
+
+func TestWriteAIContext(t *testing.T) {
+	report := hpaanalysis.StatusReport{Analysis: hpaanalysis.Analysis{
+		Namespace:   "prod",
+		Name:        "web",
+		Target:      "Deployment/web",
+		Current:     2,
+		Desired:     4,
+		Min:         2,
+		Max:         10,
+		Health:      "LIMITED",
+		HealthScore: 75,
+		Summary:     "Scaling up",
+	}}
+	var buf bytes.Buffer
+	if err := writeAIContext(&buf, report, "why is it slow?"); err != nil {
+		t.Fatalf("writeAIContext returned error: %v", err)
+	}
+	output := buf.String()
+	if !strings.Contains(output, "# HPA AI Context") || !strings.Contains(output, "Question: why is it slow?") || !strings.Contains(output, "prod/web") {
+		t.Fatalf("expected AI context output, got:\n%s", output)
 	}
 }
