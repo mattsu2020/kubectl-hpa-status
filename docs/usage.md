@@ -8,6 +8,12 @@ Detailed usage instructions for kubectl-hpa-status.
 kubectl hpa status <hpa-name> [<hpa-name>...] [-n namespace] [--context context] [--events=false]
 kubectl hpa status doctor <hpa-name> -n <namespace>
 kubectl hpa status timeline <hpa-name> --since=30m
+kubectl hpa status record -A --interval=15s --duration=1h -o hpa-history.jsonl
+kubectl hpa status timeline <hpa-name> --from-record hpa-history.jsonl
+kubectl hpa status preflight <hpa-name> --raise-max 20
+kubectl hpa status metrics probe <hpa-name>
+kubectl hpa status behavior <hpa-name>
+kubectl hpa status estimate <hpa-name> --max-replicas 30 --pod-cost 0.12
 kubectl hpa status <hpa-name> --watch --interval 5s
 kubectl hpa status <hpa-name> --watch --timeout 2m --until-condition scaling-limited
 kubectl hpa status list [-A] [--selector app=web] [--sort-by desired] [--filter scaling-limited]
@@ -23,6 +29,7 @@ Direct binary usage is also supported:
 kubectl-hpa-status status <hpa-name> -n <namespace>
 kubectl-hpa-status doctor <hpa-name> -n <namespace>
 kubectl-hpa-status timeline <hpa-name> --since=30m
+kubectl-hpa-status lint -f k8s/ -o github
 kubectl-hpa-status status <hpa-name> --suggest
 kubectl-hpa-status status <hpa-name> --fix --apply
 kubectl-hpa-status scan
@@ -62,6 +69,7 @@ kubectl-hpa-status completion zsh
 | `--metrics-freshness` | `status`, `doctor`, `analyze` | Check currentMetrics presence, FailedGet*Metric Events, metrics API discovery, resource PodMetrics sample timestamp/window, and KEDA trigger context. `doctor` enables this by default. |
 | `--check-resources` | `status`, `doctor`, `analyze` | Validate HPA target utilization against pod resource requests/limits. `doctor` enables this by default. |
 | `--report markdown\|html` | `status`, `doctor`, `list` | Generate standalone reports in Markdown or HTML format. |
+| `--summary` | `scan` with `--report markdown\|html` | Include cluster summary, worst HPAs, and prioritized actions. |
 | `--lang=ja`, `-o ja` | text output | Show Japanese text labels. |
 | `--no-interpret` | `status`, `doctor`, `analyze` | Omit interpretation and show status-derived data only. |
 | `--events=false` | `status`, `doctor`, `analyze` | Omit recent HPA Events. |
@@ -71,6 +79,11 @@ kubectl-hpa-status completion zsh
 | `--timeout 2m` | watch mode | Stop watch after a duration. |
 | `--until-condition scaling-limited` | watch mode | Stop watch once the normalized condition type is present. |
 | `--since=30m` | `timeline` | Reconstruct an HPA decision timeline from recent Kubernetes Events. Supports `30m`, `1h`, etc. |
+| `--from-record FILE` | `timeline` | Read durable JSONL/JSON snapshots written by `record` instead of relying on Kubernetes Events. |
+| `--output-file FILE` | `record` | Write durable HPA decision snapshots to JSONL. `record` also accepts `-o FILE` as a convenience. |
+| `--raise-max N` | `preflight` | Validate quota and capacity before raising `maxReplicas` to `N`. |
+| `--max-replicas N` | `estimate` | Proposed `maxReplicas` for cost and availability impact estimation. |
+| `--pod-cost N` | `estimate` | Optional per-pod hourly cost used by the cost estimate. |
 | `--qps` | all commands | Client-side rate limiting queries per second (0 uses client-go default). |
 | `--burst` | all commands | Client-side rate limiting burst size (0 uses client-go default). |
 | `--version` | root | Print the plugin version. |

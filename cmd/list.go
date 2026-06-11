@@ -41,7 +41,7 @@ func newListCommand(opts *options) *cobra.Command {
 }
 
 func newScanCommand(opts *options) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     "scan",
 		Aliases: []string{"problems"},
 		Short:   "Scan all namespaces for HPAs with visible problems",
@@ -57,6 +57,8 @@ func newScanCommand(opts *options) *cobra.Command {
 			return runList(cmd.Context(), cmd.OutOrStdout(), &scanOpts)
 		},
 	}
+	cmd.Flags().BoolVar(&opts.summary, "summary", false, "include cluster summary and prioritized actions in markdown/html reports")
+	return cmd
 }
 
 func runList(ctx context.Context, out io.Writer, opts *options) error {
@@ -185,6 +187,12 @@ func writeListResult(out io.Writer, opts *options, report hpaanalysis.ListReport
 	format, templateStr := outputSelection(outputConfig{
 		report: opts.report, output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates,
 	})
+	if opts.summary && (format == "markdown" || format == "md") {
+		return writeClusterSummaryMarkdown(out, report)
+	}
+	if opts.summary && format == "html" {
+		return writeClusterSummaryHTML(out, report)
+	}
 	return writeOutput(out, format, templateStr, report, func() error {
 		return hpaanalysis.WriteListText(out, report, hpaanalysis.ListTextOptions{
 			Wide:   wide,

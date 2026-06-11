@@ -109,6 +109,7 @@ type listOptions struct {
 	healthScoreMin int
 	healthScoreMax int
 	problem        bool
+	summary        bool
 }
 
 // watchOptions holds flags specific to the watch / TUI commands.
@@ -256,8 +257,12 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newPathCommand(opts))
 	root.AddCommand(newBlockersCommand(opts))
 	root.AddCommand(newCapacityPlanCommand(opts))
+	root.AddCommand(newPreflightCommand(opts))
 	root.AddCommand(newRecordCommand(opts))
 	root.AddCommand(newReplayCommand(opts))
+	root.AddCommand(newMetricsCommand(opts))
+	root.AddCommand(newBehaviorCommand(opts))
+	root.AddCommand(newEstimateCommand(opts))
 	root.AddCommand(newRecommendCommand(opts))
 	root.AddCommand(newPolicyCommand(opts))
 	root.AddCommand(newSnapshotCommand(opts))

@@ -11,10 +11,15 @@ This roadmap tracks planned work that is visible to users and contributors. It i
 
 ## Medium Term
 
-- **Custom / external metrics deep dive:** Add adapter-specific estimation and Prometheus/custom metrics verification hints beyond API discovery and HPA-visible freshness signals.
-- **Report summary enhancement:** Add cluster-wide summary, bottom-N health scores, and recommended actions to generated reports.
 - **Informer-based watch:** Add an opt-in informer update path for large clusters alongside the current polling mode.
 - **KEP-6111 structured decision adapter:** Maintain an adapter boundary that can map future structured HPA decision fields into the existing analysis model without rewriting the CLI output layer.
+
+## Recently Added
+
+- **Durable decision recording:** `record` writes JSONL HPA snapshots and `timeline --from-record` replays them after Events expire.
+- **Preflight and impact commands:** `preflight`, `behavior`, and `estimate` cover capacity validation, behavior visualization, and rough cost impact.
+- **Metrics adapter probe:** `metrics probe` combines freshness, contract, adapter diagnostics, and metric hints for custom/external metrics.
+- **CI/report outputs:** `lint -o github` emits GitHub Actions annotations and `scan --summary --report markdown|html` produces cluster summary reports.
 
 ## Release and Supply Chain
 

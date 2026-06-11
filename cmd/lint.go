@@ -140,6 +140,15 @@ func runLint(ctx context.Context, out io.Writer, opts *options, filePath, output
 		_, err := fmt.Fprintln(out, sarifJSON)
 		return err
 	}
+	if outputFmt == "github" {
+		if err := writeGitHubLintAnnotations(out, allResults); err != nil {
+			return err
+		}
+		if exitCode != 0 {
+			return &exitCodeError{code: exitCode}
+		}
+		return nil
+	}
 
 	for _, r := range allResults {
 		if outputFmt == "json" {
@@ -283,4 +292,45 @@ func combineLintResults(results []lintFileResult) *hpaanalysis.LintResult {
 		}
 	}
 	return combined
+}
+
+func writeGitHubLintAnnotations(out io.Writer, results []lintFileResult) error {
+	for _, r := range results {
+		if r.Result == nil {
+			continue
+		}
+		for _, finding := range r.Result.Findings {
+			level := "notice"
+			switch finding.Severity {
+			case hpaanalysis.LintError:
+				level = "error"
+			case hpaanalysis.LintWarning:
+				level = "warning"
+			}
+			message := strings.TrimSpace(finding.Message)
+			if finding.Recommendation != "" {
+				message += " Recommendation: " + finding.Recommendation
+			}
+			if _, err := fmt.Fprintf(out, "::%s file=%s::%s\n", level, escapeGitHubAnnotationProperty(r.File), escapeGitHubAnnotationMessage(message)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func escapeGitHubAnnotationProperty(value string) string {
+	value = strings.ReplaceAll(value, "%", "%25")
+	value = strings.ReplaceAll(value, "\r", "%0D")
+	value = strings.ReplaceAll(value, "\n", "%0A")
+	value = strings.ReplaceAll(value, ":", "%3A")
+	value = strings.ReplaceAll(value, ",", "%2C")
+	return value
+}
+
+func escapeGitHubAnnotationMessage(value string) string {
+	value = strings.ReplaceAll(value, "%", "%25")
+	value = strings.ReplaceAll(value, "\r", "%0D")
+	value = strings.ReplaceAll(value, "\n", "%0A")
+	return value
 }

@@ -269,6 +269,75 @@ Limitations:
 
 Supports all output formats: `--since=30m -o json`, `--since=30m -o yaml`, `--since=30m --report markdown`, `--since=30m --report html`.
 
+## Durable Decision Recording
+
+`record` persists visible HPA decision snapshots to JSONL so you can analyze behavior after Kubernetes Events expire:
+
+```sh
+kubectl hpa status record -A --interval=15s --duration=1h -o hpa-history.jsonl
+kubectl hpa status timeline web -n production --from-record hpa-history.jsonl
+```
+
+The record file stores one compact trace per HPA per polling cycle. At shutdown, the command prints how many snapshots were captured and highlights interesting changes such as desired replica changes, health transitions, score changes, and condition changes.
+
+Use this when you need a durable answer to "what changed around the time this HPA did not scale?" The data is still based on visible HPA status, conditions, metrics, and events; it does not expose private controller internals.
+
+## Capacity and Quota Preflight
+
+Before applying a maxReplicas fix, validate whether the target workload can actually run the additional pods:
+
+```sh
+kubectl hpa status preflight web -n production --raise-max 20
+```
+
+`preflight` reuses the capacity plan engine and checks namespace ResourceQuota, LimitRange constraints, node allocatable summary, Pending pods, PDB signals, and Cluster Autoscaler detection. The older `capacity` command remains available for the same standalone capacity report.
+
+## Metrics Adapter Probe
+
+Use `metrics probe` when a custom, pods, object, or external metric appears missing or stale:
+
+```sh
+kubectl hpa status metrics probe web -n production
+```
+
+The probe combines current HPA metric status, metric freshness, API discovery, metric contract checks, adapter diagnostics, and metric hints. This is intended to narrow the problem to metrics-server, custom.metrics.k8s.io, external.metrics.k8s.io, KEDA metric naming, selector mismatch, or stale samples.
+
+## Behavior Visualizer
+
+Use `behavior` to explain how `spec.behavior.scaleUp` and `scaleDown` policies shape the path from current replicas to desired replicas:
+
+```sh
+kubectl hpa status behavior web -n production
+```
+
+Output includes stabilization windows, selectPolicy, policies such as `+100% per 15s` or `+4 pods per 15s`, and a best-effort estimated path like `t+15s: 20`.
+
+## Cost and Availability Estimate
+
+Use `estimate` to quantify the rough upper-bound pod and cost impact of changing maxReplicas:
+
+```sh
+kubectl hpa status estimate web -n production --max-replicas 30 --pod-cost 0.12
+```
+
+The command reports current maxReplicas, proposed maxReplicas, additional worst-case pods, and optional hourly cost. It is deliberately simple; run `preflight` before applying the change to validate quota and capacity.
+
+## CI and Cluster Summary Reports
+
+Offline lint supports both SARIF and GitHub Actions annotations:
+
+```sh
+kubectl hpa status lint -f k8s/ -o sarif
+kubectl hpa status lint -f k8s/ -o github
+```
+
+Cluster scan can generate a management-friendly report with totals, worst HPAs, and prioritized actions:
+
+```sh
+kubectl hpa status scan -A --report markdown --summary
+kubectl hpa status scan -A --report html --summary
+```
+
 ## Interactive TUI
 
 For the full TUI workflow, key bindings, export guidance, and troubleshooting notes, see [TUI Manual](tui.md). For the shorter flag and key reference, see [Usage Guide - Interactive TUI](usage.md#interactive-tui).
@@ -457,6 +526,7 @@ These features are available but have known limitations — see [Limitations](#l
 - **Multi-metric winner detection:** Best-effort estimate from visible `currentMetrics`. The HPA API does not expose per-metric replica recommendations or the controller's final metric selection. Confidence levels are attached to each inference.
 - **TUI multi-select batch apply:** `space` / `a` / `A` for selection and CLI batch apply guidance. In-TUI direct apply is not yet available.
 - **Retrospective timeline:** Reconstructed from Kubernetes events which typically expire after ~1 hour. Suppressed scaling decisions that did not produce events may be missing.
+- **Durable record timeline:** `record` persists visible snapshots for later replay, but it still cannot expose controller-internal recommendations that are not published through the Kubernetes API.
 
 ### Planned
 
