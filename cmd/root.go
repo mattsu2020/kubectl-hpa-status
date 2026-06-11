@@ -292,6 +292,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newProfileCommand(opts))
 	root.AddCommand(newPathCommand(opts))
 	root.AddCommand(newBlockersCommand(opts))
+	root.AddCommand(newAdvisorCommand(opts))
 	root.AddCommand(newContainerAdvisorCommand(opts))
 	root.AddCommand(newNodeContextCommand(opts))
 	root.AddCommand(newRolloutContextCommand(opts))

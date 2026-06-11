@@ -10,8 +10,10 @@ import (
 	"testing"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
@@ -1418,6 +1420,52 @@ func TestReplayCommandFileWithHPAShortcutFlags(t *testing.T) {
 		!strings.Contains(output, "cpu.targetAverageUtilization: 70") ||
 		!strings.Contains(output, "estimated pod-hours") {
 		t.Fatalf("expected replay shortcut output, got:\n%s", output)
+	}
+}
+
+func TestAdvisorContainerResourceCommand(t *testing.T) {
+	hpa := kube.BuildHPA("default", "web", kube.WithResourceMetric("cpu", 60, 70))
+	replicas := int32(2)
+	deploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "web"},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &replicas,
+			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "web"}},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": "web"}},
+				Spec: corev1.PodSpec{Containers: []corev1.Container{
+					{
+						Name: "app",
+						Resources: corev1.ResourceRequirements{Requests: corev1.ResourceList{
+							corev1.ResourceCPU: resource.MustParse("500m"),
+						}},
+					},
+					{
+						Name: "istio-proxy",
+						Resources: corev1.ResourceRequirements{Requests: corev1.ResourceList{
+							corev1.ResourceCPU: resource.MustParse("100m"),
+						}},
+					},
+				}},
+			},
+		},
+	}
+	fakeClient := kube.NewFakeClient(hpa)
+	_, err := fakeClient.AppsV1().Deployments("default").Create(context.Background(), deploy, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("failed to create deployment: %v", err)
+	}
+
+	var buf bytes.Buffer
+	runOpts := &options{commonOptions: commonOptions{clientOverride: fakeClient}}
+	if err := runContainerAdvisor(context.Background(), &buf, runOpts, []string{"web"}); err != nil && !isExitCodeWarning(err) {
+		t.Fatalf("runContainerAdvisor returned error: %v", err)
+	}
+	output := buf.String()
+	if !strings.Contains(output, "Container Resource Advisor") ||
+		!strings.Contains(output, "ContainerResource") ||
+		!strings.Contains(output, "container: app") {
+		t.Fatalf("expected container-resource advisor output, got:\n%s", output)
 	}
 }
 

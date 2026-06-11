@@ -94,6 +94,20 @@ func TestNewContextCommands(t *testing.T) {
 	if containerCmd.Use != "container-advisor NAME [NAME...]" {
 		t.Fatalf("unexpected container-advisor Use: %q", containerCmd.Use)
 	}
+	advisorCmd := newAdvisorCommand(opts)
+	if advisorCmd.Use != "advisor" {
+		t.Fatalf("unexpected advisor Use: %q", advisorCmd.Use)
+	}
+	foundContainerResource := false
+	for _, child := range advisorCmd.Commands() {
+		if child.Use == "container-resource NAME [NAME...]" {
+			foundContainerResource = true
+			break
+		}
+	}
+	if !foundContainerResource {
+		t.Fatal("expected advisor to include container-resource subcommand")
+	}
 	gapCmd := newCapacityGapCommand(opts)
 	if gapCmd.Use != "capacity-gap NAME [NAME...]" {
 		t.Fatalf("unexpected capacity-gap Use: %q", gapCmd.Use)
