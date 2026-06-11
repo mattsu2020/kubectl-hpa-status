@@ -124,3 +124,75 @@ func TestWriteClusterSummaryMarkdown(t *testing.T) {
 		t.Fatalf("expected cluster summary markdown, got:\n%s", output)
 	}
 }
+
+func TestAlertsGeneratePrometheus(t *testing.T) {
+	cmd := newAlertsCommand()
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	cmd.SetArgs([]string{"generate", "--format", "prometheus"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("alerts generate returned error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "HPAScalingLimited") {
+		t.Fatalf("expected prometheus alert rule, got:\n%s", buf.String())
+	}
+}
+
+func TestRunAnalyzeRecordDetectsFlapping(t *testing.T) {
+	tmp, err := os.CreateTemp(t.TempDir(), "hpa-history-*.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tmp.Close()
+
+	trace := hpaanalysis.TimelineTrace{
+		Namespace: "prod",
+		HPAName:   "web",
+		Snapshots: []hpaanalysis.TimelineSnapshot{
+			{Desired: 2},
+			{Desired: 5},
+			{Desired: 3},
+			{Desired: 6},
+			{Desired: 3},
+		},
+	}
+	if err := writeRecordLine(tmp, trace); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	opts := &options{}
+	if err := runAnalyzeRecord(&buf, opts, tmp.Name(), "flapping"); err != nil {
+		t.Fatalf("runAnalyzeRecord returned error: %v", err)
+	}
+	output := buf.String()
+	if !strings.Contains(output, "Detected HPA flapping") || !strings.Contains(output, "scale direction alternated") {
+		t.Fatalf("expected flapping analysis, got:\n%s", output)
+	}
+}
+
+func TestStatusHiddenFactorsText(t *testing.T) {
+	hpa := kube.BuildHPA("default", "web",
+		kube.WithReplicas(3, 3),
+		kube.WithResourceMetric("cpu", 80, 84),
+		kube.WithScalingLimitedTrue("TooManyReplicas"),
+	)
+	fakeClient := kube.NewFakeClient(hpa)
+	opts := &options{
+		commonOptions: commonOptions{clientOverride: fakeClient},
+		statusOptions: statusOptions{
+			events:        eventOption{enabled: false},
+			hiddenFactors: true,
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := runStatus(context.Background(), &buf, opts, "web", true); err != nil && !isExitCodeWarning(err) {
+		t.Fatalf("runStatus returned error: %v", err)
+	}
+	output := buf.String()
+	if !strings.Contains(output, "Score Breakdown") || !strings.Contains(output, "Hidden decision factors") {
+		t.Fatalf("expected score breakdown and hidden factors, got:\n%s", output)
+	}
+}

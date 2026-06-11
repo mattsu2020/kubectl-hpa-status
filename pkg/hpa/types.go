@@ -113,6 +113,9 @@ type Analysis struct {
 	// HealthResult holds the typed health state, score, and individual penalty
 	// signals. Populated when --debug is enabled or for JSON/YAML output.
 	HealthResult *HealthResult `json:"healthResult,omitempty" yaml:"healthResult,omitempty"`
+	// HiddenFactors lists HPA decision factors that influence the controller
+	// but are only partially visible through public status fields.
+	HiddenFactors []HiddenDecisionFactor `json:"hiddenFactors,omitempty" yaml:"hiddenFactors,omitempty"`
 	// Summary is a one-line direction summary of the HPA scaling state.
 	Summary string `json:"summary" yaml:"summary"`
 	// Conditions lists the HPA conditions sorted by priority.
@@ -245,6 +248,16 @@ type Analysis struct {
 	// AdapterDiagnostics holds custom/external metrics adapter diagnostics.
 	// Populated when --adapter-diagnostics is enabled.
 	AdapterDiagnostics *AdapterDiagnosticsReport `json:"adapterDiagnostics,omitempty" yaml:"adapterDiagnostics,omitempty"`
+}
+
+// HiddenDecisionFactor describes a partially visible HPA decision input such
+// as missing metrics, not-yet-ready pods, tolerance, or stabilization.
+type HiddenDecisionFactor struct {
+	Name       string   `json:"name" yaml:"name"`
+	Status     string   `json:"status" yaml:"status"`
+	Evidence   []string `json:"evidence,omitempty" yaml:"evidence,omitempty"`
+	Impact     string   `json:"impact" yaml:"impact"`
+	Confidence string   `json:"confidence" yaml:"confidence"`
 }
 
 // DecisionSignal is the stable internal shape for explicit controller scaling

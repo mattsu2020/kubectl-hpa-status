@@ -158,6 +158,15 @@ func (m Model) renderListView() string {
 	}
 
 	var sb strings.Builder
+	if m.batchApplyConfirm {
+		sb.WriteString(headerStyle.Render("Batch apply preview"))
+		sb.WriteString("\n")
+		for _, line := range m.batchApplyPreview {
+			sb.WriteString(fmt.Sprintf("  - %s\n", line))
+		}
+		sb.WriteString(dimStyle.Render("Press x again to apply, Esc to cancel."))
+		sb.WriteString("\n\n")
+	}
 
 	// Header.
 	sb.WriteString(dimStyle.Render(
@@ -248,6 +257,15 @@ func (m Model) renderDetailView() string {
 	sb.WriteString(fmt.Sprintf("Health: %s  %s  %d/100", healthLabel, scoreBar, item.HealthScore))
 	sb.WriteString("\n\n")
 
+	if report, ok := m.reports[key]; ok && report != nil && report.Analysis.HealthResult != nil && len(report.Analysis.HealthResult.Signals) > 0 {
+		sb.WriteString("Score Breakdown:\n")
+		sb.WriteString("  base: 100\n")
+		for _, signal := range report.Analysis.HealthResult.Signals {
+			sb.WriteString(fmt.Sprintf("  -%d %s (%s)\n", signal.Penalty, signal.Reason, signal.Severity))
+		}
+		sb.WriteString(fmt.Sprintf("  final: %d\n\n", report.Analysis.HealthScore))
+	}
+
 	// Replicas.
 	diff := item.Desired - item.Current
 	diffStr := fmt.Sprintf("%+d", diff)
@@ -264,6 +282,16 @@ func (m Model) renderDetailView() string {
 	report, ok := m.reports[key]
 	if ok && report != nil {
 		a := report.Analysis
+
+		if len(a.HiddenFactors) > 0 {
+			sb.WriteString("\nHidden decision factors:\n")
+			for _, factor := range a.HiddenFactors {
+				sb.WriteString(fmt.Sprintf("  - %s: %s (%s)\n", factor.Name, factor.Status, factor.Confidence))
+				if factor.Impact != "" {
+					sb.WriteString(fmt.Sprintf("    %s\n", dimStyle.Render(factor.Impact)))
+				}
+			}
+		}
 
 		// Stabilization countdown.
 		if a.StabilizationRemaining != nil && *a.StabilizationRemaining > 0 {

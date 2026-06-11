@@ -20,6 +20,8 @@ This roadmap tracks planned work that is visible to users and contributors. It i
 - **Preflight and impact commands:** `preflight`, `behavior`, and `estimate` cover capacity validation, behavior visualization, and rough cost impact.
 - **Metrics adapter probe:** `metrics probe` combines freshness, contract, adapter diagnostics, and metric hints for custom/external metrics.
 - **CI/report outputs:** `lint -o github` emits GitHub Actions annotations and `scan --summary --report markdown|html` produces cluster summary reports.
+- **GitOps and policy workflows:** `--export-patch`, `recommend --policy`, and `compare -A --only-drift` support PR-based operations and environment drift review.
+- **Operationalization:** `alerts generate` creates starter monitoring rules and `analyze-record --detect flapping` turns durable records into churn insights.
 
 ## Release and Supply Chain
 

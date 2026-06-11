@@ -20,6 +20,10 @@ type compareReport struct {
 	Risks       []string      `json:"risks,omitempty" yaml:"risks,omitempty"`
 }
 
+type compareListReport struct {
+	Items []compareReport `json:"items" yaml:"items"`
+}
+
 type compareDiff struct {
 	Field string `json:"field" yaml:"field"`
 	From  string `json:"from" yaml:"from"`
@@ -28,17 +32,25 @@ type compareDiff struct {
 
 func newCompareCommand(opts *options) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "compare FROM TO",
+		Use:   "compare [FROM TO]",
 		Short: "Compare HPA configuration and visible status across contexts or namespaces",
-		Args:  cobra.ExactArgs(2),
+		Args:  cobra.RangeArgs(0, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			fromContext, _ := cmd.Flags().GetString("from-context")
 			toContext, _ := cmd.Flags().GetString("to-context")
+			onlyDrift, _ := cmd.Flags().GetBool("only-drift")
+			if opts.allNamespaces && len(args) == 0 {
+				return runCompareAll(cmd.Context(), cmd.OutOrStdout(), opts, fromContext, toContext, onlyDrift)
+			}
+			if len(args) != 2 {
+				return fmt.Errorf("compare requires FROM TO unless -A is used")
+			}
 			return runCompare(cmd.Context(), cmd.OutOrStdout(), opts, args[0], args[1], fromContext, toContext)
 		},
 	}
 	cmd.Flags().String("from-context", "", "kubeconfig context for FROM")
 	cmd.Flags().String("to-context", "", "kubeconfig context for TO")
+	cmd.Flags().Bool("only-drift", false, "with -A, show only HPAs that differ")
 	return cmd
 }
 
@@ -87,6 +99,61 @@ func runCompare(ctx context.Context, out io.Writer, opts *options, fromRef, toRe
 				if _, err := fmt.Fprintf(out, "  - %s\n", risk); err != nil {
 					return err
 				}
+			}
+		}
+		return nil
+	})
+}
+
+func runCompareAll(ctx context.Context, out io.Writer, opts *options, fromContext, toContext string, onlyDrift bool) error {
+	fromClient, err := newCompareClient(opts, fromContext)
+	if err != nil {
+		return err
+	}
+	toClient, err := newCompareClient(opts, toContext)
+	if err != nil {
+		return err
+	}
+	fromHPAs, err := fromClient.ListHPAs(ctx, metav1.NamespaceAll, metav1.ListOptions{LabelSelector: opts.selector}, opts.chunkSize)
+	if err != nil {
+		return err
+	}
+	toHPAs, err := toClient.ListHPAs(ctx, metav1.NamespaceAll, metav1.ListOptions{LabelSelector: opts.selector}, opts.chunkSize)
+	if err != nil {
+		return err
+	}
+	toMap := map[string]*autoscalingv2.HorizontalPodAutoscaler{}
+	for i := range toHPAs.Items {
+		hpa := &toHPAs.Items[i]
+		toMap[hpa.Namespace+"/"+hpa.Name] = hpa
+	}
+	var reports []compareReport
+	for i := range fromHPAs.Items {
+		from := &fromHPAs.Items[i]
+		key := from.Namespace + "/" + from.Name
+		to := toMap[key]
+		if to == nil {
+			reports = append(reports, compareReport{From: key, To: "<missing>", Differences: []compareDiff{{Field: "exists", From: "true", To: "false"}}, Risks: []string{"target environment is missing this HPA"}})
+			continue
+		}
+		report := buildCompareReport(key, key, from, to)
+		if !onlyDrift || len(report.Differences) > 0 {
+			reports = append(reports, report)
+		}
+	}
+	list := compareListReport{Items: reports}
+	return writeOutput(out, opts.output, opts.template, list, func() error {
+		if len(reports) == 0 {
+			_, err := fmt.Fprintln(out, "No HPA drift found.")
+			return err
+		}
+		for _, report := range reports {
+			_, _ = fmt.Fprintf(out, "HPA drift: %s -> %s\n", report.From, report.To)
+			for _, diff := range report.Differences {
+				_, _ = fmt.Fprintf(out, "  - %s: %s -> %s\n", diff.Field, diff.From, diff.To)
+			}
+			for _, risk := range report.Risks {
+				_, _ = fmt.Fprintf(out, "  risk: %s\n", risk)
 			}
 		}
 		return nil

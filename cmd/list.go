@@ -97,6 +97,9 @@ func runList(ctx context.Context, out io.Writer, opts *options) error {
 			return err
 		}
 	}
+	if opts.export == "directory" {
+		return exportListPatchesDirectory(out, opts, hpas.Items, report.Items)
+	}
 
 	return writeListResult(out, opts, report)
 }
@@ -239,6 +242,44 @@ func applyListSuggestions(ctx context.Context, out io.Writer, opts *options, hpa
 	}
 
 	return executeBatchPatches(ctx, out, opts, entries)
+}
+
+func exportListPatchesDirectory(out io.Writer, opts *options, hpas []autoscalingv2.HorizontalPodAutoscaler, items []hpaanalysis.ListItem) error {
+	selected := map[string]bool{}
+	for _, item := range items {
+		selected[item.Namespace+"/"+item.Name] = true
+	}
+	if len(selected) == 0 {
+		_, err := fmt.Fprintln(out, "No HPAs selected for patch export.")
+		return err
+	}
+	dir := "hpa-patches"
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	written := 0
+	for i := range hpas {
+		hpa := &hpas[i]
+		if !selected[hpa.Namespace+"/"+hpa.Name] {
+			continue
+		}
+		analysis := hpaanalysis.AnalyzeWithOptions(hpa, true, analysisOptions(opts.healthWeights, opts.debug))
+		report := hpaanalysis.StatusReport{Analysis: analysis}
+		var buf strings.Builder
+		if err := writeGitOpsExport(&buf, "yaml", report); err != nil {
+			return err
+		}
+		if strings.Contains(buf.String(), "no applicable") {
+			continue
+		}
+		path := fmt.Sprintf("%s/%s-%s-hpa-patch.yaml", dir, hpa.Namespace, hpa.Name)
+		if err := os.WriteFile(path, []byte(buf.String()), 0o644); err != nil {
+			return err
+		}
+		written++
+	}
+	_, err := fmt.Fprintf(out, "Exported %d HPA patch file(s) to %s\n", written, dir)
+	return err
 }
 
 // collectBatchEntries gathers applicable suggestions from selected HPAs.

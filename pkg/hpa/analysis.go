@@ -102,6 +102,7 @@ func AnalyzeWithOptions(src *autoscalingv2.HorizontalPodAutoscaler, includeInter
 	a = detectStabilization(a, src)
 	a = attachInterpretation(a, src, minReplicas, includeInterpretation)
 	a = attachHealth(a, src, minReplicas, opts)
+	a = attachHiddenDecisionFactors(a, src)
 	a = correlateStabilizationChurn(a)
 	a = attachDecisionSignals(a, src, DefaultDecisionAdapter{})
 	a = attachDebug(a, src, opts)

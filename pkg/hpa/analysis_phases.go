@@ -131,9 +131,7 @@ func attachHealth(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler, minRep
 	healthResult := HealthWithWeights(src, minReplicas, opts.HealthWeights)
 	a.Health = string(healthResult.State)
 	a.HealthScore = healthResult.Score
-	if opts.Debug {
-		a.HealthResult = &healthResult
-	}
+	a.HealthResult = &healthResult
 	return a
 }
 

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -275,6 +276,56 @@ func TestHelpView_IncludesWorkflowGuidance(t *testing.T) {
 		if !strings.Contains(help, want) {
 			t.Fatalf("expected help view to include %q, got:\n%s", want, help)
 		}
+	}
+}
+
+func TestBatchApplyKeyRequiresSecondConfirmation(t *testing.T) {
+	applied := 0
+	m := NewModel(nil, "default", Options{
+		ApplyFn: func(context.Context, string, string, string) error {
+			applied++
+			return nil
+		},
+	})
+	m.width = 120
+	m.height = 40
+	m.loading = false
+	m.items = []hpaanalysis.ListItem{{Namespace: "default", Name: "web"}}
+	m.selected = map[string]bool{"default/web": true}
+	m.reports = map[string]*hpaanalysis.StatusReport{
+		"default/web": {Analysis: hpaanalysis.Analysis{
+			Namespace: "default",
+			Name:      "web",
+			Suggestions: []hpaanalysis.Suggestion{{
+				Title: "Raise maxReplicas",
+				Patch: `{"spec":{"maxReplicas":20}}`,
+				Apply: true,
+			}},
+		}},
+	}
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	m2 := updated.(Model)
+	if cmd != nil {
+		t.Fatal("first x should only preview")
+	}
+	if !m2.batchApplyConfirm || applied != 0 {
+		t.Fatalf("expected preview confirmation without apply, confirm=%v applied=%d", m2.batchApplyConfirm, applied)
+	}
+	if !strings.Contains(m2.View(), "Batch apply preview") {
+		t.Fatalf("expected preview in list view, got:\n%s", m2.View())
+	}
+
+	_, cmd = m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	if cmd == nil {
+		t.Fatal("second x should run apply command")
+	}
+	msg := cmd()
+	if _, ok := msg.(applyResultMsg); !ok {
+		t.Fatalf("expected applyResultMsg, got %T", msg)
+	}
+	if applied != 1 {
+		t.Fatalf("expected one apply, got %d", applied)
 	}
 }
 

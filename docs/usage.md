@@ -14,6 +14,9 @@ kubectl hpa status preflight <hpa-name> --raise-max 20
 kubectl hpa status metrics probe <hpa-name>
 kubectl hpa status behavior <hpa-name>
 kubectl hpa status estimate <hpa-name> --max-replicas 30 --pod-cost 0.12
+kubectl hpa status compare -A --from-context stg --to-context prod --only-drift
+kubectl hpa status alerts generate --format prometheus
+kubectl hpa status analyze-record hpa-history.jsonl --detect flapping
 kubectl hpa status <hpa-name> --watch --interval 5s
 kubectl hpa status <hpa-name> --watch --timeout 2m --until-condition scaling-limited
 kubectl hpa status list [-A] [--selector app=web] [--sort-by desired] [--filter scaling-limited]
@@ -59,6 +62,7 @@ kubectl-hpa-status completion zsh
 | `--interpret` | `status` | Include diagnostic interpretation in compact status output. |
 | `--explain` | `status`, `doctor`, `analyze` | Include detailed interpretation and recommended actions. `doctor` enables this by default. |
 | `--suggest`, `--recommend` | `status`, `doctor`, `analyze` | Include concrete `kubectl patch` commands when a safe HPA spec suggestion is visible. `--recommend` is an alias for `--suggest`. |
+| `--export-patch yaml\|kustomize\|helm-values\|directory` | `status`, `scan` | Export safe suggestions as GitOps-friendly patches. `directory` is for `scan`/`list` and writes per-HPA YAML files. |
 | `--fix` | `status`, `doctor`, `analyze` | Show a stronger fix plan with applicable patches. |
 | `--diff` | `status`, `doctor`, `analyze` | Include field-level diffs for suggested HPA spec patches. |
 | `--apply` | `status`, `doctor`, `analyze`, `list`, `scan` | Validate suggested HPA patches with server-side dry-run by default. For `list`, combine it with `--problem`, `--filter`, or a score filter. |
@@ -82,6 +86,8 @@ kubectl-hpa-status completion zsh
 | `--from-record FILE` | `timeline` | Read durable JSONL/JSON snapshots written by `record` instead of relying on Kubernetes Events. |
 | `--output-file FILE` | `record` | Write durable HPA decision snapshots to JSONL. `record` also accepts `-o FILE` as a convenience. |
 | `--raise-max N` | `preflight` | Validate quota and capacity before raising `maxReplicas` to `N`. |
+| `--hidden-factors` | `status`, `doctor` | Show partially visible controller factors such as missing metrics, tolerance, not-yet-ready pods, and stabilization. |
+| `--node-autoscaler`, `--karpenter` | `status`, `doctor`, `capacity` | Include node provisioning and scheduler/capacity context for scale-out failures. |
 | `--max-replicas N` | `estimate` | Proposed `maxReplicas` for cost and availability impact estimation. |
 | `--pod-cost N` | `estimate` | Optional per-pod hourly cost used by the cost estimate. |
 | `--qps` | all commands | Client-side rate limiting queries per second (0 uses client-go default). |

@@ -18,10 +18,15 @@ func newRecommendCommand(opts *options) *cobra.Command {
 		ValidArgsFunction: hpaNameCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			profile, _ := cmd.Flags().GetString("profile")
+			policyFile, _ := cmd.Flags().GetString("policy")
+			if policyFile != "" {
+				return runPolicy(cmd.Context(), cmd.OutOrStdout(), opts, &policyCommandOptions{file: policyFile}, args[0])
+			}
 			return runRecommend(cmd.Context(), cmd.OutOrStdout(), opts, args, hpaanalysis.AuditProfile(profile))
 		},
 	}
 	cmd.Flags().String("profile", "", "workload profile for threshold adjustments: latency, cost, batch, keda, critical")
+	cmd.Flags().String("policy", "", "policy YAML file for organization-specific HPA rules")
 	return cmd
 }
 

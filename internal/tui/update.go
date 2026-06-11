@@ -260,6 +260,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.cursor >= 0 && m.cursor < len(filtered) {
 				k := filtered[m.cursor].Namespace + "/" + filtered[m.cursor].Name
 				m.selected[k] = !m.selected[k]
+				m.batchApplyConfirm = false
+				m.batchApplyPreview = nil
 			}
 		}
 		return m, nil
@@ -269,12 +271,16 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			for _, item := range m.filteredItems() {
 				m.selected[item.Namespace+"/"+item.Name] = true
 			}
+			m.batchApplyConfirm = false
+			m.batchApplyPreview = nil
 		}
 		return m, nil
 
 	case key.Matches(msg, m.keys.DeselectAll):
 		if m.viewMode == listView {
 			m.selected = map[string]bool{}
+			m.batchApplyConfirm = false
+			m.batchApplyPreview = nil
 		}
 		return m, nil
 
@@ -455,6 +461,8 @@ func (m Model) handleEscape() (tea.Model, tea.Cmd) {
 	switch m.viewMode {
 	case helpView, detailView, metricsView:
 		m.viewMode = listView
+		m.batchApplyConfirm = false
+		m.batchApplyPreview = nil
 	case simView, fixView, replayView:
 		m.simState = nil
 		m.fixState = nil
@@ -883,7 +891,18 @@ func (m Model) handleBatchApplyKey() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	if !m.batchApplyConfirm {
+		m.batchApplyConfirm = true
+		m.batchApplyPreview = make([]string, 0, len(patches))
+		for _, p := range patches {
+			m.batchApplyPreview = append(m.batchApplyPreview, fmt.Sprintf("%s/%s: %s", p.namespace, p.name, p.title))
+		}
+		return m, nil
+	}
+
 	applyFn := m.opts.ApplyFn
+	m.batchApplyConfirm = false
+	m.batchApplyPreview = nil
 	return m, func() tea.Msg {
 		var errs []string
 		for _, p := range patches {

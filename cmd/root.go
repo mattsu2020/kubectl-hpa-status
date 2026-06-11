@@ -80,6 +80,10 @@ type statusOptions struct {
 	assumeProfile         string
 	controllerProfileFile string
 	export                string
+	exportPatch           string
+	hiddenFactors         bool
+	nodeAutoscaler        bool
+	karpenter             bool
 	events                eventOption
 	recommend             bool
 	report                string
@@ -153,8 +157,21 @@ func (o *statusOptions) Normalize() {
 	if o.export != "" {
 		o.suggest = true
 	}
+	if o.exportPatch != "" {
+		o.export = o.exportPatch
+		o.suggest = true
+	}
 	if o.decisionTraceFormat != "" {
 		o.decisionTrace = true
+	}
+	if o.hiddenFactors {
+		o.readinessImpact = true
+		o.metricsFreshness = true
+	}
+	if o.nodeAutoscaler || o.karpenter {
+		o.capacityContext = true
+		o.capacityDeep = true
+		o.scalePath = true
 	}
 	if o.trend && !o.trendAnomaly {
 		o.trendAnomaly = true
@@ -270,6 +287,8 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newIncidentBundleCommand(opts))
 	root.AddCommand(newLintCommand(opts))
 	root.AddCommand(newGitOpsCommand(opts))
+	root.AddCommand(newAlertsCommand())
+	root.AddCommand(newAnalyzeRecordCommand(opts))
 	root.AddCommand(newCompatCommand(opts))
 	root.AddCommand(newVersionCommand())
 	root.AddCommand(newCompletionCommand(root))

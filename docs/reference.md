@@ -338,6 +338,58 @@ kubectl hpa status scan -A --report markdown --summary
 kubectl hpa status scan -A --report html --summary
 ```
 
+## GitOps Patch Export
+
+Safe suggestions can be exported without directly patching the live cluster:
+
+```sh
+kubectl hpa status web -n prod --suggest --export-patch yaml
+kubectl hpa status web -n prod --suggest --export-patch kustomize
+kubectl hpa status scan -A --problem --export-patch directory
+```
+
+The single-HPA formats print a minimal `autoscaling/v2` HPA patch document or Kustomize/Helm-friendly snippet. The `directory` mode writes one YAML patch per HPA under `hpa-patches/` for PR workflows.
+
+## Hidden Decision Factors
+
+`--hidden-factors` surfaces controller inputs that affect HPA decisions but are only partially visible in public status:
+
+```sh
+kubectl hpa status web -n prod --hidden-factors
+```
+
+Examples include missing current metrics, ratios inside the tolerance band, active stabilization, and not-yet-ready pod effects. Each factor includes evidence, impact, and confidence so operators can distinguish observed facts from estimates or unknowns.
+
+The same output also includes `Score Breakdown`, which lists the health score base, every penalty signal, and the final score.
+
+## Drift Compare
+
+Compare HPA configuration between contexts or environments:
+
+```sh
+kubectl hpa status compare stg/web prod/web -n app
+kubectl hpa status compare -A --from-context stg --to-context prod --only-drift
+```
+
+The comparison includes min/max replicas, metric targets, scale-down stabilization, and health score. The all-namespace mode matches HPAs by `namespace/name` and reports only drift when `--only-drift` is used.
+
+## Alerts and Record Analytics
+
+Generate starter alert rules from `kubectl-hpa-status` health semantics:
+
+```sh
+kubectl hpa status alerts generate --format prometheus
+kubectl hpa status alerts generate --format datadog
+```
+
+Analyze durable record files for flapping:
+
+```sh
+kubectl hpa status analyze-record hpa-history.jsonl --detect flapping
+```
+
+The record analyzer counts desired replica changes and direction flips, then suggests stabilization/tolerance review when oscillation is detected.
+
 ## Interactive TUI
 
 For the full TUI workflow, key bindings, export guidance, and troubleshooting notes, see [TUI Manual](tui.md). For the shorter flag and key reference, see [Usage Guide - Interactive TUI](usage.md#interactive-tui).

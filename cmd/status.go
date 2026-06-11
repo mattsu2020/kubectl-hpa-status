@@ -94,11 +94,12 @@ func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []st
 		})
 		if err := writeOutput(out, format, templateStr, report, func() error {
 			return hpaanalysis.WriteStatusTextWithOptions(out, report, hpaanalysis.StatusTextOptions{
-				Theme:  style.NewTheme(shouldColorize(opts.color, out)),
-				Lang:   outputLang(opts.lang, opts.output),
-				Fix:    opts.fix,
-				Diff:   opts.diff,
-				Labels: labelProviderForLang(opts.lang, opts.output),
+				Theme:         style.NewTheme(shouldColorize(opts.color, out)),
+				Lang:          outputLang(opts.lang, opts.output),
+				Fix:           opts.fix,
+				Diff:          opts.diff,
+				HiddenFactors: opts.hiddenFactors,
+				Labels:        labelProviderForLang(opts.lang, opts.output),
 			})
 		}); err != nil {
 			return err
@@ -172,11 +173,12 @@ func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []st
 				}
 			}
 			if err := hpaanalysis.WriteStatusTextWithOptions(out, report, hpaanalysis.StatusTextOptions{
-				Theme:  style.NewTheme(shouldColorize(opts.color, out)),
-				Lang:   outputLang(opts.lang, opts.output),
-				Fix:    opts.fix,
-				Diff:   opts.diff,
-				Labels: labelProviderForLang(opts.lang, opts.output),
+				Theme:         style.NewTheme(shouldColorize(opts.color, out)),
+				Lang:          outputLang(opts.lang, opts.output),
+				Fix:           opts.fix,
+				Diff:          opts.diff,
+				HiddenFactors: opts.hiddenFactors,
+				Labels:        labelProviderForLang(opts.lang, opts.output),
 			}); err != nil {
 				return err
 			}

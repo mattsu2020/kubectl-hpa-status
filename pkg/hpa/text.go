@@ -19,11 +19,12 @@ type StatusReport struct {
 
 // StatusTextOptions configures text output rendering with theme, language, fix mode, and diff display.
 type StatusTextOptions struct {
-	Theme  style.Theme
-	Lang   string
-	Fix    bool
-	Diff   bool
-	Labels LabelProvider // When nil, English defaults are used. Takes precedence over Lang.
+	Theme         style.Theme
+	Lang          string
+	Fix           bool
+	Diff          bool
+	HiddenFactors bool
+	Labels        LabelProvider // When nil, English defaults are used. Takes precedence over Lang.
 }
 
 // WatchState holds the previous and current Analysis for diff display.
@@ -157,6 +158,14 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 	desired := theme.ReplicaHighlight(a.Desired, a.Desired != a.Current)
 	out = fmt.Appendf(out, "%s: current=%d desired=%s min=%d max=%d\n", labels.Replicas, a.Current, desired, a.Min, a.Max)
 	out = fmt.Appendf(out, "%s: %s %d/100\n", labels.Health, theme.HealthLabel(a.Health, a.HealthScore), a.HealthScore)
+	if a.HealthResult != nil && len(a.HealthResult.Signals) > 0 {
+		out = append(out, "Score Breakdown:\n"...)
+		out = append(out, "  base: 100\n"...)
+		for _, signal := range a.HealthResult.Signals {
+			out = fmt.Appendf(out, "  -%d %s (%s)\n", signal.Penalty, signal.Reason, signal.Severity)
+		}
+		out = fmt.Appendf(out, "  final: %d\n", a.HealthScore)
+	}
 
 	out = append(out, '\n')
 	out = fmt.Appendf(out, "%s: %s\n", labels.Summary, theme.SummaryColor(a.Summary))
@@ -201,6 +210,19 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 		out = fmt.Appendf(out, "%s:\n", labels.Behavior)
 		for _, behavior := range a.Behavior {
 			out = fmt.Appendf(out, "  - %s\n", behavior.Text)
+		}
+	}
+
+	if opts.HiddenFactors && len(a.HiddenFactors) > 0 {
+		out = append(out, '\n')
+		out = append(out, "Hidden decision factors:\n"...)
+		for _, factor := range a.HiddenFactors {
+			out = fmt.Appendf(out, "  - %s: %s\n", factor.Name, factor.Status)
+			for _, evidence := range factor.Evidence {
+				out = fmt.Appendf(out, "    evidence: %s\n", evidence)
+			}
+			out = fmt.Appendf(out, "    impact: %s\n", factor.Impact)
+			out = fmt.Appendf(out, "    confidence: %s\n", factor.Confidence)
 		}
 	}
 
