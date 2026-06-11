@@ -94,8 +94,9 @@ func newRecordCommand(opts *options) *cobra.Command {
 
 func newReplayCommand(opts *options) *cobra.Command {
 	var fromRecord string
-	var candidate string
+	var candidates []string
 	var compare string
+	var score string
 	var setOverrides []string
 	var replayHPA string
 	var setMaxReplicas int32
@@ -123,7 +124,7 @@ func newReplayCommand(opts *options) *cobra.Command {
 					return err
 				}
 				addReplayShortcutOverrides(overrides, setMaxReplicas, setMinReplicas, setScaleDownStabilization, setCPUTarget, setMemoryTarget)
-				return runReplayLab(cmd.OutOrStdout(), opts, replayHPA, args[0], candidate, overrides)
+				return runReplayPolicyLab(cmd.OutOrStdout(), opts, replayHPA, args[0], candidates, overrides, score)
 			}
 			if fromRecord != "" {
 				if len(args) != 1 {
@@ -136,7 +137,18 @@ func newReplayCommand(opts *options) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				return runReplayLab(cmd.OutOrStdout(), opts, args[0], fromRecord, candidate, overrides)
+				return runReplayPolicyLab(cmd.OutOrStdout(), opts, args[0], fromRecord, candidates, overrides, score)
+			}
+			if len(candidates) > 0 || score != "" {
+				if len(args) != 1 {
+					return fmt.Errorf("replay with --candidate or --score requires a record FILE argument")
+				}
+				overrides, err := parseSimulateOverrides(setOverrides)
+				if err != nil {
+					return err
+				}
+				addReplayShortcutOverrides(overrides, setMaxReplicas, setMinReplicas, setScaleDownStabilization, setCPUTarget, setMemoryTarget)
+				return runReplayPolicyLab(cmd.OutOrStdout(), opts, replayHPA, args[0], candidates, overrides, score)
 			}
 			if len(args) != 1 {
 				return fmt.Errorf("replay requires FILE, or NAME with --from-record")
@@ -145,8 +157,9 @@ func newReplayCommand(opts *options) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&fromRecord, "from-record", "", "read durable JSONL/JSON trace written by record")
-	cmd.Flags().StringVar(&candidate, "candidate", "", "candidate HPA YAML to compare against recorded behavior")
+	cmd.Flags().StringArrayVar(&candidates, "candidate", nil, "candidate HPA YAML to compare against recorded behavior; repeatable")
 	cmd.Flags().StringVar(&compare, "compare", "current,candidate", "comparison mode for --from-record: current,candidate")
+	cmd.Flags().StringVar(&score, "score", "", "comma-separated replay scoring dimensions to emphasize, e.g. slo,cost,churn")
 	cmd.Flags().StringArrayVar(&setOverrides, "set", nil, "candidate override for replay lab, e.g. maxReplicas=30 or scaleDown.stabilizationWindowSeconds=600")
 	cmd.Flags().StringVar(&replayHPA, "hpa", "", "HPA name when FILE is passed as the replay input")
 	cmd.Flags().Int32Var(&setMaxReplicas, "set-max-replicas", 0, "candidate maxReplicas for replay lab")

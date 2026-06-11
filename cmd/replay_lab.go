@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,15 +17,26 @@ import (
 )
 
 type replayLabReport struct {
-	Namespace       string            `json:"namespace" yaml:"namespace"`
-	Name            string            `json:"name" yaml:"name"`
-	Record          string            `json:"record" yaml:"record"`
-	Candidate       string            `json:"candidate,omitempty" yaml:"candidate,omitempty"`
-	ProposedConfig  map[string]string `json:"proposedConfig,omitempty" yaml:"proposedConfig,omitempty"`
-	Current         replayLabSummary  `json:"current" yaml:"current"`
-	CandidateResult *replayLabSummary `json:"candidateResult,omitempty" yaml:"candidateResult,omitempty"`
-	Recommendation  string            `json:"recommendation,omitempty" yaml:"recommendation,omitempty"`
-	Limitations     []string          `json:"limitations,omitempty" yaml:"limitations,omitempty"`
+	Namespace       string                     `json:"namespace" yaml:"namespace"`
+	Name            string                     `json:"name" yaml:"name"`
+	Record          string                     `json:"record" yaml:"record"`
+	Score           []string                   `json:"score,omitempty" yaml:"score,omitempty"`
+	Candidate       string                     `json:"candidate,omitempty" yaml:"candidate,omitempty"`
+	ProposedConfig  map[string]string          `json:"proposedConfig,omitempty" yaml:"proposedConfig,omitempty"`
+	Current         replayLabSummary           `json:"current" yaml:"current"`
+	CandidateResult *replayLabSummary          `json:"candidateResult,omitempty" yaml:"candidateResult,omitempty"`
+	Candidates      []replayLabCandidateResult `json:"candidates,omitempty" yaml:"candidates,omitempty"`
+	Recommendation  string                     `json:"recommendation,omitempty" yaml:"recommendation,omitempty"`
+	Recommendations []string                   `json:"recommendations,omitempty" yaml:"recommendations,omitempty"`
+	Limitations     []string                   `json:"limitations,omitempty" yaml:"limitations,omitempty"`
+}
+
+type replayLabCandidateResult struct {
+	Name           string            `json:"name" yaml:"name"`
+	Candidate      string            `json:"candidate" yaml:"candidate"`
+	ProposedConfig map[string]string `json:"proposedConfig,omitempty" yaml:"proposedConfig,omitempty"`
+	Summary        replayLabSummary  `json:"summary" yaml:"summary"`
+	Recommendation string            `json:"recommendation,omitempty" yaml:"recommendation,omitempty"`
 }
 
 type replayLabSummary struct {
@@ -51,22 +63,72 @@ type replayCandidateConfig struct {
 }
 
 func runReplayLab(out io.Writer, opts *options, name, recordPath, candidatePath string, overrides map[string]string) error {
+	var candidates []string
+	if candidatePath != "" {
+		candidates = append(candidates, candidatePath)
+	}
+	return runReplayPolicyLab(out, opts, name, recordPath, candidates, overrides, "")
+}
+
+func runReplayPolicyLab(out io.Writer, opts *options, name, recordPath string, candidatePaths []string, overrides map[string]string, score string) error {
+	if name == "" {
+		inferred, err := inferRecordedTraceName(recordPath, opts.namespace)
+		if err != nil {
+			return err
+		}
+		name = inferred
+	}
 	trace, err := loadRecordedTrace(recordPath, opts.namespace, name)
 	if err != nil {
 		return err
 	}
+	scores := parseReplayScore(score)
 	report := replayLabReport{
 		Namespace: trace.Namespace,
 		Name:      trace.HPAName,
 		Record:    recordPath,
+		Score:     scores,
 		Current:   summarizeReplayTrace(*trace, 0),
 		Limitations: []string{
 			"[estimated] record snapshots do not expose controller-internal recommendations, raw metric windows, or tolerance decisions.",
 			"[estimated] candidate replay applies min/maxReplicas and scaleDown stabilization to recorded desiredReplicas; metric target changes are not re-derived from raw metrics.",
 		},
 	}
-	if candidatePath != "" || len(overrides) > 0 {
-		candidate, loadErr := buildReplayCandidate(candidatePath, overrides)
+	for i, candidatePath := range candidatePaths {
+		candidate, loadErr := buildReplayCandidate(candidatePath, nil)
+		if loadErr != nil {
+			return loadErr
+		}
+		if len(candidatePaths) == 1 {
+			for key, value := range overrides {
+				if err := applyReplayCandidateOverride(&candidate, key, value); err != nil {
+					return err
+				}
+				candidate.Proposed[key] = value
+			}
+		}
+		candidateTrace := applyReplayCandidate(*trace, candidate)
+		candidateSummary := summarizeReplayTraceWithDemand(candidateTrace, candidate.MaxReplicas, trace)
+		candidateSummary.AdditionalWorstCasePods = candidate.MaxReplicas - report.Current.PeakReplicas
+		candidateSummary.ExtraPodHours = candidateSummary.PodHours - report.Current.PodHours
+		result := replayLabCandidateResult{
+			Name:           replayCandidateName(candidatePath, i),
+			Candidate:      candidatePath,
+			ProposedConfig: candidate.Proposed,
+			Summary:        candidateSummary,
+			Recommendation: replayLabRecommendation(report.Current, candidateSummary),
+		}
+		report.Candidates = append(report.Candidates, result)
+		report.Recommendations = append(report.Recommendations, replayPolicyRecommendation(report.Current, result))
+		if len(candidatePaths) == 1 {
+			report.Candidate = candidatePath
+			report.ProposedConfig = candidate.Proposed
+			report.CandidateResult = &candidateSummary
+			report.Recommendation = result.Recommendation
+		}
+	}
+	if len(candidatePaths) == 0 && len(overrides) > 0 {
+		candidate, loadErr := buildReplayCandidate("", overrides)
 		if loadErr != nil {
 			return loadErr
 		}
@@ -74,12 +136,68 @@ func runReplayLab(out io.Writer, opts *options, name, recordPath, candidatePath 
 		candidateSummary := summarizeReplayTraceWithDemand(candidateTrace, candidate.MaxReplicas, trace)
 		candidateSummary.AdditionalWorstCasePods = candidate.MaxReplicas - report.Current.PeakReplicas
 		candidateSummary.ExtraPodHours = candidateSummary.PodHours - report.Current.PodHours
-		report.Candidate = candidatePath
 		report.ProposedConfig = candidate.Proposed
 		report.CandidateResult = &candidateSummary
 		report.Recommendation = replayLabRecommendation(report.Current, candidateSummary)
 	}
 	return writeReplayLabReport(out, opts, report)
+}
+
+func inferRecordedTraceName(path, namespace string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to read record file: %w", err)
+	}
+	defer func() { _ = file.Close() }()
+	names := map[string]string{}
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 64*1024), 10*1024*1024)
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+		var trace hpaanalysis.TimelineTrace
+		if err := json.Unmarshal(line, &trace); err != nil {
+			return inferRecordedJSONTraceName(path, namespace)
+		}
+		if namespace != "" && trace.Namespace != namespace {
+			continue
+		}
+		if trace.HPAName != "" {
+			names[trace.Namespace+"/"+trace.HPAName] = trace.HPAName
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return "", fmt.Errorf("failed to scan record file: %w", err)
+	}
+	if len(names) == 1 {
+		for _, name := range names {
+			return name, nil
+		}
+	}
+	if len(names) == 0 {
+		return inferRecordedJSONTraceName(path, namespace)
+	}
+	return "", fmt.Errorf("record file contains multiple HPAs; pass --hpa to select one")
+}
+
+func inferRecordedJSONTraceName(path, namespace string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to read record file: %w", err)
+	}
+	var trace hpaanalysis.TimelineTrace
+	if err := json.Unmarshal(data, &trace); err != nil {
+		return "", fmt.Errorf("failed to parse record file as JSONL or JSON trace: %w", err)
+	}
+	if namespace != "" && trace.Namespace != namespace {
+		return "", fmt.Errorf("record file has no snapshots for namespace %s", namespace)
+	}
+	if trace.HPAName == "" {
+		return "", fmt.Errorf("record file does not include an HPA name; pass --hpa")
+	}
+	return trace.HPAName, nil
 }
 
 func loadCandidateHPA(path string) (*autoscalingv2.HorizontalPodAutoscaler, error) {
@@ -327,6 +445,52 @@ func replayLabRecommendation(current, candidate replayLabSummary) string {
 	return strings.Join(parts, "; ") + "."
 }
 
+func replayPolicyRecommendation(current replayLabSummary, candidate replayLabCandidateResult) string {
+	summary := candidate.Summary
+	parts := []string{candidate.Name}
+	if current.ScaleEvents > 0 && summary.ScaleEvents < current.ScaleEvents {
+		reduction := float64(current.ScaleEvents-summary.ScaleEvents) / float64(current.ScaleEvents) * 100
+		parts = append(parts, fmt.Sprintf("reduces churn by %.0f%%", reduction))
+	}
+	if current.PodHours > 0 && summary.PodHours != current.PodHours {
+		change := (summary.PodHours - current.PodHours) / current.PodHours * 100
+		parts = append(parts, fmt.Sprintf("changes estimated cost by %+.0f%%", change))
+	}
+	if summary.MaxReplicasReached < current.MaxReplicasReached {
+		parts = append(parts, "decreases maxReplicas hit risk")
+	}
+	if len(parts) == 1 {
+		parts = append(parts, "does not materially improve the selected replay signals")
+	}
+	return strings.Join(parts, " ")
+}
+
+func parseReplayScore(score string) []string {
+	if score == "" {
+		return nil
+	}
+	parts := strings.Split(score, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
+}
+
+func replayCandidateName(path string, index int) string {
+	if path == "" {
+		return fmt.Sprintf("candidate-%d", index+1)
+	}
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return fmt.Sprintf("candidate-%d", index+1)
+	}
+	return path
+}
+
 func writeReplayLabReport(out io.Writer, opts *options, report replayLabReport) error {
 	format, _ := outputSelection(outputConfig{report: opts.report, output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates})
 	switch format {
@@ -351,6 +515,22 @@ func writeReplayLabReport(out io.Writer, opts *options, report replayLabReport) 
 func writeReplayLabText(out io.Writer, report replayLabReport) error {
 	_, _ = fmt.Fprintf(out, "Scenario comparison: %s/%s\n", report.Namespace, report.Name)
 	_, _ = fmt.Fprintf(out, "Replay Summary: %s / %s\n\n", report.Name, report.Namespace)
+	if len(report.Candidates) > 1 {
+		writeReplayPolicyTable(out, report)
+		if len(report.Recommendations) > 0 {
+			_, _ = fmt.Fprintln(out, "\nRecommended:")
+			for _, recommendation := range report.Recommendations {
+				_, _ = fmt.Fprintf(out, "  - %s\n", recommendation)
+			}
+		}
+		if len(report.Limitations) > 0 {
+			_, _ = fmt.Fprintln(out, "\nLimitations:")
+			for _, limitation := range report.Limitations {
+				_, _ = fmt.Fprintf(out, "  - %s\n", limitation)
+			}
+		}
+		return nil
+	}
 	writeReplayLabSummaryText(out, "Current", report.Current)
 	if report.CandidateResult != nil {
 		_, _ = fmt.Fprintln(out)
@@ -372,6 +552,49 @@ func writeReplayLabText(out io.Writer, report replayLabReport) error {
 		}
 	}
 	return nil
+}
+
+func writeReplayPolicyTable(out io.Writer, report replayLabReport) {
+	if len(report.Score) > 0 {
+		_, _ = fmt.Fprintf(out, "Score focus: %s\n\n", strings.Join(report.Score, ","))
+	}
+	_, _ = fmt.Fprintf(out, "%-28s %-9s %-16s %-7s %-7s\n", "Candidate", "SLO risk", "Replica-minutes", "Churn", "Max hit")
+	writeReplayPolicyRow(out, "current", report.Current)
+	for _, candidate := range report.Candidates {
+		writeReplayPolicyRow(out, candidate.Name, candidate.Summary)
+	}
+}
+
+func writeReplayPolicyRow(out io.Writer, name string, summary replayLabSummary) {
+	replicaMinutes := summary.PodHours * 60
+	_, _ = fmt.Fprintf(out, "%-28s %-9s %-16.0f %-7d %-7d\n",
+		truncateReplayColumn(name, 28),
+		replaySLORisk(summary),
+		replicaMinutes,
+		summary.ScaleEvents,
+		summary.MaxReplicasReached,
+	)
+}
+
+func replaySLORisk(summary replayLabSummary) string {
+	switch {
+	case summary.MaxReplicasReached > 5 || summary.EstimatedUnderProvision > 3:
+		return "high"
+	case summary.MaxReplicasReached > 0 || summary.EstimatedUnderProvision > 0:
+		return "medium"
+	default:
+		return "low"
+	}
+}
+
+func truncateReplayColumn(value string, width int) string {
+	if len(value) <= width {
+		return value
+	}
+	if width <= 3 {
+		return value[:width]
+	}
+	return value[:width-3] + "..."
 }
 
 func writeReplayLabSummaryText(out io.Writer, title string, summary replayLabSummary) {
@@ -398,6 +621,17 @@ func writeReplayLabSummaryText(out io.Writer, title string, summary replayLabSum
 
 func writeReplayLabMarkdown(out io.Writer, report replayLabReport) error {
 	_, _ = fmt.Fprintf(out, "# Scenario comparison: %s/%s\n\n", report.Namespace, report.Name)
+	if len(report.Candidates) > 1 {
+		writeReplayPolicyMarkdown(out, report)
+		if len(report.Limitations) > 0 {
+			_, _ = fmt.Fprintln(out, "## Limitations")
+			_, _ = fmt.Fprintln(out)
+			for _, limitation := range report.Limitations {
+				_, _ = fmt.Fprintf(out, "- %s\n", limitation)
+			}
+		}
+		return nil
+	}
 	writeReplayLabSummaryMarkdown(out, "Current", report.Current)
 	if report.CandidateResult != nil {
 		writeReplayLabSummaryMarkdown(out, "Proposed", *report.CandidateResult)
@@ -421,6 +655,37 @@ func writeReplayLabMarkdown(out io.Writer, report replayLabReport) error {
 		}
 	}
 	return nil
+}
+
+func writeReplayPolicyMarkdown(out io.Writer, report replayLabReport) {
+	if len(report.Score) > 0 {
+		_, _ = fmt.Fprintf(out, "**Score focus:** %s\n\n", strings.Join(report.Score, ", "))
+	}
+	_, _ = fmt.Fprintln(out, "| Candidate | SLO risk | Replica-minutes | Churn | Max hit |")
+	_, _ = fmt.Fprintln(out, "| --- | --- | ---: | ---: | ---: |")
+	writeReplayPolicyMarkdownRow(out, "current", report.Current)
+	for _, candidate := range report.Candidates {
+		writeReplayPolicyMarkdownRow(out, candidate.Name, candidate.Summary)
+	}
+	if len(report.Recommendations) > 0 {
+		_, _ = fmt.Fprintln(out)
+		_, _ = fmt.Fprintln(out, "## Recommended")
+		_, _ = fmt.Fprintln(out)
+		for _, recommendation := range report.Recommendations {
+			_, _ = fmt.Fprintf(out, "- %s\n", recommendation)
+		}
+		_, _ = fmt.Fprintln(out)
+	}
+}
+
+func writeReplayPolicyMarkdownRow(out io.Writer, name string, summary replayLabSummary) {
+	_, _ = fmt.Fprintf(out, "| %s | %s | %.0f | %d | %d |\n",
+		name,
+		replaySLORisk(summary),
+		summary.PodHours*60,
+		summary.ScaleEvents,
+		summary.MaxReplicasReached,
+	)
 }
 
 func writeReplayLabSummaryMarkdown(out io.Writer, title string, summary replayLabSummary) {

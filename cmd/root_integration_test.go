@@ -1423,6 +1423,87 @@ func TestReplayCommandFileWithHPAShortcutFlags(t *testing.T) {
 	}
 }
 
+func TestReplayCommandPolicyLabMultipleCandidatesInfersHPA(t *testing.T) {
+	now := time.Now()
+	trace := hpaanalysis.TimelineTrace{
+		HPAName:   "web",
+		Namespace: "prod",
+		Start:     now,
+		Interval:  60 * time.Second,
+		Snapshots: []hpaanalysis.TimelineSnapshot{
+			{Timestamp: now, Desired: 4, Health: "OK"},
+			{Timestamp: now.Add(60 * time.Second), Desired: 12, Health: "LIMITED"},
+			{Timestamp: now.Add(120 * time.Second), Desired: 6, Health: "OK"},
+			{Timestamp: now.Add(180 * time.Second), Desired: 11, Health: "OK"},
+		},
+	}
+	recordFile, err := os.CreateTemp("", "hpa-record-*.jsonl")
+	if err != nil {
+		t.Fatalf("failed to create record file: %v", err)
+	}
+	defer func() { _ = os.Remove(recordFile.Name()) }()
+	if err := writeRecordLine(recordFile, trace); err != nil {
+		t.Fatalf("failed to write record line: %v", err)
+	}
+	if err := recordFile.Close(); err != nil {
+		t.Fatalf("failed to close record file: %v", err)
+	}
+
+	stablePath := writeTempCandidateHPA(t, kube.BuildHPA("prod", "web", kube.WithMinMax(2, 20)))
+	defer func() { _ = os.Remove(stablePath) }()
+	fastPath := writeTempCandidateHPA(t, kube.BuildHPA("prod", "web", kube.WithMinMax(2, 30)))
+	defer func() { _ = os.Remove(fastPath) }()
+
+	root := NewRootCommand()
+	var buf bytes.Buffer
+	root.SetOut(&buf)
+	root.SetErr(&buf)
+	root.SetArgs([]string{
+		"replay", recordFile.Name(),
+		"-n", "prod",
+		"--candidate", stablePath,
+		"--candidate", fastPath,
+		"--score", "slo,cost,churn",
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("replay policy lab returned error: %v\n%s", err, buf.String())
+	}
+	output := buf.String()
+	for _, want := range []string{
+		"Replay Summary: web / prod",
+		"Score focus: slo,cost,churn",
+		"Candidate",
+		"Replica-minutes",
+		"Recommended:",
+		stablePath,
+		fastPath,
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("expected output to contain %q, got:\n%s", want, output)
+		}
+	}
+}
+
+func writeTempCandidateHPA(t *testing.T, hpa *autoscalingv2.HorizontalPodAutoscaler) string {
+	t.Helper()
+	data, err := json.Marshal(hpa)
+	if err != nil {
+		t.Fatalf("failed to marshal candidate: %v", err)
+	}
+	file, err := os.CreateTemp("", "candidate-hpa-*.yaml")
+	if err != nil {
+		t.Fatalf("failed to create candidate file: %v", err)
+	}
+	if _, err := file.Write(data); err != nil {
+		_ = file.Close()
+		t.Fatalf("failed to write candidate file: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("failed to close candidate file: %v", err)
+	}
+	return file.Name()
+}
+
 func TestAdvisorContainerResourceCommand(t *testing.T) {
 	hpa := kube.BuildHPA("default", "web", kube.WithResourceMetric("cpu", 60, 70))
 	replicas := int32(2)
