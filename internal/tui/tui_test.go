@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -255,6 +256,25 @@ func TestHelpView_Toggle(t *testing.T) {
 	m3 := updated2.(Model)
 	if m3.viewMode != listView {
 		t.Fatal("expected listView after pressing ? again")
+	}
+}
+
+func TestHelpView_IncludesWorkflowGuidance(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.width = 120
+	m.height = 40
+
+	help := m.renderHelpView()
+	for _, want := range []string{
+		"Daily triage",
+		"Detail drill-down",
+		"Selection and batch work",
+		"Export workflow",
+		"--suggest --export yaml",
+	} {
+		if !strings.Contains(help, want) {
+			t.Fatalf("expected help view to include %q, got:\n%s", want, help)
+		}
 	}
 }
 
@@ -833,11 +853,14 @@ func TestView_HelpView(t *testing.T) {
 	m.viewMode = helpView
 	m.items = []hpaanalysis.ListItem{{Name: "web"}}
 	output := m.View()
-	if !containsSubstring(output, "Key Bindings") {
-		t.Fatalf("expected Key Bindings header, got output:\n%s", output)
+	if !containsSubstring(output, "TUI Help") {
+		t.Fatalf("expected TUI Help header, got output:\n%s", output)
 	}
 	if !containsSubstring(output, "Quit") {
 		t.Fatalf("expected Quit binding, got output:\n%s", output)
+	}
+	if !containsSubstring(output, "Export workflow") {
+		t.Fatalf("expected Export workflow guidance, got output:\n%s", output)
 	}
 }
 

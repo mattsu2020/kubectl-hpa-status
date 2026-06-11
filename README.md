@@ -178,6 +178,7 @@ kubectl hpa status list -n hpa-status-examples --wide
 | Document | Content |
 | --- | --- |
 | [Usage Guide](docs/usage.md) | Flag reference, config file, health score, TUI key bindings, JSONPath examples |
+| [TUI Manual](docs/tui.md) | Interactive dashboard workflow, shortcuts, export guidance, troubleshooting |
 | [Reference](docs/reference.md) | Doctor command, safe fix flow, multi-metric trace, simulator, auditor, timeline, troubleshooting |
 | [Troubleshooting](docs/troubleshooting.md) | Symptom/command table and FAQ |
 | [Roadmap](ROADMAP.md) | Planned TUI, metrics, KEP-6111, and supply-chain work |

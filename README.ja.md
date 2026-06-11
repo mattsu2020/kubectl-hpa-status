@@ -178,6 +178,7 @@ kubectl hpa status list -n hpa-status-examples --wide
 | ドキュメント | 内容 |
 | --- | --- |
 | [Usage Guide](docs/usage.md) | フラグ参照、設定ファイル、ヘルススコア、TUIキーバインド、JSONPath例 |
+| [TUI Manual](docs/tui.md) | インタラクティブダッシュボードの運用フロー、ショートカット、エクスポート方針、トラブルシューティング |
 | [Reference](docs/reference.md) | Doctor、Safe Fix Flow、マルチメトリクストレース、Simulator、Auditor、Timeline、トラブルシューティング |
 | [Troubleshooting](docs/troubleshooting.md) | 症状/コマンド表、FAQ |
 | [Roadmap](ROADMAP.md) | TUI、メトリクス、KEP-6111、サプライチェーン強化の計画 |

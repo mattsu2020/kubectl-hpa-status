@@ -129,7 +129,9 @@ kubectl hpa status tui -A       # all namespaces
 kubectl hpa status web --watch --dashboard
 ```
 
-Key bindings:
+For the complete workflow, view descriptions, export guidance, and troubleshooting notes, see [TUI Manual](tui.md).
+
+Common key bindings:
 
 | Key | Action |
 | --- | --- |
@@ -138,21 +140,31 @@ Key bindings:
 | `Enter` | Open HPA detail view |
 | `Esc` | Go back / Close help |
 | `/` | Filter by name, namespace, health status, or issue text |
-| `S` | Cycle sort: name → health-score → issue → namespace |
+| `S` | Cycle sort: name, health-score, issue, namespace |
 | `g` | Jump to first problematic HPA (health ≠ OK) |
+| `O` | Open cluster overview from the list |
 | `m` | View per-metric diagnostics detail |
+| `s` | Open the what-if simulation panel |
+| `M` | Toggle parameter and metric-value simulation inside simulation |
+| `Tab` / `Shift+Tab` | Move between simulation fields |
+| `f` | Open the fix wizard when suggestions are available |
+| `d` | Preview the selected fix without applying it |
+| `T` | Open replay timeline from `hpa-trace.json` |
+| `H` | Open history and sparkline view |
+| `h` | Open metric hints troubleshooting when hints are available |
 | `+` / `=` | Decrease refresh interval (faster) |
 | `-` | Increase refresh interval (slower) |
 | `space` | Toggle HPA selection for batch operations |
 | `a` | Select all filtered HPAs |
 | `A` | Deselect all |
-| `s` | Show apply hint for selected HPAs |
+| `B` | Run the batch auditor on selected HPAs |
+| `x` | Show batch apply guidance for selected HPAs |
 | `r` | Refresh data now |
 | `p` | Pause / resume auto-refresh |
 | `?` | Toggle key binding help overlay |
 | `q` / `Ctrl+c` | Quit |
 
-The dashboard auto-refreshes every 5 seconds by default. Use `+`/`-` keys to adjust at runtime (1s–60s). Filter accepts partial matches across multiple fields. Sort cycles through available columns. Use `g` to quickly jump to the first HPA that needs attention.
+The dashboard auto-refreshes every 5 seconds by default. Use `+`/`-` keys to adjust at runtime (1s–60s). Filter accepts partial matches across multiple fields. Sort cycles through available columns. Use `g` to quickly jump to the first HPA that needs attention. Export remains an explicit CLI workflow; use `--suggest --export yaml`, `--export kustomize`, or `--export helm-values` after inspecting an HPA in the TUI.
 
 ## JSONPath and Template Output
 

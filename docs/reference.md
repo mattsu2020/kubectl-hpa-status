@@ -271,7 +271,7 @@ Supports all output formats: `--since=30m -o json`, `--since=30m -o yaml`, `--si
 
 ## Interactive TUI
 
-For the full TUI key bindings and dashboard features, see [Usage Guide - Interactive TUI](usage.md#interactive-tui).
+For the full TUI workflow, key bindings, export guidance, and troubleshooting notes, see [TUI Manual](tui.md). For the shorter flag and key reference, see [Usage Guide - Interactive TUI](usage.md#interactive-tui).
 
 Quick reference:
 
@@ -281,7 +281,7 @@ kubectl hpa status tui -A       # All namespaces
 kubectl hpa status web --watch --dashboard
 ```
 
-The dashboard auto-refreshes every 5 seconds by default; change the interval with `--interval`. Press `g` to jump to the first HPA with a problem. Press `m` for per-metric diagnostics. Press `space` to select multiple HPAs before entering the CLI batch apply workflow.
+The dashboard auto-refreshes every 5 seconds by default; change the interval with `--interval`. Press `g` to jump to the first HPA with a problem. Press `m` for per-metric diagnostics. Press `space` to select multiple HPAs before entering the batch audit or CLI export workflow.
 
 ## Troubleshooting Patterns
 

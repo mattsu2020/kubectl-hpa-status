@@ -62,9 +62,9 @@ type Model struct {
 	initialFocused bool
 
 	// Interactive mode states (nil when inactive).
-	simState       *simState
-	fixState       *fixState
-	replayState    *replayState
+	simState        *simState
+	fixState        *fixState
+	replayState     *replayState
 	batchAuditState *batchAuditState
 	historyState    *historyState
 	hintsState      *hintsState
@@ -139,7 +139,7 @@ type keyMap struct {
 	IntervalDown  key.Binding
 	BatchAudit    key.Binding
 	BatchApply    key.Binding
-		History       key.Binding
+	History       key.Binding
 	Hints         key.Binding
 	Overview      key.Binding
 }
@@ -250,10 +250,10 @@ func defaultKeys() keyMap {
 			key.WithKeys("x"),
 			key.WithHelp("x", "batch apply"),
 		),
-			History: key.NewBinding(
-				key.WithKeys("H"),
-				key.WithHelp("H", "history/sparkline"),
-			),
+		History: key.NewBinding(
+			key.WithKeys("H"),
+			key.WithHelp("H", "history/sparkline"),
+		),
 		Hints: key.NewBinding(
 			key.WithKeys("h"),
 			key.WithHelp("h", "metric hints"),
@@ -287,19 +287,19 @@ func NewModel(client kubernetes.Interface, namespace string, opts Options) Model
 	}
 
 	return Model{
-		client:      client,
-		namespace:   namespace,
-		opts:        opts,
-		items:       []hpaanalysis.ListItem{},
+		client:         client,
+		namespace:      namespace,
+		opts:           opts,
+		items:          []hpaanalysis.ListItem{},
 		reports:        map[string]*hpaanalysis.StatusReport{},
 		replicaHistory: map[string][]float64{},
-		cursor:      0,
-		viewMode:    listView,
-		interval:    interval,
-		keys:        defaultKeys(),
-		filterInput: ti,
-		loading:     true,
-		selected:    map[string]bool{},
+		cursor:         0,
+		viewMode:       listView,
+		interval:       interval,
+		keys:           defaultKeys(),
+		filterInput:    ti,
+		loading:        true,
+		selected:       map[string]bool{},
 	}
 }
 

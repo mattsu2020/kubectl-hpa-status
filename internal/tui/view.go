@@ -55,42 +55,75 @@ func (m Model) View() string {
 
 func (m Model) renderHelpView() string {
 	var sb strings.Builder
-	sb.WriteString(headerStyle.Render(" Key Bindings "))
+	sb.WriteString(headerStyle.Render(" TUI Help "))
 	sb.WriteString("\n\n")
-	bindings := []struct{ key, desc string }{
+
+	writeHelpSection(&sb, "Daily triage", []helpBinding{
 		{"↑/k", "Move cursor up"},
 		{"↓/j", "Move cursor down"},
-		{"Enter", "View HPA detail"},
-		{"Esc", "Go back / Close help"},
-		{"/", "Filter by name, namespace, health, or issue"},
-		{"S", "Cycle sort: name → health-score → issue → namespace"},
-		{"g", "Jump to first problematic HPA"},
-		{"space", "Toggle select current HPA"},
-		{"a", "Select all visible HPAs"},
-		{"A", "Deselect all"},
-		{"B", "Batch auditor on selected HPAs"},
-		{"x", "Batch apply patches to selected HPAs"},
-		{"s", "Open simulation panel"},
-		{"f", "Open fix wizard"},
-		{"T", "Open replay timeline"},
-		{"H", "Open history/sparkline view"},
-		{"h", "Open metric hints troubleshooting"},
-		{"O", "Open cluster overview"},
-		{"M", "Toggle metric simulation mode"},
-		{"Tab", "Cycle simulation fields"},
+		{"Enter", "Open HPA detail"},
+		{"/", "Filter by name, namespace, health, issue, or summary"},
+		{"S", "Cycle sort: name, health-score, issue, namespace"},
+		{"g", "Jump to first HPA whose health is not OK"},
+		{"O", "Open cluster overview from the list"},
+	})
+
+	writeHelpSection(&sb, "Refresh and display", []helpBinding{
 		{"r", "Refresh data now"},
-		{"p", "Pause/resume auto-refresh"},
-		{"+/=", "Decrease refresh interval (faster)"},
-		{"-", "Increase refresh interval (slower)"},
+		{"p", "Pause or resume auto-refresh"},
+		{"+/=", "Decrease refresh interval, minimum 1s"},
+		{"-", "Increase refresh interval, maximum 60s"},
+		{"Esc", "Go back to the previous dashboard level"},
 		{"?", "Toggle this help"},
 		{"q/Ctrl+c", "Quit"},
-	}
+	})
+
+	writeHelpSection(&sb, "Detail drill-down", []helpBinding{
+		{"m", "Open per-metric diagnostics"},
+		{"s", "Open the what-if simulation panel"},
+		{"M", "Toggle parameter and metric-value simulation inside simulation"},
+		{"Tab", "Move to the next simulation field"},
+		{"Shift+Tab", "Move to the previous simulation field"},
+		{"f", "Open the fix wizard when suggestions are available"},
+		{"d", "Preview the selected fix without applying it"},
+		{"T", "Open replay timeline from hpa-trace.json"},
+		{"H", "Open history and sparkline view"},
+		{"h", "Open metric hints troubleshooting when hints are available"},
+	})
+
+	writeHelpSection(&sb, "Selection and batch work", []helpBinding{
+		{"space", "Toggle current HPA selection"},
+		{"a", "Select all visible HPAs"},
+		{"A", "Clear the selection"},
+		{"B", "Run the batch auditor on selected HPAs"},
+		{"x", "Show batch apply guidance for selected HPAs"},
+	})
+
+	sb.WriteString(headerStyle.Render(" Export workflow "))
+	sb.WriteString("\n")
+	sb.WriteString(dimStyle.Render("  The TUI keeps export operations explicit. Leave the dashboard and run:"))
+	sb.WriteString("\n")
+	sb.WriteString(dimStyle.Render("  kubectl hpa status <name> -n <namespace> --suggest --export yaml"))
+	sb.WriteString("\n")
+	sb.WriteString(dimStyle.Render("  Other formats: --export kustomize or --export helm-values."))
+	sb.WriteString("\n")
+	sb.WriteString("\n")
+	sb.WriteString(dimStyle.Render("Press ? or Esc to close"))
+	return sb.String()
+}
+
+type helpBinding struct {
+	key  string
+	desc string
+}
+
+func writeHelpSection(sb *strings.Builder, title string, bindings []helpBinding) {
+	sb.WriteString(headerStyle.Render(" " + title + " "))
+	sb.WriteString("\n")
 	for _, b := range bindings {
 		sb.WriteString(fmt.Sprintf("  %-14s %s\n", b.key, dimStyle.Render(b.desc)))
 	}
 	sb.WriteString("\n")
-	sb.WriteString(dimStyle.Render("Press ? or Esc to close"))
-	return sb.String()
 }
 
 // tuiTriggerStatusBadge returns a styled status string for a KEDA trigger.
@@ -542,7 +575,9 @@ func (m Model) renderStatusBar() string {
 	}
 
 	if m.viewMode == listView {
-		parts = append(parts, "↑↓ navigate  enter detail  / filter  p pause  q quit")
+		parts = append(parts, "↑↓ navigate  enter detail  / filter  ? help  p pause  q quit")
+	} else if m.viewMode == detailView {
+		parts = append(parts, "m metrics  s simulate  f fix  H history  h hints  ? help  esc back")
 	}
 
 	if m.filtering {
