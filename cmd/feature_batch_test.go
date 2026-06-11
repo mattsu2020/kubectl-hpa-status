@@ -83,7 +83,7 @@ func TestLoadRecordedTrace_JSONL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tmp.Close()
+	defer func() { _ = tmp.Close() }()
 
 	first := hpaanalysis.TimelineTrace{
 		Namespace: "default",
@@ -144,7 +144,7 @@ func TestRunAnalyzeRecordDetectsFlapping(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tmp.Close()
+	defer func() { _ = tmp.Close() }()
 
 	trace := hpaanalysis.TimelineTrace{
 		Namespace: "prod",

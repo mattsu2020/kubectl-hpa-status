@@ -136,7 +136,7 @@ func TestBundleZipOutput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open zip: %v", err)
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	expectedFiles := map[string]bool{
 		"report.md":     false,
@@ -163,7 +163,7 @@ func TestBundleZipOutput(t *testing.T) {
 				t.Fatalf("failed to open analysis.json: %v", err)
 			}
 			data, err := io.ReadAll(rc)
-			rc.Close()
+			_ = rc.Close()
 			if err != nil {
 				t.Fatalf("failed to read analysis.json: %v", err)
 			}
@@ -343,8 +343,8 @@ func TestBundleDefaultOutputPath(t *testing.T) {
 	// Change to temp dir so default output file is created there.
 	originalDir, _ := os.Getwd()
 	tmpDir := t.TempDir()
-	os.Chdir(tmpDir)
-	defer os.Chdir(originalDir)
+	_ = os.Chdir(tmpDir)
+	defer func() { _ = os.Chdir(originalDir) }()
 
 	err := runBundle(context.Background(), &buf, opts, "web", "markdown", "", false)
 	if err != nil {

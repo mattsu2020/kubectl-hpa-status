@@ -54,7 +54,7 @@ func (s *HealthStore) Append(namespace, name string, snapshot hpa.HealthSnapshot
 	if err != nil {
 		return fmt.Errorf("opening health store file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	data, err := json.Marshal(snapshot)
 	if err != nil {
@@ -77,7 +77,7 @@ func (s *HealthStore) Load(namespace, name string, since time.Duration) ([]hpa.H
 		}
 		return nil, fmt.Errorf("opening health store file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	cutoff := time.Now().Add(-since)
 	var snapshots []hpa.HealthSnapshot
@@ -138,7 +138,7 @@ func (s *HealthStore) Prune(namespace, name string, retention time.Duration) err
 	if err != nil {
 		return fmt.Errorf("rewriting health store file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	writer := bufio.NewWriter(f)
 	for _, snap := range snapshots {

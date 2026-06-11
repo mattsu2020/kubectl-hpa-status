@@ -122,8 +122,8 @@ func TestHealthStoreLoadMultiple(t *testing.T) {
 	}
 
 	now := time.Now()
-	store.Append("default", "app-a", hpa.HealthSnapshot{Timestamp: now, HealthScore: 90, HealthState: "OK"})
-	store.Append("default", "app-b", hpa.HealthSnapshot{Timestamp: now, HealthScore: 80, HealthState: "OK"})
+	_ = store.Append("default", "app-a", hpa.HealthSnapshot{Timestamp: now, HealthScore: 90, HealthState: "OK"})
+	_ = store.Append("default", "app-b", hpa.HealthSnapshot{Timestamp: now, HealthScore: 80, HealthState: "OK"})
 
 	keys := []struct{ NS, Name string }{
 		{NS: "default", Name: "app-a"},

@@ -246,7 +246,7 @@ func runRecord(ctx context.Context, out io.Writer, opts *options, name string, i
 	if err != nil {
 		return fmt.Errorf("failed to open record file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -410,7 +410,7 @@ func loadRecordedTrace(path, namespace, name string) (*hpaanalysis.TimelineTrace
 	if err != nil {
 		return nil, fmt.Errorf("failed to read record file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var combined hpaanalysis.TimelineTrace
 	scanner := bufio.NewScanner(file)

@@ -88,7 +88,7 @@ func loadAllRecordedTraces(path string) (map[string]hpaanalysis.TimelineTrace, e
 	if err != nil {
 		return nil, fmt.Errorf("failed to read record file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	result := map[string]hpaanalysis.TimelineTrace{}
 	scanner := bufio.NewScanner(file)
