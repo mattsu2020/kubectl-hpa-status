@@ -1319,7 +1319,8 @@ func TestRunReplayLab_FromRecordWithCandidate(t *testing.T) {
 
 	output := buf.String()
 	if !strings.Contains(output, "Replay Summary: web / prod") ||
-		!strings.Contains(output, "Candidate HPA") ||
+		!strings.Contains(output, "Proposed") ||
+		!strings.Contains(output, "capped duration") ||
 		!strings.Contains(output, "additional worst-case pods: +2") {
 		t.Fatalf("expected replay lab comparison, got:\n%s", output)
 	}
@@ -1362,11 +1363,61 @@ func TestRunReplayLab_FromRecordWithSetOverrides(t *testing.T) {
 	}
 
 	output := buf.String()
-	if !strings.Contains(output, "Candidate HPA") ||
+	if !strings.Contains(output, "Proposed") ||
 		!strings.Contains(output, "maxReplicas: 20") ||
 		!strings.Contains(output, "scaleDown.stabilizationWindowSeconds: 600") ||
+		!strings.Contains(output, "estimated extra pod-hours") ||
 		!strings.Contains(output, "additional worst-case pods: +8") {
 		t.Fatalf("expected replay lab --set comparison, got:\n%s", output)
+	}
+}
+
+func TestReplayCommandFileWithHPAShortcutFlags(t *testing.T) {
+	now := time.Now()
+	trace := hpaanalysis.TimelineTrace{
+		HPAName:   "web",
+		Namespace: "prod",
+		Start:     now,
+		Interval:  5 * time.Second,
+		Snapshots: []hpaanalysis.TimelineSnapshot{
+			{Timestamp: now, Desired: 4, Health: "OK"},
+			{Timestamp: now.Add(5 * time.Second), Desired: 12, Health: "LIMITED"},
+			{Timestamp: now.Add(10 * time.Second), Desired: 8, Health: "OK"},
+		},
+	}
+	recordFile, err := os.CreateTemp("", "hpa-record-*.jsonl")
+	if err != nil {
+		t.Fatalf("failed to create record file: %v", err)
+	}
+	defer func() { _ = os.Remove(recordFile.Name()) }()
+	if err := writeRecordLine(recordFile, trace); err != nil {
+		t.Fatalf("failed to write record line: %v", err)
+	}
+	if err := recordFile.Close(); err != nil {
+		t.Fatalf("failed to close record file: %v", err)
+	}
+
+	root := NewRootCommand()
+	var buf bytes.Buffer
+	root.SetOut(&buf)
+	root.SetErr(&buf)
+	root.SetArgs([]string{
+		"replay", recordFile.Name(),
+		"--hpa", "web",
+		"-n", "prod",
+		"--set-max-replicas", "30",
+		"--set-scale-down-stabilization", "600s",
+		"--set-cpu-target", "70",
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("replay shortcut command returned error: %v\n%s", err, buf.String())
+	}
+	output := buf.String()
+	if !strings.Contains(output, "Scenario comparison: prod/web") ||
+		!strings.Contains(output, "maxReplicas: 30") ||
+		!strings.Contains(output, "cpu.targetAverageUtilization: 70") ||
+		!strings.Contains(output, "estimated pod-hours") {
+		t.Fatalf("expected replay shortcut output, got:\n%s", output)
 	}
 }
 

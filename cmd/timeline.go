@@ -97,6 +97,12 @@ func newReplayCommand(opts *options) *cobra.Command {
 	var candidate string
 	var compare string
 	var setOverrides []string
+	var replayHPA string
+	var setMaxReplicas int32
+	var setMinReplicas int32
+	var setScaleDownStabilization time.Duration
+	var setCPUTarget int32
+	var setMemoryTarget int32
 	cmd := &cobra.Command{
 		Use:   "replay [FILE|NAME]",
 		Short: "Replay a recorded HPA timeline trace or run a what-if lab from record",
@@ -105,6 +111,20 @@ func newReplayCommand(opts *options) *cobra.Command {
 			return nil, cobra.ShellCompDirectiveDefault
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if replayHPA != "" {
+				if len(args) != 1 {
+					return fmt.Errorf("replay --hpa requires a record FILE argument")
+				}
+				if compare != "" && compare != "current,candidate" {
+					return fmt.Errorf("unsupported --compare %q (use current,candidate)", compare)
+				}
+				overrides, err := parseSimulateOverrides(setOverrides)
+				if err != nil {
+					return err
+				}
+				addReplayShortcutOverrides(overrides, setMaxReplicas, setMinReplicas, setScaleDownStabilization, setCPUTarget, setMemoryTarget)
+				return runReplayLab(cmd.OutOrStdout(), opts, replayHPA, args[0], candidate, overrides)
+			}
 			if fromRecord != "" {
 				if len(args) != 1 {
 					return fmt.Errorf("replay --from-record requires an HPA name")
@@ -128,7 +148,31 @@ func newReplayCommand(opts *options) *cobra.Command {
 	cmd.Flags().StringVar(&candidate, "candidate", "", "candidate HPA YAML to compare against recorded behavior")
 	cmd.Flags().StringVar(&compare, "compare", "current,candidate", "comparison mode for --from-record: current,candidate")
 	cmd.Flags().StringArrayVar(&setOverrides, "set", nil, "candidate override for replay lab, e.g. maxReplicas=30 or scaleDown.stabilizationWindowSeconds=600")
+	cmd.Flags().StringVar(&replayHPA, "hpa", "", "HPA name when FILE is passed as the replay input")
+	cmd.Flags().Int32Var(&setMaxReplicas, "set-max-replicas", 0, "candidate maxReplicas for replay lab")
+	cmd.Flags().Int32Var(&setMinReplicas, "set-min-replicas", 0, "candidate minReplicas for replay lab")
+	cmd.Flags().DurationVar(&setScaleDownStabilization, "set-scale-down-stabilization", 0, "candidate scaleDown.stabilizationWindowSeconds for replay lab")
+	cmd.Flags().Int32Var(&setCPUTarget, "set-cpu-target", 0, "candidate CPU averageUtilization target percentage (reported as an estimated limitation when raw metrics are unavailable)")
+	cmd.Flags().Int32Var(&setMemoryTarget, "set-memory-target", 0, "candidate memory averageUtilization target percentage (reported as an estimated limitation when raw metrics are unavailable)")
 	return cmd
+}
+
+func addReplayShortcutOverrides(overrides map[string]string, maxReplicas, minReplicas int32, stabilization time.Duration, cpuTarget, memoryTarget int32) {
+	if maxReplicas > 0 {
+		overrides["maxReplicas"] = fmt.Sprint(maxReplicas)
+	}
+	if minReplicas > 0 {
+		overrides["minReplicas"] = fmt.Sprint(minReplicas)
+	}
+	if stabilization > 0 {
+		overrides["scaleDown.stabilizationWindowSeconds"] = fmt.Sprint(int(stabilization.Seconds()))
+	}
+	if cpuTarget > 0 {
+		overrides["cpu.targetAverageUtilization"] = fmt.Sprint(cpuTarget)
+	}
+	if memoryTarget > 0 {
+		overrides["memory.targetAverageUtilization"] = fmt.Sprint(memoryTarget)
+	}
 }
 
 func runRetrospectiveTimeline(ctx context.Context, out io.Writer, opts *options, name string, since time.Duration, replay bool) error {

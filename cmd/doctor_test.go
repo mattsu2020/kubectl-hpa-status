@@ -90,6 +90,14 @@ func TestNewContextCommands(t *testing.T) {
 	if rolloutCmd.Use != "rollout-context NAME [NAME...]" {
 		t.Fatalf("unexpected rollout-context Use: %q", rolloutCmd.Use)
 	}
+	containerCmd := newContainerAdvisorCommand(opts)
+	if containerCmd.Use != "container-advisor NAME [NAME...]" {
+		t.Fatalf("unexpected container-advisor Use: %q", containerCmd.Use)
+	}
+	gapCmd := newCapacityGapCommand(opts)
+	if gapCmd.Use != "capacity-gap NAME [NAME...]" {
+		t.Fatalf("unexpected capacity-gap Use: %q", gapCmd.Use)
+	}
 }
 
 func TestPolicyInitProductionAPI(t *testing.T) {

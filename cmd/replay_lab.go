@@ -28,15 +28,19 @@ type replayLabReport struct {
 }
 
 type replayLabSummary struct {
-	Snapshots               int    `json:"snapshots" yaml:"snapshots"`
-	ScaleEvents             int    `json:"scaleEvents" yaml:"scaleEvents"`
-	DirectionFlips          int    `json:"directionFlips" yaml:"directionFlips"`
-	PeakReplicas            int32  `json:"peakReplicas" yaml:"peakReplicas"`
-	MaxReplicas             int32  `json:"maxReplicas,omitempty" yaml:"maxReplicas,omitempty"`
-	MaxReplicasReached      int    `json:"maxReplicasReached" yaml:"maxReplicasReached"`
-	EstimatedUnderProvision int    `json:"estimatedUnderProvisionWindows" yaml:"estimatedUnderProvisionWindows"`
-	AdditionalWorstCasePods int32  `json:"additionalWorstCasePods,omitempty" yaml:"additionalWorstCasePods,omitempty"`
-	FlappingScore           string `json:"flappingScore" yaml:"flappingScore"`
+	Snapshots               int     `json:"snapshots" yaml:"snapshots"`
+	ScaleEvents             int     `json:"scaleEvents" yaml:"scaleEvents"`
+	DirectionFlips          int     `json:"directionFlips" yaml:"directionFlips"`
+	PeakReplicas            int32   `json:"peakReplicas" yaml:"peakReplicas"`
+	MaxReplicas             int32   `json:"maxReplicas,omitempty" yaml:"maxReplicas,omitempty"`
+	MaxReplicasReached      int     `json:"maxReplicasReached" yaml:"maxReplicasReached"`
+	CappedDurationSeconds   int64   `json:"cappedDurationSeconds" yaml:"cappedDurationSeconds"`
+	CappedDuration          string  `json:"cappedDuration" yaml:"cappedDuration"`
+	EstimatedUnderProvision int     `json:"estimatedUnderProvisionWindows" yaml:"estimatedUnderProvisionWindows"`
+	PodHours                float64 `json:"podHours" yaml:"podHours"`
+	ExtraPodHours           float64 `json:"extraPodHours,omitempty" yaml:"extraPodHours,omitempty"`
+	AdditionalWorstCasePods int32   `json:"additionalWorstCasePods,omitempty" yaml:"additionalWorstCasePods,omitempty"`
+	FlappingScore           string  `json:"flappingScore" yaml:"flappingScore"`
 }
 
 type replayCandidateConfig struct {
@@ -67,8 +71,9 @@ func runReplayLab(out io.Writer, opts *options, name, recordPath, candidatePath 
 			return loadErr
 		}
 		candidateTrace := applyReplayCandidate(*trace, candidate)
-		candidateSummary := summarizeReplayTrace(candidateTrace, candidate.MaxReplicas)
+		candidateSummary := summarizeReplayTraceWithDemand(candidateTrace, candidate.MaxReplicas, trace)
 		candidateSummary.AdditionalWorstCasePods = candidate.MaxReplicas - report.Current.PeakReplicas
+		candidateSummary.ExtraPodHours = candidateSummary.PodHours - report.Current.PodHours
 		report.Candidate = candidatePath
 		report.ProposedConfig = candidate.Proposed
 		report.CandidateResult = &candidateSummary
@@ -149,9 +154,10 @@ func applyReplayCandidateOverride(cfg *replayCandidateConfig, key, value string)
 			return fmt.Errorf("scaleDown.stabilizationWindowSeconds must be non-negative")
 		}
 		cfg.ScaleDownStabilizationSeconds = parsed
-	case "scaleUp.tolerance", "scaleDown.tolerance":
+	case "scaleUp.tolerance", "scaleDown.tolerance", "cpu.targetAverageUtilization", "memory.targetAverageUtilization":
 		// Accepted for report completeness. Recorded snapshots do not contain
-		// raw metric windows, so tolerance cannot be replayed safely here.
+		// raw metric windows, so tolerance and target changes cannot be
+		// replayed safely here.
 		return nil
 	default:
 		return fmt.Errorf("unsupported replay --set %q", key)
@@ -168,19 +174,33 @@ func parseReplayInt32(key, value string) (int32, error) {
 }
 
 func summarizeReplayTrace(trace hpaanalysis.TimelineTrace, maxReplicas int32) replayLabSummary {
+	return summarizeReplayTraceWithDemand(trace, maxReplicas, nil)
+}
+
+func summarizeReplayTraceWithDemand(trace hpaanalysis.TimelineTrace, maxReplicas int32, demandTrace *hpaanalysis.TimelineTrace) replayLabSummary {
 	summary := replayLabSummary{Snapshots: len(trace.Snapshots), MaxReplicas: maxReplicas}
 	var lastDesired int32
 	var lastDirection int32
 	for i, snap := range trace.Snapshots {
+		seconds := replaySnapshotDurationSeconds(trace, i)
 		if snap.Desired > summary.PeakReplicas {
 			summary.PeakReplicas = snap.Desired
 		}
-		if maxReplicas > 0 && snap.Desired >= maxReplicas {
+		capped := maxReplicas > 0 && snap.Desired >= maxReplicas
+		if demandTrace != nil && i < len(demandTrace.Snapshots) && maxReplicas > 0 {
+			capped = demandTrace.Snapshots[i].Desired > maxReplicas
+		}
+		if capped {
 			summary.MaxReplicasReached++
+			summary.CappedDurationSeconds += seconds
 		}
 		if snap.Health == "LIMITED" || hasTimelineCondition(snap, "ScalingLimited", "True") {
 			summary.EstimatedUnderProvision++
+			if maxReplicas == 0 {
+				summary.CappedDurationSeconds += seconds
+			}
 		}
+		summary.PodHours += float64(snap.Desired) * float64(seconds) / 3600.0
 		if i == 0 {
 			lastDesired = snap.Desired
 			continue
@@ -199,8 +219,34 @@ func summarizeReplayTrace(trace hpaanalysis.TimelineTrace, maxReplicas int32) re
 		lastDirection = direction
 		lastDesired = snap.Desired
 	}
+	summary.CappedDuration = formatReplayDuration(time.Duration(summary.CappedDurationSeconds) * time.Second)
 	summary.FlappingScore = replayFlappingScore(summary.ScaleEvents, summary.DirectionFlips)
 	return summary
+}
+
+func replaySnapshotDurationSeconds(trace hpaanalysis.TimelineTrace, index int) int64 {
+	if index >= 0 && index+1 < len(trace.Snapshots) {
+		if d := trace.Snapshots[index+1].Timestamp.Sub(trace.Snapshots[index].Timestamp); d > 0 {
+			return int64(d.Seconds())
+		}
+	}
+	if trace.Interval > 0 {
+		return int64(trace.Interval.Seconds())
+	}
+	return 0
+}
+
+func formatReplayDuration(d time.Duration) string {
+	if d <= 0 {
+		return "0s"
+	}
+	if d < time.Minute {
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	}
+	if d < time.Hour {
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	}
+	return fmt.Sprintf("%dh%dm", int(d.Hours()), int(d.Minutes())%60)
 }
 
 func hasTimelineCondition(snapshot hpaanalysis.TimelineSnapshot, conditionType, status string) bool {
@@ -303,11 +349,12 @@ func writeReplayLabReport(out io.Writer, opts *options, report replayLabReport) 
 }
 
 func writeReplayLabText(out io.Writer, report replayLabReport) error {
+	_, _ = fmt.Fprintf(out, "Scenario comparison: %s/%s\n", report.Namespace, report.Name)
 	_, _ = fmt.Fprintf(out, "Replay Summary: %s / %s\n\n", report.Name, report.Namespace)
-	writeReplayLabSummaryText(out, "Current HPA", report.Current)
+	writeReplayLabSummaryText(out, "Current", report.Current)
 	if report.CandidateResult != nil {
 		_, _ = fmt.Fprintln(out)
-		writeReplayLabSummaryText(out, "Candidate HPA", *report.CandidateResult)
+		writeReplayLabSummaryText(out, "Proposed", *report.CandidateResult)
 	}
 	if len(report.ProposedConfig) > 0 {
 		_, _ = fmt.Fprintln(out, "\nProposed config:")
@@ -337,7 +384,12 @@ func writeReplayLabSummaryText(out io.Writer, title string, summary replayLabSum
 		_, _ = fmt.Fprintf(out, "  maxReplicas: %d\n", summary.MaxReplicas)
 	}
 	_, _ = fmt.Fprintf(out, "  max replicas reached: %d\n", summary.MaxReplicasReached)
+	_, _ = fmt.Fprintf(out, "  capped duration: %s\n", summary.CappedDuration)
 	_, _ = fmt.Fprintf(out, "  estimated under-provision windows: %d\n", summary.EstimatedUnderProvision)
+	_, _ = fmt.Fprintf(out, "  estimated pod-hours: %.2f\n", summary.PodHours)
+	if summary.ExtraPodHours != 0 {
+		_, _ = fmt.Fprintf(out, "  estimated extra pod-hours: %+.2f\n", summary.ExtraPodHours)
+	}
 	_, _ = fmt.Fprintf(out, "  flapping score: %s\n", summary.FlappingScore)
 	if summary.AdditionalWorstCasePods != 0 {
 		_, _ = fmt.Fprintf(out, "  additional worst-case pods: %+d\n", summary.AdditionalWorstCasePods)
@@ -345,10 +397,10 @@ func writeReplayLabSummaryText(out io.Writer, title string, summary replayLabSum
 }
 
 func writeReplayLabMarkdown(out io.Writer, report replayLabReport) error {
-	_, _ = fmt.Fprintf(out, "# Replay Summary: %s/%s\n\n", report.Namespace, report.Name)
-	writeReplayLabSummaryMarkdown(out, "Current HPA", report.Current)
+	_, _ = fmt.Fprintf(out, "# Scenario comparison: %s/%s\n\n", report.Namespace, report.Name)
+	writeReplayLabSummaryMarkdown(out, "Current", report.Current)
 	if report.CandidateResult != nil {
-		writeReplayLabSummaryMarkdown(out, "Candidate HPA", *report.CandidateResult)
+		writeReplayLabSummaryMarkdown(out, "Proposed", *report.CandidateResult)
 	}
 	if len(report.ProposedConfig) > 0 {
 		_, _ = fmt.Fprintln(out, "## Proposed Config")
@@ -381,7 +433,12 @@ func writeReplayLabSummaryMarkdown(out io.Writer, title string, summary replayLa
 		_, _ = fmt.Fprintf(out, "- **maxReplicas:** %d\n", summary.MaxReplicas)
 	}
 	_, _ = fmt.Fprintf(out, "- **Max replicas reached:** %d\n", summary.MaxReplicasReached)
+	_, _ = fmt.Fprintf(out, "- **Capped duration:** %s\n", summary.CappedDuration)
 	_, _ = fmt.Fprintf(out, "- **Estimated under-provision windows:** %d\n", summary.EstimatedUnderProvision)
+	_, _ = fmt.Fprintf(out, "- **Estimated pod-hours:** %.2f\n", summary.PodHours)
+	if summary.ExtraPodHours != 0 {
+		_, _ = fmt.Fprintf(out, "- **Estimated extra pod-hours:** %+.2f\n", summary.ExtraPodHours)
+	}
 	_, _ = fmt.Fprintf(out, "- **Flapping score:** %s\n", summary.FlappingScore)
 	if summary.AdditionalWorstCasePods != 0 {
 		_, _ = fmt.Fprintf(out, "- **Additional worst-case pods:** %+d\n", summary.AdditionalWorstCasePods)
