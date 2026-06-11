@@ -292,6 +292,8 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newProfileCommand(opts))
 	root.AddCommand(newPathCommand(opts))
 	root.AddCommand(newBlockersCommand(opts))
+	root.AddCommand(newNodeContextCommand(opts))
+	root.AddCommand(newRolloutContextCommand(opts))
 	root.AddCommand(newCapacityPlanCommand(opts))
 	root.AddCommand(newPreflightCommand(opts))
 	root.AddCommand(newRecordCommand(opts))

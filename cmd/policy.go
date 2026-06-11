@@ -38,7 +38,108 @@ func newPolicyCommand(opts *options) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVarP(&policyOpts.file, "file", "f", "", "policy YAML file (defaults to ~/.kube/hpa-policies.yaml)")
+	cmd.AddCommand(newPolicyInitCommand())
 	return cmd
+}
+
+func newPolicyInitCommand() *cobra.Command {
+	var profile string
+	cmd := &cobra.Command{
+		Use:   "init",
+		Short: "Print a starter HPA policy profile",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return writePolicyProfile(cmd.OutOrStdout(), profile)
+		},
+	}
+	cmd.Flags().StringVar(&profile, "profile", "production-api", "starter profile: production-api, cost-sensitive, or keda")
+	return cmd
+}
+
+func writePolicyProfile(out io.Writer, profile string) error {
+	var body string
+	switch profile {
+	case "", "production-api":
+		body = `apiVersion: hpa-status/v1
+rules:
+  - id: replica-range
+    name: Production minimum replica range
+    severity: critical
+    parameters:
+      maxRatio: 10
+  - id: stabilization-window
+    name: Production scale-down stabilization
+    severity: warning
+    parameters:
+      min: 300
+      max: 1800
+  - id: behavior-policy-required
+    name: Explicit scale behavior required
+    severity: warning
+    parameters:
+      requireScaleUp: true
+      requireScaleDown: true
+  - id: metric-coverage
+    name: Multiple metric coverage
+    severity: warning
+    parameters:
+      requireResource: true
+      minMetrics: 2
+  - id: target-utilization-range
+    name: Resource target utilization range
+    severity: warning
+    parameters:
+      min: 50
+      max: 80
+`
+	case "cost-sensitive":
+		body = `apiVersion: hpa-status/v1
+rules:
+  - id: stabilization-window
+    name: Conservative scale-down stabilization
+    severity: warning
+    parameters:
+      min: 120
+      max: 900
+  - id: max-replicas-from-current
+    name: Guard maxReplicas expansion
+    severity: warning
+    parameters:
+      maxMultiplierFromCurrent: 4
+  - id: target-utilization-range
+    name: Cost-oriented target utilization range
+    severity: warning
+    parameters:
+      min: 60
+      max: 85
+`
+	case "keda":
+		body = `apiVersion: hpa-status/v1
+rules:
+  - id: behavior-policy-required
+    name: Explicit behavior for KEDA-generated HPAs
+    severity: info
+    parameters:
+      requireScaleUp: true
+      requireScaleDown: true
+  - id: metric-coverage
+    name: KEDA metric coverage
+    severity: warning
+    parameters:
+      requireResource: false
+      minMetrics: 1
+  - id: stabilization-window
+    name: KEDA cooldown-compatible stabilization
+    severity: warning
+    parameters:
+      min: 60
+      max: 1800
+`
+	default:
+		return fmt.Errorf("unknown policy profile %q (use production-api, cost-sensitive, or keda)", profile)
+	}
+	_, err := io.WriteString(out, body)
+	return err
 }
 
 func runPolicy(ctx context.Context, out io.Writer, opts *options, policyOpts *policyCommandOptions, name string) error {

@@ -1,0 +1,65 @@
+package cmd
+
+import (
+	"context"
+	"io"
+
+	"github.com/spf13/cobra"
+)
+
+func newNodeContextCommand(opts *options) *cobra.Command {
+	return &cobra.Command{
+		Use:               "node-context NAME [NAME...]",
+		Short:             "Explain node, scheduler, quota, and autoscaler context behind HPA scale-out",
+		Args:              cobra.MinimumNArgs(1),
+		ValidArgsFunction: hpaNameCompletion(opts),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runNodeContext(cmd.Context(), cmd.OutOrStdout(), opts, args)
+		},
+	}
+}
+
+func runNodeContext(ctx context.Context, out io.Writer, opts *options, names []string) error {
+	local := *opts
+	local.explain = true
+	local.explainPods = true
+	local.capacityContext = true
+	local.capacityHeadroom = true
+	local.capacityDeep = true
+	local.scalePath = true
+	local.scaleoutBlockers = true
+	local.nodeAutoscaler = true
+	local.karpenter = true
+	local.events.enabled = true
+	if local.events.limit == 0 {
+		local.events.limit = 10
+	}
+	return runStatusMany(ctx, out, &local, names, !local.noInterpret)
+}
+
+func newRolloutContextCommand(opts *options) *cobra.Command {
+	return &cobra.Command{
+		Use:               "rollout-context NAME [NAME...]",
+		Short:             "Explain rollout, ReplicaSet, and readiness context behind HPA behavior",
+		Args:              cobra.MinimumNArgs(1),
+		ValidArgsFunction: hpaNameCompletion(opts),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runRolloutContext(cmd.Context(), cmd.OutOrStdout(), opts, args)
+		},
+	}
+}
+
+func runRolloutContext(ctx context.Context, out io.Writer, opts *options, names []string) error {
+	local := *opts
+	local.explain = true
+	local.explainPods = true
+	local.readinessImpact = true
+	local.rollout = true
+	local.rolloutImpact = true
+	local.scalePath = true
+	local.events.enabled = true
+	if local.events.limit == 0 {
+		local.events.limit = 10
+	}
+	return runStatusMany(ctx, out, &local, names, !local.noInterpret)
+}

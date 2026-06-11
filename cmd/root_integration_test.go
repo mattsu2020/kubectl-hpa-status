@@ -1313,7 +1313,7 @@ func TestRunReplayLab_FromRecordWithCandidate(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{commonOptions: commonOptions{namespace: "prod", color: "never"}}
-	if err := runReplayLab(&buf, opts, "web", recordFile.Name(), candidateFile.Name()); err != nil {
+	if err := runReplayLab(&buf, opts, "web", recordFile.Name(), candidateFile.Name(), nil); err != nil {
 		t.Fatalf("runReplayLab returned error: %v", err)
 	}
 
@@ -1322,6 +1322,51 @@ func TestRunReplayLab_FromRecordWithCandidate(t *testing.T) {
 		!strings.Contains(output, "Candidate HPA") ||
 		!strings.Contains(output, "additional worst-case pods: +2") {
 		t.Fatalf("expected replay lab comparison, got:\n%s", output)
+	}
+}
+
+func TestRunReplayLab_FromRecordWithSetOverrides(t *testing.T) {
+	now := time.Now()
+	trace := hpaanalysis.TimelineTrace{
+		HPAName:   "web",
+		Namespace: "prod",
+		Start:     now,
+		Interval:  5 * time.Second,
+		Snapshots: []hpaanalysis.TimelineSnapshot{
+			{Timestamp: now, Desired: 4, Health: "OK"},
+			{Timestamp: now.Add(5 * time.Second), Desired: 12, Health: "LIMITED"},
+			{Timestamp: now.Add(10 * time.Second), Desired: 5, Health: "OK"},
+			{Timestamp: now.Add(15 * time.Second), Desired: 11, Health: "OK"},
+		},
+	}
+	recordFile, err := os.CreateTemp("", "hpa-record-*.jsonl")
+	if err != nil {
+		t.Fatalf("failed to create record file: %v", err)
+	}
+	defer func() { _ = os.Remove(recordFile.Name()) }()
+	if err := writeRecordLine(recordFile, trace); err != nil {
+		t.Fatalf("failed to write record line: %v", err)
+	}
+	if err := recordFile.Close(); err != nil {
+		t.Fatalf("failed to close record file: %v", err)
+	}
+
+	var buf bytes.Buffer
+	opts := &options{commonOptions: commonOptions{namespace: "prod", color: "never"}}
+	overrides := map[string]string{
+		"maxReplicas":                          "20",
+		"scaleDown.stabilizationWindowSeconds": "600",
+	}
+	if err := runReplayLab(&buf, opts, "web", recordFile.Name(), "", overrides); err != nil {
+		t.Fatalf("runReplayLab returned error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "Candidate HPA") ||
+		!strings.Contains(output, "maxReplicas: 20") ||
+		!strings.Contains(output, "scaleDown.stabilizationWindowSeconds: 600") ||
+		!strings.Contains(output, "additional worst-case pods: +8") {
+		t.Fatalf("expected replay lab --set comparison, got:\n%s", output)
 	}
 }
 

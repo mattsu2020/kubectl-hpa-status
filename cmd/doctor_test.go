@@ -79,3 +79,28 @@ func TestRootHelpIncludesDoctorCommand(t *testing.T) {
 		t.Fatalf("expected root help to include doctor command, got:\n%s", buf.String())
 	}
 }
+
+func TestNewContextCommands(t *testing.T) {
+	opts := &options{}
+	nodeCmd := newNodeContextCommand(opts)
+	if nodeCmd.Use != "node-context NAME [NAME...]" {
+		t.Fatalf("unexpected node-context Use: %q", nodeCmd.Use)
+	}
+	rolloutCmd := newRolloutContextCommand(opts)
+	if rolloutCmd.Use != "rollout-context NAME [NAME...]" {
+		t.Fatalf("unexpected rollout-context Use: %q", rolloutCmd.Use)
+	}
+}
+
+func TestPolicyInitProductionAPI(t *testing.T) {
+	var buf bytes.Buffer
+	if err := writePolicyProfile(&buf, "production-api"); err != nil {
+		t.Fatalf("writePolicyProfile returned error: %v", err)
+	}
+	output := buf.String()
+	if !strings.Contains(output, "apiVersion: hpa-status/v1") ||
+		!strings.Contains(output, "metric-coverage") ||
+		!strings.Contains(output, "target-utilization-range") {
+		t.Fatalf("expected production policy profile, got:\n%s", output)
+	}
+}

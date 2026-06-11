@@ -96,6 +96,7 @@ func newReplayCommand(opts *options) *cobra.Command {
 	var fromRecord string
 	var candidate string
 	var compare string
+	var setOverrides []string
 	cmd := &cobra.Command{
 		Use:   "replay [FILE|NAME]",
 		Short: "Replay a recorded HPA timeline trace or run a what-if lab from record",
@@ -111,7 +112,11 @@ func newReplayCommand(opts *options) *cobra.Command {
 				if compare != "" && compare != "current,candidate" {
 					return fmt.Errorf("unsupported --compare %q (use current,candidate)", compare)
 				}
-				return runReplayLab(cmd.OutOrStdout(), opts, args[0], fromRecord, candidate)
+				overrides, err := parseSimulateOverrides(setOverrides)
+				if err != nil {
+					return err
+				}
+				return runReplayLab(cmd.OutOrStdout(), opts, args[0], fromRecord, candidate, overrides)
 			}
 			if len(args) != 1 {
 				return fmt.Errorf("replay requires FILE, or NAME with --from-record")
@@ -122,6 +127,7 @@ func newReplayCommand(opts *options) *cobra.Command {
 	cmd.Flags().StringVar(&fromRecord, "from-record", "", "read durable JSONL/JSON trace written by record")
 	cmd.Flags().StringVar(&candidate, "candidate", "", "candidate HPA YAML to compare against recorded behavior")
 	cmd.Flags().StringVar(&compare, "compare", "current,candidate", "comparison mode for --from-record: current,candidate")
+	cmd.Flags().StringArrayVar(&setOverrides, "set", nil, "candidate override for replay lab, e.g. maxReplicas=30 or scaleDown.stabilizationWindowSeconds=600")
 	return cmd
 }
 

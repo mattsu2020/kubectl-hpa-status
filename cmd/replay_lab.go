@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -17,6 +20,7 @@ type replayLabReport struct {
 	Name            string            `json:"name" yaml:"name"`
 	Record          string            `json:"record" yaml:"record"`
 	Candidate       string            `json:"candidate,omitempty" yaml:"candidate,omitempty"`
+	ProposedConfig  map[string]string `json:"proposedConfig,omitempty" yaml:"proposedConfig,omitempty"`
 	Current         replayLabSummary  `json:"current" yaml:"current"`
 	CandidateResult *replayLabSummary `json:"candidateResult,omitempty" yaml:"candidateResult,omitempty"`
 	Recommendation  string            `json:"recommendation,omitempty" yaml:"recommendation,omitempty"`
@@ -35,7 +39,14 @@ type replayLabSummary struct {
 	FlappingScore           string `json:"flappingScore" yaml:"flappingScore"`
 }
 
-func runReplayLab(out io.Writer, opts *options, name, recordPath, candidatePath string) error {
+type replayCandidateConfig struct {
+	MinReplicas                   *int32
+	MaxReplicas                   int32
+	ScaleDownStabilizationSeconds int32
+	Proposed                      map[string]string
+}
+
+func runReplayLab(out io.Writer, opts *options, name, recordPath, candidatePath string, overrides map[string]string) error {
 	trace, err := loadRecordedTrace(recordPath, opts.namespace, name)
 	if err != nil {
 		return err
@@ -47,18 +58,19 @@ func runReplayLab(out io.Writer, opts *options, name, recordPath, candidatePath 
 		Current:   summarizeReplayTrace(*trace, 0),
 		Limitations: []string{
 			"[estimated] record snapshots do not expose controller-internal recommendations, raw metric windows, or tolerance decisions.",
-			"[estimated] candidate replay clamps recorded desiredReplicas to candidate min/maxReplicas; metric target changes are not re-derived from raw metrics.",
+			"[estimated] candidate replay applies min/maxReplicas and scaleDown stabilization to recorded desiredReplicas; metric target changes are not re-derived from raw metrics.",
 		},
 	}
-	if candidatePath != "" {
-		candidate, loadErr := loadCandidateHPA(candidatePath)
+	if candidatePath != "" || len(overrides) > 0 {
+		candidate, loadErr := buildReplayCandidate(candidatePath, overrides)
 		if loadErr != nil {
 			return loadErr
 		}
-		candidateTrace := applyCandidateBounds(*trace, candidate)
-		candidateSummary := summarizeReplayTrace(candidateTrace, candidate.Spec.MaxReplicas)
-		candidateSummary.AdditionalWorstCasePods = candidate.Spec.MaxReplicas - report.Current.PeakReplicas
+		candidateTrace := applyReplayCandidate(*trace, candidate)
+		candidateSummary := summarizeReplayTrace(candidateTrace, candidate.MaxReplicas)
+		candidateSummary.AdditionalWorstCasePods = candidate.MaxReplicas - report.Current.PeakReplicas
 		report.Candidate = candidatePath
+		report.ProposedConfig = candidate.Proposed
 		report.CandidateResult = &candidateSummary
 		report.Recommendation = replayLabRecommendation(report.Current, candidateSummary)
 	}
@@ -78,6 +90,81 @@ func loadCandidateHPA(path string) (*autoscalingv2.HorizontalPodAutoscaler, erro
 		return nil, fmt.Errorf("candidate HPA %s has invalid spec.maxReplicas", path)
 	}
 	return &hpa, nil
+}
+
+func buildReplayCandidate(path string, overrides map[string]string) (replayCandidateConfig, error) {
+	cfg := replayCandidateConfig{Proposed: map[string]string{}}
+	if path != "" {
+		hpa, err := loadCandidateHPA(path)
+		if err != nil {
+			return cfg, err
+		}
+		cfg.MinReplicas = hpa.Spec.MinReplicas
+		cfg.MaxReplicas = hpa.Spec.MaxReplicas
+		cfg.Proposed["candidate"] = path
+		if hpa.Spec.MinReplicas != nil {
+			cfg.Proposed["minReplicas"] = fmt.Sprint(*hpa.Spec.MinReplicas)
+		}
+		cfg.Proposed["maxReplicas"] = fmt.Sprint(hpa.Spec.MaxReplicas)
+		if hpa.Spec.Behavior != nil && hpa.Spec.Behavior.ScaleDown != nil && hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds != nil {
+			cfg.ScaleDownStabilizationSeconds = *hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds
+			cfg.Proposed["scaleDown.stabilizationWindowSeconds"] = fmt.Sprint(cfg.ScaleDownStabilizationSeconds)
+		}
+	}
+	for key, value := range overrides {
+		if err := applyReplayCandidateOverride(&cfg, key, value); err != nil {
+			return cfg, err
+		}
+		cfg.Proposed[key] = value
+	}
+	if cfg.MaxReplicas <= 0 {
+		return cfg, fmt.Errorf("replay --from-record with --set requires maxReplicas, or provide --candidate")
+	}
+	return cfg, nil
+}
+
+func applyReplayCandidateOverride(cfg *replayCandidateConfig, key, value string) error {
+	switch key {
+	case "minReplicas":
+		parsed, err := parseReplayInt32(key, value)
+		if err != nil {
+			return err
+		}
+		cfg.MinReplicas = &parsed
+	case "maxReplicas":
+		parsed, err := parseReplayInt32(key, value)
+		if err != nil {
+			return err
+		}
+		if parsed <= 0 {
+			return fmt.Errorf("maxReplicas must be greater than zero")
+		}
+		cfg.MaxReplicas = parsed
+	case "scaleDown.stabilizationWindowSeconds":
+		parsed, err := parseReplayInt32(key, value)
+		if err != nil {
+			return err
+		}
+		if parsed < 0 {
+			return fmt.Errorf("scaleDown.stabilizationWindowSeconds must be non-negative")
+		}
+		cfg.ScaleDownStabilizationSeconds = parsed
+	case "scaleUp.tolerance", "scaleDown.tolerance":
+		// Accepted for report completeness. Recorded snapshots do not contain
+		// raw metric windows, so tolerance cannot be replayed safely here.
+		return nil
+	default:
+		return fmt.Errorf("unsupported replay --set %q", key)
+	}
+	return nil
+}
+
+func parseReplayInt32(key, value string) (int32, error) {
+	parsed, err := strconv.ParseInt(value, 10, 32)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s value %q: %w", key, value, err)
+	}
+	return int32(parsed), nil
 }
 
 func summarizeReplayTrace(trace hpaanalysis.TimelineTrace, maxReplicas int32) replayLabSummary {
@@ -125,17 +212,16 @@ func hasTimelineCondition(snapshot hpaanalysis.TimelineSnapshot, conditionType, 
 	return false
 }
 
-func applyCandidateBounds(trace hpaanalysis.TimelineTrace, candidate *autoscalingv2.HorizontalPodAutoscaler) hpaanalysis.TimelineTrace {
-	if candidate == nil {
-		return trace
-	}
+func applyReplayCandidate(trace hpaanalysis.TimelineTrace, candidate replayCandidateConfig) hpaanalysis.TimelineTrace {
 	minReplicas := int32(1)
-	if candidate.Spec.MinReplicas != nil {
-		minReplicas = *candidate.Spec.MinReplicas
+	if candidate.MinReplicas != nil {
+		minReplicas = *candidate.MinReplicas
 	}
-	maxReplicas := candidate.Spec.MaxReplicas
+	maxReplicas := candidate.MaxReplicas
 	out := trace
 	out.Snapshots = append([]hpaanalysis.TimelineSnapshot(nil), trace.Snapshots...)
+	var lastHeldDesired int32
+	var lastHighTime time.Time
 	for i := range out.Snapshots {
 		desired := out.Snapshots[i].Desired
 		if desired < minReplicas {
@@ -144,6 +230,20 @@ func applyCandidateBounds(trace hpaanalysis.TimelineTrace, candidate *autoscalin
 		if desired > maxReplicas {
 			desired = maxReplicas
 			out.Snapshots[i].Health = "LIMITED"
+		}
+		if candidate.ScaleDownStabilizationSeconds > 0 {
+			if desired >= lastHeldDesired {
+				lastHeldDesired = desired
+				lastHighTime = out.Snapshots[i].Timestamp
+			} else if !lastHighTime.IsZero() {
+				window := time.Duration(candidate.ScaleDownStabilizationSeconds) * time.Second
+				if out.Snapshots[i].Timestamp.Sub(lastHighTime) < window {
+					desired = lastHeldDesired
+				} else {
+					lastHeldDesired = desired
+					lastHighTime = out.Snapshots[i].Timestamp
+				}
+			}
 		}
 		out.Snapshots[i].Desired = desired
 	}
@@ -209,6 +309,12 @@ func writeReplayLabText(out io.Writer, report replayLabReport) error {
 		_, _ = fmt.Fprintln(out)
 		writeReplayLabSummaryText(out, "Candidate HPA", *report.CandidateResult)
 	}
+	if len(report.ProposedConfig) > 0 {
+		_, _ = fmt.Fprintln(out, "\nProposed config:")
+		for _, key := range sortedReplayConfigKeys(report.ProposedConfig) {
+			_, _ = fmt.Fprintf(out, "  %s: %s\n", key, report.ProposedConfig[key])
+		}
+	}
 	if report.Recommendation != "" {
 		_, _ = fmt.Fprintf(out, "\nRecommendation:\n  %s\n", report.Recommendation)
 	}
@@ -244,6 +350,14 @@ func writeReplayLabMarkdown(out io.Writer, report replayLabReport) error {
 	if report.CandidateResult != nil {
 		writeReplayLabSummaryMarkdown(out, "Candidate HPA", *report.CandidateResult)
 	}
+	if len(report.ProposedConfig) > 0 {
+		_, _ = fmt.Fprintln(out, "## Proposed Config")
+		_, _ = fmt.Fprintln(out)
+		for _, key := range sortedReplayConfigKeys(report.ProposedConfig) {
+			_, _ = fmt.Fprintf(out, "- **%s:** %s\n", key, report.ProposedConfig[key])
+		}
+		_, _ = fmt.Fprintln(out)
+	}
 	if report.Recommendation != "" {
 		_, _ = fmt.Fprintf(out, "## Recommendation\n\n%s\n\n", report.Recommendation)
 	}
@@ -273,4 +387,13 @@ func writeReplayLabSummaryMarkdown(out io.Writer, title string, summary replayLa
 		_, _ = fmt.Fprintf(out, "- **Additional worst-case pods:** %+d\n", summary.AdditionalWorstCasePods)
 	}
 	_, _ = fmt.Fprintln(out)
+}
+
+func sortedReplayConfigKeys(values map[string]string) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
