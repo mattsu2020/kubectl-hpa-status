@@ -22,6 +22,8 @@ type recordAnalysisItem struct {
 	Snapshots      int      `json:"snapshots" yaml:"snapshots"`
 	DesiredChanges int      `json:"desiredChanges" yaml:"desiredChanges"`
 	DirectionFlips int      `json:"directionFlips" yaml:"directionFlips"`
+	ReplicaMin     int32    `json:"replicaMin,omitempty" yaml:"replicaMin,omitempty"`
+	ReplicaMax     int32    `json:"replicaMax,omitempty" yaml:"replicaMax,omitempty"`
 	Level          string   `json:"level" yaml:"level"`
 	Suggestions    []string `json:"suggestions,omitempty" yaml:"suggestions,omitempty"`
 }
@@ -127,6 +129,7 @@ func analyzeTraceFlapping(_ string, trace hpaanalysis.TimelineTrace) recordAnaly
 		Snapshots: len(trace.Snapshots),
 		Level:     "LOW",
 	}
+	item.ReplicaMin, item.ReplicaMax = traceReplicaRange(trace)
 	var lastDesired int32
 	var lastDirection int32
 	for i, snap := range trace.Snapshots {

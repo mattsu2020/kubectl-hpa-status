@@ -118,6 +118,7 @@ type listOptions struct {
 	problem        bool
 	summary        bool
 	gitopsDrift    bool
+	conflicts      bool
 }
 
 // watchOptions holds flags specific to the watch / TUI commands.
@@ -308,6 +309,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newLintCommand(opts))
 	root.AddCommand(newGitOpsCommand(opts))
 	root.AddCommand(newAlertsCommand())
+	root.AddCommand(newFlapCommand(opts))
 	root.AddCommand(newAnalyzeRecordCommand(opts))
 	root.AddCommand(newCompatCommand(opts))
 	root.AddCommand(newVersionCommand())

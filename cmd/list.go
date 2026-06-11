@@ -59,10 +59,15 @@ func newScanCommand(opts *options) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&opts.summary, "summary", false, "include cluster summary and prioritized actions in markdown/html reports")
+	cmd.Flags().BoolVar(&opts.conflicts, "conflicts", false, "detect HPAs and related controllers that may conflict on the same scale target")
 	return cmd
 }
 
 func runList(ctx context.Context, out io.Writer, opts *options) error {
+	if opts.conflicts {
+		return runConflictScan(ctx, out, opts)
+	}
+
 	client, err := opts.newClient()
 	if err != nil {
 		return reportListError(out, opts.output, fmt.Errorf("failed to create Kubernetes client from kubeconfig/context flags: %w", err))

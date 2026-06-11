@@ -172,6 +172,68 @@ func TestRunAnalyzeRecordDetectsFlapping(t *testing.T) {
 	}
 }
 
+func TestRunFlapFromRecordDetectsReplicaRange(t *testing.T) {
+	tmp, err := os.CreateTemp(t.TempDir(), "hpa-history-*.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tmp.Close() }()
+
+	trace := hpaanalysis.TimelineTrace{
+		Namespace: "prod",
+		HPAName:   "web",
+		Snapshots: []hpaanalysis.TimelineSnapshot{
+			{Desired: 4},
+			{Desired: 9},
+			{Desired: 5},
+			{Desired: 10},
+		},
+	}
+	if err := writeRecordLine(tmp, trace); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	opts := &options{commonOptions: commonOptions{namespace: "prod"}}
+	if err := runFlapFromRecord(&buf, opts, "web", tmp.Name()); err != nil {
+		t.Fatalf("runFlapFromRecord returned error: %v", err)
+	}
+	output := buf.String()
+	if !strings.Contains(output, "Flapping Analysis: prod/web") ||
+		!strings.Contains(output, "direction changes: 2") ||
+		!strings.Contains(output, "replica range: 4 -> 10") {
+		t.Fatalf("expected flapping report, got:\n%s", output)
+	}
+}
+
+func TestRunConflictScanDetectsMultipleHPAsAndKEDA(t *testing.T) {
+	first := kube.BuildHPA("prod", "web-cpu")
+	first.Spec.ScaleTargetRef.Name = "web"
+	second := kube.BuildHPA("prod", "web-keda")
+	second.Spec.ScaleTargetRef.Name = "web"
+	second.Labels = map[string]string{"scaledobject.keda.sh/name": "web"}
+
+	fakeClient := kube.NewFakeClient(first, second)
+	opts := &options{
+		commonOptions: commonOptions{
+			clientOverride: fakeClient,
+			namespace:      "prod",
+		},
+		listOptions: listOptions{conflicts: true},
+	}
+
+	var buf bytes.Buffer
+	if err := runConflictScan(context.Background(), &buf, opts); err != nil {
+		t.Fatalf("runConflictScan returned error: %v", err)
+	}
+	output := buf.String()
+	if !strings.Contains(output, "Conflicts:") ||
+		!strings.Contains(output, "multiple HPAs target the same scale subresource") ||
+		!strings.Contains(output, "KEDA-managed HPA") {
+		t.Fatalf("expected conflict scan output, got:\n%s", output)
+	}
+}
+
 func TestStatusHiddenFactorsText(t *testing.T) {
 	hpa := kube.BuildHPA("default", "web",
 		kube.WithReplicas(3, 3),
