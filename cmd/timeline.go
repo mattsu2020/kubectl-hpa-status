@@ -93,17 +93,35 @@ func newRecordCommand(opts *options) *cobra.Command {
 }
 
 func newReplayCommand(opts *options) *cobra.Command {
+	var fromRecord string
+	var candidate string
+	var compare string
 	cmd := &cobra.Command{
-		Use:   "replay FILE",
-		Short: "Replay a recorded HPA timeline trace from a JSON file",
-		Args:  cobra.ExactArgs(1),
+		Use:   "replay [FILE|NAME]",
+		Short: "Replay a recorded HPA timeline trace or run a what-if lab from record",
+		Args:  cobra.MaximumNArgs(1),
 		ValidArgsFunction: func(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			return nil, cobra.ShellCompDirectiveDefault
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if fromRecord != "" {
+				if len(args) != 1 {
+					return fmt.Errorf("replay --from-record requires an HPA name")
+				}
+				if compare != "" && compare != "current,candidate" {
+					return fmt.Errorf("unsupported --compare %q (use current,candidate)", compare)
+				}
+				return runReplayLab(cmd.OutOrStdout(), opts, args[0], fromRecord, candidate)
+			}
+			if len(args) != 1 {
+				return fmt.Errorf("replay requires FILE, or NAME with --from-record")
+			}
 			return runReplay(cmd.OutOrStdout(), opts, args[0])
 		},
 	}
+	cmd.Flags().StringVar(&fromRecord, "from-record", "", "read durable JSONL/JSON trace written by record")
+	cmd.Flags().StringVar(&candidate, "candidate", "", "candidate HPA YAML to compare against recorded behavior")
+	cmd.Flags().StringVar(&compare, "compare", "current,candidate", "comparison mode for --from-record: current,candidate")
 	return cmd
 }
 

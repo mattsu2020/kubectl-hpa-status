@@ -1268,6 +1268,79 @@ func TestRunReplay_FileNotFound(t *testing.T) {
 	}
 }
 
+func TestRunReplayLab_FromRecordWithCandidate(t *testing.T) {
+	now := time.Now()
+	trace := hpaanalysis.TimelineTrace{
+		HPAName:   "web",
+		Namespace: "prod",
+		Start:     now,
+		Interval:  5 * time.Second,
+		Snapshots: []hpaanalysis.TimelineSnapshot{
+			{Timestamp: now, Desired: 3, Health: "OK"},
+			{Timestamp: now.Add(5 * time.Second), Desired: 8, Health: "OK"},
+			{Timestamp: now.Add(10 * time.Second), Desired: 12, Health: "LIMITED"},
+			{Timestamp: now.Add(15 * time.Second), Desired: 6, Health: "OK"},
+		},
+	}
+	recordFile, err := os.CreateTemp("", "hpa-record-*.jsonl")
+	if err != nil {
+		t.Fatalf("failed to create record file: %v", err)
+	}
+	defer func() { _ = os.Remove(recordFile.Name()) }()
+	if err := writeRecordLine(recordFile, trace); err != nil {
+		t.Fatalf("failed to write record line: %v", err)
+	}
+	if err := recordFile.Close(); err != nil {
+		t.Fatalf("failed to close record file: %v", err)
+	}
+
+	candidate := kube.BuildHPA("prod", "web", kube.WithMinMax(2, 14))
+	candidateData, err := json.Marshal(candidate)
+	if err != nil {
+		t.Fatalf("failed to marshal candidate: %v", err)
+	}
+	candidateFile, err := os.CreateTemp("", "candidate-hpa-*.yaml")
+	if err != nil {
+		t.Fatalf("failed to create candidate file: %v", err)
+	}
+	defer func() { _ = os.Remove(candidateFile.Name()) }()
+	if _, err := candidateFile.Write(candidateData); err != nil {
+		t.Fatalf("failed to write candidate file: %v", err)
+	}
+	if err := candidateFile.Close(); err != nil {
+		t.Fatalf("failed to close candidate file: %v", err)
+	}
+
+	var buf bytes.Buffer
+	opts := &options{commonOptions: commonOptions{namespace: "prod", color: "never"}}
+	if err := runReplayLab(&buf, opts, "web", recordFile.Name(), candidateFile.Name()); err != nil {
+		t.Fatalf("runReplayLab returned error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "Replay Summary: web / prod") ||
+		!strings.Contains(output, "Candidate HPA") ||
+		!strings.Contains(output, "additional worst-case pods: +2") {
+		t.Fatalf("expected replay lab comparison, got:\n%s", output)
+	}
+}
+
+func TestRunProfileDetectShowsAssumptions(t *testing.T) {
+	fakeClient := kube.NewFakeClient()
+	opts := &options{commonOptions: commonOptions{clientOverride: fakeClient}}
+
+	var buf bytes.Buffer
+	if err := runProfileDetect(context.Background(), &buf, opts); err != nil {
+		t.Fatalf("runProfileDetect returned error: %v", err)
+	}
+	output := buf.String()
+	if !strings.Contains(output, "HPA Controller Profile") ||
+		!strings.Contains(output, "Assumed / Effective") ||
+		!strings.Contains(output, "--controller-profile-file") {
+		t.Fatalf("expected profile detector output, got:\n%s", output)
+	}
+}
+
 // --------------------------------------------------------------------------
 // Timeline --since (retrospective) integration tests
 // --------------------------------------------------------------------------
@@ -1290,7 +1363,7 @@ func TestRunTimeline_Retrospective(t *testing.T) {
 	err := runRetrospectiveTimeline(context.Background(), &buf, &options{
 		commonOptions: commonOptions{
 			clientOverride: fakeClient,
-			color:         "never",
+			color:          "never",
 		},
 	}, "web", 30*time.Minute, false)
 	if err != nil {
@@ -1325,7 +1398,7 @@ func TestRunTimeline_Retrospective_JSON(t *testing.T) {
 	err := runRetrospectiveTimeline(context.Background(), &buf, &options{
 		commonOptions: commonOptions{
 			clientOverride: fakeClient,
-			output:        "json",
+			output:         "json",
 		},
 	}, "web", 30*time.Minute, false)
 	if err != nil {
@@ -1349,7 +1422,7 @@ func TestRunTimeline_Retrospective_NoEvents(t *testing.T) {
 	err := runRetrospectiveTimeline(context.Background(), &buf, &options{
 		commonOptions: commonOptions{
 			clientOverride: fakeClient,
-			color:         "never",
+			color:          "never",
 		},
 	}, "web", 30*time.Minute, false)
 	if err != nil {
