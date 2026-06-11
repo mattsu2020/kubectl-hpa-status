@@ -234,6 +234,48 @@ func TestRunConflictScanDetectsMultipleHPAsAndKEDA(t *testing.T) {
 	}
 }
 
+func TestRunReadinessEnablesImpactSections(t *testing.T) {
+	hpa := kube.BuildHPA("default", "web")
+	fakeClient := kube.NewFakeClient(hpa)
+	opts := &options{
+		commonOptions: commonOptions{clientOverride: fakeClient},
+		statusOptions: statusOptions{events: eventOption{enabled: false}},
+	}
+
+	var buf bytes.Buffer
+	if err := runReadiness(context.Background(), &buf, opts, []string{"web"}); err != nil {
+		t.Fatalf("runReadiness returned error: %v", err)
+	}
+	output := buf.String()
+	if !strings.Contains(output, "Readiness Impact") ||
+		!strings.Contains(output, "scale target selector could not be resolved") {
+		t.Fatalf("expected readiness impact output, got:\n%s", output)
+	}
+}
+
+func TestRunFleetSummarizesMaxSurgeRisk(t *testing.T) {
+	web := kube.BuildHPA("prod", "web", kube.WithReplicas(3, 5), kube.WithMinMax(2, 10))
+	api := kube.BuildHPA("prod", "api", kube.WithReplicas(6, 6), kube.WithMinMax(2, 8))
+	fakeClient := kube.NewFakeClient(web, api)
+	opts := &options{
+		commonOptions: commonOptions{
+			clientOverride: fakeClient,
+			namespace:      "prod",
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := runFleet(context.Background(), &buf, opts, "max-surge"); err != nil {
+		t.Fatalf("runFleet returned error: %v", err)
+	}
+	output := buf.String()
+	if !strings.Contains(output, "Fleet HPA Risk Summary") ||
+		!strings.Contains(output, "worst-case pods at maxReplicas: 18") ||
+		!strings.Contains(output, "additional pods: +9") {
+		t.Fatalf("expected fleet risk summary, got:\n%s", output)
+	}
+}
+
 func TestStatusHiddenFactorsText(t *testing.T) {
 	hpa := kube.BuildHPA("default", "web",
 		kube.WithReplicas(3, 3),
