@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 
@@ -20,6 +21,9 @@ func TestNewDoctorCommand(t *testing.T) {
 	}
 	if !strings.Contains(cmd.Short, "Diagnose HPA scaling failures") {
 		t.Fatalf("unexpected Short: %q", cmd.Short)
+	}
+	if cmd.Flags().Lookup("startup-context") == nil {
+		t.Fatal("expected doctor to expose --startup-context")
 	}
 }
 
@@ -93,6 +97,13 @@ func TestNewContextCommands(t *testing.T) {
 	containerCmd := newContainerAdvisorCommand(opts)
 	if containerCmd.Use != "container-advisor NAME [NAME...]" {
 		t.Fatalf("unexpected container-advisor Use: %q", containerCmd.Use)
+	}
+	if !slices.Contains(containerCmd.Aliases, "container-metric") {
+		t.Fatalf("expected container-advisor aliases to include container-metric, got %v", containerCmd.Aliases)
+	}
+	ownershipCmd := newOwnershipCommand(opts)
+	if ownershipCmd.Use != "ownership NAME [NAME...]" {
+		t.Fatalf("unexpected ownership Use: %q", ownershipCmd.Use)
 	}
 	advisorCmd := newAdvisorCommand(opts)
 	if advisorCmd.Use != "advisor" {

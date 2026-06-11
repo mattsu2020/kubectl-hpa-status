@@ -18,6 +18,7 @@ func newDoctorCommand(opts *options) *cobra.Command {
 		},
 	}
 	cmd.Flags().Bool("startup", false, "include startup/readiness probe impact checks (enabled by doctor)")
+	cmd.Flags().Bool("startup-context", false, "include startup/readiness probe impact checks (enabled by doctor)")
 	return cmd
 }
 

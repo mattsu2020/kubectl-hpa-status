@@ -10,6 +10,7 @@ import (
 func newContainerAdvisorCommand(opts *options) *cobra.Command {
 	return &cobra.Command{
 		Use:               "container-advisor NAME [NAME...]",
+		Aliases:           []string{"container-metric"},
 		Short:             "Suggest ContainerResource HPA metrics for multi-container workloads",
 		Args:              cobra.MinimumNArgs(1),
 		ValidArgsFunction: hpaNameCompletion(opts),

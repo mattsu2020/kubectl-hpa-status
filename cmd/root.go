@@ -315,6 +315,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newIncidentBundleCommand(opts))
 	root.AddCommand(newLintCommand(opts))
 	root.AddCommand(newGitOpsCommand(opts))
+	root.AddCommand(newOwnershipCommand(opts))
 	root.AddCommand(newAlertsCommand())
 	root.AddCommand(newFlapCommand(opts))
 	root.AddCommand(newAnalyzeRecordCommand(opts))

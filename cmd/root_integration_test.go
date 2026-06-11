@@ -1469,6 +1469,63 @@ func TestAdvisorContainerResourceCommand(t *testing.T) {
 	}
 }
 
+func TestOwnershipCommandDetectsReplicaFieldOwner(t *testing.T) {
+	replicas := int32(3)
+	hpa := kube.BuildHPA("default", "web",
+		kube.WithReplicas(6, 8),
+		kube.WithResourceMetric("cpu", 80, 70),
+	)
+	deploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "web",
+			Namespace: "default",
+			ManagedFields: []metav1.ManagedFieldsEntry{
+				{
+					Manager:    "argocd-controller",
+					Operation:  metav1.ManagedFieldsOperationApply,
+					APIVersion: "apps/v1",
+					FieldsType: "FieldsV1",
+					FieldsV1:   &metav1.FieldsV1{Raw: []byte(`{"f:spec":{"f:replicas":{}}}`)},
+				},
+			},
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &replicas,
+			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "web"}},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": "web"}},
+				Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "app"}}},
+			},
+		},
+	}
+	fakeClient := kube.NewFakeClient(hpa)
+	if _, err := fakeClient.AppsV1().Deployments("default").Create(context.Background(), deploy, metav1.CreateOptions{}); err != nil {
+		t.Fatalf("failed to create fake deployment: %v", err)
+	}
+
+	var buf bytes.Buffer
+	opts := &options{
+		commonOptions: commonOptions{
+			clientOverride: fakeClient,
+		},
+	}
+
+	if err := runOwnership(context.Background(), &buf, opts, []string{"web"}); err != nil {
+		t.Fatalf("runOwnership returned error: %v", err)
+	}
+	output := buf.String()
+	for _, want := range []string{
+		"Scale ownership: default/web",
+		"argocd-controller",
+		"spec.replicas=3 differs from HPA desiredReplicas=8",
+		"remove spec.replicas from GitOps manifests",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("expected output to contain %q, got:\n%s", want, output)
+		}
+	}
+}
+
 func TestRunProfileDetectShowsAssumptions(t *testing.T) {
 	fakeClient := kube.NewFakeClient()
 	opts := &options{commonOptions: commonOptions{clientOverride: fakeClient}}
