@@ -460,12 +460,7 @@ These features are available but have known limitations — see [Limitations](#l
 
 ### Planned
 
-- **TUI batch apply workflow:** In-TUI suggest and safe-confirmed apply for multiple HPAs, equivalent to CLI `list --problem --fix --apply`.
-- **Custom / External Metrics deep dive:** Adapter-specific estimation and Prometheus/custom metrics verification hints beyond API discovery and HPA-visible freshness signals.
-- **Report summary enhancement:** Cluster-wide summary, bottom-N health scores, and recommended actions list.
-- **Informer-based watch:** Opt-in informer updates for large-scale clusters alongside current polling.
-- **KEP-6111 structured decision adapter:** Adapter boundary to convert future structured HPA decision fields into existing Analysis.
-- **Supply-chain hardening:** SLSA provenance and cosign signing for enterprise verification.
+Planned work is tracked in [ROADMAP.md](../ROADMAP.md) to keep long-term plans in one place.
 
 ## Demo Recordings
 

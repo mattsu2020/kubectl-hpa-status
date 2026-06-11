@@ -18,6 +18,10 @@ coverage:
 	$(GO) test -coverprofile=$(COVERAGE_OUT) ./...
 	$(GO) tool cover -func=$(COVERAGE_OUT)
 
+.PHONY: docs-check
+docs-check:
+	bash scripts/check-readme-sync.sh
+
 .PHONY: lint
 lint:
 	$(GO) vet ./...
@@ -35,7 +39,7 @@ krew:
 	$(GORELEASER) release --snapshot --clean --skip=publish
 
 .PHONY: release-check
-release-check:
+release-check: docs-check
 	$(GORELEASER) check
 
 .PHONY: release

@@ -1,6 +1,6 @@
 # kubectl-hpa-status
 
-[![CI](https://github.com/mattsui2020/kubectl-hpa-status/actions/workflows/ci.yml/badge.svg)](https://github.com/mattsu2020/kubectl-hpa-status/actions/workflows/ci.yml)
+[![CI](https://github.com/mattsu2020/kubectl-hpa-status/actions/workflows/ci.yml/badge.svg)](https://github.com/mattsu2020/kubectl-hpa-status/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/mattsu2020/kubectl-hpa-status/actions/workflows/codeql.yml/badge.svg)](https://github.com/mattsu2020/kubectl-hpa-status/actions/workflows/codeql.yml)
 [![Release](https://github.com/mattsu2020/kubectl-hpa-status/actions/workflows/release.yml/badge.svg)](https://github.com/mattsu2020/kubectl-hpa-status/actions/workflows/release.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/mattsu2020/kubectl-hpa-status.svg)](https://pkg.go.dev/github.com/mattsu2020/kubectl-hpa-status)
@@ -88,6 +88,23 @@ Recommended actions:
 | スケールダウン安定化 | [stabilized-output.svg](images/stabilized-output.svg) | |
 | 複数メトリクス推定 | [multi-metric-output.svg](images/multi-metric-output.svg) | |
 
+## 5分で始める
+
+使い捨ての namespace とサンプル HPA から始めます。
+
+```sh
+kubectl apply -f examples/cpu-memory-hpa.yaml
+kubectl hpa_status status web-multi -n hpa-status-examples --explain
+kubectl hpa_status status web-multi -n hpa-status-examples --suggest
+kubectl hpa_status list -n hpa-status-examples --wide
+```
+
+まだインストールしていない場合は、このリポジトリ内で `kubectl hpa_status` を `go run .` に置き換えて実行できます。
+
+```sh
+go run . status web-multi -n hpa-status-examples --explain
+```
+
 ## インストール
 
 ### Krew（推奨）
@@ -161,8 +178,21 @@ kubectl hpa status list -n hpa-status-examples --wide
 | ドキュメント | 内容 |
 | --- | --- |
 | [Usage Guide](docs/usage.md) | フラグ参照、設定ファイル、ヘルススコア、TUIキーバインド、JSONPath例 |
-| [Reference](docs/reference.md) | Doctor、Safe Fix Flow、マルチメトリクストレース、Simulator、Auditor、Timeline、トラブルシューティング、ロードマップ |
+| [Reference](docs/reference.md) | Doctor、Safe Fix Flow、マルチメトリクストレース、Simulator、Auditor、Timeline、トラブルシューティング |
 | [Troubleshooting](docs/troubleshooting.md) | 症状/コマンド表、FAQ |
+| [Roadmap](ROADMAP.md) | TUI、メトリクス、KEP-6111、サプライチェーン強化の計画 |
+| [Promotion Kit](docs/social-promotion.md) | X、Reddit、Slack、Connpass、Zenn 向けのリリース告知テンプレート |
+
+## コミュニティとプロモーション
+
+- HPA 運用に役立った場合は、リポジトリの Star や Fork をお願いします。
+- デモ画像 [images/demo.png](images/demo.png) と [images/](images/) のスクリーンショット集を紹介素材として利用できます。
+- リリースやデモを告知するときは [docs/social-promotion.md](docs/social-promotion.md) のテンプレートを使えます。
+- GitHub Discussions が有効化されたら、バグ報告にはしづらい質問、運用パターン、トラブルシューティング共有に利用してください。
+
+## ロードマップ
+
+現在のロードマップは [ROADMAP.md](ROADMAP.md) で管理しています。直近の優先事項は、TUI 内 batch apply、ヘルススコア説明性の向上、E2E カバレッジ拡充、KEP-6111 対応準備、リリースのサプライチェーン強化です。
 
 ## 開発
 
@@ -170,6 +200,7 @@ kubectl hpa status list -n hpa-status-examples --wide
 make build
 make test
 make coverage
+make docs-check
 make lint
 ```
 

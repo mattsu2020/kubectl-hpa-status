@@ -81,7 +81,8 @@ can be checked without a live cluster.
 ## Good first contribution areas
 
 - Documentation: keep `README.md` and `README.ja.md` aligned when flags,
-  examples, install paths, or limitations change.
+  examples, install paths, or limitations change. Run `make docs-check` before
+  opening a PR.
 - Translation: improve Japanese wording in `README.ja.md` and user-facing
   labels without changing command semantics.
 - Community content: turn troubleshooting patterns into short blog posts,
@@ -93,6 +94,9 @@ can be checked without a live cluster.
   `pkg/hpa/suggestions.go`, especially cases where HPA status is ambiguous.
 - UX tests: add command-level tests for new flags, sorting, filtering, output
   formats, and completion behavior.
+- Roadmap tasks: pick a small item from [ROADMAP.md](ROADMAP.md), open an issue
+  describing the proposed scope, and keep the first PR focused on one command or
+  one output path.
 
 When opening issues for first-time contributors, prefer small, verifiable
 scopes and add the `good first issue` label. Include:

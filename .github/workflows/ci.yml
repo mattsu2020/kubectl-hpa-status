@@ -43,20 +43,7 @@ jobs:
           fi
 
       - name: Check README sync
-        run: |
-          EN_SECTIONS=$(grep "^##" README.md | sed 's/\[.*\](.*)//' | sed 's/[[:space:]]*$//')
-          JA_SECTIONS=$(grep "^##" README.ja.md | sed 's/\[.*\](.*)//' | sed 's/[[:space:]]*$//')
-          EN_COUNT=$(echo "$EN_SECTIONS" | wc -l | tr -d ' ')
-          JA_COUNT=$(echo "$JA_SECTIONS" | wc -l | tr -d ' ')
-          echo "README.md sections: $EN_COUNT"
-          echo "README.ja.md sections: $JA_COUNT"
-          if [ "$EN_COUNT" -ne "$JA_COUNT" ]; then
-            echo "::warning::Section count differs: README.md has $EN_COUNT sections, README.ja.md has $JA_COUNT sections"
-            echo "--- README.md sections ---"
-            echo "$EN_SECTIONS"
-            echo "--- README.ja.md sections ---"
-            echo "$JA_SECTIONS"
-          fi
+        run: bash scripts/check-readme-sync.sh
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v7

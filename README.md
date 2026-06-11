@@ -88,6 +88,23 @@ Recommended actions:
 | Scale-down stabilization | [stabilized-output.svg](images/stabilized-output.svg) | |
 | Multi-metric estimation | [multi-metric-output.svg](images/multi-metric-output.svg) | |
 
+## Quick Start
+
+Start from a disposable namespace and one sample HPA:
+
+```sh
+kubectl apply -f examples/cpu-memory-hpa.yaml
+kubectl hpa_status status web-multi -n hpa-status-examples --explain
+kubectl hpa_status status web-multi -n hpa-status-examples --suggest
+kubectl hpa_status list -n hpa-status-examples --wide
+```
+
+If you have not installed the plugin yet, replace `kubectl hpa_status` with `go run .` from this repository:
+
+```sh
+go run . status web-multi -n hpa-status-examples --explain
+```
+
 ## Install
 
 ### Krew (recommended)
@@ -161,8 +178,21 @@ kubectl hpa status list -n hpa-status-examples --wide
 | Document | Content |
 | --- | --- |
 | [Usage Guide](docs/usage.md) | Flag reference, config file, health score, TUI key bindings, JSONPath examples |
-| [Reference](docs/reference.md) | Doctor command, safe fix flow, multi-metric trace, simulator, auditor, timeline, troubleshooting, roadmap |
+| [Reference](docs/reference.md) | Doctor command, safe fix flow, multi-metric trace, simulator, auditor, timeline, troubleshooting |
 | [Troubleshooting](docs/troubleshooting.md) | Symptom/command table and FAQ |
+| [Roadmap](ROADMAP.md) | Planned TUI, metrics, KEP-6111, and supply-chain work |
+| [Promotion Kit](docs/social-promotion.md) | Release announcement drafts for X, Reddit, Slack, Connpass, and Zenn |
+
+## Community and Promotion
+
+- Star or fork the repository if the plugin helps your HPA operations.
+- Share the demo image [images/demo.png](images/demo.png) and the screenshot gallery in [images/](images/).
+- Use the announcement templates in [docs/social-promotion.md](docs/social-promotion.md) when posting a release or demo.
+- Open GitHub Discussions when it is enabled for questions, workflows, and troubleshooting patterns that do not fit a bug report.
+
+## Roadmap
+
+The active roadmap is tracked in [ROADMAP.md](ROADMAP.md). Near-term priorities are in-TUI batch apply, clearer health-score explanations, broader E2E coverage, KEP-6111 readiness, and release supply-chain hardening.
 
 ## Development
 
@@ -170,6 +200,7 @@ kubectl hpa status list -n hpa-status-examples --wide
 make build
 make test
 make coverage
+make docs-check
 make lint
 ```
 

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Added a dedicated roadmap document and social promotion kit.
+- Added a `make docs-check` README synchronization check for English/Japanese documentation structure.
+- Added five-minute quick start sections to both READMEs.
+
+### Fixed
+- Fixed the Japanese README CI badge repository URL.
+
 ## [0.4.0] - 2026-06-02
 
 ### Added
