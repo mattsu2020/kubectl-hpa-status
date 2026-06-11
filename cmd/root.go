@@ -278,6 +278,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newStatusCommand(opts))
 	root.AddCommand(newExplainCommand(opts))
 	root.AddCommand(newDoctorCommand(opts))
+	root.AddCommand(newWhyNotScaleCommand(opts))
 	root.AddCommand(newReadinessCommand(opts))
 	root.AddCommand(newAnalyzeCommand(opts))
 	root.AddCommand(newAssumptionsCommand(opts))

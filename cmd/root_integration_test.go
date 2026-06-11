@@ -1504,6 +1504,68 @@ func writeTempCandidateHPA(t *testing.T, hpa *autoscalingv2.HorizontalPodAutosca
 	return file.Name()
 }
 
+func TestRunWhyNotScaleShowsObservedBlockersAndUnknowns(t *testing.T) {
+	hpa := kube.BuildHPA("default", "web",
+		kube.WithReplicas(10, 10),
+		kube.WithMinMax(2, 10),
+		kube.WithResourceMetric("cpu", 80, 120),
+		kube.WithScalingLimitedTrue("TooManyReplicas"),
+	)
+	fakeClient := kube.NewFakeClient(hpa)
+
+	var buf bytes.Buffer
+	opts := &options{
+		commonOptions: commonOptions{
+			clientOverride: fakeClient,
+		},
+	}
+	if err := runWhyNotScale(context.Background(), &buf, opts, []string{"web"}); err != nil {
+		t.Fatalf("runWhyNotScale returned error: %v", err)
+	}
+	output := buf.String()
+	for _, want := range []string{
+		"Why not scale: default/web",
+		"HPA is at maxReplicas",
+		"Resource metric cpu ratio=1.50",
+		"maxReplicas may be capping scale-up",
+		"controller-internal per-metric replica recommendations are not exposed",
+		"kubectl describe hpa web -n default",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("expected output to contain %q, got:\n%s", want, output)
+		}
+	}
+}
+
+func TestRunWhyNotScaleJSON(t *testing.T) {
+	hpa := kube.BuildHPA("default", "api",
+		kube.WithReplicas(3, 3),
+		kube.WithResourceMetric("cpu", 60, 90),
+	)
+	fakeClient := kube.NewFakeClient(hpa)
+
+	var buf bytes.Buffer
+	opts := &options{
+		commonOptions: commonOptions{
+			clientOverride: fakeClient,
+			output:         "json",
+		},
+	}
+	if err := runWhyNotScale(context.Background(), &buf, opts, []string{"api"}); err != nil {
+		t.Fatalf("runWhyNotScale returned error: %v", err)
+	}
+	var report whyNotScaleReport
+	if err := json.Unmarshal(buf.Bytes(), &report); err != nil {
+		t.Fatalf("failed to parse JSON output: %v\n%s", err, buf.String())
+	}
+	if report.Name != "api" || report.Namespace != "default" {
+		t.Fatalf("unexpected report identity: %#v", report)
+	}
+	if len(report.Observed) == 0 || len(report.Unknown) == 0 || len(report.NextChecks) == 0 {
+		t.Fatalf("expected observed/unknown/next checks in report: %#v", report)
+	}
+}
+
 func TestAdvisorContainerResourceCommand(t *testing.T) {
 	hpa := kube.BuildHPA("default", "web", kube.WithResourceMetric("cpu", 60, 70))
 	replicas := int32(2)
