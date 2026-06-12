@@ -8,7 +8,7 @@ import (
 )
 
 func newReadinessCommand(opts *options) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:               "readiness NAME [NAME...]",
 		Aliases:           []string{"startup"},
 		Short:             "Analyze readiness, startup, and not-yet-ready pod impact on HPA decisions",
@@ -18,6 +18,8 @@ func newReadinessCommand(opts *options) *cobra.Command {
 			return runReadiness(cmd.Context(), cmd.OutOrStdout(), opts, args)
 		},
 	}
+	cmd.AddCommand(newReadinessDoctorCommand(opts))
+	return cmd
 }
 
 func runReadiness(ctx context.Context, out io.Writer, opts *options, names []string) error {

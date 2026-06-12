@@ -99,6 +99,7 @@ func newReplayCommand(opts *options) *cobra.Command {
 	var score string
 	var setOverrides []string
 	var replayHPA string
+	var propose string
 	var setMaxReplicas int32
 	var setMinReplicas int32
 	var setScaleDownStabilization time.Duration
@@ -112,6 +113,10 @@ func newReplayCommand(opts *options) *cobra.Command {
 			return nil, cobra.ShellCompDirectiveDefault
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// --propose is an alias for --candidate.
+			if propose != "" && len(candidates) == 0 {
+				candidates = append([]string{propose}, candidates...)
+			}
 			if replayHPA != "" {
 				if len(args) != 1 {
 					return fmt.Errorf("replay --hpa requires a record FILE argument")
@@ -158,6 +163,7 @@ func newReplayCommand(opts *options) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&fromRecord, "from-record", "", "read durable JSONL/JSON trace written by record")
 	cmd.Flags().StringArrayVar(&candidates, "candidate", nil, "candidate HPA YAML to compare against recorded behavior; repeatable")
+	cmd.Flags().StringVar(&propose, "propose", "", "proposed behavior YAML file (alias for --candidate)")
 	cmd.Flags().StringVar(&compare, "compare", "current,candidate", "comparison mode for --from-record: current,candidate")
 	cmd.Flags().StringVar(&score, "score", "", "comma-separated replay scoring dimensions to emphasize, e.g. slo,cost,churn")
 	cmd.Flags().StringArrayVar(&setOverrides, "set", nil, "candidate override for replay lab, e.g. maxReplicas=30 or scaleDown.stabilizationWindowSeconds=600")

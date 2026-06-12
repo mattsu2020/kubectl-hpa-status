@@ -28,6 +28,7 @@ func newMetricsCommand(opts *options) *cobra.Command {
 		Args:  cobra.NoArgs,
 	}
 	cmd.AddCommand(newMetricsProbeCommand(opts))
+	cmd.AddCommand(newMetricsContractCommand(opts))
 	return cmd
 }
 

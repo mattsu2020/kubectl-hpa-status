@@ -841,6 +841,83 @@ type ReadinessImpact struct {
 	NextChecks              []string `json:"nextChecks,omitempty" yaml:"nextChecks,omitempty"`
 }
 
+// ---------------------------------------------------------------------------
+// Readiness Doctor types (readiness doctor command)
+// ---------------------------------------------------------------------------
+
+// ReadinessDoctorReport holds the focused readiness diagnostic for an HPA
+// scale target, covering pod age distribution, probe configuration, CPU
+// initialization window impact, and metric exclusion estimates.
+type ReadinessDoctorReport struct {
+	Namespace          string                    `json:"namespace" yaml:"namespace"`
+	Name               string                    `json:"name" yaml:"name"`
+	Target             string                    `json:"target" yaml:"target"`
+	Summary            string                    `json:"summary" yaml:"summary"`
+	PodAgeDistribution ReadinessPodAgeDistribution `json:"podAgeDistribution" yaml:"podAgeDistribution"`
+	ProbeAnalysis      ReadinessProbeAnalysis     `json:"probeAnalysis" yaml:"probeAnalysis"`
+	InitializationImpact ReadinessInitImpact       `json:"initializationImpact" yaml:"initializationImpact"`
+	ExclusionEstimate  ReadinessExclusionEstimate  `json:"exclusionEstimate" yaml:"exclusionEstimate"`
+	Recommendations    []string                   `json:"recommendations,omitempty" yaml:"recommendations,omitempty"`
+	NextChecks         []string                   `json:"nextChecks,omitempty" yaml:"nextChecks,omitempty"`
+}
+
+// ReadinessPodAgeDistribution summarizes pod age across the scale target.
+type ReadinessPodAgeDistribution struct {
+	TotalPods       int32 `json:"totalPods" yaml:"totalPods"`
+	YoungPods       int32 `json:"youngPods" yaml:"youngPods"`
+	MaturePods      int32 `json:"maturePods" yaml:"maturePods"`
+	ReadyYoungPods  int32 `json:"readyYoungPods" yaml:"readyYoungPods"`
+	NotReadyYoungPods int32 `json:"notReadyYoungPods" yaml:"notReadyYoungPods"`
+}
+
+// ReadinessProbeAnalysis evaluates probe configuration on the pod template.
+type ReadinessProbeAnalysis struct {
+	HasStartupProbe          bool     `json:"hasStartupProbe" yaml:"hasStartupProbe"`
+	HasReadinessProbe        bool     `json:"hasReadinessProbe" yaml:"hasReadinessProbe"`
+	ReadinessInitialDelaySec int32    `json:"readinessInitialDelaySec" yaml:"readinessInitialDelaySec"`
+	StartupMaxDelaySec       int32    `json:"startupMaxDelaySec,omitempty" yaml:"startupMaxDelaySec,omitempty"`
+	Assessment               string   `json:"assessment" yaml:"assessment"`
+	Warnings                 []string `json:"warnings,omitempty" yaml:"warnings,omitempty"`
+}
+
+// ReadinessInitImpact estimates how the CPU initialization window affects HPA.
+type ReadinessInitImpact struct {
+	CPUInitPeriodSeconds  int32  `json:"cpuInitPeriodSeconds" yaml:"cpuInitPeriodSeconds"`
+	InitialReadinessDelay int32  `json:"initialReadinessDelaySeconds" yaml:"initialReadinessDelaySeconds"`
+	EstimatedExcludedPods int32  `json:"estimatedExcludedPods" yaml:"estimatedExcludedPods"`
+	ImpactDescription     string `json:"impactDescription" yaml:"impactDescription"`
+}
+
+// ReadinessExclusionEstimate estimates pods excluded from HPA metric calculation.
+type ReadinessExclusionEstimate struct {
+	NotReadyPods           int32  `json:"notReadyPods" yaml:"notReadyPods"`
+	MissingMetricPods      int32  `json:"missingMetricPods" yaml:"missingMetricPods"`
+	EstimatedExcludedCount int32  `json:"estimatedExcludedCount" yaml:"estimatedExcludedCount"`
+	Explanation            string `json:"explanation" yaml:"explanation"`
+}
+
+// ReadinessDoctorInput is assembled by the cmd layer from Kubernetes API data.
+type ReadinessDoctorInput struct {
+	Namespace            string
+	HPAName              string
+	Target               string
+	PodDetails           []ReadinessDoctorPod
+	HasStartupProbe      bool
+	HasReadinessProbe    bool
+	ReadinessInitialDelay int32
+	StartupMaxDelay      int32
+	CPUInitPeriodSeconds int32
+	InitialReadinessDelay int32
+	MissingMetricPods    int32
+}
+
+// ReadinessDoctorPod describes a single pod for readiness analysis.
+type ReadinessDoctorPod struct {
+	Name       string
+	Ready      bool
+	AgeSeconds int64
+}
+
 // RolloutDiagnosis summarizes rollout state that can make an HPA look broken
 // even when the HPA decision itself is reasonable.
 type RolloutDiagnosis struct {
@@ -1782,11 +1859,15 @@ type AutoscalerMap struct {
 	Recommendation string `json:"recommendation,omitempty" yaml:"recommendation,omitempty"`
 	// NextActions lists concrete actions to take.
 	NextActions []string `json:"nextActions,omitempty" yaml:"nextActions,omitempty"`
+	// Risk is the overall risk level: "high", "medium", "low", or "none".
+	Risk string `json:"risk" yaml:"risk"`
+	// NextChecks lists kubectl verification commands for detected resources.
+	NextChecks []string `json:"nextChecks,omitempty" yaml:"nextChecks,omitempty"`
 }
 
 // AutoscalerMapLayer describes one layer in the autoscaling chain.
 type AutoscalerMapLayer struct {
-	// Name is the layer name: "hpa", "workload", "pods", "nodes", "autoscaler".
+	// Name is the layer name: "hpa", "workload", "pods", "nodes", "autoscaler", "external-scaler", "constraints".
 	Name string `json:"name" yaml:"name"`
 	// Resource is the resource identifier at this layer.
 	Resource string `json:"resource" yaml:"resource"`
@@ -1841,6 +1922,62 @@ type AutoscalerMapInput struct {
 	PendingPods []PendingPodInfo
 	// ScalingActive indicates whether the HPA ScalingActive condition is True.
 	ScalingActive bool
+	// KEDAInfo holds KEDA ScaledObject information if detected.
+	KEDAInfo *AutoscalerMapKEDAInfo
+	// VPAInfo holds VPA conflict information if detected.
+	VPAInfo *AutoscalerMapVPAInfo
+	// PDBs lists PodDisruptionBudgets in the namespace affecting the scale target.
+	PDBs []AutoscalerMapPDB
+	// Quotas lists ResourceQuotas near their limits in the namespace.
+	Quotas []AutoscalerMapQuota
+}
+
+// AutoscalerMapKEDAInfo holds KEDA ScaledObject information for the autoscaler map.
+type AutoscalerMapKEDAInfo struct {
+	// ScaledObjectName is the name of the KEDA ScaledObject.
+	ScaledObjectName string `json:"scaledObjectName" yaml:"scaledObjectName"`
+	// TriggerCount is the number of triggers configured.
+	TriggerCount int `json:"triggerCount" yaml:"triggerCount"`
+	// Active indicates whether the ScaledObject is active.
+	Active bool `json:"active" yaml:"active"`
+}
+
+// AutoscalerMapVPAInfo holds VPA conflict information for the autoscaler map.
+type AutoscalerMapVPAInfo struct {
+	// VPAName is the name of the conflicting VPA.
+	VPAName string `json:"vpaName" yaml:"vpaName"`
+	// TargetRef is the VPA target reference.
+	TargetRef string `json:"targetRef" yaml:"targetRef"`
+	// UpdateMode is the VPA update mode.
+	UpdateMode string `json:"updateMode" yaml:"updateMode"`
+	// ControlledResources lists the resource types controlled by VPA.
+	ControlledResources []string `json:"controlledResources,omitempty" yaml:"controlledResources,omitempty"`
+	// ConflictResources lists the resource types that conflict with HPA.
+	ConflictResources []string `json:"conflictResources,omitempty" yaml:"conflictResources,omitempty"`
+}
+
+// AutoscalerMapPDB represents a PodDisruptionBudget relevant to the autoscaler map.
+type AutoscalerMapPDB struct {
+	// Name is the PDB name.
+	Name string `json:"name" yaml:"name"`
+	// MinAvailable is the minAvailable setting if set.
+	MinAvailable string `json:"minAvailable,omitempty" yaml:"minAvailable,omitempty"`
+	// MaxUnavailable is the maxUnavailable setting if set.
+	MaxUnavailable string `json:"maxUnavailable,omitempty" yaml:"maxUnavailable,omitempty"`
+}
+
+// AutoscalerMapQuota represents a ResourceQuota near its limit.
+type AutoscalerMapQuota struct {
+	// Name is the quota name.
+	Name string `json:"name" yaml:"name"`
+	// Resource is the resource type (e.g. "limits.cpu").
+	Resource string `json:"resource" yaml:"resource"`
+	// Used is the current usage.
+	Used string `json:"used" yaml:"used"`
+	// Hard is the hard limit.
+	Hard string `json:"hard" yaml:"hard"`
+	// Ratio is the usage ratio (0.0 to 1.0+).
+	Ratio float64 `json:"ratio" yaml:"ratio"`
 }
 
 // AutoscalerMapPodSummary holds pod-level summary information.

@@ -37,6 +37,12 @@ func WriteAutoscalerMapText(w io.Writer, am *AutoscalerMap, theme style.Theme) e
 		}
 	}
 
+	// Risk level.
+	if am.Risk != "" && am.Risk != "none" {
+		riskBadge := autoscalerRiskBadge(am.Risk, theme)
+		buf.WriteString(fmt.Sprintf("\nRisk: %s\n", riskBadge))
+	}
+
 	// Blockers.
 	if len(am.Blockers) > 0 {
 		buf.WriteString("\nBlockers:\n")
@@ -67,8 +73,30 @@ func WriteAutoscalerMapText(w io.Writer, am *AutoscalerMap, theme style.Theme) e
 		}
 	}
 
+	// Next checks.
+	if len(am.NextChecks) > 0 {
+		buf.WriteString("\nNext checks:\n")
+		for _, check := range am.NextChecks {
+			buf.WriteString(fmt.Sprintf("  - %s\n", check))
+		}
+	}
+
 	_, err := w.Write([]byte(buf.String()))
 	return err
+}
+
+// autoscalerRiskBadge returns a styled risk level badge.
+func autoscalerRiskBadge(risk string, theme style.Theme) string {
+	switch risk {
+	case "high":
+		return theme.Error.Render("high")
+	case "medium":
+		return theme.Warning.Render("medium")
+	case "low":
+		return theme.Dim.Render("low")
+	default:
+		return risk
+	}
 }
 
 // autoscalerBlockerBadge returns a styled severity badge.

@@ -16,6 +16,15 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
+// ReplayImpact holds computed percentage changes between current and proposed.
+type ReplayImpact struct {
+	ScaleEventReductionPct float64 `json:"scaleEventReductionPct,omitempty" yaml:"scaleEventReductionPct,omitempty"`
+	PodHoursChangePct      float64 `json:"podHoursChangePct,omitempty" yaml:"podHoursChangePct,omitempty"`
+	UnderProvisionFixed    bool    `json:"underProvisionFixed,omitempty" yaml:"underProvisionFixed,omitempty"`
+	AdditionalWorstCase    int32   `json:"additionalWorstCase,omitempty" yaml:"additionalWorstCase,omitempty"`
+	NoMissedScaleUp        bool    `json:"noMissedScaleUp,omitempty" yaml:"noMissedScaleUp,omitempty"`
+}
+
 type replayLabReport struct {
 	Namespace       string                     `json:"namespace" yaml:"namespace"`
 	Name            string                     `json:"name" yaml:"name"`
@@ -26,6 +35,7 @@ type replayLabReport struct {
 	Current         replayLabSummary           `json:"current" yaml:"current"`
 	CandidateResult *replayLabSummary          `json:"candidateResult,omitempty" yaml:"candidateResult,omitempty"`
 	Candidates      []replayLabCandidateResult `json:"candidates,omitempty" yaml:"candidates,omitempty"`
+	Impact          *ReplayImpact              `json:"impact,omitempty" yaml:"impact,omitempty"`
 	Recommendation  string                     `json:"recommendation,omitempty" yaml:"recommendation,omitempty"`
 	Recommendations []string                   `json:"recommendations,omitempty" yaml:"recommendations,omitempty"`
 	Limitations     []string                   `json:"limitations,omitempty" yaml:"limitations,omitempty"`
@@ -53,6 +63,7 @@ type replayLabSummary struct {
 	ExtraPodHours           float64 `json:"extraPodHours,omitempty" yaml:"extraPodHours,omitempty"`
 	AdditionalWorstCasePods int32   `json:"additionalWorstCasePods,omitempty" yaml:"additionalWorstCasePods,omitempty"`
 	FlappingScore           string  `json:"flappingScore" yaml:"flappingScore"`
+	FlappingLabel           string  `json:"flappingLabel,omitempty" yaml:"flappingLabel,omitempty"`
 }
 
 type replayCandidateConfig struct {
@@ -125,6 +136,7 @@ func runReplayPolicyLab(out io.Writer, opts *options, name, recordPath string, c
 			report.ProposedConfig = candidate.Proposed
 			report.CandidateResult = &candidateSummary
 			report.Recommendation = result.Recommendation
+			report.Impact = computeReplayImpact(report.Current, candidateSummary)
 		}
 	}
 	if len(candidatePaths) == 0 && len(overrides) > 0 {
@@ -339,6 +351,7 @@ func summarizeReplayTraceWithDemand(trace hpaanalysis.TimelineTrace, maxReplicas
 	}
 	summary.CappedDuration = formatReplayDuration(time.Duration(summary.CappedDurationSeconds) * time.Second)
 	summary.FlappingScore = replayFlappingScore(summary.ScaleEvents, summary.DirectionFlips)
+	summary.FlappingLabel = summary.FlappingScore
 	return summary
 }
 
@@ -412,6 +425,33 @@ func applyReplayCandidate(trace hpaanalysis.TimelineTrace, candidate replayCandi
 		out.Snapshots[i].Desired = desired
 	}
 	return out
+}
+
+// computeReplayImpact calculates percentage changes between current and proposed summaries.
+func computeReplayImpact(current, proposed replayLabSummary) *ReplayImpact {
+	impact := &ReplayImpact{}
+
+	if current.ScaleEvents > 0 && proposed.ScaleEvents < current.ScaleEvents {
+		impact.ScaleEventReductionPct = float64(current.ScaleEvents-proposed.ScaleEvents) / float64(current.ScaleEvents) * 100
+	}
+
+	if current.PodHours > 0 {
+		impact.PodHoursChangePct = (proposed.PodHours - current.PodHours) / current.PodHours * 100
+	}
+
+	if proposed.EstimatedUnderProvision == 0 && current.EstimatedUnderProvision > 0 {
+		impact.UnderProvisionFixed = true
+	}
+
+	if proposed.MaxReplicas > current.PeakReplicas {
+		impact.AdditionalWorstCase = proposed.MaxReplicas - current.PeakReplicas
+	}
+
+	if proposed.EstimatedUnderProvision == 0 {
+		impact.NoMissedScaleUp = true
+	}
+
+	return impact
 }
 
 func replayFlappingScore(scaleEvents, directionFlips int) string {
@@ -545,6 +585,9 @@ func writeReplayLabText(out io.Writer, report replayLabReport) error {
 	if report.Recommendation != "" {
 		_, _ = fmt.Fprintf(out, "\nRecommendation:\n  %s\n", report.Recommendation)
 	}
+	if report.Impact != nil {
+		writeReplayImpactText(out, *report.Impact, report.Current, report.CandidateResult)
+	}
 	if len(report.Limitations) > 0 {
 		_, _ = fmt.Fprintln(out, "\nLimitations:")
 		for _, limitation := range report.Limitations {
@@ -647,6 +690,9 @@ func writeReplayLabMarkdown(out io.Writer, report replayLabReport) error {
 	if report.Recommendation != "" {
 		_, _ = fmt.Fprintf(out, "## Recommendation\n\n%s\n\n", report.Recommendation)
 	}
+	if report.Impact != nil {
+		writeReplayImpactMarkdown(out, *report.Impact, report.Current, report.CandidateResult)
+	}
 	if len(report.Limitations) > 0 {
 		_, _ = fmt.Fprintln(out, "## Limitations")
 		_, _ = fmt.Fprintln(out)
@@ -718,4 +764,46 @@ func sortedReplayConfigKeys(values map[string]string) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// writeReplayImpactText renders the Impact section comparing current and proposed.
+func writeReplayImpactText(out io.Writer, impact ReplayImpact, current replayLabSummary, proposed *replayLabSummary) {
+	_, _ = fmt.Fprintln(out, "\nImpact:")
+	if impact.ScaleEventReductionPct > 0 {
+		_, _ = fmt.Fprintf(out, "  - scale churn reduced by %.0f%%\n", impact.ScaleEventReductionPct)
+	}
+	if impact.PodHoursChangePct != 0 && current.PodHours > 0 {
+		_, _ = fmt.Fprintf(out, "  - estimated pod-hours changed by %+.1f%%\n", impact.PodHoursChangePct)
+	}
+	if impact.UnderProvisionFixed {
+		_, _ = fmt.Fprintln(out, "  - under-provision windows eliminated")
+	}
+	if impact.NoMissedScaleUp {
+		_, _ = fmt.Fprintln(out, "  - no missed scale-up detected in recorded window")
+	}
+	if impact.AdditionalWorstCase > 0 {
+		_, _ = fmt.Fprintf(out, "  - additional worst-case pods: +%d\n", impact.AdditionalWorstCase)
+	}
+}
+
+// writeReplayImpactMarkdown renders the Impact section in Markdown.
+func writeReplayImpactMarkdown(out io.Writer, impact ReplayImpact, current replayLabSummary, proposed *replayLabSummary) {
+	_, _ = fmt.Fprintln(out, "## Impact")
+	_, _ = fmt.Fprintln(out)
+	if impact.ScaleEventReductionPct > 0 {
+		_, _ = fmt.Fprintf(out, "- Scale churn reduced by **%.0f%%**\n", impact.ScaleEventReductionPct)
+	}
+	if impact.PodHoursChangePct != 0 && current.PodHours > 0 {
+		_, _ = fmt.Fprintf(out, "- Estimated pod-hours changed by **%+.1f%%**\n", impact.PodHoursChangePct)
+	}
+	if impact.UnderProvisionFixed {
+		_, _ = fmt.Fprintln(out, "- Under-provision windows **eliminated**")
+	}
+	if impact.NoMissedScaleUp {
+		_, _ = fmt.Fprintln(out, "- No missed scale-up detected in recorded window")
+	}
+	if impact.AdditionalWorstCase > 0 {
+		_, _ = fmt.Fprintf(out, "- Additional worst-case pods: **+%d**\n", impact.AdditionalWorstCase)
+	}
+	_, _ = fmt.Fprintln(out)
 }

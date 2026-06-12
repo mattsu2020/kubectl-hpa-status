@@ -18,6 +18,7 @@ func AnalyzeAutoscalerMap(input AutoscalerMapInput) *AutoscalerMap {
 		Layers:          []AutoscalerMapLayer{},
 		Blockers:        []AutoscalerMapBlocker{},
 		NextActions:     []string{},
+		NextChecks:      []string{},
 	}
 
 	// Layer 1: HPA.
@@ -30,7 +31,7 @@ func AnalyzeAutoscalerMap(input AutoscalerMapInput) *AutoscalerMap {
 	if !input.ScalingActive {
 		hpaLayer.Details = append(hpaLayer.Details, "ScalingActive is False")
 		am.Blockers = append(am.Blockers, AutoscalerMapBlocker{
-			Layer:   "hpa",
+			Layer:    "hpa",
 			Severity: "high",
 			Message:  "HPA ScalingActive is False; cannot compute scaling recommendations",
 		})
@@ -49,7 +50,7 @@ func AnalyzeAutoscalerMap(input AutoscalerMapInput) *AutoscalerMap {
 		workloadLayer.Details = append(workloadLayer.Details,
 			fmt.Sprintf("workload not converged: %d/%d pods ready", input.WorkloadReadyReplicas, input.WorkloadDesiredReplicas))
 		am.Blockers = append(am.Blockers, AutoscalerMapBlocker{
-			Layer:   "workload",
+			Layer:    "workload",
 			Severity: "medium",
 			Message:  fmt.Sprintf("Workload has %d ready pods but desires %d", input.WorkloadReadyReplicas, input.WorkloadDesiredReplicas),
 		})
@@ -68,7 +69,7 @@ func AnalyzeAutoscalerMap(input AutoscalerMapInput) *AutoscalerMap {
 		pendReasons := summarizePendingPods(input.PendingPods)
 		podLayer.Details = append(podLayer.Details, pendReasons...)
 		am.Blockers = append(am.Blockers, AutoscalerMapBlocker{
-			Layer:   "pods",
+			Layer:    "pods",
 			Severity: "high",
 			Message:  fmt.Sprintf("%d pods are Pending", input.PodSummary.Pending),
 			Detail:   strings.Join(pendReasons, "; "),
@@ -113,7 +114,7 @@ func AnalyzeAutoscalerMap(input AutoscalerMapInput) *AutoscalerMap {
 	} else {
 		nodeLayer.Status = "no nodes found"
 		am.Blockers = append(am.Blockers, AutoscalerMapBlocker{
-			Layer:   "nodes",
+			Layer:    "nodes",
 			Severity: "high",
 			Message:  "No schedulable nodes found in cluster",
 		})
@@ -139,7 +140,7 @@ func AnalyzeAutoscalerMap(input AutoscalerMapInput) *AutoscalerMap {
 		autoscalerLayer.Status = "not detected"
 		if input.PodSummary.Pending > 0 {
 			am.Blockers = append(am.Blockers, AutoscalerMapBlocker{
-				Layer:   "autoscaler",
+				Layer:    "autoscaler",
 				Severity: "medium",
 				Message:  "No node autoscaler detected; pending pods may not be scheduled",
 				Detail:   "Consider installing Cluster Autoscaler or Karpenter to handle node provisioning",
@@ -148,8 +149,103 @@ func AnalyzeAutoscalerMap(input AutoscalerMapInput) *AutoscalerMap {
 	}
 	am.Layers = append(am.Layers, autoscalerLayer)
 
-	// Build summary and recommendation.
-	am.Summary, am.Recommendation, am.NextActions = buildAutoscalerMapSummary(am, input)
+	// Layer 6: External scaler (KEDA).
+	if input.KEDAInfo != nil {
+		kedaLayer := AutoscalerMapLayer{
+			Name:     "external-scaler",
+			Resource: fmt.Sprintf("ScaledObject/%s", input.KEDAInfo.ScaledObjectName),
+			Status:   fmt.Sprintf("triggers=%d active=%t", input.KEDAInfo.TriggerCount, input.KEDAInfo.Active),
+			Healthy:  input.KEDAInfo.Active,
+		}
+		if !input.KEDAInfo.Active {
+			kedaLayer.Details = append(kedaLayer.Details, "KEDA ScaledObject triggers are inactive")
+			am.Blockers = append(am.Blockers, AutoscalerMapBlocker{
+				Layer:    "external-scaler",
+				Severity: "high",
+				Message:  fmt.Sprintf("KEDA ScaledObject %s triggers are inactive", input.KEDAInfo.ScaledObjectName),
+				Detail:   "KEDA will not signal the HPA to scale; check trigger configuration and external metric source",
+			})
+		}
+		kedaLayer.Details = append(kedaLayer.Details, fmt.Sprintf("owns HPA %s", input.HPAName))
+		am.Layers = append(am.Layers, kedaLayer)
+		am.NextChecks = append(am.NextChecks,
+			fmt.Sprintf("kubectl describe scaledobject %s -n %s", input.KEDAInfo.ScaledObjectName, input.Namespace))
+	}
+
+	// Layer 7: Constraints (VPA, PDB, Quota).
+	constraintDetails := []string{}
+	constraintHealthy := true
+
+	if input.VPAInfo != nil {
+		conflictStr := strings.Join(input.VPAInfo.ConflictResources, ", ")
+		constraintDetails = append(constraintDetails,
+			fmt.Sprintf("VPA/%s (%s) controls %s — may conflict with HPA",
+				input.VPAInfo.VPAName, input.VPAInfo.UpdateMode, conflictStr))
+		constraintHealthy = false
+		am.Blockers = append(am.Blockers, AutoscalerMapBlocker{
+			Layer:    "constraints",
+			Severity: "medium",
+			Message:  fmt.Sprintf("VPA/%s (%s mode) controls %s; may conflict with HPA CPU/memory targets",
+				input.VPAInfo.VPAName, input.VPAInfo.UpdateMode, conflictStr),
+			Detail: "HPA and VPA both managing CPU/memory can cause oscillation. Consider switching VPA to Off or Auto mode with different resources.",
+		})
+		am.NextChecks = append(am.NextChecks,
+			fmt.Sprintf("kubectl describe vpa %s -n %s", input.VPAInfo.VPAName, input.Namespace))
+	}
+
+	for _, pdb := range input.PDBs {
+		pdbDesc := pdb.Name
+		if pdb.MinAvailable != "" {
+			pdbDesc += fmt.Sprintf(" (minAvailable=%s)", pdb.MinAvailable)
+		}
+		if pdb.MaxUnavailable != "" {
+			pdbDesc += fmt.Sprintf(" (maxUnavailable=%s)", pdb.MaxUnavailable)
+		}
+		constraintDetails = append(constraintDetails,
+			fmt.Sprintf("PDB %s may limit scale-down velocity", pdbDesc))
+		am.Blockers = append(am.Blockers, AutoscalerMapBlocker{
+			Layer:    "constraints",
+			Severity: "low",
+			Message:  fmt.Sprintf("PDB %s may block pod eviction during scale-down", pdb.Name),
+		})
+		am.NextChecks = append(am.NextChecks,
+			fmt.Sprintf("kubectl describe pdb %s -n %s", pdb.Name, input.Namespace))
+	}
+
+	for _, quota := range input.Quotas {
+		constraintDetails = append(constraintDetails,
+			fmt.Sprintf("Quota %s/%s at %.0f%% (%s/%s)", quota.Name, quota.Resource, quota.Ratio*100, quota.Used, quota.Hard))
+		if quota.Ratio >= 0.9 {
+			constraintHealthy = false
+			am.Blockers = append(am.Blockers, AutoscalerMapBlocker{
+				Layer:    "constraints",
+				Severity: "high",
+				Message:  fmt.Sprintf("Quota %s/%s at %.0f%% — HPA scale-up may exceed quota", quota.Name, quota.Resource, quota.Ratio*100),
+				Detail:   fmt.Sprintf("maxReplicas=%d may exceed namespace quota for %s", input.MaxReplicas, quota.Resource),
+			})
+		}
+	}
+	if len(input.Quotas) > 0 {
+		am.NextChecks = append(am.NextChecks,
+			fmt.Sprintf("kubectl get resourcequota -n %s", input.Namespace))
+	}
+
+	if len(constraintDetails) > 0 || input.VPAInfo != nil || len(input.PDBs) > 0 || len(input.Quotas) > 0 {
+		constraintLayer := AutoscalerMapLayer{
+			Name:     "constraints",
+			Resource: "VPA, PDB, Quota",
+			Status:   fmt.Sprintf("vpa=%t pdbs=%d quotas=%d", input.VPAInfo != nil, len(input.PDBs), len(input.Quotas)),
+			Healthy:  constraintHealthy,
+			Details:  constraintDetails,
+		}
+		if constraintHealthy && len(constraintDetails) > 0 {
+			constraintLayer.Status = "constraints present, no conflicts"
+		}
+		am.Layers = append(am.Layers, constraintLayer)
+	}
+
+	// Build summary, recommendation, next actions, risk, and next checks.
+	am.Summary, am.Recommendation, am.NextActions, am.Risk = buildAutoscalerMapSummaryEnhanced(am, input)
 
 	return am
 }
@@ -189,13 +285,21 @@ func detectAutoscalerType(ca, karpenter bool) string {
 	}
 }
 
-// buildAutoscalerMapSummary produces the overall summary and recommendations.
-func buildAutoscalerMapSummary(am *AutoscalerMap, input AutoscalerMapInput) (string, string, []string) {
+// buildAutoscalerMapSummaryEnhanced produces the overall summary, recommendation,
+// next actions, and risk assessment.
+func buildAutoscalerMapSummaryEnhanced(am *AutoscalerMap, input AutoscalerMapInput) (string, string, []string, string) {
 	blockerCount := len(am.Blockers)
 	highCount := 0
+	mediumCount := 0
+	lowCount := 0
 	for _, b := range am.Blockers {
-		if b.Severity == "high" {
+		switch b.Severity {
+		case "high":
 			highCount++
+		case "medium":
+			mediumCount++
+		case "low":
+			lowCount++
 		}
 	}
 
@@ -221,5 +325,16 @@ func buildAutoscalerMapSummary(am *AutoscalerMap, input AutoscalerMapInput) (str
 		actions = append(actions, "Consider installing Cluster Autoscaler or Karpenter")
 	}
 
-	return summary, rec, actions
+	// Compute risk level.
+	risk := "none"
+	switch {
+	case highCount > 0:
+		risk = "high"
+	case mediumCount > 0:
+		risk = "medium"
+	case lowCount > 0:
+		risk = "low"
+	}
+
+	return summary, rec, actions, risk
 }

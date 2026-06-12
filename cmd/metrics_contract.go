@@ -3,11 +3,105 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/spf13/cobra"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+func newMetricsContractCommand(opts *options) *cobra.Command {
+	var generate string
+
+	cmd := &cobra.Command{
+		Use:               "contract NAME",
+		Short:             "Validate HPA metric API contract and optionally generate test artifacts",
+		Long:              "Check that each HPA metric has a reachable API service and current data. Use --generate to produce YAML, Markdown, JUnit XML, or kubectl verification commands.",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: hpaNameCompletion(opts),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runMetricsContract(cmd.Context(), cmd.OutOrStdout(), opts, args[0], generate)
+		},
+	}
+
+	cmd.Flags().StringVar(&generate, "generate", "",
+		"generate test artifacts: yaml, markdown, junit, commands")
+
+	return cmd
+}
+
+func runMetricsContract(ctx context.Context, out io.Writer, opts *options, name string, generate string) error {
+	client, err := opts.newClient()
+	if err != nil {
+		return fmt.Errorf("failed to create Kubernetes client: %w", err)
+	}
+
+	hpa, err := client.Interface.AutoscalingV2().
+		HorizontalPodAutoscalers(client.Namespace).
+		Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to get HPA %s: %w", name, err)
+	}
+
+	input := buildMetricContractInput(ctx, client, hpa)
+	report := hpaanalysis.AnalyzeMetricContract(input)
+
+	switch generate {
+	case "yaml":
+		data, err := hpaanalysis.GenerateContractYAML(report)
+		if err != nil {
+			return fmt.Errorf("failed to generate YAML: %w", err)
+		}
+		_, err = out.Write(data)
+		return err
+	case "markdown":
+		data, err := hpaanalysis.GenerateContractMarkdown(report)
+		if err != nil {
+			return fmt.Errorf("failed to generate Markdown: %w", err)
+		}
+		_, err = out.Write(data)
+		return err
+	case "junit":
+		data, err := hpaanalysis.GenerateContractJUnit(report)
+		if err != nil {
+			return fmt.Errorf("failed to generate JUnit XML: %w", err)
+		}
+		_, err = out.Write(data)
+		return err
+	case "commands":
+		commands := hpaanalysis.GenerateContractCommands(report)
+		for _, cmd := range commands {
+			_, _ = fmt.Fprintln(out, cmd)
+		}
+		return nil
+	default:
+		// Standard output (text, JSON, YAML via --output flag)
+		format, templateStr := outputSelection(outputConfig{
+			output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates,
+		})
+
+		output := metricsContractOutput{
+			Namespace: report.Namespace,
+			Name:      report.Name,
+			Target:    report.Target,
+			Contract:  report,
+		}
+
+		return writeOutput(out, format, templateStr, output, func() error {
+			return hpaanalysis.WriteMetricContractText(out, report)
+		})
+	}
+}
+
+// metricsContractOutput wraps the contract report for structured output.
+type metricsContractOutput struct {
+	Namespace string                         `json:"namespace" yaml:"namespace"`
+	Name      string                         `json:"name" yaml:"name"`
+	Target    string                         `json:"target" yaml:"target"`
+	Contract  *hpaanalysis.MetricContractReport `json:"contract" yaml:"contract"`
+}
 
 // buildMetricContractInput builds the input for metrics contract analysis.
 func buildMetricContractInput(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) hpaanalysis.MetricContractInput {

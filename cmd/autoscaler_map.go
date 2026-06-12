@@ -53,7 +53,7 @@ func runAutoscalerMap(ctx context.Context, out io.Writer, opts *options, names [
 			return err
 		}
 
-		input := assembleAutoscalerMapInput(ctx, client, hpa)
+		input := assembleAutoscalerMapInput(ctx, client, opts, hpa)
 		am := hpaanalysis.AnalyzeAutoscalerMap(input)
 
 		outputs = append(outputs, autoscalerMapOutput{
@@ -90,7 +90,7 @@ func runAutoscalerMap(ctx context.Context, out io.Writer, opts *options, names [
 }
 
 // assembleAutoscalerMapInput gathers all observable signals for autoscaler map.
-func assembleAutoscalerMapInput(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) hpaanalysis.AutoscalerMapInput {
+func assembleAutoscalerMapInput(ctx context.Context, client *kube.Client, opts *options, hpa *autoscalingv2.HorizontalPodAutoscaler) hpaanalysis.AutoscalerMapInput {
 	input := hpaanalysis.AutoscalerMapInput{
 		Namespace:       hpa.Namespace,
 		HPAName:         hpa.Name,
@@ -154,6 +154,18 @@ func assembleAutoscalerMapInput(ctx context.Context, client *kube.Client, hpa *a
 	// Detect Karpenter (check for Karpenter pods in kube-system).
 	input.Karpenter = detectKarpenter(ctx, client)
 
+	// Fetch KEDA ScaledObject info if KEDA-managed.
+	input.KEDAInfo = fetchAutoscalerMapKEDA(ctx, opts, hpa)
+
+	// Fetch VPA conflict info.
+	input.VPAInfo = fetchAutoscalerMapVPA(ctx, opts, hpa)
+
+	// Fetch PodDisruptionBudgets.
+	input.PDBs = fetchAutoscalerMapPDBs(ctx, client, hpa.Namespace)
+
+	// Fetch ResourceQuotas near limits.
+	input.Quotas = fetchAutoscalerMapQuotas(ctx, client, hpa.Namespace, hpa.Spec.MaxReplicas)
+
 	return input
 }
 
@@ -183,4 +195,131 @@ func detectKarpenter(ctx context.Context, client *kube.Client) bool {
 		return false
 	}
 	return len(pods.Items) > 0
+}
+
+// fetchAutoscalerMapKEDA attempts to detect KEDA and fetch ScaledObject info.
+func fetchAutoscalerMapKEDA(ctx context.Context, opts *options, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpaanalysis.AutoscalerMapKEDAInfo {
+	detection := kube.DetectKEDA(hpa)
+	if !detection.Managed {
+		return nil
+	}
+
+	dynClient, _, err := kube.NewDynamicClient(kube.Options{
+		Kubeconfig: opts.kubeconfig,
+		Context:    opts.contextName,
+		QPS:        opts.qps,
+		Burst:      opts.burst,
+	})
+	if err != nil {
+		return nil
+	}
+
+	scaledObj, err := kube.FindScaledObjectForHPA(ctx, dynClient, nil, hpa)
+	if err != nil || scaledObj == nil {
+		return &hpaanalysis.AutoscalerMapKEDAInfo{
+			ScaledObjectName: string(detection.Source),
+			Active:           false,
+		}
+	}
+
+	kedaInfo := kube.ExtractKEDAInfo(scaledObj)
+
+	// Determine if active from trigger statuses.
+	active := false
+	for _, trigger := range kedaInfo.Triggers {
+		if trigger.Status == "Active" {
+			active = true
+			break
+		}
+	}
+
+	return &hpaanalysis.AutoscalerMapKEDAInfo{
+		ScaledObjectName: kedaInfo.ScaledObjectName,
+		TriggerCount:     len(kedaInfo.Triggers),
+		Active:           active,
+	}
+}
+
+// fetchAutoscalerMapVPA attempts to detect VPA conflicts with the HPA.
+func fetchAutoscalerMapVPA(ctx context.Context, opts *options, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpaanalysis.AutoscalerMapVPAInfo {
+	// Check if HPA uses resource metrics (CPU/memory) that VPA could conflict with.
+	hasResourceMetrics := false
+	for _, m := range hpa.Spec.Metrics {
+		if m.Type == autoscalingv2.ResourceMetricSourceType || m.Type == autoscalingv2.ContainerResourceMetricSourceType {
+			hasResourceMetrics = true
+			break
+		}
+	}
+	if !hasResourceMetrics {
+		return nil
+	}
+
+	dynClient, _, err := kube.NewDynamicClient(kube.Options{
+		Kubeconfig: opts.kubeconfig,
+		Context:    opts.contextName,
+		QPS:        opts.qps,
+		Burst:      opts.burst,
+	})
+	if err != nil {
+		return nil
+	}
+
+	vpaInfo, err := kube.FindConflictingVPA(ctx, dynClient, hpa.Namespace, hpa)
+	if err != nil || vpaInfo == nil {
+		return nil
+	}
+
+	return &hpaanalysis.AutoscalerMapVPAInfo{
+		VPAName:             vpaInfo.Name,
+		TargetRef:           vpaInfo.TargetRef,
+		UpdateMode:          vpaInfo.UpdateMode,
+		ControlledResources: vpaInfo.ControlledResources,
+		ConflictResources:   vpaInfo.ControlledResources,
+	}
+}
+
+// fetchAutoscalerMapPDBs fetches PodDisruptionBudgets in the namespace.
+func fetchAutoscalerMapPDBs(ctx context.Context, client *kube.Client, namespace string) []hpaanalysis.AutoscalerMapPDB {
+	pdbs := kube.FetchPodDisruptionBudgets(ctx, client.Interface, namespace, "")
+	if len(pdbs) == 0 {
+		return nil
+	}
+
+	result := make([]hpaanalysis.AutoscalerMapPDB, 0, len(pdbs))
+	for _, pdb := range pdbs {
+		p := hpaanalysis.AutoscalerMapPDB{
+			Name: pdb.Name,
+		}
+		if pdb.MinAvailable != "" {
+			p.MinAvailable = pdb.MinAvailable
+		}
+		if pdb.MaxUnavailable != "" {
+			p.MaxUnavailable = pdb.MaxUnavailable
+		}
+		result = append(result, p)
+	}
+	return result
+}
+
+// fetchAutoscalerMapQuotas fetches ResourceQuotas near their limits (ratio >= 0.7).
+func fetchAutoscalerMapQuotas(ctx context.Context, client *kube.Client, namespace string, maxReplicas int32) []hpaanalysis.AutoscalerMapQuota {
+	quotas := kube.FetchAllResourceQuotas(ctx, client.Interface, namespace)
+	if len(quotas) == 0 {
+		return nil
+	}
+
+	result := make([]hpaanalysis.AutoscalerMapQuota, 0, len(quotas))
+	for _, q := range quotas {
+		if q.Ratio < 0.7 {
+			continue
+		}
+		result = append(result, hpaanalysis.AutoscalerMapQuota{
+			Name:     q.Name,
+			Resource: q.Resource,
+			Used:     q.Used,
+			Hard:     q.Hard,
+			Ratio:    q.Ratio,
+		})
+	}
+	return result
 }

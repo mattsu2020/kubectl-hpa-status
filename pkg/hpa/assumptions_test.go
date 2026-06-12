@@ -192,3 +192,147 @@ func TestDetectControllerAssumptions(t *testing.T) {
 		})
 	}
 }
+
+func TestDetectControllerAssumptionsWithOverrides(t *testing.T) {
+	tolerance := "0.20"
+	syncPeriod := "30s"
+	cpuInit := "3m"
+	readinessDelay := "60s"
+
+	tests := []struct {
+		name      string
+		hpa       *autoscalingv2.HorizontalPodAutoscaler
+		overrides AssumptionOverrides
+		observed  *ControllerProfile
+		check     func(t *testing.T, result *ControllerAssumptions)
+	}{
+		{
+			name:      "nil HPA returns nil",
+			hpa:       nil,
+			overrides: AssumptionOverrides{},
+			check: func(t *testing.T, result *ControllerAssumptions) {
+				if result != nil {
+					t.Fatalf("expected nil, got %+v", result)
+				}
+			},
+		},
+		{
+			name: "empty overrides behaves like original",
+			hpa:  buildAssumptionsHPA(),
+			overrides: AssumptionOverrides{},
+			check: func(t *testing.T, result *ControllerAssumptions) {
+				if result.SyncPeriod.Source != "kubernetes-default" {
+					t.Errorf("expected default source, got %s", result.SyncPeriod.Source)
+				}
+				if result.GlobalTolerance.Source != "kubernetes-default" {
+					t.Errorf("expected default source, got %s", result.GlobalTolerance.Source)
+				}
+			},
+		},
+		{
+			name: "overrides replace values and set confidence to high",
+			hpa:  buildAssumptionsHPA(),
+			overrides: AssumptionOverrides{
+				Tolerance:               &tolerance,
+				SyncPeriod:              &syncPeriod,
+				CPUInitializationPeriod: &cpuInit,
+				InitialReadinessDelay:   &readinessDelay,
+			},
+			check: func(t *testing.T, result *ControllerAssumptions) {
+				for _, a := range []Assumption{
+					result.GlobalTolerance,
+					result.SyncPeriod,
+					result.CPUInitializationPeriod,
+					result.InitialReadinessDelay,
+				} {
+					if a.Source != "overridden" {
+						t.Errorf("expected source 'overridden' for %s, got %s", a.Name, a.Source)
+					}
+					if a.Confidence != "high" {
+						t.Errorf("expected confidence 'high' for %s, got %s", a.Name, a.Confidence)
+					}
+				}
+				if result.GlobalTolerance.Value != "0.20" {
+					t.Errorf("expected tolerance value 0.20, got %s", result.GlobalTolerance.Value)
+				}
+				if result.SyncPeriod.Value != "30s" {
+					t.Errorf("expected sync period value 30s, got %s", result.SyncPeriod.Value)
+				}
+			},
+		},
+		{
+			name: "observed profile upgrades default fields",
+			hpa:  buildAssumptionsHPA(),
+			observed: &ControllerProfile{
+				Source:                    "kube-system/kube-controller-manager-1",
+				SyncPeriod:               "10s",
+				Tolerance:                "0.05",
+				CPUInitializationPeriod:  "3m",
+				InitialReadinessDelay:    "45s",
+				DownscaleStabilization:   "120s",
+			},
+			check: func(t *testing.T, result *ControllerAssumptions) {
+				if result.SyncPeriod.Source != "kube-system/kube-controller-manager-1" {
+					t.Errorf("expected observed source, got %s", result.SyncPeriod.Source)
+				}
+				if result.SyncPeriod.Value != "10s" {
+					t.Errorf("expected observed sync period 10s, got %s", result.SyncPeriod.Value)
+				}
+				if result.SyncPeriod.Confidence != "medium" {
+					t.Errorf("expected observed confidence medium, got %s", result.SyncPeriod.Confidence)
+				}
+			},
+		},
+		{
+			name: "observed profile does not override hpa.spec values",
+			hpa: func() *autoscalingv2.HorizontalPodAutoscaler {
+				h := buildAssumptionsHPA()
+				h.Spec.Behavior = &autoscalingv2.HorizontalPodAutoscalerBehavior{
+					ScaleDown: &autoscalingv2.HPAScalingRules{
+						StabilizationWindowSeconds: int32Ptr(600),
+					},
+				}
+				return h
+			}(),
+			observed: &ControllerProfile{
+				Source:                  "kube-system/kube-controller-manager-1",
+				DownscaleStabilization:  "120s",
+			},
+			check: func(t *testing.T, result *ControllerAssumptions) {
+				// hpa.spec should win over observed profile
+				if result.DownscaleStabilization.Source != "hpa.spec" {
+					t.Errorf("expected hpa.spec source, got %s", result.DownscaleStabilization.Source)
+				}
+				if result.DownscaleStabilization.Value != "600s" {
+					t.Errorf("expected 600s, got %s", result.DownscaleStabilization.Value)
+				}
+			},
+		},
+		{
+			name: "overrides take priority over observed profile",
+			hpa:  buildAssumptionsHPA(),
+			overrides: AssumptionOverrides{
+				SyncPeriod: &syncPeriod,
+			},
+			observed: &ControllerProfile{
+				Source:      "kube-system/kube-controller-manager-1",
+				SyncPeriod:  "10s",
+			},
+			check: func(t *testing.T, result *ControllerAssumptions) {
+				if result.SyncPeriod.Source != "overridden" {
+					t.Errorf("expected overridden source, got %s", result.SyncPeriod.Source)
+				}
+				if result.SyncPeriod.Value != "30s" {
+					t.Errorf("expected overridden value 30s, got %s", result.SyncPeriod.Value)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := DetectControllerAssumptionsWithOverrides(tt.hpa, tt.overrides, tt.observed)
+			tt.check(t, result)
+		})
+	}
+}

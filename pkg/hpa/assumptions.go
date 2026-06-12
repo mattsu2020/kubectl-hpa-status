@@ -33,6 +33,15 @@ type ControllerAssumptions struct {
 	Warnings                []string    `json:"warnings,omitempty" yaml:"warnings,omitempty"`
 }
 
+// AssumptionOverrides holds user-provided override values for controller assumptions.
+// Each field is optional; nil values are ignored.
+type AssumptionOverrides struct {
+	Tolerance               *string `json:"tolerance,omitempty" yaml:"tolerance,omitempty"`
+	SyncPeriod              *string `json:"syncPeriod,omitempty" yaml:"syncPeriod,omitempty"`
+	CPUInitializationPeriod *string `json:"cpuInitializationPeriod,omitempty" yaml:"cpuInitializationPeriod,omitempty"`
+	InitialReadinessDelay   *string `json:"initialReadinessDelay,omitempty" yaml:"initialReadinessDelay,omitempty"`
+}
+
 // DetectControllerAssumptions examines an HPA resource and reports the
 // controller assumptions that affect its scaling behavior. It distinguishes
 // between values explicitly set in the HPA spec (high confidence) and
@@ -40,6 +49,24 @@ type ControllerAssumptions struct {
 //
 // Returns nil if hpa is nil.
 func DetectControllerAssumptions(hpa *autoscalingv2.HorizontalPodAutoscaler) *ControllerAssumptions {
+	return DetectControllerAssumptionsWithOverrides(hpa, AssumptionOverrides{}, nil)
+}
+
+// DetectControllerAssumptionsWithOverrides examines an HPA resource and reports
+// controller assumptions, applying user-provided overrides and optionally
+// integrating an observed controller-manager profile.
+//
+// Override values replace the detected default and are marked with
+// source="overridden" and confidence="high". The observed profile upgrades
+// fields still at "kubernetes-default" source to "observed" with
+// confidence="medium".
+//
+// Returns nil if hpa is nil.
+func DetectControllerAssumptionsWithOverrides(
+	hpa *autoscalingv2.HorizontalPodAutoscaler,
+	overrides AssumptionOverrides,
+	observed *ControllerProfile,
+) *ControllerAssumptions {
 	if hpa == nil {
 		return nil
 	}
@@ -56,10 +83,65 @@ func DetectControllerAssumptions(hpa *autoscalingv2.HorizontalPodAutoscaler) *Co
 	result.DownscaleStabilization = detectDownscaleStabilization(hpa)
 	result.UpscaleStabilization = detectUpscaleStabilization(hpa)
 
+	// Apply observed controller-manager profile values, upgrading confidence
+	// for fields still using kubernetes-default source.
+	if observed != nil {
+		result.SyncPeriod = applyObservedProfile(result.SyncPeriod, observed.SyncPeriod, observed.Source)
+		result.GlobalTolerance = applyObservedProfile(result.GlobalTolerance, observed.Tolerance, observed.Source)
+		result.CPUInitializationPeriod = applyObservedProfile(result.CPUInitializationPeriod, observed.CPUInitializationPeriod, observed.Source)
+		result.InitialReadinessDelay = applyObservedProfile(result.InitialReadinessDelay, observed.InitialReadinessDelay, observed.Source)
+		result.DownscaleStabilization = applyObservedProfile(result.DownscaleStabilization, observed.DownscaleStabilization, observed.Source)
+	}
+
+	// Apply user-provided overrides last — they take highest priority.
+	if overrides.Tolerance != nil {
+		result.GlobalTolerance = applyOverride(result.GlobalTolerance, *overrides.Tolerance)
+	}
+	if overrides.SyncPeriod != nil {
+		result.SyncPeriod = applyOverride(result.SyncPeriod, *overrides.SyncPeriod)
+	}
+	if overrides.CPUInitializationPeriod != nil {
+		result.CPUInitializationPeriod = applyOverride(result.CPUInitializationPeriod, *overrides.CPUInitializationPeriod)
+	}
+	if overrides.InitialReadinessDelay != nil {
+		result.InitialReadinessDelay = applyOverride(result.InitialReadinessDelay, *overrides.InitialReadinessDelay)
+	}
+
 	result.Summary = buildAssumptionsSummary(result)
 	result.Warnings = buildAssumptionsWarnings(result)
 
 	return result
+}
+
+// applyObservedProfile upgrades an assumption when its source is still
+// "kubernetes-default" by replacing its value and source from the observed
+// controller-manager profile. Confidence is set to "medium" since the value
+// is observed but not guaranteed to be current.
+func applyObservedProfile(a Assumption, observedValue string, observedSource string) Assumption {
+	if a.Source != "kubernetes-default" || observedValue == "" {
+		return a
+	}
+	return Assumption{
+		Name:        a.Name,
+		Value:       observedValue,
+		Source:      observedSource,
+		Confidence:  "medium",
+		Impact:      a.Impact,
+		Description: a.Description,
+	}
+}
+
+// applyOverride replaces an assumption's value with a user-provided override,
+// setting source="overridden" and confidence="high".
+func applyOverride(a Assumption, overrideValue string) Assumption {
+	return Assumption{
+		Name:        a.Name,
+		Value:       overrideValue,
+		Source:      "overridden",
+		Confidence:  "high",
+		Impact:      a.Impact,
+		Description: a.Description,
+	}
 }
 
 // detectSyncPeriod returns the HPA controller sync period assumption.
@@ -203,6 +285,7 @@ func buildAssumptionsSummary(ca *ControllerAssumptions) string {
 	lowCount := 0
 	mediumCount := 0
 	highCount := 0
+	overriddenCount := 0
 
 	assumptions := []Assumption{
 		ca.SyncPeriod,
@@ -221,11 +304,13 @@ func buildAssumptionsSummary(ca *ControllerAssumptions) string {
 			mediumCount++
 		case "high":
 			highCount++
+		case "overridden":
+			overriddenCount++
 		}
 	}
 
 	total := len(assumptions)
-	explicit := highCount
+	explicit := highCount + overriddenCount
 
 	switch {
 	case explicit == total:
@@ -241,18 +326,26 @@ func buildAssumptionsSummary(ca *ControllerAssumptions) string {
 
 // buildAssumptionsWarnings generates warning strings for assumptions that
 // carry operational risk due to default or low-confidence values.
+// Overridden values are excluded from warnings since they are explicitly set.
 func buildAssumptionsWarnings(ca *ControllerAssumptions) []string {
 	var warnings []string
 
-	if ca.CPUInitializationPeriod.Confidence == "low" {
+	if ca.CPUInitializationPeriod.Source == "overridden" || ca.CPUInitializationPeriod.Source == "hpa.spec" {
+		// No warning — value is explicitly known.
+	} else if ca.CPUInitializationPeriod.Confidence == "low" {
 		warnings = append(warnings, "CPU metrics from recently started pods may be ignored.")
 	}
+
 	if ca.GlobalTolerance.Source == "kubernetes-default" {
 		warnings = append(warnings, "Ratio within 10% of target may not trigger scaling.")
 	}
-	if ca.InitialReadinessDelay.Confidence == "low" {
+
+	if ca.InitialReadinessDelay.Source == "overridden" || ca.InitialReadinessDelay.Source == "hpa.spec" {
+		// No warning — value is explicitly known.
+	} else if ca.InitialReadinessDelay.Confidence == "low" {
 		warnings = append(warnings, "Pods becoming ready shortly after start may not be counted.")
 	}
+
 	if ca.DownscaleStabilization.Source == "kubernetes-default" {
 		warnings = append(warnings, "Scale-down may be delayed by default 300s stabilization.")
 	}
