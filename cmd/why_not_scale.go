@@ -16,6 +16,7 @@ type whyNotScaleReport struct {
 	Summary          string   `json:"summary" yaml:"summary"`
 	Observed         []string `json:"observed" yaml:"observed"`
 	PossibleBlockers []string `json:"possibleBlockers,omitempty" yaml:"possibleBlockers,omitempty"`
+	Estimated        []string `json:"estimated,omitempty" yaml:"estimated,omitempty"`
 	Unknown          []string `json:"unknown,omitempty" yaml:"unknown,omitempty"`
 	NextChecks       []string `json:"nextChecks,omitempty" yaml:"nextChecks,omitempty"`
 }
@@ -75,15 +76,12 @@ func runWhyNotScale(ctx context.Context, out io.Writer, opts *options, names []s
 func buildWhyNotScaleReport(status hpaanalysis.StatusReport) whyNotScaleReport {
 	a := status.Analysis
 	report := whyNotScaleReport{
-		Namespace: a.Namespace,
-		Name:      a.Name,
-		Target:    a.Target,
-		Summary:   whyNotScaleSummary(a),
-		Unknown: []string{
-			"controller-internal per-metric replica recommendations are not exposed by the HPA API",
-			"missing-metric and not-yet-ready pod adjustments cannot be confirmed from HPA status alone",
-			"cluster-wide HPA controller flags such as tolerance and CPU initialization periods may be unknown",
-		},
+		Namespace:  a.Namespace,
+		Name:       a.Name,
+		Target:     a.Target,
+		Summary:    whyNotScaleSummary(a),
+		Estimated:  whyNotScaleEstimated(a),
+		Unknown:    whyNotScaleUnknown(a),
 		NextChecks: whyNotScaleNextChecks(a),
 	}
 
@@ -117,6 +115,130 @@ func buildWhyNotScaleReport(status hpaanalysis.StatusReport) whyNotScaleReport {
 		report.PossibleBlockers = append(report.PossibleBlockers, "no hard blocker is visible from HPA status; controller tolerance, stabilization, or metric freshness may still explain no visible change")
 	}
 	return report
+}
+
+func whyNotScaleEstimated(a hpaanalysis.Analysis) []string {
+	var estimated []string
+
+	estimated = appendToleranceEstimates(estimated, a)
+	estimated = appendStabilizationEstimates(estimated, a)
+	estimated = appendMissingMetricDampeningEstimate(estimated, a)
+
+	return estimated
+}
+
+func appendToleranceEstimates(estimated []string, a hpaanalysis.Analysis) []string {
+	const defaultTolerance = 0.1
+
+	// Prefer structured decision trace tolerance data when available.
+	if sdt := a.StructuredDecisionTrace; sdt != nil && sdt.ToleranceEffect != nil {
+		te := sdt.ToleranceEffect
+		if len(te.SuppressedMetrics) > 0 {
+			for _, name := range te.SuppressedMetrics {
+				estimated = append(estimated,
+					fmt.Sprintf("tolerance (default %.2f) likely suppressed scaling for metric %s", te.EffectiveTolerance, name))
+			}
+		} else if te.Note != "" {
+			estimated = append(estimated, te.Note)
+		}
+		return estimated
+	}
+
+	// Fall back to MetricDecisionTrace tolerance data.
+	if mdt := a.MetricDecisionTrace; mdt != nil && mdt.ToleranceEffect != nil {
+		te := mdt.ToleranceEffect
+		if len(te.SuppressedMetrics) > 0 {
+			for _, name := range te.SuppressedMetrics {
+				estimated = append(estimated,
+					fmt.Sprintf("tolerance (default %.2f) likely suppressed scaling for metric %s", te.DefaultTolerance, name))
+			}
+		} else if te.Note != "" {
+			estimated = append(estimated, te.Note)
+		}
+		return estimated
+	}
+
+	// Estimate from metric ratios when no trace is available.
+	for _, metric := range a.Metrics {
+		if metric.Ratio == nil {
+			continue
+		}
+		ratio := *metric.Ratio
+		distance := ratio - 1.0
+		if distance < 0 {
+			distance = -distance
+		}
+		if distance > 0 && distance <= defaultTolerance {
+			estimated = append(estimated,
+				fmt.Sprintf("%s metric %s ratio=%.2f is within tolerance band (default %.2f); scaling suppressed", metric.Type, metric.Name, ratio, defaultTolerance))
+		}
+	}
+
+	return estimated
+}
+
+func appendStabilizationEstimates(estimated []string, a hpaanalysis.Analysis) []string {
+	// Prefer structured decision trace stabilization data.
+	if sdt := a.StructuredDecisionTrace; sdt != nil && sdt.StabilizationEffect != nil {
+		se := sdt.StabilizationEffect
+		if se.Note != "" {
+			estimated = append(estimated, se.Note)
+		} else if se.SuppressedDirection != "" {
+			estimated = append(estimated,
+				fmt.Sprintf("stabilization window may be holding a %s decision", se.SuppressedDirection))
+		}
+		return estimated
+	}
+
+	// Fall back to MetricDecisionTrace stabilization data.
+	if mdt := a.MetricDecisionTrace; mdt != nil && mdt.StabilizationEffect != nil {
+		se := mdt.StabilizationEffect
+		if se.Note != "" {
+			estimated = append(estimated, se.Note)
+		} else if se.SuppressedScaleDown {
+			estimated = append(estimated,
+				fmt.Sprintf("scale-down stabilization window (%ds) may be suppressing scale-down", se.WindowSeconds))
+		}
+		return estimated
+	}
+
+	// Estimate from Analysis stabilization fields.
+	if a.StabilizationWindowSeconds != nil && *a.StabilizationWindowSeconds > 0 {
+		if a.StabilizationRemaining != nil && *a.StabilizationRemaining > 0 {
+			estimated = append(estimated,
+				fmt.Sprintf("scale-down stabilization window (%ds) may hold recommendation for about %ds", *a.StabilizationWindowSeconds, *a.StabilizationRemaining))
+		} else {
+			estimated = append(estimated,
+				fmt.Sprintf("scale-down stabilization window (%ds) may be delaying scale-down decisions", *a.StabilizationWindowSeconds))
+		}
+	}
+
+	return estimated
+}
+
+func appendMissingMetricDampeningEstimate(estimated []string, a hpaanalysis.Analysis) []string {
+	hasMissing := false
+	for _, freshness := range a.MetricFreshnessEntries {
+		if freshness.Status == string(hpaanalysis.FreshnessMissing) {
+			hasMissing = true
+			break
+		}
+	}
+	if !hasMissing {
+		return estimated
+	}
+	estimated = append(estimated,
+		"missing metrics may cause conservative dampening; the HPA controller may use fewer pods than expected in utilization calculations")
+	return estimated
+}
+
+func whyNotScaleUnknown(a hpaanalysis.Analysis) []string {
+	unknown := []string{
+		"controller-internal per-metric replica recommendations are not exposed by the HPA API",
+		"exact missing-metric dampening is not exposed by Kubernetes API",
+		"controller-internal recommendation history is not visible",
+	}
+	return unknown
 }
 
 func whyNotScaleSummary(a hpaanalysis.Analysis) string {
@@ -221,6 +343,7 @@ func writeWhyNotScaleText(out io.Writer, reports []whyNotScaleReport) {
 		fmt.Fprintf(out, "Summary: %s\n\n", report.Summary)
 		writeWhySection(out, "Observed", report.Observed)
 		writeWhySection(out, "Possible blockers", report.PossibleBlockers)
+		writeWhySection(out, "Estimated", report.Estimated)
 		writeWhySection(out, "Unknown", report.Unknown)
 		if len(report.NextChecks) > 0 {
 			fmt.Fprintln(out, "Next checks:")

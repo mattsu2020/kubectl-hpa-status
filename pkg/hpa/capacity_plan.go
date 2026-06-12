@@ -54,6 +54,18 @@ func AnalyzeCapacityPlan(input CapacityPlanInput) *CapacityPlan {
 	plan.Checks = append(plan.Checks, checkPDBs(input.PDBs)...)
 	plan.Checks = append(plan.Checks, checkClusterAutoscaler(input.ClusterAutoscaler)...)
 
+	// Estimate schedulable now from remaining node capacity.
+	plan.SchedulableNow = computeSchedulableNow(input.NodeCapacity, perPodCPU, perPodMemory, input.ReadyPods, input.ContainerResources)
+
+	// Detect node autoscaler requirement.
+	plan.NodeAutoscalerRequired = input.NodeCapacity != nil &&
+		input.NodeCapacity.TotalNodes > 0 &&
+		input.ClusterAutoscaler &&
+		hasNodeCapacityShortfall(plan.Checks)
+
+	// Suggest dry-run command.
+	plan.DryRunCommand = buildDryRunCommand(input.Namespace, input.HPAName, targetMax)
+
 	// Derive recommendation.
 	plan.Safe, plan.Recommendation, plan.NextActions = buildRecommendation(plan, input)
 
@@ -105,6 +117,70 @@ func multiplyQuantity(q resource.Quantity, multiplier int64) resource.Quantity {
 	}
 	scaled := q.MilliValue() * multiplier
 	return *resource.NewMilliQuantity(scaled, q.Format)
+}
+
+// computeSchedulableNow estimates how many additional pods can be scheduled
+// with current node capacity. It subtracts resources used by already-running
+// pods (ReadyPods * per-pod resources) from total allocatable, then divides
+// the remainder by per-pod resources. Returns 0 if node capacity is unavailable
+// or per-pod resources cannot be determined.
+func computeSchedulableNow(nc *NodeCapacitySummary, perPodCPU, perPodMemory resource.Quantity, readyPods int32, containers []CapacityContainerResources) int32 {
+	if nc == nil || nc.TotalNodes == 0 || len(containers) == 0 {
+		return 0
+	}
+
+	allocCPU := resource.MustParse(nc.AllocCPU)
+	allocMem := resource.MustParse(nc.AllocMemory)
+
+	// Subtract resources consumed by already-running pods.
+	usedCPU := multiplyQuantity(perPodCPU, int64(readyPods))
+	usedMem := multiplyQuantity(perPodMemory, int64(readyPods))
+
+	remainingCPU := allocCPU.DeepCopy()
+	remainingCPU.Sub(usedCPU)
+	remainingMem := allocMem.DeepCopy()
+	remainingMem.Sub(usedMem)
+
+	// Compute how many additional pods fit based on each resource dimension.
+	var cpuFit, memFit int32
+	if !perPodCPU.IsZero() && remainingCPU.Cmp(perPodCPU) >= 0 {
+		cpuFit = int32(remainingCPU.MilliValue() / perPodCPU.MilliValue())
+	}
+	if !perPodMemory.IsZero() && remainingMem.Cmp(perPodMemory) >= 0 {
+		memFit = int32(remainingMem.MilliValue() / perPodMemory.MilliValue())
+	}
+
+	// Take the minimum of both dimensions (scheduling requires both).
+	switch {
+	case perPodCPU.IsZero() && perPodMemory.IsZero():
+		return 0
+	case perPodCPU.IsZero():
+		return memFit
+	case perPodMemory.IsZero():
+		return cpuFit
+	default:
+		if cpuFit < memFit {
+			return cpuFit
+		}
+		return memFit
+	}
+}
+
+// hasNodeCapacityShortfall returns true when any check result indicates
+// insufficient node allocatable CPU or memory.
+func hasNodeCapacityShortfall(checks []CapacityCheckResult) bool {
+	for _, c := range checks {
+		if !c.Pass && strings.HasPrefix(c.Message, "node allocatable") {
+			return true
+		}
+	}
+	return false
+}
+
+// buildDryRunCommand suggests a kubectl patch command for dry-run testing of
+// the maxReplicas change.
+func buildDryRunCommand(namespace, hpaName string, targetMax int32) string {
+	return fmt.Sprintf("kubectl patch hpa %s -n %s --type merge -p '{\"spec\":{\"maxReplicas\":%d}}' --dry-run=client", hpaName, namespace, targetMax)
 }
 
 // ---------------------------------------------------------------------------

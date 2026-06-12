@@ -52,6 +52,26 @@ func AppendCapacityPlanText(out *[]byte, plan *CapacityPlan, theme style.Theme, 
 		}
 	}
 
+	// Schedulable now estimate.
+	if plan.SchedulableNow > 0 {
+		*out = append(*out, '\n')
+		*out = fmt.Appendf(*out, "  Schedulable now: likely %d replicas\n", plan.SchedulableNow)
+	}
+
+	// Node autoscaler required.
+	*out = append(*out, '\n')
+	if plan.NodeAutoscalerRequired {
+		*out = fmt.Appendf(*out, "  Node autoscaler required: yes\n")
+	} else {
+		*out = fmt.Appendf(*out, "  Node autoscaler required: no\n")
+	}
+
+	// Dry-run command.
+	if plan.DryRunCommand != "" {
+		*out = append(*out, '\n')
+		*out = fmt.Appendf(*out, "  Dry-run: %s\n", plan.DryRunCommand)
+	}
+
 	// Recommendation.
 	*out = append(*out, '\n')
 	*out = append(*out, "  Recommendation:\n"...)

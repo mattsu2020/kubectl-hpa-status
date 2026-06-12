@@ -5,6 +5,7 @@ package hpa
 import (
 	"time"
 
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -1300,6 +1301,14 @@ type CapacityPlan struct {
 	Recommendation string `json:"recommendation" yaml:"recommendation"`
 	// Safe is true when all checks pass.
 	Safe bool `json:"safe" yaml:"safe"`
+	// SchedulableNow estimates how many additional pods can be scheduled
+	// with current cluster resources. Zero means no headroom.
+	SchedulableNow int32 `json:"schedulableNow,omitempty" yaml:"schedulableNow,omitempty"`
+	// NodeAutoscalerRequired is true when node autoscaling is needed to
+	// accommodate the projected maxReplicas.
+	NodeAutoscalerRequired bool `json:"nodeAutoscalerRequired" yaml:"nodeAutoscalerRequired"`
+	// DryRunCommand suggests a kubectl command for dry-run testing.
+	DryRunCommand string `json:"dryRunCommand,omitempty" yaml:"dryRunCommand,omitempty"`
 	// NextActions lists concrete remediation steps when Safe is false.
 	NextActions []string `json:"nextActions,omitempty" yaml:"nextActions,omitempty"`
 }
@@ -1604,4 +1613,278 @@ type AnomalyDetection struct {
 	CauseEstimate string `json:"causeEstimate,omitempty" yaml:"causeEstimate,omitempty"`
 	// Remediation suggests actions to address the anomaly.
 	Remediation string `json:"remediation,omitempty" yaml:"remediation,omitempty"`
+}
+
+// ---------------------------------------------------------------------------
+// Rollout Report types (rollout command)
+// ---------------------------------------------------------------------------
+
+// RolloutReport holds the complete rollout-aware HPA diagnostics for a
+// single HPA. It detects rollout-related risks that can make HPA behavior
+// confusing or incorrect during rolling updates.
+type RolloutReport struct {
+	// Namespace is the Kubernetes namespace of the HPA.
+	Namespace string `json:"namespace" yaml:"namespace"`
+	// Name is the HPA resource name.
+	Name string `json:"name" yaml:"name"`
+	// Target is the scaleTargetRef in "Kind/Name" format.
+	Target string `json:"target" yaml:"target"`
+	// RolloutInProgress indicates whether a rollout is currently in progress.
+	RolloutInProgress bool `json:"rolloutInProgress" yaml:"rolloutInProgress"`
+	// NewPodsReady is the count of new pods that are ready vs total new pods.
+	NewPodsReady string `json:"newPodsReady,omitempty" yaml:"newPodsReady,omitempty"`
+	// Summary is a one-line overall assessment.
+	Summary string `json:"summary" yaml:"summary"`
+	// Checks lists individual rollout-aware check results.
+	Checks []RolloutCheck `json:"checks" yaml:"checks"`
+	// Risks lists detected risks during rollout.
+	Risks []RolloutRisk `json:"risks,omitempty" yaml:"risks,omitempty"`
+	// Recommendation is the overall recommendation text.
+	Recommendation string `json:"recommendation,omitempty" yaml:"recommendation,omitempty"`
+	// NextActions lists concrete actions to take.
+	NextActions []string `json:"nextActions,omitempty" yaml:"nextActions,omitempty"`
+}
+
+// RolloutCheck is a single rollout-aware diagnostic check result.
+type RolloutCheck struct {
+	// Pass is true when the check succeeds.
+	Pass bool `json:"pass" yaml:"pass"`
+	// Category is the check category: "probe", "metric", "readiness", "container".
+	Category string `json:"category" yaml:"category"`
+	// Message describes the check outcome.
+	Message string `json:"message" yaml:"message"`
+}
+
+// RolloutRisk represents a detected risk during rollout that may affect HPA.
+type RolloutRisk struct {
+	// Severity is the risk severity: "high", "medium", "low".
+	Severity string `json:"severity" yaml:"severity"`
+	// Category is the risk category.
+	Category string `json:"category" yaml:"category"`
+	// Message describes the risk.
+	Message string `json:"message" yaml:"message"`
+	// Detail provides additional context.
+	Detail string `json:"detail,omitempty" yaml:"detail,omitempty"`
+}
+
+// RolloutInput aggregates all observable signals for rollout-aware HPA
+// diagnostics. The cmd layer assembles this from Kubernetes API calls.
+type RolloutInput struct {
+	// Namespace is the Kubernetes namespace.
+	Namespace string
+	// HPAName is the HPA resource name.
+	HPAName string
+	// Target is the scaleTargetRef in "Kind/Name" format.
+	Target string
+	// RolloutInProgress indicates whether a rollout is currently in progress.
+	RolloutInProgress bool
+	// UpdatedReplicas is the count of pods running the updated revision.
+	UpdatedReplicas int32
+	// ReadyReplicas is the count of ready pods.
+	ReadyReplicas int32
+	// DesiredReplicas is the desired replica count from the workload.
+	DesiredReplicas int32
+	// HasStartupProbe indicates whether the pod template has a startupProbe.
+	HasStartupProbe bool
+	// HasReadinessProbe indicates whether the pod template has a readinessProbe.
+	HasReadinessProbe bool
+	// ReadinessInitialDelaySeconds is the readinessProbe initialDelaySeconds.
+	ReadinessInitialDelaySeconds int32
+	// HPAContainerMetrics lists container names referenced by HPA
+	// ContainerResource metrics.
+	HPAContainerMetrics []string
+	// TemplateContainerNames lists container names from the current pod template.
+	TemplateContainerNames []string
+	// NewReplicaSetContainerNames lists container names from the new ReplicaSet.
+	NewReplicaSetContainerNames []string
+	// PodIssues lists pod-level issues detected during rollout.
+	PodIssues []string
+}
+
+// ---------------------------------------------------------------------------
+// GitOps Review types (gitops review command)
+// ---------------------------------------------------------------------------
+
+// GitOpsReview holds the result of reviewing HPA manifest changes for
+// risky modifications in a PR or GitOps diff.
+type GitOpsReview struct {
+	// Files lists the files that were reviewed.
+	Files []GitOpsReviewFile `json:"files,omitempty" yaml:"files,omitempty"`
+	// Summary is a one-line overall assessment.
+	Summary string `json:"summary" yaml:"summary"`
+	// RiskLevel is the overall risk level: "high", "medium", "low", "none".
+	RiskLevel string `json:"riskLevel" yaml:"riskLevel"`
+	// Findings lists all detected risky changes.
+	Findings []GitOpsReviewFinding `json:"findings,omitempty" yaml:"findings,omitempty"`
+	// Recommendation is the overall recommendation text.
+	Recommendation string `json:"recommendation,omitempty" yaml:"recommendation,omitempty"`
+}
+
+// GitOpsReviewFile holds review results for a single file.
+type GitOpsReviewFile struct {
+	// Path is the file path.
+	Path string `json:"path" yaml:"path"`
+	// HPAName is the HPA name from the manifest.
+	HPAName string `json:"hpaName,omitempty" yaml:"hpaName,omitempty"`
+	// Findings lists findings for this file.
+	Findings []GitOpsReviewFinding `json:"findings,omitempty" yaml:"findings,omitempty"`
+}
+
+// GitOpsReviewFinding represents a single risky HPA manifest change.
+type GitOpsReviewFinding struct {
+	// Severity is the finding severity: "high", "medium", "low".
+	Severity string `json:"severity" yaml:"severity"`
+	// Category is the finding category (e.g. "maxReplicas", "stabilization",
+	// "target", "behavior", "metric").
+	Category string `json:"category" yaml:"category"`
+	// Message describes the finding.
+	Message string `json:"message" yaml:"message"`
+	// Detail provides additional context.
+	Detail string `json:"detail,omitempty" yaml:"detail,omitempty"`
+}
+
+// GitOpsReviewInput holds the before and after HPA manifests for diff review.
+type GitOpsReviewInput struct {
+	// Before is the base (old) HPA manifest.
+	Before *autoscalingv2.HorizontalPodAutoscaler
+	// After is the proposed (new) HPA manifest.
+	After *autoscalingv2.HorizontalPodAutoscaler
+	// FilePath is the path to the manifest file.
+	FilePath string
+}
+
+// ---------------------------------------------------------------------------
+// Autoscaler Map types (autoscaler-map command)
+// ---------------------------------------------------------------------------
+
+// AutoscalerMap holds the complete HPA-to-Node Autoscaler relationship
+// visualization for a single HPA.
+type AutoscalerMap struct {
+	// Namespace is the Kubernetes namespace of the HPA.
+	Namespace string `json:"namespace" yaml:"namespace"`
+	// HPAName is the HPA resource name.
+	HPAName string `json:"hpaName" yaml:"hpaName"`
+	// Target is the scaleTargetRef in "Kind/Name" format.
+	Target string `json:"target" yaml:"target"`
+	// CurrentReplicas is the current replica count.
+	CurrentReplicas int32 `json:"currentReplicas" yaml:"currentReplicas"`
+	// DesiredReplicas is the desired replica count from HPA.
+	DesiredReplicas int32 `json:"desiredReplicas" yaml:"desiredReplicas"`
+	// MaxReplicas is the HPA maxReplicas.
+	MaxReplicas int32 `json:"maxReplicas" yaml:"maxReplicas"`
+	// Summary is a one-line overall assessment.
+	Summary string `json:"summary" yaml:"summary"`
+	// Layers describes the HPA -> Deployment -> Pods -> Nodes -> Autoscaler layers.
+	Layers []AutoscalerMapLayer `json:"layers" yaml:"layers"`
+	// Blockers lists detected blockers in the autoscaling chain.
+	Blockers []AutoscalerMapBlocker `json:"blockers,omitempty" yaml:"blockers,omitempty"`
+	// Recommendation is the overall recommendation text.
+	Recommendation string `json:"recommendation,omitempty" yaml:"recommendation,omitempty"`
+	// NextActions lists concrete actions to take.
+	NextActions []string `json:"nextActions,omitempty" yaml:"nextActions,omitempty"`
+}
+
+// AutoscalerMapLayer describes one layer in the autoscaling chain.
+type AutoscalerMapLayer struct {
+	// Name is the layer name: "hpa", "workload", "pods", "nodes", "autoscaler".
+	Name string `json:"name" yaml:"name"`
+	// Resource is the resource identifier at this layer.
+	Resource string `json:"resource" yaml:"resource"`
+	// Status is the status summary at this layer.
+	Status string `json:"status" yaml:"status"`
+	// Details provides additional information about this layer.
+	Details []string `json:"details,omitempty" yaml:"details,omitempty"`
+	// Healthy indicates whether this layer is functioning correctly.
+	Healthy bool `json:"healthy" yaml:"healthy"`
+}
+
+// AutoscalerMapBlocker represents a detected blocker in the autoscaling chain.
+type AutoscalerMapBlocker struct {
+	// Layer is the layer where the blocker was detected.
+	Layer string `json:"layer" yaml:"layer"`
+	// Severity is the blocker severity: "high", "medium", "low".
+	Severity string `json:"severity" yaml:"severity"`
+	// Message describes the blocker.
+	Message string `json:"message" yaml:"message"`
+	// Detail provides additional context.
+	Detail string `json:"detail,omitempty" yaml:"detail,omitempty"`
+}
+
+// AutoscalerMapInput aggregates all observable signals for autoscaler map
+// analysis. The cmd layer assembles this from Kubernetes API calls.
+type AutoscalerMapInput struct {
+	// Namespace is the Kubernetes namespace.
+	Namespace string
+	// HPAName is the HPA resource name.
+	HPAName string
+	// Target is the scaleTargetRef in "Kind/Name" format.
+	Target string
+	// CurrentReplicas is the current replica count from HPA status.
+	CurrentReplicas int32
+	// DesiredReplicas is the desired replica count from HPA status.
+	DesiredReplicas int32
+	// MaxReplicas is the HPA maxReplicas.
+	MaxReplicas int32
+	// WorkloadReadyReplicas is the ready replica count from the workload.
+	WorkloadReadyReplicas int32
+	// WorkloadDesiredReplicas is the desired replica count from the workload.
+	WorkloadDesiredReplicas int32
+	// PodSummary holds pod-level summary information.
+	PodSummary AutoscalerMapPodSummary
+	// NodeSummary holds node-level summary information.
+	NodeSummary AutoscalerMapNodeSummary
+	// ClusterAutoscaler indicates whether Cluster Autoscaler is detected.
+	ClusterAutoscaler bool
+	// Karpenter indicates whether Karpenter is detected.
+	Karpenter bool
+	// PendingPods lists pending pods for the scale target.
+	PendingPods []PendingPodInfo
+	// ScalingActive indicates whether the HPA ScalingActive condition is True.
+	ScalingActive bool
+}
+
+// AutoscalerMapPodSummary holds pod-level summary information.
+type AutoscalerMapPodSummary struct {
+	// Total is the total number of pods.
+	Total int32 `json:"total" yaml:"total"`
+	// Running is the count of running pods.
+	Running int32 `json:"running" yaml:"running"`
+	// Pending is the count of pending pods.
+	Pending int32 `json:"pending" yaml:"pending"`
+	// Ready is the count of ready pods.
+	Ready int32 `json:"ready" yaml:"ready"`
+}
+
+// AutoscalerMapNodeSummary holds node-level summary information.
+type AutoscalerMapNodeSummary struct {
+	// TotalNodes is the total number of nodes.
+	TotalNodes int32 `json:"totalNodes" yaml:"totalNodes"`
+	// AllocatableCPU is the total allocatable CPU across all nodes.
+	AllocatableCPU string `json:"allocatableCpu,omitempty" yaml:"allocatableCpu,omitempty"`
+	// AllocatableMemory is the total allocatable memory across all nodes.
+	AllocatableMemory string `json:"allocatableMemory,omitempty" yaml:"allocatableMemory,omitempty"`
+	// TaintedNodes is the count of tainted nodes.
+	TaintedNodes int32 `json:"taintedNodes,omitempty" yaml:"taintedNodes,omitempty"`
+	// MatchingNodePools lists node pools that match the workload's scheduling constraints.
+	MatchingNodePools []string `json:"matchingNodePools,omitempty" yaml:"matchingNodePools,omitempty"`
+	// PodCPURequest is the CPU request per pod.
+	PodCPURequest string `json:"podCpuRequest,omitempty" yaml:"podCpuRequest,omitempty"`
+	// PodMemoryRequest is the memory request per pod.
+	PodMemoryRequest string `json:"podMemoryRequest,omitempty" yaml:"podMemoryRequest,omitempty"`
+}
+
+// ---------------------------------------------------------------------------
+// Support Bundle types (support-bundle command)
+// ---------------------------------------------------------------------------
+
+// SupportBundleMetadata holds metadata about what's included in the bundle.
+type SupportBundleMetadata struct {
+	// KEDADetected indicates whether KEDA was detected in the cluster.
+	KEDADetected bool `json:"kedaDetected" yaml:"kedaDetected"`
+	// VPADetected indicates whether VPA was detected in the cluster.
+	VPADetected bool `json:"vpaDetected" yaml:"vpaDetected"`
+	// KEDAScaledObject is the KEDA ScaledObject YAML if KEDA is detected.
+	KEDAScaledObject string `json:"kedaScaledObject,omitempty" yaml:"kedaScaledObject,omitempty"`
+	// VPARecommendation is the VPA recommendation YAML if VPA is detected.
+	VPARecommendation string `json:"vpaRecommendation,omitempty" yaml:"vpaRecommendation,omitempty"`
 }

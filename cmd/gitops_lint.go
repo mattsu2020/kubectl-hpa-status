@@ -22,5 +22,9 @@ func newGitOpsCommand(opts *options) *cobra.Command {
 	}
 	cmd.Flags().String("path", "", "path to manifest file or directory")
 	cmd.Flags().StringP("output", "o", "", "output format: text, json, sarif")
+
+	// Add review subcommand.
+	cmd.AddCommand(newGitOpsReviewCommand(opts))
+
 	return cmd
 }
