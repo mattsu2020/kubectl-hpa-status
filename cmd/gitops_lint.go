@@ -17,7 +17,7 @@ func newGitOpsCommand(opts *options) *cobra.Command {
 			if path == "" {
 				return fmt.Errorf("--path is required")
 			}
-			return runLint(cmd.Context(), cmd.OutOrStdout(), opts, path, outputFmt, false, false)
+			return runLint(cmd.Context(), cmd.OutOrStdout(), opts, path, outputFmt, false, false, "error")
 		},
 	}
 	cmd.Flags().String("path", "", "path to manifest file or directory")

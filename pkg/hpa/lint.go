@@ -70,6 +70,7 @@ func LintHPA(hpa *autoscalingv2.HorizontalPodAutoscaler) *LintResult {
 	rules := []lintRule{
 		lintReplicaRange,
 		lintMinGreaterThanMax,
+		lintMinEqualsMax,
 		lintMissingCPURequest,
 		lintMultiContainerResource,
 		lintNoScaleDownBehavior,
@@ -145,6 +146,24 @@ func lintMinGreaterThanMax(hpa *autoscalingv2.HorizontalPodAutoscaler) []LintFin
 	return nil
 }
 
+// lintMinEqualsMax detects when minReplicas equals maxReplicas, making the
+// HPA unable to scale.
+func lintMinEqualsMax(hpa *autoscalingv2.HorizontalPodAutoscaler) []LintFinding {
+	var min int32 = 1
+	if hpa.Spec.MinReplicas != nil {
+		min = *hpa.Spec.MinReplicas
+	}
+	if min == hpa.Spec.MaxReplicas {
+		return []LintFinding{{
+			Severity:       LintError,
+			Rule:           "min-equals-max",
+			Message:        fmt.Sprintf("minReplicas and maxReplicas are both %d; HPA cannot scale", min),
+			Recommendation: "Separate min and max replicas to allow the HPA to adjust pod count based on load.",
+		}}
+	}
+	return nil
+}
+
 // lintMissingCPURequest checks if CPU resource metrics are configured but
 // the manifest doesn't specify cpu requests (offline check — we can only warn).
 func lintMissingCPURequest(hpa *autoscalingv2.HorizontalPodAutoscaler) []LintFinding {
@@ -183,7 +202,8 @@ func lintMultiContainerResource(hpa *autoscalingv2.HorizontalPodAutoscaler) []Li
 	return findings
 }
 
-// lintNoScaleDownBehavior warns when no scaleDown behavior is configured.
+// lintNoScaleDownBehavior warns when no scaleDown behavior is configured
+// or when scaleDown exists but has no explicit policies.
 func lintNoScaleDownBehavior(hpa *autoscalingv2.HorizontalPodAutoscaler) []LintFinding {
 	if hpa.Spec.Behavior == nil || hpa.Spec.Behavior.ScaleDown == nil {
 		return []LintFinding{{
@@ -192,6 +212,14 @@ func lintNoScaleDownBehavior(hpa *autoscalingv2.HorizontalPodAutoscaler) []LintF
 			Message:        "No scaleDown behavior configured. The controller uses default behavior which may cause aggressive downscaling.",
 			Recommendation: "Configure explicit scaleDown behavior to prevent aggressive downscaling and replica churn. See https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/#default-behavior",
 			AutoFix:        generateAutoFix("behavior-scaledown", hpa),
+		}}
+	}
+	if len(hpa.Spec.Behavior.ScaleDown.Policies) == 0 {
+		return []LintFinding{{
+			Severity:       LintWarning,
+			Rule:           "behavior-scaledown-empty",
+			Message:        "scaleDown behavior exists but has no policies. The controller falls back to default behavior.",
+			Recommendation: "Add explicit scaleDown policies to bound the rate of replica removal.",
 		}}
 	}
 	return nil

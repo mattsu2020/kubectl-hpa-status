@@ -51,6 +51,7 @@ func SimulateHPA(hpa *autoscalingv2.HorizontalPodAutoscaler, overrides map[strin
 
 	result.Interpretation = buildSimulationInterpretation(&before, &after, modified)
 	result.RiskAssessment = assessSimulationRisk(hpa, modified, &before, &after)
+	result.Confidence = "estimated"
 
 	return result, nil
 }

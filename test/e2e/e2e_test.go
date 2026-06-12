@@ -867,7 +867,9 @@ func TestE2E_ScaleToZero(t *testing.T) {
 	_, client, nsName := setupTestNamespace(t, kubeconfig)
 
 	createTestRC(t, client, nsName, "zero-rc")
-	createScaleToZeroHPA(t, client, nsName, "zero-hpa", "zero-rc")
+	if !createScaleToZeroHPA(t, client, nsName, "zero-hpa", "zero-rc") {
+		t.Skip("Skipping: minReplicas=0 requires HPAScaleToZero feature gate (K8s >= 1.27 with feature gate enabled)")
+	}
 
 	buf := new(bytes.Buffer)
 	rootCmd := cmd.NewRootCommand()
@@ -1156,7 +1158,8 @@ func TestE2E_ConfigFile(t *testing.T) {
 
 // createScaleToZeroHPA creates an HPA with minReplicas=0, CPU metric, and
 // status indicating zero current and desired replicas (scale-to-zero state).
-func createScaleToZeroHPA(t *testing.T, client *kubernetes.Clientset, nsName, hpaName, rcName string) {
+// Returns false if the API server rejects minReplicas=0 (feature gate not enabled).
+func createScaleToZeroHPA(t *testing.T, client *kubernetes.Clientset, nsName, hpaName, rcName string) bool {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -1193,6 +1196,9 @@ func createScaleToZeroHPA(t *testing.T, client *kubernetes.Clientset, nsName, hp
 	}
 	hpa, err := client.AutoscalingV2().HorizontalPodAutoscalers(nsName).Create(ctx, hpa, metav1.CreateOptions{})
 	if err != nil {
+		if strings.Contains(err.Error(), "minReplicas") || strings.Contains(err.Error(), "Invalid value") {
+			return false
+		}
 		t.Fatalf("failed to create scale-to-zero HPA %s: %v", hpaName, err)
 	}
 

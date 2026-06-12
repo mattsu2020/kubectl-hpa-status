@@ -532,6 +532,227 @@ func TestCheckResourceConsistency_MissingLimits(t *testing.T) {
 	}
 }
 
+func TestCheckResourceConsistency_TinyCPURequest(t *testing.T) {
+	hpa := buildTestHPA("cpu", 80)
+	resources := &kube.ResourceRequests{
+		Containers: []kube.ContainerResources{
+			{
+				Name:     "app",
+				Requests: map[string]string{"cpu": "5m"},
+				Limits:   map[string]string{"cpu": "100m"},
+			},
+		},
+	}
+	result := CheckResourceConsistency(hpa, resources)
+	if result == nil {
+		t.Fatal("expected warning for tiny CPU request")
+	}
+	found := false
+	for _, w := range result.Warnings {
+		if w.Category == "tiny-request" {
+			found = true
+			if w.Severity != "warning" {
+				t.Errorf("expected severity warning, got %s", w.Severity)
+			}
+			if w.Container != "app" {
+				t.Errorf("expected container app, got %s", w.Container)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected tiny-request warning, got categories: %v", warningCategories(result.Warnings))
+	}
+}
+
+func TestCheckResourceConsistency_TinyMemoryRequest(t *testing.T) {
+	hpa := buildTestHPA("memory", 80)
+	resources := &kube.ResourceRequests{
+		Containers: []kube.ContainerResources{
+			{
+				Name:     "app",
+				Requests: map[string]string{"memory": "8Mi"},
+				Limits:   map[string]string{"memory": "256Mi"},
+			},
+		},
+	}
+	result := CheckResourceConsistency(hpa, resources)
+	if result == nil {
+		t.Fatal("expected warning for tiny memory request")
+	}
+	found := false
+	for _, w := range result.Warnings {
+		if w.Category == "tiny-request" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected tiny-request warning, got categories: %v", warningCategories(result.Warnings))
+	}
+}
+
+func TestCheckResourceConsistency_NormalRequestNoTinyWarning(t *testing.T) {
+	hpa := buildTestHPA("cpu", 80)
+	resources := &kube.ResourceRequests{
+		Containers: []kube.ContainerResources{
+			{
+				Name:     "app",
+				Requests: map[string]string{"cpu": "100m"},
+				Limits:   map[string]string{"cpu": "500m"},
+			},
+		},
+	}
+	result := CheckResourceConsistency(hpa, resources)
+	if result != nil {
+		for _, w := range result.Warnings {
+			if w.Category == "tiny-request" {
+				t.Errorf("did not expect tiny-request warning for 100m CPU: %+v", w)
+			}
+		}
+	}
+}
+
+func TestCheckResourceConsistency_SidecarDistortion(t *testing.T) {
+	hpa := buildTestHPA("cpu", 80)
+	resources := &kube.ResourceRequests{
+		Containers: []kube.ContainerResources{
+			{
+				Name:     "app",
+				Requests: map[string]string{"cpu": "100m"},
+				Limits:   map[string]string{"cpu": "500m"},
+			},
+			{
+				Name:     "sidecar",
+				Requests: map[string]string{"cpu": "10m"},
+				Limits:   map[string]string{"cpu": "50m"},
+			},
+		},
+	}
+	result := CheckResourceConsistency(hpa, resources)
+	if result == nil {
+		t.Fatal("expected sidecar-distortion warning")
+	}
+	found := false
+	for _, w := range result.Warnings {
+		if w.Category == "sidecar-distortion" {
+			found = true
+			if w.Severity != "warning" {
+				t.Errorf("expected severity warning, got %s", w.Severity)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected sidecar-distortion warning, got categories: %v", warningCategories(result.Warnings))
+	}
+}
+
+func TestCheckResourceConsistency_NoSidecarDistortionForSimilarRequests(t *testing.T) {
+	hpa := buildTestHPA("cpu", 80)
+	resources := &kube.ResourceRequests{
+		Containers: []kube.ContainerResources{
+			{
+				Name:     "app",
+				Requests: map[string]string{"cpu": "100m"},
+				Limits:   map[string]string{"cpu": "500m"},
+			},
+			{
+				Name:     "sidecar",
+				Requests: map[string]string{"cpu": "50m"},
+				Limits:   map[string]string{"cpu": "100m"},
+			},
+		},
+	}
+	result := CheckResourceConsistency(hpa, resources)
+	if result != nil {
+		for _, w := range result.Warnings {
+			if w.Category == "sidecar-distortion" {
+				t.Errorf("did not expect sidecar-distortion warning for 2x ratio: %+v", w)
+			}
+		}
+	}
+}
+
+func TestCheckResourceConsistency_NoSidecarDistortionForSingleContainer(t *testing.T) {
+	hpa := buildTestHPA("cpu", 80)
+	resources := &kube.ResourceRequests{
+		Containers: []kube.ContainerResources{
+			{
+				Name:     "app",
+				Requests: map[string]string{"cpu": "100m"},
+				Limits:   map[string]string{"cpu": "500m"},
+			},
+		},
+	}
+	result := CheckResourceConsistency(hpa, resources)
+	if result != nil {
+		for _, w := range result.Warnings {
+			if w.Category == "sidecar-distortion" {
+				t.Errorf("did not expect sidecar-distortion warning for single container: %+v", w)
+			}
+		}
+	}
+}
+
+func TestCheckResourceConsistency_NoSidecarDistortionForContainerResourceMetric(t *testing.T) {
+	targetUtil := int32(80)
+	hpa := &autoscalingv2.HorizontalPodAutoscaler{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "default",
+			Name:      "web-hpa",
+		},
+		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
+				Kind: "Deployment",
+				Name: "web",
+			},
+			Metrics: []autoscalingv2.MetricSpec{
+				{
+					Type: autoscalingv2.ContainerResourceMetricSourceType,
+					ContainerResource: &autoscalingv2.ContainerResourceMetricSource{
+						Name:      corev1.ResourceCPU,
+						Container: "app",
+						Target: autoscalingv2.MetricTarget{
+							Type:               autoscalingv2.UtilizationMetricType,
+							AverageUtilization: &targetUtil,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	resources := &kube.ResourceRequests{
+		Containers: []kube.ContainerResources{
+			{
+				Name:     "app",
+				Requests: map[string]string{"cpu": "100m"},
+				Limits:   map[string]string{"cpu": "500m"},
+			},
+			{
+				Name:     "sidecar",
+				Requests: map[string]string{"cpu": "10m"},
+				Limits:   map[string]string{"cpu": "50m"},
+			},
+		},
+	}
+
+	result := CheckResourceConsistency(hpa, resources)
+	if result != nil {
+		for _, w := range result.Warnings {
+			if w.Category == "sidecar-distortion" {
+				t.Errorf("ContainerResource metric should not trigger sidecar-distortion: %+v", w)
+			}
+		}
+	}
+}
+
+func warningCategories(warnings []ResourceWarning) []string {
+	cats := make([]string, len(warnings))
+	for i, w := range warnings {
+		cats[i] = w.Category
+	}
+	return cats
+}
+
 func buildTestHPA(resourceName string, targetUtil int32) *autoscalingv2.HorizontalPodAutoscaler {
 	return &autoscalingv2.HorizontalPodAutoscaler{
 		ObjectMeta: metav1.ObjectMeta{

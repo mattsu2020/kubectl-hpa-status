@@ -5,8 +5,18 @@ import (
 	"strconv"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	"k8s.io/apimachinery/pkg/api/resource"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+)
+
+// Tiny resource request thresholds below which HPA utilization becomes noisy.
+const (
+	tinyCPUThreshold    = "10m"
+	tinyMemoryThreshold = "16Mi"
+	// sidecarDistortionRatio is the minimum ratio between the largest and
+	// smallest container request that triggers a sidecar-distortion warning.
+	sidecarDistortionRatio = 3.0
 )
 
 // CheckResourceConsistency validates that HPA resource metrics have
@@ -26,11 +36,13 @@ func CheckResourceConsistency(hpa *autoscalingv2.HorizontalPodAutoscaler, resour
 			if metric.Resource == nil {
 				continue
 			}
+			resName := string(metric.Resource.Name)
 			warnings = append(warnings, checkResourceMetricAllContainers(
-				string(metric.Resource.Name),
+				resName,
 				metric.Resource.Target,
 				containerMap,
 			)...)
+			warnings = append(warnings, checkSidecarDistortion(containerMap, resName)...)
 		case autoscalingv2.ContainerResourceMetricSourceType:
 			if metric.ContainerResource == nil {
 				continue
@@ -101,6 +113,16 @@ func checkSingleContainer(containerName, resourceName string, target autoscaling
 		return warnings
 	}
 
+	if isTinyRequest(resourceName, requestValue) {
+		warnings = append(warnings, ResourceWarning{
+			Container: containerName,
+			Resource:  resourceName,
+			Category:  "tiny-request",
+			Details:   fmt.Sprintf("container %q has a very small %s request (%s); HPA utilization will be noisy because small absolute changes produce large percentage swings (threshold: %s)", containerName, resourceName, requestValue, tinyThreshold(resourceName)),
+			Severity:  "warning",
+		})
+	}
+
 	if target.AverageUtilization != nil && *target.AverageUtilization > 90 {
 		warnings = append(warnings, ResourceWarning{
 			Container: containerName,
@@ -133,6 +155,86 @@ func buildContainerMap(containers []kube.ContainerResources) map[string]kube.Con
 		m[c.Name] = c
 	}
 	return m
+}
+
+// isTinyRequest checks if a resource request is below the "tiny" threshold
+// where HPA utilization percentages become excessively noisy.
+func isTinyRequest(resourceName, requestValue string) bool {
+	threshold := tinyThreshold(resourceName)
+	if threshold == "" {
+		return false
+	}
+	thresholdQty := resource.MustParse(threshold)
+	requestQty := resource.MustParse(requestValue)
+	return requestQty.Cmp(thresholdQty) < 0
+}
+
+// tinyThreshold returns the tiny-request threshold string for the given resource name.
+func tinyThreshold(resourceName string) string {
+	switch resourceName {
+	case "cpu":
+		return tinyCPUThreshold
+	case "memory":
+		return tinyMemoryThreshold
+	default:
+		return ""
+	}
+}
+
+// checkSidecarDistortion detects when a Resource-type metric (which averages
+// across all containers) is applied to a pod with containers whose requests
+// differ significantly, causing utilization distortion.
+func checkSidecarDistortion(containerMap map[string]kube.ContainerResources, resourceName string) []ResourceWarning {
+	if len(containerMap) < 2 {
+		return nil
+	}
+
+	var minVal, maxVal float64
+	var minName, maxName string
+	first := true
+	for name, cr := range containerMap {
+		requestStr, ok := cr.Requests[resourceName]
+		if !ok || isZeroQuantity(requestStr) {
+			continue
+		}
+		q := resource.MustParse(requestStr)
+		val := q.AsApproximateFloat64()
+		if first {
+			minVal, maxVal = val, val
+			minName, maxName = name, name
+			first = false
+		} else {
+			if val < minVal {
+				minVal = val
+				minName = name
+			}
+			if val > maxVal {
+				maxVal = val
+				maxName = name
+			}
+		}
+	}
+
+	if minVal == 0 || maxVal == 0 {
+		return nil
+	}
+
+	ratio := maxVal / minVal
+	if ratio < sidecarDistortionRatio {
+		return nil
+	}
+
+	return []ResourceWarning{{
+		Container: fmt.Sprintf("%s/%s", minName, maxName),
+		Resource:  resourceName,
+		Category:  "sidecar-distortion",
+		Details: fmt.Sprintf("containers have a %.1fx difference in %s requests (%s=%v, %s=%v); "+
+			"Resource metric averages across all containers, so the smaller container distorts utilization. "+
+			"Consider switching to ContainerResource metric type to target specific containers.",
+			ratio, resourceName, minName, resource.MustParse(containerMap[minName].Requests[resourceName]),
+			maxName, resource.MustParse(containerMap[maxName].Requests[resourceName])),
+		Severity: "warning",
+	}}
 }
 
 // isZeroQuantity checks if a resource quantity string represents zero.

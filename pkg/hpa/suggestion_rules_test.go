@@ -1,6 +1,7 @@
 package hpa
 
 import (
+	"strings"
 	"testing"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -65,7 +66,7 @@ func TestScalingActiveRule(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := scalingActiveRule(tt.hpa, 1)
+			got := scalingActiveRule(SuggestionContext{HPA: tt.hpa, MinReplicas: 1})
 			if tt.wantNil && got != nil {
 				t.Fatalf("expected nil, got %d suggestions", len(got))
 			}
@@ -182,7 +183,7 @@ func TestScalingLimitedMaxRule(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := scalingLimitedMaxRule(tt.hpa, 1)
+			got := scalingLimitedMaxRule(SuggestionContext{HPA: tt.hpa, MinReplicas: 1})
 			if tt.wantNil && got != nil {
 				t.Fatalf("expected nil, got %d suggestions", len(got))
 			}
@@ -269,7 +270,7 @@ func TestScalingLimitedMinRule(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := scalingLimitedMinRule(tt.hpa, tt.min)
+			got := scalingLimitedMinRule(SuggestionContext{HPA: tt.hpa, MinReplicas: tt.min})
 			if tt.wantNil && got != nil {
 				t.Fatalf("expected nil, got %d suggestions", len(got))
 			}
@@ -353,7 +354,7 @@ func TestScaleDownStabilizedRule(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := scaleDownStabilizedRule(tt.hpa, 1)
+			got := scaleDownStabilizedRule(SuggestionContext{HPA: tt.hpa, MinReplicas: 1})
 			if tt.wantNil && got != nil {
 				t.Fatalf("expected nil, got %d suggestions", len(got))
 			}
@@ -462,7 +463,7 @@ func TestBehaviorPolicyRule(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := behaviorPolicyRule(tt.hpa, 1)
+			got := behaviorPolicyRule(SuggestionContext{HPA: tt.hpa, MinReplicas: 1})
 			if tt.wantNil && got != nil {
 				t.Fatalf("expected nil, got %d suggestions", len(got))
 			}
@@ -541,7 +542,7 @@ func TestToleranceRule(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := toleranceRule(tt.hpa, 1)
+			got := toleranceRule(SuggestionContext{HPA: tt.hpa, MinReplicas: 1})
 			if tt.wantNil && got != nil {
 				t.Fatalf("expected nil, got %d suggestions", len(got))
 			}
@@ -626,7 +627,7 @@ func TestMetricMixRule(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := metricMixRule(tt.hpa, 1)
+			got := metricMixRule(SuggestionContext{HPA: tt.hpa, MinReplicas: 1})
 			if tt.wantNil && got != nil {
 				t.Fatalf("expected nil, got %d suggestions", len(got))
 			}
@@ -684,7 +685,7 @@ func TestKEDARule(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := kedaRule(tt.hpa, 1)
+			got := kedaRule(SuggestionContext{HPA: tt.hpa, MinReplicas: 1})
 			if tt.wantNil && got != nil {
 				t.Fatalf("expected nil, got %d suggestions", len(got))
 			}
@@ -712,6 +713,68 @@ func TestCoreSuggestionRules(t *testing.T) {
 	}
 }
 
+func TestScalingLimitedMaxRule_WithCapacityWarning(t *testing.T) {
+	hpa := buildScalingLimitedHPA(10, 10)
+	ctx := SuggestionContext{
+		HPA:         hpa,
+		MinReplicas: 1,
+		Capacity: &SuggestionCapacity{
+			Insufficient: true,
+			Reason:       "only 1.2 cores available, need ~2.5 cores for 10 additional pods",
+		},
+	}
+	got := scalingLimitedMaxRule(ctx)
+	if len(got) == 0 {
+		t.Fatal("expected suggestion for scaling limited at max")
+	}
+	found := false
+	for _, w := range got[0].Warnings {
+		if strings.Contains(w, "CAPACITY WARNING") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected capacity warning in suggestions, got warnings: %v", got[0].Warnings)
+	}
+}
+
+func TestScalingLimitedMaxRule_WithoutCapacity(t *testing.T) {
+	hpa := buildScalingLimitedHPA(10, 10)
+	ctx := SuggestionContext{
+		HPA:         hpa,
+		MinReplicas: 1,
+	}
+	got := scalingLimitedMaxRule(ctx)
+	if len(got) == 0 {
+		t.Fatal("expected suggestion for scaling limited at max")
+	}
+	for _, w := range got[0].Warnings {
+		if strings.Contains(w, "CAPACITY WARNING") {
+			t.Errorf("did not expect capacity warning when no capacity context: %s", w)
+		}
+	}
+}
+
+func TestScalingLimitedMaxRule_SufficientCapacity(t *testing.T) {
+	hpa := buildScalingLimitedHPA(10, 10)
+	ctx := SuggestionContext{
+		HPA:         hpa,
+		MinReplicas: 1,
+		Capacity: &SuggestionCapacity{
+			Insufficient: false,
+		},
+	}
+	got := scalingLimitedMaxRule(ctx)
+	if len(got) == 0 {
+		t.Fatal("expected suggestion for scaling limited at max")
+	}
+	for _, w := range got[0].Warnings {
+		if strings.Contains(w, "CAPACITY WARNING") {
+			t.Errorf("did not expect capacity warning when capacity is sufficient: %s", w)
+		}
+	}
+}
+
 // Helper functions
 
 func int32PtrForSuggestion(i int32) *int32 {
@@ -720,4 +783,24 @@ func int32PtrForSuggestion(i int32) *int32 {
 
 func resourcePtr(q resource.Quantity) *resource.Quantity {
 	return &q
+}
+
+func buildScalingLimitedHPA(maxReplicas, desiredReplicas int32) *autoscalingv2.HorizontalPodAutoscaler {
+	return &autoscalingv2.HorizontalPodAutoscaler{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "test-hpa"},
+		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{Kind: "Deployment", Name: "web"},
+			MaxReplicas:    maxReplicas,
+			MinReplicas:    int32PtrForSuggestion(1),
+		},
+		Status: autoscalingv2.HorizontalPodAutoscalerStatus{
+			CurrentReplicas: desiredReplicas - 1,
+			DesiredReplicas: desiredReplicas,
+			Conditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
+				{Type: "ScalingActive", Status: corev1.ConditionTrue},
+				{Type: "ScalingLimited", Status: corev1.ConditionTrue, Reason: "TooManyReplicas"},
+				{Type: "AbleToScale", Status: corev1.ConditionTrue},
+			},
+		},
+	}
 }

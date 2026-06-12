@@ -15,7 +15,7 @@ import (
 // suggestions. Rules are independent: each rule inspects specific conditions
 // or state and returns zero or more suggestions. Unlike diagnostic rules,
 // suggestion rules do not participate in early termination.
-type SuggestionRule func(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []Suggestion
+type SuggestionRule func(ctx SuggestionContext) []Suggestion
 
 // coreSuggestionRules returns the ordered list of rules that replace the
 // monolithic BuildSuggestions function. Rule order matters: rules that
@@ -34,7 +34,8 @@ func coreSuggestionRules() []SuggestionRule {
 }
 
 // scalingActiveRule generates suggestions when ScalingActive is not True.
-func scalingActiveRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []Suggestion {
+func scalingActiveRule(ctx SuggestionContext) []Suggestion {
+	hpa := ctx.HPA
 	if condition := FindCondition(hpa, "ScalingActive"); condition != nil && condition.Status != corev1.ConditionTrue {
 		suggestions := []Suggestion{{
 			Title:       "Restore metric availability",
@@ -47,7 +48,8 @@ func scalingActiveRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []Su
 }
 
 // scalingLimitedMaxRule suggests raising maxReplicas when HPA is capped at max.
-func scalingLimitedMaxRule(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []Suggestion {
+func scalingLimitedMaxRule(ctx SuggestionContext) []Suggestion {
+	hpa := ctx.HPA
 	condition := FindCondition(hpa, "ScalingLimited")
 	if condition == nil || condition.Status != corev1.ConditionTrue {
 		return nil
@@ -70,6 +72,11 @@ func scalingLimitedMaxRule(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplic
 		warnings = append(warnings, "No visible resource metric is above target; another metric or controller behavior may be responsible, so review currentMetrics before raising maxReplicas.")
 	}
 
+	// Add capacity warnings when available.
+	if ctx.Capacity != nil && ctx.Capacity.Insufficient {
+		warnings = append(warnings, fmt.Sprintf("CAPACITY WARNING: %s Raising maxReplicas to %d may result in Pending pods.", ctx.Capacity.Reason, nextMax))
+	}
+
 	return []Suggestion{{
 		Title:       "Raise maxReplicas",
 		Description: fmt.Sprintf("The HPA is capped at maxReplicas=%d. Raising it to %d allows the controller to add capacity if metrics still require it.", hpa.Spec.MaxReplicas, nextMax),
@@ -88,7 +95,9 @@ func scalingLimitedMaxRule(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplic
 }
 
 // scalingLimitedMinRule suggests lowering minReplicas when HPA is at min.
-func scalingLimitedMinRule(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []Suggestion {
+func scalingLimitedMinRule(ctx SuggestionContext) []Suggestion {
+	hpa := ctx.HPA
+	minReplicas := ctx.MinReplicas
 	condition := FindCondition(hpa, "ScalingLimited")
 	if condition == nil || condition.Status != corev1.ConditionTrue {
 		return nil
@@ -128,7 +137,8 @@ func scalingLimitedMinRule(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplic
 }
 
 // scaleDownStabilizedRule suggests shortening scale-down stabilization window.
-func scaleDownStabilizedRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []Suggestion {
+func scaleDownStabilizedRule(ctx SuggestionContext) []Suggestion {
+	hpa := ctx.HPA
 	condition := FindCondition(hpa, "AbleToScale")
 	if condition == nil || condition.Reason != "ScaleDownStabilized" {
 		return nil
@@ -165,7 +175,8 @@ func scaleDownStabilizedRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32
 }
 
 // behaviorPolicyRule suggests adding explicit scale-up/scale-down policies.
-func behaviorPolicyRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []Suggestion {
+func behaviorPolicyRule(ctx SuggestionContext) []Suggestion {
+	hpa := ctx.HPA
 	var suggestions []Suggestion
 
 	if hasVisibleScaleUpPressure(hpa) && missingPolicies(hpa.Spec.Behavior, "scaleUp") {
@@ -231,7 +242,8 @@ func behaviorPolicyRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []S
 }
 
 // toleranceRule suggests reviewing scale-up tolerance for small sustained pressure.
-func toleranceRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []Suggestion {
+func toleranceRule(ctx SuggestionContext) []Suggestion {
+	hpa := ctx.HPA
 	if hpa.Status.CurrentReplicas != hpa.Status.DesiredReplicas {
 		return nil
 	}
@@ -268,7 +280,8 @@ func toleranceRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []Sugges
 }
 
 // metricMixRule suggests fixes for stale external metrics and resource safety.
-func metricMixRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []Suggestion {
+func metricMixRule(ctx SuggestionContext) []Suggestion {
+	hpa := ctx.HPA
 	var suggestions []Suggestion
 	hasResource := false
 
@@ -307,7 +320,8 @@ func metricMixRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []Sugges
 }
 
 // kedaRule suggests inspecting KEDA ScaledObject for KEDA-managed HPAs.
-func kedaRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []Suggestion {
+func kedaRule(ctx SuggestionContext) []Suggestion {
+	hpa := ctx.HPA
 	if !looksLikeKEDAManaged(hpa) {
 		return nil
 	}

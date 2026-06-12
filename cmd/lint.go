@@ -28,17 +28,19 @@ func newLintCommand(opts *options) *cobra.Command {
 			outputFmt, _ := cmd.Flags().GetString("output")
 			sarif, _ := cmd.Flags().GetBool("sarif")
 			fix, _ := cmd.Flags().GetBool("fix")
-			return runLint(cmd.Context(), cmd.OutOrStdout(), opts, filePath, outputFmt, sarif, fix)
+			failOn, _ := cmd.Flags().GetString("fail-on")
+			return runLint(cmd.Context(), cmd.OutOrStdout(), opts, filePath, outputFmt, sarif, fix, failOn)
 		},
 	}
 	cmd.Flags().StringP("file", "f", "", "path to HPA manifest file or directory")
 	cmd.Flags().Bool("sarif", false, "output in SARIF format for CI integration")
 	cmd.Flags().Bool("fix", false, "show auto-fix proposals (dry-run only)")
+	cmd.Flags().String("fail-on", "error", "exit non-zero on findings at this severity or above: error, warning, info")
 	_ = cmd.MarkFlagRequired("file")
 	return cmd
 }
 
-func runLint(ctx context.Context, out io.Writer, opts *options, filePath, outputFmt string, sarif, fix bool) error {
+func runLint(ctx context.Context, out io.Writer, opts *options, filePath, outputFmt string, sarif, fix bool, failOn string) error {
 	info, err := os.Stat(filePath)
 	if err != nil {
 		return fmt.Errorf("cannot access %s: %w", filePath, err)
@@ -175,10 +177,32 @@ func runLint(ctx context.Context, out io.Writer, opts *options, filePath, output
 	}
 
 	_ = ctx
-	if exitCode != 0 {
-		return &exitCodeError{code: exitCode}
+	if exitCode != 0 || shouldFailOn(failOn, allResults) {
+		return &exitCodeError{code: 1}
 	}
 	return nil
+}
+
+// shouldFailOn checks whether findings at the specified severity level
+// or above warrant a non-zero exit code.
+func shouldFailOn(failOn string, results []lintFileResult) bool {
+	switch failOn {
+	case "warning":
+		for _, r := range results {
+			if r.Result != nil && (r.Result.Warnings > 0 || r.Result.Errors > 0) {
+				return true
+			}
+		}
+	case "info":
+		for _, r := range results {
+			if r.Result != nil && len(r.Result.Findings) > 0 {
+				return true
+			}
+		}
+	default:
+		// "error" is the default; already handled by exitCode != 0.
+	}
+	return false
 }
 
 type lintWorkloadKey struct {

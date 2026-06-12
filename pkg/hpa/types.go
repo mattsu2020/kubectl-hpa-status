@@ -246,6 +246,9 @@ type Analysis struct {
 	// what-if simulations for different stabilization window values.
 	// Populated when --flapping-advisor is enabled.
 	FlappingPrevention *FlappingPreventionReport `json:"flappingPrevention,omitempty" yaml:"flappingPrevention,omitempty"`
+	// FlappingDiagnosis holds the result of event-based flapping detection with
+	// root-cause analysis (tight target, short stabilization window, etc.).
+	FlappingDiagnosis *FlappingDiagnosis `json:"flappingDiagnosis,omitempty" yaml:"flappingDiagnosis,omitempty"`
 	// AdapterDiagnostics holds custom/external metrics adapter diagnostics.
 	// Populated when --adapter-diagnostics is enabled.
 	AdapterDiagnostics *AdapterDiagnosticsReport `json:"adapterDiagnostics,omitempty" yaml:"adapterDiagnostics,omitempty"`
@@ -581,6 +584,7 @@ type SimulationResult struct {
 	SimulatedValue       string             `json:"simulatedValue" yaml:"simulatedValue"`
 	Before               SimulationState    `json:"before" yaml:"before"`
 	After                SimulationState    `json:"after" yaml:"after"`
+	Confidence           string             `json:"confidence,omitempty" yaml:"confidence,omitempty"`
 	RiskAssessment       string             `json:"riskAssessment,omitempty" yaml:"riskAssessment,omitempty"`
 	Interpretation       []string           `json:"interpretation,omitempty" yaml:"interpretation,omitempty"`
 	MetricSimulations    []MetricSimulation `json:"metricSimulations,omitempty" yaml:"metricSimulations,omitempty"`
@@ -1658,6 +1662,50 @@ type FlappingSimulation struct {
 	Patch string `json:"patch,omitempty" yaml:"patch,omitempty"`
 	// Confidence is the confidence level for this estimate.
 	Confidence string `json:"confidence" yaml:"confidence"`
+}
+
+// FlappingDiagnosis holds the result of event-based flapping detection with
+// root-cause analysis. Unlike FlappingPreventionReport which simulates window
+// changes, FlappingDiagnosis identifies *why* flapping occurs and produces
+// actionable recommendations with patches.
+type FlappingDiagnosis struct {
+	// Detected indicates whether flapping was observed.
+	Detected bool `json:"detected" yaml:"detected"`
+	// Severity classifies the flapping: "LOW", "MEDIUM", "HIGH", "CRITICAL".
+	Severity string `json:"severity" yaml:"severity"`
+	// Pattern describes the oscillation pattern (e.g. "up-down-up in 3 minutes").
+	Pattern string `json:"pattern,omitempty" yaml:"pattern,omitempty"`
+	// FlipCount is the number of direction changes observed.
+	FlipCount int `json:"flipCount" yaml:"flipCount"`
+	// WindowSeconds is the time span of the observed flapping.
+	WindowSeconds int `json:"windowSeconds" yaml:"windowSeconds"`
+	// EstimatedCauses lists the likely root causes of the flapping.
+	EstimatedCauses []FlappingCause `json:"estimatedCauses,omitempty" yaml:"estimatedCauses,omitempty"`
+	// Recommendations lists actionable suggestions to stop flapping.
+	Recommendations []FlappingFix `json:"recommendations,omitempty" yaml:"recommendations,omitempty"`
+	// EventTTLLimitation warns about the Event TTL constraint.
+	EventTTLLimitation string `json:"eventTtlLimitation,omitempty" yaml:"eventTtlLimitation,omitempty"`
+}
+
+// FlappingCause describes a likely root cause of HPA replica flapping.
+type FlappingCause struct {
+	// Type categorizes the cause: "tight-target", "short-stabilization-window",
+	// "missing-scaledown-policy".
+	Type string `json:"type" yaml:"type"`
+	// Description explains why this cause contributes to flapping.
+	Description string `json:"description" yaml:"description"`
+	// Confidence is the confidence level: "high", "medium", "low".
+	Confidence string `json:"confidence" yaml:"confidence"`
+}
+
+// FlappingFix describes an actionable recommendation to stop HPA flapping.
+type FlappingFix struct {
+	// Action describes what to do.
+	Action string `json:"action" yaml:"action"`
+	// Patch is an optional JSON merge patch to apply the fix.
+	Patch string `json:"patch,omitempty" yaml:"patch,omitempty"`
+	// Rationale explains why this fix helps.
+	Rationale string `json:"rationale" yaml:"rationale"`
 }
 
 // AnomalyType identifies the kind of anomaly detected in health score history.

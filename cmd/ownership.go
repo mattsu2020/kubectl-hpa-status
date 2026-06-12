@@ -165,34 +165,34 @@ func looksLikeHPAOwner(manager string) bool {
 func writeOwnershipText(out io.Writer, reports []ownershipReport) {
 	for i, report := range reports {
 		if i > 0 {
-			fmt.Fprintln(out)
+			_, _ = fmt.Fprintln(out)
 		}
-		fmt.Fprintf(out, "Scale ownership: %s/%s\n", report.Namespace, report.Name)
-		fmt.Fprintf(out, "  target: %s\n", report.Target)
+		_, _ = fmt.Fprintf(out, "Scale ownership: %s/%s\n", report.Namespace, report.Name)
+		_, _ = fmt.Fprintf(out, "  target: %s\n", report.Target)
 		if report.TargetSpecReplicas != nil {
-			fmt.Fprintf(out, "  target spec.replicas: %d\n", *report.TargetSpecReplicas)
+			_, _ = fmt.Fprintf(out, "  target spec.replicas: %d\n", *report.TargetSpecReplicas)
 		} else {
-			fmt.Fprintln(out, "  target spec.replicas: unset")
+			_, _ = fmt.Fprintln(out, "  target spec.replicas: unset")
 		}
-		fmt.Fprintf(out, "  HPA desiredReplicas: %d\n", report.HPADesiredReplicas)
+		_, _ = fmt.Fprintf(out, "  HPA desiredReplicas: %d\n", report.HPADesiredReplicas)
 		if len(report.Managers) > 0 {
-			fmt.Fprintln(out, "  managers owning spec.replicas:")
+			_, _ = fmt.Fprintln(out, "  managers owning spec.replicas:")
 			for _, manager := range report.Managers {
-				fmt.Fprintf(out, "    - %s (%s)\n", manager.Manager, manager.Operation)
+				_, _ = fmt.Fprintf(out, "    - %s (%s)\n", manager.Manager, manager.Operation)
 			}
 		}
 		if len(report.Risks) > 0 {
-			fmt.Fprintln(out, "  Risks:")
+			_, _ = fmt.Fprintln(out, "  Risks:")
 			for _, risk := range report.Risks {
-				fmt.Fprintf(out, "    - %s\n", risk)
+				_, _ = fmt.Fprintf(out, "    - %s\n", risk)
 			}
 		} else {
-			fmt.Fprintln(out, "  Risks: none detected")
+			_, _ = fmt.Fprintln(out, "  Risks: none detected")
 		}
 		if len(report.Recommendations) > 0 {
-			fmt.Fprintln(out, "  Recommendations:")
+			_, _ = fmt.Fprintln(out, "  Recommendations:")
 			for _, recommendation := range report.Recommendations {
-				fmt.Fprintf(out, "    - %s\n", recommendation)
+				_, _ = fmt.Fprintf(out, "    - %s\n", recommendation)
 			}
 		}
 	}

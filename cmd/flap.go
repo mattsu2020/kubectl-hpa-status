@@ -27,6 +27,7 @@ type flapReport struct {
 	Level           string                                `json:"level" yaml:"level"`
 	Recommendations []string                              `json:"recommendations,omitempty" yaml:"recommendations,omitempty"`
 	Prevention      *hpaanalysis.FlappingPreventionReport `json:"prevention,omitempty" yaml:"prevention,omitempty"`
+	Diagnosis       *hpaanalysis.FlappingDiagnosis        `json:"diagnosis,omitempty" yaml:"diagnosis,omitempty"`
 }
 
 func newFlapCommand(opts *options) *cobra.Command {
@@ -66,6 +67,7 @@ func runFlapLive(ctx context.Context, out io.Writer, opts *options, name string,
 		return fmt.Errorf("failed to fetch events: %w", err)
 	}
 	prevention := hpaanalysis.AnalyzeFlappingPrevention(events, hpa)
+	diagnosis := hpaanalysis.DiagnoseFlapping(events, hpa)
 	report := flapReport{
 		Namespace:       hpa.Namespace,
 		Name:            hpa.Name,
@@ -74,6 +76,7 @@ func runFlapLive(ctx context.Context, out io.Writer, opts *options, name string,
 		Level:           "LOW",
 		Recommendations: []string{"record HPA history with `kubectl hpa_status record` if Events have expired"},
 		Prevention:      prevention,
+		Diagnosis:       diagnosis,
 	}
 	if prevention != nil {
 		report.DirectionFlips = prevention.CurrentDirectionFlips
@@ -134,6 +137,9 @@ func writeFlapReport(out io.Writer, opts *options, report flapReport) error {
 			_, _ = fmt.Fprintf(out, "  replica range: %d -> %d\n", report.ReplicaMin, report.ReplicaMax)
 		}
 		_, _ = fmt.Fprintf(out, "  level: %s\n", theme.SummaryColor(report.Level))
+		if report.Diagnosis != nil && report.Diagnosis.Detected {
+			writeFlapDiagnosisText(out, report.Diagnosis)
+		}
 		if report.Prevention != nil {
 			writeFlapPreventionText(out, report.Prevention)
 		}
@@ -144,6 +150,34 @@ func writeFlapReport(out io.Writer, opts *options, report flapReport) error {
 			}
 		}
 		return nil
+	}
+}
+
+func writeFlapDiagnosisText(out io.Writer, d *hpaanalysis.FlappingDiagnosis) {
+	_, _ = fmt.Fprintln(out, "\nFlapping Diagnosis:")
+	_, _ = fmt.Fprintf(out, "  severity: %s\n", d.Severity)
+	if d.Pattern != "" {
+		_, _ = fmt.Fprintf(out, "  pattern: %s\n", d.Pattern)
+	}
+	_, _ = fmt.Fprintf(out, "  direction flips: %d in %ds\n", d.FlipCount, d.WindowSeconds)
+	if len(d.EstimatedCauses) > 0 {
+		_, _ = fmt.Fprintln(out, "\n  Estimated Causes:")
+		for _, cause := range d.EstimatedCauses {
+			_, _ = fmt.Fprintf(out, "    - [%s] %s (confidence: %s)\n", cause.Type, cause.Description, cause.Confidence)
+		}
+	}
+	if len(d.Recommendations) > 0 {
+		_, _ = fmt.Fprintln(out, "\n  Recommended Fixes:")
+		for _, fix := range d.Recommendations {
+			_, _ = fmt.Fprintf(out, "    - %s\n", fix.Action)
+			_, _ = fmt.Fprintf(out, "      %s\n", fix.Rationale)
+			if fix.Patch != "" {
+				_, _ = fmt.Fprintf(out, "      patch: %s\n", fix.Patch)
+			}
+		}
+	}
+	if d.EventTTLLimitation != "" {
+		_, _ = fmt.Fprintf(out, "\n  Note: %s\n", d.EventTTLLimitation)
 	}
 }
 
