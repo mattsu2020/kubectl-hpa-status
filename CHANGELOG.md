@@ -7,13 +7,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-06-13
+
 ### Added
-- Added a dedicated roadmap document and social promotion kit.
-- Added a `make docs-check` README synchronization check for English/Japanese documentation structure.
-- Added five-minute quick start sections to both READMEs.
+- Added visualization, real-time monitoring, and explainability features across the analysis pipeline.
+- Added a `bundle` subcommand and an incident report output format with policy guard, adapter diagnostics, and rich incident Markdown.
+- Added readiness, rollout, scale-out, and controller-profile diagnosis (`--readiness-impact`, `--rollout`, `--scaleout-blockers`, `--controller-profile`, `--decision-trace`).
+- Added a `why-not-scale` subcommand to diagnose scaling blockers.
+- Added an `advisor` command with a `container-resource` subcommand.
+- Added `ownership`, `fleet`, `readiness`, and `profile detect` subcommands plus a `policy init` command.
+- Added flapping diagnosis with replica-range analysis and HPA conflict detection.
+- Added estimated scaling reasons, HPA health-trend tracking, and enhanced stabilization display.
+- Added GitOps and policy workflows to HPA comparison and analytics.
+- Added multiple candidate configurations, pod-hours, and capped-duration metrics to the replay lab.
+- Added `--explain` and assumption override flags to the assumptions command, plus a `--startup-context` flag.
+- Added a dedicated roadmap document, a `make docs-check` README synchronization check, and five-minute quick start sections to both READMEs.
+
+### Changed
+- Renamed diagnostic confidence labels to an observed/estimated model.
+- Refactored lint rules to use `context`; formatted struct field alignments and removed unused types.
+- Expanded documentation: roadmap updates, jUnit/SARIF and carbon-cost notes, TUI manual links, and an expanded workflow gallery.
 
 ### Fixed
-- Fixed the Japanese README CI badge repository URL.
+- Fixed deferred `Close`/`Chdir` error handling and explicit write-result handling in bundle Markdown rendering.
+- Fixed the Japanese README CI badge repository URL and synchronized README content.
+
+## [0.9.0] - 2026-06-08
+
+### Added
+- Added a `lint` command and enabled advisor flags in `doctor`.
+- Added warmup analysis for post-scale-out readiness.
+- Added churn detection, metric hints, VPA advisory, and a history view.
+
+## [0.8.0] - 2026-06-08
+
+### Added
+- Added GitOps and metric-contract checks plus profile-based recommendations.
+- Added a `capacity-plan` command for diagnosing `maxReplicas` safety.
+- Added a scale-out blockers command with deep capacity analysis.
+- Added a `--scale-path` flag to explain the HPA scaling path.
+- Added a metrics-freshness analyzer (`--metrics-freshness`) for metric staleness diagnosis.
+- Added a `policy` command and interactive TUI simulation views.
+- Added a retrospective scaling timeline (`timeline` subcommand and `--since` flag).
+
+### Changed
+- Refactored `runList` into focused helper functions.
+- Documented the doctor subcommand, the before/after `--explain` comparison, and simplified Krew install instructions.
+- Bumped the Kubernetes dependency group and `codecov/codecov-action` from v5 to v6.
+
+## [0.7.0] - 2026-06-06
+
+### Added
+- Added a What-If Simulator, Multi-Metric Trace, and Best-Practice Auditor.
+- Exposed KEDA/VPA enrichment skip reasons in debug output.
+
+### Changed
+- Unified diagnostics, improved health weights, and hardened apply safety with client reuse.
+- Introduced typed health states and signals and made diagnostic confidence a structured field.
+- Split `AnalyzeWithOptions` into analysis phases and extracted `statusOptions.Normalize()` and rule-based suggestions.
+- Refactored the options struct into sub-structs and narrowed helper functions.
+
+### Fixed
+- Improved metric matching, health scoring, and diagnostic accuracy.
+- Met the CI coverage threshold and resolved golangci-lint findings.
+
+## [0.6.0] - 2026-06-04
+
+### Added
+- Added simulation, capacity-context, and replay commands.
+- Added comprehensive codebase improvements across six phases.
+
+### Changed
+- Slimmed the README to ~165 lines, moving details into `docs/`.
+
+### Fixed
+- Resolved golangci-lint errors from CI.
+
+## [0.5.0] - 2026-06-02
+
+### Added
+- Added auto-detection of KEDA ScaledObject and VPA conflict enrichment.
+- Added KEDA/VPA health penalties and `scaleTargetRef` validation.
+
+### Changed
+- Configured release-notes generation and included docs in release notes.
+- Updated contributing guidelines, architecture, and the Japanese README.
 
 ## [0.4.0] - 2026-06-02
 
