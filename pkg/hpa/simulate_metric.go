@@ -82,7 +82,7 @@ func applyMetricOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, name, value
 			}
 			util := int32(parsed)
 			hpa.Status.CurrentMetrics[idx].Resource = &autoscalingv2.ResourceMetricStatus{
-				Name:                resName,
+				Name: resName,
 				Current: autoscalingv2.MetricValueStatus{
 					AverageUtilization: &util,
 				},
@@ -321,8 +321,8 @@ func isResourceQuantity(value string) bool {
 // buildMetricSimulation creates a MetricSimulation for a single override.
 func buildMetricSimulation(original, modified *autoscalingv2.HorizontalPodAutoscaler, name, value string, before, after SimulationState) MetricSimulation {
 	ms := MetricSimulation{
-		MetricName:      name,
-		SimulatedValue:  value,
+		MetricName:        name,
+		SimulatedValue:    value,
 		ProjectedReplicas: after.DesiredReplicas,
 	}
 

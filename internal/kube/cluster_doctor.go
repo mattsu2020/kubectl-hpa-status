@@ -7,10 +7,11 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	authorizationv1 "k8s.io/api/authorization/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 )
 
 // CheckAPIServices checks the availability of metrics API services.
-func CheckAPIServices(ctx context.Context, client Interface) []APIServiceStatus {
+func CheckAPIServices(ctx context.Context, client kubernetes.Interface) []APIServiceStatus {
 	services := []struct {
 		name       string
 		apiGroup   string

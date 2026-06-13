@@ -95,11 +95,11 @@ func unschedulableRule(input BlockerInput) []BlockerFinding {
 
 	for _, eventMsg := range input.FailedSchedulingEvents {
 		findings = append(findings, BlockerFinding{
-			ID:       "failed-scheduling",
-			Severity: BlockerHigh,
-			Category: "scheduling",
-			Message:  fmt.Sprintf("FailedScheduling: %s", truncateBlockerMessage(eventMsg, 120)),
-			Detail:   "The Kubernetes scheduler could not find a suitable node for this pod.",
+			ID:          "failed-scheduling",
+			Severity:    BlockerHigh,
+			Category:    "scheduling",
+			Message:     fmt.Sprintf("FailedScheduling: %s", truncateBlockerMessage(eventMsg, 120)),
+			Detail:      "The Kubernetes scheduler could not find a suitable node for this pod.",
 			NextCommand: "kubectl get events --field-selector reason=FailedScheduling",
 		})
 	}
@@ -169,11 +169,11 @@ func quotaNearLimitRule(input BlockerInput) []BlockerFinding {
 			severity = BlockerHigh
 		}
 		findings = append(findings, BlockerFinding{
-			ID:       "quota-near-limit",
-			Severity: severity,
-			Category: "quota",
-			Message:  fmt.Sprintf("ResourceQuota %q %s is %.0f%% used (%s/%s)", q.Name, q.Resource, q.Ratio*100, q.Used, q.Hard),
-			Detail:   "Namespace ResourceQuota is near its limit. New pods may be rejected if the quota is exhausted.",
+			ID:          "quota-near-limit",
+			Severity:    severity,
+			Category:    "quota",
+			Message:     fmt.Sprintf("ResourceQuota %q %s is %.0f%% used (%s/%s)", q.Name, q.Resource, q.Ratio*100, q.Used, q.Hard),
+			Detail:      "Namespace ResourceQuota is near its limit. New pods may be rejected if the quota is exhausted.",
 			NextCommand: fmt.Sprintf("kubectl describe quota %s", q.Name),
 		})
 	}
@@ -194,11 +194,11 @@ func readinessStalledRule(input BlockerInput) []BlockerFinding {
 	gap := input.DesiredReplicas - input.TargetReadyReplicas
 	return []BlockerFinding{
 		{
-			ID:       "readiness-stalled",
-			Severity: BlockerMedium,
-			Category: "readiness",
-			Message:  fmt.Sprintf("%d pod(s) are not Ready (%d Ready / %d desired)", gap, input.TargetReadyReplicas, input.DesiredReplicas),
-			Detail:   "Pods exist but are not passing readiness probes. This could indicate slow startup, misconfigured probes, or application issues.",
+			ID:          "readiness-stalled",
+			Severity:    BlockerMedium,
+			Category:    "readiness",
+			Message:     fmt.Sprintf("%d pod(s) are not Ready (%d Ready / %d desired)", gap, input.TargetReadyReplicas, input.DesiredReplicas),
+			Detail:      "Pods exist but are not passing readiness probes. This could indicate slow startup, misconfigured probes, or application issues.",
 			NextCommand: fmt.Sprintf("kubectl get pods -n %s -o wide", describeNamespace(input)),
 		},
 	}
@@ -216,11 +216,11 @@ func nodeCapacityRule(input BlockerInput) []BlockerFinding {
 
 	if nc.TotalNodes == 0 {
 		findings = append(findings, BlockerFinding{
-			ID:       "no-nodes",
-			Severity: BlockerHigh,
-			Category: "scheduling",
-			Message:  "No nodes found in the cluster",
-			Detail:   "The cluster has no schedulable nodes. Scale-out will always fail until nodes are added.",
+			ID:          "no-nodes",
+			Severity:    BlockerHigh,
+			Category:    "scheduling",
+			Message:     "No nodes found in the cluster",
+			Detail:      "The cluster has no schedulable nodes. Scale-out will always fail until nodes are added.",
 			NextCommand: "kubectl get nodes",
 		})
 		return findings
@@ -228,11 +228,11 @@ func nodeCapacityRule(input BlockerInput) []BlockerFinding {
 
 	if nc.TaintedNodes == nc.TotalNodes && nc.TotalNodes > 0 {
 		findings = append(findings, BlockerFinding{
-			ID:       "all-nodes-tainted",
-			Severity: BlockerHigh,
-			Category: "scheduling",
-			Message:  fmt.Sprintf("All %d nodes have NoSchedule/NoExecute taints", nc.TotalNodes),
-			Detail:   "Every node has at least one taint that blocks scheduling. Pods without matching tolerations cannot be placed.",
+			ID:          "all-nodes-tainted",
+			Severity:    BlockerHigh,
+			Category:    "scheduling",
+			Message:     fmt.Sprintf("All %d nodes have NoSchedule/NoExecute taints", nc.TotalNodes),
+			Detail:      "Every node has at least one taint that blocks scheduling. Pods without matching tolerations cannot be placed.",
 			NextCommand: "kubectl describe nodes | grep -A5 Taints",
 		})
 	}
@@ -246,11 +246,11 @@ func metricsHealthyInfoRule(input BlockerInput) []BlockerFinding {
 	if !input.ScalingActive {
 		return []BlockerFinding{
 			{
-				ID:       "metrics-healthy",
-				Severity: BlockerInfo,
-				Category: "info",
-				Message:  "HPA ScalingActive is False — metrics may not be reaching the controller",
-				Detail:   "When ScalingActive is False, the HPA cannot compute reliable scaling decisions. Check the metrics pipeline (Prometheus Adapter, metrics-server, etc.).",
+				ID:          "metrics-healthy",
+				Severity:    BlockerInfo,
+				Category:    "info",
+				Message:     "HPA ScalingActive is False — metrics may not be reaching the controller",
+				Detail:      "When ScalingActive is False, the HPA cannot compute reliable scaling decisions. Check the metrics pipeline (Prometheus Adapter, metrics-server, etc.).",
 				NextCommand: "kubectl get --raw /apis/metrics.k8s.io/v1beta1/namespaces/" + describeNamespace(input) + "/pods",
 			},
 		}

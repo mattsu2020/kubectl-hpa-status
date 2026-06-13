@@ -231,10 +231,10 @@ func TestQuotaNearLimitRule(t *testing.T) {
 func TestReadinessStalledRule(t *testing.T) {
 	t.Run("readiness stalled", func(t *testing.T) {
 		input := BlockerInput{
-			DesiredReplicas:    12,
-			CurrentReplicas:    12,
+			DesiredReplicas:     12,
+			CurrentReplicas:     12,
 			TargetReadyReplicas: 8,
-			PendingPods:        nil,
+			PendingPods:         nil,
 		}
 		findings := readinessStalledRule(input)
 		if len(findings) != 1 {
@@ -250,10 +250,10 @@ func TestReadinessStalledRule(t *testing.T) {
 
 	t.Run("not stalled with pending pods", func(t *testing.T) {
 		input := BlockerInput{
-			DesiredReplicas:    12,
-			CurrentReplicas:    12,
+			DesiredReplicas:     12,
+			CurrentReplicas:     12,
 			TargetReadyReplicas: 8,
-			PendingPods: []BlockerPodInfo{{Name: "web-abc", Phase: "Pending"}},
+			PendingPods:         []BlockerPodInfo{{Name: "web-abc", Phase: "Pending"}},
 		}
 		findings := readinessStalledRule(input)
 		if len(findings) != 0 {
@@ -263,8 +263,8 @@ func TestReadinessStalledRule(t *testing.T) {
 
 	t.Run("all ready", func(t *testing.T) {
 		input := BlockerInput{
-			DesiredReplicas:    8,
-			CurrentReplicas:    8,
+			DesiredReplicas:     8,
+			CurrentReplicas:     8,
 			TargetReadyReplicas: 8,
 		}
 		findings := readinessStalledRule(input)

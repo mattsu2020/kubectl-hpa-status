@@ -7,13 +7,13 @@ import (
 
 func TestAnalyzeAutoscalerMap_Healthy(t *testing.T) {
 	input := AutoscalerMapInput{
-		Namespace:              "production",
-		HPAName:                "web",
-		Target:                 "Deployment/web",
-		CurrentReplicas:        5,
-		DesiredReplicas:        5,
-		MaxReplicas:            10,
-		WorkloadReadyReplicas:  5,
+		Namespace:               "production",
+		HPAName:                 "web",
+		Target:                  "Deployment/web",
+		CurrentReplicas:         5,
+		DesiredReplicas:         5,
+		MaxReplicas:             10,
+		WorkloadReadyReplicas:   5,
 		WorkloadDesiredReplicas: 5,
 		PodSummary: AutoscalerMapPodSummary{
 			Total:   5,
@@ -22,8 +22,8 @@ func TestAnalyzeAutoscalerMap_Healthy(t *testing.T) {
 			Ready:   5,
 		},
 		NodeSummary: AutoscalerMapNodeSummary{
-			TotalNodes:     3,
-			AllocatableCPU: "12",
+			TotalNodes:        3,
+			AllocatableCPU:    "12",
 			AllocatableMemory: "48Gi",
 		},
 		ClusterAutoscaler: true,
@@ -58,13 +58,13 @@ func TestAnalyzeAutoscalerMap_Healthy(t *testing.T) {
 
 func TestAnalyzeAutoscalerMap_PendingPods(t *testing.T) {
 	input := AutoscalerMapInput{
-		Namespace:              "production",
-		HPAName:                "web",
-		Target:                 "Deployment/web",
-		CurrentReplicas:        8,
-		DesiredReplicas:        10,
-		MaxReplicas:            15,
-		WorkloadReadyReplicas:  8,
+		Namespace:               "production",
+		HPAName:                 "web",
+		Target:                  "Deployment/web",
+		CurrentReplicas:         8,
+		DesiredReplicas:         10,
+		MaxReplicas:             15,
+		WorkloadReadyReplicas:   8,
 		WorkloadDesiredReplicas: 10,
 		PodSummary: AutoscalerMapPodSummary{
 			Total:   10,
@@ -102,13 +102,13 @@ func TestAnalyzeAutoscalerMap_PendingPods(t *testing.T) {
 
 func TestAnalyzeAutoscalerMap_NoAutoscaler(t *testing.T) {
 	input := AutoscalerMapInput{
-		Namespace:              "production",
-		HPAName:                "web",
-		Target:                 "Deployment/web",
-		CurrentReplicas:        5,
-		DesiredReplicas:        5,
-		MaxReplicas:            10,
-		WorkloadReadyReplicas:  5,
+		Namespace:               "production",
+		HPAName:                 "web",
+		Target:                  "Deployment/web",
+		CurrentReplicas:         5,
+		DesiredReplicas:         5,
+		MaxReplicas:             10,
+		WorkloadReadyReplicas:   5,
 		WorkloadDesiredReplicas: 5,
 		PodSummary: AutoscalerMapPodSummary{
 			Total:   5,
@@ -135,13 +135,13 @@ func TestAnalyzeAutoscalerMap_NoAutoscaler(t *testing.T) {
 
 func TestAnalyzeAutoscalerMap_ScalingInactive(t *testing.T) {
 	input := AutoscalerMapInput{
-		Namespace:              "production",
-		HPAName:                "web",
-		Target:                 "Deployment/web",
-		CurrentReplicas:        5,
-		DesiredReplicas:        5,
-		MaxReplicas:            10,
-		WorkloadReadyReplicas:  5,
+		Namespace:               "production",
+		HPAName:                 "web",
+		Target:                  "Deployment/web",
+		CurrentReplicas:         5,
+		DesiredReplicas:         5,
+		MaxReplicas:             10,
+		WorkloadReadyReplicas:   5,
 		WorkloadDesiredReplicas: 5,
 		PodSummary: AutoscalerMapPodSummary{
 			Total:   5,
@@ -276,15 +276,15 @@ func TestAnalyzeAutoscalerMap_KEDALayer(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			input := AutoscalerMapInput{
-				Namespace:              "prod",
-				HPAName:                "web",
-				Target:                 "Deployment/web",
-				WorkloadReadyReplicas:  5,
+				Namespace:               "prod",
+				HPAName:                 "web",
+				Target:                  "Deployment/web",
+				WorkloadReadyReplicas:   5,
 				WorkloadDesiredReplicas: 5,
-				PodSummary: AutoscalerMapPodSummary{Total: 5, Running: 5, Ready: 5},
-				NodeSummary:            AutoscalerMapNodeSummary{TotalNodes: 3},
-				ScalingActive:          true,
-				KEDAInfo:               tt.kedaInfo,
+				PodSummary:              AutoscalerMapPodSummary{Total: 5, Running: 5, Ready: 5},
+				NodeSummary:             AutoscalerMapNodeSummary{TotalNodes: 3},
+				ScalingActive:           true,
+				KEDAInfo:                tt.kedaInfo,
 			}
 
 			am := AnalyzeAutoscalerMap(input)
@@ -301,14 +301,14 @@ func TestAnalyzeAutoscalerMap_KEDALayer(t *testing.T) {
 
 func TestAnalyzeAutoscalerMap_VPAConflict(t *testing.T) {
 	input := AutoscalerMapInput{
-		Namespace:              "prod",
-		HPAName:                "web",
-		Target:                 "Deployment/web",
-		WorkloadReadyReplicas:  5,
+		Namespace:               "prod",
+		HPAName:                 "web",
+		Target:                  "Deployment/web",
+		WorkloadReadyReplicas:   5,
 		WorkloadDesiredReplicas: 5,
-		PodSummary: AutoscalerMapPodSummary{Total: 5, Running: 5, Ready: 5},
-		NodeSummary:            AutoscalerMapNodeSummary{TotalNodes: 3},
-		ScalingActive:          true,
+		PodSummary:              AutoscalerMapPodSummary{Total: 5, Running: 5, Ready: 5},
+		NodeSummary:             AutoscalerMapNodeSummary{TotalNodes: 3},
+		ScalingActive:           true,
 		VPAInfo: &AutoscalerMapVPAInfo{
 			VPAName:             "web-vpa",
 			TargetRef:           "Deployment/web",
@@ -347,15 +347,15 @@ func TestAnalyzeAutoscalerMap_VPAConflict(t *testing.T) {
 
 func TestAnalyzeAutoscalerMap_QuotaAndPDB(t *testing.T) {
 	input := AutoscalerMapInput{
-		Namespace:              "prod",
-		HPAName:                "web",
-		Target:                 "Deployment/web",
-		MaxReplicas:            50,
-		WorkloadReadyReplicas:  5,
+		Namespace:               "prod",
+		HPAName:                 "web",
+		Target:                  "Deployment/web",
+		MaxReplicas:             50,
+		WorkloadReadyReplicas:   5,
 		WorkloadDesiredReplicas: 5,
-		PodSummary: AutoscalerMapPodSummary{Total: 5, Running: 5, Ready: 5},
-		NodeSummary:            AutoscalerMapNodeSummary{TotalNodes: 3},
-		ScalingActive:          true,
+		PodSummary:              AutoscalerMapPodSummary{Total: 5, Running: 5, Ready: 5},
+		NodeSummary:             AutoscalerMapNodeSummary{TotalNodes: 3},
+		ScalingActive:           true,
 		PDBs: []AutoscalerMapPDB{
 			{Name: "web-pdb", MinAvailable: "80%"},
 		},

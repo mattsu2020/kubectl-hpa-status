@@ -14,17 +14,17 @@ func TestAnalyzeReadinessDoctor(t *testing.T) {
 		{
 			name: "all pods healthy with probes",
 			input: ReadinessDoctorInput{
-				Namespace:            "prod",
-				HPAName:              "web",
-				Target:               "Deployment/web",
-				PodDetails:           []ReadinessDoctorPod{
+				Namespace: "prod",
+				HPAName:   "web",
+				Target:    "Deployment/web",
+				PodDetails: []ReadinessDoctorPod{
 					{Name: "web-1", Ready: true, AgeSeconds: 600},
 					{Name: "web-2", Ready: true, AgeSeconds: 600},
 				},
-				HasStartupProbe:      true,
-				HasReadinessProbe:    true,
+				HasStartupProbe:       true,
+				HasReadinessProbe:     true,
 				ReadinessInitialDelay: 10,
-				CPUInitPeriodSeconds: 300,
+				CPUInitPeriodSeconds:  300,
 				InitialReadinessDelay: 30,
 			},
 			check: func(t *testing.T, report *ReadinessDoctorReport) {
@@ -58,8 +58,8 @@ func TestAnalyzeReadinessDoctor(t *testing.T) {
 					{Name: "web-4", Ready: false, AgeSeconds: 90},
 					{Name: "web-5", Ready: true, AgeSeconds: 120},
 				},
-				HasStartupProbe:      false,
-				HasReadinessProbe:    true,
+				HasStartupProbe:       false,
+				HasReadinessProbe:     true,
 				ReadinessInitialDelay: 5,
 				CPUInitPeriodSeconds:  300,
 				InitialReadinessDelay: 30,
@@ -102,9 +102,9 @@ func TestAnalyzeReadinessDoctor(t *testing.T) {
 					{Name: "web-2", Ready: false, AgeSeconds: 90},
 					{Name: "web-3", Ready: true, AgeSeconds: 500},
 				},
-				HasStartupProbe:      false,
-				HasReadinessProbe:    false,
-				CPUInitPeriodSeconds: 300,
+				HasStartupProbe:       false,
+				HasReadinessProbe:     false,
+				CPUInitPeriodSeconds:  300,
 				InitialReadinessDelay: 30,
 			},
 			check: func(t *testing.T, report *ReadinessDoctorReport) {

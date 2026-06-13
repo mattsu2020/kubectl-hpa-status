@@ -58,7 +58,7 @@ func TestDetectAnomalies_SuddenDegradation(t *testing.T) {
 		{Timestamp: now.Add(-6 * time.Minute), HealthScore: 90, HealthState: "OK"},
 		{Timestamp: now.Add(-5 * time.Minute), HealthScore: 88, HealthState: "OK"},
 		{Timestamp: now.Add(-4 * time.Minute), HealthScore: 85, HealthState: "OK"},
-		{Timestamp: now.Add(-3 * time.Minute), HealthScore: 50, HealthState: "ERROR"},  // 35-point drop
+		{Timestamp: now.Add(-3 * time.Minute), HealthScore: 50, HealthState: "ERROR"}, // 35-point drop
 		{Timestamp: now.Add(-2 * time.Minute), HealthScore: 48, HealthState: "ERROR"},
 	}
 
@@ -96,7 +96,7 @@ func TestDetectAnomalies_SuddenDegradation_Critical(t *testing.T) {
 		{Timestamp: now.Add(-5 * time.Minute), HealthScore: 95, HealthState: "OK"},
 		{Timestamp: now.Add(-4 * time.Minute), HealthScore: 93, HealthState: "OK"},
 		{Timestamp: now.Add(-3 * time.Minute), HealthScore: 90, HealthState: "OK"},
-		{Timestamp: now.Add(-2 * time.Minute), HealthScore: 40, HealthState: "ERROR"},  // 50-point drop
+		{Timestamp: now.Add(-2 * time.Minute), HealthScore: 40, HealthState: "ERROR"}, // 50-point drop
 		{Timestamp: now.Add(-1 * time.Minute), HealthScore: 38, HealthState: "ERROR"},
 	}
 
@@ -129,7 +129,7 @@ func TestDetectAnomalies_SuddenDegradation_OutsideTimeWindow(t *testing.T) {
 		{Timestamp: now.Add(-30 * time.Minute), HealthScore: 90, HealthState: "OK"},
 		{Timestamp: now.Add(-25 * time.Minute), HealthScore: 88, HealthState: "OK"},
 		{Timestamp: now.Add(-20 * time.Minute), HealthScore: 85, HealthState: "OK"},
-		{Timestamp: now.Add(-5 * time.Minute), HealthScore: 55, HealthState: "ERROR"},  // 30-point drop but 15min gap
+		{Timestamp: now.Add(-5 * time.Minute), HealthScore: 55, HealthState: "ERROR"}, // 30-point drop but 15min gap
 		{Timestamp: now, HealthScore: 53, HealthState: "ERROR"},
 	}
 

@@ -194,8 +194,8 @@ func TestFormatSimulationExtended(t *testing.T) {
 
 	t.Run("result with warnings renders", func(t *testing.T) {
 		result := &SimulationResult{
-			Before: SimulationState{DesiredReplicas: 5, Health: "OK", HealthScore: 100},
-			After:  SimulationState{DesiredReplicas: 10, Health: "LIMITED", HealthScore: 75},
+			Before:       SimulationState{DesiredReplicas: 5, Health: "OK", HealthScore: 100},
+			After:        SimulationState{DesiredReplicas: 10, Health: "LIMITED", HealthScore: 75},
 			RiskWarnings: []string{"test warning"},
 		}
 		got := FormatSimulationExtended(result)

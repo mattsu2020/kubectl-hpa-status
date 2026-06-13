@@ -155,7 +155,7 @@ func TestBuildTroubleshootingFlows(t *testing.T) {
 				{MetricType: "External", MetricName: "latency_ms", Pattern: "external-metric-stale", Severity: "warning", Title: "External metric data is stale"},
 				{MetricType: "Pods", MetricName: "http_requests", Pattern: "metric-value-zero", Severity: "warning", Title: "Metric reporting zero values"},
 			},
-			wantLen: 3,
+			wantLen:      3,
 			wantPatterns: []string{"external-metric-missing", "external-metric-stale", "metric-value-zero"},
 		},
 		{

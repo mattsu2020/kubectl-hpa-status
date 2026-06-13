@@ -71,9 +71,9 @@ func buildFlow(h MetricHint) *MetricHintTroubleshooting {
 				DocsLink:    "https://github.com/kubernetes-sigs/prometheus-adapter",
 			},
 			{
-				StepNumber:  4,
-				Description: "Check the adapter relabel configuration for the metric name",
-				Command:     "kubectl get configmap prometheus-adapter-config -n <adapter-namespace> -o yaml",
+				StepNumber:     4,
+				Description:    "Check the adapter relabel configuration for the metric name",
+				Command:        "kubectl get configmap prometheus-adapter-config -n <adapter-namespace> -o yaml",
 				ExpectedOutput: "The seriesQuery or rules should match the metric name used in the HPA spec",
 			},
 		}
@@ -199,9 +199,9 @@ func buildFlow(h MetricHint) *MetricHintTroubleshooting {
 				ExpectedOutput: "The rules.seriesQuery or rules.name.matches should produce the metric name used in the HPA",
 			},
 			{
-				StepNumber:  3,
-				Description: "Wait a few reconciliation cycles and re-check HPA status",
-				Command:     "kubectl get hpa <hpa-name> -n <namespace> -o jsonpath='{.status.currentMetrics}'",
+				StepNumber:     3,
+				Description:    "Wait a few reconciliation cycles and re-check HPA status",
+				Command:        "kubectl get hpa <hpa-name> -n <namespace> -o jsonpath='{.status.currentMetrics}'",
 				ExpectedOutput: "After 1-2 minutes the metric should appear in currentMetrics if the adapter is working",
 			},
 		}

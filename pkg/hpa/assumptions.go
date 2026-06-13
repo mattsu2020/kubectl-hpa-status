@@ -12,8 +12,8 @@ import (
 type Assumption struct {
 	Name        string `json:"name" yaml:"name"`
 	Value       string `json:"value" yaml:"value"`
-	Source      string `json:"source" yaml:"source"`          // "hpa.spec" or "kubernetes-default"
-	Confidence  string `json:"confidence" yaml:"confidence"`  // high / medium / low
+	Source      string `json:"source" yaml:"source"`         // "hpa.spec" or "kubernetes-default"
+	Confidence  string `json:"confidence" yaml:"confidence"` // high / medium / low
 	Impact      string `json:"impact" yaml:"impact"`
 	Description string `json:"description" yaml:"description"`
 }
@@ -21,16 +21,16 @@ type Assumption struct {
 // ControllerAssumptions holds all detected assumptions about the HPA controller
 // configuration, including both explicitly set values and inferred defaults.
 type ControllerAssumptions struct {
-	Namespace               string      `json:"namespace" yaml:"namespace"`
-	Name                    string      `json:"name" yaml:"name"`
-	SyncPeriod              Assumption  `json:"syncPeriod" yaml:"syncPeriod"`
-	GlobalTolerance         Assumption  `json:"globalTolerance" yaml:"globalTolerance"`
-	CPUInitializationPeriod Assumption  `json:"cpuInitializationPeriod" yaml:"cpuInitializationPeriod"`
-	InitialReadinessDelay   Assumption  `json:"initialReadinessDelay" yaml:"initialReadinessDelay"`
-	DownscaleStabilization  Assumption  `json:"downscaleStabilization" yaml:"downscaleStabilization"`
-	UpscaleStabilization    Assumption  `json:"upscaleStabilization" yaml:"upscaleStabilization"`
-	Summary                 string      `json:"summary" yaml:"summary"`
-	Warnings                []string    `json:"warnings,omitempty" yaml:"warnings,omitempty"`
+	Namespace               string     `json:"namespace" yaml:"namespace"`
+	Name                    string     `json:"name" yaml:"name"`
+	SyncPeriod              Assumption `json:"syncPeriod" yaml:"syncPeriod"`
+	GlobalTolerance         Assumption `json:"globalTolerance" yaml:"globalTolerance"`
+	CPUInitializationPeriod Assumption `json:"cpuInitializationPeriod" yaml:"cpuInitializationPeriod"`
+	InitialReadinessDelay   Assumption `json:"initialReadinessDelay" yaml:"initialReadinessDelay"`
+	DownscaleStabilization  Assumption `json:"downscaleStabilization" yaml:"downscaleStabilization"`
+	UpscaleStabilization    Assumption `json:"upscaleStabilization" yaml:"upscaleStabilization"`
+	Summary                 string     `json:"summary" yaml:"summary"`
+	Warnings                []string   `json:"warnings,omitempty" yaml:"warnings,omitempty"`
 }
 
 // AssumptionOverrides holds user-provided override values for controller assumptions.

@@ -9,11 +9,11 @@ import (
 
 func TestAnalyzeCapacityPlan_AllChecksPass(t *testing.T) {
 	input := CapacityPlanInput{
-		Namespace:        "production",
-		HPAName:          "web",
-		Target:           "Deployment/web",
-		CurrentReplicas:  10,
-		MaxReplicas:      10,
+		Namespace:         "production",
+		HPAName:           "web",
+		Target:            "Deployment/web",
+		CurrentReplicas:   10,
+		MaxReplicas:       10,
 		TargetMaxReplicas: 20,
 		ContainerResources: []CapacityContainerResources{
 			{Name: "app", CPU: "250m", Memory: "512Mi"},
@@ -49,11 +49,11 @@ func TestAnalyzeCapacityPlan_AllChecksPass(t *testing.T) {
 
 func TestAnalyzeCapacityPlan_DefaultTargetMax(t *testing.T) {
 	input := CapacityPlanInput{
-		Namespace:        "default",
-		HPAName:          "api",
-		Target:           "Deployment/api",
-		CurrentReplicas:  5,
-		MaxReplicas:      5,
+		Namespace:         "default",
+		HPAName:           "api",
+		Target:            "Deployment/api",
+		CurrentReplicas:   5,
+		MaxReplicas:       5,
 		TargetMaxReplicas: 0, // should default to 10 (5*2)
 		ContainerResources: []CapacityContainerResources{
 			{Name: "app", CPU: "100m", Memory: "128Mi"},
@@ -413,12 +413,12 @@ func TestSumContainerResources_EmptyValues(t *testing.T) {
 
 func TestAnalyzeCapacityPlan_NoContainerResources(t *testing.T) {
 	input := CapacityPlanInput{
-		Namespace:         "default",
-		HPAName:           "web",
-		Target:            "Deployment/web",
-		CurrentReplicas:   5,
-		MaxReplicas:       5,
-		TargetMaxReplicas: 10,
+		Namespace:          "default",
+		HPAName:            "web",
+		Target:             "Deployment/web",
+		CurrentReplicas:    5,
+		MaxReplicas:        5,
+		TargetMaxReplicas:  10,
 		ContainerResources: nil,
 	}
 

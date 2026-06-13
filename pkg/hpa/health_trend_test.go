@@ -117,15 +117,15 @@ func TestDetectFlapping(t *testing.T) {
 	now := time.Now()
 
 	tests := []struct {
-		name          string
-		snapshots     []HealthSnapshot
-		wantFlapping  bool
-		wantSeverity  string
+		name         string
+		snapshots    []HealthSnapshot
+		wantFlapping bool
+		wantSeverity string
 	}{
 		{
-			name:          "less than 3 snapshots no flapping",
-			snapshots:     []HealthSnapshot{{Timestamp: now, HealthState: "OK"}},
-			wantFlapping:  false,
+			name:         "less than 3 snapshots no flapping",
+			snapshots:    []HealthSnapshot{{Timestamp: now, HealthState: "OK"}},
+			wantFlapping: false,
 		},
 		{
 			name: "stable states no flapping",

@@ -30,8 +30,8 @@ func TestDetectControllerAssumptions(t *testing.T) {
 		check func(t *testing.T, result *ControllerAssumptions)
 	}{
 		{
-			name:  "nil HPA returns nil",
-			hpa:   nil,
+			name: "nil HPA returns nil",
+			hpa:  nil,
 			check: func(t *testing.T, result *ControllerAssumptions) {
 				if result != nil {
 					t.Fatalf("expected nil, got %+v", result)
@@ -217,8 +217,8 @@ func TestDetectControllerAssumptionsWithOverrides(t *testing.T) {
 			},
 		},
 		{
-			name: "empty overrides behaves like original",
-			hpa:  buildAssumptionsHPA(),
+			name:      "empty overrides behaves like original",
+			hpa:       buildAssumptionsHPA(),
 			overrides: AssumptionOverrides{},
 			check: func(t *testing.T, result *ControllerAssumptions) {
 				if result.SyncPeriod.Source != "kubernetes-default" {
@@ -264,12 +264,12 @@ func TestDetectControllerAssumptionsWithOverrides(t *testing.T) {
 			name: "observed profile upgrades default fields",
 			hpa:  buildAssumptionsHPA(),
 			observed: &ControllerProfile{
-				Source:                    "kube-system/kube-controller-manager-1",
-				SyncPeriod:               "10s",
-				Tolerance:                "0.05",
-				CPUInitializationPeriod:  "3m",
-				InitialReadinessDelay:    "45s",
-				DownscaleStabilization:   "120s",
+				Source:                  "kube-system/kube-controller-manager-1",
+				SyncPeriod:              "10s",
+				Tolerance:               "0.05",
+				CPUInitializationPeriod: "3m",
+				InitialReadinessDelay:   "45s",
+				DownscaleStabilization:  "120s",
 			},
 			check: func(t *testing.T, result *ControllerAssumptions) {
 				if result.SyncPeriod.Source != "kube-system/kube-controller-manager-1" {
@@ -295,8 +295,8 @@ func TestDetectControllerAssumptionsWithOverrides(t *testing.T) {
 				return h
 			}(),
 			observed: &ControllerProfile{
-				Source:                  "kube-system/kube-controller-manager-1",
-				DownscaleStabilization:  "120s",
+				Source:                 "kube-system/kube-controller-manager-1",
+				DownscaleStabilization: "120s",
 			},
 			check: func(t *testing.T, result *ControllerAssumptions) {
 				// hpa.spec should win over observed profile
@@ -315,8 +315,8 @@ func TestDetectControllerAssumptionsWithOverrides(t *testing.T) {
 				SyncPeriod: &syncPeriod,
 			},
 			observed: &ControllerProfile{
-				Source:      "kube-system/kube-controller-manager-1",
-				SyncPeriod:  "10s",
+				Source:     "kube-system/kube-controller-manager-1",
+				SyncPeriod: "10s",
 			},
 			check: func(t *testing.T, result *ControllerAssumptions) {
 				if result.SyncPeriod.Source != "overridden" {

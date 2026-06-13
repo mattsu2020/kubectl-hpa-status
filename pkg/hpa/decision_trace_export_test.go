@@ -265,8 +265,8 @@ func TestExportStructuredDecisionTrace_Stabilization(t *testing.T) {
 	}
 
 	a := Analysis{
-		Min:                1,
-		Max:                10,
+		Min:                 1,
+		Max:                 10,
 		StabilizationSource: "scaleDown",
 	}
 

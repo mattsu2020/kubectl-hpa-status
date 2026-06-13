@@ -104,10 +104,10 @@ func AnalyzeGitOpsConflict(input GitOpsInput) *GitOpsConflict {
 	if len(input.ArgoCDAnnotations) > 0 {
 		keys := annotationKeys(input.ArgoCDAnnotations)
 		result.Conflicts = append(result.Conflicts, GitOpsConflictEntry{
-			Kind:     input.TargetKind,
-			Name:     input.TargetName,
-			Severity: "info",
-			Detail:   fmt.Sprintf("Argo CD managed (annotations: %s)", keys),
+			Kind:        input.TargetKind,
+			Name:        input.TargetName,
+			Severity:    "info",
+			Detail:      fmt.Sprintf("Argo CD managed (annotations: %s)", keys),
 			Remediation: "Changes should be applied via Git, not kubectl patch",
 		})
 		result.Warnings = append(result.Warnings,
@@ -118,10 +118,10 @@ func AnalyzeGitOpsConflict(input GitOpsInput) *GitOpsConflict {
 	if len(input.FluxAnnotations) > 0 {
 		keys := annotationKeys(input.FluxAnnotations)
 		result.Conflicts = append(result.Conflicts, GitOpsConflictEntry{
-			Kind:     input.TargetKind,
-			Name:     input.TargetName,
-			Severity: "info",
-			Detail:   fmt.Sprintf("Flux managed (annotations: %s)", keys),
+			Kind:        input.TargetKind,
+			Name:        input.TargetName,
+			Severity:    "info",
+			Detail:      fmt.Sprintf("Flux managed (annotations: %s)", keys),
 			Remediation: "Changes should be applied via Git, not kubectl patch",
 		})
 		result.Warnings = append(result.Warnings,
@@ -131,10 +131,10 @@ func AnalyzeGitOpsConflict(input GitOpsInput) *GitOpsConflict {
 	// Check for KEDA management
 	if input.KEDAManaged {
 		result.Conflicts = append(result.Conflicts, GitOpsConflictEntry{
-			Kind:     input.TargetKind,
-			Name:     input.TargetName,
-			Severity: "info",
-			Detail:   "KEDA managed workload",
+			Kind:        input.TargetKind,
+			Name:        input.TargetName,
+			Severity:    "info",
+			Detail:      "KEDA managed workload",
 			Remediation: "Direct spec.replicas patches will be overwritten; modify ScaledObject instead",
 		})
 		result.Warnings = append(result.Warnings,

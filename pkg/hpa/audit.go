@@ -41,7 +41,7 @@ func AuditHPAWithProfile(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas
 			report.Score -= 20
 		case AuditWarning:
 			report.Score -= 10
-		// AuditInfo: no deduction
+			// AuditInfo: no deduction
 		}
 	}
 	if report.Score < 0 {

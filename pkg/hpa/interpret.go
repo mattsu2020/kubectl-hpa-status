@@ -56,10 +56,10 @@ func CollectDiagnostics(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas 
 	// Phase 1: Core interpretation cases from condition analysis.
 	for _, c := range collectInterpretationCases(hpa, minReplicas) {
 		entries = append(entries, DiagnosticEntry{
-			Reason:     c.reason,
-			Message:    c.message,
-			NextStep:   c.nextStep,
-			Severity:   c.severity,
+			Reason:         c.reason,
+			Message:        c.message,
+			NextStep:       c.nextStep,
+			Severity:       c.severity,
 			Confidence:     c.confidence,
 			Classification: c.confidence.Classify(),
 		})
@@ -134,7 +134,7 @@ func ExternalMetricDiagnostics(hpa *autoscalingv2.HorizontalPodAutoscaler) []Dia
 					Reason:     "ExternalMetricDiagnostic",
 					Message:    fmt.Sprintf("[estimated] External metric %q%s is %.3fx its target; stale or delayed adapter data can make HPA decisions lag behind workload demand.", spec.External.Metric.Name, selectorSuffix(spec.External.Metric.Selector), *formatted.Ratio),
 					Severity:   SeverityInfo,
-					Confidence:     ConfidenceMedium,
+					Confidence: ConfidenceMedium,
 				})
 			}
 		}
@@ -161,7 +161,7 @@ func ObjectMetricDiagnostics(hpa *autoscalingv2.HorizontalPodAutoscaler) []Diagn
 					Reason:     "ObjectMetricDiagnostic",
 					Message:    fmt.Sprintf("[estimated] Object metric %q%s on %s is %.3fx its target; compare this object-level load with per-pod load before changing replica limits.", spec.Object.Metric.Name, selectorSuffix(spec.Object.Metric.Selector), object, *formatted.Ratio),
 					Severity:   SeverityInfo,
-					Confidence:     ConfidenceMedium,
+					Confidence: ConfidenceMedium,
 				})
 			}
 		} else {
@@ -186,7 +186,7 @@ func KEDADiagnostics(hpa *autoscalingv2.HorizontalPodAutoscaler) []DiagnosticEnt
 			Reason:     "KEDADiagnostic",
 			Message:    "[estimated] This HPA appears to be managed by KEDA. HPA status explains the final autoscaling object, but KEDA ScaledObject, TriggerAuthentication, and scaler errors may explain missing external metrics.",
 			Severity:   SeverityInfo,
-			Confidence:     ConfidenceMedium,
+			Confidence: ConfidenceMedium,
 		},
 	}
 	if len(hpa.Spec.Metrics) == 0 {
@@ -203,7 +203,7 @@ func KEDADiagnostics(hpa *autoscalingv2.HorizontalPodAutoscaler) []DiagnosticEnt
 				Reason:     "KEDADiagnostic",
 				Message:    fmt.Sprintf("[estimated] For KEDA external metric %q, inspect the ScaledObject status.conditions and keda-operator logs if HPA currentMetrics is missing or stale.", spec.External.Metric.Name),
 				Severity:   SeverityInfo,
-				Confidence:     ConfidenceMedium,
+				Confidence: ConfidenceMedium,
 			})
 		}
 	}
@@ -292,7 +292,7 @@ func buildStructuredActions(hpa *autoscalingv2.HorizontalPodAutoscaler, minRepli
 			Message:        "Status does not reflect the latest spec",
 			NextStep:       "Wait for controller reconciliation",
 			Severity:       SeverityWarning,
-			Confidence: ConfidenceHigh,
+			Confidence:     ConfidenceHigh,
 			Classification: ClassificationObserved,
 		})
 	}
@@ -300,11 +300,11 @@ func buildStructuredActions(hpa *autoscalingv2.HorizontalPodAutoscaler, minRepli
 	// ScalingActive not True → check metrics
 	if condition := FindCondition(hpa, "ScalingActive"); condition != nil && condition.Status != corev1.ConditionTrue {
 		msgs = append(msgs, StructuredMessage{
-			Reason:     "RestoreMetrics",
-			Message:    "ScalingActive is not True",
-			NextStep:   "Check metrics-server or custom/external metrics adapters",
-			Severity:   SeverityError,
-			Confidence: ConfidenceHigh,
+			Reason:         "RestoreMetrics",
+			Message:        "ScalingActive is not True",
+			NextStep:       "Check metrics-server or custom/external metrics adapters",
+			Severity:       SeverityError,
+			Confidence:     ConfidenceHigh,
 			Classification: ClassificationObserved,
 		})
 		return msgs
@@ -317,10 +317,10 @@ func buildStructuredActions(hpa *autoscalingv2.HorizontalPodAutoscaler, minRepli
 			nextStep = fmt.Sprintf("Estimated wait up to ~%ds or review spec.behavior.scaleDown.stabilizationWindowSeconds", *window)
 		}
 		msgs = append(msgs, StructuredMessage{
-			Reason:     "WaitForStabilization",
-			Message:    "Scale-down is stabilized",
-			NextStep:   nextStep,
-			Severity:   SeverityInfo,
+			Reason:         "WaitForStabilization",
+			Message:        "Scale-down is stabilized",
+			NextStep:       nextStep,
+			Severity:       SeverityInfo,
 			Confidence:     ConfidenceMedium,
 			Classification: ClassificationEstimated,
 		})
@@ -331,21 +331,21 @@ func buildStructuredActions(hpa *autoscalingv2.HorizontalPodAutoscaler, minRepli
 		switch hpa.Status.DesiredReplicas {
 		case hpa.Spec.MaxReplicas:
 			msgs = append(msgs, StructuredMessage{
-				Reason:     "RaiseMaxReplicas",
-				Message:    "HPA is capped at maxReplicas",
-				NextStep:   "Raise maxReplicas or reduce load/target utilization if more capacity is expected",
-				Severity:   SeverityWarning,
-				Confidence: ConfidenceHigh,
-			Classification: ClassificationObserved,
+				Reason:         "RaiseMaxReplicas",
+				Message:        "HPA is capped at maxReplicas",
+				NextStep:       "Raise maxReplicas or reduce load/target utilization if more capacity is expected",
+				Severity:       SeverityWarning,
+				Confidence:     ConfidenceHigh,
+				Classification: ClassificationObserved,
 			})
 		case minReplicas:
 			msgs = append(msgs, StructuredMessage{
-				Reason:     "LowerMinReplicas",
-				Message:    "HPA is capped at minReplicas",
-				NextStep:   "Lower minReplicas if scale-down below this point is expected",
-				Severity:   SeverityWarning,
-				Confidence: ConfidenceHigh,
-			Classification: ClassificationObserved,
+				Reason:         "LowerMinReplicas",
+				Message:        "HPA is capped at minReplicas",
+				NextStep:       "Lower minReplicas if scale-down below this point is expected",
+				Severity:       SeverityWarning,
+				Confidence:     ConfidenceHigh,
+				Classification: ClassificationObserved,
 			})
 		}
 	}

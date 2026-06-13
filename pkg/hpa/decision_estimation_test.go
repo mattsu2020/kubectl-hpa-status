@@ -51,7 +51,7 @@ func TestEstimateDecisionSignals(t *testing.T) {
 				Status: autoscalingv2.HorizontalPodAutoscalerStatus{
 					CurrentReplicas: 5,
 					DesiredReplicas: 5,
-					LastScaleTime:  &metav1.Time{Time: metav1.Now().Add(-120 * time.Second)},
+					LastScaleTime:   &metav1.Time{Time: metav1.Now().Add(-120 * time.Second)},
 					Conditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
 						{
 							Type:   autoscalingv2.AbleToScale,
@@ -78,9 +78,9 @@ func TestEstimateDecisionSignals(t *testing.T) {
 					DesiredReplicas: 3,
 					Conditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
 						{
-							Type:   autoscalingv2.ScalingActive,
-							Status: "False",
-							Reason: "FailedGetResourceMetric",
+							Type:    autoscalingv2.ScalingActive,
+							Status:  "False",
+							Reason:  "FailedGetResourceMetric",
 							Message: "unable to get metric",
 						},
 					},
@@ -127,9 +127,9 @@ func TestEstimateDecisionSignals(t *testing.T) {
 					DesiredReplicas: 10,
 					Conditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
 						{
-							Type:   autoscalingv2.ScalingLimited,
-							Status: "True",
-							Reason: "TooManyReplicas",
+							Type:    autoscalingv2.ScalingLimited,
+							Status:  "True",
+							Reason:  "TooManyReplicas",
 							Message: "desired replicas max is 10",
 						},
 					},
@@ -212,9 +212,9 @@ func TestBuildToleranceDecisionSignal(t *testing.T) {
 			Status: autoscalingv2.HorizontalPodAutoscalerStatus{
 				Conditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
 					{
-						Type:   autoscalingv2.AbleToScale,
-						Status: "True",
-						Reason: "DesiredWithinTolerance",
+						Type:    autoscalingv2.AbleToScale,
+						Status:  "True",
+						Reason:  "DesiredWithinTolerance",
 						Message: "desired within tolerance",
 					},
 				},

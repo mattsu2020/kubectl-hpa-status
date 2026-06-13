@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestSimulateMetricChange_NilHPA(t *testing.T) {
@@ -602,8 +602,8 @@ func TestFormatMetricValue(t *testing.T) {
 		{
 			name: "pods metric with nil pods",
 			metric: autoscalingv2.MetricStatus{
-				Type:  autoscalingv2.PodsMetricSourceType,
-				Pods:  nil,
+				Type: autoscalingv2.PodsMetricSourceType,
+				Pods: nil,
 			},
 			metricType: autoscalingv2.PodsMetricSourceType,
 			want:       "<unknown>",
@@ -630,44 +630,48 @@ func TestFormatMetricValue(t *testing.T) {
 
 func TestFindCurrentMetric(t *testing.T) {
 	tests := []struct {
-		name      string
-		buildHPA  func() *autoscalingv2.HorizontalPodAutoscaler
+		name       string
+		buildHPA   func() *autoscalingv2.HorizontalPodAutoscaler
 		metricName string
-		wantFound bool
+		wantFound  bool
 	}{
 		{
-			name:      "resource metric found",
-			buildHPA:  func() *autoscalingv2.HorizontalPodAutoscaler { return buildMetricSimHPA(4, 4, 10, 50) },
+			name:       "resource metric found",
+			buildHPA:   func() *autoscalingv2.HorizontalPodAutoscaler { return buildMetricSimHPA(4, 4, 10, 50) },
 			metricName: "cpu",
 			wantFound:  true,
 		},
 		{
-			name:      "resource metric case insensitive",
-			buildHPA:  func() *autoscalingv2.HorizontalPodAutoscaler { return buildMetricSimHPA(4, 4, 10, 50) },
+			name:       "resource metric case insensitive",
+			buildHPA:   func() *autoscalingv2.HorizontalPodAutoscaler { return buildMetricSimHPA(4, 4, 10, 50) },
 			metricName: "CPU",
 			wantFound:  true,
 		},
 		{
-			name:      "external metric found",
-			buildHPA:  func() *autoscalingv2.HorizontalPodAutoscaler { return buildExternalMetricSimHPA(4, 4, 10, false, false) },
+			name: "external metric found",
+			buildHPA: func() *autoscalingv2.HorizontalPodAutoscaler {
+				return buildExternalMetricSimHPA(4, 4, 10, false, false)
+			},
 			metricName: "http_requests",
 			wantFound:  true,
 		},
 		{
-			name:      "external metric case insensitive",
-			buildHPA:  func() *autoscalingv2.HorizontalPodAutoscaler { return buildExternalMetricSimHPA(4, 4, 10, false, false) },
+			name: "external metric case insensitive",
+			buildHPA: func() *autoscalingv2.HorizontalPodAutoscaler {
+				return buildExternalMetricSimHPA(4, 4, 10, false, false)
+			},
 			metricName: "HTTP_Requests",
 			wantFound:  true,
 		},
 		{
-			name:      "pods metric found",
-			buildHPA:  func() *autoscalingv2.HorizontalPodAutoscaler { return buildPodsMetricSimHPA(4, 4, 10) },
+			name:       "pods metric found",
+			buildHPA:   func() *autoscalingv2.HorizontalPodAutoscaler { return buildPodsMetricSimHPA(4, 4, 10) },
 			metricName: "http_requests_per_pod",
 			wantFound:  true,
 		},
 		{
-			name:      "pods metric case insensitive",
-			buildHPA:  func() *autoscalingv2.HorizontalPodAutoscaler { return buildPodsMetricSimHPA(4, 4, 10) },
+			name:       "pods metric case insensitive",
+			buildHPA:   func() *autoscalingv2.HorizontalPodAutoscaler { return buildPodsMetricSimHPA(4, 4, 10) },
 			metricName: "HTTP_Requests_Per_Pod",
 			wantFound:  true,
 		},
@@ -680,14 +684,14 @@ func TestFindCurrentMetric(t *testing.T) {
 			wantFound:  true,
 		},
 		{
-			name:      "metric not found",
-			buildHPA:  func() *autoscalingv2.HorizontalPodAutoscaler { return buildMetricSimHPA(4, 4, 10, 50) },
+			name:       "metric not found",
+			buildHPA:   func() *autoscalingv2.HorizontalPodAutoscaler { return buildMetricSimHPA(4, 4, 10, 50) },
 			metricName: "nonexistent",
 			wantFound:  false,
 		},
 		{
-			name:      "empty current metrics",
-			buildHPA:  func() *autoscalingv2.HorizontalPodAutoscaler { return buildSimHPA(4, 4, 10) },
+			name:       "empty current metrics",
+			buildHPA:   func() *autoscalingv2.HorizontalPodAutoscaler { return buildSimHPA(4, 4, 10) },
 			metricName: "cpu",
 			wantFound:  false,
 		},
@@ -730,8 +734,10 @@ func TestResolveMetricSpec(t *testing.T) {
 			wantType:   autoscalingv2.ResourceMetricSourceType,
 		},
 		{
-			name:       "external metric found",
-			buildHPA:   func() *autoscalingv2.HorizontalPodAutoscaler { return buildExternalMetricSimHPA(4, 4, 10, false, false) },
+			name: "external metric found",
+			buildHPA: func() *autoscalingv2.HorizontalPodAutoscaler {
+				return buildExternalMetricSimHPA(4, 4, 10, false, false)
+			},
 			metricName: "http_requests",
 			wantFound:  true,
 			wantType:   autoscalingv2.ExternalMetricSourceType,

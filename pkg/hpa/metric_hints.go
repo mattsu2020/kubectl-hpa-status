@@ -22,10 +22,10 @@ type MetricHint struct {
 
 // MetricHintsReport holds the complete metric hints analysis for an HPA.
 type MetricHintsReport struct {
-	Namespace string       `json:"namespace" yaml:"namespace"`
-	Name      string       `json:"name" yaml:"name"`
-	Hints     []MetricHint `json:"hints,omitempty" yaml:"hints,omitempty"`
-	Summary   string       `json:"summary" yaml:"summary"`
+	Namespace            string                      `json:"namespace" yaml:"namespace"`
+	Name                 string                      `json:"name" yaml:"name"`
+	Hints                []MetricHint                `json:"hints,omitempty" yaml:"hints,omitempty"`
+	Summary              string                      `json:"summary" yaml:"summary"`
 	TroubleshootingFlows []MetricHintTroubleshooting `json:"troubleshootingFlows,omitempty" yaml:"troubleshootingFlows,omitempty"`
 }
 
@@ -133,11 +133,11 @@ func checkCustomAPIServiceUnavailable(spec autoscalingv2.MetricSpec, freshness [
 	}
 	return []MetricHint{{
 		MetricType: string(spec.Type), MetricName: name, Pattern: "custom-api-service-unavailable", Severity: "error",
-		Title:       "Custom metrics API service not available",
-		Description: "The custom.metrics.k8s.io APIService is not available; custom metrics cannot be retrieved",
-		Checks:      []string{"kubectl get apiservice v1beta1.custom.metrics.k8s.io", "kubectl get pods -n <adapter-namespace>"},
+		Title:        "Custom metrics API service not available",
+		Description:  "The custom.metrics.k8s.io APIService is not available; custom metrics cannot be retrieved",
+		Checks:       []string{"kubectl get apiservice v1beta1.custom.metrics.k8s.io", "kubectl get pods -n <adapter-namespace>"},
 		CommonCauses: []string{"prometheus-adapter not installed", "APIService registration failed", "adapter pods are crashing"},
-		FixSteps:    []string{"Install prometheus-adapter if not present", "Check APIService status for error messages", "Verify adapter has RBAC permissions to read metrics"},
+		FixSteps:     []string{"Install prometheus-adapter if not present", "Check APIService status for error messages", "Verify adapter has RBAC permissions to read metrics"},
 	}}
 }
 
@@ -152,10 +152,10 @@ func checkExternalAPIServiceUnavailable(spec autoscalingv2.MetricSpec, freshness
 	}
 	return []MetricHint{{
 		MetricType: "External", MetricName: name, Pattern: "external-api-service-unavailable", Severity: "error",
-		Title:       "External metrics API service not available",
-		Description: "The external.metrics.k8s.io APIService is not available; external metrics cannot be retrieved",
+		Title:        "External metrics API service not available",
+		Description:  "The external.metrics.k8s.io APIService is not available; external metrics cannot be retrieved",
 		CommonCauses: []string{"no adapter installed for external metrics", "APIService registration failed"},
-		FixSteps:    []string{"Install a metrics adapter that serves external.metrics.k8s.io (e.g., prometheus-adapter, KEDA)", "Check APIService status"},
+		FixSteps:     []string{"Install a metrics adapter that serves external.metrics.k8s.io (e.g., prometheus-adapter, KEDA)", "Check APIService status"},
 	}}
 }
 
@@ -169,10 +169,10 @@ func checkMetricValueZero(spec autoscalingv2.MetricSpec, currentMetrics []autosc
 	}
 	return []MetricHint{{
 		MetricType: string(spec.Type), MetricName: name, Pattern: "metric-value-zero", Severity: "warning",
-		Title:       "Metric reporting zero values",
-		Description: fmt.Sprintf("Metric %q reports zero current value while target is non-zero", name),
+		Title:        "Metric reporting zero values",
+		Description:  fmt.Sprintf("Metric %q reports zero current value while target is non-zero", name),
 		CommonCauses: []string{"metric export pipeline is not producing data", "application is not instrumented for this metric", "label selector mismatch"},
-		FixSteps:    []string{"Verify the application exports the metric", "Check metric source (e.g., Prometheus) for data", "Verify label selectors match"},
+		FixSteps:     []string{"Verify the application exports the metric", "Check metric source (e.g., Prometheus) for data", "Verify label selectors match"},
 	}}
 }
 
@@ -187,11 +187,11 @@ func checkObjectMetricTargetNotFound(spec autoscalingv2.MetricSpec, events []Eve
 	kind, objName := spec.Object.DescribedObject.Kind, spec.Object.DescribedObject.Name
 	return []MetricHint{{
 		MetricType: "Object", MetricName: name, Pattern: "object-metric-target-not-found", Severity: "error",
-		Title:       "Object metric target may not exist",
-		Description: fmt.Sprintf("HPA events report FailedGetObjectMetric for %s/%s referenced by metric %q", kind, objName, name),
-		Checks:      []string{fmt.Sprintf("kubectl get %s %s", strings.ToLower(kind), objName)},
+		Title:        "Object metric target may not exist",
+		Description:  fmt.Sprintf("HPA events report FailedGetObjectMetric for %s/%s referenced by metric %q", kind, objName, name),
+		Checks:       []string{fmt.Sprintf("kubectl get %s %s", strings.ToLower(kind), objName)},
 		CommonCauses: []string{"referenced object was deleted", "object kind is incorrect", "cross-namespace reference"},
-		FixSteps:    []string{"Verify the referenced object exists", "Check the object kind and name in HPA spec"},
+		FixSteps:     []string{"Verify the referenced object exists", "Check the object kind and name in HPA spec"},
 	}}
 }
 
@@ -213,10 +213,10 @@ func checkMissingMetricInStatus(
 	}
 	return []MetricHint{{
 		MetricType: string(spec.Type), MetricName: name, Pattern: "missing-metric-in-status", Severity: "warning",
-		Title:       "Metric has no current data in HPA status",
-		Description: fmt.Sprintf("Metric %q has no matching entry in HPA status current metrics", name),
+		Title:        "Metric has no current data in HPA status",
+		Description:  fmt.Sprintf("Metric %q has no matching entry in HPA status current metrics", name),
 		CommonCauses: []string{"metrics adapter is not returning data for this metric", "metric name or labels don't match adapter configuration", "adapter hasn't scraped this metric yet"},
-		FixSteps:    []string{"Check if the metrics adapter is running", "Verify metric name matches adapter configuration", "Wait a few reconciliation cycles and check again"},
+		FixSteps:     []string{"Check if the metrics adapter is running", "Verify metric name matches adapter configuration", "Wait a few reconciliation cycles and check again"},
 	}}
 }
 

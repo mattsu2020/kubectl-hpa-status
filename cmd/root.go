@@ -322,7 +322,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newOwnershipCommand(opts))
 	root.AddCommand(newAlertsCommand())
 	root.AddCommand(newFlapCommand(opts))
-		root.AddCommand(newSimulateCommand(opts))
+	root.AddCommand(newSimulateCommand(opts))
 	root.AddCommand(newAnalyzeRecordCommand(opts))
 	root.AddCommand(newCompatCommand(opts))
 	root.AddCommand(newVersionCommand())

@@ -14,9 +14,9 @@ import (
 )
 
 type autoscalerMapOutput struct {
-	Namespace string                    `json:"namespace" yaml:"namespace"`
-	Name      string                    `json:"name" yaml:"name"`
-	Target    string                    `json:"target" yaml:"target"`
+	Namespace string                     `json:"namespace" yaml:"namespace"`
+	Name      string                     `json:"name" yaml:"name"`
+	Target    string                     `json:"target" yaml:"target"`
 	Map       *hpaanalysis.AutoscalerMap `json:"autoscalerMap" yaml:"autoscalerMap"`
 }
 
@@ -141,10 +141,10 @@ func assembleAutoscalerMapInput(ctx context.Context, client *kube.Client, opts *
 	nodeCap, _ := kube.FetchNodeCapacity(ctx, client.Interface)
 	if nodeCap != nil {
 		input.NodeSummary = hpaanalysis.AutoscalerMapNodeSummary{
-			TotalNodes:     nodeCap.TotalNodes,
-			AllocatableCPU: nodeCap.AllocCPU.String(),
+			TotalNodes:        nodeCap.TotalNodes,
+			AllocatableCPU:    nodeCap.AllocCPU.String(),
 			AllocatableMemory: nodeCap.AllocMemory.String(),
-			TaintedNodes:   nodeCap.TaintedNodes,
+			TaintedNodes:      nodeCap.TaintedNodes,
 		}
 	}
 

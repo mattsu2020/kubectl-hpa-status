@@ -18,13 +18,13 @@ func AnalyzeReadinessDoctor(input ReadinessDoctorInput) *ReadinessDoctorReport {
 	}
 
 	report := &ReadinessDoctorReport{
-		Namespace:          input.Namespace,
-		Name:               input.HPAName,
-		Target:             input.Target,
-		PodAgeDistribution: analyzePodAgeDistribution(input),
-		ProbeAnalysis:      analyzeReadinessProbeConfig(input),
+		Namespace:            input.Namespace,
+		Name:                 input.HPAName,
+		Target:               input.Target,
+		PodAgeDistribution:   analyzePodAgeDistribution(input),
+		ProbeAnalysis:        analyzeReadinessProbeConfig(input),
 		InitializationImpact: analyzeInitializationImpact(input),
-		ExclusionEstimate:  analyzeExclusionEstimate(input),
+		ExclusionEstimate:    analyzeExclusionEstimate(input),
 	}
 
 	report.Recommendations = buildReadinessDoctorRecommendations(report, input)
@@ -60,10 +60,10 @@ func analyzePodAgeDistribution(input ReadinessDoctorInput) ReadinessPodAgeDistri
 // analyzeReadinessProbeConfig evaluates probe settings and produces warnings.
 func analyzeReadinessProbeConfig(input ReadinessDoctorInput) ReadinessProbeAnalysis {
 	analysis := ReadinessProbeAnalysis{
-		HasStartupProbe:           input.HasStartupProbe,
-		HasReadinessProbe:         input.HasReadinessProbe,
-		ReadinessInitialDelaySec:  input.ReadinessInitialDelay,
-		StartupMaxDelaySec:        input.StartupMaxDelay,
+		HasStartupProbe:          input.HasStartupProbe,
+		HasReadinessProbe:        input.HasReadinessProbe,
+		ReadinessInitialDelaySec: input.ReadinessInitialDelay,
+		StartupMaxDelaySec:       input.StartupMaxDelay,
 	}
 
 	var warnings []string

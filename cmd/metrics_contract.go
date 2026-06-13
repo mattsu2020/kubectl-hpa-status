@@ -97,9 +97,9 @@ func runMetricsContract(ctx context.Context, out io.Writer, opts *options, name 
 
 // metricsContractOutput wraps the contract report for structured output.
 type metricsContractOutput struct {
-	Namespace string                         `json:"namespace" yaml:"namespace"`
-	Name      string                         `json:"name" yaml:"name"`
-	Target    string                         `json:"target" yaml:"target"`
+	Namespace string                            `json:"namespace" yaml:"namespace"`
+	Name      string                            `json:"name" yaml:"name"`
+	Target    string                            `json:"target" yaml:"target"`
 	Contract  *hpaanalysis.MetricContractReport `json:"contract" yaml:"contract"`
 }
 
@@ -111,8 +111,8 @@ func buildMetricContractInput(ctx context.Context, client *kube.Client, hpa *aut
 		Target:    fmt.Sprintf("%s/%s", hpa.Spec.ScaleTargetRef.Kind, hpa.Spec.ScaleTargetRef.Name),
 		Metrics:   make([]hpaanalysis.MetricContractMetric, 0, len(hpa.Spec.Metrics)),
 		APIServices: map[string]hpaanalysis.APIServiceStatus{
-			"metrics.k8s.io/v1beta1":         checkAPIServiceAvailability(ctx, client, "metrics.k8s.io/v1beta1"),
-			"custom.metrics.k8s.io/v1beta1":  checkAPIServiceAvailability(ctx, client, "custom.metrics.k8s.io/v1beta1"),
+			"metrics.k8s.io/v1beta1":          checkAPIServiceAvailability(ctx, client, "metrics.k8s.io/v1beta1"),
+			"custom.metrics.k8s.io/v1beta1":   checkAPIServiceAvailability(ctx, client, "custom.metrics.k8s.io/v1beta1"),
 			"external.metrics.k8s.io/v1beta1": checkAPIServiceAvailability(ctx, client, "external.metrics.k8s.io/v1beta1"),
 		},
 	}

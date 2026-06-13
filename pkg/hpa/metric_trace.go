@@ -162,8 +162,8 @@ func buildToleranceEffect(hpa *autoscalingv2.HorizontalPodAutoscaler, entries []
 	}
 
 	effect := &ToleranceEffect{
-		DefaultTolerance:   defaultTolerance,
-		SuppressedMetrics:  suppressed,
+		DefaultTolerance:  defaultTolerance,
+		SuppressedMetrics: suppressed,
 	}
 
 	// Check if tolerance is explicitly configured in behavior spec
@@ -221,14 +221,14 @@ func buildTraceSummary(entries []MetricTraceEntry, winner string, winnerConfiden
 		}
 
 		ratioStr := formatRatio(*entry.Ratio)
-			switch {
-			case entry.Name == winner:
-				parts = append(parts, fmt.Sprintf("%s is dominant (%sx target)", entry.Name, ratioStr))
-			case entry.WithinTolerance:
-				parts = append(parts, fmt.Sprintf("%s is within tolerance (%sx)", entry.Name, ratioStr))
-			default:
-				parts = append(parts, fmt.Sprintf("%s wants %s (%sx)", entry.Name, entry.DesiredDirection, ratioStr))
-			}
+		switch {
+		case entry.Name == winner:
+			parts = append(parts, fmt.Sprintf("%s is dominant (%sx target)", entry.Name, ratioStr))
+		case entry.WithinTolerance:
+			parts = append(parts, fmt.Sprintf("%s is within tolerance (%sx)", entry.Name, ratioStr))
+		default:
+			parts = append(parts, fmt.Sprintf("%s wants %s (%sx)", entry.Name, entry.DesiredDirection, ratioStr))
+		}
 	}
 
 	summary := strings.Join(parts, "; ")

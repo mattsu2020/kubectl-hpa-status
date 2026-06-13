@@ -116,10 +116,10 @@ func TestAnalyzeChurnFromEvents(t *testing.T) {
 			name: "non-rescale events are ignored",
 			events: []Event{
 				{Reason: "FailedGetResourceMetric", Message: "missing metrics", Timestamp: now.Add(-3 * time.Minute)},
-				rescaleEvent(3, now.Add(-2 * time.Minute)),
+				rescaleEvent(3, now.Add(-2*time.Minute)),
 				{Reason: "SomethingElse", Message: "noise", Timestamp: now.Add(-90 * time.Second)},
-				rescaleEvent(5, now.Add(-1 * time.Minute)),
-				rescaleEvent(8, now.Add(-30 * time.Second)),
+				rescaleEvent(5, now.Add(-1*time.Minute)),
+				rescaleEvent(8, now.Add(-30*time.Second)),
 			},
 			wantLevel: ChurnLow,
 			wantFlips: 0,

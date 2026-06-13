@@ -35,8 +35,8 @@ func TestRecentEventsSince_TimeFiltering(t *testing.T) {
 				Namespace: namespace,
 				Name:      hpaName,
 			},
-			Reason:       e.Reason,
-			Message:      e.Message,
+			Reason:        e.Reason,
+			Message:       e.Message,
 			LastTimestamp: metav1.NewTime(e.Timestamp),
 		})
 	}
@@ -69,19 +69,19 @@ func TestRecentEventsSince_AscendingOrder(t *testing.T) {
 			ObjectMeta:     metav1.ObjectMeta{Namespace: namespace, Name: "e3"},
 			InvolvedObject: corev1.ObjectReference{Kind: "HorizontalPodAutoscaler", Namespace: namespace, Name: hpaName},
 			Reason:         "SuccessfulRescale", Message: "New size: 7",
-			LastTimestamp:   metav1.NewTime(now.Add(-1 * time.Minute)),
+			LastTimestamp: metav1.NewTime(now.Add(-1 * time.Minute)),
 		},
 		&corev1.Event{
 			ObjectMeta:     metav1.ObjectMeta{Namespace: namespace, Name: "e1"},
 			InvolvedObject: corev1.ObjectReference{Kind: "HorizontalPodAutoscaler", Namespace: namespace, Name: hpaName},
 			Reason:         "SuccessfulRescale", Message: "New size: 3",
-			LastTimestamp:   metav1.NewTime(now.Add(-10 * time.Minute)),
+			LastTimestamp: metav1.NewTime(now.Add(-10 * time.Minute)),
 		},
 		&corev1.Event{
 			ObjectMeta:     metav1.ObjectMeta{Namespace: namespace, Name: "e2"},
 			InvolvedObject: corev1.ObjectReference{Kind: "HorizontalPodAutoscaler", Namespace: namespace, Name: hpaName},
 			Reason:         "SuccessfulRescale", Message: "New size: 5",
-			LastTimestamp:   metav1.NewTime(now.Add(-5 * time.Minute)),
+			LastTimestamp: metav1.NewTime(now.Add(-5 * time.Minute)),
 		},
 	}
 	client := fake.NewSimpleClientset(objects...)
@@ -132,8 +132,8 @@ func TestRecentEventsSince_ZeroTimestamps(t *testing.T) {
 func TestEventFromCore_WithTimestamp(t *testing.T) {
 	ts := time.Date(2025, 1, 15, 10, 30, 0, 0, time.UTC)
 	coreEvent := corev1.Event{
-		Reason:       "SuccessfulRescale",
-		Message:      "New size: 5",
+		Reason:        "SuccessfulRescale",
+		Message:       "New size: 5",
 		LastTimestamp: metav1.NewTime(ts),
 	}
 

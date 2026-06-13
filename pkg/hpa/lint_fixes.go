@@ -47,9 +47,9 @@ func fixMissingScaleDownBehavior(hpa *autoscalingv2.HorizontalPodAutoscaler) *Li
 					"stabilizationWindowSeconds": 300,
 					"policies": []map[string]any{
 						{
-							"type":           "Percent",
-							"value":          50,
-							"periodSeconds":  60,
+							"type":          "Percent",
+							"value":         50,
+							"periodSeconds": 60,
 						},
 					},
 				},

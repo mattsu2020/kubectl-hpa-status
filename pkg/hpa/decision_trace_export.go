@@ -214,11 +214,11 @@ func buildStructuredStabilizationTrace(hpa *autoscalingv2.HorizontalPodAutoscale
 	}
 
 	trace := &StabilizationTrace{
-		WindowSeconds:      windowSeconds,
-		Direction:          direction,
-		RemainingSeconds:   remaining,
+		WindowSeconds:       windowSeconds,
+		Direction:           direction,
+		RemainingSeconds:    remaining,
 		SuppressedDirection: "scaleDown",
-		Note:               fmt.Sprintf("stabilization window active, ~%ds remaining", *remaining),
+		Note:                fmt.Sprintf("stabilization window active, ~%ds remaining", *remaining),
 	}
 
 	return trace

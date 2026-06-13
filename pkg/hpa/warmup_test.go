@@ -8,15 +8,15 @@ import (
 
 func TestAnalyzeWarmup(t *testing.T) {
 	tests := []struct {
-		name             string
-		input            WarmupInput
-		wantNil          bool
-		wantSummary      string
-		wantBottlenecks  int
-		wantActions      int
-		wantAvgTime      int64
-		wantP95Time      int64
-		wantCapacityPct  int
+		name            string
+		input           WarmupInput
+		wantNil         bool
+		wantSummary     string
+		wantBottlenecks int
+		wantActions     int
+		wantAvgTime     int64
+		wantP95Time     int64
+		wantCapacityPct int
 	}{
 		{
 			name: "all pods ready returns nil",
@@ -51,15 +51,15 @@ func TestAnalyzeWarmup(t *testing.T) {
 		{
 			name: "readiness probe bottleneck",
 			input: WarmupInput{
-				DesiredReplicas:    10,
-				CurrentReplicas:    10,
-				MinReplicas:        1,
-				ReadyPods:          4,
-				TotalPods:          10,
-				ScalingActive:      true,
-				TargetReadyReplicas: 4,
+				DesiredReplicas:         10,
+				CurrentReplicas:         10,
+				MinReplicas:             1,
+				ReadyPods:               4,
+				TotalPods:               10,
+				ScalingActive:           true,
+				TargetReadyReplicas:     4,
 				TargetAvailableReplicas: 3,
-				ReadinessProbePresent: true,
+				ReadinessProbePresent:   true,
 				PodDetails: []WarmupPodDetail{
 					{Name: "pod-1", AgeSeconds: 120, Ready: true, ContainerState: "running", TimeToReadySeconds: 142},
 					{Name: "pod-2", AgeSeconds: 120, Ready: true, ContainerState: "running", TimeToReadySeconds: 130},
@@ -153,13 +153,13 @@ func TestAnalyzeWarmup(t *testing.T) {
 		{
 			name: "multiple bottlenecks",
 			input: WarmupInput{
-				DesiredReplicas:        10,
-				CurrentReplicas:        10,
-				MinReplicas:            1,
-				ReadyPods:              4,
-				TotalPods:              10,
-				ScalingActive:          true,
-				ReadinessProbePresent:  true,
+				DesiredReplicas:         10,
+				CurrentReplicas:         10,
+				MinReplicas:             1,
+				ReadyPods:               4,
+				TotalPods:               10,
+				ScalingActive:           true,
+				ReadinessProbePresent:   true,
 				TargetAvailableReplicas: 3,
 				PodDetails: []WarmupPodDetail{
 					{Name: "pod-1", Ready: true, ContainerState: "running"},
@@ -232,14 +232,14 @@ func TestAnalyzeWarmup(t *testing.T) {
 		{
 			name: "startup probe bottleneck",
 			input: WarmupInput{
-				DesiredReplicas:           5,
-				CurrentReplicas:           5,
-				MinReplicas:               1,
-				ReadyPods:                 3,
-				TotalPods:                 5,
-				ScalingActive:             true,
-				ReadinessProbePresent:     true,
-				StartupProbePresent:       true,
+				DesiredReplicas:             5,
+				CurrentReplicas:             5,
+				MinReplicas:                 1,
+				ReadyPods:                   3,
+				TotalPods:                   5,
+				ScalingActive:               true,
+				ReadinessProbePresent:       true,
+				StartupProbePresent:         true,
 				StartupProbeMaxDelaySeconds: 180,
 				PodDetails: []WarmupPodDetail{
 					{Name: "pod-1", AgeSeconds: 300, Ready: true, ContainerState: "running"},
@@ -324,18 +324,18 @@ func TestAnalyzeWarmup(t *testing.T) {
 
 func TestComputeTimeToReady(t *testing.T) {
 	tests := []struct {
-		name     string
-		details  []WarmupPodDetail
-		wantAvg  int64
-		wantP95  int64
-		wantMax  int64
+		name    string
+		details []WarmupPodDetail
+		wantAvg int64
+		wantP95 int64
+		wantMax int64
 	}{
 		{
-			name:     "empty details",
-			details:  nil,
-			wantAvg:  0,
-			wantP95:  0,
-			wantMax:  0,
+			name:    "empty details",
+			details: nil,
+			wantAvg: 0,
+			wantP95: 0,
+			wantMax: 0,
 		},
 		{
 			name: "no ready pods",
@@ -406,10 +406,10 @@ func TestComputeTimeToReady(t *testing.T) {
 
 func TestEffectiveCapacityRatio(t *testing.T) {
 	tests := []struct {
-		name     string
-		ready    int32
-		desired  int32
-		want     float64
+		name    string
+		ready   int32
+		desired int32
+		want    float64
 	}{
 		{name: "zero desired", ready: 0, desired: 0, want: 1.0},
 		{name: "half ready", ready: 5, desired: 10, want: 0.5},

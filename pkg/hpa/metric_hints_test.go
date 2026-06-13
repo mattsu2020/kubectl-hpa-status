@@ -81,10 +81,10 @@ func TestAnalyzeMetricHints(t *testing.T) {
 			},
 		},
 		{
-			name:      "custom metrics API unavailable",
-			hpa:       buildPodsMetricHPA("http_requests"),
-			freshness: []MetricFreshness{{Name: "http_requests", Type: "Pods", Source: "custom.metrics.k8s.io", APIServiceAvailable: boolPtrForHintTest(false)}},
-			contract:  &MetricContractReport{Checks: []MetricContractCheck{{MetricType: "Pods", MetricName: "http_requests", Status: "error"}}},
+			name:           "custom metrics API unavailable",
+			hpa:            buildPodsMetricHPA("http_requests"),
+			freshness:      []MetricFreshness{{Name: "http_requests", Type: "Pods", Source: "custom.metrics.k8s.io", APIServiceAvailable: boolPtrForHintTest(false)}},
+			contract:       &MetricContractReport{Checks: []MetricContractCheck{{MetricType: "Pods", MetricName: "http_requests", Status: "error"}}},
 			wantMinHints:   1,
 			wantSummaryHas: "issue",
 			assertHint: func(t *testing.T, hints []MetricHint) {

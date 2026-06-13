@@ -214,9 +214,9 @@ func convertToUnstructured(obj runtime.Object) (*unstructured.Unstructured, erro
 
 // scaleTargetReplicas holds the replica count from a scale target resource.
 type scaleTargetReplicas struct {
-	replicas int32
+	replicas    int32
 	annotations map[string]string
-	labels map[string]string
+	labels      map[string]string
 }
 
 // fetchDeploymentReplicas fetches replica info from a Deployment.
@@ -226,9 +226,9 @@ func fetchDeploymentReplicas(ctx context.Context, client *kube.Client, namespace
 		return nil, err
 	}
 	return &scaleTargetReplicas{
-		replicas: *deploy.Spec.Replicas,
+		replicas:    *deploy.Spec.Replicas,
 		annotations: deploy.Annotations,
-		labels: deploy.Labels,
+		labels:      deploy.Labels,
 	}, nil
 }
 
@@ -239,8 +239,8 @@ func fetchStatefulSetReplicas(ctx context.Context, client *kube.Client, namespac
 		return nil, err
 	}
 	return &scaleTargetReplicas{
-		replicas: *sts.Spec.Replicas,
+		replicas:    *sts.Spec.Replicas,
 		annotations: sts.Annotations,
-		labels: sts.Labels,
+		labels:      sts.Labels,
 	}, nil
 }

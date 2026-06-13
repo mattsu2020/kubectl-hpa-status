@@ -241,9 +241,9 @@ func TestWriteTimelineHTML(t *testing.T) {
 func TestSnapshotFromReport_EmptyMetrics(t *testing.T) {
 	report := StatusReport{
 		Analysis: Analysis{
-			Current:  2,
-			Desired:  2,
-			Health:   "OK",
+			Current:     2,
+			Desired:     2,
+			Health:      "OK",
 			HealthScore: 100,
 		},
 	}

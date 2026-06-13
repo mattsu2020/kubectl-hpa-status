@@ -67,10 +67,10 @@ func TestDetectStabilizationSource(t *testing.T) {
 
 func TestFormatASCIIProgressBar(t *testing.T) {
 	tests := []struct {
-		name   string
-		ratio  float64
-		width  int
-		check  func(t *testing.T, got string)
+		name  string
+		ratio float64
+		width int
+		check func(t *testing.T, got string)
 	}{
 		{
 			name:  "zero ratio shows 0%",
@@ -173,7 +173,7 @@ func TestFormatStabilizationExplain(t *testing.T) {
 		{
 			name: "full stabilization display",
 			analysis: Analysis{
-				StabilizationRemaining:    &remaining,
+				StabilizationRemaining:     &remaining,
 				StabilizationWindowSeconds: &window,
 				StabilizationSource:        StabilizationSourceScaleDown,
 				StabilizationConfidence:    stabilizationConfidenceLabel,
@@ -196,7 +196,7 @@ func TestFormatStabilizationExplain(t *testing.T) {
 		{
 			name: "zero remaining returns empty",
 			analysis: Analysis{
-				StabilizationRemaining:    int64PtrVal(0),
+				StabilizationRemaining:     int64PtrVal(0),
 				StabilizationWindowSeconds: &window,
 			},
 			wantEmpty: true,
@@ -204,7 +204,7 @@ func TestFormatStabilizationExplain(t *testing.T) {
 		{
 			name: "without window still shows remaining",
 			analysis: Analysis{
-				StabilizationRemaining:    &remaining,
+				StabilizationRemaining:     &remaining,
 				StabilizationWindowSeconds: nil,
 				StabilizationSource:        StabilizationSourceScaleUp,
 				StabilizationConfidence:    stabilizationConfidenceLabel,
@@ -289,5 +289,5 @@ func TestFormatStabilizationWithSource(t *testing.T) {
 }
 
 // Helper for test readability.
-func int64PtrVal(v int64) *int64 { return &v }
+func int64PtrVal(v int64) *int64     { return &v }
 func ptrInt32ForTest(v int32) *int32 { return &v }

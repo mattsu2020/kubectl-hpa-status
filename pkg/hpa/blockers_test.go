@@ -7,14 +7,14 @@ import (
 
 func TestAnalyzeBlockers_ScaleOutWithPendingAndQuota(t *testing.T) {
 	input := BlockerInput{
-		DesiredReplicas:    12,
-		CurrentReplicas:    8,
-		TargetReadyReplicas: 8,
+		DesiredReplicas:       12,
+		CurrentReplicas:       8,
+		TargetReadyReplicas:   8,
 		TargetDesiredReplicas: 12,
-		MinReplicas:        2,
-		MaxReplicas:        20,
-		ReadyPods:          8,
-		TotalPods:          12,
+		MinReplicas:           2,
+		MaxReplicas:           20,
+		ReadyPods:             8,
+		TotalPods:             12,
 		PendingPods: []BlockerPodInfo{
 			{Name: "web-1", Phase: "Pending", Unschedulable: true, Reasons: []string{"Insufficient cpu"}},
 			{Name: "web-2", Phase: "Pending", Unschedulable: true, Reasons: []string{"Insufficient cpu"}},
@@ -67,10 +67,10 @@ func TestAnalyzeBlockers_ScaleOutWithPendingAndQuota(t *testing.T) {
 
 func TestAnalyzeBlockers_NoScaleOutNeeded(t *testing.T) {
 	input := BlockerInput{
-		DesiredReplicas:    8,
-		CurrentReplicas:    8,
+		DesiredReplicas:     8,
+		CurrentReplicas:     8,
 		TargetReadyReplicas: 8,
-		ScalingActive:      true,
+		ScalingActive:       true,
 	}
 
 	report := AnalyzeBlockers(input)
@@ -85,8 +85,8 @@ func TestAnalyzeBlockers_NoScaleOutNeeded(t *testing.T) {
 
 func TestAnalyzeBlockers_ContainerFailure(t *testing.T) {
 	input := BlockerInput{
-		DesiredReplicas:    5,
-		CurrentReplicas:    3,
+		DesiredReplicas:     5,
+		CurrentReplicas:     3,
 		TargetReadyReplicas: 2,
 		ContainerStatuses: []ContainerStatusSummary{
 			{Pod: "web-1", Container: "app", Waiting: true, WaitingReason: "CrashLoopBackOff", RestartCount: 7},
@@ -115,8 +115,8 @@ func TestAnalyzeBlockers_ContainerFailure(t *testing.T) {
 
 func TestAnalyzeBlockers_BlockerSeverityOrder(t *testing.T) {
 	input := BlockerInput{
-		DesiredReplicas:    12,
-		CurrentReplicas:    8,
+		DesiredReplicas:     12,
+		CurrentReplicas:     8,
 		TargetReadyReplicas: 8,
 		PendingPods: []BlockerPodInfo{
 			{Name: "web-1", Phase: "Pending", Unschedulable: true},
@@ -142,10 +142,10 @@ func TestAnalyzeBlockers_BlockerSeverityOrder(t *testing.T) {
 
 func TestAnalyzeBlockers_EmptyInput(t *testing.T) {
 	input := BlockerInput{
-		DesiredReplicas:    3,
-		CurrentReplicas:    3,
+		DesiredReplicas:     3,
+		CurrentReplicas:     3,
 		TargetReadyReplicas: 3,
-		ScalingActive:      true,
+		ScalingActive:       true,
 	}
 
 	report := AnalyzeBlockers(input)

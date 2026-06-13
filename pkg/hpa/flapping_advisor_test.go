@@ -12,9 +12,10 @@ func TestAnalyzeFlappingPrevention(t *testing.T) {
 	now := time.Now()
 
 	tests := []struct {
-		name       string
-		events     []Event
-		hpa        func() *interface{ /* placeholder; we build *autoscalingv2.HPA via kube.BuildHPA */ }
+		name   string
+		events []Event
+		hpa    func() *interface { /* placeholder; we build *autoscalingv2.HPA via kube.BuildHPA */
+		}
 		wantNil    bool
 		checkExtra func(t *testing.T, got *FlappingPreventionReport)
 	}{
@@ -40,8 +41,8 @@ func TestAnalyzeFlappingPrevention(t *testing.T) {
 			name: "2 rescale events plus noise returns nil",
 			events: []Event{
 				{Reason: "FailedGetResourceMetric", Message: "missing metrics", Timestamp: now.Add(-3 * time.Minute)},
-				rescaleEvent(5, now.Add(-2 * time.Minute)),
-				rescaleEvent(3, now.Add(-1 * time.Minute)),
+				rescaleEvent(5, now.Add(-2*time.Minute)),
+				rescaleEvent(3, now.Add(-1*time.Minute)),
 			},
 			wantNil: true,
 		},
@@ -73,10 +74,10 @@ func TestAnalyzeFlappingPrevention(t *testing.T) {
 		{
 			name: "stable HPA with no direction flips has zero flips",
 			events: []Event{
-				rescaleEvent(3, now.Add(-4 * time.Minute)),
-				rescaleEvent(5, now.Add(-3 * time.Minute)),
-				rescaleEvent(8, now.Add(-2 * time.Minute)),
-				rescaleEvent(10, now.Add(-1 * time.Minute)),
+				rescaleEvent(3, now.Add(-4*time.Minute)),
+				rescaleEvent(5, now.Add(-3*time.Minute)),
+				rescaleEvent(8, now.Add(-2*time.Minute)),
+				rescaleEvent(10, now.Add(-1*time.Minute)),
 			},
 			checkExtra: func(t *testing.T, got *FlappingPreventionReport) {
 				if got.CurrentDirectionFlips != 0 {
@@ -164,12 +165,12 @@ func TestAnalyzeFlappingPrevention(t *testing.T) {
 			name: "non-rescale events are ignored",
 			events: []Event{
 				{Reason: "FailedGetResourceMetric", Message: "missing metrics", Timestamp: now.Add(-3 * time.Minute)},
-				rescaleEvent(3, now.Add(-8 * time.Minute)),
-				rescaleEvent(5, now.Add(-7 * time.Minute)),
+				rescaleEvent(3, now.Add(-8*time.Minute)),
+				rescaleEvent(5, now.Add(-7*time.Minute)),
 				{Reason: "SomethingElse", Message: "noise", Timestamp: now.Add(-90 * time.Second)},
-				rescaleEvent(3, now.Add(-6 * time.Minute)),
-				rescaleEvent(5, now.Add(-5 * time.Minute)),
-				rescaleEvent(3, now.Add(-4 * time.Minute)),
+				rescaleEvent(3, now.Add(-6*time.Minute)),
+				rescaleEvent(5, now.Add(-5*time.Minute)),
+				rescaleEvent(3, now.Add(-4*time.Minute)),
 			},
 			checkExtra: func(t *testing.T, got *FlappingPreventionReport) {
 				if got.CurrentDirectionFlips < 3 {
@@ -246,10 +247,10 @@ func TestAnalyzeFlappingPrevention(t *testing.T) {
 
 func TestComputeFlapReduction(t *testing.T) {
 	tests := []struct {
-		name          string
-		currentFlips  int
+		name           string
+		currentFlips   int
 		remainingFlips int
-		want          float64
+		want           float64
 	}{
 		{name: "zero flips returns zero", currentFlips: 0, remainingFlips: 0, want: 0},
 		{name: "full reduction", currentFlips: 4, remainingFlips: 0, want: 100},

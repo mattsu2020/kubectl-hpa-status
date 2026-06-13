@@ -39,8 +39,8 @@ func DiagnoseFlapping(events []Event, hpa *autoscalingv2.HorizontalPodAutoscaler
 	flips := detectDirectionFlips(rescales)
 	if len(flips) == 0 {
 		return &FlappingDiagnosis{
-			Detected: false,
-			Severity: "LOW",
+			Detected:  false,
+			Severity:  "LOW",
 			FlipCount: 0,
 		}
 	}

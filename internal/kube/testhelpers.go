@@ -179,10 +179,10 @@ func BuildEventWithTimestamp(namespace, hpaName, reason, message string, t time.
 			Namespace: namespace,
 			Name:      hpaName,
 		},
-		Reason:       reason,
-		Message:      message,
+		Reason:        reason,
+		Message:       message,
 		LastTimestamp: metav1.NewTime(t),
-		EventTime:    metav1.NewMicroTime(t),
+		EventTime:     metav1.NewMicroTime(t),
 	}
 }
 

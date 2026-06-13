@@ -1033,8 +1033,8 @@ func TestCoreAuditRules(t *testing.T) {
 
 func TestProfileSpecificRules(t *testing.T) {
 	tests := []struct {
-		profile        AuditProfile
-		wantRuleCount  int
+		profile       AuditProfile
+		wantRuleCount int
 	}{
 		{ProfileLatency, 2},
 		{ProfileCost, 2},

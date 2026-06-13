@@ -387,5 +387,3 @@ func (m Model) renderHistoryView() string {
 
 	return sb.String()
 }
-
-

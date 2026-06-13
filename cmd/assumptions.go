@@ -13,11 +13,11 @@ import (
 
 func newAssumptionsCommand(opts *options) *cobra.Command {
 	var (
-		explain                  bool
-		assumeTolerance          string
-		assumeSyncPeriod         string
-		assumeCPUInitPeriod      string
-		assumeInitialReadiness   string
+		explain                bool
+		assumeTolerance        string
+		assumeSyncPeriod       string
+		assumeCPUInitPeriod    string
+		assumeInitialReadiness string
 	)
 
 	cmd := &cobra.Command{
@@ -57,8 +57,8 @@ type assumptionsFlagOverrides struct {
 
 // assumptionsOutput wraps the controller assumptions for structured output.
 type assumptionsOutput struct {
-	Namespace   string                            `json:"namespace" yaml:"namespace"`
-	Name        string                            `json:"name" yaml:"name"`
+	Namespace   string                             `json:"namespace" yaml:"namespace"`
+	Name        string                             `json:"name" yaml:"name"`
 	Assumptions *hpaanalysis.ControllerAssumptions `json:"assumptions" yaml:"assumptions"`
 }
 

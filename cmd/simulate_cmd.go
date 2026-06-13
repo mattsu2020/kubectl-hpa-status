@@ -15,15 +15,15 @@ import (
 )
 
 type simulateReport struct {
-	Namespace    string                  `json:"namespace" yaml:"namespace"`
-	Name         string                  `json:"name" yaml:"name"`
-	Before       hpaanalysis.SimulationState `json:"before" yaml:"before"`
-	After        hpaanalysis.SimulationState `json:"after" yaml:"after"`
-	Confidence   string                  `json:"confidence" yaml:"confidence"`
-	Parameter    string                  `json:"parameter,omitempty" yaml:"parameter,omitempty"`
-	Interpretation []string              `json:"interpretation,omitempty" yaml:"interpretation,omitempty"`
-	Suggestions  []hpaanalysis.Suggestion `json:"suggestions,omitempty" yaml:"suggestions,omitempty"`
-	RiskWarnings []string                `json:"riskWarnings,omitempty" yaml:"riskWarnings,omitempty"`
+	Namespace      string                      `json:"namespace" yaml:"namespace"`
+	Name           string                      `json:"name" yaml:"name"`
+	Before         hpaanalysis.SimulationState `json:"before" yaml:"before"`
+	After          hpaanalysis.SimulationState `json:"after" yaml:"after"`
+	Confidence     string                      `json:"confidence" yaml:"confidence"`
+	Parameter      string                      `json:"parameter,omitempty" yaml:"parameter,omitempty"`
+	Interpretation []string                    `json:"interpretation,omitempty" yaml:"interpretation,omitempty"`
+	Suggestions    []hpaanalysis.Suggestion    `json:"suggestions,omitempty" yaml:"suggestions,omitempty"`
+	RiskWarnings   []string                    `json:"riskWarnings,omitempty" yaml:"riskWarnings,omitempty"`
 }
 
 func newSimulateCommand(opts *options) *cobra.Command {
@@ -133,14 +133,14 @@ func runSimulate(ctx context.Context, out io.Writer, opts *options, name string,
 
 	// Build report.
 	report := simulateReport{
-		Namespace:     hpa.Namespace,
-		Name:          hpa.Name,
-		Before:        simResult.Before,
-		After:         simResult.After,
-		Confidence:    simResult.Confidence,
-		Parameter:     simResult.Parameter,
+		Namespace:      hpa.Namespace,
+		Name:           hpa.Name,
+		Before:         simResult.Before,
+		After:          simResult.After,
+		Confidence:     simResult.Confidence,
+		Parameter:      simResult.Parameter,
 		Interpretation: simResult.Interpretation,
-		RiskWarnings:  simResult.RiskWarnings,
+		RiskWarnings:   simResult.RiskWarnings,
 	}
 
 	// Optional suggestions on the simulated state.

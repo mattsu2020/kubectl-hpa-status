@@ -158,8 +158,8 @@ func simulateCandidates(rescales []rescaleData, currentFlips int, candidates []i
 		})
 
 		recommendations = append(recommendations, FlappingSimulation{
-			WindowSeconds:          windowSec,
-			EstimatedFlapReduction: reduction,
+			WindowSeconds:           windowSec,
+			EstimatedFlapReduction:  reduction,
 			EstimatedDirectionFlips: remainingFlips,
 			Rationale: fmt.Sprintf(
 				"A %ds stabilization window would suppress %d of %d direction flips (%.0f%% reduction).",

@@ -15,81 +15,81 @@ func TestAnalyzeMetricFreshness(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name           string
-		hpa            *autoscalingv2.HorizontalPodAutoscaler
-		events         []Event
-		wantLen        int
-		wantStatus     []string   // expected status for each entry, in order
-		wantSource     []string   // expected source for each entry, in order
-		wantWindow     []string   // expected window for each entry, in order
-		wantRisk       []bool     // whether risk should be non-empty
-		wantEvidence   []bool     // whether evidence should be non-empty
-		wantNextSteps  []bool     // whether next steps should be non-empty
+		name          string
+		hpa           *autoscalingv2.HorizontalPodAutoscaler
+		events        []Event
+		wantLen       int
+		wantStatus    []string // expected status for each entry, in order
+		wantSource    []string // expected source for each entry, in order
+		wantWindow    []string // expected window for each entry, in order
+		wantRisk      []bool   // whether risk should be non-empty
+		wantEvidence  []bool   // whether evidence should be non-empty
+		wantNextSteps []bool   // whether next steps should be non-empty
 	}{
 		{
-			name: "nil HPA returns nil",
-			hpa:  nil,
+			name:    "nil HPA returns nil",
+			hpa:     nil,
 			wantLen: 0,
 		},
 		{
-			name: "no spec metrics returns nil",
-			hpa:  kube.BuildHPA("default", "web"),
+			name:    "no spec metrics returns nil",
+			hpa:     kube.BuildHPA("default", "web"),
 			wantLen: 0,
 		},
 		{
-			name: "resource metric OK",
-			hpa:  kube.BuildHPA("default", "web", kube.WithResourceMetric("cpu", 80, 75)),
-			wantLen: 1,
-			wantStatus: []string{"OK"},
-			wantSource: []string{"metrics.k8s.io"},
-			wantWindow: []string{"30s"},
-			wantRisk: []bool{false},
-			wantEvidence: []bool{false},
+			name:          "resource metric OK",
+			hpa:           kube.BuildHPA("default", "web", kube.WithResourceMetric("cpu", 80, 75)),
+			wantLen:       1,
+			wantStatus:    []string{"OK"},
+			wantSource:    []string{"metrics.k8s.io"},
+			wantWindow:    []string{"30s"},
+			wantRisk:      []bool{false},
+			wantEvidence:  []bool{false},
 			wantNextSteps: []bool{false},
 		},
 		{
-			name: "resource metric missing",
-			hpa: buildHPAWithResourceSpecOnly("default", "web", "cpu"),
-			wantLen: 1,
-			wantStatus: []string{"Missing"},
-			wantSource: []string{"metrics.k8s.io"},
-			wantWindow: []string{"30s"},
-			wantRisk: []bool{true},
-			wantEvidence: []bool{false},
+			name:          "resource metric missing",
+			hpa:           buildHPAWithResourceSpecOnly("default", "web", "cpu"),
+			wantLen:       1,
+			wantStatus:    []string{"Missing"},
+			wantSource:    []string{"metrics.k8s.io"},
+			wantWindow:    []string{"30s"},
+			wantRisk:      []bool{true},
+			wantEvidence:  []bool{false},
 			wantNextSteps: []bool{true},
 		},
 		{
 			name: "resource metric missing with ScalingActive False",
 			hpa: buildHPAWithResourceSpecOnly("default", "web", "cpu",
 				kube.WithScalingActiveFalse("FailedGetResourceMetric")),
-			wantLen: 1,
-			wantStatus: []string{"Missing"},
-			wantSource: []string{"metrics.k8s.io"},
-			wantRisk: []bool{true},
-			wantEvidence: []bool{true},
+			wantLen:       1,
+			wantStatus:    []string{"Missing"},
+			wantSource:    []string{"metrics.k8s.io"},
+			wantRisk:      []bool{true},
+			wantEvidence:  []bool{true},
 			wantNextSteps: []bool{true},
 		},
 		{
 			name: "external metric OK",
 			hpa: kube.BuildHPA("default", "web",
 				kube.WithExternalMetricWithStatus("queue_depth", "10", "12")),
-			wantLen: 1,
-			wantStatus: []string{"OK"},
-			wantSource: []string{"external.metrics.k8s.io"},
-			wantWindow: []string{""},
-			wantRisk: []bool{false},
-			wantEvidence: []bool{false},
+			wantLen:       1,
+			wantStatus:    []string{"OK"},
+			wantSource:    []string{"external.metrics.k8s.io"},
+			wantWindow:    []string{""},
+			wantRisk:      []bool{false},
+			wantEvidence:  []bool{false},
 			wantNextSteps: []bool{false},
 		},
 		{
 			name: "external metric missing",
 			hpa: kube.BuildHPA("default", "web",
 				kube.WithExternalMetric("queue_depth", "10")),
-			wantLen: 1,
-			wantStatus: []string{"Missing"},
-			wantSource: []string{"external.metrics.k8s.io"},
-			wantRisk: []bool{true},
-			wantEvidence: []bool{false},
+			wantLen:       1,
+			wantStatus:    []string{"Missing"},
+			wantSource:    []string{"external.metrics.k8s.io"},
+			wantRisk:      []bool{true},
+			wantEvidence:  []bool{false},
 			wantNextSteps: []bool{true},
 		},
 		{
@@ -97,11 +97,11 @@ func TestAnalyzeMetricFreshness(t *testing.T) {
 			hpa: kube.BuildHPA("default", "web",
 				kube.WithResourceMetric("cpu", 80, 75),
 				kube.WithExternalMetric("queue_depth", "10")),
-			wantLen: 2,
-			wantStatus: []string{"OK", "Missing"},
-			wantSource: []string{"metrics.k8s.io", "external.metrics.k8s.io"},
-			wantRisk: []bool{false, true},
-			wantEvidence: []bool{false, false},
+			wantLen:       2,
+			wantStatus:    []string{"OK", "Missing"},
+			wantSource:    []string{"metrics.k8s.io", "external.metrics.k8s.io"},
+			wantRisk:      []bool{false, true},
+			wantEvidence:  []bool{false, false},
 			wantNextSteps: []bool{false, true},
 		},
 		{
@@ -111,18 +111,18 @@ func TestAnalyzeMetricFreshness(t *testing.T) {
 			events: []Event{
 				{Reason: "FailedGetExternalMetric", Message: "unable to get metric queue_depth: external.metrics.k8s.io unavailable"},
 			},
-			wantLen: 1,
-			wantStatus: []string{"Missing"},
-			wantEvidence: []bool{true},
+			wantLen:       1,
+			wantStatus:    []string{"Missing"},
+			wantEvidence:  []bool{true},
 			wantNextSteps: []bool{true},
 		},
 		{
-			name: "pods metric missing",
-			hpa: buildHPAWithPodsMetricSpecOnly("default", "web", "http_requests"),
-			wantLen: 1,
-			wantStatus: []string{"Missing"},
-			wantSource: []string{"custom.metrics.k8s.io"},
-			wantRisk: []bool{true},
+			name:          "pods metric missing",
+			hpa:           buildHPAWithPodsMetricSpecOnly("default", "web", "http_requests"),
+			wantLen:       1,
+			wantStatus:    []string{"Missing"},
+			wantSource:    []string{"custom.metrics.k8s.io"},
+			wantRisk:      []bool{true},
 			wantNextSteps: []bool{true},
 		},
 	}
@@ -354,7 +354,7 @@ func buildHPAWithPodsMetricSpecOnly(namespace, name, metricName string) *autosca
 	})
 }
 
-var _ = metav1.Time{}    // ensure import is used
+var _ = metav1.Time{}       // ensure import is used
 var _ = resource.Quantity{} // ensure import is used
 
 func TestBuildStaleNextSteps(t *testing.T) {

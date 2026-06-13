@@ -105,11 +105,11 @@ containerResource:
 		"Use 'kubectl get --raw /apis/metrics.k8s.io/v1beta1/namespaces/<ns>/pods' to check per-container usage."
 
 	return &ContainerAdvisorResult{
-		Finding:      finding,
-		Risk:         risk,
+		Finding:         finding,
+		Risk:            risk,
 		SuggestedMetric: suggested,
-		Confidence:   ConfidenceMedium,
-		NextAction:   nextAction,
+		Confidence:      ConfidenceMedium,
+		NextAction:      nextAction,
 	}
 }
 

@@ -16,9 +16,9 @@ import (
 )
 
 type rolloutOutput struct {
-	Namespace string                    `json:"namespace" yaml:"namespace"`
-	Name      string                    `json:"name" yaml:"name"`
-	Target    string                    `json:"target" yaml:"target"`
+	Namespace string                     `json:"namespace" yaml:"namespace"`
+	Name      string                     `json:"name" yaml:"name"`
+	Target    string                     `json:"target" yaml:"target"`
 	Report    *hpaanalysis.RolloutReport `json:"rolloutReport" yaml:"rolloutReport"`
 }
 

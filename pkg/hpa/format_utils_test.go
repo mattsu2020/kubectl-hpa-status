@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-func fmtIntPtr(v int64) *int64  { return &v }
+func fmtIntPtr(v int64) *int64   { return &v }
 func fmtInt32Ptr(v int32) *int32 { return &v }
 
 func TestFormatDuration(t *testing.T) {
@@ -38,7 +38,7 @@ func TestFormatDuration(t *testing.T) {
 
 func TestFormatStabilizationRemaining(t *testing.T) {
 	tests := []struct {
-		name     string
+		name      string
 		remaining *int64
 		expected  string
 	}{
@@ -111,7 +111,7 @@ func TestStabilizationProgressRatio(t *testing.T) {
 
 func TestFormatCountdownBadge(t *testing.T) {
 	tests := []struct {
-		name     string
+		name      string
 		remaining *int64
 		expected  string
 	}{

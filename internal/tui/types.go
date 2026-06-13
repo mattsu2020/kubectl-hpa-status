@@ -20,9 +20,9 @@ type AuditFunc func(ctx context.Context, namespace, name string) (*hpaanalysis.A
 
 // simState holds the interactive simulation panel state.
 type simState struct {
-	hpa        *autoscalingv2.HorizontalPodAutoscaler
-	fields     []simField
-	metricMode bool
+	hpa         *autoscalingv2.HorizontalPodAutoscaler
+	fields      []simField
+	metricMode  bool
 	metricInput textinput.Model
 	focusIndex  int
 	result      *hpaanalysis.SimulationResult

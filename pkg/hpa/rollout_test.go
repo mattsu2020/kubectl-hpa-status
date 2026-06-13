@@ -7,12 +7,12 @@ import (
 
 func TestAnalyzeRolloutNoRollout(t *testing.T) {
 	input := RolloutInput{
-		Namespace:         "default",
-		HPAName:           "web",
-		Target:            "Deployment/web",
-		RolloutInProgress: false,
-		HasStartupProbe:   true,
-		HasReadinessProbe: true,
+		Namespace:                    "default",
+		HPAName:                      "web",
+		Target:                       "Deployment/web",
+		RolloutInProgress:            false,
+		HasStartupProbe:              true,
+		HasReadinessProbe:            true,
 		ReadinessInitialDelaySeconds: 10,
 	}
 
@@ -39,15 +39,15 @@ func TestAnalyzeRolloutNoRollout(t *testing.T) {
 
 func TestAnalyzeRolloutWithRolloutInProgress(t *testing.T) {
 	input := RolloutInput{
-		Namespace:         "default",
-		HPAName:           "web",
-		Target:            "Deployment/web",
-		RolloutInProgress: true,
-		UpdatedReplicas:   3,
-		ReadyReplicas:     3,
-		DesiredReplicas:   5,
-		HasStartupProbe:   true,
-		HasReadinessProbe: true,
+		Namespace:                    "default",
+		HPAName:                      "web",
+		Target:                       "Deployment/web",
+		RolloutInProgress:            true,
+		UpdatedReplicas:              3,
+		ReadyReplicas:                3,
+		DesiredReplicas:              5,
+		HasStartupProbe:              true,
+		HasReadinessProbe:            true,
 		ReadinessInitialDelaySeconds: 10,
 	}
 
@@ -62,12 +62,12 @@ func TestAnalyzeRolloutWithRolloutInProgress(t *testing.T) {
 
 func TestAnalyzeRolloutMissingStartupProbe(t *testing.T) {
 	input := RolloutInput{
-		Namespace:         "default",
-		HPAName:           "web",
-		Target:            "Deployment/web",
-		RolloutInProgress: false,
-		HasStartupProbe:   false,
-		HasReadinessProbe: true,
+		Namespace:                    "default",
+		HPAName:                      "web",
+		Target:                       "Deployment/web",
+		RolloutInProgress:            false,
+		HasStartupProbe:              false,
+		HasReadinessProbe:            true,
 		ReadinessInitialDelaySeconds: 10,
 	}
 
@@ -107,12 +107,12 @@ func TestAnalyzeRolloutMissingReadinessProbe(t *testing.T) {
 
 func TestAnalyzeRolloutShortReadinessDelay(t *testing.T) {
 	input := RolloutInput{
-		Namespace:         "default",
-		HPAName:           "web",
-		Target:            "Deployment/web",
-		RolloutInProgress: false,
-		HasStartupProbe:   true,
-		HasReadinessProbe: true,
+		Namespace:                    "default",
+		HPAName:                      "web",
+		Target:                       "Deployment/web",
+		RolloutInProgress:            false,
+		HasStartupProbe:              true,
+		HasReadinessProbe:            true,
 		ReadinessInitialDelaySeconds: 2,
 	}
 
@@ -130,15 +130,15 @@ func TestAnalyzeRolloutShortReadinessDelay(t *testing.T) {
 
 func TestAnalyzeRolloutContainerNameMismatch(t *testing.T) {
 	input := RolloutInput{
-		Namespace:              "default",
-		HPAName:                "web",
-		Target:                 "Deployment/web",
-		RolloutInProgress:      false,
-		HasStartupProbe:        true,
-		HasReadinessProbe:      true,
+		Namespace:                    "default",
+		HPAName:                      "web",
+		Target:                       "Deployment/web",
+		RolloutInProgress:            false,
+		HasStartupProbe:              true,
+		HasReadinessProbe:            true,
 		ReadinessInitialDelaySeconds: 10,
-		HPAContainerMetrics:     []string{"app", "sidecar"},
-		NewReplicaSetContainerNames: []string{"app"},
+		HPAContainerMetrics:          []string{"app", "sidecar"},
+		NewReplicaSetContainerNames:  []string{"app"},
 	}
 
 	report := AnalyzeRollout(input)
@@ -168,15 +168,15 @@ func TestAnalyzeRolloutContainerNameMismatch(t *testing.T) {
 
 func TestAnalyzeRolloutContainerNameMatch(t *testing.T) {
 	input := RolloutInput{
-		Namespace:              "default",
-		HPAName:                "web",
-		Target:                 "Deployment/web",
-		RolloutInProgress:      false,
-		HasStartupProbe:        true,
-		HasReadinessProbe:      true,
+		Namespace:                    "default",
+		HPAName:                      "web",
+		Target:                       "Deployment/web",
+		RolloutInProgress:            false,
+		HasStartupProbe:              true,
+		HasReadinessProbe:            true,
 		ReadinessInitialDelaySeconds: 10,
-		HPAContainerMetrics:     []string{"app"},
-		NewReplicaSetContainerNames: []string{"app", "sidecar"},
+		HPAContainerMetrics:          []string{"app"},
+		NewReplicaSetContainerNames:  []string{"app", "sidecar"},
 	}
 
 	report := AnalyzeRollout(input)
@@ -189,14 +189,14 @@ func TestAnalyzeRolloutContainerNameMatch(t *testing.T) {
 
 func TestAnalyzeRolloutPodIssues(t *testing.T) {
 	input := RolloutInput{
-		Namespace:         "default",
-		HPAName:           "web",
-		Target:            "Deployment/web",
-		RolloutInProgress: true,
-		UpdatedReplicas:   3,
-		DesiredReplicas:   5,
-		HasStartupProbe:   true,
-		HasReadinessProbe: true,
+		Namespace:                    "default",
+		HPAName:                      "web",
+		Target:                       "Deployment/web",
+		RolloutInProgress:            true,
+		UpdatedReplicas:              3,
+		DesiredReplicas:              5,
+		HasStartupProbe:              true,
+		HasReadinessProbe:            true,
 		ReadinessInitialDelaySeconds: 10,
 		PodIssues: []string{
 			"pod-abc CrashLoopBackOff",
@@ -231,15 +231,15 @@ func TestAnalyzeRolloutPodIssues(t *testing.T) {
 
 func TestAnalyzeRolloutAllChecksPass(t *testing.T) {
 	input := RolloutInput{
-		Namespace:         "default",
-		HPAName:           "web",
-		Target:            "Deployment/web",
-		RolloutInProgress: false,
-		HasStartupProbe:   true,
-		HasReadinessProbe: true,
+		Namespace:                    "default",
+		HPAName:                      "web",
+		Target:                       "Deployment/web",
+		RolloutInProgress:            false,
+		HasStartupProbe:              true,
+		HasReadinessProbe:            true,
 		ReadinessInitialDelaySeconds: 10,
-		HPAContainerMetrics:     []string{"app"},
-		NewReplicaSetContainerNames: []string{"app"},
+		HPAContainerMetrics:          []string{"app"},
+		NewReplicaSetContainerNames:  []string{"app"},
 	}
 
 	report := AnalyzeRollout(input)

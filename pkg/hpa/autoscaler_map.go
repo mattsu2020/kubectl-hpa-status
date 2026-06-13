@@ -185,7 +185,7 @@ func AnalyzeAutoscalerMap(input AutoscalerMapInput) *AutoscalerMap {
 		am.Blockers = append(am.Blockers, AutoscalerMapBlocker{
 			Layer:    "constraints",
 			Severity: "medium",
-			Message:  fmt.Sprintf("VPA/%s (%s mode) controls %s; may conflict with HPA CPU/memory targets",
+			Message: fmt.Sprintf("VPA/%s (%s mode) controls %s; may conflict with HPA CPU/memory targets",
 				input.VPAInfo.VPAName, input.VPAInfo.UpdateMode, conflictStr),
 			Detail: "HPA and VPA both managing CPU/memory can cause oscillation. Consider switching VPA to Off or Auto mode with different resources.",
 		})

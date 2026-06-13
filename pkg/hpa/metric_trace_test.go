@@ -23,11 +23,11 @@ func TestBuildMetricDecisionTrace(t *testing.T) {
 		wantExternalName   string
 	}{
 		{
-			name:              "Nil HPA returns nil",
-			hpa:               nil,
-			minReplicas:       1,
-			wantNil:           true,
-			wantWithinTolIdx:  -1,
+			name:             "Nil HPA returns nil",
+			hpa:              nil,
+			minReplicas:      1,
+			wantNil:          true,
+			wantWithinTolIdx: -1,
 		},
 		{
 			name: "Single resource metric produces trace but only one entry",

@@ -14,8 +14,8 @@ func TestGenerateContractCommands(t *testing.T) {
 		contains []string
 	}{
 		{
-			name:   "nil report returns nil",
-			report: nil,
+			name:    "nil report returns nil",
+			report:  nil,
 			wantLen: 0,
 		},
 		{
@@ -28,7 +28,7 @@ func TestGenerateContractCommands(t *testing.T) {
 					{MetricType: "Resource", MetricName: "cpu", Status: "ok"},
 				},
 			},
-			wantLen: 1,
+			wantLen:  1,
 			contains: []string{"metrics.k8s.io", "prod"},
 		},
 		{
@@ -41,7 +41,7 @@ func TestGenerateContractCommands(t *testing.T) {
 					{MetricType: "External", MetricName: "http_requests", Selector: "app=web", Status: "ok"},
 				},
 			},
-			wantLen: 1,
+			wantLen:  1,
 			contains: []string{"external.metrics.k8s.io", "http_requests", "labelSelector"},
 		},
 		{
@@ -115,10 +115,10 @@ func TestGenerateContractYAML_NilReport(t *testing.T) {
 
 func TestGenerateContractJUnit(t *testing.T) {
 	tests := []struct {
-		name           string
-		report         *MetricContractReport
-		wantTests      int
-		wantFailures   int
+		name         string
+		report       *MetricContractReport
+		wantTests    int
+		wantFailures int
 	}{
 		{
 			name: "all healthy",
@@ -142,8 +142,8 @@ func TestGenerateContractJUnit(t *testing.T) {
 				Checks: []MetricContractCheck{
 					{MetricType: "Resource", MetricName: "cpu", Status: "ok"},
 					{MetricType: "External", MetricName: "rqps", Status: "missing-api",
-						APIService: "external.metrics.k8s.io/v1beta1",
-						Detail:     "API service not available",
+						APIService:  "external.metrics.k8s.io/v1beta1",
+						Detail:      "API service not available",
 						Remediation: "Install Prometheus Adapter"},
 				},
 			},

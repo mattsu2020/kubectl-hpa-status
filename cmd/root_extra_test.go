@@ -723,33 +723,33 @@ func TestPodUnschedulable_NoConditions(t *testing.T) {
 
 func TestStatusOptions_Normalize(t *testing.T) {
 	tests := []struct {
-		name            string
-		opts            statusOptions
-		wantSuggest     bool
-		wantExplain     bool
-		wantInterpret   bool
+		name          string
+		opts          statusOptions
+		wantSuggest   bool
+		wantExplain   bool
+		wantInterpret bool
 	}{
 		{
-			name:          "recommend implies suggest",
-			opts:          statusOptions{recommend: true},
-			wantSuggest:   true,
+			name:        "recommend implies suggest",
+			opts:        statusOptions{recommend: true},
+			wantSuggest: true,
 		},
 		{
-			name:          "fix implies suggest and explain",
-			opts:          statusOptions{fix: true},
-			wantSuggest:   true,
-			wantExplain:   true,
+			name:        "fix implies suggest and explain",
+			opts:        statusOptions{fix: true},
+			wantSuggest: true,
+			wantExplain: true,
 		},
 		{
-			name:          "apply implies suggest and explain",
-			opts:          statusOptions{apply: true},
-			wantSuggest:   true,
-			wantExplain:   true,
+			name:        "apply implies suggest and explain",
+			opts:        statusOptions{apply: true},
+			wantSuggest: true,
+			wantExplain: true,
 		},
 		{
-			name:          "diff implies suggest",
-			opts:          statusOptions{diff: true},
-			wantSuggest:   true,
+			name:        "diff implies suggest",
+			opts:        statusOptions{diff: true},
+			wantSuggest: true,
 		},
 		{
 			name: "no-interpret clears suggest",

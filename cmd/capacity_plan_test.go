@@ -123,7 +123,7 @@ func TestRunCapacityPlan_TargetMaxOverride(t *testing.T) {
 			output:         "json",
 		},
 		statusOptions: statusOptions{
-			events:   eventOption{enabled: false},
+			events:    eventOption{enabled: false},
 			targetMax: 30,
 		},
 	}

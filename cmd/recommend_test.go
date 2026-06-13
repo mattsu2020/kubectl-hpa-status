@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
 
 func TestRunRecommend_WellConfiguredHPA(t *testing.T) {

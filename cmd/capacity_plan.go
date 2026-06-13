@@ -14,9 +14,9 @@ import (
 )
 
 type capacityPlanOutput struct {
-	Namespace string                  `json:"namespace" yaml:"namespace"`
-	Name      string                  `json:"name" yaml:"name"`
-	Target    string                  `json:"target" yaml:"target"`
+	Namespace string                    `json:"namespace" yaml:"namespace"`
+	Name      string                    `json:"name" yaml:"name"`
+	Target    string                    `json:"target" yaml:"target"`
 	Plan      *hpaanalysis.CapacityPlan `json:"capacityPlan" yaml:"capacityPlan"`
 }
 
@@ -123,11 +123,11 @@ func buildCapacityPlanForStatus(ctx context.Context, client *kube.Client, hpa *a
 // analysis.
 func assembleCapacityPlanInput(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, analysis hpaanalysis.Analysis, targetMax int32) hpaanalysis.CapacityPlanInput {
 	input := hpaanalysis.CapacityPlanInput{
-		Namespace:        hpa.Namespace,
-		HPAName:          hpa.Name,
-		Target:           analysis.Target,
-		CurrentReplicas:  hpa.Status.CurrentReplicas,
-		MaxReplicas:      hpa.Spec.MaxReplicas,
+		Namespace:         hpa.Namespace,
+		HPAName:           hpa.Name,
+		Target:            analysis.Target,
+		CurrentReplicas:   hpa.Status.CurrentReplicas,
+		MaxReplicas:       hpa.Spec.MaxReplicas,
 		TargetMaxReplicas: targetMax,
 	}
 
