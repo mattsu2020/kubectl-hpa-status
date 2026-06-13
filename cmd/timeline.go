@@ -109,7 +109,7 @@ func newReplayCommand(opts *options) *cobra.Command {
 		Use:   "replay [FILE|NAME]",
 		Short: "Replay a recorded HPA timeline trace or run a what-if lab from record",
 		Args:  cobra.MaximumNArgs(1),
-		ValidArgsFunction: func(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		ValidArgsFunction: func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 			return nil, cobra.ShellCompDirectiveDefault
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -589,17 +589,4 @@ func runReplay(out io.Writer, opts *options, filePath string) error {
 		theme := style.NewTheme(shouldColorize(opts.color, out))
 		return hpaanalysis.WriteTimelineTable(out, trace, theme)
 	}
-}
-
-// writeTrace writes the TimelineTrace to a JSON file.
-func writeTrace(path string, trace hpaanalysis.TimelineTrace, out io.Writer) error {
-	data, err := json.MarshalIndent(trace, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal trace: %w", err)
-	}
-	if err := os.WriteFile(path, data, 0o600); err != nil {
-		return fmt.Errorf("failed to write trace file: %w", err)
-	}
-	_, _ = fmt.Fprintf(out, "Trace saved to %s (%d snapshots)\n", path, len(trace.Snapshots))
-	return nil
 }

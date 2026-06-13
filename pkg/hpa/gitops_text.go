@@ -164,6 +164,9 @@ func WriteGitOpsConflictMarkdown(w io.Writer, report *GitOpsConflict) error {
 			return err
 		}
 		_, err = fmt.Fprintln(w, "| Severity | Kind/Name | Field | Manifest | Live | HPA Desired | Impact | Remediation |")
+		if err != nil {
+			return err
+		}
 		_, err = fmt.Fprintln(w, "|----------|-----------|-------|----------|------|-------------|--------|-------------|")
 		if err != nil {
 			return err

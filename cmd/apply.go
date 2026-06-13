@@ -78,7 +78,7 @@ func applySuggestionsInNamespace(ctx context.Context, out io.Writer, opts *optio
 		}
 	}
 
-	return executePatches(ctx, client, namespace, name, patches)
+	return executePatches(ctx, out, client, namespace, name, patches)
 }
 
 func guardPatches(out io.Writer, opts *options, current *autoscalingv2.HorizontalPodAutoscaler, patches []hpaanalysis.Suggestion) ([]hpaanalysis.Suggestion, error) {
@@ -148,7 +148,15 @@ func confirmApply(out io.Writer, opts *options, count int, namespace, name strin
 	if _, err := fmt.Fprintf(out, "\nWARNING: About to apply %d patch(es) to HPA %s/%s. This will modify the live cluster.\n", count, namespace, name); err != nil {
 		return err
 	}
+	// When stdin was not explicitly wired (e.g. by tests or an embedding
+	// caller) and the process stdin is not an interactive terminal, a prompt
+	// would either block forever or silently consume non-confirmation input.
+	// Require an explicit --yes/-y in that case. A caller that deliberately
+	// sets opts.in is allowed to drive the prompt programmatically.
 	if opts.in == nil {
+		if !stdinIsTerminal(os.Stdin) {
+			return fmt.Errorf("cannot prompt for confirmation (stdin is not a terminal); pass --yes/-y to apply non-interactively")
+		}
 		opts.in = os.Stdin
 	}
 	if _, err := fmt.Fprintf(out, "Apply %d patches to HPA %s/%s? [y/N]: ", count, namespace, name); err != nil {
@@ -168,7 +176,7 @@ func confirmApply(out io.Writer, opts *options, count int, namespace, name strin
 	return nil
 }
 
-func executePatches(ctx context.Context, client *kube.Client, namespace, name string, patches []hpaanalysis.Suggestion) ([]string, error) {
+func executePatches(ctx context.Context, out io.Writer, client *kube.Client, namespace, name string, patches []hpaanalysis.Suggestion) ([]string, error) {
 	patchItems := make([]patch.Patch, len(patches))
 	for i, s := range patches {
 		patchItems[i] = patch.Patch{Title: s.Title, JSON: s.Patch}
@@ -189,14 +197,19 @@ func executePatches(ctx context.Context, client *kube.Client, namespace, name st
 		return applied, nil
 	}
 
-	// Fallback: sequential application.
+	// Merge failed: fall back to sequential application. This is no longer
+	// atomic — a failure mid-way leaves the HPA in a partially-patched state.
+	// Warn explicitly so the operator knows to inspect the resource manually.
+	_, _ = fmt.Fprintf(out, "WARNING: patches could not be merged (%v); falling back to sequential, non-atomic apply.\n", mergeErr)
+	_, _ = fmt.Fprintf(out, "WARNING: if a later patch fails, the HPA %s/%s will be left partially modified — inspect it with `kubectl describe hpa %s -n %s` and reconcile manually.\n", namespace, name, name, namespace)
+
 	var applied []string
 	for _, suggestion := range patches {
 		_, err := client.Interface.AutoscalingV2().
 			HorizontalPodAutoscalers(namespace).
 			Patch(ctx, name, types.MergePatchType, []byte(suggestion.Patch), metav1.PatchOptions{})
 		if err != nil {
-			return applied, fmt.Errorf("partial apply: %d/%d succeeded, then failed on %q: %w", len(applied), len(patches), suggestion.Title, err)
+			return applied, fmt.Errorf("partial apply: %d/%d succeeded, then failed on %q: %w (HPA %s/%s is partially modified; re-run apply or reconcile manually with `kubectl describe hpa %s -n %s`)", len(applied), len(patches), suggestion.Title, err, namespace, name, name, namespace)
 		}
 		applied = append(applied, fmt.Sprintf("Applied: %s", suggestion.Title))
 	}

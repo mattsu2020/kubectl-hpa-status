@@ -99,14 +99,7 @@ func buildStructuredInterpretation(hpa *autoscalingv2.HorizontalPodAutoscaler, m
 	entries := CollectDiagnostics(hpa, minReplicas)
 	msgs := make([]StructuredMessage, 0, len(entries))
 	for _, e := range entries {
-		msgs = append(msgs, StructuredMessage{
-			Reason:         e.Reason,
-			Message:        e.Message,
-			NextStep:       e.NextStep,
-			Severity:       e.Severity,
-			Confidence:     e.Confidence,
-			Classification: e.Classification,
-		})
+		msgs = append(msgs, StructuredMessage(e))
 	}
 	return msgs
 }
@@ -212,27 +205,62 @@ func KEDADiagnostics(hpa *autoscalingv2.HorizontalPodAutoscaler) []DiagnosticEnt
 
 // looksLikeKEDAManaged uses heuristic signals to detect KEDA-managed HPAs.
 //
-// Detection signals (all heuristic, no CRD lookup):
-//   - HPA label key or value containing "keda.sh" or "keda" (case-insensitive)
-//   - HPA annotation key or value containing "keda.sh" or "keda" (case-insensitive)
-//   - HPA name prefixed with "keda-hpa-"
+// Detection signals (all heuristic, no CRD lookup), ordered by confidence:
+//   - Strong: a label/annotation key with the official "keda.sh/" prefix
+//     (e.g. "scaledobject.keda.sh/name", "keda.sh/scaledobject").
+//   - Strong: the canonical "app.kubernetes.io/managed-by" label/annotation
+//     set to "keda" (exact, case-insensitive).
+//   - Medium: HPA name prefixed with "keda-hpa-".
+//   - Weak fallback (last resort): a label/annotation value that merely
+//     contains the substring "keda". This catches unusual operator annotations
+//     but is the most false-positive-prone signal, so it is evaluated last.
 //
-// Limitations: This heuristic may produce false positives (HPA named "keda-hpa-..."
-// but not managed by KEDA) or false negatives (KEDA-managed HPAs with custom names
-// and no KEDA labels/annotations). For authoritative detection, use internal/kube/keda.go
-// DetectKEDA() which performs real ScaledObject CRD lookups when the KEDA API is available.
+// Limitations: This heuristic may still produce false positives (HPA named
+// "keda-hpa-..." but not managed by KEDA) or false negatives (KEDA-managed
+// HPAs with custom names and no KEDA labels/annotations). For authoritative
+// detection, use internal/kube/keda.go DetectKEDA() which performs real
+// ScaledObject CRD lookups when the KEDA API is available.
 func looksLikeKEDAManaged(hpa *autoscalingv2.HorizontalPodAutoscaler) bool {
-	for key, value := range hpa.Labels {
-		if strings.Contains(strings.ToLower(key), "keda.sh") || strings.Contains(strings.ToLower(value), "keda") {
+	// Strong signals first: official keda.sh key prefix or exact managed-by.
+	if hasKEDAKeySignal(hpa.Labels) || hasKEDAKeySignal(hpa.Annotations) {
+		return true
+	}
+
+	// Medium signal: conventional KEDA HPA name prefix.
+	if strings.HasPrefix(hpa.Name, "keda-hpa-") {
+		return true
+	}
+
+	// Weak fallback: a value mentioning "keda" when no stronger signal fired.
+	// This is intentionally last to minimize false positives from unrelated
+	// values that happen to contain the substring "keda".
+	return hasKEDAValueFallback(hpa.Labels) || hasKEDAValueFallback(hpa.Annotations)
+}
+
+// hasKEDAKeySignal reports whether any key uses the official keda.sh prefix or
+// the canonical managed-by key is set to "keda".
+func hasKEDAKeySignal(m map[string]string) bool {
+	for key, value := range m {
+		lk := strings.ToLower(key)
+		if strings.Contains(lk, "keda.sh/") {
+			return true
+		}
+		if lk == "app.kubernetes.io/managed-by" && strings.EqualFold(value, "keda") {
 			return true
 		}
 	}
-	for key, value := range hpa.Annotations {
-		if strings.Contains(strings.ToLower(key), "keda.sh") || strings.Contains(strings.ToLower(value), "keda") {
+	return false
+}
+
+// hasKEDAValueFallback reports whether any value contains the substring "keda".
+// This is a weak, false-positive-prone signal used only as a last resort.
+func hasKEDAValueFallback(m map[string]string) bool {
+	for _, value := range m {
+		if strings.Contains(strings.ToLower(value), "keda") {
 			return true
 		}
 	}
-	return strings.HasPrefix(hpa.Name, "keda-hpa-")
+	return false
 }
 
 // RecommendedActions generates actionable recommendation strings.

@@ -174,7 +174,7 @@ func TestBuildTroubleshootingFlows(t *testing.T) {
 
 			got := BuildTroubleshootingFlows(tt.hints)
 
-			if tt.hints == nil || len(tt.hints) == 0 {
+			if len(tt.hints) == 0 {
 				if got != nil {
 					t.Fatalf("expected nil for empty/nil input, got %d flows", len(got))
 				}

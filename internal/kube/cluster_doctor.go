@@ -37,7 +37,7 @@ type APIServiceStatus struct {
 	Message string
 }
 
-func checkAPIGroup(ctx context.Context, client kubernetes.Interface, name, apiGroup, apiVersion string) APIServiceStatus {
+func checkAPIGroup(_ context.Context, client kubernetes.Interface, name, apiGroup, apiVersion string) APIServiceStatus {
 	groups, err := client.Discovery().ServerGroups()
 	if err != nil {
 		return APIServiceStatus{

@@ -125,11 +125,12 @@ func wrapAutoscalerMapLines(s string, width int) []string {
 	var lines []string
 	var current string
 	for _, word := range words {
-		if current == "" {
+		switch {
+		case current == "":
 			current = word
-		} else if len(current)+1+len(word) <= width {
+		case len(current)+1+len(word) <= width:
 			current += " " + word
-		} else {
+		default:
 			lines = append(lines, current)
 			current = word
 		}

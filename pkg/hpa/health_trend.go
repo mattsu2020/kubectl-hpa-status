@@ -172,17 +172,17 @@ func minMax(values []int) (int, int) {
 	if len(values) == 0 {
 		return 0, 0
 	}
-	min := values[0]
-	max := values[0]
+	minVal := values[0]
+	maxVal := values[0]
 	for _, v := range values[1:] {
-		if v < min {
-			min = v
+		if v < minVal {
+			minVal = v
 		}
-		if v > max {
-			max = v
+		if v > maxVal {
+			maxVal = v
 		}
 	}
-	return min, max
+	return minVal, maxVal
 }
 
 func meanValue(values []int) float64 {

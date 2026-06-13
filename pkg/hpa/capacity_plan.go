@@ -9,6 +9,20 @@ import (
 
 const capacityMaxReplicasCap int32 = 200
 
+// parseQuantityOrZero parses a resource quantity string, returning the zero
+// quantity when the input is empty or malformed. It replaces resource.MustParse
+// so a bad value (e.g. from an external caller of this public package, or a
+// stray non-quantity string) degrades to a safe zero estimate instead of
+// panicking the whole CLI. Inputs here originate from the Kubernetes API,
+// which validates quantities, so this is primarily defense in depth.
+func parseQuantityOrZero(s string) resource.Quantity {
+	q, err := resource.ParseQuantity(s)
+	if err != nil {
+		return resource.Quantity{}
+	}
+	return q
+}
+
 // AnalyzeCapacityPlan produces a capacity plan that diagnoses whether it is
 // safe to raise HPA maxReplicas. It runs 7 checks against namespace quotas,
 // LimitRanges, node capacity, pending pods, PDBs, and Cluster Autoscaler
@@ -97,11 +111,11 @@ func sumContainerResources(containers []CapacityContainerResources) (resource.Qu
 	var totalCPU, totalMemory resource.Quantity
 	for _, c := range containers {
 		if c.CPU != "" && c.CPU != "0" {
-			q := resource.MustParse(c.CPU)
+			q := parseQuantityOrZero(c.CPU)
 			totalCPU.Add(q)
 		}
 		if c.Memory != "" && c.Memory != "0" {
-			q := resource.MustParse(c.Memory)
+			q := parseQuantityOrZero(c.Memory)
 			totalMemory.Add(q)
 		}
 	}
@@ -129,8 +143,8 @@ func computeSchedulableNow(nc *NodeCapacitySummary, perPodCPU, perPodMemory reso
 		return 0
 	}
 
-	allocCPU := resource.MustParse(nc.AllocCPU)
-	allocMem := resource.MustParse(nc.AllocMemory)
+	allocCPU := parseQuantityOrZero(nc.AllocCPU)
+	allocMem := parseQuantityOrZero(nc.AllocMemory)
 
 	// Subtract resources consumed by already-running pods.
 	usedCPU := multiplyQuantity(perPodCPU, int64(readyPods))
@@ -197,8 +211,8 @@ func checkQuotaHeadroom(quotas []CapacityQuotaInfo, requiredCPU, requiredMemory 
 	// Build a map of remaining (hard - used) per resource.
 	remaining := make(map[string]resource.Quantity)
 	for _, q := range quotas {
-		hard := resource.MustParse(q.Hard)
-		used := resource.MustParse(q.Used)
+		hard := parseQuantityOrZero(q.Hard)
+		used := parseQuantityOrZero(q.Used)
 		rem := hard.DeepCopy()
 		rem.Sub(used)
 		// Keep the largest remaining for each resource type (multiple quotas).
@@ -283,10 +297,10 @@ func checkLimitRanges(limitRanges []LimitRangeConstraint, containers []CapacityC
 			switch lr.Resource {
 			case "cpu":
 				if c.CPU != "" && c.CPU != "0" {
-					req := resource.MustParse(c.CPU)
+					req := parseQuantityOrZero(c.CPU)
 					if lr.Max != "" {
-						max := resource.MustParse(lr.Max)
-						if req.Cmp(max) > 0 {
+						maxQty := parseQuantityOrZero(lr.Max)
+						if req.Cmp(maxQty) > 0 {
 							violated = true
 							results = append(results, CapacityCheckResult{
 								Pass:    false,
@@ -295,8 +309,8 @@ func checkLimitRanges(limitRanges []LimitRangeConstraint, containers []CapacityC
 						}
 					}
 					if lr.Min != "" {
-						min := resource.MustParse(lr.Min)
-						if req.Cmp(min) < 0 {
+						minQty := parseQuantityOrZero(lr.Min)
+						if req.Cmp(minQty) < 0 {
 							violated = true
 							results = append(results, CapacityCheckResult{
 								Pass:    false,
@@ -307,10 +321,10 @@ func checkLimitRanges(limitRanges []LimitRangeConstraint, containers []CapacityC
 				}
 			case "memory":
 				if c.Memory != "" && c.Memory != "0" {
-					req := resource.MustParse(c.Memory)
+					req := parseQuantityOrZero(c.Memory)
 					if lr.Max != "" {
-						max := resource.MustParse(lr.Max)
-						if req.Cmp(max) > 0 {
+						maxQty := parseQuantityOrZero(lr.Max)
+						if req.Cmp(maxQty) > 0 {
 							violated = true
 							results = append(results, CapacityCheckResult{
 								Pass:    false,
@@ -319,8 +333,8 @@ func checkLimitRanges(limitRanges []LimitRangeConstraint, containers []CapacityC
 						}
 					}
 					if lr.Min != "" {
-						min := resource.MustParse(lr.Min)
-						if req.Cmp(min) < 0 {
+						minQty := parseQuantityOrZero(lr.Min)
+						if req.Cmp(minQty) < 0 {
 							violated = true
 							results = append(results, CapacityCheckResult{
 								Pass:    false,
@@ -361,7 +375,7 @@ func checkNodeCapacity(nc *NodeCapacitySummary, requiredCPU, requiredMemory reso
 	memOK := true
 
 	if !requiredCPU.IsZero() {
-		allocCPU := resource.MustParse(nc.AllocCPU)
+		allocCPU := parseQuantityOrZero(nc.AllocCPU)
 		if allocCPU.Cmp(requiredCPU) < 0 {
 			cpuOK = false
 			msg := fmt.Sprintf("node allocatable CPU: %s, required for additional pods: %s", nc.AllocCPU, requiredCPU.String())
@@ -372,7 +386,7 @@ func checkNodeCapacity(nc *NodeCapacitySummary, requiredCPU, requiredMemory reso
 		}
 	}
 	if !requiredMemory.IsZero() {
-		allocMem := resource.MustParse(nc.AllocMemory)
+		allocMem := parseQuantityOrZero(nc.AllocMemory)
 		if allocMem.Cmp(requiredMemory) < 0 {
 			memOK = false
 			msg := fmt.Sprintf("node allocatable memory: %s, required for additional pods: %s", nc.AllocMemory, requiredMemory.String())

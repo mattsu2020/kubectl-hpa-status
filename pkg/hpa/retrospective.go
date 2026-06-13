@@ -28,7 +28,7 @@ func BuildRetrospectiveTimeline(events []Event, hpa *autoscalingv2.HorizontalPod
 		HPAName:   hpa.Name,
 		Namespace: hpa.Namespace,
 		Since:     since,
-		Until:     time.Now(),
+		Until:     now(),
 		Disclaimer: "Best-effort reconstruction from Kubernetes events and current HPA status. " +
 			"Internal controller calculations, exact metric values at decision time, and " +
 			"suppressed-but-not-logged decisions are not visible. Multi-metric winner is estimated.",

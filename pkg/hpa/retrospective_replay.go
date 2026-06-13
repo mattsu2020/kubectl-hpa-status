@@ -141,8 +141,8 @@ func AnalyzeReplay(tl RetrospectiveTimeline, hpa *autoscalingv2.HorizontalPodAut
 			}
 
 			// Build control cycle.
-			cycleStart := entry.Timestamp
 			cycleEnd := entry.Timestamp
+			var cycleStart time.Time
 			if lastRescaleTime.IsZero() {
 				cycleStart = tl.Since
 			} else {
@@ -284,7 +284,7 @@ func AnalyzeReplay(tl RetrospectiveTimeline, hpa *autoscalingv2.HorizontalPodAut
 }
 
 // extractHPATolerance extracts the HPA tolerance from spec, defaulting to 0.1.
-func extractHPATolerance(hpa *autoscalingv2.HorizontalPodAutoscaler) float64 {
+func extractHPATolerance(_ *autoscalingv2.HorizontalPodAutoscaler) float64 {
 	// Kubernetes HPA uses a default tolerance of 0.1 (10%).
 	// This is not currently exposed in the HPA spec, so we use the default.
 	// In the future, this may be configurable via annotations or spec fields.

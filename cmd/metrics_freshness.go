@@ -93,8 +93,8 @@ func latestMetricFailureEvent(events []hpaanalysis.Event, entry hpaanalysis.Metr
 			continue
 		}
 		if latest == nil || event.Timestamp.After(latest.Timestamp) {
-			copy := event
-			latest = &copy
+			evtCopy := event
+			latest = &evtCopy
 		}
 	}
 	return latest

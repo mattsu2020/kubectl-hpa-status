@@ -403,14 +403,21 @@ func confirmBatchApply(out io.Writer, opts *options, count int) (bool, error) {
 	if !opts.dryRun {
 		action = "apply"
 	}
+	// When stdin was not explicitly wired (e.g. by tests or an embedding
+	// caller) and the process stdin is not an interactive terminal, a prompt
+	// would either block forever or silently consume non-confirmation input.
+	// Require an explicit --yes/-y in that case. A caller that deliberately
+	// sets opts.in is allowed to drive the prompt programmatically.
+	if opts.in == nil {
+		if !stdinIsTerminal(os.Stdin) {
+			return false, fmt.Errorf("cannot prompt for confirmation (stdin is not a terminal); pass --yes/-y to apply non-interactively")
+		}
+		opts.in = os.Stdin
+	}
 	if _, err := fmt.Fprintf(out, "%s %d patches? [y/N]: ", action, count); err != nil {
 		return false, fmt.Errorf("write output: %w", err)
 	}
-	in := opts.in
-	if in == nil {
-		in = os.Stdin
-	}
-	scanner := bufio.NewScanner(in)
+	scanner := bufio.NewScanner(opts.in)
 	if !scanner.Scan() {
 		return false, nil
 	}

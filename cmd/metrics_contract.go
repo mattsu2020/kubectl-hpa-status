@@ -179,7 +179,7 @@ func buildMetricContractInput(ctx context.Context, client *kube.Client, hpa *aut
 }
 
 // checkAPIServiceAvailability checks if a metrics API is available via discovery.
-func checkAPIServiceAvailability(ctx context.Context, client *kube.Client, groupVersion string) hpaanalysis.APIServiceStatus {
+func checkAPIServiceAvailability(_ context.Context, client *kube.Client, groupVersion string) hpaanalysis.APIServiceStatus {
 	_, err := client.Interface.Discovery().ServerResourcesForGroupVersion(groupVersion)
 	if err != nil {
 		return hpaanalysis.APIServiceStatus{

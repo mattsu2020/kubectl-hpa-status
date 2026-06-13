@@ -147,7 +147,7 @@ func simulateCandidates(rescales []rescaleData, currentFlips int, candidates []i
 		}
 
 		confidence := flappingConfidence(reduction)
-		patch := mustJSON(map[string]any{
+		patch := marshalJSON(map[string]any{
 			"spec": map[string]any{
 				"behavior": map[string]any{
 					"scaleDown": map[string]any{

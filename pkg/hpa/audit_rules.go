@@ -14,7 +14,7 @@ func stabilizationWindowAuditRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ 
 		return nil
 	}
 
-	patch := mustJSON(map[string]any{
+	patch := marshalJSON(map[string]any{
 		"spec": map[string]any{
 			"behavior": map[string]any{
 				"scaleDown": map[string]any{
@@ -160,13 +160,8 @@ func toleranceAuditRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []A
 		}}
 	}
 
-	hasExplicitTolerance := false
-	if hpa.Spec.Behavior.ScaleUp != nil && hpa.Spec.Behavior.ScaleUp.Tolerance != nil {
-		hasExplicitTolerance = true
-	}
-	if hpa.Spec.Behavior.ScaleDown != nil && hpa.Spec.Behavior.ScaleDown.Tolerance != nil {
-		hasExplicitTolerance = true
-	}
+	hasExplicitTolerance := (hpa.Spec.Behavior.ScaleUp != nil && hpa.Spec.Behavior.ScaleUp.Tolerance != nil) ||
+		(hpa.Spec.Behavior.ScaleDown != nil && hpa.Spec.Behavior.ScaleDown.Tolerance != nil)
 
 	if hasExplicitTolerance {
 		return nil

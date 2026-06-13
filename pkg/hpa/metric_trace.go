@@ -181,7 +181,7 @@ func buildToleranceEffect(hpa *autoscalingv2.HorizontalPodAutoscaler, entries []
 }
 
 // findConfiguredTolerance checks if tolerance is explicitly configured in behavior.
-func findConfiguredTolerance(behavior *autoscalingv2.HorizontalPodAutoscalerBehavior) *float64 {
+func findConfiguredTolerance(_ *autoscalingv2.HorizontalPodAutoscalerBehavior) *float64 {
 	// HPA behavior spec does not have a direct tolerance field in autoscalingv2,
 	// but the tolerance is part of the controller manager configuration.
 	// We check for any configured tolerance hints in the behavior.

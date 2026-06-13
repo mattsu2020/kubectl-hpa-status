@@ -257,7 +257,7 @@ func buildSimulationInterpretation(before, after *SimulationState, modified *aut
 }
 
 // assessSimulationRisk generates risk assessment text for the simulation.
-func assessSimulationRisk(original, modified *autoscalingv2.HorizontalPodAutoscaler, _ *SimulationState, after *SimulationState) string {
+func assessSimulationRisk(original, modified *autoscalingv2.HorizontalPodAutoscaler, _ *SimulationState, _ *SimulationState) string {
 	var risks []string
 
 	if modified.Spec.MaxReplicas > original.Spec.MaxReplicas {

@@ -153,7 +153,7 @@ func WriteMarkdownReport(w io.Writer, report StatusReport) error {
 			out.WriteString("| Pod | Container | Resource | Category |\n")
 			out.WriteString("|-----|-----------|----------|----------|\n")
 			for _, issue := range pa.ResourceIssues {
-				out.WriteString(fmt.Sprintf("| %s | %s | %s | %s |\n", issue.Pod, issue.Container, issue.Resource, issue.Category))
+				out.WriteString(fmt.Sprintf("| %s | %s | %s | %s |\n", escapeMarkdown(issue.Pod), escapeMarkdown(issue.Container), escapeMarkdown(issue.Resource), escapeMarkdown(issue.Category)))
 			}
 			out.WriteString("\n")
 		}
@@ -166,7 +166,7 @@ func WriteMarkdownReport(w io.Writer, report StatusReport) error {
 				if msg == "" {
 					msg = "OK"
 				}
-				out.WriteString(fmt.Sprintf("| %s | %v | %s |\n", check.Container, check.Found, escapeMarkdown(msg)))
+				out.WriteString(fmt.Sprintf("| %s | %v | %s |\n", escapeMarkdown(check.Container), check.Found, escapeMarkdown(msg)))
 			}
 			out.WriteString("\n")
 		}
@@ -234,7 +234,7 @@ func WriteMarkdownReport(w io.Writer, report StatusReport) error {
 				out.WriteString("|------|---------------|--------|\n")
 				for _, p := range cc.PendingPods {
 					reasons := strings.Join(p.Reasons, "; ")
-					out.WriteString(fmt.Sprintf("| %s | %v | %s |\n", p.Name, p.Unschedulable, escapeMarkdown(reasons)))
+					out.WriteString(fmt.Sprintf("| %s | %v | %s |\n", escapeMarkdown(p.Name), p.Unschedulable, escapeMarkdown(reasons)))
 				}
 				out.WriteString("\n")
 			}
@@ -243,7 +243,7 @@ func WriteMarkdownReport(w io.Writer, report StatusReport) error {
 				out.WriteString("| Name | Resource | Used | Hard | Message |\n")
 				out.WriteString("|------|----------|------|------|--------|\n")
 				for _, q := range cc.QuotaConstraints {
-					out.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s |\n", q.Name, q.Resource, q.Used, q.Hard, escapeMarkdown(q.Message)))
+					out.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s |\n", escapeMarkdown(q.Name), escapeMarkdown(q.Resource), escapeMarkdown(q.Used), escapeMarkdown(q.Hard), escapeMarkdown(q.Message)))
 				}
 				out.WriteString("\n")
 			}
@@ -252,7 +252,7 @@ func WriteMarkdownReport(w io.Writer, report StatusReport) error {
 				out.WriteString("| Name | Disruption |\n")
 				out.WriteString("|------|-----------|\n")
 				for _, p := range cc.PDBInterference {
-					out.WriteString(fmt.Sprintf("| %s | %s |\n", p.Name, escapeMarkdown(p.Disruption)))
+					out.WriteString(fmt.Sprintf("| %s | %s |\n", escapeMarkdown(p.Name), escapeMarkdown(p.Disruption)))
 				}
 				out.WriteString("\n")
 			}
@@ -702,12 +702,15 @@ func escapeMarkdown(s string) string {
 	return strings.ReplaceAll(s, "|", "\\|")
 }
 
-// htmlEscape escapes special characters for safe HTML content.
+// htmlEscape escapes special characters for safe HTML content, including
+// single quotes so the output is safe in both single- and double-quoted
+// attributes.
 func htmlEscape(s string) string {
 	s = strings.ReplaceAll(s, "&", "&amp;")
 	s = strings.ReplaceAll(s, "<", "&lt;")
 	s = strings.ReplaceAll(s, ">", "&gt;")
 	s = strings.ReplaceAll(s, "\"", "&quot;")
+	s = strings.ReplaceAll(s, "'", "&#39;")
 	return s
 }
 

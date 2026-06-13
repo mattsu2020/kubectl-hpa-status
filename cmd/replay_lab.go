@@ -767,7 +767,7 @@ func sortedReplayConfigKeys(values map[string]string) []string {
 }
 
 // writeReplayImpactText renders the Impact section comparing current and proposed.
-func writeReplayImpactText(out io.Writer, impact ReplayImpact, current replayLabSummary, proposed *replayLabSummary) {
+func writeReplayImpactText(out io.Writer, impact ReplayImpact, current replayLabSummary, _ *replayLabSummary) {
 	_, _ = fmt.Fprintln(out, "\nImpact:")
 	if impact.ScaleEventReductionPct > 0 {
 		_, _ = fmt.Fprintf(out, "  - scale churn reduced by %.0f%%\n", impact.ScaleEventReductionPct)
@@ -787,7 +787,7 @@ func writeReplayImpactText(out io.Writer, impact ReplayImpact, current replayLab
 }
 
 // writeReplayImpactMarkdown renders the Impact section in Markdown.
-func writeReplayImpactMarkdown(out io.Writer, impact ReplayImpact, current replayLabSummary, proposed *replayLabSummary) {
+func writeReplayImpactMarkdown(out io.Writer, impact ReplayImpact, current replayLabSummary, _ *replayLabSummary) {
 	_, _ = fmt.Fprintln(out, "## Impact")
 	_, _ = fmt.Fprintln(out)
 	if impact.ScaleEventReductionPct > 0 {

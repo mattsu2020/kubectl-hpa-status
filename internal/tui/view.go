@@ -210,9 +210,10 @@ func (m Model) renderListView() string {
 
 		// Churn indicator prefix for ISSUE column.
 		issueText := truncate(item.Issue, issueW)
-		if item.ChurnLevel == "HIGH" || item.ChurnLevel == "CRITICAL" {
+		switch item.ChurnLevel {
+		case "HIGH", "CRITICAL":
 			issueText = errorStyle.Render("●") + " " + truncate(item.Issue, issueW-4)
-		} else if item.ChurnLevel == "MEDIUM" {
+		case "MEDIUM":
 			issueText = warnStyle.Render("⚠") + " " + truncate(item.Issue, issueW-4)
 		}
 
@@ -298,10 +299,6 @@ func (m Model) renderDetailView() string {
 			source := a.StabilizationSource
 			if source == "" {
 				source = "scaleDown"
-			}
-			confidence := a.StabilizationConfidence
-			if confidence == "" {
-				confidence = "medium (API limitation)"
 			}
 			progress := hpaanalysis.FormatStabilizationProgress(a.StabilizationRemaining, a.StabilizationWindowSeconds)
 			sb.WriteString("\n")
@@ -602,9 +599,10 @@ func (m Model) renderStatusBar() string {
 		parts = append(parts, fmt.Sprintf("sort:%s", m.sortField))
 	}
 
-	if m.viewMode == listView {
+	switch m.viewMode {
+	case listView:
 		parts = append(parts, "↑↓ navigate  enter detail  / filter  ? help  p pause  q quit")
-	} else if m.viewMode == detailView {
+	case detailView:
 		parts = append(parts, "m metrics  s simulate  f fix  H history  h hints  ? help  esc back")
 	}
 

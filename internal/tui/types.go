@@ -41,7 +41,6 @@ type simField struct {
 type fixState struct {
 	suggestions  []hpaanalysis.Suggestion
 	selected     int
-	preview      string
 	applied      bool
 	applyErr     error
 	dryRunResult string

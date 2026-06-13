@@ -37,14 +37,6 @@ func (DefaultDecisionAdapter) FromEstimation(hpa *autoscalingv2.HorizontalPodAut
 	return EstimateDecisionSignals(hpa)
 }
 
-func formatStabilizationMessage(remaining, window int64) string {
-	elapsed := window - remaining
-	if elapsed < 0 {
-		elapsed = 0
-	}
-	return FormatStabilizationProgress(&remaining, int32Ptr(int32(window)))
-}
-
 func int32Ptr(v int32) *int32 { return &v }
 
 // KEP6111DecisionAdapter will implement DecisionAdapter using structured

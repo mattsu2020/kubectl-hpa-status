@@ -35,6 +35,9 @@ archives:
 checksum:
   name_template: checksums.txt
 
+sboms:
+  - artifacts: archive
+
 release:
   github:
     owner: mattsu2020

@@ -1132,7 +1132,7 @@ func TestUpdate_RefreshKey(t *testing.T) {
 
 // --- Helper function tests ---
 
-func TestHealthStyle(t *testing.T) {
+func TestHealthStyle(_ *testing.T) {
 	tests := []struct {
 		health string
 		name   string

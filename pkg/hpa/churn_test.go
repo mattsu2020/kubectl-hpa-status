@@ -11,12 +11,12 @@ import (
 )
 
 func buildChurnTestHPA() *autoscalingv2.HorizontalPodAutoscaler {
-	min := int32(1)
+	minVal := int32(1)
 	return &autoscalingv2.HorizontalPodAutoscaler{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-hpa", Namespace: "default"},
 		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
 			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{Kind: "Deployment", Name: "test"},
-			MinReplicas:    &min,
+			MinReplicas:    &minVal,
 			MaxReplicas:    10,
 		},
 	}

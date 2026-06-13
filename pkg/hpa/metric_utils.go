@@ -3,8 +3,8 @@ package hpa
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
-	"time"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
@@ -198,11 +198,11 @@ func parsePercent(value string) (int32, bool) {
 	if !strings.HasSuffix(value, "%") {
 		return 0, false
 	}
-	var percent int32
-	if _, err := fmt.Sscanf(strings.TrimSuffix(value, "%"), "%d", &percent); err != nil {
+	n, err := strconv.ParseInt(strings.TrimSuffix(value, "%"), 10, 32)
+	if err != nil {
 		return 0, false
 	}
-	return percent, true
+	return int32(n), true
 }
 
 func quantityRatio(current, target *resource.Quantity) *float64 {
@@ -255,7 +255,7 @@ func estimateStabilizationRemaining(hpa *autoscalingv2.HorizontalPodAutoscaler) 
 	if hpa.Status.LastScaleTime == nil {
 		return nil
 	}
-	elapsed := time.Since(hpa.Status.LastScaleTime.Time).Seconds()
+	elapsed := now().Sub(hpa.Status.LastScaleTime.Time).Seconds()
 	remaining := int64(float64(*window) - elapsed)
 	if remaining < 0 {
 		remaining = 0

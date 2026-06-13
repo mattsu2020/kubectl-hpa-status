@@ -16,7 +16,7 @@ import (
 func SnapshotFromReport(report StatusReport) TimelineSnapshot {
 	a := report.Analysis
 	return TimelineSnapshot{
-		Timestamp:      time.Now(),
+		Timestamp:      now(),
 		Current:        a.Current,
 		Desired:        a.Desired,
 		Health:         a.Health,

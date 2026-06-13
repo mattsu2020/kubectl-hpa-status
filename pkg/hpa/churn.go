@@ -248,7 +248,7 @@ func stabilizationWindowRecommendation(hpa *autoscalingv2.HorizontalPodAutoscale
 	currentWindow := currentStabilizationWindowSeconds(hpa)
 	recommendedWindow := currentWindow * 2
 
-	patch := mustJSON(map[string]any{
+	patch := marshalJSON(map[string]any{
 		"spec": map[string]any{
 			"behavior": map[string]any{
 				"scaleDown": map[string]any{
@@ -271,7 +271,7 @@ func stabilizationWindowRecommendation(hpa *autoscalingv2.HorizontalPodAutoscale
 // toleranceRecommendation recommends adding explicit tolerance to dampen
 // small metric fluctuations that trigger unnecessary rescales.
 func toleranceRecommendation() ChurnRecommendation {
-	patch := mustJSON(map[string]any{
+	patch := marshalJSON(map[string]any{
 		"spec": map[string]any{
 			"behavior": map[string]any{
 				"scaleDown": map[string]any{
@@ -296,7 +296,7 @@ func toleranceRecommendation() ChurnRecommendation {
 func behaviorPolicyRecommendation(hpa *autoscalingv2.HorizontalPodAutoscaler) ChurnRecommendation {
 	stabilizationSeconds := currentStabilizationWindowSeconds(hpa)
 
-	patch := mustJSON(map[string]any{
+	patch := marshalJSON(map[string]any{
 		"spec": map[string]any{
 			"behavior": map[string]any{
 				"scaleDown": map[string]any{

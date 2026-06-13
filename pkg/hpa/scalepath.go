@@ -35,10 +35,7 @@ func AnalyzeScalePath(hpa *autoscalingv2.HorizontalPodAutoscaler, input ScalePat
 	}
 
 	counts := countScalePathPods(input.Pods)
-	rsDesired, rsCurrent := sumScalePathReplicaSets(input.ReplicaSets)
-	if rsDesired == 0 {
-		rsDesired = targetDesired
-	}
+	_, rsCurrent := sumScalePathReplicaSets(input.ReplicaSets)
 	if rsCurrent == 0 {
 		rsCurrent = targetCurrent
 	}
@@ -269,7 +266,7 @@ func detectAutoscalerEvents(path *ScalePath, input ScalePathInput) {
 
 // analyzeNotReadyPods provides deeper analysis of pods that are created but
 // not yet ready, distinguishing between different causes.
-func analyzeNotReadyPods(path *ScalePath, input ScalePathInput, counts scalePathPodCounts) {
+func analyzeNotReadyPods(path *ScalePath, input ScalePathInput, _ scalePathPodCounts) {
 	if len(input.NotReadyPods) == 0 {
 		return
 	}

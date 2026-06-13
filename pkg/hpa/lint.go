@@ -1,6 +1,7 @@
 package hpa
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -149,15 +150,15 @@ func lintMinGreaterThanMax(hpa *autoscalingv2.HorizontalPodAutoscaler) []LintFin
 // lintMinEqualsMax detects when minReplicas equals maxReplicas, making the
 // HPA unable to scale.
 func lintMinEqualsMax(hpa *autoscalingv2.HorizontalPodAutoscaler) []LintFinding {
-	var min int32 = 1
+	var minReplicas int32 = 1
 	if hpa.Spec.MinReplicas != nil {
-		min = *hpa.Spec.MinReplicas
+		minReplicas = *hpa.Spec.MinReplicas
 	}
-	if min == hpa.Spec.MaxReplicas {
+	if minReplicas == hpa.Spec.MaxReplicas {
 		return []LintFinding{{
 			Severity:       LintError,
 			Rule:           "min-equals-max",
-			Message:        fmt.Sprintf("minReplicas and maxReplicas are both %d; HPA cannot scale", min),
+			Message:        fmt.Sprintf("minReplicas and maxReplicas are both %d; HPA cannot scale", minReplicas),
 			Recommendation: "Separate min and max replicas to allow the HPA to adjust pod count based on load.",
 		}}
 	}
@@ -367,81 +368,82 @@ func lintKEDAStyle(hpa *autoscalingv2.HorizontalPodAutoscaler) []LintFinding {
 
 // FormatLintSARIF formats lint results as SARIF JSON for CI integration.
 func FormatLintSARIF(result *LintResult, filePath string) string {
-	var sb strings.Builder
-	sb.WriteString(`{
-  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
-  "version": "2.1.0",
-  "runs": [
-    {
-      "tool": {
-        "driver": {
-          "name": "kubectl-hpa-status",
-          "informationUri": "https://github.com/mattsu2020/kubectl-hpa-status",
-          "rules": [
-`)
-
-	// Collect unique rules.
-	ruleSet := make(map[string]struct{})
+	// Collect unique rules preserving first-appearance order so the output is
+	// deterministic (a map would randomize rule ordering across runs).
+	var rules []map[string]any
+	seenRules := make(map[string]struct{})
 	for _, f := range result.Findings {
-		ruleSet[f.Rule] = struct{}{}
-	}
-	first := true
-	for rule := range ruleSet {
-		if !first {
-			sb.WriteString(",\n")
+		if _, ok := seenRules[f.Rule]; ok {
+			continue
 		}
-		first = false
-		sb.WriteString(fmt.Sprintf(`            {
-              "id": "%s",
-              "shortDescription": { "text": "%s" }
-            }`, rule, rule))
+		seenRules[f.Rule] = struct{}{}
+		rules = append(rules, map[string]any{
+			"id": f.Rule,
+			"shortDescription": map[string]any{
+				"text": f.Rule,
+			},
+		})
 	}
 
-	sb.WriteString(`
-          ]
-        }
-      },
-      "results": [
-`)
-
-	for i, f := range result.Findings {
-		if i > 0 {
-			sb.WriteString(",\n")
-		}
-		level := "note"
-		switch f.Severity {
-		case LintError:
-			level = "error"
-		case LintWarning:
-			level = "warning"
-		}
-		sb.WriteString(fmt.Sprintf(`        {
-          "ruleId": "%s",
-          "level": "%s",
-          "message": { "text": "%s" },
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": { "uri": "%s" }
-              }
-            }
-          ]
-        }`, f.Rule, level, escapeJSON(f.Message), escapeJSON(filePath)))
+	results := make([]map[string]any, 0, len(result.Findings))
+	for _, f := range result.Findings {
+		level := sarifLevel(f.Severity)
+		results = append(results, map[string]any{
+			"ruleId": f.Rule,
+			"level":  level,
+			"message": map[string]any{
+				"text": f.Message,
+			},
+			"locations": []map[string]any{
+				{
+					"physicalLocation": map[string]any{
+						"artifactLocation": map[string]any{
+							"uri": filePath,
+						},
+					},
+				},
+			},
+		})
 	}
 
-	sb.WriteString(`
-      ]
-    }
-  ]
-}`)
-	return sb.String()
+	doc := map[string]any{
+		"$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+		"version": "2.1.0",
+		"runs": []map[string]any{
+			{
+				"tool": map[string]any{
+					"driver": map[string]any{
+						"name":           "kubectl-hpa-status",
+						"informationUri": "https://github.com/mattsu2020/kubectl-hpa-status",
+						"rules":          rules,
+					},
+				},
+				"results": results,
+			},
+		},
+	}
+
+	var sb strings.Builder
+	encoder := json.NewEncoder(&sb)
+	encoder.SetEscapeHTML(false)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(doc); err != nil {
+		// Encoding can only fail on unsupported types; the values above are
+		// all primitives/maps/slices, so this is unreachable in practice.
+		// Fall back to a minimal valid SARIF document to keep the contract.
+		return `{"version":"2.1.0","runs":[]}`
+	}
+	return strings.TrimRight(sb.String(), "\n")
 }
 
-// escapeJSON escapes a string for JSON embedding.
-func escapeJSON(s string) string {
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, `"`, `\"`)
-	s = strings.ReplaceAll(s, "\n", `\n`)
-	s = strings.ReplaceAll(s, "\t", `\t`)
-	return s
+// sarifLevel maps a LintSeverity to a SARIF level string.
+func sarifLevel(severity LintSeverity) string {
+	switch severity {
+	case LintError:
+		return "error"
+	case LintWarning:
+		return "warning"
+	default:
+		return "note"
+	}
 }

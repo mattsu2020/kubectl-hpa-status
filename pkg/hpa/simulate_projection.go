@@ -73,7 +73,7 @@ func ProjectReplicaTrajectory(original, modified *autoscalingv2.HorizontalPodAut
 
 // computeEndReplicas estimates the final replica count after the modified HPA
 // parameters take effect.
-func computeEndReplicas(original, modified *autoscalingv2.HorizontalPodAutoscaler) int32 {
+func computeEndReplicas(_, modified *autoscalingv2.HorizontalPodAutoscaler) int32 {
 	modifiedAnalysis := AnalyzeWithOptions(modified, false, AnalysisOptions{})
 	return modifiedAnalysis.Desired
 }
@@ -93,7 +93,7 @@ func computeStabilizationDelay(modified *autoscalingv2.HorizontalPodAutoscaler) 
 // interpolateReplicas computes the estimated replica count at a given time
 // offset using a simple model: the HPA waits for the stabilization window,
 // then transitions replicas from start to end over the remaining time.
-func interpolateReplicas(startReplicas, endReplicas, offset, stabilizationDelay, totalDuration int32) int32 {
+func interpolateReplicas(startReplicas, endReplicas, offset, stabilizationDelay, _ int32) int32 {
 	if startReplicas == endReplicas {
 		return startReplicas
 	}
@@ -115,7 +115,7 @@ func interpolateReplicas(startReplicas, endReplicas, offset, stabilizationDelay,
 }
 
 // computeMetricRatio estimates the metric ratio for a given replica count.
-func computeMetricRatio(startReplicas, currentReplicas, minReplicas, maxReplicas int32) float64 {
+func computeMetricRatio(startReplicas, currentReplicas, _, _ int32) float64 {
 	if startReplicas <= 0 {
 		return 1.0
 	}

@@ -83,6 +83,10 @@ func (s *HealthStore) Load(namespace, name string, since time.Duration) ([]hpa.H
 	var snapshots []hpa.HealthSnapshot
 
 	scanner := bufio.NewScanner(f)
+	// Raise the per-line limit to 1MB so that large snapshot lines (big
+	// recommendation lists, long diagnosis payloads, etc.) do not trip
+	// bufio.ErrTooLong. The default 64KB cap is kept as the initial buffer.
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 	lineNum := 0
 	for scanner.Scan() {
 		lineNum++

@@ -59,14 +59,6 @@ func FormatASCIIProgressBar(ratio float64, width int) string {
 	// Clamp ratio to [0, 1].
 	ratio = math.Max(0, math.Min(1.0, ratio))
 
-	filled := int(math.Round(ratio * float64(width)))
-	if filled > width {
-		filled = width
-	}
-	if filled < 0 {
-		filled = 0
-	}
-
 	inner := width - 2 // subtract brackets
 	if inner < 1 {
 		inner = 1

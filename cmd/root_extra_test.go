@@ -384,7 +384,7 @@ func TestOutputLang(t *testing.T) {
 
 // --- i18nLabels tests ---
 
-func TestI18nLabels_Get(t *testing.T) {
+func TestI18nLabels_Get(_ *testing.T) {
 	p := i18nLabels{lang: "ja"}
 	got := p.Get("summary.steady")
 	// Just verify it doesn't panic and returns something.

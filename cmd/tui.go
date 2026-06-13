@@ -97,6 +97,7 @@ func runTUI(ctx context.Context, out io.Writer, opts *options, initialName strin
 			return hpaanalysis.AuditHPA(hpa, minReplicas), nil
 		},
 	})
+	model = model.WithContext(ctx)
 
 	_, err = tea.NewProgram(model, tea.WithAltScreen(), tea.WithContext(ctx), tea.WithOutput(out)).Run()
 	return err

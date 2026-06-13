@@ -2064,9 +2064,9 @@ func TestResolveMinReplicas_Default(t *testing.T) {
 }
 
 func TestResolveMinReplicas_Explicit(t *testing.T) {
-	min := int32(5)
+	minVal := int32(5)
 	hpa := baseHPA()
-	hpa.Spec.MinReplicas = &min
+	hpa.Spec.MinReplicas = &minVal
 	if val := resolveMinReplicas(hpa); val != 5 {
 		t.Fatalf("expected 5, got %d", val)
 	}

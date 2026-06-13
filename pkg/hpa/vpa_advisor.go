@@ -102,7 +102,7 @@ func generateRecommendations(level VPAConflictLevel, vpa *VPAConflictInfo) []str
 		}
 	case VPAConflictWarning:
 		return []string{
-			fmt.Sprintf("VPA is in 'Initial' mode: safe but monitor for pod restart timing interactions"),
+			"VPA is in 'Initial' mode: safe but monitor for pod restart timing interactions",
 			"Consider adding resource requests explicitly to avoid VPA recalculating at each rollout",
 		}
 	case VPAConflictNone:

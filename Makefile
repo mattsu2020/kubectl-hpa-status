@@ -24,6 +24,10 @@ docs-check:
 
 .PHONY: lint
 lint:
+	golangci-lint run ./...
+
+.PHONY: vet
+vet:
 	$(GO) vet ./...
 
 .PHONY: e2e

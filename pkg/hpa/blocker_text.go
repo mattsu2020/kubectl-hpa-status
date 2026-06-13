@@ -73,7 +73,7 @@ func WriteBlockerText(w io.Writer, report *BlockerReport, theme style.Theme) err
 	out = fmt.Appendf(out, "Desired: %d  Ready: %d  Scale-out wanted: %v\n",
 		report.DesiredReplicas, report.ReadyReplicas, report.HPAWantsScale)
 
-	lbls := DefaultBlockerLabels()
+	lbls := defaultBlockerLabels()
 	AppendBlockerText(&out, report, theme, lbls)
 
 	_, err := w.Write(out)
@@ -94,8 +94,8 @@ func severityBadge(severity BlockerSeverity, theme style.Theme) string {
 	return style.Render(fmt.Sprintf("[%s]", string(severity)))
 }
 
-// DefaultBlockerLabels returns English labels for standalone blocker text output.
-func DefaultBlockerLabels() labels {
+// defaultBlockerLabels returns English labels for standalone blocker text output.
+func defaultBlockerLabels() labels {
 	return labels{
 		Blockers:       "Scale-out blockers",
 		Interpretation: "Interpretation",

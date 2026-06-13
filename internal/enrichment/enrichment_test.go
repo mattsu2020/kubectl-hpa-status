@@ -305,7 +305,7 @@ func TestEnrichKEDA_NotKEDAManaged(t *testing.T) {
 
 // --- EnrichVPA tests ---
 
-func TestEnrichVPA_NilContext(t *testing.T) {
+func TestEnrichVPA_NilContext(_ *testing.T) {
 	// EnrichVPA accesses ec.dynClient, so nil context will panic.
 	// This test verifies the behavior with a valid but non-enriched context.
 	ec := &Context{
@@ -329,7 +329,7 @@ func TestEnrichVPA_NilContext(t *testing.T) {
 
 // --- EnrichReport tests ---
 
-func TestEnrichReport_NilContext(t *testing.T) {
+func TestEnrichReport_NilContext(_ *testing.T) {
 	report := &hpaanalysis.StatusReport{}
 	hpa := &autoscalingv2.HorizontalPodAutoscaler{}
 	EnrichReport(context.Background(), nil, hpa, report, hpaanalysis.HealthWeights{})

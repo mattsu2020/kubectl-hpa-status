@@ -63,19 +63,20 @@ func runRolloutChecks(input RolloutInput) []RolloutCheck {
 	}
 
 	// readinessProbe check.
-	if !input.HasReadinessProbe {
+	switch {
+	case !input.HasReadinessProbe:
 		checks = append(checks, RolloutCheck{
 			Pass:     false,
 			Category: "readiness",
 			Message:  "readinessProbe is missing; pod will be considered ready immediately",
 		})
-	} else if input.ReadinessInitialDelaySeconds < 5 {
+	case input.ReadinessInitialDelaySeconds < 5:
 		checks = append(checks, RolloutCheck{
 			Pass:     false,
 			Category: "readiness",
 			Message:  fmt.Sprintf("readinessProbe initialDelaySeconds is %d (< 5s); pod may report ready before application is initialized", input.ReadinessInitialDelaySeconds),
 		})
-	} else {
+	default:
 		checks = append(checks, RolloutCheck{
 			Pass:     true,
 			Category: "readiness",
@@ -176,7 +177,7 @@ func sortRolloutRisksBySeverity(risks []RolloutRisk) {
 }
 
 // buildRolloutSummary creates a one-line overall assessment.
-func buildRolloutSummary(report *RolloutReport, input RolloutInput) string {
+func buildRolloutSummary(report *RolloutReport, _ RolloutInput) string {
 	failedCount := countFailedChecks(report.Checks)
 
 	if failedCount > 0 {

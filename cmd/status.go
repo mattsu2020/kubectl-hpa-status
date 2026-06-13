@@ -319,10 +319,11 @@ func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, 
 
 	if len(opts.simulate) > 0 {
 		overrides, simErr := parseSimulateOverrides(opts.simulate)
-		if simErr != nil {
+		switch {
+		case simErr != nil:
 			report.Analysis.Interpretation = append(report.Analysis.Interpretation,
 				fmt.Sprintf("simulation error: %v", simErr))
-		} else if opts.simulateDuration > 0 {
+		case opts.simulateDuration > 0:
 			sim, simErr := hpaanalysis.SimulateExtended(hpa, overrides,
 				analysisOptions(opts.healthWeights, opts.debug).HealthWeights,
 				hpaanalysis.SimulationExtendedOptions{
@@ -334,7 +335,7 @@ func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, 
 			} else {
 				report.Analysis.Simulation = sim
 			}
-		} else {
+		default:
 			sim, simErr := hpaanalysis.SimulateHPA(hpa, overrides, analysisOptions(opts.healthWeights, opts.debug).HealthWeights)
 			if simErr != nil {
 				report.Analysis.Interpretation = append(report.Analysis.Interpretation,

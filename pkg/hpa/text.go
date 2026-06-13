@@ -439,7 +439,7 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 			if mf.LastEvent != nil {
 				out = fmt.Appendf(out, "    last HPA event: %s", mf.LastEvent.Reason)
 				if !mf.LastEvent.Timestamp.IsZero() {
-					out = fmt.Appendf(out, " %s ago", formatFreshnessDuration(time.Since(mf.LastEvent.Timestamp)))
+					out = fmt.Appendf(out, " %s ago", formatFreshnessDuration(now().Sub(mf.LastEvent.Timestamp)))
 				}
 				out = append(out, '\n')
 			}
@@ -867,85 +867,6 @@ type labels struct {
 	ContainerAdvisor    string
 	BehaviorAdvisor     string
 	FlappingPrevention  string
-}
-
-func textLabels(lang string) labels {
-	if strings.EqualFold(lang, "ja") {
-		return labels{
-			Target:              "対象",
-			Replicas:            "レプリカ",
-			Health:              "ヘルススコア",
-			Summary:             "要約",
-			Conditions:          "状態",
-			Metrics:             "メトリクス",
-			Behavior:            "挙動",
-			Actions:             "推奨アクション",
-			Suggestions:         "推奨コマンド",
-			Fix:                 "修正プラン",
-			Interpretation:      "解釈",
-			Debug:               "デバッグ",
-			KEDA:                "KEDA",
-			Events:              "最近のイベント",
-			Risk:                "リスク",
-			Precondition:        "前提条件",
-			Warning:             "警告",
-			MetricsDiagnostics:  "メトリクス診断",
-			MetricFreshness:     "メトリクス鮮度",
-			PodAnalysis:         "Pod分析",
-			Simulation:          "シミュレーション",
-			CapacityContext:     "キャパシティコンテキスト",
-			Timeline:            "タイムライン",
-			MetricDecisionTrace: "メトリクス決定トレース",
-			AuditFindings:       "監査結果",
-			AuditScore:          "コンプライアンススコア",
-			AuditSeverity:       "重要度",
-			Blockers:            "スケールアウトブロッカー",
-			NextCommands:        "次のコマンド",
-			CapacityPlan:        "キャパシティプラン",
-			MetricContract:      "メトリクスコントラクト",
-			Warmup:              "ウォームアップ分析",
-			ContainerAdvisor:    "コンテナリソースアドバイザー",
-			BehaviorAdvisor:     "ビヘイビアチューニングアドバイザー",
-			FlappingPrevention:  "フラッピング防止アドバイザー",
-		}
-	}
-	return labels{
-		Target:              "Target",
-		Replicas:            "Replicas",
-		Health:              "Health score",
-		Summary:             "Summary",
-		Conditions:          "Conditions",
-		Metrics:             "Metrics",
-		Behavior:            "Behavior",
-		Actions:             "Recommended actions",
-		Suggestions:         "Recommended commands",
-		Fix:                 "Fix plan",
-		Interpretation:      "Interpretation",
-		Debug:               "Debug",
-		KEDA:                "KEDA",
-		Events:              "Recent events",
-		Risk:                "risk",
-		Precondition:        "precondition",
-		Warning:             "warning",
-		MetricsDiagnostics:  "Metrics Diagnostics",
-		MetricFreshness:     "Metrics Freshness",
-		PodAnalysis:         "Pod Analysis",
-		Simulation:          "Simulation",
-		CapacityContext:     "Capacity Context",
-		Timeline:            "Timeline",
-		MetricDecisionTrace: "Metric Decision Trace",
-		AuditFindings:       "Audit Findings",
-		AuditScore:          "Compliance Score",
-		AuditSeverity:       "Severity",
-		Blockers:            "Scale-out blockers",
-		NextCommands:        "Next commands",
-		CapacityPlan:        "Capacity Plan",
-		MetricContract:      "Metrics Contract",
-		Warmup:              "Warmup Analysis",
-		ContainerAdvisor:    "Container Resource Advisor",
-		BehaviorAdvisor:     "Behavior Tuning Advisor",
-		FlappingPrevention:  "Flapping Prevention Advisor",
-	}
 }
 
 // WriteStatusDiff writes a status display that highlights changes between the

@@ -12,7 +12,6 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/yaml"
 )
 
@@ -154,9 +153,10 @@ func extractReplicasFromUnstructured(u *unstructured.Unstructured, targetKind, t
 	name := u.GetName()
 
 	// Normalize kind (handle both short and full forms)
-	if kind == "Deployment" || kind == "deployment" || kind == "Deployment.apps" {
+	switch kind {
+	case "Deployment", "deployment", "Deployment.apps":
 		kind = "Deployment"
-	} else if kind == "StatefulSet" || kind == "statefulset" || kind == "StatefulSet.apps" {
+	case "StatefulSet", "statefulset", "StatefulSet.apps":
 		kind = "StatefulSet"
 	}
 
@@ -193,54 +193,4 @@ func extractGitOpsAnnotations(annotations map[string]string, argoCD, flux map[st
 			flux[k] = v
 		}
 	}
-}
-
-// convertToUnstructured converts a runtime.Object to unstructured.Unstructured.
-func convertToUnstructured(obj runtime.Object) (*unstructured.Unstructured, error) {
-	u := &unstructured.Unstructured{}
-	u.SetGroupVersionKind(obj.GetObjectKind().GroupVersionKind())
-
-	var err error
-	u.Object, err = runtime.DefaultUnstructuredConverter.ToUnstructured(obj)
-	if err != nil {
-		return nil, err
-	}
-
-	return u, nil
-}
-
-// Below are helper functions for testing and potential future use.
-// They mirror the structure used in other cmd/ files for consistency.
-
-// scaleTargetReplicas holds the replica count from a scale target resource.
-type scaleTargetReplicas struct {
-	replicas    int32
-	annotations map[string]string
-	labels      map[string]string
-}
-
-// fetchDeploymentReplicas fetches replica info from a Deployment.
-func fetchDeploymentReplicas(ctx context.Context, client *kube.Client, namespace, name string) (*scaleTargetReplicas, error) {
-	deploy, err := client.Interface.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
-	if err != nil {
-		return nil, err
-	}
-	return &scaleTargetReplicas{
-		replicas:    *deploy.Spec.Replicas,
-		annotations: deploy.Annotations,
-		labels:      deploy.Labels,
-	}, nil
-}
-
-// fetchStatefulSetReplicas fetches replica info from a StatefulSet.
-func fetchStatefulSetReplicas(ctx context.Context, client *kube.Client, namespace, name string) (*scaleTargetReplicas, error) {
-	sts, err := client.Interface.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
-	if err != nil {
-		return nil, err
-	}
-	return &scaleTargetReplicas{
-		replicas:    *sts.Spec.Replicas,
-		annotations: sts.Annotations,
-		labels:      sts.Labels,
-	}, nil
 }

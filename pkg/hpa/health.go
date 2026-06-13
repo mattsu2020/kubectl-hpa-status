@@ -174,9 +174,7 @@ func ApplyEnrichmentPenalties(a *Analysis, weights HealthWeights) {
 
 	acc := NewHealthAccumulator(a.HealthScore)
 	if a.HealthResult != nil {
-		for _, s := range a.HealthResult.Signals {
-			acc.result.Signals = append(acc.result.Signals, s)
-		}
+		acc.result.Signals = append(acc.result.Signals, a.HealthResult.Signals...)
 	}
 
 	currentState := HealthState(a.Health)
@@ -232,9 +230,7 @@ func ApplyChurnPenalty(a *Analysis, weights HealthWeights) {
 
 	acc := NewHealthAccumulator(a.HealthScore)
 	if a.HealthResult != nil {
-		for _, s := range a.HealthResult.Signals {
-			acc.result.Signals = append(acc.result.Signals, s)
-		}
+		acc.result.Signals = append(acc.result.Signals, a.HealthResult.Signals...)
 	}
 
 	currentState := HealthState(a.Health)

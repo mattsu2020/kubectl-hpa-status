@@ -96,7 +96,7 @@ func WriteReadinessDoctorMarkdown(w io.Writer, report *ReadinessDoctorReport) er
 
 	dist := report.PodAgeDistribution
 	buf.WriteString("### Pod Age Distribution\n\n")
-	buf.WriteString(fmt.Sprintf("| Metric | Value |\n|---|---|\n"))
+	buf.WriteString("| Metric | Value |\n|---|---|\n")
 	buf.WriteString(fmt.Sprintf("| Total pods | %d |\n", dist.TotalPods))
 	buf.WriteString(fmt.Sprintf("| Young (< %ds) | %d |\n", report.InitializationImpact.CPUInitPeriodSeconds, dist.YoungPods))
 	buf.WriteString(fmt.Sprintf("| Mature | %d |\n", dist.MaturePods))
@@ -108,7 +108,7 @@ func WriteReadinessDoctorMarkdown(w io.Writer, report *ReadinessDoctorReport) er
 
 	pa := report.ProbeAnalysis
 	buf.WriteString("### Probe Analysis\n\n")
-	buf.WriteString(fmt.Sprintf("| Probe | Present | Delay |\n|---|---|---|\n"))
+	buf.WriteString("| Probe | Present | Delay |\n|---|---|---|\n")
 	buf.WriteString(fmt.Sprintf("| readinessProbe | %t | %ds |\n", pa.HasReadinessProbe, pa.ReadinessInitialDelaySec))
 	buf.WriteString(fmt.Sprintf("| startupProbe | %t | - |\n\n", pa.HasStartupProbe))
 	buf.WriteString(fmt.Sprintf("**Assessment:** %s\n\n", pa.Assessment))

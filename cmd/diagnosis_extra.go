@@ -243,11 +243,11 @@ func buildControllerProfile(ctx context.Context, client *kube.Client, opts *opti
 		return &profile
 	}
 	if opts != nil && opts.controllerProfileFile != "" {
-		if loaded, err := loadControllerProfileFile(opts.controllerProfileFile); err == nil {
+		loaded, err := loadControllerProfileFile(opts.controllerProfileFile)
+		if err == nil {
 			return loaded
-		} else {
-			profile.Warnings = append(profile.Warnings, fmt.Sprintf("failed to load controller profile file: %v", err))
 		}
+		profile.Warnings = append(profile.Warnings, fmt.Sprintf("failed to load controller profile file: %v", err))
 	}
 	if client == nil {
 		return &profile
@@ -361,13 +361,14 @@ func buildCapacityHeadroom(ctx context.Context, client *kube.Client, hpa *autosc
 			fmt.Sprintf("scheduled pod requests cpu=%s memory=%s", usedCPU.String(), usedMem.String()),
 			fmt.Sprintf("remaining request headroom cpu=%s memory=%s", cpuRemaining.String(), memRemaining.String()),
 		)
-		if additional == 0 {
+		switch {
+		case additional == 0:
 			headroom.ClusterSchedulableHeadroom = "none needed"
 			headroom.Risk = "HPA desiredReplicas is already at or above maxReplicas"
-		} else if quantityAtLeast(cpuRemaining, addCPU) && quantityAtLeast(memRemaining, addMem) {
+		case quantityAtLeast(cpuRemaining, addCPU) && quantityAtLeast(memRemaining, addMem):
 			headroom.ClusterSchedulableHeadroom = "available"
 			headroom.Risk = "visible node allocatable request headroom appears sufficient; scheduler constraints may still apply"
-		} else {
+		default:
 			headroom.ClusterSchedulableHeadroom = "low"
 			headroom.Risk = "HPA can request more Pods, but Pods may stay Pending"
 		}

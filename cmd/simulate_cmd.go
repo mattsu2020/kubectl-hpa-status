@@ -58,7 +58,7 @@ func newSimulateCommand(opts *options) *cobra.Command {
 }
 
 func runSimulate(ctx context.Context, out io.Writer, opts *options, name string,
-	setMetric, setTarget []string, tolerance string, suggest bool, duration int32) error {
+	setMetric, setTarget []string, tolerance string, suggest bool, _ int32) error {
 
 	client, err := opts.newClient()
 	if err != nil {

@@ -439,11 +439,12 @@ func buildMetricSimulationInterpretation(before, after *SimulationState, simulat
 	for _, ms := range simulations {
 		if ms.ProjectedRatio != nil {
 			ratio := *ms.ProjectedRatio
-			if ratio > 1.0 {
+			switch {
+			case ratio > 1.0:
 				lines = append(lines, fmt.Sprintf("%s: value %.2fx above target, projected %d replicas", ms.MetricName, ratio, ms.ProjectedReplicas))
-			} else if ratio < 1.0 {
+			case ratio < 1.0:
 				lines = append(lines, fmt.Sprintf("%s: value %.2fx below target, projected %d replicas", ms.MetricName, ratio, ms.ProjectedReplicas))
-			} else {
+			default:
 				lines = append(lines, fmt.Sprintf("%s: at target, projected %d replicas", ms.MetricName, ms.ProjectedReplicas))
 			}
 		}

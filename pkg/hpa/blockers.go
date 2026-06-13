@@ -134,7 +134,7 @@ func buildBlockerInterpretation(input BlockerInput, hpaWantsScale bool, findings
 }
 
 // buildBlockerNextCommands creates suggested kubectl commands for investigation.
-func buildBlockerNextCommands(input BlockerInput, findings []BlockerFinding) []string {
+func buildBlockerNextCommands(_ BlockerInput, findings []BlockerFinding) []string {
 	seen := make(map[string]struct{})
 	var commands []string
 

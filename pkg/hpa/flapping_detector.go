@@ -9,10 +9,6 @@ import (
 )
 
 const (
-	// flappingWindowThreshold is the maximum time window (in seconds) within
-	// which direction flips are considered rapid oscillation.
-	flappingWindowThreshold = 300 // 5 minutes
-
 	// eventTTLDefault is the default Kubernetes event TTL used in the
 	// limitation disclaimer.
 	eventTTLDefault = "~1 hour"
@@ -233,7 +229,7 @@ func generateFlappingFixes(hpa *autoscalingv2.HorizontalPodAutoscaler, causes []
 			if recommendedWindow < 300 {
 				recommendedWindow = 300
 			}
-			patch := mustJSON(map[string]any{
+			patch := marshalJSON(map[string]any{
 				"spec": map[string]any{
 					"behavior": map[string]any{
 						"scaleDown": map[string]any{
@@ -250,7 +246,7 @@ func generateFlappingFixes(hpa *autoscalingv2.HorizontalPodAutoscaler, causes []
 
 		case "missing-scaledown-policy":
 			window := currentStabilizationWindowSeconds(hpa)
-			patch := mustJSON(map[string]any{
+			patch := marshalJSON(map[string]any{
 				"spec": map[string]any{
 					"behavior": map[string]any{
 						"scaleDown": map[string]any{

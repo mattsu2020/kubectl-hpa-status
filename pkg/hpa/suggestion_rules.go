@@ -63,7 +63,7 @@ func scalingLimitedMaxRule(ctx SuggestionContext) []Suggestion {
 	}
 
 	nextMax := recommendedMaxReplicas(hpa)
-	patch := mustJSON(map[string]any{"spec": map[string]any{"maxReplicas": nextMax}})
+	patch := marshalJSON(map[string]any{"spec": map[string]any{"maxReplicas": nextMax}})
 	warnings := []string{
 		"Confirm node capacity, PodDisruptionBudgets, quotas, and downstream dependency limits before persisting this change.",
 		"Run the patch as a server-side dry-run first; the plugin also dry-runs by default when --apply is used.",
@@ -118,7 +118,7 @@ func scalingLimitedMinRule(ctx SuggestionContext) []Suggestion {
 		return nil
 	}
 
-	patch := mustJSON(map[string]any{"spec": map[string]any{"minReplicas": nextMin}})
+	patch := marshalJSON(map[string]any{"spec": map[string]any{"minReplicas": nextMin}})
 	return []Suggestion{{
 		Title:       "Lower minReplicas",
 		Description: fmt.Sprintf("The HPA is capped at minReplicas=%d. Lowering it to %d allows further scale-down.", minReplicas, nextMin),
@@ -150,7 +150,7 @@ func scaleDownStabilizedRule(ctx SuggestionContext) []Suggestion {
 	}
 
 	nextWindow := *window / 2
-	patch := mustJSON(map[string]any{
+	patch := marshalJSON(map[string]any{
 		"spec": map[string]any{
 			"behavior": map[string]any{
 				"scaleDown": map[string]any{"stabilizationWindowSeconds": nextWindow},
@@ -180,7 +180,7 @@ func behaviorPolicyRule(ctx SuggestionContext) []Suggestion {
 	var suggestions []Suggestion
 
 	if hasVisibleScaleUpPressure(hpa) && missingPolicies(hpa.Spec.Behavior, "scaleUp") {
-		patch := mustJSON(map[string]any{
+		patch := marshalJSON(map[string]any{
 			"spec": map[string]any{
 				"behavior": map[string]any{
 					"scaleUp": map[string]any{
@@ -210,7 +210,7 @@ func behaviorPolicyRule(ctx SuggestionContext) []Suggestion {
 	}
 
 	if visibleScaleDownPressure(hpa) && missingPolicies(hpa.Spec.Behavior, "scaleDown") {
-		patch := mustJSON(map[string]any{
+		patch := marshalJSON(map[string]any{
 			"spec": map[string]any{
 				"behavior": map[string]any{
 					"scaleDown": map[string]any{
@@ -254,7 +254,7 @@ func toleranceRule(ctx SuggestionContext) []Suggestion {
 	}
 
 	tolerance := resource.MustParse("0.05")
-	patch := mustJSON(map[string]any{
+	patch := marshalJSON(map[string]any{
 		"spec": map[string]any{
 			"behavior": map[string]any{
 				"scaleUp": map[string]any{
@@ -433,10 +433,13 @@ func kubectlPatchCommand(hpa *autoscalingv2.HorizontalPodAutoscaler, patch strin
 	return command
 }
 
-func mustJSON(value any) string {
+func marshalJSON(value any) string {
 	data, err := json.Marshal(value)
 	if err != nil {
-		panic(err)
+		// Callers always pass internal map[string]any literals built from HPA
+		// fields, so a marshal failure is not expected. Return an empty JSON
+		// object rather than crashing the CLI on a single bad value.
+		return "{}"
 	}
 	return string(data)
 }

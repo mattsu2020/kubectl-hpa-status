@@ -1,8 +1,8 @@
 package tui
 
 import (
-	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -655,7 +655,7 @@ func (m Model) applyFix() tea.Cmd {
 	applyFn := m.opts.ApplyFn
 
 	return func() tea.Msg {
-		err := applyFn(context.Background(), namespace, name, patch)
+		err := applyFn(m.ctx, namespace, name, patch)
 		return applyResultMsg{title: suggestion.Title, err: err}
 	}
 }
@@ -828,15 +828,21 @@ func (m Model) handleBatchAuditKey() (tea.Model, tea.Cmd) {
 		reports := make(map[string]*hpaanalysis.AuditReport)
 		var lastErr error
 		for _, name := range selected {
+			// `name` is the selection key. It is either a bare HPA name (when a
+			// namespace filter is active) or "namespace/name" (all-namespaces
+			// mode). Keep it untouched as the reports map key so entries stay
+			// unique and consistent with the selection; derive the namespace
+			// and short name separately for the audit call.
 			ns := namespace
+			shortName := name
 			if ns == "" {
 				parts := splitNamespaceName(name)
 				if len(parts) == 2 {
 					ns = parts[0]
-					name = parts[1]
+					shortName = parts[1]
 				}
 			}
-			report, err := auditFn(context.Background(), ns, name)
+			report, err := auditFn(m.ctx, ns, shortName)
 			if err != nil {
 				lastErr = err
 				continue
@@ -906,7 +912,7 @@ func (m Model) handleBatchApplyKey() (tea.Model, tea.Cmd) {
 	return m, func() tea.Msg {
 		var errs []string
 		for _, p := range patches {
-			if err := applyFn(context.Background(), p.namespace, p.name, p.patch); err != nil {
+			if err := applyFn(m.ctx, p.namespace, p.name, p.patch); err != nil {
 				errs = append(errs, fmt.Sprintf("%s/%s: %v", p.namespace, p.name, err))
 			}
 		}
@@ -925,6 +931,7 @@ func (m Model) selectedHPANames() []string {
 			names = append(names, k)
 		}
 	}
+	slices.Sort(names)
 	return names
 }
 

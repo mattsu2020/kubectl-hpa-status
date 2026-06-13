@@ -14,11 +14,11 @@ import (
 //
 //	10:01 desired 3 -> 5   cpu 142% over target
 //	10:02 scaleUp limited by policy: +2 pods / 60s
-func WriteRetrospectiveTimeline(w io.Writer, tl RetrospectiveTimeline, theme style.Theme) error {
+func WriteRetrospectiveTimeline(w io.Writer, tl RetrospectiveTimeline, _ style.Theme) error {
 	var out strings.Builder
 
 	out.WriteString(fmt.Sprintf("HPA Scaling Timeline: %s (%s)  since %s ago\n\n",
-		tl.HPAName, tl.Namespace, formatDuration(time.Since(tl.Since))))
+		tl.HPAName, tl.Namespace, formatDuration(now().Sub(tl.Since))))
 
 	if len(tl.Warnings) > 0 {
 		for _, warn := range tl.Warnings {
@@ -214,9 +214,8 @@ func WriteReplayText(w io.Writer, analysis *ReplayAnalysis, tl RetrospectiveTime
 				}
 			}
 
-			out.WriteString(fmt.Sprintf("  %s-%s %s (%d → %d) — %s%s\n",
-				startStr, endStr, decisionText, c.InputReplicas, c.OutputReplicas,
-				decisionText, stabNote))
+			out.WriteString(fmt.Sprintf("  %s-%s %s (%d → %d)%s\n",
+				startStr, endStr, decisionText, c.InputReplicas, c.OutputReplicas, stabNote))
 
 		}
 		out.WriteString("\n")

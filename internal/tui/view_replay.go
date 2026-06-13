@@ -44,9 +44,10 @@ func (m Model) renderReplayView() string {
 			highCount := 0
 			medCount := 0
 			for _, b := range analysis.Bottlenecks {
-				if b.Severity == "high" {
+				switch b.Severity {
+				case "high":
 					highCount++
-				} else if b.Severity == "medium" {
+				case "medium":
 					medCount++
 				}
 			}

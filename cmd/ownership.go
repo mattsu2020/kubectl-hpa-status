@@ -140,7 +140,7 @@ func replicaOwnershipManagers(entries []metav1.ManagedFieldsEntry) []ownershipMa
 	var managers []ownershipManager
 	seen := map[string]bool{}
 	for _, entry := range entries {
-		if entry.FieldsV1 == nil || !strings.Contains(string(entry.FieldsV1.Raw), "f:replicas") {
+		if entry.FieldsV1 == nil || !strings.Contains(string(entry.FieldsV1.GetRawBytes()), "f:replicas") {
 			continue
 		}
 		key := entry.Manager + "\x00" + string(entry.Operation)

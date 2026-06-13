@@ -39,6 +39,21 @@ func outputLang(lang, output string) string {
 	return ""
 }
 
+// stdinIsTerminal reports whether the given input reader is an interactive
+// terminal. Non-terminal readers (pipes, redirected files, CI logs) cannot
+// safely prompt for confirmation, so callers should require an explicit
+// --yes/-y flag instead of silently accepting or blocking on input.
+func stdinIsTerminal(in io.Reader) bool {
+	if in == nil {
+		return false
+	}
+	file, ok := in.(*os.File)
+	if !ok {
+		return false
+	}
+	return term.IsTerminal(int(file.Fd()))
+}
+
 // i18nLabels is a LabelProvider backed by the internal/i18n locale system.
 type i18nLabels struct {
 	lang string

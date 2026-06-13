@@ -137,19 +137,20 @@ func fixTightTolerance(hpa *autoscalingv2.HorizontalPodAutoscaler) *LintAutoFix 
 
 	behavior := patch["spec"].(map[string]any)["behavior"].(map[string]any)
 
-	if hpa.Spec.Behavior != nil && hpa.Spec.Behavior.ScaleUp != nil && hpa.Spec.Behavior.ScaleUp.Tolerance != nil {
+	switch {
+	case hpa.Spec.Behavior != nil && hpa.Spec.Behavior.ScaleUp != nil && hpa.Spec.Behavior.ScaleUp.Tolerance != nil:
 		currentVal = fmt.Sprintf("%.2f%%", hpa.Spec.Behavior.ScaleUp.Tolerance.AsApproximateFloat64()*100)
 		direction = "scaleUp"
 		behavior["scaleUp"] = map[string]any{
 			"tolerance": "0.1",
 		}
-	} else if hpa.Spec.Behavior != nil && hpa.Spec.Behavior.ScaleDown != nil && hpa.Spec.Behavior.ScaleDown.Tolerance != nil {
+	case hpa.Spec.Behavior != nil && hpa.Spec.Behavior.ScaleDown != nil && hpa.Spec.Behavior.ScaleDown.Tolerance != nil:
 		currentVal = fmt.Sprintf("%.2f%%", hpa.Spec.Behavior.ScaleDown.Tolerance.AsApproximateFloat64()*100)
 		direction = "scaleDown"
 		behavior["scaleDown"] = map[string]any{
 			"tolerance": "0.1",
 		}
-	} else {
+	default:
 		return nil
 	}
 

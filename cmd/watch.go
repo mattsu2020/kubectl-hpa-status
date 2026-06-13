@@ -86,10 +86,6 @@ func runWatch(ctx context.Context, out io.Writer, opts *options, name string, in
 			if source == "" {
 				source = "scaleDown"
 			}
-			confidence := report.Analysis.StabilizationConfidence
-			if confidence == "" {
-				confidence = "medium (API limitation)"
-			}
 			progress := hpaanalysis.FormatStabilizationProgress(
 				report.Analysis.StabilizationRemaining,
 				report.Analysis.StabilizationWindowSeconds,

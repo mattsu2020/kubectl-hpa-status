@@ -108,7 +108,7 @@ func TestAppendBlockerText_NoBlockers(t *testing.T) {
 	}
 
 	var out []byte
-	lbls := DefaultBlockerLabels()
+	lbls := defaultBlockerLabels()
 	AppendBlockerText(&out, report, style.NewTheme(false), lbls)
 
 	output := string(out)
@@ -148,7 +148,7 @@ func TestWrapLines(t *testing.T) {
 }
 
 func TestDefaultBlockerLabels(t *testing.T) {
-	lbls := DefaultBlockerLabels()
+	lbls := defaultBlockerLabels()
 	if lbls.Blockers != "Scale-out blockers" {
 		t.Errorf("expected 'Scale-out blockers', got %q", lbls.Blockers)
 	}

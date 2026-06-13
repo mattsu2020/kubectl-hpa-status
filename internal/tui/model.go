@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,14 +34,12 @@ const (
 	hintsView      // Metric hints troubleshooting
 )
 
-// maxReplicaHistoryPoints is the rolling window size for inline sparklines.
-const maxReplicaHistoryPoints = 15
-
 // Model is the top-level bubbletea model for the TUI dashboard.
 type Model struct {
 	client    kubernetes.Interface
 	namespace string
 	opts      Options
+	ctx       context.Context
 
 	items             []hpaanalysis.ListItem
 	reports           map[string]*hpaanalysis.StatusReport
@@ -292,6 +291,7 @@ func NewModel(client kubernetes.Interface, namespace string, opts Options) Model
 		client:         client,
 		namespace:      namespace,
 		opts:           opts,
+		ctx:            context.Background(),
 		items:          []hpaanalysis.ListItem{},
 		reports:        map[string]*hpaanalysis.StatusReport{},
 		replicaHistory: map[string][]float64{},
@@ -303,6 +303,15 @@ func NewModel(client kubernetes.Interface, namespace string, opts Options) Model
 		loading:        true,
 		selected:       map[string]bool{},
 	}
+}
+
+// WithContext returns a copy of the model bound to ctx. The context is
+// propagated to in-flight background commands (fetch, enrich, audit, apply)
+// so they are cancelled when the TUI exits or its watch deadline elapses,
+// instead of using context.Background() which keeps them running.
+func (m Model) WithContext(ctx context.Context) Model {
+	m.ctx = ctx
+	return m
 }
 
 // Init starts the first data fetch.
@@ -413,15 +422,37 @@ func cmpInt(a, b int) int {
 	return 0
 }
 
+// fetchConfig carries only the fields fetchHPAs needs, so the background
+// command closure captures this small value instead of the full Model (which
+// includes large slices/maps like items, reports, and replicaHistory) on every
+// refresh tick.
+type fetchConfig struct {
+	ctx       context.Context
+	client    kubernetes.Interface
+	namespace string
+	opts      Options
+}
+
+// newFetchConfig snapshots the minimal inputs required by fetchHPAs.
+func (m Model) newFetchConfig() fetchConfig {
+	return fetchConfig{
+		ctx:       m.ctx,
+		client:    m.client,
+		namespace: m.namespace,
+		opts:      m.opts,
+	}
+}
+
 // fetchHPAs fetches all HPA items in the background.
 func fetchHPAs(m Model) tea.Cmd {
+	cfg := m.newFetchConfig()
 	return func() tea.Msg {
-		ns := m.namespace
-		if m.opts.AllNamespaces {
+		ns := cfg.namespace
+		if cfg.opts.AllNamespaces {
 			ns = metav1.NamespaceAll
 		}
 
-		hpas, err := listHPAs(context.Background(), m.client, ns, metav1.ListOptions{}, m.opts.ChunkSize)
+		hpas, err := kube.ListHPAsFromInterface(cfg.ctx, cfg.client, ns, metav1.ListOptions{}, cfg.opts.ChunkSize)
 		if err != nil {
 			return fetchResultMsg{err: err}
 		}
@@ -429,15 +460,15 @@ func fetchHPAs(m Model) tea.Cmd {
 		// Run optional batched KEDA/VPA enrichment.
 		var kedaResults map[string]*hpaanalysis.KEDAAnalysis
 		var vpaResults map[string]*hpaanalysis.VPAConflictInfo
-		if m.opts.EnrichHPAs != nil {
-			kedaResults, vpaResults = m.opts.EnrichHPAs(context.Background(), hpas.Items)
+		if cfg.opts.EnrichHPAs != nil {
+			kedaResults, vpaResults = cfg.opts.EnrichHPAs(cfg.ctx, hpas.Items)
 		}
 
 		items := make([]hpaanalysis.ListItem, 0, len(hpas.Items))
 		reports := make(map[string]*hpaanalysis.StatusReport, len(hpas.Items))
 		for i := range hpas.Items {
 			analysis := hpaanalysis.AnalyzeWithOptions(&hpas.Items[i], true, hpaanalysis.AnalysisOptions{
-				Debug: m.opts.Debug,
+				Debug: cfg.opts.Debug,
 			})
 
 			// Apply enrichment data from batched results.
@@ -453,7 +484,7 @@ func fetchHPAs(m Model) tea.Cmd {
 				}
 			}
 			if analysis.KEDAInfo != nil || analysis.VPAConflict != nil {
-				hpaanalysis.ApplyEnrichmentPenalties(&analysis, m.opts.HealthWeights)
+				hpaanalysis.ApplyEnrichmentPenalties(&analysis, cfg.opts.HealthWeights)
 			}
 
 			item := hpaanalysis.NewListItem(analysis)
@@ -462,26 +493,6 @@ func fetchHPAs(m Model) tea.Cmd {
 		}
 
 		return fetchResultMsg{items: items, reports: reports}
-	}
-}
-
-func listHPAs(ctx context.Context, client kubernetes.Interface, namespace string, opts metav1.ListOptions, chunkSize int64) (*autoscalingv2.HorizontalPodAutoscalerList, error) {
-	if chunkSize <= 0 {
-		return client.AutoscalingV2().HorizontalPodAutoscalers(namespace).List(ctx, opts)
-	}
-	opts.Limit = chunkSize
-	opts.Continue = ""
-	all := &autoscalingv2.HorizontalPodAutoscalerList{}
-	for {
-		page, err := client.AutoscalingV2().HorizontalPodAutoscalers(namespace).List(ctx, opts)
-		if err != nil {
-			return nil, err
-		}
-		all.Items = append(all.Items, page.Items...)
-		if page.Continue == "" {
-			return all, nil
-		}
-		opts.Continue = page.Continue
 	}
 }
 

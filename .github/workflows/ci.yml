@@ -37,9 +37,11 @@ jobs:
         run: |
           TOTAL=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
           echo "Total coverage: ${TOTAL}%"
-          THRESHOLD=70
+          # Regression-prevention gate. Raise toward 70%/80% as coverage improves.
+          THRESHOLD=50
           if [ "$(echo "$TOTAL < $THRESHOLD" | bc -l)" = "1" ]; then
-            echo "::warning::Coverage ${TOTAL}% is below threshold ${THRESHOLD}%"
+            echo "::error::Coverage ${TOTAL}% is below threshold ${THRESHOLD}%"
+            exit 1
           fi
 
       - name: Check README sync
@@ -64,7 +66,7 @@ jobs:
           go-package: ./...
 
       - name: gosec
-        uses: securego/gosec@master
+        uses: securego/gosec@v2.27.1
         with:
           args: ./...
 
@@ -96,6 +98,7 @@ jobs:
           - "1.28"
           - "1.30"
           - "1.35"
+          - "1.36"
         include:
           - kubernetes: "1.26"
             kind-node-image: kindest/node:v1.26.15
@@ -105,6 +108,8 @@ jobs:
             kind-node-image: kindest/node:v1.30.13
           - kubernetes: "1.35"
             kind-node-image: kindest/node:v1.35.0
+          - kubernetes: "1.36"
+            kind-node-image: kindest/node:v1.36.0
     steps:
       - name: Checkout
         uses: actions/checkout@v6

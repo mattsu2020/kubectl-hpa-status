@@ -160,16 +160,16 @@ func estimateBehaviorPath(current, desired int32, scaleUp, scaleDown behaviorDir
 }
 
 func minPositivePeriod(policies []behaviorPolicyOutput) int32 {
-	var min int32
+	var minPeriod int32
 	for _, policy := range policies {
 		if policy.PeriodSeconds <= 0 {
 			continue
 		}
-		if min == 0 || policy.PeriodSeconds < min {
-			min = policy.PeriodSeconds
+		if minPeriod == 0 || policy.PeriodSeconds < minPeriod {
+			minPeriod = policy.PeriodSeconds
 		}
 	}
-	return min
+	return minPeriod
 }
 
 func behaviorStepDelta(replicas int32, rules behaviorDirection, direction int32) int32 {

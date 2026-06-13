@@ -92,11 +92,12 @@ func buildCompatReport(_ context.Context, disco discovery.DiscoveryInterface) co
 		compatCheck("OK", "multiple metrics", "supported by autoscaling/v2"),
 		compatCheck("OK", "containerResource metrics", "stable in Kubernetes v1.30+"),
 	)
-	if minor >= 35 {
+	switch {
+	case minor >= 35:
 		report.Checks = append(report.Checks, compatCheck("OK", "behavior scaleUp/scaleDown tolerance", "available as Kubernetes v1.35+ beta field when feature gate is enabled"))
-	} else if minor > 0 {
+	case minor > 0:
 		report.Checks = append(report.Checks, compatCheck("WARN", "behavior scaleUp/scaleDown tolerance", "requires Kubernetes v1.35+ and HPAConfigurableTolerance"))
-	} else {
+	default:
 		report.Checks = append(report.Checks, compatCheck("WARN", "behavior scaleUp/scaleDown tolerance", "cluster version unknown; requires Kubernetes v1.35+"))
 	}
 	if report.HPAAPI != "autoscaling/v2" {

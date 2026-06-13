@@ -106,16 +106,16 @@ func WriteCapacityPlanText(w io.Writer, plan *CapacityPlan, theme style.Theme) e
 	out = fmt.Appendf(out, "HPA: %s\n", plan.Name)
 	out = fmt.Appendf(out, "replicas: %d / maxReplicas: %d\n\n", plan.CurrentReplicas, plan.MaxReplicas)
 
-	lbls := DefaultCapacityPlanLabels()
+	lbls := defaultCapacityPlanLabels()
 	AppendCapacityPlanText(&out, plan, theme, lbls)
 
 	_, err := w.Write(out)
 	return err
 }
 
-// DefaultCapacityPlanLabels returns English labels for standalone capacity
+// defaultCapacityPlanLabels returns English labels for standalone capacity
 // plan text output.
-func DefaultCapacityPlanLabels() labels {
+func defaultCapacityPlanLabels() labels {
 	return labels{
 		CapacityPlan: "Capacity Plan",
 	}

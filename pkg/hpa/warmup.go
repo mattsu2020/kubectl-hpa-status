@@ -16,7 +16,7 @@ func AnalyzeWarmup(input WarmupInput) *WarmupAnalysis {
 	}
 
 	ratio := effectiveCapacityRatio(input.ReadyPods, input.DesiredReplicas)
-	avg, p95, max := computeTimeToReady(input.PodDetails)
+	avg, p95, maxVal := computeTimeToReady(input.PodDetails)
 	bottlenecks := classifyBottlenecks(input)
 	evidence := buildEvidence(input, bottlenecks, avg, p95)
 	impact := buildImpact(input, ratio)
@@ -36,7 +36,7 @@ func AnalyzeWarmup(input WarmupInput) *WarmupAnalysis {
 		AvailablePods:          input.TargetAvailableReplicas,
 		AvgTimeToReadySeconds:  avg,
 		P95TimeToReadySeconds:  p95,
-		MaxTimeToReadySeconds:  max,
+		MaxTimeToReadySeconds:  maxVal,
 		Bottlenecks:            bottlenecks,
 		Evidence:               evidence,
 		Impact:                 impact,
@@ -69,7 +69,7 @@ func effectiveCapacityRatio(readyPods, desiredReplicas int32) float64 {
 
 // computeTimeToReady calculates avg, p95, and max time-to-ready from pods
 // that have become Ready. Returns 0, 0, 0 if no pods have ready times.
-func computeTimeToReady(details []WarmupPodDetail) (avg, p95, max int64) {
+func computeTimeToReady(details []WarmupPodDetail) (avg, p95, maxVal int64) {
 	var times []int64
 	for _, d := range details {
 		if d.Ready && d.TimeToReadySeconds > 0 {
@@ -85,8 +85,8 @@ func computeTimeToReady(details []WarmupPodDetail) (avg, p95, max int64) {
 	var sum int64
 	for _, t := range times {
 		sum += t
-		if t > max {
-			max = t
+		if t > maxVal {
+			maxVal = t
 		}
 	}
 	avg = sum / int64(len(times))
@@ -100,7 +100,7 @@ func computeTimeToReady(details []WarmupPodDetail) (avg, p95, max int64) {
 	}
 	p95 = times[p95Idx]
 
-	return avg, p95, max
+	return avg, p95, maxVal
 }
 
 // classifyBottlenecks runs classification rules against the input and returns

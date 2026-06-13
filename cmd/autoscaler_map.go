@@ -115,9 +115,10 @@ func assembleAutoscalerMapInput(ctx context.Context, client *kube.Client, opts *
 			podInfos, _ := kube.FetchPodInfosForSelector(ctx, client.Interface, hpa.Namespace, selector)
 			var running, pending, ready int32
 			for _, p := range podInfos {
-				if p.Phase == "Pending" {
+				switch p.Phase {
+				case "Pending":
 					pending++
-				} else if p.Phase == "Running" {
+				case "Running":
 					running++
 				}
 				if p.Ready {
@@ -302,7 +303,7 @@ func fetchAutoscalerMapPDBs(ctx context.Context, client *kube.Client, namespace 
 }
 
 // fetchAutoscalerMapQuotas fetches ResourceQuotas near their limits (ratio >= 0.7).
-func fetchAutoscalerMapQuotas(ctx context.Context, client *kube.Client, namespace string, maxReplicas int32) []hpaanalysis.AutoscalerMapQuota {
+func fetchAutoscalerMapQuotas(ctx context.Context, client *kube.Client, namespace string, _ int32) []hpaanalysis.AutoscalerMapQuota {
 	quotas := kube.FetchAllResourceQuotas(ctx, client.Interface, namespace)
 	if len(quotas) == 0 {
 		return nil

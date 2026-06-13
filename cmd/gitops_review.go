@@ -12,8 +12,6 @@ import (
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/spf13/cobra"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/kubernetes/scheme"
 )
@@ -23,7 +21,7 @@ func newGitOpsReviewCommand(opts *options) *cobra.Command {
 		Use:   "review",
 		Short: "Review HPA manifest changes for risky modifications in PR diffs",
 		Long:  "Compares HPA manifests against best practices and detects risky changes like maxReplicas decreases, removed stabilization, aggressive targets, and metric removals.",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			path, _ := cmd.Flags().GetString("path")
 			if path == "" {
 				return fmt.Errorf("--path is required")
@@ -117,9 +115,4 @@ func runGitOpsReview(ctx context.Context, out io.Writer, opts *options, filePath
 		theme := style.NewTheme(shouldColorize(opts.color, out))
 		return hpaanalysis.WriteGitOpsReviewText(out, review, theme)
 	})
-}
-
-// decoder interface for testing.
-type hpaDecoder interface {
-	Decode(data []byte, defaults *schema.GroupVersionKind, into runtime.Object) (runtime.Object, *schema.GroupVersionKind, error)
 }

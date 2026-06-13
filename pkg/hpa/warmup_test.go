@@ -390,15 +390,15 @@ func TestComputeTimeToReady(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			avg, p95, max := computeTimeToReady(tt.details)
+			avg, p95, maxVal := computeTimeToReady(tt.details)
 			if avg != tt.wantAvg {
 				t.Errorf("avg = %d, want %d", avg, tt.wantAvg)
 			}
 			if p95 != tt.wantP95 {
 				t.Errorf("p95 = %d, want %d", p95, tt.wantP95)
 			}
-			if max != tt.wantMax {
-				t.Errorf("max = %d, want %d", max, tt.wantMax)
+			if maxVal != tt.wantMax {
+				t.Errorf("max = %d, want %d", maxVal, tt.wantMax)
 			}
 		})
 	}

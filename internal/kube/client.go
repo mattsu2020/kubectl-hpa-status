@@ -100,15 +100,23 @@ func NewClient(opts Options, extra ...ClientOption) (*Client, error) {
 // positive. This keeps list/scan memory growth predictable on large clusters
 // while preserving the same returned object shape for existing analyzers.
 func (c *Client) ListHPAs(ctx context.Context, namespace string, opts metav1.ListOptions, chunkSize int64) (*autoscalingv2.HorizontalPodAutoscalerList, error) {
+	return ListHPAsFromInterface(ctx, c.Interface, namespace, opts, chunkSize)
+}
+
+// ListHPAsFromInterface reads HPAs from a raw kubernetes.Interface with the
+// same pagination semantics as Client.ListHPAs. It is the single implementation
+// of the chunked-list logic so callers that hold an Interface (e.g. the TUI)
+// do not need to duplicate it.
+func ListHPAsFromInterface(ctx context.Context, iface kubernetes.Interface, namespace string, opts metav1.ListOptions, chunkSize int64) (*autoscalingv2.HorizontalPodAutoscalerList, error) {
 	if chunkSize <= 0 {
-		return c.Interface.AutoscalingV2().HorizontalPodAutoscalers(namespace).List(ctx, opts)
+		return iface.AutoscalingV2().HorizontalPodAutoscalers(namespace).List(ctx, opts)
 	}
 
 	opts.Limit = chunkSize
 	opts.Continue = ""
 	all := &autoscalingv2.HorizontalPodAutoscalerList{}
 	for {
-		page, err := c.Interface.AutoscalingV2().HorizontalPodAutoscalers(namespace).List(ctx, opts)
+		page, err := iface.AutoscalingV2().HorizontalPodAutoscalers(namespace).List(ctx, opts)
 		if err != nil {
 			return nil, err
 		}

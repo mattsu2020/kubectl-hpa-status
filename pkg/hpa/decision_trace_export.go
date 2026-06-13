@@ -135,7 +135,7 @@ func resolveStructuredWinner(a Analysis, metrics []StructuredMetricTrace) (strin
 
 // computeEstimatedRawDesired returns the largest estimated desired replica count
 // from the per-metric traces.
-func computeEstimatedRawDesired(metrics []StructuredMetricTrace, currentReplicas int32) int32 {
+func computeEstimatedRawDesired(metrics []StructuredMetricTrace, _ int32) int32 {
 	var maxDesired int32
 	for _, m := range metrics {
 		if m.EstimatedDesiredReplicas != nil && *m.EstimatedDesiredReplicas > maxDesired {
@@ -225,7 +225,7 @@ func buildStructuredStabilizationTrace(hpa *autoscalingv2.HorizontalPodAutoscale
 }
 
 // buildStructuredDecisionPath creates the ordered list of evaluation steps.
-func buildStructuredDecisionPath(trace *StructuredDecisionTrace, hpa *autoscalingv2.HorizontalPodAutoscaler) []DecisionStep {
+func buildStructuredDecisionPath(trace *StructuredDecisionTrace, _ *autoscalingv2.HorizontalPodAutoscaler) []DecisionStep {
 	var steps []DecisionStep
 	stepNum := 1
 

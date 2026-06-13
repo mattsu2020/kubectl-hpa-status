@@ -330,9 +330,7 @@ func buildAssumptionsSummary(ca *ControllerAssumptions) string {
 func buildAssumptionsWarnings(ca *ControllerAssumptions) []string {
 	var warnings []string
 
-	if ca.CPUInitializationPeriod.Source == "overridden" || ca.CPUInitializationPeriod.Source == "hpa.spec" {
-		// No warning — value is explicitly known.
-	} else if ca.CPUInitializationPeriod.Confidence == "low" {
+	if ca.CPUInitializationPeriod.Source != "overridden" && ca.CPUInitializationPeriod.Source != "hpa.spec" && ca.CPUInitializationPeriod.Confidence == "low" {
 		warnings = append(warnings, "CPU metrics from recently started pods may be ignored.")
 	}
 
@@ -340,9 +338,7 @@ func buildAssumptionsWarnings(ca *ControllerAssumptions) []string {
 		warnings = append(warnings, "Ratio within 10% of target may not trigger scaling.")
 	}
 
-	if ca.InitialReadinessDelay.Source == "overridden" || ca.InitialReadinessDelay.Source == "hpa.spec" {
-		// No warning — value is explicitly known.
-	} else if ca.InitialReadinessDelay.Confidence == "low" {
+	if ca.InitialReadinessDelay.Source != "overridden" && ca.InitialReadinessDelay.Source != "hpa.spec" && ca.InitialReadinessDelay.Confidence == "low" {
 		warnings = append(warnings, "Pods becoming ready shortly after start may not be counted.")
 	}
 

@@ -3,8 +3,6 @@ package tui
 import (
 	"fmt"
 	"strings"
-
-	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
 
 // renderHintsView renders the metric hints troubleshooting flow for the
@@ -114,24 +112,4 @@ func severityBadge(severity string) string {
 	default:
 		return dimStyle.Render("●")
 	}
-}
-
-// renderHintsText renders a plain-text troubleshooting section for the
-// StatusReport text output. This is used by the non-TUI text renderer.
-func renderHintsText(flows []hpaanalysis.MetricHintTroubleshooting) string {
-	if len(flows) == 0 {
-		return ""
-	}
-	var sb strings.Builder
-	sb.WriteString("Metric Troubleshooting:\n")
-	for _, flow := range flows {
-		sb.WriteString(fmt.Sprintf("  [%s] %s (%s/%s)\n", flow.Severity, flow.Title, flow.MetricType, flow.MetricName))
-		for _, step := range flow.Steps {
-			sb.WriteString(fmt.Sprintf("    %d. %s\n", step.StepNumber, step.Description))
-			if step.Command != "" {
-				sb.WriteString(fmt.Sprintf("       $ %s\n", step.Command))
-			}
-		}
-	}
-	return sb.String()
 }

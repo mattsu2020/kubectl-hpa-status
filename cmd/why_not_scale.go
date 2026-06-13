@@ -232,7 +232,7 @@ func appendMissingMetricDampeningEstimate(estimated []string, a hpaanalysis.Anal
 	return estimated
 }
 
-func whyNotScaleUnknown(a hpaanalysis.Analysis) []string {
+func whyNotScaleUnknown(_ hpaanalysis.Analysis) []string {
 	unknown := []string{
 		"controller-internal per-metric replica recommendations are not exposed by the HPA API",
 		"exact missing-metric dampening is not exposed by Kubernetes API",
@@ -337,18 +337,18 @@ func whyNotScaleNextChecks(a hpaanalysis.Analysis) []string {
 func writeWhyNotScaleText(out io.Writer, reports []whyNotScaleReport) {
 	for i, report := range reports {
 		if i > 0 {
-			fmt.Fprintln(out)
+			_, _ = fmt.Fprintln(out)
 		}
-		fmt.Fprintf(out, "Why not scale: %s/%s\n", report.Namespace, report.Name)
-		fmt.Fprintf(out, "Summary: %s\n\n", report.Summary)
+		_, _ = fmt.Fprintf(out, "Why not scale: %s/%s\n", report.Namespace, report.Name)
+		_, _ = fmt.Fprintf(out, "Summary: %s\n\n", report.Summary)
 		writeWhySection(out, "Observed", report.Observed)
 		writeWhySection(out, "Possible blockers", report.PossibleBlockers)
 		writeWhySection(out, "Estimated", report.Estimated)
 		writeWhySection(out, "Unknown", report.Unknown)
 		if len(report.NextChecks) > 0 {
-			fmt.Fprintln(out, "Next checks:")
+			_, _ = fmt.Fprintln(out, "Next checks:")
 			for _, check := range report.NextChecks {
-				fmt.Fprintf(out, "  %s\n", check)
+				_, _ = fmt.Fprintf(out, "  %s\n", check)
 			}
 		}
 	}
@@ -358,9 +358,9 @@ func writeWhySection(out io.Writer, title string, items []string) {
 	if len(items) == 0 {
 		return
 	}
-	fmt.Fprintf(out, "%s:\n", title)
+	_, _ = fmt.Fprintf(out, "%s:\n", title)
 	for _, item := range items {
-		fmt.Fprintf(out, "  - %s\n", item)
+		_, _ = fmt.Fprintf(out, "  - %s\n", item)
 	}
-	fmt.Fprintln(out)
+	_, _ = fmt.Fprintln(out)
 }
