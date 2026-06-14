@@ -163,6 +163,43 @@ func correlateStabilizationChurn(a Analysis) Analysis {
 	return a
 }
 
+// FinalizeAnalysis applies post-enrichment derivations that depend on fields
+// populated after the initial AnalyzeWithOptions pass. ChurnAnalysis, for
+// example, is built from Events in the cmd layer, so the stabilization/churn
+// correlation cannot run inside AnalyzeWithOptions (where ChurnAnalysis is
+// still nil). Call this once all enrichment is complete.
+func FinalizeAnalysis(a Analysis) Analysis {
+	a = collectAssumptions(a)
+	return correlateStabilizationChurn(a)
+}
+
+// collectAssumptions records the inferred values and estimates the analysis
+// relies on, with their source and confidence. This makes the tool's built-in
+// assumptions visible in structured output so operators (and future
+// KEP-based controller config reads) can distinguish measured vs assumed.
+func collectAssumptions(a Analysis) Analysis {
+	assumptions := a.Assumptions
+	if assumptions == nil {
+		assumptions = []Assumption{}
+	}
+	assumptions = append(assumptions, Assumption{
+		Name:       "tolerance",
+		Value:      "0.1",
+		Source:     "assumed-controller-default",
+		Confidence: "medium",
+	})
+	if a.StabilizationRemaining != nil && *a.StabilizationRemaining > 0 {
+		assumptions = append(assumptions, Assumption{
+			Name:       "stabilizationRemaining",
+			Value:      fmt.Sprintf("%ds", *a.StabilizationRemaining),
+			Source:     "lastScaleTimeApproximation",
+			Confidence: "low",
+		})
+	}
+	a.Assumptions = assumptions
+	return a
+}
+
 // attachDebug adds verbose debug lines when enabled.
 func attachDebug(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler, opts AnalysisOptions) Analysis {
 	if !opts.Debug {

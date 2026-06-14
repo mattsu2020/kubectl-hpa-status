@@ -299,6 +299,10 @@ func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, 
 	enrichVPAAdvisory(hpa, &report)
 	enrichMetricHints(opts, hpa, &report)
 	enrichAdvisors(ctx, opts, client, hpa, &report)
+	// Finalize post-enrichment derivations (e.g. stabilization/churn
+	// correlation) that depend on fields populated above. Must run before the
+	// health snapshot is recorded so trend history reflects the final state.
+	report.Analysis = hpaanalysis.FinalizeAnalysis(report.Analysis)
 	recordHealthSnapshotAndTrend(ctx, opts, hpa, &report)
 
 	return report, nil
@@ -572,6 +576,12 @@ func enrichAdvisors(ctx context.Context, opts *options, client *kube.Client, hpa
 }
 
 func recordHealthSnapshotAndTrend(_ context.Context, opts *options, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
+	// History recording is an explicit opt-in side effect: without --trend we
+	// do not touch the local health store, so plain `status` runs (and CI) stay
+	// free of unexpected local file writes.
+	if !opts.trend {
+		return
+	}
 	store, storeErr := history.NewHealthStore()
 	if storeErr != nil {
 		return
@@ -587,9 +597,6 @@ func recordHealthSnapshotAndTrend(_ context.Context, opts *options, hpa *autosca
 	_ = store.Append(hpa.Namespace, hpa.Name, snapshot)
 	_ = store.Prune(hpa.Namespace, hpa.Name, opts.trendRetain)
 
-	if !opts.trend {
-		return
-	}
 	snapshots, loadErr := store.Load(hpa.Namespace, hpa.Name, opts.trendSince)
 	if loadErr == nil && len(snapshots) > 0 {
 		trend := hpaanalysis.AnalyzeHealthTrend(snapshots)

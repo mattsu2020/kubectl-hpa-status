@@ -35,14 +35,22 @@ jobs:
 
       - name: Check coverage threshold
         run: |
+          # Tiered regression gates: the core analysis package (pkg/hpa) is held
+          # to a higher bar than cmd/ (which has thinner integration coverage).
+          # Raise these as coverage improves.
+          func_avg() { go tool cover -func=coverage.out | awk -v p="$1" '$0 ~ p {gsub("%","",$3); s+=$3; n++} END {if(n>0) printf "%.1f", s/n; else print 0}'; }
+          check() {
+            name="$1"; val="$2"; threshold="$3"
+            echo "$name coverage: ${val}% (threshold ${threshold}%)"
+            if [ "$(echo "$val < $threshold" | bc -l)" = "1" ]; then
+              echo "::error::$name coverage ${val}% is below ${threshold}%"
+              exit 1
+            fi
+          }
           TOTAL=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
-          echo "Total coverage: ${TOTAL}%"
-          # Regression-prevention gate. Raise toward 70%/80% as coverage improves.
-          THRESHOLD=50
-          if [ "$(echo "$TOTAL < $THRESHOLD" | bc -l)" = "1" ]; then
-            echo "::error::Coverage ${TOTAL}% is below threshold ${THRESHOLD}%"
-            exit 1
-          fi
+          check "Total" "$TOTAL" 50
+          check "pkg/hpa" "$(func_avg '/pkg/hpa/')" 60
+          check "cmd" "$(func_avg '/cmd/')" 45
 
       - name: Check README sync
         run: bash scripts/check-readme-sync.sh
@@ -86,7 +94,7 @@ jobs:
       - name: Lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: latest
+          version: v2.12.2
 
   e2e:
     runs-on: ubuntu-latest

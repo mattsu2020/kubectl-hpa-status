@@ -39,6 +39,7 @@ func registerStatusFlags(cmd *cobra.Command, opts *options) {
 	cmd.PersistentFlags().BoolVar(&opts.apply, "apply", false, "run suggested HPA spec patch workflow")
 	cmd.PersistentFlags().BoolVar(&opts.dryRun, "dry-run", opts.dryRun, "use server-side dry-run for --apply; set --dry-run=false to persist changes")
 	cmd.PersistentFlags().BoolVarP(&opts.yes, "yes", "y", false, "skip confirmation when used with --apply")
+	cmd.PersistentFlags().BoolVar(&opts.allowPartial, "allow-partial", false, "allow sequential (non-atomic) apply when patches cannot be merged; may leave the HPA partially modified")
 	cmd.PersistentFlags().StringArrayVar(&opts.healthWeightOverrides, "health-weight", nil, "override a health score penalty, for example scalingInactive=50; repeatable")
 	cmd.PersistentFlags().BoolVar(&opts.recommend, "recommend", false, "alias for --suggest")
 	cmd.PersistentFlags().BoolVar(&opts.noInterpret, "no-interpret", false, "omit interpretation and show raw status-derived data")

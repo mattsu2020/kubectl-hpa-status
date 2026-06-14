@@ -78,7 +78,7 @@ func applySuggestionsInNamespace(ctx context.Context, out io.Writer, opts *optio
 		}
 	}
 
-	return executePatches(ctx, out, client, namespace, name, patches)
+	return executePatches(ctx, out, client, namespace, name, patches, opts.allowPartial)
 }
 
 func guardPatches(out io.Writer, opts *options, current *autoscalingv2.HorizontalPodAutoscaler, patches []hpaanalysis.Suggestion) ([]hpaanalysis.Suggestion, error) {
@@ -176,13 +176,20 @@ func confirmApply(out io.Writer, opts *options, count int, namespace, name strin
 	return nil
 }
 
-func executePatches(ctx context.Context, out io.Writer, client *kube.Client, namespace, name string, patches []hpaanalysis.Suggestion) ([]string, error) {
+func executePatches(ctx context.Context, out io.Writer, client *kube.Client, namespace, name string, patches []hpaanalysis.Suggestion, allowPartial bool) ([]string, error) {
 	patchItems := make([]patch.Patch, len(patches))
 	for i, s := range patches {
 		patchItems[i] = patch.Patch{Title: s.Title, JSON: s.Patch}
 	}
 	merged, mergeErr := patch.MergePatches(patchItems)
 	if mergeErr == nil {
+		// Validate the merged patch with a server-side dry-run before applying,
+		// so an invalid merge is rejected without touching the HPA.
+		if _, err := client.Interface.AutoscalingV2().
+			HorizontalPodAutoscalers(namespace).
+			Patch(ctx, name, types.MergePatchType, []byte(merged), metav1.PatchOptions{DryRun: []string{"All"}}); err != nil {
+			return nil, fmt.Errorf("merged patch failed server-side dry-run validation: %w", err)
+		}
 		// Single merged patch — atomic application.
 		_, err := client.Interface.AutoscalingV2().
 			HorizontalPodAutoscalers(namespace).
@@ -197,9 +204,13 @@ func executePatches(ctx context.Context, out io.Writer, client *kube.Client, nam
 		return applied, nil
 	}
 
-	// Merge failed: fall back to sequential application. This is no longer
-	// atomic — a failure mid-way leaves the HPA in a partially-patched state.
-	// Warn explicitly so the operator knows to inspect the resource manually.
+	// Merge failed: refuse unless the operator explicitly opted into a
+	// non-atomic sequential apply. Without --allow-partial we return an error
+	// so a merge failure can never silently leave the HPA partially modified.
+	if !allowPartial {
+		return nil, fmt.Errorf("patches could not be merged into one atomic patch (%v); pass --allow-partial to apply them sequentially at the risk of a partial modification", mergeErr)
+	}
+
 	_, _ = fmt.Fprintf(out, "WARNING: patches could not be merged (%v); falling back to sequential, non-atomic apply.\n", mergeErr)
 	_, _ = fmt.Fprintf(out, "WARNING: if a later patch fails, the HPA %s/%s will be left partially modified — inspect it with `kubectl describe hpa %s -n %s` and reconcile manually.\n", namespace, name, name, namespace)
 

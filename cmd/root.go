@@ -54,6 +54,7 @@ type statusOptions struct {
 	diff                  bool
 	dryRun                bool
 	yes                   bool
+	allowPartial          bool
 	keda                  bool
 	vpa                   bool
 	healthWeightOverrides []string

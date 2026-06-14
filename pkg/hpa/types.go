@@ -249,6 +249,10 @@ type Analysis struct {
 	// AdapterDiagnostics holds custom/external metrics adapter diagnostics.
 	// Populated when --adapter-diagnostics is enabled.
 	AdapterDiagnostics *AdapterDiagnosticsReport `json:"adapterDiagnostics,omitempty" yaml:"adapterDiagnostics,omitempty"`
+	// Assumptions documents inferred/estimated values the analysis relies on
+	// (tolerance, stabilizationRemaining, ...), each with its derivation source
+	// and a confidence label so consumers can judge reliability.
+	Assumptions []Assumption `json:"assumptions,omitempty" yaml:"assumptions,omitempty"`
 }
 
 // HiddenDecisionFactor describes a partially visible HPA decision input such

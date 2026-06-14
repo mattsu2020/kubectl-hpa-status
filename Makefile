@@ -13,6 +13,19 @@ build:
 test:
 	$(GO) test ./...
 
+.PHONY: test-race
+test-race:
+	$(GO) test -race ./...
+
+.PHONY: ci
+ci: build vet lint test docs-check
+	@echo "local CI checks passed"
+
+.PHONY: tidy
+tidy:
+	$(GO) mod tidy
+	@git diff --exit-code go.mod go.sum || (echo "go.mod/go.sum not tidy; run 'go mod tidy' and commit" && exit 1)
+
 .PHONY: coverage
 coverage:
 	$(GO) test -coverprofile=$(COVERAGE_OUT) ./...
