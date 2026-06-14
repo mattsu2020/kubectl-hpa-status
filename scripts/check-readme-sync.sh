@@ -73,4 +73,25 @@ for link in "${required_links[@]}"; do
   fi
 done
 
+# Core subcommands must still be referenced in both READMEs so removals or
+# renames do not silently leave the docs stale. Only commands documented in
+# the Representative Commands / Quick Start sections are enforced.
+required_command_refs=(
+  "hpa_status status"
+  "hpa_status list"
+  "hpa_status doctor"
+)
+
+for ref in "${required_command_refs[@]}"; do
+  if ! grep -Fq "$ref" "$en_file"; then
+    echo "$en_file is missing command reference: $ref" >&2
+    exit 1
+  fi
+
+  if ! grep -Fq "$ref" "$ja_file"; then
+    echo "$ja_file is missing command reference: $ref" >&2
+    exit 1
+  fi
+done
+
 echo "README sync check passed: $en_file and $ja_file"

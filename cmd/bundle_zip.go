@@ -26,7 +26,10 @@ func writeBundleZip(data *bundleData, outputPath string) error {
 	zw := zip.NewWriter(file)
 	defer func() { _ = zw.Close() }()
 
-	entries := buildBundleZipEntries(data)
+	entries, err := buildBundleZipEntries(data)
+	if err != nil {
+		return err
+	}
 
 	for _, entry := range entries {
 		if len(entry.Content) == 0 {
@@ -44,10 +47,12 @@ func writeBundleZip(data *bundleData, outputPath string) error {
 	return nil
 }
 
-func buildBundleZipEntries(data *bundleData) []bundleZipEntry {
+func buildBundleZipEntries(data *bundleData) ([]bundleZipEntry, error) {
 	// Build the markdown report for inclusion in the zip.
 	var mdBuf bytes.Buffer
-	writeBundleMarkdown(&mdBuf, data)
+	if err := writeBundleMarkdown(&mdBuf, data); err != nil {
+		return nil, fmt.Errorf("rendering bundle markdown: %w", err)
+	}
 
 	entries := []bundleZipEntry{
 		{"report.md", mdBuf.Bytes()},
@@ -85,7 +90,7 @@ func buildBundleZipEntries(data *bundleData) []bundleZipEntry {
 		)),
 	})
 
-	return entries
+	return entries, nil
 }
 
 // appendJSONEntry marshals value as pretty JSON and appends it under name when

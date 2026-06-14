@@ -275,7 +275,9 @@ func redactBundleData(data *bundleData) {
 // redactBytes to catch any remaining sensitive data from the StatusReport.
 func writeBundleMarkdownFile(data *bundleData, outputPath string, redact bool) error {
 	var buf bytes.Buffer
-	writeBundleMarkdown(&buf, data)
+	if err := writeBundleMarkdown(&buf, data); err != nil {
+		return fmt.Errorf("rendering bundle markdown: %w", err)
+	}
 
 	content := buf.Bytes()
 	if redact {

@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"io"
-	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -18,14 +17,12 @@ func newIncidentBundleCommand(opts *options) *cobra.Command {
 			format, _ := cmd.Flags().GetString("format")
 			output, _ := cmd.Flags().GetString("output")
 			redact, _ := cmd.Flags().GetBool("redact")
-			_, _ = cmd.Flags().GetDuration("since")
 			return runIncidentBundle(cmd.Context(), cmd.OutOrStdout(), opts, args[0], format, output, redact)
 		},
 	}
 	cmd.Flags().String("format", "zip", "output format: markdown or zip")
 	cmd.Flags().StringP("output", "o", "", "output file path")
 	cmd.Flags().Bool("redact", false, "redact sensitive information")
-	cmd.Flags().Duration("since", 30*time.Minute, "lookback window to document in the incident bundle")
 	return cmd
 }
 

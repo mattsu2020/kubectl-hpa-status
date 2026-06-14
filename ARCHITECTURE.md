@@ -23,34 +23,49 @@ Inference should be labeled with confidence language and covered by tests.
 
 | Path | Responsibility |
 | --- | --- |
-| `cmd/` | Cobra commands, flags, Kubernetes client orchestration, output format routing |
-| `internal/kube/` | kubeconfig resolution, client construction, test helpers |
-| `internal/style/` | terminal color and semantic styling |
-| `pkg/hpa/analysis.go` | HPA signal extraction, summaries, interpretation, health scoring |
-| `pkg/hpa/suggestions.go` | safe patch suggestion generation |
-| `pkg/hpa/text.go` | human-readable status, list, and watch output |
-| `pkg/hpa/events.go` | recent Event lookup and formatting |
+| `cmd/` | Cobra commands, flags, Kubernetes client orchestration, output format routing (~70 files, one feature/subcommand per file) |
+| `pkg/hpa/` | Importable analysis model: HPA signal extraction, health scoring, suggestions, diagnostics, and text/Markdown/HTML/SARIF rendering |
+| `internal/kube/` | kubeconfig resolution, client construction, KEDA/VPA/node/quota reads, scale-target and pod info, test helpers |
+| `internal/enrichment/` | Batched KEDA/VPA enrichment context and status tracking |
+| `internal/tui/` | Bubble Tea dashboard: model/update/view plus a per-view renderer |
+| `internal/history/` | Health snapshot store for trend/sparkline replay |
+| `internal/i18n/` | Embedded locale bundles (en/ja), dynamically loaded from `locales/` |
+| `internal/style/` | Terminal color and semantic styling |
+| `internal/patch/` | Strategic merge patch helpers for suggestions |
 | `test/e2e/` | kind-backed command path tests |
+
+`pkg/hpa/` files follow a per-domain suffix convention: `analysis.go`
++ `analysis_phases.go` drive `Analyze`/`AnalyzeWithOptions`; each domain
+(`audit`, `capacity`, `gitops`, `simulate`, `health`, `metric`, `blocker`,
+`retrospective`, `warmup`, ...) is split across `_types` (data), `_rules`
+(detection logic), and `_text` (rendering) files. `clock.go` injects `now`
+for deterministic rendering; `report.go` emits Markdown/HTML incident reports.
 
 ### cmd/ file responsibilities
 
-| File | Purpose |
-| --- | --- |
-| `root.go` | Root command, flag definitions, config file parsing, shared `options` struct |
-| `status.go` | `status` and `analyze` (deprecated) subcommands, HPA fetch, KEDA/VPA enrichment |
-| `list.go` | `list`/`scan` subcommands, sort/filter logic |
-| `apply.go` | `--apply` suggestion workflow with confirmation and patch diff |
-| `watch.go` | Polling watch loop for status and list |
-| `tui.go` | Bubble Tea interactive TUI dashboard |
-| `output.go` | Format routing (JSON, YAML, jsonpath, template, prometheus), config loading |
-| `helpers.go` | `eventOption` type for `--events` flag |
-| `exitcode.go` | Exit code constants for script integration |
-| `completion.go` | Shell completion generation and HPA name completion |
+Each subcommand is one file exposing a `newXxxCommand(opts *options)`
+constructor. Major commands grouped by area:
 
-Potential refactoring notes:
-- `output.go` handles both format routing and config loading. Config loading could move to a dedicated `config.go`.
-- `status.go` is the largest file and handles KEDA/VPA enrichment. Enrichment helpers could move to `internal/kube/`.
-- The `options` struct in `root.go` is shared across all commands. As flags grow, consider splitting into per-command option structs.
+| Area | Commands |
+| --- | --- |
+| Status & diagnosis | `status`, `explain`, `doctor`, `analyze`, `assumptions`, `why_not_scale`, `readiness`, `readiness_doctor` |
+| Cluster overview | `list`, `scan`, `fleet`, `watch`, `tui`, `compare` |
+| Deep analysis | `timeline`, `trace`, `path`, `replay_lab`, `simulate*`, `metrics_probe`, `metrics_contract`, `metrics_freshness` |
+| Recommendations | `recommend`, `advisor`, `container_advisor`, `capacity*`, `profile`, `tune`, `slo` |
+| Lint & policy | `lint`, `policy`, `gitops_lint`, `gitops_review`, `blockers`, `conflicts` |
+| Bundles & export | `bundle*`, `incident_bundle`, `support_bundle`, `snapshot`, `export*`, `ai_context` |
+| Plumbing | `root`, `output`, `config`, `config_apply`, `helpers`, `exitcode`, `completion` |
+
+Refactoring notes:
+- `status.go` was split into per-enrichment helpers (`enrichXxx` functions
+  extracted from `buildStatusReport`); KEDA/VPA data fetching still lives in
+  `internal/kube/`.
+- `output.go` handles format routing; config loading lives in `config.go` /
+  `config_apply.go`.
+- The `options` struct in `root.go` is shared across all commands. Per-command
+  option splits and `cmd/` sub-packages are deferred: shared types/helpers
+  create import-cycle risk, so prefer adding fields over splitting until a
+  dedicated interface boundary is designed.
 
 `pkg/hpa` is kept importable so downstream tools can reuse the analysis model
 without depending on Cobra command wiring.
