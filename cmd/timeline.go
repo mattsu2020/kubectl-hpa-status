@@ -118,42 +118,13 @@ func newReplayCommand(opts *options) *cobra.Command {
 				candidates = append([]string{propose}, candidates...)
 			}
 			if replayHPA != "" {
-				if len(args) != 1 {
-					return fmt.Errorf("replay --hpa requires a record FILE argument")
-				}
-				if compare != "" && compare != "current,candidate" {
-					return fmt.Errorf("unsupported --compare %q (use current,candidate)", compare)
-				}
-				overrides, err := parseSimulateOverrides(setOverrides)
-				if err != nil {
-					return err
-				}
-				addReplayShortcutOverrides(overrides, setMaxReplicas, setMinReplicas, setScaleDownStabilization, setCPUTarget, setMemoryTarget)
-				return runReplayPolicyLab(cmd.OutOrStdout(), opts, replayHPA, args[0], candidates, overrides, score)
+				return runReplayWithHPA(cmd.OutOrStdout(), opts, replayHPA, args, candidates, setOverrides, setMaxReplicas, setMinReplicas, setScaleDownStabilization, setCPUTarget, setMemoryTarget, compare, score)
 			}
 			if fromRecord != "" {
-				if len(args) != 1 {
-					return fmt.Errorf("replay --from-record requires an HPA name")
-				}
-				if compare != "" && compare != "current,candidate" {
-					return fmt.Errorf("unsupported --compare %q (use current,candidate)", compare)
-				}
-				overrides, err := parseSimulateOverrides(setOverrides)
-				if err != nil {
-					return err
-				}
-				return runReplayPolicyLab(cmd.OutOrStdout(), opts, args[0], fromRecord, candidates, overrides, score)
+				return runReplayWithFromRecord(cmd.OutOrStdout(), opts, fromRecord, args, candidates, setOverrides, compare, score)
 			}
 			if len(candidates) > 0 || score != "" {
-				if len(args) != 1 {
-					return fmt.Errorf("replay with --candidate or --score requires a record FILE argument")
-				}
-				overrides, err := parseSimulateOverrides(setOverrides)
-				if err != nil {
-					return err
-				}
-				addReplayShortcutOverrides(overrides, setMaxReplicas, setMinReplicas, setScaleDownStabilization, setCPUTarget, setMemoryTarget)
-				return runReplayPolicyLab(cmd.OutOrStdout(), opts, replayHPA, args[0], candidates, overrides, score)
+				return runReplayWithCandidateOrScore(cmd.OutOrStdout(), opts, replayHPA, args, candidates, setOverrides, setMaxReplicas, setMinReplicas, setScaleDownStabilization, setCPUTarget, setMemoryTarget, score)
 			}
 			if len(args) != 1 {
 				return fmt.Errorf("replay requires FILE, or NAME with --from-record")
@@ -174,6 +145,50 @@ func newReplayCommand(opts *options) *cobra.Command {
 	cmd.Flags().Int32Var(&setCPUTarget, "set-cpu-target", 0, "candidate CPU averageUtilization target percentage (reported as an estimated limitation when raw metrics are unavailable)")
 	cmd.Flags().Int32Var(&setMemoryTarget, "set-memory-target", 0, "candidate memory averageUtilization target percentage (reported as an estimated limitation when raw metrics are unavailable)")
 	return cmd
+}
+
+// runReplayWithHPA handles the `replay --hpa NAME FILE` form.
+func runReplayWithHPA(out io.Writer, opts *options, replayHPA string, args []string, candidates, setOverrides []string, setMaxReplicas, setMinReplicas int32, setScaleDownStabilization time.Duration, setCPUTarget, setMemoryTarget int32, compare, score string) error {
+	if len(args) != 1 {
+		return fmt.Errorf("replay --hpa requires a record FILE argument")
+	}
+	if compare != "" && compare != "current,candidate" {
+		return fmt.Errorf("unsupported --compare %q (use current,candidate)", compare)
+	}
+	overrides, err := parseSimulateOverrides(setOverrides)
+	if err != nil {
+		return err
+	}
+	addReplayShortcutOverrides(overrides, setMaxReplicas, setMinReplicas, setScaleDownStabilization, setCPUTarget, setMemoryTarget)
+	return runReplayPolicyLab(out, opts, replayHPA, args[0], candidates, overrides, score)
+}
+
+// runReplayWithFromRecord handles the `replay --from-record FILE NAME` form.
+func runReplayWithFromRecord(out io.Writer, opts *options, fromRecord string, args []string, candidates, setOverrides []string, compare, score string) error {
+	if len(args) != 1 {
+		return fmt.Errorf("replay --from-record requires an HPA name")
+	}
+	if compare != "" && compare != "current,candidate" {
+		return fmt.Errorf("unsupported --compare %q (use current,candidate)", compare)
+	}
+	overrides, err := parseSimulateOverrides(setOverrides)
+	if err != nil {
+		return err
+	}
+	return runReplayPolicyLab(out, opts, args[0], fromRecord, candidates, overrides, score)
+}
+
+// runReplayWithCandidateOrScore handles the `replay --candidate/--score FILE` form.
+func runReplayWithCandidateOrScore(out io.Writer, opts *options, replayHPA string, args []string, candidates, setOverrides []string, setMaxReplicas, setMinReplicas int32, setScaleDownStabilization time.Duration, setCPUTarget, setMemoryTarget int32, score string) error {
+	if len(args) != 1 {
+		return fmt.Errorf("replay with --candidate or --score requires a record FILE argument")
+	}
+	overrides, err := parseSimulateOverrides(setOverrides)
+	if err != nil {
+		return err
+	}
+	addReplayShortcutOverrides(overrides, setMaxReplicas, setMinReplicas, setScaleDownStabilization, setCPUTarget, setMemoryTarget)
+	return runReplayPolicyLab(out, opts, replayHPA, args[0], candidates, overrides, score)
 }
 
 func addReplayShortcutOverrides(overrides map[string]string, maxReplicas, minReplicas int32, stabilization time.Duration, cpuTarget, memoryTarget int32) {
@@ -232,29 +247,37 @@ func runRetrospectiveTimeline(ctx context.Context, out io.Writer, opts *options,
 
 	// Replay mode rendering.
 	if replay && replayAnalysis != nil {
-		switch format {
-		case "json":
-			encoder := json.NewEncoder(out)
-			encoder.SetIndent("", "  ")
-			return encoder.Encode(replayAnalysis)
-		case "yaml":
-			data, marshalErr := yaml.Marshal(replayAnalysis)
-			if marshalErr != nil {
-				return marshalErr
-			}
-			_, err = out.Write(data)
-			return err
-		case "markdown", "md":
-			return hpaanalysis.WriteReplayMarkdown(out, replayAnalysis, tl)
-		case "html":
-			return hpaanalysis.WriteReplayHTML(out, replayAnalysis, tl)
-		default:
-			theme := style.NewTheme(shouldColorize(opts.color, out))
-			return hpaanalysis.WriteReplayText(out, replayAnalysis, tl, theme)
-		}
+		return renderRetrospectiveReplay(out, replayAnalysis, tl, format, opts)
 	}
 
 	// Normal retrospective rendering.
+	return renderRetrospective(out, tl, format, opts)
+}
+
+func renderRetrospectiveReplay(out io.Writer, replayAnalysis *hpaanalysis.ReplayAnalysis, tl hpaanalysis.RetrospectiveTimeline, format string, opts *options) error {
+	switch format {
+	case "json":
+		encoder := json.NewEncoder(out)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(replayAnalysis)
+	case "yaml":
+		data, marshalErr := yaml.Marshal(replayAnalysis)
+		if marshalErr != nil {
+			return marshalErr
+		}
+		_, err := out.Write(data)
+		return err
+	case "markdown", "md":
+		return hpaanalysis.WriteReplayMarkdown(out, replayAnalysis, tl)
+	case "html":
+		return hpaanalysis.WriteReplayHTML(out, replayAnalysis, tl)
+	default:
+		theme := style.NewTheme(shouldColorize(opts.color, out))
+		return hpaanalysis.WriteReplayText(out, replayAnalysis, tl, theme)
+	}
+}
+
+func renderRetrospective(out io.Writer, tl hpaanalysis.RetrospectiveTimeline, format string, opts *options) error {
 	switch format {
 	case "json":
 		encoder := json.NewEncoder(out)
@@ -265,7 +288,7 @@ func runRetrospectiveTimeline(ctx context.Context, out io.Writer, opts *options,
 		if marshalErr != nil {
 			return marshalErr
 		}
-		_, err = out.Write(data)
+		_, err := out.Write(data)
 		return err
 	case "markdown", "md":
 		return hpaanalysis.WriteRetrospectiveMarkdown(out, tl)

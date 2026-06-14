@@ -49,49 +49,20 @@ func runWatch(ctx context.Context, out io.Writer, opts *options, name string, in
 
 	var previous *hpaanalysis.Analysis
 	for {
-		if clearScreen := theme.ScreenClear(); clearScreen != "" {
-			if _, err := out.Write([]byte(clearScreen)); err != nil {
-				return err
-			}
-		} else {
-			if _, err := fmt.Fprintf(out, "Updated: %s\n\n", time.Now().Format(time.RFC3339)); err != nil {
-				return err
-			}
+		if err := clearWatchScreen(out, theme); err != nil {
+			return err
 		}
 
 		report, err := buildStatusReportWithClient(ctx, opts, name, includeInterpretation, ec)
 		if err != nil {
 			return err
 		}
-		format, templateStr := outputSelection(outputConfig{report: opts.report, output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates})
-		if err := writeOutput(out, format, templateStr, report, func() error {
-			if opts.dashboard {
-				return hpaanalysis.WriteStatusDashboard(out, report, theme)
-			}
-			if previous != nil {
-				return hpaanalysis.WriteStatusDiff(out, hpaanalysis.WatchState{
-					Previous: previous,
-					Current:  &report.Analysis,
-				}, theme)
-			}
-			return hpaanalysis.WriteStatusText(out, report, theme)
-		}); err != nil {
+		if err := writeWatchReport(out, opts, theme, report, previous); err != nil {
 			return err
 		}
 		previous = &report.Analysis
 
-		// Prominent stabilization countdown in watch mode.
-		if report.Analysis.StabilizationRemaining != nil && *report.Analysis.StabilizationRemaining > 0 {
-			source := report.Analysis.StabilizationSource
-			if source == "" {
-				source = "scaleDown"
-			}
-			progress := hpaanalysis.FormatStabilizationProgress(
-				report.Analysis.StabilizationRemaining,
-				report.Analysis.StabilizationWindowSeconds,
-			)
-			_, _ = fmt.Fprintf(out, "\n  STABILIZING: %s [%s] [estimated]\n", progress, source)
-		}
+		writeStabilizationCountdown(out, &report.Analysis)
 
 		if opts.untilCondition != "" && reportHasCondition(report, opts.untilCondition) {
 			_, err := fmt.Fprintf(out, "\nStopped: condition %q is present.\n", opts.untilCondition)
@@ -106,6 +77,51 @@ func runWatch(ctx context.Context, out io.Writer, opts *options, name string, in
 			}
 		}
 	}
+}
+
+// clearWatchScreen clears the terminal via the theme's screen-clear sequence, or prints a timestamp header when unavailable.
+func clearWatchScreen(out io.Writer, theme style.Theme) error {
+	if clearScreen := theme.ScreenClear(); clearScreen != "" {
+		if _, err := out.Write([]byte(clearScreen)); err != nil {
+			return err
+		}
+		return nil
+	}
+	_, err := fmt.Fprintf(out, "Updated: %s\n\n", time.Now().Format(time.RFC3339))
+	return err
+}
+
+// writeWatchReport renders the current report via the selected format, choosing dashboard/diff/text rendering inside the fallback.
+func writeWatchReport(out io.Writer, opts *options, theme style.Theme, report hpaanalysis.StatusReport, previous *hpaanalysis.Analysis) error {
+	format, templateStr := outputSelection(outputConfig{report: opts.report, output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates})
+	return writeOutput(out, format, templateStr, report, func() error {
+		if opts.dashboard {
+			return hpaanalysis.WriteStatusDashboard(out, report, theme)
+		}
+		if previous != nil {
+			return hpaanalysis.WriteStatusDiff(out, hpaanalysis.WatchState{
+				Previous: previous,
+				Current:  &report.Analysis,
+			}, theme)
+		}
+		return hpaanalysis.WriteStatusText(out, report, theme)
+	})
+}
+
+// writeStabilizationCountdown prints the prominent stabilization countdown line when scale-down stabilization is active.
+func writeStabilizationCountdown(out io.Writer, a *hpaanalysis.Analysis) {
+	if a.StabilizationRemaining == nil || *a.StabilizationRemaining <= 0 {
+		return
+	}
+	source := a.StabilizationSource
+	if source == "" {
+		source = "scaleDown"
+	}
+	progress := hpaanalysis.FormatStabilizationProgress(
+		a.StabilizationRemaining,
+		a.StabilizationWindowSeconds,
+	)
+	_, _ = fmt.Fprintf(out, "\n  STABILIZING: %s [%s] [estimated]\n", progress, source)
 }
 
 func runWatchList(ctx context.Context, out io.Writer, opts *options) error {

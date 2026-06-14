@@ -194,78 +194,92 @@ func writeBundleMetricsDiagnostics(w io.Writer, data *bundleData) {
 	_, _ = fmt.Fprint(w, "## Metrics Diagnostics\n\n")
 	a := data.StatusReport.Analysis
 
+	hasContent := false
 	if a.MetricsDiagnostics != nil {
-		md := a.MetricsDiagnostics
-		_, _ = fmt.Fprintf(w, "**Overall Status:** %s\n\n", mdEscape(md.OverallStatus))
-
-		if len(md.PerMetricChecks) > 0 {
-			_, _ = fmt.Fprint(w, "| Metric Type | Metric Name | Status | Details |\n")
-			_, _ = fmt.Fprint(w, "|-------------|-------------|--------|--------|\n")
-			for _, check := range md.PerMetricChecks {
-				_, _ = fmt.Fprintf(w, "| %s | %s | %s | %s |\n",
-					mdEscape(check.MetricType), mdEscape(check.MetricName),
-					mdEscape(check.Status), mdEscape(check.Details))
-			}
-			_, _ = fmt.Fprintln(w)
-		}
-
-		if len(md.RemediationSteps) > 0 {
-			_, _ = fmt.Fprint(w, "**Remediation Steps:**\n")
-			for _, step := range md.RemediationSteps {
-				_, _ = fmt.Fprintf(w, "- %s\n", mdEscape(step))
-			}
-			_, _ = fmt.Fprintln(w)
-		}
+		writeBundleMetricsDiagnosticsSection(w, a.MetricsDiagnostics)
+		hasContent = true
 	}
-
 	if len(a.MetricFreshnessEntries) > 0 {
-		_, _ = fmt.Fprint(w, "### Metric Freshness\n\n")
-		_, _ = fmt.Fprint(w, "| Metric | Type | Status | Age | Source |\n")
-		_, _ = fmt.Fprint(w, "|--------|------|--------|-----|--------|\n")
-		for _, entry := range a.MetricFreshnessEntries {
-			age := "-"
-			if entry.Age > 0 {
-				age = entry.Age.String()
-			}
-			source := "-"
-			if entry.Source != "" {
-				source = mdEscape(entry.Source)
-			}
-			_, _ = fmt.Fprintf(w, "| %s | %s | %s | %s | %s |\n",
-				mdEscape(entry.Name), mdEscape(entry.Type),
-				mdEscape(entry.Status), age, source)
-		}
-		_, _ = fmt.Fprintln(w)
+		writeBundleMetricFreshness(w, a.MetricFreshnessEntries)
+		hasContent = true
 	}
-
 	if a.MetricContract != nil {
-		_, _ = fmt.Fprint(w, "### Metric Contract\n\n")
-		_, _ = fmt.Fprintf(w, "**Status:** %s\n\n", mdEscape(a.MetricContract.OverallStatus))
-		if len(a.MetricContract.Checks) > 0 {
-			_, _ = fmt.Fprint(w, "| Metric Type | Metric Name | API Service | Available | Data Available | Status |\n")
-			_, _ = fmt.Fprint(w, "|-------------|-------------|-------------|-----------|----------------|--------|\n")
-			for _, check := range a.MetricContract.Checks {
-				apiAvail := "No"
-				if check.APIServiceAvailable {
-					apiAvail = "Yes"
-				}
-				dataAvail := "No"
-				if check.DataAvailable {
-					dataAvail = "Yes"
-				}
-				_, _ = fmt.Fprintf(w, "| %s | %s | %s | %s | %s | %s |\n",
-					mdEscape(check.MetricType), mdEscape(check.MetricName),
-					mdEscape(check.APIService), apiAvail, dataAvail, mdEscape(check.Status))
-			}
-			_, _ = fmt.Fprintln(w)
-		}
+		writeBundleMetricContract(w, a.MetricContract)
+		hasContent = true
 	}
 
-	if a.MetricsDiagnostics == nil && len(a.MetricFreshnessEntries) == 0 && a.MetricContract == nil {
+	if !hasContent {
 		_, _ = fmt.Fprint(w, "_No metrics diagnostics available._\n")
 	}
 
 	_, _ = fmt.Fprint(w, "\n---\n\n")
+}
+
+func writeBundleMetricsDiagnosticsSection(w io.Writer, md *hpaanalysis.MetricsPipelineDiagnostics) {
+	_, _ = fmt.Fprintf(w, "**Overall Status:** %s\n\n", mdEscape(md.OverallStatus))
+
+	if len(md.PerMetricChecks) > 0 {
+		_, _ = fmt.Fprint(w, "| Metric Type | Metric Name | Status | Details |\n")
+		_, _ = fmt.Fprint(w, "|-------------|-------------|--------|--------|\n")
+		for _, check := range md.PerMetricChecks {
+			_, _ = fmt.Fprintf(w, "| %s | %s | %s | %s |\n",
+				mdEscape(check.MetricType), mdEscape(check.MetricName),
+				mdEscape(check.Status), mdEscape(check.Details))
+		}
+		_, _ = fmt.Fprintln(w)
+	}
+
+	if len(md.RemediationSteps) > 0 {
+		_, _ = fmt.Fprint(w, "**Remediation Steps:**\n")
+		for _, step := range md.RemediationSteps {
+			_, _ = fmt.Fprintf(w, "- %s\n", mdEscape(step))
+		}
+		_, _ = fmt.Fprintln(w)
+	}
+}
+
+func writeBundleMetricFreshness(w io.Writer, entries []hpaanalysis.MetricFreshness) {
+	_, _ = fmt.Fprint(w, "### Metric Freshness\n\n")
+	_, _ = fmt.Fprint(w, "| Metric | Type | Status | Age | Source |\n")
+	_, _ = fmt.Fprint(w, "|--------|------|--------|-----|--------|\n")
+	for _, entry := range entries {
+		age := "-"
+		if entry.Age > 0 {
+			age = entry.Age.String()
+		}
+		source := "-"
+		if entry.Source != "" {
+			source = mdEscape(entry.Source)
+		}
+		_, _ = fmt.Fprintf(w, "| %s | %s | %s | %s | %s |\n",
+			mdEscape(entry.Name), mdEscape(entry.Type),
+			mdEscape(entry.Status), age, source)
+	}
+	_, _ = fmt.Fprintln(w)
+}
+
+func writeBundleMetricContract(w io.Writer, contract *hpaanalysis.MetricContractReport) {
+	_, _ = fmt.Fprint(w, "### Metric Contract\n\n")
+	_, _ = fmt.Fprintf(w, "**Status:** %s\n\n", mdEscape(contract.OverallStatus))
+	if len(contract.Checks) == 0 {
+		return
+	}
+	_, _ = fmt.Fprint(w, "| Metric Type | Metric Name | API Service | Available | Data Available | Status |\n")
+	_, _ = fmt.Fprint(w, "|-------------|-------------|-------------|-----------|----------------|--------|\n")
+	for _, check := range contract.Checks {
+		apiAvail := "No"
+		if check.APIServiceAvailable {
+			apiAvail = "Yes"
+		}
+		dataAvail := "No"
+		if check.DataAvailable {
+			dataAvail = "Yes"
+		}
+		_, _ = fmt.Fprintf(w, "| %s | %s | %s | %s | %s | %s |\n",
+			mdEscape(check.MetricType), mdEscape(check.MetricName),
+			mdEscape(check.APIService), apiAvail, dataAvail, mdEscape(check.Status))
+	}
+	_, _ = fmt.Fprintln(w)
 }
 
 func writeBundleCapacityContextSection(w io.Writer, data *bundleData) {

@@ -149,6 +149,16 @@ type options struct {
 //   - --diff implies --suggest
 //   - --no-interpret clears --interpret and --suggest
 func (o *statusOptions) Normalize() {
+	o.normalizeSuggestFlags()
+	o.normalizeDecisionTraceFlags()
+	o.normalizeInsightFlags()
+	o.normalizeCapacityFlags()
+	o.normalizeMiscFlags()
+}
+
+// normalizeSuggestFlags handles the --recommend/--fix/--apply/--diff/--export
+// implication chain that enables --suggest.
+func (o *statusOptions) normalizeSuggestFlags() {
 	if o.recommend {
 		o.suggest = true
 	}
@@ -166,6 +176,11 @@ func (o *statusOptions) Normalize() {
 		o.export = o.exportPatch
 		o.suggest = true
 	}
+}
+
+// normalizeDecisionTraceFlags enables the decision trace when an explicit
+// format is given or the structured status format is selected.
+func (o *statusOptions) normalizeDecisionTraceFlags() {
 	if o.decisionTraceFormat != "" {
 		o.decisionTrace = true
 	}
@@ -174,6 +189,11 @@ func (o *statusOptions) Normalize() {
 		o.decisionTrace = true
 		o.decisionTraceFormat = "json"
 	}
+}
+
+// normalizeInsightFlags enables the deeper-insight flags implied by AI context,
+// ask, and hiddenFactors.
+func (o *statusOptions) normalizeInsightFlags() {
 	if o.contextForAI || o.ask != "" {
 		o.explain = true
 		o.diagnoseMetrics = true
@@ -184,11 +204,21 @@ func (o *statusOptions) Normalize() {
 		o.readinessImpact = true
 		o.metricsFreshness = true
 	}
+}
+
+// normalizeCapacityFlags enables capacity/scalePath when node autoscaler
+// flavors are requested.
+func (o *statusOptions) normalizeCapacityFlags() {
 	if o.nodeAutoscaler || o.karpenter {
 		o.capacityContext = true
 		o.capacityDeep = true
 		o.scalePath = true
 	}
+}
+
+// normalizeMiscFlags covers the remaining standalone normalizations: trend
+// anomaly escalation and the no-interpret override.
+func (o *statusOptions) normalizeMiscFlags() {
 	if o.trend && !o.trendAnomaly {
 		o.trendAnomaly = true
 	}

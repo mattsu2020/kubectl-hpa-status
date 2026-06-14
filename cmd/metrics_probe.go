@@ -88,52 +88,10 @@ func writeMetricsProbeText(out io.Writer, result metricsProbeOutput) error {
 			_, _ = fmt.Fprintf(out, "  selector: %s\n", metric.Selector)
 		}
 	}
-	if len(result.Freshness) > 0 {
-		_, _ = fmt.Fprintln(out, "\nFreshness:")
-		for _, entry := range result.Freshness {
-			available := "unknown"
-			if entry.APIServiceAvailable != nil {
-				available = fmt.Sprintf("%t", *entry.APIServiceAvailable)
-			}
-			_, _ = fmt.Fprintf(out, "- %s/%s status=%s apiAvailable=%s\n", entry.Type, entry.Name, entry.Status, available)
-			if entry.APIServiceMessage != "" {
-				_, _ = fmt.Fprintf(out, "  api: %s\n", entry.APIServiceMessage)
-			}
-			if entry.Risk != "" {
-				_, _ = fmt.Fprintf(out, "  risk: %s\n", entry.Risk)
-			}
-		}
-	}
-	if result.Contract != nil && len(result.Contract.Checks) > 0 {
-		_, _ = fmt.Fprintln(out, "\nMetric contract:")
-		for _, check := range result.Contract.Checks {
-			_, _ = fmt.Fprintf(out, "- %s/%s: %s\n", check.MetricType, check.MetricName, check.Status)
-			if check.Remediation != "" {
-				_, _ = fmt.Fprintf(out, "  fix: %s\n", check.Remediation)
-			}
-		}
-	}
-	if result.AdapterDiagnostics != nil && len(result.AdapterDiagnostics.Checks) > 0 {
-		_, _ = fmt.Fprintln(out, "\nAdapter diagnostics:")
-		if result.AdapterDiagnostics.Summary != "" {
-			_, _ = fmt.Fprintf(out, "summary: %s\n", result.AdapterDiagnostics.Summary)
-		}
-		for _, check := range result.AdapterDiagnostics.Checks {
-			_, _ = fmt.Fprintf(out, "- [%s] %s\n", check.Status, check.Name)
-			if check.Details != "" {
-				_, _ = fmt.Fprintf(out, "  details: %s\n", check.Details)
-			}
-			if check.Remediation != "" {
-				_, _ = fmt.Fprintf(out, "  fix: %s\n", check.Remediation)
-			}
-		}
-	}
-	if result.Hints != nil && len(result.Hints.Hints) > 0 {
-		_, _ = fmt.Fprintln(out, "\nLikely causes:")
-		for _, hint := range result.Hints.Hints {
-			_, _ = fmt.Fprintf(out, "- [%s] %s\n", hint.Severity, hint.Title)
-		}
-	}
+	writeMetricsProbeFreshness(out, result.Freshness)
+	writeMetricsProbeContract(out, result.Contract)
+	writeMetricsProbeAdapterDiagnostics(out, result.AdapterDiagnostics)
+	writeMetricsProbeHints(out, result.Hints)
 	if len(result.PrometheusChecks) > 0 {
 		_, _ = fmt.Fprintln(out, "\nPrometheus follow-up checks:")
 		for _, check := range result.PrometheusChecks {
@@ -141,6 +99,68 @@ func writeMetricsProbeText(out io.Writer, result metricsProbeOutput) error {
 		}
 	}
 	return nil
+}
+
+func writeMetricsProbeFreshness(out io.Writer, entries []hpaanalysis.MetricFreshness) {
+	if len(entries) == 0 {
+		return
+	}
+	_, _ = fmt.Fprintln(out, "\nFreshness:")
+	for _, entry := range entries {
+		available := "unknown"
+		if entry.APIServiceAvailable != nil {
+			available = fmt.Sprintf("%t", *entry.APIServiceAvailable)
+		}
+		_, _ = fmt.Fprintf(out, "- %s/%s status=%s apiAvailable=%s\n", entry.Type, entry.Name, entry.Status, available)
+		if entry.APIServiceMessage != "" {
+			_, _ = fmt.Fprintf(out, "  api: %s\n", entry.APIServiceMessage)
+		}
+		if entry.Risk != "" {
+			_, _ = fmt.Fprintf(out, "  risk: %s\n", entry.Risk)
+		}
+	}
+}
+
+func writeMetricsProbeContract(out io.Writer, contract *hpaanalysis.MetricContractReport) {
+	if contract == nil || len(contract.Checks) == 0 {
+		return
+	}
+	_, _ = fmt.Fprintln(out, "\nMetric contract:")
+	for _, check := range contract.Checks {
+		_, _ = fmt.Fprintf(out, "- %s/%s: %s\n", check.MetricType, check.MetricName, check.Status)
+		if check.Remediation != "" {
+			_, _ = fmt.Fprintf(out, "  fix: %s\n", check.Remediation)
+		}
+	}
+}
+
+func writeMetricsProbeAdapterDiagnostics(out io.Writer, diags *hpaanalysis.AdapterDiagnosticsReport) {
+	if diags == nil || len(diags.Checks) == 0 {
+		return
+	}
+	_, _ = fmt.Fprintln(out, "\nAdapter diagnostics:")
+	if diags.Summary != "" {
+		_, _ = fmt.Fprintf(out, "summary: %s\n", diags.Summary)
+	}
+	for _, check := range diags.Checks {
+		_, _ = fmt.Fprintf(out, "- [%s] %s\n", check.Status, check.Name)
+		if check.Details != "" {
+			_, _ = fmt.Fprintf(out, "  details: %s\n", check.Details)
+		}
+		if check.Remediation != "" {
+			_, _ = fmt.Fprintf(out, "  fix: %s\n", check.Remediation)
+		}
+	}
+}
+
+func writeMetricsProbeHints(out io.Writer, hints *hpaanalysis.MetricHintsReport) {
+	if hints == nil || len(hints.Hints) == 0 {
+		return
+	}
+	_, _ = fmt.Fprintln(out, "\nLikely causes:")
+	for _, hint := range hints.Hints {
+		_, _ = fmt.Fprintf(out, "- [%s] %s\n", hint.Severity, hint.Title)
+	}
 }
 
 func prometheusMetricChecks(base string, metrics []hpaanalysis.Metric) []string {

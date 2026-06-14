@@ -34,32 +34,10 @@ func newGitOpsReviewCommand(opts *options) *cobra.Command {
 	return cmd
 }
 
-func runGitOpsReview(ctx context.Context, out io.Writer, opts *options, filePath string) error {
-	info, err := os.Stat(filePath)
+func runGitOpsReview(_ context.Context, out io.Writer, opts *options, filePath string) error {
+	files, err := collectGitOpsReviewFiles(filePath)
 	if err != nil {
-		return fmt.Errorf("cannot access %s: %w", filePath, err)
-	}
-
-	var files []string
-	if info.IsDir() {
-		err := filepath.Walk(filePath, func(path string, fi os.FileInfo, walkErr error) error {
-			if walkErr != nil {
-				return walkErr
-			}
-			if fi.IsDir() {
-				return nil
-			}
-			ext := strings.ToLower(filepath.Ext(path))
-			if ext == ".yaml" || ext == ".yml" || ext == ".json" {
-				files = append(files, path)
-			}
-			return nil
-		})
-		if err != nil {
-			return fmt.Errorf("walking directory: %w", err)
-		}
-	} else {
-		files = []string{filePath}
+		return err
 	}
 
 	if len(files) == 0 {
@@ -67,6 +45,55 @@ func runGitOpsReview(ctx context.Context, out io.Writer, opts *options, filePath
 		return nil
 	}
 
+	inputs := decodeGitOpsReviewInputs(files)
+	if len(inputs) == 0 {
+		_, _ = fmt.Fprintln(out, "No HPA manifests found.")
+		return nil
+	}
+
+	review := hpaanalysis.AnalyzeGitOpsReview(inputs)
+
+	format, templateStr := outputSelection(outputConfig{
+		output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates,
+	})
+
+	return writeOutput(out, format, templateStr, review, func() error {
+		theme := style.NewTheme(shouldColorize(opts.color, out))
+		return hpaanalysis.WriteGitOpsReviewText(out, review, theme)
+	})
+}
+
+func collectGitOpsReviewFiles(filePath string) ([]string, error) {
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("cannot access %s: %w", filePath, err)
+	}
+
+	if !info.IsDir() {
+		return []string{filePath}, nil
+	}
+
+	var files []string
+	err = filepath.Walk(filePath, func(path string, fi os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if fi.IsDir() {
+			return nil
+		}
+		ext := strings.ToLower(filepath.Ext(path))
+		if ext == ".yaml" || ext == ".yml" || ext == ".json" {
+			files = append(files, path)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("walking directory: %w", err)
+	}
+	return files, nil
+}
+
+func decodeGitOpsReviewInputs(files []string) []hpaanalysis.GitOpsReviewInput {
 	decoder := serializer.NewCodecFactory(scheme.Scheme).UniversalDeserializer()
 	var inputs []hpaanalysis.GitOpsReviewInput
 
@@ -100,19 +127,5 @@ func runGitOpsReview(ctx context.Context, out io.Writer, opts *options, filePath
 		}
 	}
 
-	if len(inputs) == 0 {
-		_, _ = fmt.Fprintln(out, "No HPA manifests found.")
-		return nil
-	}
-
-	review := hpaanalysis.AnalyzeGitOpsReview(inputs)
-
-	format, templateStr := outputSelection(outputConfig{
-		output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates,
-	})
-
-	return writeOutput(out, format, templateStr, review, func() error {
-		theme := style.NewTheme(shouldColorize(opts.color, out))
-		return hpaanalysis.WriteGitOpsReviewText(out, review, theme)
-	})
+	return inputs
 }

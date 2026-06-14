@@ -109,127 +109,28 @@ func classifyBottlenecks(input WarmupInput) []WarmupBottleneck {
 	var bottlenecks []WarmupBottleneck
 
 	// Metrics inactive is the most critical issue.
-	if !input.ScalingActive {
-		bottlenecks = append(bottlenecks, WarmupBottleneck{
-			Type:       "metrics_inactive",
-			Severity:   SeverityError,
-			Confidence: ConfidenceHigh,
-			Message:    "HPA ScalingActive is false; metrics pipeline may be down",
-		})
-	}
+	bottlenecks = append(bottlenecks, metricsInactiveBottleneck(input.ScalingActive)...)
 
 	// Count pods by state for classification.
-	var (
-		runningNotReady int32
-		imagePull       int32
-		scheduling      int32
-		crashLoop       int32
-		unknown         int32
-	)
-
-	for _, pod := range input.PodDetails {
-		if pod.Ready {
-			continue
-		}
-
-		switch {
-		case pod.WaitingReason == "ImagePullBackOff" || pod.WaitingReason == "ErrImagePull":
-			imagePull++
-		case pod.WaitingReason == "CrashLoopBackOff":
-			crashLoop++
-		case pod.ContainerState == "" && !pod.Ready:
-			// No container state means pod is Pending (not scheduled yet).
-			scheduling++
-		case pod.ContainerState == "running" && !pod.Ready:
-			runningNotReady++
-		case pod.ContainerState == "terminated" || pod.RestartCount > 3:
-			crashLoop++
-		default:
-			unknown++
-		}
-	}
+	counts := countPodStates(input.PodDetails)
 
 	// Readiness probe bottleneck: Running but not Ready with probe present.
-	if runningNotReady > 0 && input.ReadinessProbePresent {
-		bottlenecks = append(bottlenecks, WarmupBottleneck{
-			Type:       "readiness_probe",
-			Severity:   SeverityWarning,
-			Confidence: ConfidenceHigh,
-			Count:      runningNotReady,
-			Message:    fmt.Sprintf("%d pods are Running but not Ready (readinessProbe failing)", runningNotReady),
-		})
-	} else if runningNotReady > 0 {
-		bottlenecks = append(bottlenecks, WarmupBottleneck{
-			Type:       "unknown",
-			Severity:   SeverityWarning,
-			Confidence: ConfidenceMedium,
-			Count:      runningNotReady,
-			Message:    fmt.Sprintf("%d pods are Running but not Ready (no readinessProbe configured)", runningNotReady),
-		})
-	}
+	bottlenecks = append(bottlenecks, readinessProbeBottlenecks(counts.runningNotReady, input.ReadinessProbePresent)...)
 
 	// Startup probe bottleneck: pods young enough to still be in startup phase.
-	if input.StartupProbePresent && runningNotReady > 0 {
-		var startupBlocked int32
-		for _, pod := range input.PodDetails {
-			if !pod.Ready && pod.ContainerState == "running" && pod.AgeSeconds < int64(input.StartupProbeMaxDelaySeconds) {
-				startupBlocked++
-			}
-		}
-		if startupBlocked > 0 {
-			bottlenecks = append(bottlenecks, WarmupBottleneck{
-				Type:       "startup_probe",
-				Severity:   SeverityInfo,
-				Confidence: ConfidenceMedium,
-				Count:      startupBlocked,
-				Message:    fmt.Sprintf("%d pods may still be in startupProbe phase", startupBlocked),
-			})
-		}
-	}
+	bottlenecks = append(bottlenecks, startupProbeBottleneck(input, counts.runningNotReady)...)
 
 	// Image pull bottleneck.
-	if imagePull > 0 {
-		bottlenecks = append(bottlenecks, WarmupBottleneck{
-			Type:       "image_pull",
-			Severity:   SeverityError,
-			Confidence: ConfidenceHigh,
-			Count:      imagePull,
-			Message:    fmt.Sprintf("%d pods have image pull issues (ImagePullBackOff/ErrImagePull)", imagePull),
-		})
-	}
+	bottlenecks = append(bottlenecks, imagePullBottleneck(counts.imagePull)...)
 
 	// Scheduling bottleneck.
-	if scheduling > 0 {
-		bottlenecks = append(bottlenecks, WarmupBottleneck{
-			Type:       "scheduling",
-			Severity:   SeverityWarning,
-			Confidence: ConfidenceHigh,
-			Count:      scheduling,
-			Message:    fmt.Sprintf("%d pods are Pending (not yet scheduled)", scheduling),
-		})
-	}
+	bottlenecks = append(bottlenecks, schedulingBottleneck(counts.scheduling)...)
 
 	// Container crash bottleneck.
-	if crashLoop > 0 {
-		bottlenecks = append(bottlenecks, WarmupBottleneck{
-			Type:       "container_crash",
-			Severity:   SeverityError,
-			Confidence: ConfidenceHigh,
-			Count:      crashLoop,
-			Message:    fmt.Sprintf("%d pods are crash-looping (CrashLoopBackOff or high restart count)", crashLoop),
-		})
-	}
+	bottlenecks = append(bottlenecks, containerCrashBottleneck(counts.crashLoop)...)
 
 	// Unknown bottleneck: pods not ready with no clear reason.
-	if unknown > 0 {
-		bottlenecks = append(bottlenecks, WarmupBottleneck{
-			Type:       "unknown",
-			Severity:   SeverityInfo,
-			Confidence: ConfidenceLow,
-			Count:      unknown,
-			Message:    fmt.Sprintf("%d pods are not Ready for unknown reasons", unknown),
-		})
-	}
+	bottlenecks = append(bottlenecks, unknownBottleneck(counts.unknown)...)
 
 	return bottlenecks
 }
@@ -283,42 +184,31 @@ func buildImpact(input WarmupInput, ratio float64) string {
 	)
 }
 
+// warmupActionTemplates maps bottleneck types to (dedup key, recommendation).
+// Order matters: first occurrence of a key wins, mirroring the original switch.
+var warmupActionTemplates = []struct {
+	bottleneckType string
+	key            string
+	message        string
+}{
+	{"readiness_probe", "probe", "Check readinessProbe and startupProbe configuration (initialDelaySeconds, periodSeconds, failureThreshold)"},
+	{"image_pull", "image", "Check image pull latency and registry access (ImagePullBackOff indicates pull failures)"},
+	{"scheduling", "schedule", "Check node capacity and scheduling constraints (Pending pods indicate resource pressure)"},
+	{"container_crash", "crash", "Check container logs for crash reasons (CrashLoopBackOff indicates application errors)"},
+	{"startup_probe", "startup", "Consider increasing startupProbe failureThreshold or periodSeconds"},
+	{"metrics_inactive", "metrics", "Check metrics server and HPA metrics pipeline availability"},
+}
+
 // buildRecommendedActions generates actionable recommendations based on bottlenecks.
 func buildRecommendedActions(bottlenecks []WarmupBottleneck, input WarmupInput) []string {
 	seen := make(map[string]bool)
 	var actions []string
 
 	for _, b := range bottlenecks {
-		switch b.Type {
-		case "readiness_probe":
-			if !seen["probe"] {
-				actions = append(actions, "Check readinessProbe and startupProbe configuration (initialDelaySeconds, periodSeconds, failureThreshold)")
-				seen["probe"] = true
-			}
-		case "image_pull":
-			if !seen["image"] {
-				actions = append(actions, "Check image pull latency and registry access (ImagePullBackOff indicates pull failures)")
-				seen["image"] = true
-			}
-		case "scheduling":
-			if !seen["schedule"] {
-				actions = append(actions, "Check node capacity and scheduling constraints (Pending pods indicate resource pressure)")
-				seen["schedule"] = true
-			}
-		case "container_crash":
-			if !seen["crash"] {
-				actions = append(actions, "Check container logs for crash reasons (CrashLoopBackOff indicates application errors)")
-				seen["crash"] = true
-			}
-		case "startup_probe":
-			if !seen["startup"] {
-				actions = append(actions, "Consider increasing startupProbe failureThreshold or periodSeconds")
-				seen["startup"] = true
-			}
-		case "metrics_inactive":
-			if !seen["metrics"] {
-				actions = append(actions, "Check metrics server and HPA metrics pipeline availability")
-				seen["metrics"] = true
+		for _, tmpl := range warmupActionTemplates {
+			if b.Type == tmpl.bottleneckType && !seen[tmpl.key] {
+				actions = append(actions, tmpl.message)
+				seen[tmpl.key] = true
 			}
 		}
 	}

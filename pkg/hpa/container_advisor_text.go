@@ -31,13 +31,8 @@ func WriteContainerAdvisorText(w io.Writer, result *ContainerAdvisorResult, prov
 
 	// Suggested metric
 	if result.SuggestedMetric != "" {
-		if _, err := fmt.Fprintf(w, "\n  Suggested HPA metric:\n"); err != nil {
+		if err := writeSuggestedMetricLines(w, result.SuggestedMetric); err != nil {
 			return err
-		}
-		for _, line := range splitLines(result.SuggestedMetric) {
-			if _, err := fmt.Fprintf(w, "    %s\n", line); err != nil {
-				return err
-			}
 		}
 	}
 
@@ -48,25 +43,8 @@ func WriteContainerAdvisorText(w io.Writer, result *ContainerAdvisorResult, prov
 
 	// Container usage hints
 	if len(result.ContainerUsageHints) > 0 {
-		if _, err := fmt.Fprintf(w, "\n  Container usage:\n"); err != nil {
+		if err := writeContainerUsageHints(w, result.ContainerUsageHints); err != nil {
 			return err
-		}
-		for _, h := range result.ContainerUsageHints {
-			dominant := ""
-			if h.Dominant {
-				dominant = " (dominant)"
-			}
-			cpuStr := "unknown"
-			if h.CPUPercent >= 0 {
-				cpuStr = fmt.Sprintf("%d%%", h.CPUPercent)
-			}
-			memStr := "unknown"
-			if h.MemoryPercent >= 0 {
-				memStr = fmt.Sprintf("%d%%", h.MemoryPercent)
-			}
-			if _, err := fmt.Fprintf(w, "    %s%s: cpu=%s, memory=%s\n", h.Container, dominant, cpuStr, memStr); err != nil {
-				return err
-			}
 		}
 	}
 
@@ -78,6 +56,50 @@ func WriteContainerAdvisorText(w io.Writer, result *ContainerAdvisorResult, prov
 	}
 
 	return nil
+}
+
+// writeSuggestedMetricLines writes the suggested HPA metric section header and
+// each metric line.
+func writeSuggestedMetricLines(w io.Writer, suggestedMetric string) error {
+	if _, err := fmt.Fprintf(w, "\n  Suggested HPA metric:\n"); err != nil {
+		return err
+	}
+	for _, line := range splitLines(suggestedMetric) {
+		if _, err := fmt.Fprintf(w, "    %s\n", line); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// writeContainerUsageHints writes the container usage section header and each
+// hint line.
+func writeContainerUsageHints(w io.Writer, hints []ContainerUsageHint) error {
+	if _, err := fmt.Fprintf(w, "\n  Container usage:\n"); err != nil {
+		return err
+	}
+	for _, h := range hints {
+		if _, err := fmt.Fprintf(w, "    %s%s: cpu=%s, memory=%s\n", h.Container, dominantSuffix(h.Dominant), percentOrUnknown(h.CPUPercent), percentOrUnknown(h.MemoryPercent)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// dominantSuffix returns " (dominant)" when dominant is true, else "".
+func dominantSuffix(dominant bool) string {
+	if dominant {
+		return " (dominant)"
+	}
+	return ""
+}
+
+// percentOrUnknown formats an integer percent value, or "unknown" when < 0.
+func percentOrUnknown(value int) string {
+	if value < 0 {
+		return "unknown"
+	}
+	return fmt.Sprintf("%d%%", value)
 }
 
 // AppendContainerAdvisorText appends the container advisor section to a byte buffer

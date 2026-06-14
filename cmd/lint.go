@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
@@ -40,32 +39,10 @@ func newLintCommand(opts *options) *cobra.Command {
 	return cmd
 }
 
-func runLint(ctx context.Context, out io.Writer, opts *options, filePath, outputFmt string, sarif, fix bool, failOn string) error {
-	info, err := os.Stat(filePath)
+func runLint(ctx context.Context, out io.Writer, _ *options, filePath, outputFmt string, sarif, fix bool, failOn string) error {
+	files, err := collectLintFiles(filePath)
 	if err != nil {
-		return fmt.Errorf("cannot access %s: %w", filePath, err)
-	}
-
-	var files []string
-	if info.IsDir() {
-		err := filepath.Walk(filePath, func(path string, fi os.FileInfo, walkErr error) error {
-			if walkErr != nil {
-				return walkErr
-			}
-			if fi.IsDir() {
-				return nil
-			}
-			ext := strings.ToLower(filepath.Ext(path))
-			if ext == ".yaml" || ext == ".yml" || ext == ".json" {
-				files = append(files, path)
-			}
-			return nil
-		})
-		if err != nil {
-			return fmt.Errorf("walking directory: %w", err)
-		}
-	} else {
-		files = []string{filePath}
+		return err
 	}
 
 	if len(files) == 0 {
@@ -79,101 +56,20 @@ func runLint(ctx context.Context, out io.Writer, opts *options, filePath, output
 	workloads := collectLintWorkloads(files, decoder)
 
 	for _, f := range files {
-		data, readErr := os.ReadFile(f)
-		if readErr != nil {
-			allResults = append(allResults, lintFileResult{
-				File: f,
-				Result: &hpaanalysis.LintResult{
-					Findings: []hpaanalysis.LintFinding{{
-						Severity: hpaanalysis.LintError,
-						Rule:     "file-read",
-						Message:  fmt.Sprintf("Cannot read file: %v", readErr),
-					}},
-					Errors: 1,
-					Pass:   false,
-				},
-			})
-			exitCode = 1
-			continue
-		}
-
-		// Handle multi-document YAML.
-		docs := splitYAMLDocuments(data)
-		foundHPA := false
-		for _, doc := range docs {
-			doc = []byte(strings.TrimSpace(string(doc)))
-			if len(doc) == 0 {
-				continue
-			}
-
-			obj, _, decodeErr := decoder.Decode(doc, nil, nil)
-			if decodeErr != nil {
-				continue
-			}
-
-			hpa, ok := obj.(*autoscalingv2.HorizontalPodAutoscaler)
-			if !ok {
-				continue
-			}
-			foundHPA = true
-
-			result := hpaanalysis.LintHPA(hpa)
-			addGitOpsLintFindings(result, hpa, workloads)
-			allResults = append(allResults, lintFileResult{
-				File:   f,
-				HPA:    hpa.Name,
-				Result: result,
-			})
-			if !result.Pass {
+		// Files without an HPA document are skipped silently; lintOneFile
+		// returns no results for them, so allResults is unchanged.
+		results, _ := lintOneFile(f, decoder, workloads)
+		for _, r := range results {
+			if r.Result != nil && !r.Result.Pass {
 				exitCode = 1
 			}
-		}
-
-		if !foundHPA {
-			// Not an HPA manifest — skip silently.
-			continue
+			allResults = append(allResults, r)
 		}
 	}
 
-	// Output.
-	if sarif || outputFmt == "sarif" {
-		combined := combineLintResults(allResults)
-		sarifJSON := hpaanalysis.FormatLintSARIF(combined, filePath)
-		_, err := fmt.Fprintln(out, sarifJSON)
+	handled, err := emitLintOutput(out, allResults, filePath, outputFmt, sarif, fix, exitCode)
+	if handled {
 		return err
-	}
-	if outputFmt == "github" {
-		if err := writeGitHubLintAnnotations(out, allResults); err != nil {
-			return err
-		}
-		if exitCode != 0 {
-			return &exitCodeError{code: exitCode}
-		}
-		return nil
-	}
-
-	for _, r := range allResults {
-		if outputFmt == "json" {
-			if err := writeOutput(out, "json", "", r.Result, nil); err != nil {
-				return err
-			}
-			continue
-		}
-		if r.HPA != "" {
-			_, _ = fmt.Fprintf(out, "%s (%s):\n", r.File, r.HPA)
-		} else {
-			_, _ = fmt.Fprintf(out, "%s:\n", r.File)
-		}
-		if err := hpaanalysis.WriteLintText(out, r.Result); err != nil {
-			return err
-		}
-		_, _ = fmt.Fprintln(out)
-
-		if fix {
-			if err := hpaanalysis.WriteLintDiff(out, r.Result); err != nil {
-				return err
-			}
-		}
 	}
 
 	_ = ctx

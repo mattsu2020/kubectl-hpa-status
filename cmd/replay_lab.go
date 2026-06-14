@@ -316,11 +316,7 @@ func summarizeReplayTraceWithDemand(trace hpaanalysis.TimelineTrace, maxReplicas
 		if snap.Desired > summary.PeakReplicas {
 			summary.PeakReplicas = snap.Desired
 		}
-		capped := maxReplicas > 0 && snap.Desired >= maxReplicas
-		if demandTrace != nil && i < len(demandTrace.Snapshots) && maxReplicas > 0 {
-			capped = demandTrace.Snapshots[i].Desired > maxReplicas
-		}
-		if capped {
+		if snapshotCapped(snap, i, maxReplicas, demandTrace) {
 			summary.MaxReplicasReached++
 			summary.CappedDurationSeconds += seconds
 		}
@@ -353,6 +349,16 @@ func summarizeReplayTraceWithDemand(trace hpaanalysis.TimelineTrace, maxReplicas
 	summary.FlappingScore = replayFlappingScore(summary.ScaleEvents, summary.DirectionFlips)
 	summary.FlappingLabel = summary.FlappingScore
 	return summary
+}
+
+func snapshotCapped(snap hpaanalysis.TimelineSnapshot, index int, maxReplicas int32, demandTrace *hpaanalysis.TimelineTrace) bool {
+	if maxReplicas <= 0 {
+		return false
+	}
+	if demandTrace != nil && index < len(demandTrace.Snapshots) {
+		return demandTrace.Snapshots[index].Desired > maxReplicas
+	}
+	return snap.Desired >= maxReplicas
 }
 
 func replaySnapshotDurationSeconds(trace hpaanalysis.TimelineTrace, index int) int64 {

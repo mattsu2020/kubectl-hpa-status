@@ -22,6 +22,34 @@ func AnalyzeAutoscalerMap(input AutoscalerMapInput) *AutoscalerMap {
 	}
 
 	// Layer 1: HPA.
+	am.Layers = append(am.Layers, buildHPALayer(input, am))
+
+	// Layer 2: Workload.
+	am.Layers = append(am.Layers, buildWorkloadLayer(input, am))
+
+	// Layer 3: Pods.
+	am.Layers = append(am.Layers, buildPodsLayer(input, am))
+
+	// Layer 4: Nodes.
+	am.Layers = append(am.Layers, buildNodesLayer(input, am))
+
+	// Layer 5: Autoscaler.
+	am.Layers = append(am.Layers, buildAutoscalerLayer(input, am))
+
+	// Layer 6: External scaler (KEDA).
+	appendKEDALayer(input, am)
+
+	// Layer 7: Constraints (VPA, PDB, Quota).
+	appendConstraintsLayer(input, am)
+
+	// Build summary, recommendation, next actions, risk, and next checks.
+	am.Summary, am.Recommendation, am.NextActions, am.Risk = buildAutoscalerMapSummaryEnhanced(am, input)
+
+	return am
+}
+
+// buildHPALayer constructs the HPA layer and records a high-severity blocker when scaling is inactive.
+func buildHPALayer(input AutoscalerMapInput, am *AutoscalerMap) AutoscalerMapLayer {
 	hpaLayer := AutoscalerMapLayer{
 		Name:     "hpa",
 		Resource: fmt.Sprintf("%s/%s", input.Namespace, input.HPAName),
@@ -36,9 +64,11 @@ func AnalyzeAutoscalerMap(input AutoscalerMapInput) *AutoscalerMap {
 			Message:  "HPA ScalingActive is False; cannot compute scaling recommendations",
 		})
 	}
-	am.Layers = append(am.Layers, hpaLayer)
+	return hpaLayer
+}
 
-	// Layer 2: Workload.
+// buildWorkloadLayer constructs the workload layer and records a medium-severity blocker when pods are not converged.
+func buildWorkloadLayer(input AutoscalerMapInput, am *AutoscalerMap) AutoscalerMapLayer {
 	workloadHealthy := input.WorkloadReadyReplicas >= input.WorkloadDesiredReplicas
 	workloadLayer := AutoscalerMapLayer{
 		Name:     "workload",
@@ -55,9 +85,11 @@ func AnalyzeAutoscalerMap(input AutoscalerMapInput) *AutoscalerMap {
 			Message:  fmt.Sprintf("Workload has %d ready pods but desires %d", input.WorkloadReadyReplicas, input.WorkloadDesiredReplicas),
 		})
 	}
-	am.Layers = append(am.Layers, workloadLayer)
+	return workloadLayer
+}
 
-	// Layer 3: Pods.
+// buildPodsLayer constructs the pods layer and records a high-severity blocker when pods are pending.
+func buildPodsLayer(input AutoscalerMapInput, am *AutoscalerMap) AutoscalerMapLayer {
 	podsHealthy := input.PodSummary.Pending == 0
 	podLayer := AutoscalerMapLayer{
 		Name:     "pods",
@@ -75,9 +107,11 @@ func AnalyzeAutoscalerMap(input AutoscalerMapInput) *AutoscalerMap {
 			Detail:   strings.Join(pendReasons, "; "),
 		})
 	}
-	am.Layers = append(am.Layers, podLayer)
+	return podLayer
+}
 
-	// Layer 4: Nodes.
+// buildNodesLayer constructs the nodes layer, including capacity details, tainted-node hints, and a blocker when no nodes are found.
+func buildNodesLayer(input AutoscalerMapInput, am *AutoscalerMap) AutoscalerMapLayer {
 	nodesHealthy := input.NodeSummary.TotalNodes > 0
 	nodeLayer := AutoscalerMapLayer{
 		Name:     "nodes",
@@ -85,32 +119,8 @@ func AnalyzeAutoscalerMap(input AutoscalerMapInput) *AutoscalerMap {
 		Healthy:  nodesHealthy,
 	}
 	if input.NodeSummary.TotalNodes > 0 {
-		parts := []string{}
-		if input.NodeSummary.AllocatableCPU != "" {
-			parts = append(parts, fmt.Sprintf("CPU %s", input.NodeSummary.AllocatableCPU))
-		}
-		if input.NodeSummary.AllocatableMemory != "" {
-			parts = append(parts, fmt.Sprintf("memory %s", input.NodeSummary.AllocatableMemory))
-		}
-		nodeLayer.Status = strings.Join(parts, ", ")
-		if input.NodeSummary.TaintedNodes > 0 {
-			nodeLayer.Details = append(nodeLayer.Details,
-				fmt.Sprintf("%d tainted node(s) with NoSchedule/NoExecute", input.NodeSummary.TaintedNodes))
-		}
-		if len(input.NodeSummary.MatchingNodePools) > 0 {
-			nodeLayer.Details = append(nodeLayer.Details,
-				fmt.Sprintf("matching node pools: %s", strings.Join(input.NodeSummary.MatchingNodePools, ", ")))
-		}
-		if input.NodeSummary.PodCPURequest != "" || input.NodeSummary.PodMemoryRequest != "" {
-			podParts := []string{}
-			if input.NodeSummary.PodCPURequest != "" {
-				podParts = append(podParts, fmt.Sprintf("CPU %s/pod", input.NodeSummary.PodCPURequest))
-			}
-			if input.NodeSummary.PodMemoryRequest != "" {
-				podParts = append(podParts, fmt.Sprintf("memory %s/pod", input.NodeSummary.PodMemoryRequest))
-			}
-			nodeLayer.Details = append(nodeLayer.Details, fmt.Sprintf("pod requests: %s", strings.Join(podParts, ", ")))
-		}
+		nodeLayer.Status = nodeCapacityStatus(input.NodeSummary)
+		nodeLayer.Details = append(nodeLayer.Details, nodeCapacityDetails(input.NodeSummary)...)
 	} else {
 		nodeLayer.Status = "no nodes found"
 		am.Blockers = append(am.Blockers, AutoscalerMapBlocker{
@@ -119,9 +129,45 @@ func AnalyzeAutoscalerMap(input AutoscalerMapInput) *AutoscalerMap {
 			Message:  "No schedulable nodes found in cluster",
 		})
 	}
-	am.Layers = append(am.Layers, nodeLayer)
+	return nodeLayer
+}
 
-	// Layer 5: Autoscaler.
+// nodeCapacityStatus builds the comma-separated allocatable capacity summary for the nodes layer.
+func nodeCapacityStatus(s AutoscalerMapNodeSummary) string {
+	parts := []string{}
+	if s.AllocatableCPU != "" {
+		parts = append(parts, fmt.Sprintf("CPU %s", s.AllocatableCPU))
+	}
+	if s.AllocatableMemory != "" {
+		parts = append(parts, fmt.Sprintf("memory %s", s.AllocatableMemory))
+	}
+	return strings.Join(parts, ", ")
+}
+
+// nodeCapacityDetails builds human-readable detail lines covering taints, matching node pools, and per-pod requests.
+func nodeCapacityDetails(s AutoscalerMapNodeSummary) []string {
+	var details []string
+	if s.TaintedNodes > 0 {
+		details = append(details, fmt.Sprintf("%d tainted node(s) with NoSchedule/NoExecute", s.TaintedNodes))
+	}
+	if len(s.MatchingNodePools) > 0 {
+		details = append(details, fmt.Sprintf("matching node pools: %s", strings.Join(s.MatchingNodePools, ", ")))
+	}
+	if s.PodCPURequest != "" || s.PodMemoryRequest != "" {
+		podParts := []string{}
+		if s.PodCPURequest != "" {
+			podParts = append(podParts, fmt.Sprintf("CPU %s/pod", s.PodCPURequest))
+		}
+		if s.PodMemoryRequest != "" {
+			podParts = append(podParts, fmt.Sprintf("memory %s/pod", s.PodMemoryRequest))
+		}
+		details = append(details, fmt.Sprintf("pod requests: %s", strings.Join(podParts, ", ")))
+	}
+	return details
+}
+
+// buildAutoscalerLayer constructs the autoscaler layer and records a blocker when an autoscaler is missing despite pending pods.
+func buildAutoscalerLayer(input AutoscalerMapInput, am *AutoscalerMap) AutoscalerMapLayer {
 	autoscalerDetected := input.ClusterAutoscaler || input.Karpenter
 	autoscalerLayer := AutoscalerMapLayer{
 		Name:     "autoscaler",
@@ -147,83 +193,48 @@ func AnalyzeAutoscalerMap(input AutoscalerMapInput) *AutoscalerMap {
 			})
 		}
 	}
-	am.Layers = append(am.Layers, autoscalerLayer)
+	return autoscalerLayer
+}
 
-	// Layer 6: External scaler (KEDA).
-	if input.KEDAInfo != nil {
-		kedaLayer := AutoscalerMapLayer{
-			Name:     "external-scaler",
-			Resource: fmt.Sprintf("ScaledObject/%s", input.KEDAInfo.ScaledObjectName),
-			Status:   fmt.Sprintf("triggers=%d active=%t", input.KEDAInfo.TriggerCount, input.KEDAInfo.Active),
-			Healthy:  input.KEDAInfo.Active,
-		}
-		if !input.KEDAInfo.Active {
-			kedaLayer.Details = append(kedaLayer.Details, "KEDA ScaledObject triggers are inactive")
-			am.Blockers = append(am.Blockers, AutoscalerMapBlocker{
-				Layer:    "external-scaler",
-				Severity: "high",
-				Message:  fmt.Sprintf("KEDA ScaledObject %s triggers are inactive", input.KEDAInfo.ScaledObjectName),
-				Detail:   "KEDA will not signal the HPA to scale; check trigger configuration and external metric source",
-			})
-		}
-		kedaLayer.Details = append(kedaLayer.Details, fmt.Sprintf("owns HPA %s", input.HPAName))
-		am.Layers = append(am.Layers, kedaLayer)
-		am.NextChecks = append(am.NextChecks,
-			fmt.Sprintf("kubectl describe scaledobject %s -n %s", input.KEDAInfo.ScaledObjectName, input.Namespace))
+// appendKEDALayer appends the KEDA external-scaler layer and records a high-severity blocker when triggers are inactive.
+func appendKEDALayer(input AutoscalerMapInput, am *AutoscalerMap) {
+	if input.KEDAInfo == nil {
+		return
 	}
+	kedaLayer := AutoscalerMapLayer{
+		Name:     "external-scaler",
+		Resource: fmt.Sprintf("ScaledObject/%s", input.KEDAInfo.ScaledObjectName),
+		Status:   fmt.Sprintf("triggers=%d active=%t", input.KEDAInfo.TriggerCount, input.KEDAInfo.Active),
+		Healthy:  input.KEDAInfo.Active,
+	}
+	if !input.KEDAInfo.Active {
+		kedaLayer.Details = append(kedaLayer.Details, "KEDA ScaledObject triggers are inactive")
+		am.Blockers = append(am.Blockers, AutoscalerMapBlocker{
+			Layer:    "external-scaler",
+			Severity: "high",
+			Message:  fmt.Sprintf("KEDA ScaledObject %s triggers are inactive", input.KEDAInfo.ScaledObjectName),
+			Detail:   "KEDA will not signal the HPA to scale; check trigger configuration and external metric source",
+		})
+	}
+	kedaLayer.Details = append(kedaLayer.Details, fmt.Sprintf("owns HPA %s", input.HPAName))
+	am.Layers = append(am.Layers, kedaLayer)
+	am.NextChecks = append(am.NextChecks,
+		fmt.Sprintf("kubectl describe scaledobject %s -n %s", input.KEDAInfo.ScaledObjectName, input.Namespace))
+}
 
-	// Layer 7: Constraints (VPA, PDB, Quota).
+// appendConstraintsLayer appends the constraints layer (VPA, PDB, Quota) and records associated blockers and next-checks.
+func appendConstraintsLayer(input AutoscalerMapInput, am *AutoscalerMap) {
 	constraintDetails := []string{}
 	constraintHealthy := true
 
 	if input.VPAInfo != nil {
-		conflictStr := strings.Join(input.VPAInfo.ConflictResources, ", ")
-		constraintDetails = append(constraintDetails,
-			fmt.Sprintf("VPA/%s (%s) controls %s — may conflict with HPA",
-				input.VPAInfo.VPAName, input.VPAInfo.UpdateMode, conflictStr))
-		constraintHealthy = false
-		am.Blockers = append(am.Blockers, AutoscalerMapBlocker{
-			Layer:    "constraints",
-			Severity: "medium",
-			Message: fmt.Sprintf("VPA/%s (%s mode) controls %s; may conflict with HPA CPU/memory targets",
-				input.VPAInfo.VPAName, input.VPAInfo.UpdateMode, conflictStr),
-			Detail: "HPA and VPA both managing CPU/memory can cause oscillation. Consider switching VPA to Off or Auto mode with different resources.",
-		})
-		am.NextChecks = append(am.NextChecks,
-			fmt.Sprintf("kubectl describe vpa %s -n %s", input.VPAInfo.VPAName, input.Namespace))
+		constraintDetails, constraintHealthy = appendVPAConstraint(input, am, constraintDetails), false
 	}
-
 	for _, pdb := range input.PDBs {
-		pdbDesc := pdb.Name
-		if pdb.MinAvailable != "" {
-			pdbDesc += fmt.Sprintf(" (minAvailable=%s)", pdb.MinAvailable)
-		}
-		if pdb.MaxUnavailable != "" {
-			pdbDesc += fmt.Sprintf(" (maxUnavailable=%s)", pdb.MaxUnavailable)
-		}
-		constraintDetails = append(constraintDetails,
-			fmt.Sprintf("PDB %s may limit scale-down velocity", pdbDesc))
-		am.Blockers = append(am.Blockers, AutoscalerMapBlocker{
-			Layer:    "constraints",
-			Severity: "low",
-			Message:  fmt.Sprintf("PDB %s may block pod eviction during scale-down", pdb.Name),
-		})
-		am.NextChecks = append(am.NextChecks,
-			fmt.Sprintf("kubectl describe pdb %s -n %s", pdb.Name, input.Namespace))
+		constraintDetails = appendPDBConstraint(input, am, constraintDetails, pdb)
 	}
-
 	for _, quota := range input.Quotas {
-		constraintDetails = append(constraintDetails,
-			fmt.Sprintf("Quota %s/%s at %.0f%% (%s/%s)", quota.Name, quota.Resource, quota.Ratio*100, quota.Used, quota.Hard))
-		if quota.Ratio >= 0.9 {
-			constraintHealthy = false
-			am.Blockers = append(am.Blockers, AutoscalerMapBlocker{
-				Layer:    "constraints",
-				Severity: "high",
-				Message:  fmt.Sprintf("Quota %s/%s at %.0f%% — HPA scale-up may exceed quota", quota.Name, quota.Resource, quota.Ratio*100),
-				Detail:   fmt.Sprintf("maxReplicas=%d may exceed namespace quota for %s", input.MaxReplicas, quota.Resource),
-			})
-		}
+		constraintDetails, constraintHealthy = appendAutoscalerMapQuota(input, am, constraintDetails, quota, constraintHealthy)
 	}
 	if len(input.Quotas) > 0 {
 		am.NextChecks = append(am.NextChecks,
@@ -243,11 +254,58 @@ func AnalyzeAutoscalerMap(input AutoscalerMapInput) *AutoscalerMap {
 		}
 		am.Layers = append(am.Layers, constraintLayer)
 	}
+}
 
-	// Build summary, recommendation, next actions, risk, and next checks.
-	am.Summary, am.Recommendation, am.NextActions, am.Risk = buildAutoscalerMapSummaryEnhanced(am, input)
+func appendVPAConstraint(input AutoscalerMapInput, am *AutoscalerMap, constraintDetails []string) []string {
+	conflictStr := strings.Join(input.VPAInfo.ConflictResources, ", ")
+	constraintDetails = append(constraintDetails,
+		fmt.Sprintf("VPA/%s (%s) controls %s — may conflict with HPA",
+			input.VPAInfo.VPAName, input.VPAInfo.UpdateMode, conflictStr))
+	am.Blockers = append(am.Blockers, AutoscalerMapBlocker{
+		Layer:    "constraints",
+		Severity: "medium",
+		Message: fmt.Sprintf("VPA/%s (%s mode) controls %s; may conflict with HPA CPU/memory targets",
+			input.VPAInfo.VPAName, input.VPAInfo.UpdateMode, conflictStr),
+		Detail: "HPA and VPA both managing CPU/memory can cause oscillation. Consider switching VPA to Off or Auto mode with different resources.",
+	})
+	am.NextChecks = append(am.NextChecks,
+		fmt.Sprintf("kubectl describe vpa %s -n %s", input.VPAInfo.VPAName, input.Namespace))
+	return constraintDetails
+}
 
-	return am
+func appendPDBConstraint(input AutoscalerMapInput, am *AutoscalerMap, constraintDetails []string, pdb AutoscalerMapPDB) []string {
+	pdbDesc := pdb.Name
+	if pdb.MinAvailable != "" {
+		pdbDesc += fmt.Sprintf(" (minAvailable=%s)", pdb.MinAvailable)
+	}
+	if pdb.MaxUnavailable != "" {
+		pdbDesc += fmt.Sprintf(" (maxUnavailable=%s)", pdb.MaxUnavailable)
+	}
+	constraintDetails = append(constraintDetails,
+		fmt.Sprintf("PDB %s may limit scale-down velocity", pdbDesc))
+	am.Blockers = append(am.Blockers, AutoscalerMapBlocker{
+		Layer:    "constraints",
+		Severity: "low",
+		Message:  fmt.Sprintf("PDB %s may block pod eviction during scale-down", pdb.Name),
+	})
+	am.NextChecks = append(am.NextChecks,
+		fmt.Sprintf("kubectl describe pdb %s -n %s", pdb.Name, input.Namespace))
+	return constraintDetails
+}
+
+func appendAutoscalerMapQuota(input AutoscalerMapInput, am *AutoscalerMap, constraintDetails []string, quota AutoscalerMapQuota, constraintHealthy bool) ([]string, bool) {
+	constraintDetails = append(constraintDetails,
+		fmt.Sprintf("Quota %s/%s at %.0f%% (%s/%s)", quota.Name, quota.Resource, quota.Ratio*100, quota.Used, quota.Hard))
+	if quota.Ratio < 0.9 {
+		return constraintDetails, constraintHealthy
+	}
+	am.Blockers = append(am.Blockers, AutoscalerMapBlocker{
+		Layer:    "constraints",
+		Severity: "high",
+		Message:  fmt.Sprintf("Quota %s/%s at %.0f%% — HPA scale-up may exceed quota", quota.Name, quota.Resource, quota.Ratio*100),
+		Detail:   fmt.Sprintf("maxReplicas=%d may exceed namespace quota for %s", input.MaxReplicas, quota.Resource),
+	})
+	return constraintDetails, false
 }
 
 // summarizePendingPods extracts scheduling failure reasons from pending pods.

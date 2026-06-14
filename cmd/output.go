@@ -124,26 +124,40 @@ func writeOutput(out io.Writer, format string, templateStr string, value any, wr
 	case "incident":
 		return writeIncident(out, value)
 	default:
-		if expression, ok := strings.CutPrefix(format, "jsonpath="); ok {
-			return writeJSONPath(out, expression, value)
-		}
-		if expression, ok := strings.CutPrefix(format, "jsonpath:"); ok {
-			return writeJSONPath(out, expression, value)
-		}
-		if expression, ok := strings.CutPrefix(format, "template="); ok {
-			return writeTemplate(out, expression, value)
-		}
-		if expression, ok := strings.CutPrefix(format, "template:"); ok {
-			return writeTemplate(out, expression, value)
-		}
-		if expression, ok := strings.CutPrefix(format, "go-template="); ok {
-			return writeTemplate(out, expression, value)
-		}
-		if expression, ok := strings.CutPrefix(format, "go-template:"); ok {
-			return writeTemplate(out, expression, value)
+		if expr, kind, ok := parsePrefixedFormat(format); ok {
+			switch kind {
+			case "jsonpath":
+				return writeJSONPath(out, expr, value)
+			case "go-template":
+				return writeTemplate(out, expr, value)
+			}
 		}
 		return fmt.Errorf("unsupported output format %q", format)
 	}
+}
+
+// parsePrefixedFormat recognizes "jsonpath=", "jsonpath:", "template=",
+// "template:", "go-template=", and "go-template:" prefixes. It returns the
+// expression, the normalized format kind ("jsonpath" or "go-template"), and
+// whether a known prefix was matched.
+func parsePrefixedFormat(format string) (expr string, kind string, ok bool) {
+	prefixes := []struct {
+		prefix string
+		kind   string
+	}{
+		{"jsonpath=", "jsonpath"},
+		{"jsonpath:", "jsonpath"},
+		{"template=", "go-template"},
+		{"template:", "go-template"},
+		{"go-template=", "go-template"},
+		{"go-template:", "go-template"},
+	}
+	for _, p := range prefixes {
+		if expr, ok := strings.CutPrefix(format, p.prefix); ok {
+			return expr, p.kind, true
+		}
+	}
+	return "", "", false
 }
 
 // outputConfig holds the output-related fields needed by outputSelection,
@@ -156,19 +170,8 @@ type outputConfig struct {
 }
 
 func outputSelection(cfg outputConfig) (string, string) {
-	if cfg.report != "" {
-		switch cfg.report {
-		case "markdown", "md":
-			return "markdown", ""
-		case "html":
-			return "html", ""
-		case "incident":
-			return "incident", ""
-		case "junit":
-			return "junit", ""
-		case "sarif":
-			return "sarif", ""
-		}
+	if reportFormat, ok := reportFormatSelection(cfg.report); ok {
+		return reportFormat, ""
 	}
 	format := cfg.output
 	templateStr := cfg.template
@@ -199,6 +202,25 @@ func outputSelection(cfg outputConfig) (string, string) {
 		return normalizeTemplateType(tpl.Type), tpl.Template
 	}
 	return format, templateStr
+}
+
+// reportFormatSelection maps a --report value to its fixed output format.
+// Returns ok=false when the report value does not pin a format.
+func reportFormatSelection(report string) (string, bool) {
+	switch report {
+	case "markdown", "md":
+		return "markdown", true
+	case "html":
+		return "html", true
+	case "incident":
+		return "incident", true
+	case "junit":
+		return "junit", true
+	case "sarif":
+		return "sarif", true
+	default:
+		return "", false
+	}
 }
 
 func normalizeTemplateType(value string) string {

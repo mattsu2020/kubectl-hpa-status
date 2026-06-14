@@ -17,22 +17,22 @@ func TestStatus_NilReceiver(t *testing.T) {
 	var ec *Context
 	s := ec.Status()
 	if s.KEDA != nil || s.VPA != nil {
-		t.Fatal("expected empty EnrichmentStatus for nil receiver")
+		t.Fatal("expected empty Status for nil receiver")
 	}
 }
 
 func TestStatus_NonNilReceiver(t *testing.T) {
 	ec := &Context{
-		status: EnrichmentStatus{
-			KEDA: &EnrichmentEntry{Source: EnrichmentSourceKEDA, State: EnrichmentStateActive},
-			VPA:  &EnrichmentEntry{Source: EnrichmentSourceVPA, State: EnrichmentStateDisabled},
+		status: Status{
+			KEDA: &Entry{Source: SourceKEDA, State: StateActive},
+			VPA:  &Entry{Source: SourceVPA, State: StateDisabled},
 		},
 	}
 	s := ec.Status()
-	if s.KEDA.State != EnrichmentStateActive {
+	if s.KEDA.State != StateActive {
 		t.Fatalf("expected KEDA active, got %s", s.KEDA.State)
 	}
-	if s.VPA.State != EnrichmentStateDisabled {
+	if s.VPA.State != StateDisabled {
 		t.Fatalf("expected VPA disabled, got %s", s.VPA.State)
 	}
 }
@@ -75,10 +75,10 @@ func TestNewContext_BothDisabled(t *testing.T) {
 		t.Fatal("expected both disabled")
 	}
 	s := ec.Status()
-	if s.KEDA.State != EnrichmentStateDisabled {
+	if s.KEDA.State != StateDisabled {
 		t.Fatalf("expected KEDA disabled, got %s", s.KEDA.State)
 	}
-	if s.VPA.State != EnrichmentStateDisabled {
+	if s.VPA.State != StateDisabled {
 		t.Fatalf("expected VPA disabled, got %s", s.VPA.State)
 	}
 }
@@ -93,7 +93,7 @@ func TestNewContext_KEDARequestedButNoCluster(t *testing.T) {
 		t.Fatal("expected KEDA to not be enabled with invalid kubeconfig")
 	}
 	s := ec.Status()
-	if s.KEDA.State != EnrichmentStateError {
+	if s.KEDA.State != StateError {
 		t.Fatalf("expected KEDA error state, got %s", s.KEDA.State)
 	}
 }
@@ -107,45 +107,45 @@ func TestNewContext_VPARequestedButNoCluster(t *testing.T) {
 		t.Fatal("expected VPA to not be enabled with invalid kubeconfig")
 	}
 	s := ec.Status()
-	if s.VPA.State != EnrichmentStateError {
+	if s.VPA.State != StateError {
 		t.Fatalf("expected VPA error state, got %s", s.VPA.State)
 	}
 }
 
-// --- EnrichmentStatus entry tests ---
+// --- Status entry tests ---
 
-func TestEnrichmentStatus_KEDAEntry_Nil(t *testing.T) {
-	var s *EnrichmentStatus
+func TestStatus_KEDAEntry_Nil(t *testing.T) {
+	var s *Status
 	entry := s.KEDAEntry()
-	if entry.State != EnrichmentStateDisabled {
+	if entry.State != StateDisabled {
 		t.Fatalf("expected disabled, got %s", entry.State)
 	}
 }
 
-func TestEnrichmentStatus_VPAEntry_Nil(t *testing.T) {
-	var s *EnrichmentStatus
+func TestStatus_VPAEntry_Nil(t *testing.T) {
+	var s *Status
 	entry := s.VPAEntry()
-	if entry.State != EnrichmentStateDisabled {
+	if entry.State != StateDisabled {
 		t.Fatalf("expected disabled, got %s", entry.State)
 	}
 }
 
-func TestEnrichmentStatus_KEDAEntry_Present(t *testing.T) {
-	s := &EnrichmentStatus{
-		KEDA: &EnrichmentEntry{Source: EnrichmentSourceKEDA, State: EnrichmentStateActive},
+func TestStatus_KEDAEntry_Present(t *testing.T) {
+	s := &Status{
+		KEDA: &Entry{Source: SourceKEDA, State: StateActive},
 	}
 	entry := s.KEDAEntry()
-	if entry.State != EnrichmentStateActive {
+	if entry.State != StateActive {
 		t.Fatalf("expected active, got %s", entry.State)
 	}
 }
 
-func TestEnrichmentStatus_VPAEntry_Present(t *testing.T) {
-	s := &EnrichmentStatus{
-		VPA: &EnrichmentEntry{Source: EnrichmentSourceVPA, State: EnrichmentStateUnavailable},
+func TestStatus_VPAEntry_Present(t *testing.T) {
+	s := &Status{
+		VPA: &Entry{Source: SourceVPA, State: StateUnavailable},
 	}
 	entry := s.VPAEntry()
-	if entry.State != EnrichmentStateUnavailable {
+	if entry.State != StateUnavailable {
 		t.Fatalf("expected unavailable, got %s", entry.State)
 	}
 }
@@ -310,7 +310,7 @@ func TestEnrichVPA_NilContext(_ *testing.T) {
 	// This test verifies the behavior with a valid but non-enriched context.
 	ec := &Context{
 		vpaEnabled: false,
-		status:     EnrichmentStatus{},
+		status:     Status{},
 	}
 	hpa := &autoscalingv2.HorizontalPodAutoscaler{
 		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "hpa"},

@@ -24,53 +24,88 @@ func writeAIContextMany(out io.Writer, reports []hpaanalysis.StatusReport, quest
 		return err
 	}
 	for _, report := range reports {
-		a := report.Analysis
-		if _, err := fmt.Fprintf(out, "\n## %s/%s\n", a.Namespace, a.Name); err != nil {
+		if err := writeAIContextReport(out, report.Analysis); err != nil {
 			return err
 		}
-		if _, err := fmt.Fprintf(out, "- target: %s\n- replicas: current=%d desired=%d min=%d max=%d\n- health: %s (%d/100)\n- summary: %s\n",
-			a.Target, a.Current, a.Desired, a.Min, a.Max, a.Health, a.HealthScore, a.Summary); err != nil {
+	}
+	return nil
+}
+
+func writeAIContextReport(out io.Writer, a hpaanalysis.Analysis) error {
+	if _, err := fmt.Fprintf(out, "\n## %s/%s\n", a.Namespace, a.Name); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(out, "- target: %s\n- replicas: current=%d desired=%d min=%d max=%d\n- health: %s (%d/100)\n- summary: %s\n",
+		a.Target, a.Current, a.Desired, a.Min, a.Max, a.Health, a.HealthScore, a.Summary); err != nil {
+		return err
+	}
+	if err := writeAIContextConditions(out, a.Conditions); err != nil {
+		return err
+	}
+	if err := writeAIContextMetrics(out, a.Metrics); err != nil {
+		return err
+	}
+	if err := writeAIContextHiddenFactors(out, a.HiddenFactors); err != nil {
+		return err
+	}
+	return writeAIContextSuggestions(out, a.Suggestions)
+}
+
+func writeAIContextConditions(out io.Writer, conditions []hpaanalysis.Condition) error {
+	if len(conditions) == 0 {
+		return nil
+	}
+	if _, err := fmt.Fprintln(out, "- conditions:"); err != nil {
+		return err
+	}
+	for _, condition := range conditions {
+		if _, err := fmt.Fprintf(out, "  - %s=%s reason=%s message=%s\n", condition.Type, condition.Status, condition.Reason, condition.Message); err != nil {
 			return err
 		}
-		if len(a.Conditions) > 0 {
-			if _, err := fmt.Fprintln(out, "- conditions:"); err != nil {
-				return err
-			}
-			for _, condition := range a.Conditions {
-				if _, err := fmt.Fprintf(out, "  - %s=%s reason=%s message=%s\n", condition.Type, condition.Status, condition.Reason, condition.Message); err != nil {
-					return err
-				}
-			}
+	}
+	return nil
+}
+
+func writeAIContextMetrics(out io.Writer, metrics []hpaanalysis.Metric) error {
+	if len(metrics) == 0 {
+		return nil
+	}
+	if _, err := fmt.Fprintln(out, "- metrics:"); err != nil {
+		return err
+	}
+	for _, metric := range metrics {
+		if _, err := fmt.Fprintf(out, "  - %s/%s current=%s target=%s note=%s\n", metric.Type, metric.Name, metric.Current, metric.Target, metric.Note); err != nil {
+			return err
 		}
-		if len(a.Metrics) > 0 {
-			if _, err := fmt.Fprintln(out, "- metrics:"); err != nil {
-				return err
-			}
-			for _, metric := range a.Metrics {
-				if _, err := fmt.Fprintf(out, "  - %s/%s current=%s target=%s note=%s\n", metric.Type, metric.Name, metric.Current, metric.Target, metric.Note); err != nil {
-					return err
-				}
-			}
+	}
+	return nil
+}
+
+func writeAIContextHiddenFactors(out io.Writer, factors []hpaanalysis.HiddenDecisionFactor) error {
+	if len(factors) == 0 {
+		return nil
+	}
+	if _, err := fmt.Fprintln(out, "- hidden decision factors:"); err != nil {
+		return err
+	}
+	for _, factor := range factors {
+		if _, err := fmt.Fprintf(out, "  - %s: %s impact=%s confidence=%s\n", factor.Name, factor.Status, factor.Impact, factor.Confidence); err != nil {
+			return err
 		}
-		if len(a.HiddenFactors) > 0 {
-			if _, err := fmt.Fprintln(out, "- hidden decision factors:"); err != nil {
-				return err
-			}
-			for _, factor := range a.HiddenFactors {
-				if _, err := fmt.Fprintf(out, "  - %s: %s impact=%s confidence=%s\n", factor.Name, factor.Status, factor.Impact, factor.Confidence); err != nil {
-					return err
-				}
-			}
-		}
-		if len(a.Suggestions) > 0 {
-			if _, err := fmt.Fprintln(out, "- safe suggestions:"); err != nil {
-				return err
-			}
-			for _, suggestion := range a.Suggestions {
-				if _, err := fmt.Fprintf(out, "  - %s: %s\n", suggestion.Title, suggestion.Description); err != nil {
-					return err
-				}
-			}
+	}
+	return nil
+}
+
+func writeAIContextSuggestions(out io.Writer, suggestions []hpaanalysis.Suggestion) error {
+	if len(suggestions) == 0 {
+		return nil
+	}
+	if _, err := fmt.Fprintln(out, "- safe suggestions:"); err != nil {
+		return err
+	}
+	for _, suggestion := range suggestions {
+		if _, err := fmt.Fprintf(out, "  - %s: %s\n", suggestion.Title, suggestion.Description); err != nil {
+			return err
 		}
 	}
 	return nil

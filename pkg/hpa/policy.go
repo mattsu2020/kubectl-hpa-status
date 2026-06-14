@@ -135,6 +135,13 @@ func normalizePolicyRule(rule PolicyRule) PolicyRule {
 	if rule.ID == "" {
 		rule.ID = rule.Type
 	}
+	normalizePolicyRuleIDAndName(&rule)
+	normalizePolicyRuleParameters(&rule)
+	return rule
+}
+
+// normalizePolicyRuleIDAndName maps the rule's ID to a canonical form and fills in a default Name when unset.
+func normalizePolicyRuleIDAndName(rule *PolicyRule) {
 	switch normalizePolicyID(rule.ID) {
 	case "stabilizationwindowseconds", "stabilizationwindow", "stabilization-window":
 		rule.ID = "stabilization-window"
@@ -142,17 +149,7 @@ func normalizePolicyRule(rule PolicyRule) PolicyRule {
 			rule.Name = "Stabilization Window Range"
 		}
 	case "maxreplicas", "maxreplicasmultiplier", "max-replicas-multiplier":
-		if rule.MaxMultiplierFromCurrent != nil {
-			rule.ID = "max-replicas-from-current"
-			if rule.Name == "" {
-				rule.Name = "Max Replicas From Current"
-			}
-		} else {
-			rule.ID = "max-replicas-multiplier"
-			if rule.Name == "" {
-				rule.Name = "Max Replicas Multiplier"
-			}
-		}
+		normalizeMaxReplicasRule(rule)
 	case "behaviorpolicyrequired", "behavior-policy-required":
 		rule.ID = "behavior-policy-required"
 		if rule.Name == "" {
@@ -174,6 +171,25 @@ func normalizePolicyRule(rule PolicyRule) PolicyRule {
 			rule.Name = "Replica Range"
 		}
 	}
+}
+
+// normalizeMaxReplicasRule disambiguates maxReplicas rules based on whether a from-current multiplier is set.
+func normalizeMaxReplicasRule(rule *PolicyRule) {
+	if rule.MaxMultiplierFromCurrent != nil {
+		rule.ID = "max-replicas-from-current"
+		if rule.Name == "" {
+			rule.Name = "Max Replicas From Current"
+		}
+		return
+	}
+	rule.ID = "max-replicas-multiplier"
+	if rule.Name == "" {
+		rule.Name = "Max Replicas Multiplier"
+	}
+}
+
+// normalizePolicyRuleParameters ensures Parameters is non-nil and copies scalar fields into it.
+func normalizePolicyRuleParameters(rule *PolicyRule) {
 	if rule.Parameters == nil {
 		rule.Parameters = PolicyParams{}
 	}
@@ -192,7 +208,6 @@ func normalizePolicyRule(rule PolicyRule) PolicyRule {
 	if rule.MaxMultiplierFromCurrent != nil {
 		rule.Parameters["maxMultiplierFromCurrent"] = *rule.MaxMultiplierFromCurrent
 	}
-	return rule
 }
 
 func normalizePolicyID(value string) string {

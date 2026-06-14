@@ -229,12 +229,7 @@ func (m Model) renderHistoryView() string {
 	}
 
 	if len(snapshots) == 0 {
-		var sb strings.Builder
-		sb.WriteString(headerStyle.Render(fmt.Sprintf("HPA History: %s/%s", item.Namespace, item.Name)))
-		sb.WriteString("\n\n")
-		sb.WriteString(dimStyle.Render("No timeline data available. Use 'timeline record' to capture data."))
-		sb.WriteString("\n")
-		return sb.String()
+		return renderHistoryEmpty(item)
 	}
 
 	// Derive churn analysis from snapshots if not already computed.
@@ -243,43 +238,77 @@ func (m Model) renderHistoryView() string {
 	}
 
 	var sb strings.Builder
-	graphWidth := m.width - 20
+	graphWidth := historyGraphWidth(m.width)
+
+	appendHistoryHeader(&sb, item, snapshots)
+	appendHistoryChurnSection(&sb, churn)
+	appendHistoryRecommendations(&sb, churn, m.width)
+	appendHistoryReplicaTrend(&sb, snapshots, churn, graphWidth)
+	appendHistoryMetricTrends(&sb, m.reports[item.Namespace+"/"+item.Name])
+	appendHistoryHealthTimeline(&sb, snapshots, graphWidth)
+	appendHistoryEventLog(&sb, snapshots, scrollPos, m.height, m.width)
+
+	// 7. Footer.
+	sb.WriteString("\n")
+	sb.WriteString(dimStyle.Render("↑/k: scroll up | ↓/j: scroll down | esc: back"))
+
+	return sb.String()
+}
+
+func renderHistoryEmpty(item hpaanalysis.ListItem) string {
+	var sb strings.Builder
+	sb.WriteString(headerStyle.Render(fmt.Sprintf("HPA History: %s/%s", item.Namespace, item.Name)))
+	sb.WriteString("\n\n")
+	sb.WriteString(dimStyle.Render("No timeline data available. Use 'timeline record' to capture data."))
+	sb.WriteString("\n")
+	return sb.String()
+}
+
+func historyGraphWidth(width int) int {
+	graphWidth := width - 20
 	if graphWidth < 10 {
 		graphWidth = 10
 	}
+	return graphWidth
+}
 
-	// 1. Header.
+func appendHistoryHeader(sb *strings.Builder, item hpaanalysis.ListItem, snapshots []hpaanalysis.TimelineSnapshot) {
 	sb.WriteString(headerStyle.Render(fmt.Sprintf("HPA History: %s/%s", item.Namespace, item.Name)))
 	sb.WriteString(fmt.Sprintf("  %d snapshots", len(snapshots)))
 	sb.WriteString("\n\n")
+}
 
-	// 2. Churn Score section.
-	if churn != nil {
-		churnStyle := churnColor(string(churn.Level))
-		sb.WriteString(churnStyle.Render(fmt.Sprintf("Churn Score: %d/100 (%s)", churn.Score, churn.Level)))
-		sb.WriteString("\n")
-		sb.WriteString(dimStyle.Render(fmt.Sprintf(
-			"Scale-up: %d | Scale-down: %d | Direction flips: %d",
-			churn.ScaleUpCount, churn.ScaleDownCount, churn.DirectionFlips,
-		)))
-		sb.WriteString("\n")
-		sb.WriteString(dimStyle.Render(fmt.Sprintf("Time window: %dm", int(churn.TimeWindow.Minutes()))))
+func appendHistoryChurnSection(sb *strings.Builder, churn *hpaanalysis.ChurnAnalysis) {
+	if churn == nil {
+		return
+	}
+	churnStyle := churnColor(string(churn.Level))
+	sb.WriteString(churnStyle.Render(fmt.Sprintf("Churn Score: %d/100 (%s)", churn.Score, churn.Level)))
+	sb.WriteString("\n")
+	sb.WriteString(dimStyle.Render(fmt.Sprintf(
+		"Scale-up: %d | Scale-down: %d | Direction flips: %d",
+		churn.ScaleUpCount, churn.ScaleDownCount, churn.DirectionFlips,
+	)))
+	sb.WriteString("\n")
+	sb.WriteString(dimStyle.Render(fmt.Sprintf("Time window: %dm", int(churn.TimeWindow.Minutes()))))
+	sb.WriteString("\n")
+}
+
+func appendHistoryRecommendations(sb *strings.Builder, churn *hpaanalysis.ChurnAnalysis, width int) {
+	if churn == nil || len(churn.Recommendations) == 0 {
+		return
+	}
+	sb.WriteString("\n")
+	sb.WriteString(headerStyle.Render("Recommendations:"))
+	sb.WriteString("\n")
+	for _, rec := range churn.Recommendations {
+		line := fmt.Sprintf("  - [%s] %s -> %s", rec.Type, rec.CurrentValue, rec.RecommendedValue)
+		sb.WriteString(truncate(line, width-2))
 		sb.WriteString("\n")
 	}
+}
 
-	// 3. Recommendations section.
-	if churn != nil && len(churn.Recommendations) > 0 {
-		sb.WriteString("\n")
-		sb.WriteString(headerStyle.Render("Recommendations:"))
-		sb.WriteString("\n")
-		for _, rec := range churn.Recommendations {
-			line := fmt.Sprintf("  - [%s] %s -> %s", rec.Type, rec.CurrentValue, rec.RecommendedValue)
-			sb.WriteString(truncate(line, m.width-2))
-			sb.WriteString("\n")
-		}
-	}
-
-	// 4. Replica Sparkline with direction-flip markers.
+func appendHistoryReplicaTrend(sb *strings.Builder, snapshots []hpaanalysis.TimelineSnapshot, churn *hpaanalysis.ChurnAnalysis, graphWidth int) {
 	sb.WriteString("\n")
 	sb.WriteString("Replica Trend:\n")
 	desiredValues := make([]float64, len(snapshots))
@@ -287,15 +316,7 @@ func (m Model) renderHistoryView() string {
 		desiredValues[i] = float64(snap.Desired)
 	}
 
-	sparkStyle := okStyle
-	if churn != nil {
-		switch string(churn.Level) {
-		case "MEDIUM":
-			sparkStyle = warnStyle
-		case "HIGH", "CRITICAL":
-			sparkStyle = errorStyle
-		}
-	}
+	sparkStyle := churnSparkStyle(churn)
 	flipMarkers := detectDirectionFlips(desiredValues)
 	sb.WriteString("  ")
 	sb.WriteString(renderSparklineWithMarkers(desiredValues, graphWidth, flipMarkers, sparkStyle))
@@ -304,59 +325,59 @@ func (m Model) renderHistoryView() string {
 		sb.WriteString(dimStyle.Render(fmt.Sprintf("  %d direction flip(s) detected (↕ = flip point)", len(flipMarkers))))
 		sb.WriteString("\n")
 	}
+}
 
-	// 5. Per-metric sparklines (from current report data).
-	key := item.Namespace + "/" + item.Name
-	if report, ok := m.reports[key]; ok && report != nil && len(report.Analysis.Metrics) > 0 {
-		sb.WriteString("\n")
-		sb.WriteString("Metric Trends:\n")
-		for _, metric := range report.Analysis.Metrics {
-			name := metric.Name
-			if name == "" {
-				name = metric.Type
-			}
-			ratioStr := ""
-			if metric.Ratio != nil {
-				ratioStr = fmt.Sprintf(" %.2f", *metric.Ratio)
-			}
-			sb.WriteString(fmt.Sprintf("  %-20s%s\n", name, dimStyle.Render(ratioStr)))
-		}
+func churnSparkStyle(churn *hpaanalysis.ChurnAnalysis) lipgloss.Style {
+	if churn == nil {
+		return okStyle
 	}
+	switch string(churn.Level) {
+	case "MEDIUM":
+		return warnStyle
+	case "HIGH", "CRITICAL":
+		return errorStyle
+	}
+	return okStyle
+}
 
-	// 6. Health Timeline.
+func appendHistoryMetricTrends(sb *strings.Builder, report *hpaanalysis.StatusReport) {
+	if report == nil || len(report.Analysis.Metrics) == 0 {
+		return
+	}
+	sb.WriteString("\n")
+	sb.WriteString("Metric Trends:\n")
+	for _, metric := range report.Analysis.Metrics {
+		name := metric.Name
+		if name == "" {
+			name = metric.Type
+		}
+		ratioStr := ""
+		if metric.Ratio != nil {
+			ratioStr = fmt.Sprintf(" %.2f", *metric.Ratio)
+		}
+		sb.WriteString(fmt.Sprintf("  %-20s%s\n", name, dimStyle.Render(ratioStr)))
+	}
+}
+
+func appendHistoryHealthTimeline(sb *strings.Builder, snapshots []hpaanalysis.TimelineSnapshot, graphWidth int) {
 	sb.WriteString("\n")
 	sb.WriteString("Health Timeline:\n")
 	sb.WriteString("  ")
 	sb.WriteString(renderHealthTimeline(snapshots, graphWidth))
 	sb.WriteString("\n")
+}
 
-	// 6. Event Log (scrollable).
+func appendHistoryEventLog(sb *strings.Builder, snapshots []hpaanalysis.TimelineSnapshot, scrollPos, height, width int) {
 	sb.WriteString("\n")
 	sb.WriteString(headerStyle.Render("Event Log:"))
 	sb.WriteString("\n")
 
-	visibleHeight := m.height - 18 // header + sections + footer
+	visibleHeight := height - 18 // header + sections + footer
 	if visibleHeight < 3 {
 		visibleHeight = 3
 	}
 
-	start := scrollPos
-	if start < 0 {
-		start = 0
-	}
-	// Show most recent entries; scroll from the end.
-	totalEntries := len(snapshots)
-	maxStart := totalEntries - visibleHeight
-	if maxStart < 0 {
-		maxStart = 0
-	}
-	if start > maxStart {
-		start = maxStart
-	}
-	end := start + visibleHeight
-	if end > totalEntries {
-		end = totalEntries
-	}
+	start, end := historyScrollWindow(scrollPos, len(snapshots), visibleHeight)
 
 	for i := start; i < end; i++ {
 		snap := snapshots[i]
@@ -371,19 +392,31 @@ func (m Model) renderHistoryView() string {
 
 		line := fmt.Sprintf("  %s replicas=%s health=%s score=%d",
 			timeStr, replicas, healthBadge, snap.HealthScore)
-		sb.WriteString(truncate(line, m.width-2))
+		sb.WriteString(truncate(line, width-2))
 		sb.WriteString("\n")
 	}
 
-	// Scroll indicator.
-	if totalEntries > visibleHeight {
-		sb.WriteString(dimStyle.Render(fmt.Sprintf("  [%d-%d of %d]", start+1, end, totalEntries)))
+	if len(snapshots) > visibleHeight {
+		sb.WriteString(dimStyle.Render(fmt.Sprintf("  [%d-%d of %d]", start+1, end, len(snapshots))))
 		sb.WriteString("\n")
 	}
+}
 
-	// 7. Footer.
-	sb.WriteString("\n")
-	sb.WriteString(dimStyle.Render("↑/k: scroll up | ↓/j: scroll down | esc: back"))
-
-	return sb.String()
+func historyScrollWindow(scrollPos, totalEntries, visibleHeight int) (int, int) {
+	start := scrollPos
+	if start < 0 {
+		start = 0
+	}
+	maxStart := totalEntries - visibleHeight
+	if maxStart < 0 {
+		maxStart = 0
+	}
+	if start > maxStart {
+		start = maxStart
+	}
+	end := start + visibleHeight
+	if end > totalEntries {
+		end = totalEntries
+	}
+	return start, end
 }

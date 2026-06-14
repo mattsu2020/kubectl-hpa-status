@@ -233,30 +233,30 @@ func resolveMetricSpec(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) 
 func findCurrentMetric(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) (int, bool) {
 	lower := strings.ToLower(name)
 	for i, m := range hpa.Status.CurrentMetrics {
-		switch m.Type {
-		case autoscalingv2.ResourceMetricSourceType:
-			if m.Resource != nil && strings.ToLower(string(m.Resource.Name)) == lower {
-				return i, true
-			}
-		case autoscalingv2.ExternalMetricSourceType:
-			if m.External != nil && strings.ToLower(m.External.Metric.Name) == lower {
-				return i, true
-			}
-		case autoscalingv2.PodsMetricSourceType:
-			if m.Pods != nil && strings.ToLower(m.Pods.Metric.Name) == lower {
-				return i, true
-			}
-		case autoscalingv2.ObjectMetricSourceType:
-			if m.Object != nil && strings.ToLower(m.Object.Metric.Name) == lower {
-				return i, true
-			}
-		case autoscalingv2.ContainerResourceMetricSourceType:
-			if m.ContainerResource != nil && strings.ToLower(string(m.ContainerResource.Name)) == lower {
-				return i, true
-			}
+		if currentMetricNameMatches(m, lower) {
+			return i, true
 		}
 	}
 	return -1, false
+}
+
+// currentMetricNameMatches reports whether the given current-metric entry's
+// name matches the already-lowercased target name.
+func currentMetricNameMatches(m autoscalingv2.MetricStatus, lower string) bool {
+	switch m.Type {
+	case autoscalingv2.ResourceMetricSourceType:
+		return m.Resource != nil && strings.ToLower(string(m.Resource.Name)) == lower
+	case autoscalingv2.ExternalMetricSourceType:
+		return m.External != nil && strings.ToLower(m.External.Metric.Name) == lower
+	case autoscalingv2.PodsMetricSourceType:
+		return m.Pods != nil && strings.ToLower(m.Pods.Metric.Name) == lower
+	case autoscalingv2.ObjectMetricSourceType:
+		return m.Object != nil && strings.ToLower(m.Object.Metric.Name) == lower
+	case autoscalingv2.ContainerResourceMetricSourceType:
+		return m.ContainerResource != nil && strings.ToLower(string(m.ContainerResource.Name)) == lower
+	default:
+		return false
+	}
 }
 
 // parseRelativeValue parses a relative change like +20% or -10% and applies it
@@ -319,7 +319,7 @@ func isResourceQuantity(value string) bool {
 }
 
 // buildMetricSimulation creates a MetricSimulation for a single override.
-func buildMetricSimulation(original, modified *autoscalingv2.HorizontalPodAutoscaler, name, value string, before, after SimulationState) MetricSimulation {
+func buildMetricSimulation(original, _ *autoscalingv2.HorizontalPodAutoscaler, name, value string, _, after SimulationState) MetricSimulation {
 	ms := MetricSimulation{
 		MetricName:        name,
 		SimulatedValue:    value,
@@ -343,57 +343,92 @@ func buildMetricSimulation(original, modified *autoscalingv2.HorizontalPodAutosc
 
 	// Compute projected ratio for resource utilization metrics
 	if spec.Type == autoscalingv2.ResourceMetricSourceType && strings.HasSuffix(value, "%") {
-		pctStr := strings.TrimSuffix(value, "%")
-		if simUtil, err := strconv.ParseInt(pctStr, 10, 32); err == nil {
-			var targetUtil int32
-			if spec.Resource.Target.AverageUtilization != nil {
-				targetUtil = *spec.Resource.Target.AverageUtilization
-			}
-			if targetUtil > 0 {
-				ratio := float64(simUtil) / float64(targetUtil)
-				ms.ProjectedRatio = &ratio
-				minReplicas := int32(1)
-				if original.Spec.MinReplicas != nil {
-					minReplicas = *original.Spec.MinReplicas
-				}
-				ms.ProjectedReplicas = computeProjectedReplicas(
-					original.Status.DesiredReplicas, ratio,
-					minReplicas, original.Spec.MaxReplicas,
-				)
-			}
+		if updated := applyUtilizationPercentOverride(value, spec, original); updated != nil {
+			updated.applyTo(&ms)
 		}
 	}
 
 	// Compute projected ratio for relative changes
-	if strings.HasPrefix(value, "+") || strings.HasPrefix(value, "-") {
-		if spec.Type == autoscalingv2.ResourceMetricSourceType {
-			currentUtil := original.Status.CurrentMetrics[idx].Resource.Current.AverageUtilization
-			if currentUtil != nil {
-				newUtil, err := parseRelativeValue(value, *currentUtil)
-				if err == nil {
-					var targetUtil int32
-					if spec.Resource.Target.AverageUtilization != nil {
-						targetUtil = *spec.Resource.Target.AverageUtilization
-					}
-					if targetUtil > 0 {
-						ratio := float64(newUtil) / float64(targetUtil)
-						ms.ProjectedRatio = &ratio
-						minReplicas := int32(1)
-						if original.Spec.MinReplicas != nil {
-							minReplicas = *original.Spec.MinReplicas
-						}
-						ms.ProjectedReplicas = computeProjectedReplicas(
-							original.Status.DesiredReplicas, ratio,
-							minReplicas, original.Spec.MaxReplicas,
-						)
-						ms.SimulatedValue = fmt.Sprintf("%d%%", newUtil)
-					}
-				}
+	if (strings.HasPrefix(value, "+") || strings.HasPrefix(value, "-")) && spec.Type == autoscalingv2.ResourceMetricSourceType {
+		currentUtil := original.Status.CurrentMetrics[idx].Resource.Current.AverageUtilization
+		if currentUtil != nil {
+			if updated := applyRelativeUtilizationOverride(value, *currentUtil, spec, original); updated != nil {
+				updated.applyTo(&ms)
 			}
 		}
 	}
 
 	return ms
+}
+
+// metricSimulationUpdate holds the computed projection fields to apply to a
+// MetricSimulation after a metric override is evaluated.
+type metricSimulationUpdate struct {
+	ProjectedRatio    *float64
+	ProjectedReplicas int32
+	SimulatedValue    string
+}
+
+func (u metricSimulationUpdate) applyTo(ms *MetricSimulation) {
+	if u.ProjectedRatio != nil {
+		ms.ProjectedRatio = u.ProjectedRatio
+	}
+	ms.ProjectedReplicas = u.ProjectedReplicas
+	if u.SimulatedValue != "" {
+		ms.SimulatedValue = u.SimulatedValue
+	}
+}
+
+func applyUtilizationPercentOverride(value string, spec autoscalingv2.MetricSpec, original *autoscalingv2.HorizontalPodAutoscaler) *metricSimulationUpdate {
+	pctStr := strings.TrimSuffix(value, "%")
+	simUtil, err := strconv.ParseInt(pctStr, 10, 32)
+	if err != nil {
+		return nil
+	}
+	targetUtil := resolveTargetUtilization(spec)
+	if targetUtil <= 0 {
+		return nil
+	}
+	ratio := float64(simUtil) / float64(targetUtil)
+	return &metricSimulationUpdate{
+		ProjectedRatio:    &ratio,
+		ProjectedReplicas: computeProjectedFromRatio(original, ratio),
+	}
+}
+
+func applyRelativeUtilizationOverride(value string, currentUtil int32, spec autoscalingv2.MetricSpec, original *autoscalingv2.HorizontalPodAutoscaler) *metricSimulationUpdate {
+	newUtil, err := parseRelativeValue(value, currentUtil)
+	if err != nil {
+		return nil
+	}
+	targetUtil := resolveTargetUtilization(spec)
+	if targetUtil <= 0 {
+		return nil
+	}
+	ratio := float64(newUtil) / float64(targetUtil)
+	return &metricSimulationUpdate{
+		ProjectedRatio:    &ratio,
+		ProjectedReplicas: computeProjectedFromRatio(original, ratio),
+		SimulatedValue:    fmt.Sprintf("%d%%", newUtil),
+	}
+}
+
+func resolveTargetUtilization(spec autoscalingv2.MetricSpec) int32 {
+	if spec.Resource.Target.AverageUtilization != nil {
+		return *spec.Resource.Target.AverageUtilization
+	}
+	return 0
+}
+
+func computeProjectedFromRatio(original *autoscalingv2.HorizontalPodAutoscaler, ratio float64) int32 {
+	minReplicas := int32(1)
+	if original.Spec.MinReplicas != nil {
+		minReplicas = *original.Spec.MinReplicas
+	}
+	return computeProjectedReplicas(
+		original.Status.DesiredReplicas, ratio,
+		minReplicas, original.Spec.MaxReplicas,
+	)
 }
 
 // formatMetricValue returns a display string for a current metric value.

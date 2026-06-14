@@ -117,7 +117,18 @@ func buildMetricContractInput(ctx context.Context, client *kube.Client, hpa *aut
 		},
 	}
 
-	// Build current metric data map for hasCurrentData check
+	currentMetricMap := buildCurrentMetricDataMap(hpa)
+
+	for _, m := range hpa.Spec.Metrics {
+		input.Metrics = append(input.Metrics, buildMetricContractMetric(m, currentMetricMap))
+	}
+
+	return input
+}
+
+// buildCurrentMetricDataMap builds a set of "Type/Name" keys for metrics that
+// have current data in the HPA status.
+func buildCurrentMetricDataMap(hpa *autoscalingv2.HorizontalPodAutoscaler) map[string]bool {
 	currentMetricMap := make(map[string]bool)
 	for _, m := range hpa.Status.CurrentMetrics {
 		switch {
@@ -133,49 +144,49 @@ func buildMetricContractInput(ctx context.Context, client *kube.Client, hpa *aut
 			currentMetricMap[fmt.Sprintf("External/%s", m.External.Metric.Name)] = true
 		}
 	}
+	return currentMetricMap
+}
 
-	// Extract metrics from HPA spec
-	for _, m := range hpa.Spec.Metrics {
-		metric := hpaanalysis.MetricContractMetric{
-			Type: string(m.Type),
-		}
-
-		switch {
-		case m.Resource != nil:
-			metric.Name = string(m.Resource.Name)
-			metric.APIGroup = "metrics.k8s.io/v1beta1"
-			currentMetricMap[fmt.Sprintf("Resource/%s", m.Resource.Name)] = true
-		case m.ContainerResource != nil:
-			metric.Name = string(m.ContainerResource.Name)
-			metric.APIGroup = "metrics.k8s.io/v1beta1"
-		case m.Pods != nil:
-			metric.Name = m.Pods.Metric.Name
-			metric.APIGroup = "custom.metrics.k8s.io/v1beta1"
-			if m.Pods.Metric.Selector != nil {
-				metric.Selector = m.Pods.Metric.Selector.String()
-			}
-		case m.Object != nil:
-			metric.Name = m.Object.Metric.Name
-			metric.APIGroup = "custom.metrics.k8s.io/v1beta1"
-			if m.Object.Metric.Selector != nil {
-				metric.Selector = m.Object.Metric.Selector.String()
-			}
-		case m.External != nil:
-			metric.Name = m.External.Metric.Name
-			metric.APIGroup = "external.metrics.k8s.io/v1beta1"
-		}
-
-		// Check if current data exists
-		metricKey := fmt.Sprintf("%s/%s", metric.Type, metric.Name)
-		if metric.Type == "ContainerResource" && m.ContainerResource != nil {
-			metricKey = fmt.Sprintf("%s/%s/%s", metric.Type, m.ContainerResource.Container, metric.Name)
-		}
-		metric.HasCurrentData = currentMetricMap[metricKey]
-
-		input.Metrics = append(input.Metrics, metric)
+// buildMetricContractMetric converts a single HPA spec metric into a contract
+// metric and records its hasCurrentData flag against the provided map.
+func buildMetricContractMetric(m autoscalingv2.MetricSpec, currentMetricMap map[string]bool) hpaanalysis.MetricContractMetric {
+	metric := hpaanalysis.MetricContractMetric{
+		Type: string(m.Type),
 	}
 
-	return input
+	switch {
+	case m.Resource != nil:
+		metric.Name = string(m.Resource.Name)
+		metric.APIGroup = "metrics.k8s.io/v1beta1"
+		currentMetricMap[fmt.Sprintf("Resource/%s", m.Resource.Name)] = true
+	case m.ContainerResource != nil:
+		metric.Name = string(m.ContainerResource.Name)
+		metric.APIGroup = "metrics.k8s.io/v1beta1"
+	case m.Pods != nil:
+		metric.Name = m.Pods.Metric.Name
+		metric.APIGroup = "custom.metrics.k8s.io/v1beta1"
+		if m.Pods.Metric.Selector != nil {
+			metric.Selector = m.Pods.Metric.Selector.String()
+		}
+	case m.Object != nil:
+		metric.Name = m.Object.Metric.Name
+		metric.APIGroup = "custom.metrics.k8s.io/v1beta1"
+		if m.Object.Metric.Selector != nil {
+			metric.Selector = m.Object.Metric.Selector.String()
+		}
+	case m.External != nil:
+		metric.Name = m.External.Metric.Name
+		metric.APIGroup = "external.metrics.k8s.io/v1beta1"
+	}
+
+	// Check if current data exists
+	metricKey := fmt.Sprintf("%s/%s", metric.Type, metric.Name)
+	if metric.Type == "ContainerResource" && m.ContainerResource != nil {
+		metricKey = fmt.Sprintf("%s/%s/%s", metric.Type, m.ContainerResource.Container, metric.Name)
+	}
+	metric.HasCurrentData = currentMetricMap[metricKey]
+
+	return metric
 }
 
 // checkAPIServiceAvailability checks if a metrics API is available via discovery.

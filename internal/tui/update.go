@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"time"
@@ -21,107 +22,139 @@ import (
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
-		return m, nil
-
+		return m.updateWindowSize(msg)
 	case tea.KeyMsg:
-		// If filter input is active, handle filter input keys.
-		if m.filtering {
-			return m.handleFilterInput(msg)
-		}
-		// If in simulation view and textinput is focused, delegate.
-		if m.viewMode == simView && m.simState != nil && m.simState.metricMode && m.simState.metricInput.Focused() {
-			return m.handleSimInput(msg)
-		}
-		if m.viewMode == simView && m.simState != nil && !m.simState.metricMode {
-			if updated, cmd, handled := m.handleSimFieldInput(msg); handled {
-				return updated, cmd
-			}
-		}
-		return m.handleKey(msg)
-
+		return m.updateKeyMsg(msg)
 	case tickMsg:
-		if m.paused {
-			return m, tickCmd(m.interval)
-		}
-		return m, tea.Batch(fetchHPAs(m), tickCmd(m.interval))
-
+		return m.updateTick()
 	case fetchResultMsg:
-		m.loading = false
-		m.lastRefresh = time.Now()
-		if msg.err != nil {
-			m.err = msg.err
-			return m, nil
-		}
-		m.items = msg.items
-		m.reports = msg.reports
-		m.err = nil
-
-		// Update replica history for sparklines.
-		const maxReplicaHistoryPoints = 15
-		for _, item := range m.items {
-			key := item.Namespace + "/" + item.Name
-			history := m.replicaHistory[key]
-			history = append(history, float64(item.Desired))
-			if len(history) > maxReplicaHistoryPoints {
-				history = history[len(history)-maxReplicaHistoryPoints:]
-			}
-			m.replicaHistory[key] = history
-		}
-
-		if m.sortField != "" {
-			m.sortItems()
-		}
-		if !m.initialFocused {
-			m.focusInitialItem()
-			m.initialFocused = true
-		}
-		// Clamp cursor.
-		filtered := m.filteredItems()
-		if m.cursor >= len(filtered) {
-			m.cursor = len(filtered) - 1
-		}
-		if m.cursor < 0 {
-			m.cursor = 0
-		}
-		return m, nil
-
+		return m.updateFetchResult(msg)
 	case simResultMsg:
-		if m.simState != nil {
-			m.simState.result = msg.result
-			m.simState.err = msg.err
-		}
-		return m, nil
-
+		return m.updateSimResult(msg)
 	case applyResultMsg:
-		if m.fixState != nil {
-			m.fixState.applied = true
-			m.fixState.applyErr = msg.err
-		}
-		return m, nil
-
+		return m.updateApplyResult(msg)
 	case replayLoadedMsg:
-		if m.replayState != nil {
-			m.replayState.loading = false
-			m.replayState.trace = msg.trace
-			m.replayState.err = msg.err
-		}
-		return m, nil
-
+		return m.updateReplayLoaded(msg)
 	case batchAuditMsg:
-		if m.batchAuditState != nil {
-			m.batchAuditState.loading = false
-			if msg.err != nil {
-				m.batchAuditState.err = msg.err
-			} else {
-				m.batchAuditState.reports = msg.reports
-				m.batchAuditState.results = buildBatchAuditEntries(msg.reports)
-			}
+		return m.updateBatchAudit(msg)
+	}
+	return m, nil
+}
+
+func (m Model) updateWindowSize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
+	m.width = msg.Width
+	m.height = msg.Height
+	return m, nil
+}
+
+func (m Model) updateKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// If filter input is active, handle filter input keys.
+	if m.filtering {
+		return m.handleFilterInput(msg)
+	}
+	// If in simulation view and textinput is focused, delegate.
+	if m.viewMode == simView && m.simState != nil && m.simState.metricMode && m.simState.metricInput.Focused() {
+		return m.handleSimInput(msg)
+	}
+	if m.viewMode == simView && m.simState != nil && !m.simState.metricMode {
+		if updated, cmd, handled := m.handleSimFieldInput(msg); handled {
+			return updated, cmd
 		}
+	}
+	return m.handleKey(msg)
+}
+
+func (m Model) updateTick() (tea.Model, tea.Cmd) {
+	if m.paused {
+		return m, tickCmd(m.interval)
+	}
+	return m, tea.Batch(fetchHPAs(m), tickCmd(m.interval))
+}
+
+func (m Model) updateFetchResult(msg fetchResultMsg) (tea.Model, tea.Cmd) {
+	m.loading = false
+	m.lastRefresh = time.Now()
+	if msg.err != nil {
+		m.err = msg.err
 		return m, nil
 	}
+	m.items = msg.items
+	m.reports = msg.reports
+	m.err = nil
 
+	m.updateReplicaHistory()
+	m.refocusAndClampCursorAfterFetch()
+	return m, nil
+}
+
+// updateReplicaHistory appends the current desired replica count per HPA, capping history length.
+func (m *Model) updateReplicaHistory() {
+	const maxReplicaHistoryPoints = 15
+	for _, item := range m.items {
+		key := item.Namespace + "/" + item.Name
+		history := m.replicaHistory[key]
+		history = append(history, float64(item.Desired))
+		if len(history) > maxReplicaHistoryPoints {
+			history = history[len(history)-maxReplicaHistoryPoints:]
+		}
+		m.replicaHistory[key] = history
+	}
+}
+
+// refocusAndClampCursorAfterFetch re-sorts items, focuses the initial item on first load, and clamps the cursor.
+func (m *Model) refocusAndClampCursorAfterFetch() {
+	if m.sortField != "" {
+		m.sortItems()
+	}
+	if !m.initialFocused {
+		m.focusInitialItem()
+		m.initialFocused = true
+	}
+	filtered := m.filteredItems()
+	if m.cursor >= len(filtered) {
+		m.cursor = len(filtered) - 1
+	}
+	if m.cursor < 0 {
+		m.cursor = 0
+	}
+}
+
+func (m Model) updateSimResult(msg simResultMsg) (tea.Model, tea.Cmd) {
+	if m.simState != nil {
+		m.simState.result = msg.result
+		m.simState.err = msg.err
+	}
+	return m, nil
+}
+
+func (m Model) updateApplyResult(msg applyResultMsg) (tea.Model, tea.Cmd) {
+	if m.fixState != nil {
+		m.fixState.applied = true
+		m.fixState.applyErr = msg.err
+	}
+	return m, nil
+}
+
+func (m Model) updateReplayLoaded(msg replayLoadedMsg) (tea.Model, tea.Cmd) {
+	if m.replayState != nil {
+		m.replayState.loading = false
+		m.replayState.trace = msg.trace
+		m.replayState.err = msg.err
+	}
+	return m, nil
+}
+
+func (m Model) updateBatchAudit(msg batchAuditMsg) (tea.Model, tea.Cmd) {
+	if m.batchAuditState == nil {
+		return m, nil
+	}
+	m.batchAuditState.loading = false
+	if msg.err != nil {
+		m.batchAuditState.err = msg.err
+		return m, nil
+	}
+	m.batchAuditState.reports = msg.reports
+	m.batchAuditState.results = buildBatchAuditEntries(msg.reports)
 	return m, nil
 }
 
@@ -868,21 +901,45 @@ func (m Model) handleBatchApplyKey() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	type patchEntry struct {
-		namespace string
-		name      string
-		patch     string
-		title     string
+	patches := collectBatchApplyPatches(selected, m.reports)
+	if len(patches) == 0 {
+		m.err = fmt.Errorf("no applicable patches found in %d selected HPA(s)", len(selected))
+		return m, nil
 	}
-	var patches []patchEntry
+
+	if !m.batchApplyConfirm {
+		m.batchApplyConfirm = true
+		m.batchApplyPreview = batchApplyPreviewLines(patches)
+		return m, nil
+	}
+
+	applyFn := m.opts.ApplyFn
+	m.batchApplyConfirm = false
+	m.batchApplyPreview = nil
+	return m, func() tea.Msg {
+		return executeBatchApply(m.ctx, applyFn, patches)
+	}
+}
+
+// batchApplyPatchEntry pairs an HPA location with a single applicable patch.
+type batchApplyPatchEntry struct {
+	namespace string
+	name      string
+	patch     string
+	title     string
+}
+
+// collectBatchApplyPatches gathers all auto-applicable patches across the selected HPAs' reports.
+func collectBatchApplyPatches(selected []string, reports map[string]*hpaanalysis.StatusReport) []batchApplyPatchEntry {
+	var patches []batchApplyPatchEntry
 	for _, itemKey := range selected {
-		report, ok := m.reports[itemKey]
+		report, ok := reports[itemKey]
 		if !ok || report == nil {
 			continue
 		}
 		for _, s := range report.Analysis.Suggestions {
 			if s.Apply && s.Patch != "" {
-				patches = append(patches, patchEntry{
+				patches = append(patches, batchApplyPatchEntry{
 					namespace: report.Analysis.Namespace,
 					name:      report.Analysis.Name,
 					patch:     s.Patch,
@@ -891,36 +948,29 @@ func (m Model) handleBatchApplyKey() (tea.Model, tea.Cmd) {
 			}
 		}
 	}
+	return patches
+}
 
-	if len(patches) == 0 {
-		m.err = fmt.Errorf("no applicable patches found in %d selected HPA(s)", len(selected))
-		return m, nil
+func batchApplyPreviewLines(patches []batchApplyPatchEntry) []string {
+	preview := make([]string, 0, len(patches))
+	for _, p := range patches {
+		preview = append(preview, fmt.Sprintf("%s/%s: %s", p.namespace, p.name, p.title))
 	}
+	return preview
+}
 
-	if !m.batchApplyConfirm {
-		m.batchApplyConfirm = true
-		m.batchApplyPreview = make([]string, 0, len(patches))
-		for _, p := range patches {
-			m.batchApplyPreview = append(m.batchApplyPreview, fmt.Sprintf("%s/%s: %s", p.namespace, p.name, p.title))
+// executeBatchApply applies each patch via applyFn and aggregates per-HPA failures into a single applyResultMsg.
+func executeBatchApply(ctx context.Context, applyFn ApplyFunc, patches []batchApplyPatchEntry) tea.Msg {
+	var errs []string
+	for _, p := range patches {
+		if err := applyFn(ctx, p.namespace, p.name, p.patch); err != nil {
+			errs = append(errs, fmt.Sprintf("%s/%s: %v", p.namespace, p.name, err))
 		}
-		return m, nil
 	}
-
-	applyFn := m.opts.ApplyFn
-	m.batchApplyConfirm = false
-	m.batchApplyPreview = nil
-	return m, func() tea.Msg {
-		var errs []string
-		for _, p := range patches {
-			if err := applyFn(m.ctx, p.namespace, p.name, p.patch); err != nil {
-				errs = append(errs, fmt.Sprintf("%s/%s: %v", p.namespace, p.name, err))
-			}
-		}
-		if len(errs) > 0 {
-			return applyResultMsg{title: fmt.Sprintf("batch: %d/%d failed", len(errs), len(patches)), err: fmt.Errorf("%s", joinStrings(errs, "; "))}
-		}
-		return applyResultMsg{title: fmt.Sprintf("batch: %d patches applied", len(patches)), err: nil}
+	if len(errs) > 0 {
+		return applyResultMsg{title: fmt.Sprintf("batch: %d/%d failed", len(errs), len(patches)), err: fmt.Errorf("%s", joinStrings(errs, "; "))}
 	}
+	return applyResultMsg{title: fmt.Sprintf("batch: %d patches applied", len(patches)), err: nil}
 }
 
 // selectedHPANames returns the keys of selected HPAs.

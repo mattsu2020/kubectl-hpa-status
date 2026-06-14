@@ -13,8 +13,6 @@ func (m Model) renderReplayView() string {
 		return dimStyle.Render("No replay data. Press T from detail view to load a trace file.")
 	}
 
-	var sb strings.Builder
-
 	if m.replayState.loading {
 		return "Loading replay trace..."
 	}
@@ -28,180 +26,19 @@ func (m Model) renderReplayView() string {
 		return dimStyle.Render("No snapshots in trace.")
 	}
 
-	// Header.
-	sb.WriteString(headerStyle.Render(fmt.Sprintf("Replay Timeline: %s/%s", trace.Namespace, trace.HPAName)))
-	sb.WriteString(fmt.Sprintf("  %d snapshots  interval=%s", len(trace.Snapshots), trace.Interval))
-	sb.WriteString("\n\n")
+	var sb strings.Builder
+	appendReplayHeader(&sb, trace)
+	appendReplayAnalysisSummary(&sb, m.replayState.replayAnalysis)
 
-	// Show replay analysis if available.
-	if m.replayState.replayAnalysis != nil {
-		analysis := m.replayState.replayAnalysis
-		sb.WriteString(headerStyle.Render("Replay Analysis:"))
-		sb.WriteString("\n")
-
-		// Show bottleneck count.
-		if len(analysis.Bottlenecks) > 0 {
-			highCount := 0
-			medCount := 0
-			for _, b := range analysis.Bottlenecks {
-				switch b.Severity {
-				case "high":
-					highCount++
-				case "medium":
-					medCount++
-				}
-			}
-			bottleneckText := fmt.Sprintf("  Bottlenecks: %d (", len(analysis.Bottlenecks))
-			if highCount > 0 {
-				bottleneckText += errorStyle.Render(fmt.Sprintf("%d HIGH", highCount))
-			}
-			if medCount > 0 {
-				if highCount > 0 {
-					bottleneckText += ", "
-				}
-				bottleneckText += warnStyle.Render(fmt.Sprintf("%d MED", medCount))
-			}
-			bottleneckText += ")"
-			sb.WriteString(bottleneckText)
-			sb.WriteString("\n")
-		}
-
-		// Show control cycle count.
-		if len(analysis.ControlCycles) > 0 {
-			sb.WriteString(fmt.Sprintf("  Control Cycles: %d\n", len(analysis.ControlCycles)))
-		}
-
-		// Show stabilization window count.
-		if len(analysis.StabilizationWindows) > 0 {
-			sb.WriteString(fmt.Sprintf("  Stabilization Windows: %d\n", len(analysis.StabilizationWindows)))
-		}
-
-		sb.WriteString("\n")
-	}
-
-	// Timeline entries with visual replica bars.
-	const barWidth = 20
 	visibleHeight := m.height - 6 // header + footer + padding
-	start := m.replayState.scrollPos
-	if start < 0 {
-		start = 0
-	}
-	end := start + visibleHeight
-	if end > len(trace.Snapshots) {
-		end = len(trace.Snapshots)
-	}
+	start, end := replayVisibleRange(trace, m.replayState.scrollPos, visibleHeight)
+	maxReplicas := replayMaxReplicas(trace.Snapshots)
+	bottleneckMarkers := replayBottleneckMarkers(m.replayState.replayAnalysis)
 
-	maxReplicas := int32(1)
-	for _, snap := range trace.Snapshots {
-		if snap.Desired > maxReplicas {
-			maxReplicas = snap.Desired
-		}
-	}
+	appendReplayTimelineRows(&sb, trace, start, end, maxReplicas, bottleneckMarkers)
+	appendReplayBottlenecksSection(&sb, m.replayState.replayAnalysis)
+	appendReplayChangeLog(&sb, trace)
 
-	// Show bottleneck markers inline in the timeline.
-	bottleneckMarkers := make(map[string]string)
-	if m.replayState.replayAnalysis != nil {
-		for _, b := range m.replayState.replayAnalysis.Bottlenecks {
-			timeKey := b.Timestamp.Format("15:04:05")
-			marker := ""
-			switch b.Severity {
-			case "high":
-				marker = errorStyle.Render("[" + b.Type + "]")
-			case "medium":
-				marker = warnStyle.Render("[" + b.Type + "]")
-			default:
-				marker = dimStyle.Render("[" + b.Type + "]")
-			}
-			bottleneckMarkers[timeKey] = marker
-		}
-	}
-
-	for i := start; i < end; i++ {
-		snap := trace.Snapshots[i]
-		timeStr := snap.Timestamp.Format("15:04:05")
-
-		// Visual replica bar.
-		filled := int(snap.Desired) * barWidth / int(maxReplicas)
-		if filled > barWidth {
-			filled = barWidth
-		}
-		bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
-		barStyled := healthStyle(snap.Health).Render(bar)
-
-		// Health badge.
-		healthBadge := healthStyle(snap.Health).Render(padRight(snap.Health, 8))
-
-		// Top metric.
-		metricInfo := snap.TopMetric
-		if metricInfo == "" {
-			metricInfo = "-"
-		}
-
-		sb.WriteString(fmt.Sprintf("  %s  %s  %s  %s", timeStr, barStyled, healthBadge, metricInfo))
-
-		// Highlight condition changes and events.
-		if i > 0 {
-			diffs := diffStrings(trace.Snapshots[i-1], snap)
-			if len(diffs) > 0 {
-				sb.WriteString(fmt.Sprintf("  %s", warnStyle.Render(diffs[0])))
-			}
-		}
-
-		// Show bottleneck marker if present.
-		if marker, ok := bottleneckMarkers[timeStr]; ok {
-			sb.WriteString("  " + marker)
-		}
-
-		sb.WriteString("\n")
-	}
-
-	// Bottlenecks section if replay analysis is available.
-	if m.replayState.replayAnalysis != nil && len(m.replayState.replayAnalysis.Bottlenecks) > 0 {
-		sb.WriteString("\n")
-		sb.WriteString(headerStyle.Render("Bottlenecks:"))
-		sb.WriteString("\n")
-
-		for _, b := range m.replayState.replayAnalysis.Bottlenecks {
-			timeStr := b.Timestamp.Format("15:04:05")
-			var severityMarker string
-			switch b.Severity {
-			case "high":
-				severityMarker = errorStyle.Render("[" + b.Severity + "]")
-			case "medium":
-				severityMarker = warnStyle.Render("[" + b.Severity + "]")
-			default:
-				severityMarker = dimStyle.Render("[" + b.Severity + "]")
-			}
-			sb.WriteString(fmt.Sprintf("  %s  %s %s — %s\n",
-				timeStr, severityMarker, b.Type, b.Message))
-		}
-		sb.WriteString("\n")
-	}
-
-	// Change log section.
-	sb.WriteString("\n")
-	sb.WriteString(headerStyle.Render("Change Log:"))
-	sb.WriteString("\n")
-
-	changeCount := 0
-	for i := 1; i < len(trace.Snapshots); i++ {
-		diffs := diffStrings(trace.Snapshots[i-1], trace.Snapshots[i])
-		if len(diffs) > 0 {
-			timeStr := trace.Snapshots[i].Timestamp.Format("15:04:05")
-			sb.WriteString(fmt.Sprintf("  %s: %s\n", timeStr, strings.Join(diffs, ", ")))
-			changeCount++
-			if changeCount >= 10 {
-				sb.WriteString(dimStyle.Render(fmt.Sprintf("  ... and %d more changes\n", len(trace.Snapshots)-i-1)))
-				break
-			}
-		}
-	}
-
-	if changeCount == 0 {
-		sb.WriteString(dimStyle.Render("  No changes detected during observation period.\n"))
-	}
-
-	// Scroll indicator.
 	if len(trace.Snapshots) > visibleHeight {
 		sb.WriteString(dimStyle.Render(fmt.Sprintf("  [%d-%d of %d] ", start+1, end, len(trace.Snapshots))))
 	}
@@ -211,6 +48,189 @@ func (m Model) renderReplayView() string {
 	sb.WriteString(dimStyle.Render("j/k=scroll  Esc=back"))
 
 	return sb.String()
+}
+
+func appendReplayHeader(sb *strings.Builder, trace *hpaanalysis.TimelineTrace) {
+	sb.WriteString(headerStyle.Render(fmt.Sprintf("Replay Timeline: %s/%s", trace.Namespace, trace.HPAName)))
+	sb.WriteString(fmt.Sprintf("  %d snapshots  interval=%s", len(trace.Snapshots), trace.Interval))
+	sb.WriteString("\n\n")
+}
+
+func appendReplayAnalysisSummary(sb *strings.Builder, analysis *hpaanalysis.ReplayAnalysis) {
+	if analysis == nil {
+		return
+	}
+	sb.WriteString(headerStyle.Render("Replay Analysis:"))
+	sb.WriteString("\n")
+
+	if len(analysis.Bottlenecks) > 0 {
+		highCount, medCount := countBottlenecksBySeverity(analysis.Bottlenecks)
+		sb.WriteString(formatBottleneckSummary(highCount, medCount, len(analysis.Bottlenecks)))
+		sb.WriteString("\n")
+	}
+	if len(analysis.ControlCycles) > 0 {
+		sb.WriteString(fmt.Sprintf("  Control Cycles: %d\n", len(analysis.ControlCycles)))
+	}
+	if len(analysis.StabilizationWindows) > 0 {
+		sb.WriteString(fmt.Sprintf("  Stabilization Windows: %d\n", len(analysis.StabilizationWindows)))
+	}
+	sb.WriteString("\n")
+}
+
+func countBottlenecksBySeverity(bottlenecks []hpaanalysis.BottleneckMarker) (highCount, medCount int) {
+	for _, b := range bottlenecks {
+		switch b.Severity {
+		case "high":
+			highCount++
+		case "medium":
+			medCount++
+		}
+	}
+	return highCount, medCount
+}
+
+func formatBottleneckSummary(highCount, medCount, total int) string {
+	text := fmt.Sprintf("  Bottlenecks: %d (", total)
+	if highCount > 0 {
+		text += errorStyle.Render(fmt.Sprintf("%d HIGH", highCount))
+	}
+	if medCount > 0 {
+		if highCount > 0 {
+			text += ", "
+		}
+		text += warnStyle.Render(fmt.Sprintf("%d MED", medCount))
+	}
+	text += ")"
+	return text
+}
+
+func replayVisibleRange(trace *hpaanalysis.TimelineTrace, scrollPos, visibleHeight int) (int, int) {
+	start := scrollPos
+	if start < 0 {
+		start = 0
+	}
+	end := start + visibleHeight
+	if end > len(trace.Snapshots) {
+		end = len(trace.Snapshots)
+	}
+	return start, end
+}
+
+func replayMaxReplicas(snapshots []hpaanalysis.TimelineSnapshot) int32 {
+	maxReplicas := int32(1)
+	for _, snap := range snapshots {
+		if snap.Desired > maxReplicas {
+			maxReplicas = snap.Desired
+		}
+	}
+	return maxReplicas
+}
+
+func replayBottleneckMarkers(analysis *hpaanalysis.ReplayAnalysis) map[string]string {
+	markers := make(map[string]string)
+	if analysis == nil {
+		return markers
+	}
+	for _, b := range analysis.Bottlenecks {
+		timeKey := b.Timestamp.Format("15:04:05")
+		marker := ""
+		switch b.Severity {
+		case "high":
+			marker = errorStyle.Render("[" + b.Type + "]")
+		case "medium":
+			marker = warnStyle.Render("[" + b.Type + "]")
+		default:
+			marker = dimStyle.Render("[" + b.Type + "]")
+		}
+		markers[timeKey] = marker
+	}
+	return markers
+}
+
+func appendReplayTimelineRows(sb *strings.Builder, trace *hpaanalysis.TimelineTrace, start, end int, maxReplicas int32, bottleneckMarkers map[string]string) {
+	const barWidth = 20
+	for i := start; i < end; i++ {
+		snap := trace.Snapshots[i]
+		timeStr := snap.Timestamp.Format("15:04:05")
+
+		filled := int(snap.Desired) * barWidth / int(maxReplicas)
+		if filled > barWidth {
+			filled = barWidth
+		}
+		bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
+		barStyled := healthStyle(snap.Health).Render(bar)
+		healthBadge := healthStyle(snap.Health).Render(padRight(snap.Health, 8))
+
+		metricInfo := snap.TopMetric
+		if metricInfo == "" {
+			metricInfo = "-"
+		}
+
+		sb.WriteString(fmt.Sprintf("  %s  %s  %s  %s", timeStr, barStyled, healthBadge, metricInfo))
+
+		if i > 0 {
+			diffs := diffStrings(trace.Snapshots[i-1], snap)
+			if len(diffs) > 0 {
+				sb.WriteString(fmt.Sprintf("  %s", warnStyle.Render(diffs[0])))
+			}
+		}
+
+		if marker, ok := bottleneckMarkers[timeStr]; ok {
+			sb.WriteString("  " + marker)
+		}
+
+		sb.WriteString("\n")
+	}
+}
+
+func appendReplayBottlenecksSection(sb *strings.Builder, analysis *hpaanalysis.ReplayAnalysis) {
+	if analysis == nil || len(analysis.Bottlenecks) == 0 {
+		return
+	}
+	sb.WriteString("\n")
+	sb.WriteString(headerStyle.Render("Bottlenecks:"))
+	sb.WriteString("\n")
+
+	for _, b := range analysis.Bottlenecks {
+		timeStr := b.Timestamp.Format("15:04:05")
+		var severityMarker string
+		switch b.Severity {
+		case "high":
+			severityMarker = errorStyle.Render("[" + b.Severity + "]")
+		case "medium":
+			severityMarker = warnStyle.Render("[" + b.Severity + "]")
+		default:
+			severityMarker = dimStyle.Render("[" + b.Severity + "]")
+		}
+		sb.WriteString(fmt.Sprintf("  %s  %s %s — %s\n",
+			timeStr, severityMarker, b.Type, b.Message))
+	}
+	sb.WriteString("\n")
+}
+
+func appendReplayChangeLog(sb *strings.Builder, trace *hpaanalysis.TimelineTrace) {
+	sb.WriteString("\n")
+	sb.WriteString(headerStyle.Render("Change Log:"))
+	sb.WriteString("\n")
+
+	changeCount := 0
+	for i := 1; i < len(trace.Snapshots); i++ {
+		diffs := diffStrings(trace.Snapshots[i-1], trace.Snapshots[i])
+		if len(diffs) == 0 {
+			continue
+		}
+		timeStr := trace.Snapshots[i].Timestamp.Format("15:04:05")
+		sb.WriteString(fmt.Sprintf("  %s: %s\n", timeStr, strings.Join(diffs, ", ")))
+		changeCount++
+		if changeCount >= 10 {
+			sb.WriteString(dimStyle.Render(fmt.Sprintf("  ... and %d more changes\n", len(trace.Snapshots)-i-1)))
+			break
+		}
+	}
+
+	if changeCount == 0 {
+		sb.WriteString(dimStyle.Render("  No changes detected during observation period.\n"))
+	}
 }
 
 // diffStrings compares two timeline snapshots and returns human-readable diff lines.

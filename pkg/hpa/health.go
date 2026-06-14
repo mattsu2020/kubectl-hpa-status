@@ -87,7 +87,22 @@ func HealthWithWeights(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas i
 	acc := NewHealthAccumulator(healthScoreMax)
 	health := HealthOK
 
-	for _, condition := range hpa.Status.Conditions {
+	health = applyConditionPenalties(acc, hpa.Status.Conditions, w, health)
+	health = applyMaxReplicasCeilingPenalty(acc, hpa, w, health)
+	if hpa.Status.DesiredReplicas == minReplicas && hasCondition(hpa.Status.Conditions, "ScalingLimited", corev1.ConditionTrue) {
+		acc.AddPenalty("At minimum replicas with ScalingLimited", w.atMinimumReplicas, health)
+	}
+	acc.SetState(health)
+	result := acc.Result()
+	if result.Score < 0 {
+		result.Score = 0
+	}
+	return result
+}
+
+// applyConditionPenalties walks HPA conditions and applies the matching penalty, returning the updated worst-case health state.
+func applyConditionPenalties(acc *HealthAccumulator, conditions []autoscalingv2.HorizontalPodAutoscalerCondition, w resolvedWeights, health HealthState) HealthState {
+	for _, condition := range conditions {
 		switch {
 		case condition.Type == "ScalingActive" && condition.Status != corev1.ConditionTrue:
 			acc.AddPenalty("ScalingActive is not True", w.scalingInactive, HealthError)
@@ -107,25 +122,24 @@ func HealthWithWeights(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas i
 			}
 		}
 	}
-	if hpa.Status.CurrentReplicas == hpa.Status.DesiredReplicas && hpa.Status.DesiredReplicas == hpa.Spec.MaxReplicas {
-		hasLimited := hasCondition(hpa.Status.Conditions, "ScalingLimited", corev1.ConditionTrue)
-		hasPressure := hasMetricAboveTarget(hpa.Status.CurrentMetrics, hpa)
-		if hasLimited || hasPressure {
-			acc.AddPenalty("Implicit maxReplicas ceiling (current==desired==max with pressure)", w.implicitMaxReplicas, HealthLimited)
-			if health == HealthOK {
-				health = HealthLimited
-			}
-		}
+	return health
+}
+
+// applyMaxReplicasCeilingPenalty applies the implicit maxReplicas penalty when replicas are pinned at max with pressure.
+func applyMaxReplicasCeilingPenalty(acc *HealthAccumulator, hpa *autoscalingv2.HorizontalPodAutoscaler, w resolvedWeights, health HealthState) HealthState {
+	if hpa.Status.CurrentReplicas != hpa.Status.DesiredReplicas || hpa.Status.DesiredReplicas != hpa.Spec.MaxReplicas {
+		return health
 	}
-	if hpa.Status.DesiredReplicas == minReplicas && hasCondition(hpa.Status.Conditions, "ScalingLimited", corev1.ConditionTrue) {
-		acc.AddPenalty("At minimum replicas with ScalingLimited", w.atMinimumReplicas, health)
+	hasLimited := hasCondition(hpa.Status.Conditions, "ScalingLimited", corev1.ConditionTrue)
+	hasPressure := hasMetricAboveTarget(hpa.Status.CurrentMetrics, hpa)
+	if !hasLimited && !hasPressure {
+		return health
 	}
-	acc.SetState(health)
-	result := acc.Result()
-	if result.Score < 0 {
-		result.Score = 0
+	acc.AddPenalty("Implicit maxReplicas ceiling (current==desired==max with pressure)", w.implicitMaxReplicas, HealthLimited)
+	if health == HealthOK {
+		health = HealthLimited
 	}
-	return result
+	return health
 }
 
 // resolvedWeights is the internal resolved form of HealthWeights where all

@@ -132,48 +132,59 @@ func appendToleranceEstimates(estimated []string, a hpaanalysis.Analysis) []stri
 
 	// Prefer structured decision trace tolerance data when available.
 	if sdt := a.StructuredDecisionTrace; sdt != nil && sdt.ToleranceEffect != nil {
-		te := sdt.ToleranceEffect
-		if len(te.SuppressedMetrics) > 0 {
-			for _, name := range te.SuppressedMetrics {
-				estimated = append(estimated,
-					fmt.Sprintf("tolerance (default %.2f) likely suppressed scaling for metric %s", te.EffectiveTolerance, name))
-			}
-		} else if te.Note != "" {
-			estimated = append(estimated, te.Note)
-		}
-		return estimated
+		return appendStructuredToleranceEstimates(estimated, sdt.ToleranceEffect)
 	}
 
 	// Fall back to MetricDecisionTrace tolerance data.
 	if mdt := a.MetricDecisionTrace; mdt != nil && mdt.ToleranceEffect != nil {
-		te := mdt.ToleranceEffect
-		if len(te.SuppressedMetrics) > 0 {
-			for _, name := range te.SuppressedMetrics {
-				estimated = append(estimated,
-					fmt.Sprintf("tolerance (default %.2f) likely suppressed scaling for metric %s", te.DefaultTolerance, name))
-			}
-		} else if te.Note != "" {
-			estimated = append(estimated, te.Note)
-		}
-		return estimated
+		return appendMetricToleranceEstimates(estimated, mdt.ToleranceEffect)
 	}
 
 	// Estimate from metric ratios when no trace is available.
 	for _, metric := range a.Metrics {
-		if metric.Ratio == nil {
-			continue
-		}
-		ratio := *metric.Ratio
-		distance := ratio - 1.0
-		if distance < 0 {
-			distance = -distance
-		}
-		if distance > 0 && distance <= defaultTolerance {
-			estimated = append(estimated,
-				fmt.Sprintf("%s metric %s ratio=%.2f is within tolerance band (default %.2f); scaling suppressed", metric.Type, metric.Name, ratio, defaultTolerance))
-		}
+		estimated = appendToleranceEstimateForMetric(estimated, metric, defaultTolerance)
 	}
 
+	return estimated
+}
+
+func appendStructuredToleranceEstimates(estimated []string, te *hpaanalysis.ToleranceTrace) []string {
+	if len(te.SuppressedMetrics) > 0 {
+		for _, name := range te.SuppressedMetrics {
+			estimated = append(estimated,
+				fmt.Sprintf("tolerance (default %.2f) likely suppressed scaling for metric %s", te.EffectiveTolerance, name))
+		}
+	} else if te.Note != "" {
+		estimated = append(estimated, te.Note)
+	}
+	return estimated
+}
+
+func appendMetricToleranceEstimates(estimated []string, te *hpaanalysis.ToleranceEffect) []string {
+	if len(te.SuppressedMetrics) > 0 {
+		for _, name := range te.SuppressedMetrics {
+			estimated = append(estimated,
+				fmt.Sprintf("tolerance (default %.2f) likely suppressed scaling for metric %s", te.DefaultTolerance, name))
+		}
+	} else if te.Note != "" {
+		estimated = append(estimated, te.Note)
+	}
+	return estimated
+}
+
+func appendToleranceEstimateForMetric(estimated []string, metric hpaanalysis.Metric, defaultTolerance float64) []string {
+	if metric.Ratio == nil {
+		return estimated
+	}
+	ratio := *metric.Ratio
+	distance := ratio - 1.0
+	if distance < 0 {
+		distance = -distance
+	}
+	if distance > 0 && distance <= defaultTolerance {
+		estimated = append(estimated,
+			fmt.Sprintf("%s metric %s ratio=%.2f is within tolerance band (default %.2f); scaling suppressed", metric.Type, metric.Name, ratio, defaultTolerance))
+	}
 	return estimated
 }
 
@@ -262,35 +273,70 @@ func whyNotScaleSummary(a hpaanalysis.Analysis) string {
 
 func whyNotScaleBlockers(a hpaanalysis.Analysis) []string {
 	var blockers []string
+	blockers = append(blockers, replicaLimitBlockers(a)...)
+	blockers = append(blockers, conditionBlockers(a)...)
+	blockers = append(blockers, stabilizationBlockers(a)...)
+	blockers = append(blockers, targetReplicaBlockers(a)...)
+	blockers = append(blockers, readinessBlockers(a)...)
+	blockers = append(blockers, freshnessBlockers(a)...)
+	return blockers
+}
+
+func replicaLimitBlockers(a hpaanalysis.Analysis) []string {
+	var blockers []string
 	if a.Current >= a.Max || a.Desired >= a.Max || conditionStatus(a, "ScalingLimited") == "True" {
 		blockers = append(blockers, "maxReplicas may be capping scale-up")
 	}
 	if a.Current <= a.Min || a.Desired <= a.Min {
 		blockers = append(blockers, "minReplicas may be capping scale-down")
 	}
+	return blockers
+}
+
+func conditionBlockers(a hpaanalysis.Analysis) []string {
+	var blockers []string
 	if conditionStatus(a, "ScalingActive") == "False" {
 		blockers = append(blockers, "ScalingActive=False; HPA cannot compute a valid scaling recommendation")
 	}
 	if conditionStatus(a, "AbleToScale") == "False" {
 		blockers = append(blockers, "AbleToScale=False; controller reports it cannot apply scaling")
 	}
+	return blockers
+}
+
+func stabilizationBlockers(a hpaanalysis.Analysis) []string {
 	if a.StabilizationRemaining != nil && *a.StabilizationRemaining > 0 {
-		blockers = append(blockers, fmt.Sprintf("stabilization window may hold the recommendation for about %ds", *a.StabilizationRemaining))
+		return []string{fmt.Sprintf("stabilization window may hold the recommendation for about %ds", *a.StabilizationRemaining)}
 	}
-	if a.TargetReplicas != nil {
-		if a.TargetReplicas.Pending > 0 {
-			blockers = append(blockers, fmt.Sprintf("%d target pod(s) are Pending", a.TargetReplicas.Pending))
-		}
-		if a.TargetReplicas.NotReady > 0 {
-			blockers = append(blockers, fmt.Sprintf("%d target pod(s) are NotReady", a.TargetReplicas.NotReady))
-		}
-		if a.TargetReplicas.Unschedulable > 0 {
-			blockers = append(blockers, fmt.Sprintf("%d Pending pod(s) are Unschedulable", a.TargetReplicas.Unschedulable))
-		}
+	return nil
+}
+
+func targetReplicaBlockers(a hpaanalysis.Analysis) []string {
+	if a.TargetReplicas == nil {
+		return nil
 	}
+	var blockers []string
+	if a.TargetReplicas.Pending > 0 {
+		blockers = append(blockers, fmt.Sprintf("%d target pod(s) are Pending", a.TargetReplicas.Pending))
+	}
+	if a.TargetReplicas.NotReady > 0 {
+		blockers = append(blockers, fmt.Sprintf("%d target pod(s) are NotReady", a.TargetReplicas.NotReady))
+	}
+	if a.TargetReplicas.Unschedulable > 0 {
+		blockers = append(blockers, fmt.Sprintf("%d Pending pod(s) are Unschedulable", a.TargetReplicas.Unschedulable))
+	}
+	return blockers
+}
+
+func readinessBlockers(a hpaanalysis.Analysis) []string {
 	if a.ReadinessImpact != nil && a.ReadinessImpact.LikelyAffected {
-		blockers = append(blockers, "not-yet-ready pods or missing PodMetrics may dampen HPA CPU/resource decisions")
+		return []string{"not-yet-ready pods or missing PodMetrics may dampen HPA CPU/resource decisions"}
 	}
+	return nil
+}
+
+func freshnessBlockers(a hpaanalysis.Analysis) []string {
+	var blockers []string
 	for _, freshness := range a.MetricFreshnessEntries {
 		if freshness.Status != "" && freshness.Status != string(hpaanalysis.FreshnessOK) {
 			blockers = append(blockers, fmt.Sprintf("metric freshness for %s is %s", freshness.Name, freshness.Status))

@@ -18,7 +18,18 @@ func WriteAutoscalerMapText(w io.Writer, am *AutoscalerMap, theme style.Theme) e
 
 	buf.WriteString(fmt.Sprintf("Autoscaler map for %s/%s\n\n", am.Namespace, am.HPAName))
 
-	// Render layers as a tree.
+	writeAutoscalerMapLayers(&buf, am, theme)
+	writeAutoscalerMapRisk(&buf, am, theme)
+	writeAutoscalerMapBlockers(&buf, am, theme)
+	writeAutoscalerMapRecommendation(&buf, am)
+	writeAutoscalerMapNextActions(&buf, am)
+	writeAutoscalerMapNextChecks(&buf, am)
+
+	_, err := w.Write([]byte(buf.String()))
+	return err
+}
+
+func writeAutoscalerMapLayers(buf *strings.Builder, am *AutoscalerMap, theme style.Theme) {
 	for i, layer := range am.Layers {
 		prefix := "  -> "
 		if i == 0 {
@@ -36,53 +47,60 @@ func WriteAutoscalerMapText(w io.Writer, am *AutoscalerMap, theme style.Theme) e
 			buf.WriteString(fmt.Sprintf("     %s\n", theme.Dim.Render(detail)))
 		}
 	}
+}
 
-	// Risk level.
-	if am.Risk != "" && am.Risk != "none" {
-		riskBadge := autoscalerRiskBadge(am.Risk, theme)
-		buf.WriteString(fmt.Sprintf("\nRisk: %s\n", riskBadge))
+func writeAutoscalerMapRisk(buf *strings.Builder, am *AutoscalerMap, theme style.Theme) {
+	if am.Risk == "" || am.Risk == "none" {
+		return
 	}
+	riskBadge := autoscalerRiskBadge(am.Risk, theme)
+	buf.WriteString(fmt.Sprintf("\nRisk: %s\n", riskBadge))
+}
 
-	// Blockers.
-	if len(am.Blockers) > 0 {
-		buf.WriteString("\nBlockers:\n")
-		for _, b := range am.Blockers {
-			badge := autoscalerBlockerBadge(b.Severity, theme)
-			buf.WriteString(fmt.Sprintf("  %s [%s] %s\n", badge, b.Layer, b.Message))
-			if b.Detail != "" {
-				for _, line := range wrapAutoscalerMapLines(b.Detail, 72) {
-					buf.WriteString(fmt.Sprintf("    %s\n", line))
-				}
+func writeAutoscalerMapBlockers(buf *strings.Builder, am *AutoscalerMap, theme style.Theme) {
+	if len(am.Blockers) == 0 {
+		return
+	}
+	buf.WriteString("\nBlockers:\n")
+	for _, b := range am.Blockers {
+		badge := autoscalerBlockerBadge(b.Severity, theme)
+		buf.WriteString(fmt.Sprintf("  %s [%s] %s\n", badge, b.Layer, b.Message))
+		if b.Detail != "" {
+			for _, line := range wrapAutoscalerMapLines(b.Detail, 72) {
+				buf.WriteString(fmt.Sprintf("    %s\n", line))
 			}
 		}
 	}
+}
 
-	// Recommendation.
-	if am.Recommendation != "" {
-		buf.WriteString("\nRecommendation:\n")
-		for _, line := range wrapAutoscalerMapLines(am.Recommendation, 76) {
-			buf.WriteString(fmt.Sprintf("  %s\n", line))
-		}
+func writeAutoscalerMapRecommendation(buf *strings.Builder, am *AutoscalerMap) {
+	if am.Recommendation == "" {
+		return
 	}
-
-	// Next actions.
-	if len(am.NextActions) > 0 {
-		buf.WriteString("\nNext actions:\n")
-		for _, action := range am.NextActions {
-			buf.WriteString(fmt.Sprintf("  - %s\n", action))
-		}
+	buf.WriteString("\nRecommendation:\n")
+	for _, line := range wrapAutoscalerMapLines(am.Recommendation, 76) {
+		buf.WriteString(fmt.Sprintf("  %s\n", line))
 	}
+}
 
-	// Next checks.
-	if len(am.NextChecks) > 0 {
-		buf.WriteString("\nNext checks:\n")
-		for _, check := range am.NextChecks {
-			buf.WriteString(fmt.Sprintf("  - %s\n", check))
-		}
+func writeAutoscalerMapNextActions(buf *strings.Builder, am *AutoscalerMap) {
+	if len(am.NextActions) == 0 {
+		return
 	}
+	buf.WriteString("\nNext actions:\n")
+	for _, action := range am.NextActions {
+		buf.WriteString(fmt.Sprintf("  - %s\n", action))
+	}
+}
 
-	_, err := w.Write([]byte(buf.String()))
-	return err
+func writeAutoscalerMapNextChecks(buf *strings.Builder, am *AutoscalerMap) {
+	if len(am.NextChecks) == 0 {
+		return
+	}
+	buf.WriteString("\nNext checks:\n")
+	for _, check := range am.NextChecks {
+		buf.WriteString(fmt.Sprintf("  - %s\n", check))
+	}
 }
 
 // autoscalerRiskBadge returns a styled risk level badge.

@@ -25,29 +25,7 @@ func WriteBehaviorAdvisorText(w io.Writer, result *BehaviorAdvisorResult, provid
 	}
 
 	for _, f := range result.Findings {
-		severity := string(f.Severity)
-		if _, err := fmt.Fprintf(w, "  [%s] %s\n", severity, f.Message); err != nil {
-			return err
-		}
-		if f.Current != "" {
-			if _, err := fmt.Fprintf(w, "    Current: %s", f.Current); err != nil {
-				return err
-			}
-			if f.Recommended != "" {
-				if _, err := fmt.Fprintf(w, " → Recommended: %s", f.Recommended); err != nil {
-					return err
-				}
-			}
-			if _, err := fmt.Fprintln(w); err != nil {
-				return err
-			}
-		}
-		if f.Patch != "" {
-			if _, err := fmt.Fprintf(w, "    Patch: %s\n", f.Patch); err != nil {
-				return err
-			}
-		}
-		if _, err := fmt.Fprintln(w); err != nil {
+		if err := writeBehaviorFinding(w, f); err != nil {
 			return err
 		}
 	}
@@ -56,6 +34,35 @@ func WriteBehaviorAdvisorText(w io.Writer, result *BehaviorAdvisorResult, provid
 		return err
 	}
 
+	return nil
+}
+
+func writeBehaviorFinding(w io.Writer, f BehaviorFinding) error {
+	severity := string(f.Severity)
+	if _, err := fmt.Fprintf(w, "  [%s] %s\n", severity, f.Message); err != nil {
+		return err
+	}
+	if f.Current != "" {
+		if _, err := fmt.Fprintf(w, "    Current: %s", f.Current); err != nil {
+			return err
+		}
+		if f.Recommended != "" {
+			if _, err := fmt.Fprintf(w, " → Recommended: %s", f.Recommended); err != nil {
+				return err
+			}
+		}
+		if _, err := fmt.Fprintln(w); err != nil {
+			return err
+		}
+	}
+	if f.Patch != "" {
+		if _, err := fmt.Fprintf(w, "    Patch: %s\n", f.Patch); err != nil {
+			return err
+		}
+	}
+	if _, err := fmt.Fprintln(w); err != nil {
+		return err
+	}
 	return nil
 }
 

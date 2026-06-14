@@ -32,34 +32,41 @@ func WriteAuditText(w io.Writer, report *AuditReport, provider LabelProvider) er
 	}
 
 	for i, f := range report.Findings {
-		severity := string(f.Severity)
-		if _, err := fmt.Fprintf(w, "%d. [%s] %s (%s)\n", i+1, severity, f.Title, f.ID); err != nil {
+		if err := writeAuditFinding(w, i+1, f); err != nil {
 			return err
 		}
-		if _, err := fmt.Fprintf(w, "   %s\n", f.Description); err != nil {
+	}
+	return nil
+}
+
+func writeAuditFinding(w io.Writer, index int, f AuditFinding) error {
+	severity := string(f.Severity)
+	if _, err := fmt.Fprintf(w, "%d. [%s] %s (%s)\n", index, severity, f.Title, f.ID); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "   %s\n", f.Description); err != nil {
+		return err
+	}
+	if f.Current != "" {
+		if _, err := fmt.Fprintf(w, "   Current: %s", f.Current); err != nil {
 			return err
 		}
-		if f.Current != "" {
-			if _, err := fmt.Fprintf(w, "   Current: %s", f.Current); err != nil {
-				return err
-			}
-			if f.Recommended != "" {
-				if _, err := fmt.Fprintf(w, " → Recommended: %s", f.Recommended); err != nil {
-					return err
-				}
-			}
-			if _, err := fmt.Fprintln(w); err != nil {
-				return err
-			}
-		}
-		if f.Command != "" {
-			if _, err := fmt.Fprintf(w, "   Command: %s\n", f.Command); err != nil {
+		if f.Recommended != "" {
+			if _, err := fmt.Fprintf(w, " → Recommended: %s", f.Recommended); err != nil {
 				return err
 			}
 		}
 		if _, err := fmt.Fprintln(w); err != nil {
 			return err
 		}
+	}
+	if f.Command != "" {
+		if _, err := fmt.Fprintf(w, "   Command: %s\n", f.Command); err != nil {
+			return err
+		}
+	}
+	if _, err := fmt.Fprintln(w); err != nil {
+		return err
 	}
 	return nil
 }

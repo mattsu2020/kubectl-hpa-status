@@ -80,39 +80,61 @@ func buildBlockerSummary(input BlockerInput, hpaWantsScale bool, findings []Bloc
 
 // buildBlockerInterpretation creates a human-readable interpretation of the
 // overall blocker situation.
-func buildBlockerInterpretation(input BlockerInput, hpaWantsScale bool, findings []BlockerFinding) string {
+func buildBlockerInterpretation(_ BlockerInput, hpaWantsScale bool, findings []BlockerFinding) string {
 	if !hpaWantsScale {
 		return "HPA is not requesting scale-out. The current replica count matches or exceeds the desired count."
 	}
 
-	var parts []string
-	hasScheduling := false
-	hasScaling := false
-	hasQuota := false
-	hasApplication := false
-	hasReadiness := false
+	cats := blockerCategoryFlags(findings)
 
+	parts := []string{"HPA appears to be working correctly."}
+	parts = appendBlockerApplicationPart(parts, cats.application)
+	parts = appendBlockerSchedulingPart(parts, cats.scheduling, cats.quota)
+	parts = appendBlockerReadinessPart(parts, cats.readiness)
+	parts = appendBlockerNonePart(parts, cats)
+
+	return strings.Join(parts, " ")
+}
+
+// blockerCategorySet holds booleans for each blocker category detected in findings.
+type blockerCategorySet struct {
+	scheduling  bool
+	scaling     bool
+	quota       bool
+	application bool
+	readiness   bool
+}
+
+// blockerCategoryFlags scans findings and returns a set of detected category flags.
+func blockerCategoryFlags(findings []BlockerFinding) blockerCategorySet {
+	var cats blockerCategorySet
 	for _, f := range findings {
 		switch f.Category {
 		case "scaling":
-			hasScaling = true
+			cats.scaling = true
 		case "scheduling":
-			hasScheduling = true
+			cats.scheduling = true
 		case "quota":
-			hasQuota = true
+			cats.quota = true
 		case "application":
-			hasApplication = true
+			cats.application = true
 		case "readiness":
-			hasReadiness = true
+			cats.readiness = true
 		}
 	}
+	return cats
+}
 
-	parts = append(parts, "HPA appears to be working correctly.")
-
+// appendBlockerApplicationPart appends the application-issue part when relevant.
+func appendBlockerApplicationPart(parts []string, hasApplication bool) []string {
 	if hasApplication {
 		parts = append(parts, "Some pods are failing due to application or image issues (not an infrastructure problem).")
 	}
+	return parts
+}
 
+// appendBlockerSchedulingPart appends the scheduling/quota part based on the combination.
+func appendBlockerSchedulingPart(parts []string, hasScheduling, hasQuota bool) []string {
 	switch {
 	case hasScheduling && hasQuota:
 		parts = append(parts, "The scale-out is blocked after the HPA decision, likely by a combination of cluster capacity and namespace quota constraints.")
@@ -121,16 +143,23 @@ func buildBlockerInterpretation(input BlockerInput, hpaWantsScale bool, findings
 	case hasQuota:
 		parts = append(parts, "The scale-out may be blocked by namespace ResourceQuota limits.")
 	}
+	return parts
+}
 
+// appendBlockerReadinessPart appends the readiness part when relevant.
+func appendBlockerReadinessPart(parts []string, hasReadiness bool) []string {
 	if hasReadiness {
 		parts = append(parts, "Some pods are not becoming Ready, possibly due to slow startup or misconfigured readiness probes.")
 	}
+	return parts
+}
 
-	if !hasScaling && !hasScheduling && !hasQuota && !hasApplication && !hasReadiness {
+// appendBlockerNonePart appends a fallback part when no blockers were detected.
+func appendBlockerNonePart(parts []string, cats blockerCategorySet) []string {
+	if !cats.scaling && !cats.scheduling && !cats.quota && !cats.application && !cats.readiness {
 		parts = append(parts, "No significant scale-out blockers were detected from visible signals.")
 	}
-
-	return strings.Join(parts, " ")
+	return parts
 }
 
 // buildBlockerNextCommands creates suggested kubectl commands for investigation.

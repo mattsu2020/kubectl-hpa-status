@@ -160,94 +160,17 @@ func formatDuration(d time.Duration) string {
 
 // WriteReplayText renders a ReplayAnalysis as a text timeline with
 // bottleneck markers, control cycles, and stabilization windows.
-func WriteReplayText(w io.Writer, analysis *ReplayAnalysis, tl RetrospectiveTimeline, theme style.Theme) error {
+func WriteReplayText(w io.Writer, analysis *ReplayAnalysis, tl RetrospectiveTimeline, _ style.Theme) error {
 	var out strings.Builder
 
 	out.WriteString(fmt.Sprintf("HPA Replay Analysis: %s (%s)\n", tl.HPAName, tl.Namespace))
 	out.WriteString(fmt.Sprintf("Period: %s - %s\n\n",
 		tl.Since.Format("15:04"), tl.Until.Format("15:04")))
 
-	// Bottlenecks section.
-	if len(analysis.Bottlenecks) > 0 {
-		out.WriteString(fmt.Sprintf("Bottlenecks (%d):\n", len(analysis.Bottlenecks)))
-		for _, b := range analysis.Bottlenecks {
-			severityPrefix := "[LOW] "
-			switch b.Severity {
-			case "high":
-				severityPrefix = "[HIGH] "
-			case "medium":
-				severityPrefix = "[MED] "
-			}
-			timeStr := b.Timestamp.Format("15:04")
-			durationStr := ""
-			if b.Duration > 0 {
-				durationStr = fmt.Sprintf(" (duration: %s)", formatDuration(b.Duration))
-			}
-			out.WriteString(fmt.Sprintf("  %s%s %s — %s%s\n",
-				severityPrefix, timeStr, b.Type, b.Message, durationStr))
-		}
-		out.WriteString("\n")
-	}
-
-	// Control Cycles section.
-	if len(analysis.ControlCycles) > 0 {
-		out.WriteString(fmt.Sprintf("Control Cycles (%d):\n", len(analysis.ControlCycles)))
-		for _, c := range analysis.ControlCycles {
-			startStr := c.Start.Format("15:04")
-			endStr := c.End.Format("15:04")
-			decisionText := c.Decision
-			switch {
-			case c.Decision == "no-change" && c.MetricDriver != "unknown":
-				decisionText = fmt.Sprintf("no-change (%s within tolerance)", c.MetricDriver)
-			case c.Decision == "capped":
-				decisionText = "scale-up capped by maxReplicas"
-			case c.MetricDriver != "unknown":
-				decisionText = fmt.Sprintf("%s (%s above target)", c.Decision, c.MetricDriver)
-			}
-
-			// Check for stabilization effect.
-			stabNote := ""
-			for _, sw := range analysis.StabilizationWindows {
-				if c.End.After(sw.Start) && c.End.Before(sw.End) {
-					stabNote = fmt.Sprintf(" (stabilization active, suppressed: -%d)", sw.SuppressedScaleDown)
-					break
-				}
-			}
-
-			out.WriteString(fmt.Sprintf("  %s-%s %s (%d → %d)%s\n",
-				startStr, endStr, decisionText, c.InputReplicas, c.OutputReplicas, stabNote))
-
-		}
-		out.WriteString("\n")
-	}
-
-	// Stabilization Windows section.
-	if len(analysis.StabilizationWindows) > 0 {
-		out.WriteString(fmt.Sprintf("Stabilization Windows (%d):\n", len(analysis.StabilizationWindows)))
-		for _, sw := range analysis.StabilizationWindows {
-			startStr := sw.Start.Format("15:04")
-			endStr := sw.End.Format("15:04")
-			durationStr := formatDuration(sw.Duration)
-			out.WriteString(fmt.Sprintf("  %s - %s (%s) — suppressed scale-down of %d replicas\n",
-				startStr, endStr, durationStr, sw.SuppressedScaleDown))
-		}
-		out.WriteString("\n")
-	}
-
-	// Tolerance Effects section.
-	if len(analysis.ReplayToleranceEffects) > 0 {
-		out.WriteString(fmt.Sprintf("Tolerance Effects (%d):\n", len(analysis.ReplayToleranceEffects)))
-		for _, te := range analysis.ReplayToleranceEffects {
-			timeStr := te.Timestamp.Format("15:04")
-			suppressedText := "suppressed"
-			if !te.Suppressed {
-				suppressedText = "not suppressed"
-			}
-			out.WriteString(fmt.Sprintf("  %s %s ratio %.2f tolerance %.2f — %s\n",
-				timeStr, te.MetricName, te.ActualRatio, te.Tolerance, suppressedText))
-		}
-		out.WriteString("\n")
-	}
+	out.WriteString(replayBottlenecksText(analysis))
+	out.WriteString(replayControlCyclesText(analysis))
+	out.WriteString(replayStabilizationWindowsText(analysis))
+	out.WriteString(replayToleranceEffectsText(analysis))
 
 	// Summary.
 	out.WriteString(analysis.Summary)
@@ -256,6 +179,124 @@ func WriteReplayText(w io.Writer, analysis *ReplayAnalysis, tl RetrospectiveTime
 
 	_, err := io.WriteString(w, out.String())
 	return err
+}
+
+// replayBottlenecksText renders the Bottlenecks section of the replay text output.
+func replayBottlenecksText(analysis *ReplayAnalysis) string {
+	if len(analysis.Bottlenecks) == 0 {
+		return ""
+	}
+	var out strings.Builder
+	out.WriteString(fmt.Sprintf("Bottlenecks (%d):\n", len(analysis.Bottlenecks)))
+	for _, b := range analysis.Bottlenecks {
+		out.WriteString(replayBottleneckLine(b))
+	}
+	out.WriteString("\n")
+	return out.String()
+}
+
+// replayBottleneckLine renders a single bottleneck line.
+func replayBottleneckLine(b BottleneckMarker) string {
+	severityPrefix := "[LOW] "
+	switch b.Severity {
+	case "high":
+		severityPrefix = "[HIGH] "
+	case "medium":
+		severityPrefix = "[MED] "
+	}
+	timeStr := b.Timestamp.Format("15:04")
+	durationStr := ""
+	if b.Duration > 0 {
+		durationStr = fmt.Sprintf(" (duration: %s)", formatDuration(b.Duration))
+	}
+	return fmt.Sprintf("  %s%s %s — %s%s\n", severityPrefix, timeStr, b.Type, b.Message, durationStr)
+}
+
+// replayControlCyclesText renders the Control Cycles section of the replay text output.
+func replayControlCyclesText(analysis *ReplayAnalysis) string {
+	if len(analysis.ControlCycles) == 0 {
+		return ""
+	}
+	var out strings.Builder
+	out.WriteString(fmt.Sprintf("Control Cycles (%d):\n", len(analysis.ControlCycles)))
+	for _, c := range analysis.ControlCycles {
+		out.WriteString(replayControlCycleLine(c, analysis.StabilizationWindows))
+	}
+	out.WriteString("\n")
+	return out.String()
+}
+
+// replayControlCycleLine renders a single control cycle line including any
+// stabilization note.
+func replayControlCycleLine(c ControlCycle, windows []StabilizationWindow) string {
+	startStr := c.Start.Format("15:04")
+	endStr := c.End.Format("15:04")
+	decisionText := replayDecisionText(c)
+	stabNote := replayStabilizationNote(c.End, windows)
+	return fmt.Sprintf("  %s-%s %s (%d → %d)%s\n",
+		startStr, endStr, decisionText, c.InputReplicas, c.OutputReplicas, stabNote)
+}
+
+// replayDecisionText renders the decision portion of a control cycle line.
+func replayDecisionText(c ControlCycle) string {
+	switch {
+	case c.Decision == "no-change" && c.MetricDriver != "unknown":
+		return fmt.Sprintf("no-change (%s within tolerance)", c.MetricDriver)
+	case c.Decision == "capped":
+		return "scale-up capped by maxReplicas"
+	case c.MetricDriver != "unknown":
+		return fmt.Sprintf("%s (%s above target)", c.Decision, c.MetricDriver)
+	}
+	return c.Decision
+}
+
+// replayStabilizationNote returns the stabilization suffix for a control cycle
+// end time, or an empty string when no window applies.
+func replayStabilizationNote(end time.Time, windows []StabilizationWindow) string {
+	for _, sw := range windows {
+		if end.After(sw.Start) && end.Before(sw.End) {
+			return fmt.Sprintf(" (stabilization active, suppressed: -%d)", sw.SuppressedScaleDown)
+		}
+	}
+	return ""
+}
+
+// replayStabilizationWindowsText renders the Stabilization Windows section.
+func replayStabilizationWindowsText(analysis *ReplayAnalysis) string {
+	if len(analysis.StabilizationWindows) == 0 {
+		return ""
+	}
+	var out strings.Builder
+	out.WriteString(fmt.Sprintf("Stabilization Windows (%d):\n", len(analysis.StabilizationWindows)))
+	for _, sw := range analysis.StabilizationWindows {
+		startStr := sw.Start.Format("15:04")
+		endStr := sw.End.Format("15:04")
+		durationStr := formatDuration(sw.Duration)
+		out.WriteString(fmt.Sprintf("  %s - %s (%s) — suppressed scale-down of %d replicas\n",
+			startStr, endStr, durationStr, sw.SuppressedScaleDown))
+	}
+	out.WriteString("\n")
+	return out.String()
+}
+
+// replayToleranceEffectsText renders the Tolerance Effects section.
+func replayToleranceEffectsText(analysis *ReplayAnalysis) string {
+	if len(analysis.ReplayToleranceEffects) == 0 {
+		return ""
+	}
+	var out strings.Builder
+	out.WriteString(fmt.Sprintf("Tolerance Effects (%d):\n", len(analysis.ReplayToleranceEffects)))
+	for _, te := range analysis.ReplayToleranceEffects {
+		timeStr := te.Timestamp.Format("15:04")
+		suppressedText := "suppressed"
+		if !te.Suppressed {
+			suppressedText = "not suppressed"
+		}
+		out.WriteString(fmt.Sprintf("  %s %s ratio %.2f tolerance %.2f — %s\n",
+			timeStr, te.MetricName, te.ActualRatio, te.Tolerance, suppressedText))
+	}
+	out.WriteString("\n")
+	return out.String()
 }
 
 // WriteReplayMarkdown renders a ReplayAnalysis as a Markdown document.

@@ -79,12 +79,9 @@ func simulationStateFromAnalysis(a *Analysis) SimulationState {
 func applySimulationOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, path, value string) error {
 	switch normalizeSimulationPath(path) {
 	case "maxreplicas":
-		v, err := parseInt32(value)
+		v, err := parseNonNegativeInt32(value, 1, "maxReplicas must be >= 1")
 		if err != nil {
 			return err
-		}
-		if v < 1 {
-			return fmt.Errorf("maxReplicas must be >= 1")
 		}
 		hpa.Spec.MaxReplicas = v
 	case "minreplicas":
@@ -94,22 +91,16 @@ func applySimulationOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, path, v
 		}
 		hpa.Spec.MinReplicas = &v
 	case "scaledown.stabilizationwindowseconds":
-		v, err := parseInt32(value)
+		v, err := parseNonNegativeInt32(value, 0, "stabilizationWindowSeconds must be >= 0")
 		if err != nil {
 			return err
-		}
-		if v < 0 {
-			return fmt.Errorf("stabilizationWindowSeconds must be >= 0")
 		}
 		ensureBehavior(hpa)
 		hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds = &v
 	case "scaleup.stabilizationwindowseconds":
-		v, err := parseInt32(value)
+		v, err := parseNonNegativeInt32(value, 0, "stabilizationWindowSeconds must be >= 0")
 		if err != nil {
 			return err
-		}
-		if v < 0 {
-			return fmt.Errorf("stabilizationWindowSeconds must be >= 0")
 		}
 		ensureBehavior(hpa)
 		hpa.Spec.Behavior.ScaleUp.StabilizationWindowSeconds = &v
@@ -122,19 +113,11 @@ func applySimulationOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, path, v
 		p := selectPolicy(value)
 		hpa.Spec.Behavior.ScaleUp.SelectPolicy = &p
 	case "targetaverageutilization":
-		v, err := parseInt32(value)
+		v, err := parsePositiveInt32(value)
 		if err != nil {
 			return err
 		}
-		if v <= 0 {
-			return fmt.Errorf("targetAverageUtilization must be > 0")
-		}
-		for i := range hpa.Spec.Metrics {
-			if hpa.Spec.Metrics[i].Type == autoscalingv2.ResourceMetricSourceType {
-				hpa.Spec.Metrics[i].Resource.Target.AverageUtilization = &v
-				hpa.Spec.Metrics[i].Resource.Target.Type = autoscalingv2.UtilizationMetricType
-			}
-		}
+		applyAverageUtilizationToResourceMetrics(hpa, v)
 	case "tolerance":
 		if _, err := strconv.ParseFloat(value, 64); err != nil {
 			return fmt.Errorf("invalid tolerance %q: %w", value, err)
@@ -145,6 +128,40 @@ func applySimulationOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, path, v
 		return fmt.Errorf("unsupported path %q; supported: maxReplicas, minReplicas, scaleDown.stabilizationWindowSeconds, scaleDown.stabilizationWindow, scaleUp.stabilizationWindowSeconds, scaleUp.stabilizationWindow, scaleDown.selectPolicy, scaleUp.selectPolicy, targetAverageUtilization, tolerance", path)
 	}
 	return nil
+}
+
+// parseNonNegativeInt32 parses value as int32 and requires v >= minVal, returning a descriptive error otherwise.
+func parseNonNegativeInt32(value string, minVal int32, errMsg string) (int32, error) {
+	v, err := parseInt32(value)
+	if err != nil {
+		return 0, err
+	}
+	if v < minVal {
+		return 0, fmt.Errorf("%s", errMsg)
+	}
+	return v, nil
+}
+
+// parsePositiveInt32 parses value as int32 and requires v > 0.
+func parsePositiveInt32(value string) (int32, error) {
+	v, err := parseInt32(value)
+	if err != nil {
+		return 0, err
+	}
+	if v <= 0 {
+		return 0, fmt.Errorf("targetAverageUtilization must be > 0")
+	}
+	return v, nil
+}
+
+// applyAverageUtilizationToResourceMetrics sets the target average utilization on every resource metric source.
+func applyAverageUtilizationToResourceMetrics(hpa *autoscalingv2.HorizontalPodAutoscaler, v int32) {
+	for i := range hpa.Spec.Metrics {
+		if hpa.Spec.Metrics[i].Type == autoscalingv2.ResourceMetricSourceType {
+			hpa.Spec.Metrics[i].Resource.Target.AverageUtilization = &v
+			hpa.Spec.Metrics[i].Resource.Target.Type = autoscalingv2.UtilizationMetricType
+		}
+	}
 }
 
 func normalizeSimulationPath(path string) string {
@@ -201,32 +218,48 @@ func originalValue(hpa *autoscalingv2.HorizontalPodAutoscaler, path string) stri
 	case "maxreplicas":
 		return fmt.Sprintf("%d", hpa.Spec.MaxReplicas)
 	case "minreplicas":
-		if hpa.Spec.MinReplicas != nil {
-			return fmt.Sprintf("%d", *hpa.Spec.MinReplicas)
-		}
-		return "1"
+		return originalMinReplicas(hpa)
 	case "scaledown.stabilizationwindowseconds":
-		if hpa.Spec.Behavior != nil && hpa.Spec.Behavior.ScaleDown != nil && hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds != nil {
-			return fmt.Sprintf("%d", *hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds)
-		}
-		return "300"
+		return originalScaleDownStabilizationWindow(hpa)
 	case "scaleup.stabilizationwindowseconds":
-		if hpa.Spec.Behavior != nil && hpa.Spec.Behavior.ScaleUp != nil && hpa.Spec.Behavior.ScaleUp.StabilizationWindowSeconds != nil {
-			return fmt.Sprintf("%d", *hpa.Spec.Behavior.ScaleUp.StabilizationWindowSeconds)
-		}
-		return "0"
+		return originalScaleUpStabilizationWindow(hpa)
 	case "targetaverageutilization":
-		for _, m := range hpa.Spec.Metrics {
-			if m.Type == autoscalingv2.ResourceMetricSourceType && m.Resource.Target.AverageUtilization != nil {
-				return fmt.Sprintf("%d", *m.Resource.Target.AverageUtilization)
-			}
-		}
-		return "<not set>"
+		return originalTargetAverageUtilization(hpa)
 	case "tolerance":
 		return "<controller default>"
 	default:
 		return "<unknown>"
 	}
+}
+
+func originalMinReplicas(hpa *autoscalingv2.HorizontalPodAutoscaler) string {
+	if hpa.Spec.MinReplicas != nil {
+		return fmt.Sprintf("%d", *hpa.Spec.MinReplicas)
+	}
+	return "1"
+}
+
+func originalScaleDownStabilizationWindow(hpa *autoscalingv2.HorizontalPodAutoscaler) string {
+	if hpa.Spec.Behavior != nil && hpa.Spec.Behavior.ScaleDown != nil && hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds != nil {
+		return fmt.Sprintf("%d", *hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds)
+	}
+	return "300"
+}
+
+func originalScaleUpStabilizationWindow(hpa *autoscalingv2.HorizontalPodAutoscaler) string {
+	if hpa.Spec.Behavior != nil && hpa.Spec.Behavior.ScaleUp != nil && hpa.Spec.Behavior.ScaleUp.StabilizationWindowSeconds != nil {
+		return fmt.Sprintf("%d", *hpa.Spec.Behavior.ScaleUp.StabilizationWindowSeconds)
+	}
+	return "0"
+}
+
+func originalTargetAverageUtilization(hpa *autoscalingv2.HorizontalPodAutoscaler) string {
+	for _, m := range hpa.Spec.Metrics {
+		if m.Type == autoscalingv2.ResourceMetricSourceType && m.Resource.Target.AverageUtilization != nil {
+			return fmt.Sprintf("%d", *m.Resource.Target.AverageUtilization)
+		}
+	}
+	return "<not set>"
 }
 
 // buildSimulationInterpretation generates interpretation lines comparing before/after states.

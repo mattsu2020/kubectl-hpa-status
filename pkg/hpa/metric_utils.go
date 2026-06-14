@@ -30,15 +30,16 @@ func SummarizeDirection(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas 
 		return "HPA is scaled to zero (minReplicas=0); awaiting trigger to scale up."
 	}
 
-	current := hpa.Status.CurrentReplicas
-	desired := hpa.Status.DesiredReplicas
+	return summarizeDirectionFromReplicas(hpa.Status.CurrentReplicas, hpa.Status.DesiredReplicas, hpa.Spec.MaxReplicas, minReplicas)
+}
 
+func summarizeDirectionFromReplicas(current, desired, maxReplicas, minReplicas int32) string {
 	switch {
 	case desired > current:
 		return "HPA currently wants to scale up."
 	case desired < current:
 		return "HPA currently wants to scale down."
-	case desired == hpa.Spec.MaxReplicas:
+	case desired == maxReplicas:
 		return "HPA is at maxReplicas."
 	case desired == minReplicas && minReplicas == 0:
 		return "HPA is at minReplicas (scale-to-zero enabled)."

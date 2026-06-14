@@ -314,81 +314,104 @@ func writeIncidentRemediationSteps(buf *strings.Builder, reports []StatusReport)
 
 // writeIncidentCapacityContext renders the capacity context section when present.
 func writeIncidentCapacityContext(buf *strings.Builder, reports []StatusReport) {
-	hasCapacity := false
-	for _, r := range reports {
-		if r.Analysis.CapacityContext != nil {
-			cc := r.Analysis.CapacityContext
-			if len(cc.PendingPods) > 0 || len(cc.QuotaConstraints) > 0 || len(cc.NodeHints) > 0 {
-				hasCapacity = true
-				break
-			}
-		}
-		if r.Analysis.CapacityHeadroom != nil {
-			hasCapacity = true
-			break
-		}
-	}
-	if !hasCapacity {
+	if !anyReportHasCapacity(reports) {
 		return
 	}
 	buf.WriteString("## Capacity Context\n\n")
 	for _, r := range reports {
-		a := r.Analysis
-		wroteHeader := false
+		writeIncidentReportCapacity(buf, r.Analysis)
+	}
+}
 
-		if a.CapacityContext != nil {
-			cc := a.CapacityContext
+// anyReportHasCapacity reports whether any report carries pending pods, quota constraints, node hints, or capacity headroom.
+func anyReportHasCapacity(reports []StatusReport) bool {
+	for _, r := range reports {
+		if r.Analysis.CapacityContext != nil {
+			cc := r.Analysis.CapacityContext
 			if len(cc.PendingPods) > 0 || len(cc.QuotaConstraints) > 0 || len(cc.NodeHints) > 0 {
-				buf.WriteString(fmt.Sprintf("### %s/%s\n\n", a.Namespace, a.Name))
-				wroteHeader = true
-
-				if len(cc.PendingPods) > 0 {
-					buf.WriteString("**Pending Pods:**\n\n")
-					for _, p := range cc.PendingPods {
-						status := "scheduled"
-						if p.Unschedulable {
-							status = "unschedulable"
-						}
-						buf.WriteString(fmt.Sprintf("- %s (%s): %s\n",
-							p.Name, status, escapeMarkdown(strings.Join(p.Reasons, "; "))))
-					}
-					buf.WriteString("\n")
-				}
-
-				if len(cc.QuotaConstraints) > 0 {
-					buf.WriteString("**Resource Quotas:**\n\n")
-					for _, q := range cc.QuotaConstraints {
-						buf.WriteString(fmt.Sprintf("- %s/%s: used=%s hard=%s — %s\n",
-							q.Name, q.Resource, q.Used, q.Hard, q.Message))
-					}
-					buf.WriteString("\n")
-				}
-
-				if len(cc.NodeHints) > 0 {
-					buf.WriteString("**Hints:**\n\n")
-					for _, hint := range cc.NodeHints {
-						buf.WriteString(fmt.Sprintf("- %s\n", hint))
-					}
-					buf.WriteString("\n")
-				}
+				return true
 			}
 		}
-
-		if a.CapacityHeadroom != nil {
-			if !wroteHeader {
-				buf.WriteString(fmt.Sprintf("### %s/%s\n\n", a.Namespace, a.Name))
-			}
-			ch := a.CapacityHeadroom
-			buf.WriteString(fmt.Sprintf("**Capacity Headroom:** %s (risk: %s)\n",
-				ch.ClusterSchedulableHeadroom, ch.Risk))
-			if len(ch.Evidence) > 0 {
-				for _, e := range ch.Evidence {
-					buf.WriteString(fmt.Sprintf("- %s\n", e))
-				}
-			}
-			buf.WriteString("\n")
+		if r.Analysis.CapacityHeadroom != nil {
+			return true
 		}
 	}
+	return false
+}
+
+// writeIncidentReportCapacity renders the capacity context and headroom subsections for a single report.
+func writeIncidentReportCapacity(buf *strings.Builder, a Analysis) {
+	wroteHeader := false
+
+	if a.CapacityContext != nil {
+		cc := a.CapacityContext
+		if len(cc.PendingPods) > 0 || len(cc.QuotaConstraints) > 0 || len(cc.NodeHints) > 0 {
+			buf.WriteString(fmt.Sprintf("### %s/%s\n\n", a.Namespace, a.Name))
+			wroteHeader = true
+
+			writeIncidentPendingPods(buf, cc.PendingPods)
+			writeIncidentQuotaConstraints(buf, cc.QuotaConstraints)
+			writeIncidentNodeHints(buf, cc.NodeHints)
+		}
+	}
+
+	if a.CapacityHeadroom != nil {
+		writeIncidentCapacityHeadroom(buf, a, wroteHeader)
+	}
+}
+
+func writeIncidentPendingPods(buf *strings.Builder, pods []PendingPodInfo) {
+	if len(pods) == 0 {
+		return
+	}
+	buf.WriteString("**Pending Pods:**\n\n")
+	for _, p := range pods {
+		status := "scheduled"
+		if p.Unschedulable {
+			status = "unschedulable"
+		}
+		buf.WriteString(fmt.Sprintf("- %s (%s): %s\n",
+			p.Name, status, escapeMarkdown(strings.Join(p.Reasons, "; "))))
+	}
+	buf.WriteString("\n")
+}
+
+func writeIncidentQuotaConstraints(buf *strings.Builder, quotas []QuotaConstraint) {
+	if len(quotas) == 0 {
+		return
+	}
+	buf.WriteString("**Resource Quotas:**\n\n")
+	for _, q := range quotas {
+		buf.WriteString(fmt.Sprintf("- %s/%s: used=%s hard=%s — %s\n",
+			q.Name, q.Resource, q.Used, q.Hard, q.Message))
+	}
+	buf.WriteString("\n")
+}
+
+func writeIncidentNodeHints(buf *strings.Builder, hints []string) {
+	if len(hints) == 0 {
+		return
+	}
+	buf.WriteString("**Hints:**\n\n")
+	for _, hint := range hints {
+		buf.WriteString(fmt.Sprintf("- %s\n", hint))
+	}
+	buf.WriteString("\n")
+}
+
+func writeIncidentCapacityHeadroom(buf *strings.Builder, a Analysis, wroteHeader bool) {
+	if !wroteHeader {
+		buf.WriteString(fmt.Sprintf("### %s/%s\n\n", a.Namespace, a.Name))
+	}
+	ch := a.CapacityHeadroom
+	buf.WriteString(fmt.Sprintf("**Capacity Headroom:** %s (risk: %s)\n",
+		ch.ClusterSchedulableHeadroom, ch.Risk))
+	if len(ch.Evidence) > 0 {
+		for _, e := range ch.Evidence {
+			buf.WriteString(fmt.Sprintf("- %s\n", e))
+		}
+	}
+	buf.WriteString("\n")
 }
 
 // writeIncidentRecommendations renders the recommendations section.

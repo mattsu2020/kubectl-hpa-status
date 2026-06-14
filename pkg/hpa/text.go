@@ -632,58 +632,100 @@ func appendScalePathText(out *[]byte, path *ScalePath, theme style.Theme) {
 	for _, step := range path.Steps {
 		*out = fmt.Appendf(*out, "  %s: %s\n", step.Name, step.Summary)
 	}
-	if path.BlockingPoint != "" {
-		*out = append(*out, "\nBlocking point:\n"...)
-		*out = fmt.Appendf(*out, "  %s\n", theme.InterpretationLine(path.BlockingPoint))
+	appendScalePathBlockingPoint(out, path, theme)
+	appendScalePathEvidence(out, path)
+	appendScalePathProbeWarnings(out, path, theme)
+	appendScalePathSchedulerInfo(out, path, theme)
+	appendScalePathQuotaChecks(out, path)
+	appendScalePathAutoscalerEvents(out, path)
+	appendScalePathNextActions(out, path, theme)
+}
+
+// appendScalePathBlockingPoint appends the blocking point section when present.
+func appendScalePathBlockingPoint(out *[]byte, path *ScalePath, theme style.Theme) {
+	if path.BlockingPoint == "" {
+		return
 	}
-	if len(path.Evidence) > 0 {
-		*out = append(*out, "\nEvidence:\n"...)
-		for _, evidence := range path.Evidence {
-			*out = fmt.Appendf(*out, "  - %s\n", evidence)
-		}
+	*out = append(*out, "\nBlocking point:\n"...)
+	*out = fmt.Appendf(*out, "  %s\n", theme.InterpretationLine(path.BlockingPoint))
+}
+
+// appendScalePathEvidence appends the evidence section when present.
+func appendScalePathEvidence(out *[]byte, path *ScalePath) {
+	if len(path.Evidence) == 0 {
+		return
 	}
-	if len(path.ProbeWarnings) > 0 {
-		*out = append(*out, "\nProbe warnings:\n"...)
-		for _, warning := range path.ProbeWarnings {
-			*out = fmt.Appendf(*out, "  - %s\n", theme.InterpretationLine(warning))
-		}
+	*out = append(*out, "\nEvidence:\n"...)
+	for _, evidence := range path.Evidence {
+		*out = fmt.Appendf(*out, "  - %s\n", evidence)
 	}
-	if path.SchedulerInfo != nil {
-		*out = append(*out, "\nScheduler constraints:\n"...)
-		if path.SchedulerInfo.NodeSelectorLabels > 0 {
-			*out = fmt.Appendf(*out, "  nodeSelector: %d labels\n", path.SchedulerInfo.NodeSelectorLabels)
-		}
-		for _, ac := range path.SchedulerInfo.AffinityConstraints {
-			*out = fmt.Appendf(*out, "  affinity: %s\n", ac)
-		}
-		for _, ts := range path.SchedulerInfo.TopologySpreadConstraints {
-			*out = fmt.Appendf(*out, "  topologySpread: %s\n", ts)
-		}
-		if path.SchedulerInfo.Warning != "" {
-			*out = fmt.Appendf(*out, "  %s\n", theme.InterpretationLine(path.SchedulerInfo.Warning))
-		}
+}
+
+// appendScalePathProbeWarnings appends the probe warnings section when present.
+func appendScalePathProbeWarnings(out *[]byte, path *ScalePath, theme style.Theme) {
+	if len(path.ProbeWarnings) == 0 {
+		return
 	}
-	if len(path.QuotaChecks) > 0 {
-		*out = append(*out, "\nQuota checks:\n"...)
-		for _, q := range path.QuotaChecks {
-			status := "OK"
-			if q.Blocking {
-				status = "BLOCKING"
-			}
-			*out = fmt.Appendf(*out, "  [%s] %s: %s %s/%s\n", status, q.Name, q.Resource, q.Used, q.Hard)
-		}
+	*out = append(*out, "\nProbe warnings:\n"...)
+	for _, warning := range path.ProbeWarnings {
+		*out = fmt.Appendf(*out, "  - %s\n", theme.InterpretationLine(warning))
 	}
-	if len(path.AutoscalerEvents) > 0 {
-		*out = append(*out, "\nAutoscaler events:\n"...)
-		for _, event := range path.AutoscalerEvents {
-			*out = fmt.Appendf(*out, "  - %s\n", event)
-		}
+}
+
+// appendScalePathSchedulerInfo appends the scheduler constraints section when present.
+func appendScalePathSchedulerInfo(out *[]byte, path *ScalePath, theme style.Theme) {
+	if path.SchedulerInfo == nil {
+		return
 	}
-	if len(path.NextActions) > 0 {
-		*out = append(*out, "\nNext actions:\n"...)
-		for _, action := range path.NextActions {
-			*out = fmt.Appendf(*out, "  - %s\n", theme.ActionLine(action))
+	*out = append(*out, "\nScheduler constraints:\n"...)
+	if path.SchedulerInfo.NodeSelectorLabels > 0 {
+		*out = fmt.Appendf(*out, "  nodeSelector: %d labels\n", path.SchedulerInfo.NodeSelectorLabels)
+	}
+	for _, ac := range path.SchedulerInfo.AffinityConstraints {
+		*out = fmt.Appendf(*out, "  affinity: %s\n", ac)
+	}
+	for _, ts := range path.SchedulerInfo.TopologySpreadConstraints {
+		*out = fmt.Appendf(*out, "  topologySpread: %s\n", ts)
+	}
+	if path.SchedulerInfo.Warning != "" {
+		*out = fmt.Appendf(*out, "  %s\n", theme.InterpretationLine(path.SchedulerInfo.Warning))
+	}
+}
+
+// appendScalePathQuotaChecks appends the quota checks section when present.
+func appendScalePathQuotaChecks(out *[]byte, path *ScalePath) {
+	if len(path.QuotaChecks) == 0 {
+		return
+	}
+	*out = append(*out, "\nQuota checks:\n"...)
+	for _, q := range path.QuotaChecks {
+		status := "OK"
+		if q.Blocking {
+			status = "BLOCKING"
 		}
+		*out = fmt.Appendf(*out, "  [%s] %s: %s %s/%s\n", status, q.Name, q.Resource, q.Used, q.Hard)
+	}
+}
+
+// appendScalePathAutoscalerEvents appends the autoscaler events section when present.
+func appendScalePathAutoscalerEvents(out *[]byte, path *ScalePath) {
+	if len(path.AutoscalerEvents) == 0 {
+		return
+	}
+	*out = append(*out, "\nAutoscaler events:\n"...)
+	for _, event := range path.AutoscalerEvents {
+		*out = fmt.Appendf(*out, "  - %s\n", event)
+	}
+}
+
+// appendScalePathNextActions appends the next actions section when present.
+func appendScalePathNextActions(out *[]byte, path *ScalePath, theme style.Theme) {
+	if len(path.NextActions) == 0 {
+		return
+	}
+	*out = append(*out, "\nNext actions:\n"...)
+	for _, action := range path.NextActions {
+		*out = fmt.Appendf(*out, "  - %s\n", theme.ActionLine(action))
 	}
 }
 
@@ -1064,44 +1106,14 @@ func (o ListTextOptions) theme() style.Theme {
 
 // NewListItem converts an Analysis into a compact ListItem for list output.
 func NewListItem(src Analysis) ListItem {
-	var errors []string
-	var limiteds []string
-	health := src.Health
-	if health == "" {
-		health = "OK"
-	}
-
-	for _, condition := range src.Conditions {
-		switch {
-		case condition.Type == "ScalingActive" && condition.Status != "True":
-			errors = append(errors, "ERROR: "+condition.Reason)
-		case condition.Type == "AbleToScale" && condition.Status != "True":
-			errors = append(errors, "ERROR: "+condition.Reason)
-		case condition.Type == "ScalingLimited" && condition.Status == "True":
-			limiteds = append(limiteds, "LIMITED: "+condition.Reason)
-		}
-	}
+	errors, limiteds := classifyListConditions(src.Conditions)
 	if src.Current == src.Desired && src.Desired == src.Max {
 		limiteds = append(limiteds, "LIMITED: maxReplicas")
 	}
 
-	if len(errors) > 0 {
-		health = "ERROR"
-	} else if len(limiteds) > 0 {
-		health = "LIMITED"
-	}
-
-	var issues []string
-	issues = append(issues, errors...)
-	issues = append(issues, limiteds...)
-	issue := strings.Join(issues, ", ")
-
-	// Build compact conditions string for wide output
-	var condParts []string
-	for _, c := range src.Conditions {
-		condParts = append(condParts, fmt.Sprintf("%s=%s", c.Type, c.Status))
-	}
-	conditions := strings.Join(condParts, ";")
+	health := deriveListHealth(src.Health, errors, limiteds)
+	issue := joinListIssues(errors, limiteds)
+	conditions := compactConditions(src.Conditions)
 	metrics := compactMetrics(src.Metrics)
 	behavior := compactBehavior(src.Behavior)
 	if src.HealthScore == 0 {
@@ -1131,6 +1143,54 @@ func NewListItem(src Analysis) ListItem {
 		TrendSparkline:     trendSparklineFromAnalysis(src.HealthTrend),
 		TrendFlapping:      trendFlappingFromAnalysis(src.HealthTrend),
 	}
+}
+
+// classifyListConditions separates conditions into error and limited buckets
+// for list display.
+func classifyListConditions(conditions []Condition) (errors, limiteds []string) {
+	for _, condition := range conditions {
+		switch {
+		case condition.Type == "ScalingActive" && condition.Status != "True":
+			errors = append(errors, "ERROR: "+condition.Reason)
+		case condition.Type == "AbleToScale" && condition.Status != "True":
+			errors = append(errors, "ERROR: "+condition.Reason)
+		case condition.Type == "ScalingLimited" && condition.Status == "True":
+			limiteds = append(limiteds, "LIMITED: "+condition.Reason)
+		}
+	}
+	return errors, limiteds
+}
+
+// deriveListHealth returns the health label, defaulting to "OK" when empty and
+// overriding with "ERROR"/"LIMITED" based on classified buckets.
+func deriveListHealth(base string, errors, limiteds []string) string {
+	if base == "" {
+		base = "OK"
+	}
+	if len(errors) > 0 {
+		return "ERROR"
+	}
+	if len(limiteds) > 0 {
+		return "LIMITED"
+	}
+	return base
+}
+
+// joinListIssues joins the error and limited buckets into a single comma-separated string.
+func joinListIssues(errors, limiteds []string) string {
+	var issues []string
+	issues = append(issues, errors...)
+	issues = append(issues, limiteds...)
+	return strings.Join(issues, ", ")
+}
+
+// compactConditions builds a compact "Type=Status;..." string for wide output.
+func compactConditions(conditions []Condition) string {
+	var condParts []string
+	for _, c := range conditions {
+		condParts = append(condParts, fmt.Sprintf("%s=%s", c.Type, c.Status))
+	}
+	return strings.Join(condParts, ";")
 }
 
 func trendSparklineFromAnalysis(trend *HealthTrendResult) string {

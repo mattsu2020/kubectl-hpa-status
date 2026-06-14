@@ -22,35 +22,39 @@ func (m Model) View() string {
 		return errorStyle.Render(fmt.Sprintf("Error: %v", m.err)) + "\n\nPress q to quit."
 	}
 
-	var content string
-	switch m.viewMode {
-	case listView:
-		content = m.renderListView()
-	case detailView:
-		content = m.renderDetailView()
-	case helpView:
-		content = m.renderHelpView()
-	case metricsView:
-		content = m.renderMetricsView()
-	case simView:
-		content = m.renderSimView()
-	case fixView:
-		content = m.renderFixView()
-	case replayView:
-		content = m.renderReplayView()
-	case batchAuditView:
-		content = m.renderBatchAuditView()
-	case historyView:
-		content = m.renderHistoryView()
-	case overviewView:
-		content = m.renderOverviewView()
-	case hintsView:
-		content = m.renderHintsView()
-	}
-
+	content := m.renderViewByMode()
 	statusBar := m.renderStatusBar()
 
 	return content + "\n" + statusBar
+}
+
+// renderViewByMode dispatches to the renderer for the current view mode.
+func (m Model) renderViewByMode() string {
+	switch m.viewMode {
+	case listView:
+		return m.renderListView()
+	case detailView:
+		return m.renderDetailView()
+	case helpView:
+		return m.renderHelpView()
+	case metricsView:
+		return m.renderMetricsView()
+	case simView:
+		return m.renderSimView()
+	case fixView:
+		return m.renderFixView()
+	case replayView:
+		return m.renderReplayView()
+	case batchAuditView:
+		return m.renderBatchAuditView()
+	case historyView:
+		return m.renderHistoryView()
+	case overviewView:
+		return m.renderOverviewView()
+	case hintsView:
+		return m.renderHintsView()
+	}
+	return ""
 }
 
 func (m Model) renderHelpView() string {
@@ -484,86 +488,7 @@ func (m Model) renderMetricsView() string {
 		sb.WriteString(dimStyle.Render("No detailed metrics data available."))
 		sb.WriteString("\n")
 	} else {
-		a := report.Analysis
-
-		if len(a.Metrics) == 0 {
-			sb.WriteString(dimStyle.Render("No metrics configured for this HPA."))
-			sb.WriteString("\n")
-		}
-
-		for i, metric := range a.Metrics {
-			name := metric.Name
-			if name == "" {
-				name = metric.Type
-			}
-
-			sb.WriteString(fmt.Sprintf("  %s (%s)\n", name, metric.Type))
-
-			if metric.Current != "" {
-				sb.WriteString(fmt.Sprintf("    current=%s", metric.Current))
-			}
-			if metric.Target != "" {
-				sb.WriteString(fmt.Sprintf("  target=%s", metric.Target))
-			}
-			if metric.Ratio != nil {
-				sb.WriteString(fmt.Sprintf("  ratio=%.3f", *metric.Ratio))
-			}
-			sb.WriteString("\n")
-
-			// Status assessment.
-			if metric.Ratio != nil {
-				ratio := *metric.Ratio
-				switch {
-				case ratio > 1.0:
-					sb.WriteString(fmt.Sprintf("    status: %s\n", warnStyle.Render("above target")))
-				case ratio < 0.9:
-					sb.WriteString(fmt.Sprintf("    status: %s\n", okStyle.Render("below target")))
-				default:
-					sb.WriteString(fmt.Sprintf("    status: %s\n", okStyle.Render("within tolerance")))
-				}
-			}
-
-			// Note contains diagnostic info.
-			if metric.Note != "" {
-				sb.WriteString(fmt.Sprintf("    note: %s\n", dimStyle.Render(metric.Note)))
-			}
-
-			if i < len(a.Metrics)-1 {
-				sb.WriteString("\n")
-			}
-		}
-
-		// Metrics pipeline diagnostics if available.
-		if a.MetricsDiagnostics != nil {
-			sb.WriteString("\n")
-			sb.WriteString(headerStyle.Render(" Pipeline Health "))
-			sb.WriteString("\n\n")
-
-			for _, check := range a.MetricsDiagnostics.PerMetricChecks {
-				statusStr := okStyle.Render("✓")
-				switch check.Status {
-				case "missing":
-					statusStr = errorStyle.Render("✗")
-				case "stale":
-					statusStr = warnStyle.Render("⚠")
-				}
-				sb.WriteString(fmt.Sprintf("  %s %s/%s: %s\n", statusStr, check.MetricType, check.MetricName, check.Status))
-				if check.Details != "" {
-					sb.WriteString(fmt.Sprintf("    %s\n", dimStyle.Render(check.Details)))
-				}
-				if check.Remediation != "" {
-					sb.WriteString(fmt.Sprintf("    fix: %s\n", dimStyle.Render(check.Remediation)))
-				}
-			}
-
-			if len(a.MetricsDiagnostics.RemediationSteps) > 0 {
-				sb.WriteString("\n")
-				sb.WriteString("Remediation:\n")
-				for _, step := range a.MetricsDiagnostics.RemediationSteps {
-					sb.WriteString(fmt.Sprintf("  - %s\n", step))
-				}
-			}
-		}
+		appendMetricsReportBody(&sb, report.Analysis)
 	}
 
 	sb.WriteString("\n")
@@ -757,4 +682,93 @@ func renderInlineSparkline(history []float64, width int, churnLevel string) stri
 		style = okStyle
 	}
 	return renderSparkline(history, width, style)
+}
+
+// appendMetricsReportBody renders the per-metric rows and pipeline diagnostics section of the metrics view.
+func appendMetricsReportBody(sb *strings.Builder, a hpaanalysis.Analysis) {
+	if len(a.Metrics) == 0 {
+		sb.WriteString(dimStyle.Render("No metrics configured for this HPA."))
+		sb.WriteString("\n")
+	}
+
+	for i, metric := range a.Metrics {
+		appendMetricRow(sb, metric, i, len(a.Metrics))
+	}
+
+	if a.MetricsDiagnostics != nil {
+		appendMetricsPipelineDiagnostics(sb, a.MetricsDiagnostics)
+	}
+}
+
+func appendMetricRow(sb *strings.Builder, metric hpaanalysis.Metric, i, total int) {
+	name := metric.Name
+	if name == "" {
+		name = metric.Type
+	}
+
+	sb.WriteString(fmt.Sprintf("  %s (%s)\n", name, metric.Type))
+
+	if metric.Current != "" {
+		sb.WriteString(fmt.Sprintf("    current=%s", metric.Current))
+	}
+	if metric.Target != "" {
+		sb.WriteString(fmt.Sprintf("  target=%s", metric.Target))
+	}
+	if metric.Ratio != nil {
+		sb.WriteString(fmt.Sprintf("  ratio=%.3f", *metric.Ratio))
+	}
+	sb.WriteString("\n")
+
+	// Status assessment.
+	if metric.Ratio != nil {
+		ratio := *metric.Ratio
+		switch {
+		case ratio > 1.0:
+			sb.WriteString(fmt.Sprintf("    status: %s\n", warnStyle.Render("above target")))
+		case ratio < 0.9:
+			sb.WriteString(fmt.Sprintf("    status: %s\n", okStyle.Render("below target")))
+		default:
+			sb.WriteString(fmt.Sprintf("    status: %s\n", okStyle.Render("within tolerance")))
+		}
+	}
+
+	// Note contains diagnostic info.
+	if metric.Note != "" {
+		sb.WriteString(fmt.Sprintf("    note: %s\n", dimStyle.Render(metric.Note)))
+	}
+
+	if i < total-1 {
+		sb.WriteString("\n")
+	}
+}
+
+func appendMetricsPipelineDiagnostics(sb *strings.Builder, diags *hpaanalysis.MetricsPipelineDiagnostics) {
+	sb.WriteString("\n")
+	sb.WriteString(headerStyle.Render(" Pipeline Health "))
+	sb.WriteString("\n\n")
+
+	for _, check := range diags.PerMetricChecks {
+		statusStr := okStyle.Render("✓")
+		switch check.Status {
+		case "missing":
+			statusStr = errorStyle.Render("✗")
+		case "stale":
+			statusStr = warnStyle.Render("⚠")
+		}
+		sb.WriteString(fmt.Sprintf("  %s %s/%s: %s\n", statusStr, check.MetricType, check.MetricName, check.Status))
+		if check.Details != "" {
+			sb.WriteString(fmt.Sprintf("    %s\n", dimStyle.Render(check.Details)))
+		}
+		if check.Remediation != "" {
+			sb.WriteString(fmt.Sprintf("    fix: %s\n", dimStyle.Render(check.Remediation)))
+		}
+	}
+
+	if len(diags.RemediationSteps) > 0 {
+		sb.WriteString("\n")
+		sb.WriteString("Remediation:\n")
+		for _, step := range diags.RemediationSteps {
+			sb.WriteString(fmt.Sprintf("  - %s\n", step))
+		}
+	}
 }

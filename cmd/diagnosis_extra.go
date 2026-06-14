@@ -51,7 +51,15 @@ func buildReadinessImpact(ctx context.Context, client *kube.Client, hpa *autosca
 	}
 	now := time.Now()
 	impact.TotalPods = int32(len(pods.Items))
-	for _, pod := range pods.Items {
+	countNotYetReadyPods(impact, pods.Items, hpa.Namespace, now)
+	countMissingMetricPods(ctx, impact, client, hpa.Namespace, info.SelectorStr, pods.Items)
+	finalizeReadinessImpact(impact)
+	return impact
+}
+
+// countNotYetReadyPods increments NotYetReadyPods for young non-Ready pods and records evidence and describe-pod next-checks.
+func countNotYetReadyPods(impact *hpaanalysis.ReadinessImpact, pods []corev1.Pod, namespace string, now time.Time) {
+	for _, pod := range pods {
 		if podReadyForImpact(pod) {
 			continue
 		}
@@ -63,28 +71,36 @@ func buildReadinessImpact(ctx context.Context, client *kube.Client, hpa *autosca
 			impact.NotYetReadyPods++
 			impact.Evidence = append(impact.Evidence, fmt.Sprintf("pod/%s: Ready=False, age=%s", pod.Name, age))
 			if len(impact.NextChecks) < 4 {
-				impact.NextChecks = append(impact.NextChecks, fmt.Sprintf("kubectl describe pod %s -n %s", pod.Name, hpa.Namespace))
+				impact.NextChecks = append(impact.NextChecks, fmt.Sprintf("kubectl describe pod %s -n %s", pod.Name, namespace))
 			}
 		}
 	}
-	metricPods, metricErr := fetchPodMetricNames(ctx, client, hpa.Namespace, info.SelectorStr)
+}
+
+// countMissingMetricPods increments MissingMetricPods for running pods lacking a PodMetrics sample, recording evidence.
+func countMissingMetricPods(ctx context.Context, impact *hpaanalysis.ReadinessImpact, client *kube.Client, namespace, selector string, pods []corev1.Pod) {
+	metricPods, metricErr := fetchPodMetricNames(ctx, client, namespace, selector)
 	if metricErr != nil {
 		impact.Evidence = append(impact.Evidence, fmt.Sprintf("PodMetrics not checked: %v", metricErr))
-	} else {
-		seen := make(map[string]struct{}, len(metricPods))
-		for _, name := range metricPods {
-			seen[name] = struct{}{}
+		return
+	}
+	seen := make(map[string]struct{}, len(metricPods))
+	for _, name := range metricPods {
+		seen[name] = struct{}{}
+	}
+	for _, pod := range pods {
+		if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
+			continue
 		}
-		for _, pod := range pods.Items {
-			if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
-				continue
-			}
-			if _, ok := seen[pod.Name]; !ok {
-				impact.MissingMetricPods++
-				impact.Evidence = append(impact.Evidence, fmt.Sprintf("metrics window missing for pod/%s", pod.Name))
-			}
+		if _, ok := seen[pod.Name]; !ok {
+			impact.MissingMetricPods++
+			impact.Evidence = append(impact.Evidence, fmt.Sprintf("metrics window missing for pod/%s", pod.Name))
 		}
 	}
+}
+
+// finalizeReadinessImpact sets LikelyAffected and appends PossibleEffects based on the recorded counts.
+func finalizeReadinessImpact(impact *hpaanalysis.ReadinessImpact) {
 	impact.LikelyAffected = impact.NotYetReadyPods > 0 || impact.MissingMetricPods > 0
 	if impact.NotYetReadyPods > 0 {
 		impact.PossibleEffects = append(impact.PossibleEffects,
@@ -98,7 +114,6 @@ func buildReadinessImpact(ctx context.Context, client *kube.Client, hpa *autosca
 		impact.PossibleEffects = append(impact.PossibleEffects,
 			"HPA status.currentMetrics may not show the adjusted value used internally")
 	}
-	return impact
 }
 
 func podReadyForImpact(pod corev1.Pod) bool {

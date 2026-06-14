@@ -31,10 +31,26 @@ func (m Model) renderFixView() string {
 	}
 
 	// Available fixes list.
+	appendFixSuggestionsList(&sb, m.fixState)
+
+	// Preview of selected fix.
+	appendFixPreview(&sb, m.fixState)
+
+	// Apply status.
+	appendFixApplyStatus(&sb, m.fixState)
+
+	// Footer.
+	sb.WriteString("\n")
+	sb.WriteString(dimStyle.Render("Enter=apply  d=dry-run  ↑↓=select  Esc=cancel"))
+
+	return sb.String()
+}
+
+func appendFixSuggestionsList(sb *strings.Builder, st *fixState) {
 	sb.WriteString("Available Fixes:\n")
-	for i, suggestion := range m.fixState.suggestions {
+	for i, suggestion := range st.suggestions {
 		marker := "  "
-		if i == m.fixState.selected {
+		if i == st.selected {
 			marker = cursorStyle.Render("▸ ")
 		}
 		riskStyle := warnStyle
@@ -47,15 +63,16 @@ func (m Model) renderFixView() string {
 			suggestion.Title,
 			riskStyle.Render(fmt.Sprintf("(risk: %s)", suggestion.Risk)),
 		))
-		if i == m.fixState.selected {
+		if i == st.selected {
 			sb.WriteString(fmt.Sprintf("      %s\n", dimStyle.Render(suggestion.Description)))
 		}
 	}
+}
 
-	// Preview of selected fix.
-	selected := m.fixState.suggestions[m.fixState.selected]
+func appendFixPreview(sb *strings.Builder, st *fixState) {
+	selected := st.suggestions[st.selected]
 	sb.WriteString("\n")
-	sb.WriteString(headerStyle.Render(fmt.Sprintf("Preview of Fix [%d]:", m.fixState.selected+1)))
+	sb.WriteString(headerStyle.Render(fmt.Sprintf("Preview of Fix [%d]:", st.selected+1)))
 	sb.WriteString("\n")
 
 	if selected.Patch != "" {
@@ -78,24 +95,19 @@ func (m Model) renderFixView() string {
 			sb.WriteString(fmt.Sprintf("    ⚠ %s\n", warnStyle.Render(w)))
 		}
 	}
+}
 
-	// Apply status.
-	if m.fixState.applied {
+func appendFixApplyStatus(sb *strings.Builder, st *fixState) {
+	if st.applied {
 		sb.WriteString("\n")
-		if m.fixState.applyErr != nil {
-			sb.WriteString(errorStyle.Render(fmt.Sprintf("  Apply failed: %v", m.fixState.applyErr)))
+		if st.applyErr != nil {
+			sb.WriteString(errorStyle.Render(fmt.Sprintf("  Apply failed: %v", st.applyErr)))
 		} else {
 			sb.WriteString(okStyle.Render("  ✓ Applied successfully"))
 		}
 		sb.WriteString("\n")
 	}
-	if m.fixState.dryRunResult != "" {
-		sb.WriteString(fmt.Sprintf("\n  Dry-run: %s\n", okStyle.Render(m.fixState.dryRunResult)))
+	if st.dryRunResult != "" {
+		sb.WriteString(fmt.Sprintf("\n  Dry-run: %s\n", okStyle.Render(st.dryRunResult)))
 	}
-
-	// Footer.
-	sb.WriteString("\n")
-	sb.WriteString(dimStyle.Render("Enter=apply  d=dry-run  ↑↓=select  Esc=cancel"))
-
-	return sb.String()
 }

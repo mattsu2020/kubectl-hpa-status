@@ -10,6 +10,7 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/internal/style"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/spf13/cobra"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 )
@@ -71,29 +72,9 @@ func runSimulate(ctx context.Context, out io.Writer, opts *options, name string,
 	}
 
 	// Build overrides map from flags.
-	overrides := make(map[string]string)
-
-	// --set-target: cpu=60 → targetAverageUtilization=60
-	for _, t := range setTarget {
-		parts := strings.SplitN(t, "=", 2)
-		if len(parts) != 2 {
-			return fmt.Errorf("invalid --set-target %q: expected name=value format", t)
-		}
-		metricName := strings.ToLower(parts[0])
-		value := parts[1]
-		switch metricName {
-		case "cpu":
-			overrides["cpu.targetAverageUtilization"] = value
-		case "memory":
-			overrides["memory.targetAverageUtilization"] = value
-		default:
-			overrides[metricName+".targetAverageUtilization"] = value
-		}
-	}
-
-	// --tolerance
-	if tolerance != "" {
-		overrides["tolerance"] = tolerance
+	overrides, err := buildSimulateOverrides(setTarget, tolerance)
+	if err != nil {
+		return err
 	}
 
 	// Run simulation with spec overrides.
@@ -104,31 +85,13 @@ func runSimulate(ctx context.Context, out io.Writer, opts *options, name string,
 			return fmt.Errorf("simulation failed: %w", err)
 		}
 	} else {
-		// No spec overrides — just analyze current state with confidence label.
-		analysis := hpaanalysis.AnalyzeWithOptions(hpa, true, hpaanalysis.AnalysisOptions{})
-		simResult = &hpaanalysis.SimulationResult{
-			Before: hpaanalysis.SimulationState{
-				DesiredReplicas: analysis.Desired,
-				Health:          analysis.Health,
-				HealthScore:     analysis.HealthScore,
-				Summary:         analysis.Summary,
-				Metrics:         analysis.Metrics,
-			},
-			Confidence: "estimated",
-		}
-		simResult.After = simResult.Before
+		simResult = simulateCurrentState(hpa)
 	}
 
 	// --set-metric: apply metric value overrides for display.
 	// These modify the simulated "current metric values" which affects ratio display.
-	if len(setMetric) > 0 {
-		for _, m := range setMetric {
-			parts := strings.SplitN(m, "=", 2)
-			if len(parts) != 2 {
-				return fmt.Errorf("invalid --set-metric %q: expected name=value format", m)
-			}
-			_ = parts // Metric value override is informational for now
-		}
+	if err := validateSetMetricFlags(setMetric); err != nil {
+		return err
 	}
 
 	// Build report.
@@ -174,6 +137,67 @@ func runSimulate(ctx context.Context, out io.Writer, opts *options, name string,
 		theme := style.NewTheme(shouldColorize(opts.color, out))
 		return writeSimulateText(out, report, theme)
 	}
+}
+
+// buildSimulateOverride builds the spec override map from --set-target and
+// --tolerance flags.
+func buildSimulateOverrides(setTarget []string, tolerance string) (map[string]string, error) {
+	overrides := make(map[string]string)
+
+	// --set-target: cpu=60 → targetAverageUtilization=60
+	for _, t := range setTarget {
+		parts := strings.SplitN(t, "=", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid --set-target %q: expected name=value format", t)
+		}
+		metricName := strings.ToLower(parts[0])
+		value := parts[1]
+		switch metricName {
+		case "cpu":
+			overrides["cpu.targetAverageUtilization"] = value
+		case "memory":
+			overrides["memory.targetAverageUtilization"] = value
+		default:
+			overrides[metricName+".targetAverageUtilization"] = value
+		}
+	}
+
+	// --tolerance
+	if tolerance != "" {
+		overrides["tolerance"] = tolerance
+	}
+
+	return overrides, nil
+}
+
+// simulateCurrentState returns a SimulationResult reflecting the HPA's current
+// state, used when no spec overrides are supplied.
+func simulateCurrentState(hpa *autoscalingv2.HorizontalPodAutoscaler) *hpaanalysis.SimulationResult {
+	analysis := hpaanalysis.AnalyzeWithOptions(hpa, true, hpaanalysis.AnalysisOptions{})
+	simResult := &hpaanalysis.SimulationResult{
+		Before: hpaanalysis.SimulationState{
+			DesiredReplicas: analysis.Desired,
+			Health:          analysis.Health,
+			HealthScore:     analysis.HealthScore,
+			Summary:         analysis.Summary,
+			Metrics:         analysis.Metrics,
+		},
+		Confidence: "estimated",
+	}
+	simResult.After = simResult.Before
+	return simResult
+}
+
+// validateSetMetricFlags validates the --set-metric name=value pairs. The
+// metric value override is informational for now and is not applied.
+func validateSetMetricFlags(setMetric []string) error {
+	for _, m := range setMetric {
+		parts := strings.SplitN(m, "=", 2)
+		if len(parts) != 2 {
+			return fmt.Errorf("invalid --set-metric %q: expected name=value format", m)
+		}
+	}
+	return nil
 }
 
 func writeSimulateText(out io.Writer, report simulateReport, theme style.Theme) error {

@@ -47,67 +47,7 @@ func AppendGitOpsConflictText(out *[]byte, report *GitOpsConflict, theme style.T
 
 	// Render conflicts
 	for _, c := range report.Conflicts {
-		*out = append(*out, '\n')
-		switch c.Severity {
-		case "conflict":
-			*out = append(*out, theme.Error.Render("[CONFLICT]")...)
-		case "warning":
-			*out = append(*out, theme.Warning.Render("[WARNING]")...)
-		default:
-			*out = append(*out, theme.Dim.Render("[INFO]")...)
-		}
-		*out = append(*out, " "...)
-		*out = append(*out, c.Kind...)
-		*out = append(*out, "/"...)
-		*out = append(*out, c.Name...)
-		if c.Field != "" {
-			*out = append(*out, ": "...)
-			*out = append(*out, c.Field...)
-			*out = append(*out, " conflict\n"...)
-		} else {
-			*out = append(*out, '\n')
-		}
-
-		// Manifest value
-		if c.ManifestValue != "" {
-			*out = append(*out, "  Manifest: "...)
-			*out = append(*out, c.Field...)
-			*out = append(*out, "="...)
-			*out = append(*out, c.ManifestValue...)
-			*out = append(*out, '\n')
-		}
-
-		// HPA desired
-		if c.HPADesired != "" {
-			*out = append(*out, "  HPA desired: "...)
-			*out = append(*out, c.Field...)
-			*out = append(*out, "="...)
-			*out = append(*out, c.HPADesired...)
-			*out = append(*out, '\n')
-		}
-
-		// Live value
-		if c.LiveValue != "" {
-			*out = append(*out, "  Live: "...)
-			*out = append(*out, c.Field...)
-			*out = append(*out, "="...)
-			*out = append(*out, c.LiveValue...)
-			*out = append(*out, '\n')
-		}
-
-		// Detail
-		if c.Detail != "" {
-			*out = append(*out, "  Impact: "...)
-			*out = append(*out, c.Detail...)
-			*out = append(*out, '\n')
-		}
-
-		// Remediation
-		if c.Remediation != "" {
-			*out = append(*out, "  Remediation: "...)
-			*out = append(*out, theme.ActionLine(c.Remediation)...)
-			*out = append(*out, '\n')
-		}
+		appendGitOpsConflictEntry(out, c, theme)
 	}
 
 	// Render warnings
@@ -134,6 +74,70 @@ func AppendGitOpsConflictText(out *[]byte, report *GitOpsConflict, theme style.T
 	}
 }
 
+func appendGitOpsConflictEntry(out *[]byte, c GitOpsConflictEntry, theme style.Theme) {
+	*out = append(*out, '\n')
+	switch c.Severity {
+	case "conflict":
+		*out = append(*out, theme.Error.Render("[CONFLICT]")...)
+	case "warning":
+		*out = append(*out, theme.Warning.Render("[WARNING]")...)
+	default:
+		*out = append(*out, theme.Dim.Render("[INFO]")...)
+	}
+	*out = append(*out, " "...)
+	*out = append(*out, c.Kind...)
+	*out = append(*out, "/"...)
+	*out = append(*out, c.Name...)
+	if c.Field != "" {
+		*out = append(*out, ": "...)
+		*out = append(*out, c.Field...)
+		*out = append(*out, " conflict\n"...)
+	} else {
+		*out = append(*out, '\n')
+	}
+
+	// Manifest value
+	if c.ManifestValue != "" {
+		*out = append(*out, "  Manifest: "...)
+		*out = append(*out, c.Field...)
+		*out = append(*out, "="...)
+		*out = append(*out, c.ManifestValue...)
+		*out = append(*out, '\n')
+	}
+
+	// HPA desired
+	if c.HPADesired != "" {
+		*out = append(*out, "  HPA desired: "...)
+		*out = append(*out, c.Field...)
+		*out = append(*out, "="...)
+		*out = append(*out, c.HPADesired...)
+		*out = append(*out, '\n')
+	}
+
+	// Live value
+	if c.LiveValue != "" {
+		*out = append(*out, "  Live: "...)
+		*out = append(*out, c.Field...)
+		*out = append(*out, "="...)
+		*out = append(*out, c.LiveValue...)
+		*out = append(*out, '\n')
+	}
+
+	// Detail
+	if c.Detail != "" {
+		*out = append(*out, "  Impact: "...)
+		*out = append(*out, c.Detail...)
+		*out = append(*out, '\n')
+	}
+
+	// Remediation
+	if c.Remediation != "" {
+		*out = append(*out, "  Remediation: "...)
+		*out = append(*out, theme.ActionLine(c.Remediation)...)
+		*out = append(*out, '\n')
+	}
+}
+
 // WriteGitOpsConflictMarkdown writes a GitOps conflict report in Markdown format.
 func WriteGitOpsConflictMarkdown(w io.Writer, report *GitOpsConflict) error {
 	if report == nil {
@@ -146,8 +150,7 @@ func WriteGitOpsConflictMarkdown(w io.Writer, report *GitOpsConflict) error {
 		return err
 	}
 
-	_, err = fmt.Fprintf(w, "**Summary:** %s\n\n", report.Summary)
-	if err != nil {
+	if _, err = fmt.Fprintf(w, "**Summary:** %s\n\n", report.Summary); err != nil {
 		return err
 	}
 
@@ -156,82 +159,79 @@ func WriteGitOpsConflictMarkdown(w io.Writer, report *GitOpsConflict) error {
 		return err
 	}
 
-	// Conflicts table
-	if len(report.Conflicts) > 0 {
-		_, err = fmt.Fprintln(w, "### Conflicts")
-		_, _ = fmt.Fprintln(w)
-		if err != nil {
-			return err
+	if err = writeGitOpsMarkdownConflicts(w, report.Conflicts); err != nil {
+		return err
+	}
+	if err = writeGitOpsMarkdownWarnings(w, report.Warnings); err != nil {
+		return err
+	}
+	return writeGitOpsMarkdownPatches(w, report.Patches)
+}
+
+func writeGitOpsMarkdownConflicts(w io.Writer, conflicts []GitOpsConflictEntry) error {
+	if len(conflicts) == 0 {
+		return nil
+	}
+	if _, err := fmt.Fprintln(w, "### Conflicts"); err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintln(w)
+	if _, err := fmt.Fprintln(w, "| Severity | Kind/Name | Field | Manifest | Live | HPA Desired | Impact | Remediation |"); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(w, "|----------|-----------|-------|----------|------|-------------|--------|-------------|"); err != nil {
+		return err
+	}
+	for _, c := range conflicts {
+		severity := c.Severity
+		if severity == "conflict" {
+			severity = fmt.Sprintf("**%s**", severity)
 		}
-		_, err = fmt.Fprintln(w, "| Severity | Kind/Name | Field | Manifest | Live | HPA Desired | Impact | Remediation |")
-		if err != nil {
-			return err
-		}
-		_, err = fmt.Fprintln(w, "|----------|-----------|-------|----------|------|-------------|--------|-------------|")
-		if err != nil {
-			return err
-		}
-		for _, c := range report.Conflicts {
-			severity := c.Severity
-			if severity == "conflict" {
-				severity = fmt.Sprintf("**%s**", severity)
-			}
-			kindName := fmt.Sprintf("%s/%s", c.Kind, c.Name)
-			_, err = fmt.Fprintf(w, "| %s | %s | %s | %s | %s | %s | %s | %s |\n",
-				severity, kindName, c.Field, c.ManifestValue, c.LiveValue, c.HPADesired, c.Detail, c.Remediation)
-			if err != nil {
-				return err
-			}
-		}
-		_, err = fmt.Fprintln(w)
-		if err != nil {
+		kindName := fmt.Sprintf("%s/%s", c.Kind, c.Name)
+		if _, err := fmt.Fprintf(w, "| %s | %s | %s | %s | %s | %s | %s | %s |\n",
+			severity, kindName, c.Field, c.ManifestValue, c.LiveValue, c.HPADesired, c.Detail, c.Remediation); err != nil {
 			return err
 		}
 	}
+	_, err := fmt.Fprintln(w)
+	return err
+}
 
-	// Warnings list
-	if len(report.Warnings) > 0 {
-		_, err = fmt.Fprintln(w, "### Warnings")
-		_, _ = fmt.Fprintln(w)
-		if err != nil {
-			return err
-		}
-		for _, warnMsg := range report.Warnings {
-			_, err = fmt.Fprintf(w, "- %s\n", warnMsg)
-			if err != nil {
-				return err
-			}
-		}
-		_, err = fmt.Fprintln(w)
-		if err != nil {
+func writeGitOpsMarkdownWarnings(w io.Writer, warnings []string) error {
+	if len(warnings) == 0 {
+		return nil
+	}
+	if _, err := fmt.Fprintln(w, "### Warnings"); err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintln(w)
+	for _, warnMsg := range warnings {
+		if _, err := fmt.Fprintf(w, "- %s\n", warnMsg); err != nil {
 			return err
 		}
 	}
+	_, err := fmt.Fprintln(w)
+	return err
+}
 
-	// Patches
-	if len(report.Patches) > 0 {
-		_, err = fmt.Fprintln(w, "### Suggested Patches")
-		_, _ = fmt.Fprintln(w)
-		if err != nil {
-			return err
-		}
-		_, err = fmt.Fprintln(w, "```yaml")
-		if err != nil {
-			return err
-		}
-		for _, p := range report.Patches {
-			_, err = fmt.Fprintln(w, p)
-			if err != nil {
-				return err
-			}
-		}
-		_, err = fmt.Fprintln(w, "```")
-		if err != nil {
+func writeGitOpsMarkdownPatches(w io.Writer, patches []string) error {
+	if len(patches) == 0 {
+		return nil
+	}
+	if _, err := fmt.Fprintln(w, "### Suggested Patches"); err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintln(w)
+	if _, err := fmt.Fprintln(w, "```yaml"); err != nil {
+		return err
+	}
+	for _, p := range patches {
+		if _, err := fmt.Fprintln(w, p); err != nil {
 			return err
 		}
 	}
-
-	return nil
+	_, err := fmt.Fprintln(w, "```")
+	return err
 }
 
 // WriteGitOpsConflictHTML writes a GitOps conflict report in HTML format.
@@ -239,17 +239,6 @@ func WriteGitOpsConflictHTML(w io.Writer, report *GitOpsConflict) error {
 	if report == nil {
 		_, err := fmt.Fprintln(w, `<h2>GitOps Conflict</h2><p>No GitOps conflict data available.</p>`)
 		return err
-	}
-
-	severityClass := func(s string) string {
-		switch s {
-		case "conflict":
-			return "conflict-error"
-		case "warning":
-			return "conflict-warning"
-		default:
-			return "conflict-info"
-		}
 	}
 
 	_, err := fmt.Fprintf(w, `<h2>GitOps Conflict: %s/%s (%s)</h2>`, report.Namespace, report.Name, report.Target)
@@ -267,72 +256,70 @@ func WriteGitOpsConflictHTML(w io.Writer, report *GitOpsConflict) error {
 		return err
 	}
 
-	// Conflicts
-	if len(report.Conflicts) > 0 {
-		_, err = fmt.Fprintln(w, `<h3>Conflicts</h3>`)
-		if err != nil {
-			return err
-		}
-		_, err = fmt.Fprintln(w, `<table class="conflict-table">`)
-		if err != nil {
-			return err
-		}
-		_, err = fmt.Fprintln(w, `<thead><tr><th>Severity</th><th>Kind/Name</th><th>Field</th><th>Manifest</th><th>Live</th><th>HPA Desired</th><th>Impact</th><th>Remediation</th></tr></thead><tbody>`)
-		if err != nil {
-			return err
-		}
-		for _, c := range report.Conflicts {
-			_, err = fmt.Fprintf(w, `<tr class="%s"><td>%s</td><td>%s/%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>`,
-				severityClass(c.Severity), c.Severity, c.Kind, c.Name, c.Field,
-				escapeHTML(c.ManifestValue), escapeHTML(c.LiveValue), escapeHTML(c.HPADesired),
-				escapeHTML(c.Detail), escapeHTML(c.Remediation))
-			if err != nil {
-				return err
-			}
-		}
-		_, err = fmt.Fprintln(w, `</tbody></table>`)
-		if err != nil {
+	if err = writeGitOpsHTMLConflicts(w, report.Conflicts); err != nil {
+		return err
+	}
+	if err = writeGitOpsHTMLWarnings(w, report.Warnings); err != nil {
+		return err
+	}
+	return writeGitOpsHTMLPatches(w, report.Patches)
+}
+
+func writeGitOpsHTMLConflicts(w io.Writer, conflicts []GitOpsConflictEntry) error {
+	if len(conflicts) == 0 {
+		return nil
+	}
+	if _, err := fmt.Fprintln(w, `<h3>Conflicts</h3>`); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(w, `<table class="conflict-table">`); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(w, `<thead><tr><th>Severity</th><th>Kind/Name</th><th>Field</th><th>Manifest</th><th>Live</th><th>HPA Desired</th><th>Impact</th><th>Remediation</th></tr></thead><tbody>`); err != nil {
+		return err
+	}
+	for _, c := range conflicts {
+		if _, err := fmt.Fprintf(w, `<tr class="%s"><td>%s</td><td>%s/%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>`,
+			gitOpsSeverityClass(c.Severity), c.Severity, c.Kind, c.Name, c.Field,
+			escapeHTML(c.ManifestValue), escapeHTML(c.LiveValue), escapeHTML(c.HPADesired),
+			escapeHTML(c.Detail), escapeHTML(c.Remediation)); err != nil {
 			return err
 		}
 	}
+	_, err := fmt.Fprintln(w, `</tbody></table>`)
+	return err
+}
 
-	// Warnings
-	if len(report.Warnings) > 0 {
-		_, err = fmt.Fprintln(w, `<h3>Warnings</h3><ul>`)
-		if err != nil {
-			return err
-		}
-		for _, warnMsg := range report.Warnings {
-			_, err = fmt.Fprintf(w, `<li>%s</li>`, escapeHTML(warnMsg))
-			if err != nil {
-				return err
-			}
-		}
-		_, err = fmt.Fprintln(w, `</ul>`)
-		if err != nil {
+func writeGitOpsHTMLWarnings(w io.Writer, warnings []string) error {
+	if len(warnings) == 0 {
+		return nil
+	}
+	if _, err := fmt.Fprintln(w, `<h3>Warnings</h3><ul>`); err != nil {
+		return err
+	}
+	for _, warnMsg := range warnings {
+		if _, err := fmt.Fprintf(w, `<li>%s</li>`, escapeHTML(warnMsg)); err != nil {
 			return err
 		}
 	}
+	_, err := fmt.Fprintln(w, `</ul>`)
+	return err
+}
 
-	// Patches
-	if len(report.Patches) > 0 {
-		_, err = fmt.Fprintln(w, `<h3>Suggested Patches</h3><pre><code>`)
-		if err != nil {
-			return err
-		}
-		for _, p := range report.Patches {
-			_, err = fmt.Fprintf(w, "%s\n", escapeHTML(p))
-			if err != nil {
-				return err
-			}
-		}
-		_, err = fmt.Fprintln(w, `</code></pre>`)
-		if err != nil {
+func writeGitOpsHTMLPatches(w io.Writer, patches []string) error {
+	if len(patches) == 0 {
+		return nil
+	}
+	if _, err := fmt.Fprintln(w, `<h3>Suggested Patches</h3><pre><code>`); err != nil {
+		return err
+	}
+	for _, p := range patches {
+		if _, err := fmt.Fprintf(w, "%s\n", escapeHTML(p)); err != nil {
 			return err
 		}
 	}
-
-	return nil
+	_, err := fmt.Fprintln(w, `</code></pre>`)
+	return err
 }
 
 // escapeHTML escapes HTML special characters.
@@ -343,4 +330,16 @@ func escapeHTML(s string) string {
 	s = strings.ReplaceAll(s, "\"", "&quot;")
 	s = strings.ReplaceAll(s, "'", "&#39;")
 	return s
+}
+
+// gitOpsSeverityClass maps a GitOps conflict severity to its CSS class.
+func gitOpsSeverityClass(s string) string {
+	switch s {
+	case "conflict":
+		return "conflict-error"
+	case "warning":
+		return "conflict-warning"
+	default:
+		return "conflict-info"
+	}
 }

@@ -37,13 +37,13 @@ type Context struct {
 	crdAvail    kube.CRDAvailability
 	kedaEnabled bool
 	vpaEnabled  bool
-	status      EnrichmentStatus
+	status      Status
 }
 
 // Status returns the enrichment status for diagnostic output.
-func (ec *Context) Status() EnrichmentStatus {
+func (ec *Context) Status() Status {
 	if ec == nil {
-		return EnrichmentStatus{}
+		return Status{}
 	}
 	return ec.status
 }
@@ -53,22 +53,22 @@ func (ec *Context) Status() EnrichmentStatus {
 // at least one enrichment source is available. Always returns a non-nil Context
 // with status populated to explain why enrichment may be unavailable.
 func NewContext(_ context.Context, cfg Config) *Context {
-	kedaEntry := &EnrichmentEntry{Source: EnrichmentSourceKEDA, State: EnrichmentStateDisabled}
-	vpaEntry := &EnrichmentEntry{Source: EnrichmentSourceVPA, State: EnrichmentStateDisabled}
+	kedaEntry := &Entry{Source: SourceKEDA, State: StateDisabled}
+	vpaEntry := &Entry{Source: SourceVPA, State: StateDisabled}
 	if cfg.KEDA {
-		kedaEntry.State = EnrichmentStateUnavailable
+		kedaEntry.State = StateUnavailable
 		kedaEntry.Reason = "not requested"
 	}
 	if cfg.VPA {
-		vpaEntry.State = EnrichmentStateUnavailable
+		vpaEntry.State = StateUnavailable
 		vpaEntry.Reason = "not requested"
 	}
 
-	status := EnrichmentStatus{KEDA: kedaEntry, VPA: vpaEntry}
+	status := Status{KEDA: kedaEntry, VPA: vpaEntry}
 
 	if !cfg.KEDA && !cfg.VPA {
-		kedaEntry.State = EnrichmentStateDisabled
-		vpaEntry.State = EnrichmentStateDisabled
+		kedaEntry.State = StateDisabled
+		vpaEntry.State = StateDisabled
 		return &Context{status: status}
 	}
 
@@ -79,14 +79,8 @@ func NewContext(_ context.Context, cfg Config) *Context {
 		Cluster:    cfg.Cluster,
 	})
 	if err != nil {
-		if cfg.KEDA {
-			kedaEntry.State = EnrichmentStateError
-			kedaEntry.Reason = fmt.Sprintf("discovery client creation failed: %v", err)
-		}
-		if cfg.VPA {
-			vpaEntry.State = EnrichmentStateError
-			vpaEntry.Reason = fmt.Sprintf("discovery client creation failed: %v", err)
-		}
+		setEnrichmentError(kedaEntry, cfg.KEDA, fmt.Sprintf("discovery client creation failed: %v", err))
+		setEnrichmentError(vpaEntry, cfg.VPA, fmt.Sprintf("discovery client creation failed: %v", err))
 		return &Context{status: status}
 	}
 
@@ -95,22 +89,8 @@ func NewContext(_ context.Context, cfg Config) *Context {
 	kedaEnabled := cfg.KEDA && crdAvail.KEDA
 	vpaEnabled := cfg.VPA && crdAvail.VPA
 
-	if cfg.KEDA {
-		if crdAvail.KEDA {
-			kedaEntry.State = EnrichmentStateUnavailable // will be updated per-HPA
-		} else {
-			kedaEntry.State = EnrichmentStateUnavailable
-			kedaEntry.Reason = "CRD keda.sh/v1alpha1 not found in API discovery"
-		}
-	}
-	if cfg.VPA {
-		if crdAvail.VPA {
-			vpaEntry.State = EnrichmentStateUnavailable // will be updated per-HPA
-		} else {
-			vpaEntry.State = EnrichmentStateUnavailable
-			vpaEntry.Reason = "CRD autoscaling.k8s.io/v1 not found in API discovery"
-		}
-	}
+	applyCRDAvailability(kedaEntry, cfg.KEDA, crdAvail.KEDA, "CRD keda.sh/v1alpha1 not found in API discovery")
+	applyCRDAvailability(vpaEntry, cfg.VPA, crdAvail.VPA, "CRD autoscaling.k8s.io/v1 not found in API discovery")
 
 	if !kedaEnabled && !vpaEnabled {
 		return &Context{status: status}
@@ -123,26 +103,14 @@ func NewContext(_ context.Context, cfg Config) *Context {
 		Cluster:    cfg.Cluster,
 	})
 	if err != nil {
-		if kedaEnabled {
-			kedaEntry.State = EnrichmentStateError
-			kedaEntry.Reason = fmt.Sprintf("dynamic client creation failed: %v", err)
-		}
-		if vpaEnabled {
-			vpaEntry.State = EnrichmentStateError
-			vpaEntry.Reason = fmt.Sprintf("dynamic client creation failed: %v", err)
-		}
+		setEnrichmentError(kedaEntry, kedaEnabled, fmt.Sprintf("dynamic client creation failed: %v", err))
+		setEnrichmentError(vpaEntry, vpaEnabled, fmt.Sprintf("dynamic client creation failed: %v", err))
 		return &Context{status: status}
 	}
 
 	// Mark enabled sources as available (per-HPA state will be set during enrichment)
-	if kedaEnabled {
-		kedaEntry.State = EnrichmentStateUnavailable
-		kedaEntry.Reason = ""
-	}
-	if vpaEnabled {
-		vpaEntry.State = EnrichmentStateUnavailable
-		vpaEntry.Reason = ""
-	}
+	clearEnrichmentReason(kedaEntry, kedaEnabled)
+	clearEnrichmentReason(vpaEntry, vpaEnabled)
 
 	return &Context{
 		dynClient:   dynClient,
@@ -152,6 +120,35 @@ func NewContext(_ context.Context, cfg Config) *Context {
 		vpaEnabled:  vpaEnabled,
 		status:      status,
 	}
+}
+
+// setEnrichmentError marks the entry as errored with the given reason when enabled is true.
+func setEnrichmentError(entry *Entry, enabled bool, reason string) {
+	if !enabled {
+		return
+	}
+	entry.State = StateError
+	entry.Reason = reason
+}
+
+// applyCRDAvailability records the per-source CRD availability, setting a reason string when the CRD is missing.
+func applyCRDAvailability(entry *Entry, requested, available bool, missingReason string) {
+	if !requested {
+		return
+	}
+	entry.State = StateUnavailable // will be updated per-HPA
+	if !available {
+		entry.Reason = missingReason
+	}
+}
+
+// clearEnrichmentReason resets the entry's reason when enabled (marking it ready for per-HPA updates).
+func clearEnrichmentReason(entry *Entry, enabled bool) {
+	if !enabled {
+		return
+	}
+	entry.State = StateUnavailable
+	entry.Reason = ""
 }
 
 // KEDAEnabled reports whether KEDA enrichment is active.

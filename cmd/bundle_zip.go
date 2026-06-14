@@ -9,6 +9,12 @@ import (
 	"time"
 )
 
+// bundleZipEntry is a single file in the bundle zip archive.
+type bundleZipEntry struct {
+	Name    string
+	Content []byte
+}
+
 // writeBundleZip writes all collected data into a zip archive.
 func writeBundleZip(data *bundleData, outputPath string) error {
 	file, err := os.Create(outputPath)
@@ -20,95 +26,7 @@ func writeBundleZip(data *bundleData, outputPath string) error {
 	zw := zip.NewWriter(file)
 	defer func() { _ = zw.Close() }()
 
-	// Build the markdown report for inclusion in the zip.
-	var mdBuf bytes.Buffer
-	writeBundleMarkdown(&mdBuf, data)
-
-	entries := []struct {
-		Name    string
-		Content []byte
-	}{
-		{"report.md", mdBuf.Bytes()},
-		{"hpa.yaml", data.HPA},
-		{"scale-target.yaml", data.ScaleTarget},
-		{"replicasets.yaml", data.ReplicaSets},
-		{"pods.yaml", data.Pods},
-		{"events.txt", data.Events},
-		{"metrics-api.txt", data.MetricsAPI},
-	}
-
-	// Full analysis JSON.
-	analysisJSON, err := json.MarshalIndent(data.StatusReport.Analysis, "", "  ")
-	if err == nil {
-		entries = append(entries, struct {
-			Name    string
-			Content []byte
-		}{"analysis.json", analysisJSON})
-	}
-
-	// Container statuses JSON.
-	if len(data.ContainerStatuses) > 0 {
-		csJSON, err := json.MarshalIndent(data.ContainerStatuses, "", "  ")
-		if err == nil {
-			entries = append(entries, struct {
-				Name    string
-				Content []byte
-			}{"container-statuses.json", csJSON})
-		}
-	}
-
-	// ResourceQuotas JSON.
-	if len(data.ResourceQuotas) > 0 {
-		qJSON, err := json.MarshalIndent(data.ResourceQuotas, "", "  ")
-		if err == nil {
-			entries = append(entries, struct {
-				Name    string
-				Content []byte
-			}{"resourcequotas.json", qJSON})
-		}
-	}
-
-	// LimitRanges JSON.
-	if len(data.LimitRanges) > 0 {
-		lrJSON, err := json.MarshalIndent(data.LimitRanges, "", "  ")
-		if err == nil {
-			entries = append(entries, struct {
-				Name    string
-				Content []byte
-			}{"limitranges.json", lrJSON})
-		}
-	}
-
-	// PDBs JSON.
-	if len(data.PDBs) > 0 {
-		pdbJSON, err := json.MarshalIndent(data.PDBs, "", "  ")
-		if err == nil {
-			entries = append(entries, struct {
-				Name    string
-				Content []byte
-			}{"pdbs.json", pdbJSON})
-		}
-	}
-
-	// Node capacity JSON.
-	if data.NodeCapacity != nil {
-		ncJSON, err := json.MarshalIndent(data.NodeCapacity, "", "  ")
-		if err == nil {
-			entries = append(entries, struct {
-				Name    string
-				Content []byte
-			}{"node-capacity.json", ncJSON})
-		}
-	}
-
-	// Metadata.
-	entries = append(entries, struct {
-		Name    string
-		Content []byte
-	}{"metadata.txt", []byte(fmt.Sprintf(
-		"HPA: %s/%s\nNamespace: %s\nTimestamp: %s\nFormat: bundle\n",
-		data.Namespace, data.HPAName, data.Namespace, data.Timestamp.Format(time.RFC3339),
-	))})
+	entries := buildBundleZipEntries(data)
 
 	for _, entry := range entries {
 		if len(entry.Content) == 0 {
@@ -124,4 +42,58 @@ func writeBundleZip(data *bundleData, outputPath string) error {
 	}
 
 	return nil
+}
+
+func buildBundleZipEntries(data *bundleData) []bundleZipEntry {
+	// Build the markdown report for inclusion in the zip.
+	var mdBuf bytes.Buffer
+	writeBundleMarkdown(&mdBuf, data)
+
+	entries := []bundleZipEntry{
+		{"report.md", mdBuf.Bytes()},
+		{"hpa.yaml", data.HPA},
+		{"scale-target.yaml", data.ScaleTarget},
+		{"replicasets.yaml", data.ReplicaSets},
+		{"pods.yaml", data.Pods},
+		{"events.txt", data.Events},
+		{"metrics-api.txt", data.MetricsAPI},
+	}
+
+	appendJSONEntry(&entries, "analysis.json", data.StatusReport.Analysis)
+	if len(data.ContainerStatuses) > 0 {
+		appendJSONEntry(&entries, "container-statuses.json", data.ContainerStatuses)
+	}
+	if len(data.ResourceQuotas) > 0 {
+		appendJSONEntry(&entries, "resourcequotas.json", data.ResourceQuotas)
+	}
+	if len(data.LimitRanges) > 0 {
+		appendJSONEntry(&entries, "limitranges.json", data.LimitRanges)
+	}
+	if len(data.PDBs) > 0 {
+		appendJSONEntry(&entries, "pdbs.json", data.PDBs)
+	}
+	if data.NodeCapacity != nil {
+		appendJSONEntry(&entries, "node-capacity.json", data.NodeCapacity)
+	}
+
+	// Metadata.
+	entries = append(entries, bundleZipEntry{
+		Name: "metadata.txt",
+		Content: []byte(fmt.Sprintf(
+			"HPA: %s/%s\nNamespace: %s\nTimestamp: %s\nFormat: bundle\n",
+			data.Namespace, data.HPAName, data.Namespace, data.Timestamp.Format(time.RFC3339),
+		)),
+	})
+
+	return entries
+}
+
+// appendJSONEntry marshals value as pretty JSON and appends it under name when
+// marshalling succeeds.
+func appendJSONEntry(entries *[]bundleZipEntry, name string, value any) {
+	payload, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		return
+	}
+	*entries = append(*entries, bundleZipEntry{Name: name, Content: payload})
 }

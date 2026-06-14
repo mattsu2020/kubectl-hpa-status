@@ -294,55 +294,10 @@ func checkLimitRanges(limitRanges []LimitRangeConstraint, containers []CapacityC
 			if lr.Type != "Container" {
 				continue
 			}
-			switch lr.Resource {
-			case "cpu":
-				if c.CPU != "" && c.CPU != "0" {
-					req := parseQuantityOrZero(c.CPU)
-					if lr.Max != "" {
-						maxQty := parseQuantityOrZero(lr.Max)
-						if req.Cmp(maxQty) > 0 {
-							violated = true
-							results = append(results, CapacityCheckResult{
-								Pass:    false,
-								Message: fmt.Sprintf("container %q CPU request %s exceeds LimitRange %q max %s", c.Name, c.CPU, lr.Name, lr.Max),
-							})
-						}
-					}
-					if lr.Min != "" {
-						minQty := parseQuantityOrZero(lr.Min)
-						if req.Cmp(minQty) < 0 {
-							violated = true
-							results = append(results, CapacityCheckResult{
-								Pass:    false,
-								Message: fmt.Sprintf("container %q CPU request %s below LimitRange %q min %s", c.Name, c.CPU, lr.Name, lr.Min),
-							})
-						}
-					}
-				}
-			case "memory":
-				if c.Memory != "" && c.Memory != "0" {
-					req := parseQuantityOrZero(c.Memory)
-					if lr.Max != "" {
-						maxQty := parseQuantityOrZero(lr.Max)
-						if req.Cmp(maxQty) > 0 {
-							violated = true
-							results = append(results, CapacityCheckResult{
-								Pass:    false,
-								Message: fmt.Sprintf("container %q memory request %s exceeds LimitRange %q max %s", c.Name, c.Memory, lr.Name, lr.Max),
-							})
-						}
-					}
-					if lr.Min != "" {
-						minQty := parseQuantityOrZero(lr.Min)
-						if req.Cmp(minQty) < 0 {
-							violated = true
-							results = append(results, CapacityCheckResult{
-								Pass:    false,
-								Message: fmt.Sprintf("container %q memory request %s below LimitRange %q min %s", c.Name, c.Memory, lr.Name, lr.Min),
-							})
-						}
-					}
-				}
+			newResults := checkLimitRangeResource(c, lr)
+			if len(newResults) > 0 {
+				violated = true
+				results = append(results, newResults...)
 			}
 		}
 	}
@@ -355,6 +310,59 @@ func checkLimitRanges(limitRanges []LimitRangeConstraint, containers []CapacityC
 	}
 
 	return results
+}
+
+// checkLimitRangeResource evaluates a single LimitRange constraint against a
+// container's resource request, returning any violations. Returns nil when the
+// constraint does not apply (wrong type or empty request).
+func checkLimitRangeResource(c CapacityContainerResources, lr LimitRangeConstraint) []CapacityCheckResult {
+	if lr.Type != "Container" {
+		return nil
+	}
+	value, display := limitRangeResourceValues(c, lr)
+	if value == "" || value == "0" {
+		return nil
+	}
+
+	req := parseQuantityOrZero(value)
+	return limitRangeBoundsViolations(req, c.Name, value, display, lr)
+}
+
+// limitRangeResourceValues returns the request value and the display label
+// ("CPU"/"memory") for a container and limit range pair.
+func limitRangeResourceValues(c CapacityContainerResources, lr LimitRangeConstraint) (value, display string) {
+	switch lr.Resource {
+	case "cpu":
+		return c.CPU, "CPU"
+	case "memory":
+		return c.Memory, "memory"
+	}
+	return "", ""
+}
+
+// limitRangeBoundsViolations checks a parsed request against the limit range
+// max/min bounds, returning any violations.
+func limitRangeBoundsViolations(req resource.Quantity, containerName, value, display string, lr LimitRangeConstraint) []CapacityCheckResult {
+	var violations []CapacityCheckResult
+	if lr.Max != "" {
+		maxQty := parseQuantityOrZero(lr.Max)
+		if req.Cmp(maxQty) > 0 {
+			violations = append(violations, CapacityCheckResult{
+				Pass:    false,
+				Message: fmt.Sprintf("container %q %s request %s exceeds LimitRange %q max %s", containerName, display, value, lr.Name, lr.Max),
+			})
+		}
+	}
+	if lr.Min != "" {
+		minQty := parseQuantityOrZero(lr.Min)
+		if req.Cmp(minQty) < 0 {
+			violations = append(violations, CapacityCheckResult{
+				Pass:    false,
+				Message: fmt.Sprintf("container %q %s request %s below LimitRange %q min %s", containerName, display, value, lr.Name, lr.Min),
+			})
+		}
+	}
+	return violations
 }
 
 func checkNodeCapacity(nc *NodeCapacitySummary, requiredCPU, requiredMemory resource.Quantity, hasCA bool) []CapacityCheckResult {

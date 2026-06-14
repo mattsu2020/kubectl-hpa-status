@@ -496,59 +496,62 @@ func matchesHealthScoreRange(item hpaanalysis.ListItem, minScore int, maxScore i
 
 func sortListItems(items []hpaanalysis.ListItem, sortBy string) {
 	sort.SliceStable(items, func(i, j int) bool {
-		left := items[i]
-		right := items[j]
-		switch normalizeSelector(sortBy) {
-		case "namespace":
-			return left.Namespace < right.Namespace
-		case "name", "":
-			return left.Name < right.Name
-		case "current", "currentreplicas":
-			return left.Current < right.Current
-		case "desired", "desiredreplicas":
-			return left.Desired < right.Desired
-		case "diff", "replicadiff", "difference":
-			diffLeft := left.Desired - left.Current
-			if diffLeft < 0 {
-				diffLeft = -diffLeft
-			}
-			diffRight := right.Desired - right.Current
-			if diffRight < 0 {
-				diffRight = -diffRight
-			}
-			return diffLeft > diffRight
-		case "age", "creationtimestamp":
-			return left.CreationTimestamp.Before(&right.CreationTimestamp)
-		case "health":
-			return left.Health < right.Health
-		case "healthscore", "score":
-			return left.HealthScore > right.HealthScore
-		case "problem":
-			if left.HealthScore != right.HealthScore {
-				return left.HealthScore < right.HealthScore
-			}
-			diffLeft := left.Desired - left.Current
-			if diffLeft < 0 {
-				diffLeft = -diffLeft
-			}
-			diffRight := right.Desired - right.Current
-			if diffRight < 0 {
-				diffRight = -diffRight
-			}
-			if diffLeft != diffRight {
-				return diffLeft > diffRight
-			}
-			return left.Namespace+"/"+left.Name < right.Namespace+"/"+right.Name
-		case "issue":
-			return left.Issue < right.Issue
-		case "min", "minreplicas":
-			return left.Min < right.Min
-		case "max", "maxreplicas":
-			return left.Max < right.Max
-		case "target":
-			return left.Target < right.Target
-		default:
-			return left.Namespace+"/"+left.Name < right.Namespace+"/"+right.Name
-		}
+		return listItemLess(items[i], items[j], sortBy)
 	})
+}
+
+// listItemLess compares two list items according to the selected sort key. The switch is a flat
+// key-dispatch table; each case is an independent, single-line comparison.
+func listItemLess(left, right hpaanalysis.ListItem, sortBy string) bool {
+	switch normalizeSelector(sortBy) {
+	case "namespace":
+		return left.Namespace < right.Namespace
+	case "name", "":
+		return left.Name < right.Name
+	case "current", "currentreplicas":
+		return left.Current < right.Current
+	case "desired", "desiredreplicas":
+		return left.Desired < right.Desired
+	case "diff", "replicadiff", "difference":
+		return absReplicaDiff(left) > absReplicaDiff(right)
+	case "age", "creationtimestamp":
+		return left.CreationTimestamp.Before(&right.CreationTimestamp)
+	case "health":
+		return left.Health < right.Health
+	case "healthscore", "score":
+		return left.HealthScore > right.HealthScore
+	case "problem":
+		return problemLess(left, right)
+	case "issue":
+		return left.Issue < right.Issue
+	case "min", "minreplicas":
+		return left.Min < right.Min
+	case "max", "maxreplicas":
+		return left.Max < right.Max
+	case "target":
+		return left.Target < right.Target
+	default:
+		return left.Namespace+"/"+left.Name < right.Namespace+"/"+right.Name
+	}
+}
+
+// absReplicaDiff returns the absolute difference between desired and current replicas.
+func absReplicaDiff(item hpaanalysis.ListItem) int32 {
+	diff := item.Desired - item.Current
+	if diff < 0 {
+		return -diff
+	}
+	return diff
+}
+
+// problemLess orders by worst health score first, then largest replica drift, then namespace/name tiebreak.
+func problemLess(left, right hpaanalysis.ListItem) bool {
+	if left.HealthScore != right.HealthScore {
+		return left.HealthScore < right.HealthScore
+	}
+	diffLeft, diffRight := absReplicaDiff(left), absReplicaDiff(right)
+	if diffLeft != diffRight {
+		return diffLeft > diffRight
+	}
+	return left.Namespace+"/"+left.Name < right.Namespace+"/"+right.Name
 }

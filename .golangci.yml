@@ -23,6 +23,15 @@ linters:
         - all
         - -QF1012 # WriteString(Sprintf) is acceptable for readability
 
+  exclusions:
+    rules:
+      # Test functions are table-driven with parallel subtests/assertions; their
+      # cyclomatic complexity reflects test breadth, not production code quality.
+      # gocyclo is enforced on production code where complexity matters most.
+      - path: _test\.go
+        linters:
+          - gocyclo
+
 formatters:
   enable:
     - gofmt
