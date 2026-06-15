@@ -134,11 +134,11 @@ func TestRunStatusApplyPatchesHPA(t *testing.T) {
 		commonOptions: commonOptions{
 			clientOverride: fakeClient,
 			in:             io.Reader(strings.NewReader("")),
+			apply:          true,
+			dryRun:         false,
+			yes:            true,
 		},
 		statusOptions: statusOptions{
-			apply:  true,
-			dryRun: false,
-			yes:    true,
 			events: eventOption{enabled: false},
 		},
 	}
@@ -168,11 +168,11 @@ func TestRunStatusApplyDefaultsToDryRun(t *testing.T) {
 		commonOptions: commonOptions{
 			clientOverride: fakeClient,
 			in:             io.Reader(strings.NewReader("")),
+			apply:          true,
+			dryRun:         true,
+			yes:            true,
 		},
 		statusOptions: statusOptions{
-			apply:  true,
-			dryRun: true,
-			yes:    true,
 			events: eventOption{enabled: false},
 		},
 	}
@@ -625,11 +625,11 @@ func TestRunListApplyBatchSummaryAndConfirmation(t *testing.T) {
 		commonOptions: commonOptions{
 			clientOverride: fakeClient,
 			in:             io.Reader(strings.NewReader("")),
+			apply:          true,
+			dryRun:         true,
+			yes:            true,
 		},
 		statusOptions: statusOptions{
-			apply:  true,
-			dryRun: true,
-			yes:    true,
 			events: eventOption{enabled: false},
 		},
 		listOptions: listOptions{
@@ -665,11 +665,11 @@ func TestRunListApplyBatchSkippedOnNoInput(t *testing.T) {
 		commonOptions: commonOptions{
 			clientOverride: fakeClient,
 			in:             io.Reader(strings.NewReader("n\n")),
+			apply:          true,
+			dryRun:         true,
+			yes:            false,
 		},
 		statusOptions: statusOptions{
-			apply:  true,
-			dryRun: true,
-			yes:    false,
 			events: eventOption{enabled: false},
 		},
 		listOptions: listOptions{
@@ -698,11 +698,11 @@ func TestRunListApplyBatchNoPatchesFound(t *testing.T) {
 		commonOptions: commonOptions{
 			clientOverride: fakeClient,
 			in:             io.Reader(strings.NewReader("")),
+			apply:          true,
+			dryRun:         true,
+			yes:            true,
 		},
 		statusOptions: statusOptions{
-			apply:  true,
-			dryRun: true,
-			yes:    true,
 			events: eventOption{enabled: false},
 		},
 		listOptions: listOptions{

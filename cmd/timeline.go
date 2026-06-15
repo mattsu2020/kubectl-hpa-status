@@ -10,9 +10,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/style"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/spf13/cobra"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 )
@@ -416,19 +418,21 @@ func recordOnce(ctx context.Context, opts *options, name string, interval time.D
 	if opts.allNamespaces {
 		namespace = metav1.NamespaceAll
 	}
-	hpas, err := client.ListHPAs(ctx, namespace, metav1.ListOptions{LabelSelector: opts.selector}, opts.chunkSize)
+	var records []hpaanalysis.TimelineTrace
+	err = kube.ListHPAsEachPage(ctx, client.Interface, namespace, metav1.ListOptions{LabelSelector: opts.selector}, opts.chunkSize, func(page *autoscalingv2.HorizontalPodAutoscalerList) error {
+		for i := range page.Items {
+			local := *opts
+			local.namespace = page.Items[i].Namespace
+			report, err := buildStatusReportWithClient(ctx, &local, page.Items[i].Name, true, ec)
+			if err != nil {
+				return err
+			}
+			records = append(records, traceFromReport(report, interval))
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list HPAs: %w", err)
-	}
-	records := make([]hpaanalysis.TimelineTrace, 0, len(hpas.Items))
-	for i := range hpas.Items {
-		local := *opts
-		local.namespace = hpas.Items[i].Namespace
-		report, err := buildStatusReportWithClient(ctx, &local, hpas.Items[i].Name, true, ec)
-		if err != nil {
-			return nil, err
-		}
-		records = append(records, traceFromReport(report, interval))
 	}
 	return records, nil
 }

@@ -110,7 +110,7 @@ func TestOutputSelectionUsesNamedJSONPathTemplate(t *testing.T) {
 }
 
 func TestApplyHealthWeightOverrides(t *testing.T) {
-	opts := &options{statusOptions: statusOptions{healthWeightOverrides: []string{"scalingInactive=50", "atMinimumReplicas=0"}}}
+	opts := &options{commonOptions: commonOptions{healthWeightOverrides: []string{"scalingInactive=50", "atMinimumReplicas=0"}}}
 	if err := applyHealthWeightOverrides(opts); err != nil {
 		t.Fatal(err)
 	}

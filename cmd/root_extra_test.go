@@ -719,41 +719,41 @@ func TestPodUnschedulable_NoConditions(t *testing.T) {
 	}
 }
 
-// --- statusOptions.Normalize tests ---
+// --- options.Normalize tests ---
 
 func TestStatusOptions_Normalize(t *testing.T) {
 	tests := []struct {
 		name          string
-		opts          statusOptions
+		opts          options
 		wantSuggest   bool
 		wantExplain   bool
 		wantInterpret bool
 	}{
 		{
 			name:        "recommend implies suggest",
-			opts:        statusOptions{recommend: true},
+			opts:        options{statusOptions: statusOptions{recommend: true}},
 			wantSuggest: true,
 		},
 		{
 			name:        "fix implies suggest and explain",
-			opts:        statusOptions{fix: true},
+			opts:        options{statusOptions: statusOptions{fix: true}},
 			wantSuggest: true,
 			wantExplain: true,
 		},
 		{
 			name:        "apply implies suggest and explain",
-			opts:        statusOptions{apply: true},
+			opts:        options{commonOptions: commonOptions{apply: true}},
 			wantSuggest: true,
 			wantExplain: true,
 		},
 		{
 			name:        "diff implies suggest",
-			opts:        statusOptions{diff: true},
+			opts:        options{commonOptions: commonOptions{diff: true}},
 			wantSuggest: true,
 		},
 		{
 			name: "no-interpret clears suggest",
-			opts: statusOptions{interpret: true, suggest: true, noInterpret: true},
+			opts: options{statusOptions: statusOptions{interpret: true, suggest: true, noInterpret: true}},
 		},
 	}
 	for _, tt := range tests {

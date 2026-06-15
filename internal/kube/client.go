@@ -103,33 +103,55 @@ func (c *Client) ListHPAs(ctx context.Context, namespace string, opts metav1.Lis
 	return ListHPAsFromInterface(ctx, c.Interface, namespace, opts, chunkSize)
 }
 
-// ListHPAsFromInterface reads HPAs from a raw kubernetes.Interface with the
-// same pagination semantics as Client.ListHPAs. It is the single implementation
-// of the chunked-list logic so callers that hold an Interface (e.g. the TUI)
-// do not need to duplicate it.
-func ListHPAsFromInterface(ctx context.Context, iface kubernetes.Interface, namespace string, opts metav1.ListOptions, chunkSize int64) (*autoscalingv2.HorizontalPodAutoscalerList, error) {
+// ListHPAsEachPage lists HPAs page by page, invoking fn for each page's HPA
+// slice. fn receives the raw page (not the accumulated list) so streaming
+// callers can convert items to a lighter shape and release raw HPAs before the
+// next page arrives, keeping memory flat on large clusters. Pagination follows
+// the Kubernetes Continue token. chunkSize <= 0 lists in a single page.
+func ListHPAsEachPage(ctx context.Context, iface kubernetes.Interface, namespace string, opts metav1.ListOptions, chunkSize int64, fn func(*autoscalingv2.HorizontalPodAutoscalerList) error) error {
 	if chunkSize <= 0 {
-		return iface.AutoscalingV2().HorizontalPodAutoscalers(namespace).List(ctx, opts)
+		list, err := iface.AutoscalingV2().HorizontalPodAutoscalers(namespace).List(ctx, opts)
+		if err != nil {
+			return err
+		}
+		return fn(list)
 	}
 
 	opts.Limit = chunkSize
 	opts.Continue = ""
-	all := &autoscalingv2.HorizontalPodAutoscalerList{}
 	for {
 		page, err := iface.AutoscalingV2().HorizontalPodAutoscalers(namespace).List(ctx, opts)
 		if err != nil {
-			return nil, err
+			return err
 		}
+		if err := fn(page); err != nil {
+			return err
+		}
+		if page.Continue == "" {
+			return nil
+		}
+		opts.Continue = page.Continue
+	}
+}
+
+// ListHPAsFromInterface reads HPAs from a raw kubernetes.Interface with the
+// same pagination semantics as Client.ListHPAs. It is a thin wrapper over
+// ListHPAsEachPage that accumulates all pages into a single list for callers
+// that need the complete raw slice at once (tests, fleet, conflicts, compare).
+func ListHPAsFromInterface(ctx context.Context, iface kubernetes.Interface, namespace string, opts metav1.ListOptions, chunkSize int64) (*autoscalingv2.HorizontalPodAutoscalerList, error) {
+	all := &autoscalingv2.HorizontalPodAutoscalerList{}
+	err := ListHPAsEachPage(ctx, iface, namespace, opts, chunkSize, func(page *autoscalingv2.HorizontalPodAutoscalerList) error {
 		if all.ResourceVersion == "" {
 			all.TypeMeta = page.TypeMeta
 			all.ResourceVersion = page.ResourceVersion
 		}
 		all.Items = append(all.Items, page.Items...)
-		if page.Continue == "" {
-			return all, nil
-		}
-		opts.Continue = page.Continue
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
+	return all, nil
 }
 
 func newLoadingRules(opts Options) *clientcmd.ClientConfigLoadingRules {

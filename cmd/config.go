@@ -160,22 +160,22 @@ func applyHealthWeightOverrides(opts *options) error {
 	return nil
 }
 
-// persistentFlagChanged reports whether a persistent flag was explicitly set.
-func persistentFlagChanged(cmd *cobra.Command, name string) bool {
-	root := cmd.Root()
-	if root == nil {
-		return false
-	}
-	flag := root.PersistentFlags().Lookup(name)
-	return flag != nil && flag.Changed
-}
-
-// localFlagChanged reports whether a local flag was explicitly set on the
-// command or any of its parents.
-func localFlagChanged(cmd *cobra.Command, name string) bool {
+// flagChanged reports whether a flag was explicitly set, regardless of whether
+// it is registered as a persistent flag (on the root or any ancestor) or a
+// local flag on the running command. This keeps --config value application
+// correct when flags move between PersistentFlags and the status subcommand's
+// local Flags during the Phase C refactor.
+func flagChanged(cmd *cobra.Command, name string) bool {
+	// cmd.Flags() is the merged full flagset: it contains local flags owned by
+	// cmd itself plus all persistent flags inherited from ancestors. A single
+	// Lookup here observes both categories and the Changed bit set by parsing.
+	// We walk up so a local flag registered on a parent (e.g. the root command
+	// delegating to status) is still observable when cmd is a leaf.
 	for current := cmd; current != nil; current = current.Parent() {
-		flag := current.Flags().Lookup(name)
-		if flag != nil {
+		if flag := current.Flags().Lookup(name); flag != nil {
+			return flag.Changed
+		}
+		if flag := current.PersistentFlags().Lookup(name); flag != nil {
 			return flag.Changed
 		}
 	}

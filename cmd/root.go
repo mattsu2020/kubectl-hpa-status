@@ -19,47 +19,57 @@ var (
 )
 
 // commonOptions holds CLI flags shared across all commands: Kubernetes
-// connection, output formatting, language, and debug settings.
+// connection, output formatting, language, and debug settings. It also hosts
+// cross-command flags that originate on the status workflow (apply/diff/export,
+// health-score tuning, and trend history) because list, watch, and other
+// subcommands consume them too.
 type commonOptions struct {
-	namespace       string
-	allNamespaces   bool
-	contextName     string
-	kubeconfig      string
-	cluster         string
-	output          string
-	template        string
-	wide            bool
-	selector        string
-	color           string
-	lang            string
-	debug           bool
-	config          string
-	chunkSize       int64
-	concurrency     int
-	qps             float32
-	burst           int
-	outputTemplates map[string]outputTemplateConfig
-	clientOverride  kubernetes.Interface
-	in              io.Reader
+	namespace             string
+	allNamespaces         bool
+	contextName           string
+	kubeconfig            string
+	cluster               string
+	output                string
+	template              string
+	wide                  bool
+	selector              string
+	color                 string
+	lang                  string
+	debug                 bool
+	config                string
+	chunkSize             int64
+	concurrency           int
+	qps                   float32
+	burst                 int
+	outputTemplates       map[string]outputTemplateConfig
+	clientOverride        kubernetes.Interface
+	in                    io.Reader
+	apply                 bool
+	diff                  bool
+	dryRun                bool
+	yes                   bool
+	allowPartial          bool
+	export                string
+	exportPatch           string
+	trend                 bool
+	trendSince            time.Duration
+	trendRetain           time.Duration
+	healthWeights         hpaanalysis.HealthWeights
+	healthWeightOverrides []string
 }
 
-// statusOptions holds flags for the status / analyze command: interpretation,
-// suggestions, apply workflow, enrichment, diagnostics, and simulation.
+// statusOptions holds flags specific to the status / analyze command:
+// interpretation, suggestions, enrichment, diagnostics, and simulation.
+// Apply/diff/export and health-weight flags live on commonOptions because
+// list, watch, and other subcommands share them.
 type statusOptions struct {
 	interpret             bool
 	noInterpret           bool
 	explain               bool
 	suggest               bool
 	fix                   bool
-	apply                 bool
-	diff                  bool
-	dryRun                bool
-	yes                   bool
-	allowPartial          bool
 	keda                  string
 	vpa                   string
-	healthWeightOverrides []string
-	healthWeights         hpaanalysis.HealthWeights
 	diagnoseMetrics       bool
 	metricsFreshness      bool
 	checkResources        bool
@@ -81,8 +91,6 @@ type statusOptions struct {
 	controllerProfile     bool
 	assumeProfile         string
 	controllerProfileFile string
-	export                string
-	exportPatch           string
 	format                string
 	hiddenFactors         bool
 	nodeAutoscaler        bool
@@ -99,9 +107,6 @@ type statusOptions struct {
 	metricHints           bool
 	containerAdvisor      bool
 	behaviorAdvisor       bool
-	trend                 bool
-	trendSince            time.Duration
-	trendRetain           time.Duration
 	decisionTraceFormat   string
 	flappingAdvisor       bool
 	trendAnomaly          bool
@@ -150,7 +155,12 @@ type options struct {
 //   - --fix or --apply implies --suggest + --explain
 //   - --diff implies --suggest
 //   - --no-interpret clears --interpret and --suggest
-func (o *statusOptions) Normalize() {
+//
+// The receiver is *options rather than *statusOptions because the implication
+// chain spans both embedded option groups: --apply/--diff/--export live on
+// commonOptions (shared with list/watch) while --suggest/--explain live on
+// statusOptions. Embedded-field promotion keeps the body unchanged.
+func (o *options) Normalize() {
 	o.normalizeSuggestFlags()
 	o.normalizeDecisionTraceFlags()
 	o.normalizeInsightFlags()
@@ -160,7 +170,7 @@ func (o *statusOptions) Normalize() {
 
 // normalizeSuggestFlags handles the --recommend/--fix/--apply/--diff/--export
 // implication chain that enables --suggest.
-func (o *statusOptions) normalizeSuggestFlags() {
+func (o *options) normalizeSuggestFlags() {
 	if o.recommend {
 		o.suggest = true
 	}
@@ -182,7 +192,7 @@ func (o *statusOptions) normalizeSuggestFlags() {
 
 // normalizeDecisionTraceFlags enables the decision trace when an explicit
 // format is given or the structured status format is selected.
-func (o *statusOptions) normalizeDecisionTraceFlags() {
+func (o *options) normalizeDecisionTraceFlags() {
 	if o.decisionTraceFormat != "" {
 		o.decisionTrace = true
 	}
@@ -195,7 +205,7 @@ func (o *statusOptions) normalizeDecisionTraceFlags() {
 
 // normalizeInsightFlags enables the deeper-insight flags implied by AI context,
 // ask, and hiddenFactors.
-func (o *statusOptions) normalizeInsightFlags() {
+func (o *options) normalizeInsightFlags() {
 	if o.contextForAI || o.ask != "" {
 		o.explain = true
 		o.diagnoseMetrics = true
@@ -210,7 +220,7 @@ func (o *statusOptions) normalizeInsightFlags() {
 
 // normalizeCapacityFlags enables capacity/scalePath when node autoscaler
 // flavors are requested.
-func (o *statusOptions) normalizeCapacityFlags() {
+func (o *options) normalizeCapacityFlags() {
 	if o.nodeAutoscaler || o.karpenter {
 		o.capacityContext = true
 		o.capacityDeep = true
@@ -220,7 +230,7 @@ func (o *statusOptions) normalizeCapacityFlags() {
 
 // normalizeMiscFlags covers the remaining standalone normalizations: trend
 // anomaly escalation and the no-interpret override.
-func (o *statusOptions) normalizeMiscFlags() {
+func (o *options) normalizeMiscFlags() {
 	if o.trend && !o.trendAnomaly {
 		o.trendAnomaly = true
 	}
@@ -251,10 +261,10 @@ func NewRootCommand() *cobra.Command {
 		commonOptions: commonOptions{
 			color:     "auto",
 			chunkSize: 500,
+			dryRun:    true,
 		},
 		statusOptions: statusOptions{
 			events: eventOption{enabled: true, limit: 5},
-			dryRun: true,
 		},
 		listOptions: listOptions{
 			healthScoreMax: -1,
@@ -303,9 +313,7 @@ func NewRootCommand() *cobra.Command {
 	}
 
 	registerCommonFlags(root, opts)
-	registerStatusFlags(root, opts)
 	registerWatchFlags(root, opts)
-	root.PersistentFlags().Lookup("events").NoOptDefVal = "true"
 
 	root.AddCommand(newStatusCommand(opts))
 	root.AddCommand(newExplainCommand(opts))

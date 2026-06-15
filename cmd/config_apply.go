@@ -26,20 +26,19 @@ func applySliceConfig[T any](value []T, flagName string, changed flagChangedFunc
 }
 
 // applyConfig applies config file values only when the corresponding CLI flag
-// was not explicitly set by the user.
+// was not explicitly set by the user. The flag-change check is flag-kind
+// agnostic (persistent or local) so that status-local flags registered by
+// Phase C still respect --config precedence.
 func applyConfig(cmd *cobra.Command, opts *options, cfg configFile) {
-	persistentChanged := func(name string) bool {
-		return persistentFlagChanged(cmd, name)
-	}
-	localChanged := func(name string) bool {
-		return localFlagChanged(cmd, name)
+	changed := func(name string) bool {
+		return flagChanged(cmd, name)
 	}
 
-	applyPersistentConfig(opts, cfg, persistentChanged)
-	applyLocalConfig(opts, cfg, localChanged)
-	applyEventsConfig(opts, cfg, persistentChanged)
-	applyHealthScoreConfig(opts, cfg, localChanged)
-	applyAdvancedConfig(opts, cfg, persistentChanged)
+	applyPersistentConfig(opts, cfg, changed)
+	applyLocalConfig(opts, cfg, changed)
+	applyEventsConfig(opts, cfg, changed)
+	applyHealthScoreConfig(opts, cfg, changed)
+	applyAdvancedConfig(opts, cfg, changed)
 }
 
 func applyPersistentConfig(opts *options, cfg configFile, changed flagChangedFunc) {

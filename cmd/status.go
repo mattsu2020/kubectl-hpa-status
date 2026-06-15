@@ -20,7 +20,7 @@ import (
 )
 
 func newStatusCommand(opts *options) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:               "status NAME [NAME...]",
 		Short:             "Show concise status for one or more HPAs",
 		Args:              cobra.MinimumNArgs(1),
@@ -36,6 +36,17 @@ func newStatusCommand(opts *options) *cobra.Command {
 			return runStatusMany(cmd.Context(), cmd.OutOrStdout(), opts, args, includeInterpretation)
 		},
 	}
+
+	// Status-specific flags are Local (cmd.Flags()) so they only appear under
+	// the status subcommand and not on root --help. Cross-command flags such
+	// as --apply/--diff/--export/--trend/--health-weight remain on root via
+	// registerCommonFlags (PersistentFlags).
+	registerStatusFlags(cmd, opts)
+	if events := cmd.Flags().Lookup("events"); events != nil {
+		events.NoOptDefVal = "true"
+	}
+
+	return cmd
 }
 
 func newAnalyzeCommand(opts *options) *cobra.Command {
