@@ -287,29 +287,16 @@ func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, 
 		Analysis: hpaanalysis.AnalyzeWithOptions(hpa, includeInterpretation, analysisOptions(opts.healthWeights, opts.debug)),
 	}
 
-	enrichDecisionTraces(opts, hpa, &report)
-	enrichEvents(ctx, opts, client, hpa, &report)
-	enrichReport(ctx, ec, hpa, &report, opts.healthWeights)
-	enrichMetricsDiagnostics(opts, hpa, &report)
-	enrichMetricFreshnessReport(ctx, opts, client, hpa, &report)
-	enrichResourceCheck(ctx, opts, client, hpa, &report)
-	enrichTargetReplicaObservations(ctx, client, hpa, &report)
-	enrichPodAnalysis(ctx, opts, client, hpa, &report)
-
-	if err := enrichSimulations(ctx, opts, hpa, &report); err != nil {
+	// Run the enrichment pipeline. statusEnrichers preserves the exact order of
+	// the previous sequential calls; enrichSimulations remains the only step
+	// whose error aborts the whole report (see abortOnErrorEnrichers). Skipped
+	// steps are silently ignored to avoid noise; failed steps record a message
+	// in report.Analysis.Warnings.
+	pipeline := &PipelineContext{Client: client, EC: ec, Opts: opts}
+	if err := runEnrichers(ctx, pipeline, hpa, &report); err != nil {
 		return hpaanalysis.StatusReport{}, err
 	}
 
-	enrichCapacityAnalysis(ctx, opts, client, hpa, &report)
-	enrichRolloutAndBlockers(ctx, opts, client, hpa, &report)
-	enrichControllerProfile(ctx, opts, client, hpa, &report)
-	enrichCapacityPlan(ctx, opts, client, hpa, &report)
-	enrichGitOpsConflict(ctx, opts, client, hpa, &report)
-	enrichMetricContractAndAdapter(ctx, opts, client, hpa, &report)
-	enrichChurnAndFlapping(ctx, opts, hpa, &report)
-	enrichVPAAdvisory(hpa, &report)
-	enrichMetricHints(opts, hpa, &report)
-	enrichAdvisors(ctx, opts, client, hpa, &report)
 	// Finalize post-enrichment derivations (e.g. stabilization/churn
 	// correlation) that depend on fields populated above. Must run before the
 	// health snapshot is recorded so trend history reflects the final state.

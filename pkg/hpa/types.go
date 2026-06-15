@@ -253,6 +253,11 @@ type Analysis struct {
 	// (tolerance, stabilizationRemaining, ...), each with its derivation source
 	// and a confidence label so consumers can judge reliability.
 	Assumptions []Assumption `json:"assumptions,omitempty" yaml:"assumptions,omitempty"`
+	// Warnings records enrichment-pipeline errors and notable skip reasons so
+	// operators can see why an expected piece of analysis is missing. Empty by
+	// default; populated only when an enricher fails or a critical enrichment
+	// step is skipped.
+	Warnings []string `json:"warnings,omitempty" yaml:"warnings,omitempty"`
 }
 
 // HiddenDecisionFactor describes a partially visible HPA decision input such

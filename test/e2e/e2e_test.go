@@ -25,6 +25,7 @@ import (
 
 	// Import the root command package from our plugin
 	"github.com/mattsu2020/kubectl-hpa-status/cmd"
+	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
 
 func TestE2E_HPAStatus(t *testing.T) {
@@ -1226,6 +1227,7 @@ func createScaleToZeroHPA(t *testing.T, client *kubernetes.Clientset, nsName, hp
 	if _, err := client.AutoscalingV2().HorizontalPodAutoscalers(nsName).UpdateStatus(ctx, hpa, metav1.UpdateOptions{}); err != nil {
 		t.Fatalf("failed to update scale-to-zero HPA %s status: %v", hpaName, err)
 	}
+	return true
 }
 
 // createStabilizedHPA creates an HPA with AbleToScale condition reason
@@ -1455,4 +1457,432 @@ func firstN(s string, n int) string {
 		return s
 	}
 	return s[:n]
+}
+
+// ---------------------------------------------------------------------------
+// Phase 5: Expanded problem scenarios and output schema validation (#9)
+// ---------------------------------------------------------------------------
+
+// TestE2E_ExternalMetricFailure verifies that an HPA whose ScalingActive=False
+// reason is FailedGetResourceMetric while the spec references an External
+// metric source is correctly surfaced through status --explain and list
+// --problem. This exercises the custom/external metrics failure path that
+// differs from the plain resource-metric broken HPA.
+func TestE2E_ExternalMetricFailure(t *testing.T) {
+	t.Parallel()
+	kubeconfig := resolveKubeconfig(t)
+	_, client, nsName := setupTestNamespace(t, kubeconfig)
+
+	createTestRC(t, client, nsName, "ext-rc")
+	createBrokenExternalMetricHPA(t, client, nsName, "ext-hpa", "ext-rc")
+
+	// status --explain should report ScalingActive failure details and the
+	// external metric remediation hint.
+	buf := new(bytes.Buffer)
+	rootCmd := cmd.NewRootCommand()
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(buf)
+	rootCmd.SetArgs([]string{"status", "ext-hpa", "-n", nsName, "--explain", "--kubeconfig", kubeconfig})
+
+	if err := rootCmd.Execute(); err != nil {
+		// ERROR health yields a non-nil ExitCodeError, which is expected.
+		var exitErr *cmd.ExitCodeError
+		if !errors.As(err, &exitErr) {
+			t.Fatalf("unexpected error (not ExitCodeError): %v. Output:\n%s", err, buf.String())
+		}
+	}
+
+	explainOutput := buf.String()
+	t.Logf("External metric failure explain output:\n%s", explainOutput)
+
+	if !strings.Contains(explainOutput, "ScalingActive") {
+		t.Errorf("expected output to mention ScalingActive, got:\n%s", explainOutput)
+	}
+	if !strings.Contains(explainOutput, "FailedGetResourceMetric") {
+		t.Errorf("expected output to mention FailedGetResourceMetric reason, got:\n%s", explainOutput)
+	}
+	// The remediation hint for external metrics should reference the metric name.
+	if !strings.Contains(explainOutput, "queue-depth") {
+		t.Errorf("expected external metric name 'queue-depth' in output, got:\n%s", explainOutput)
+	}
+
+	// list --problem should classify this HPA as ERROR.
+	buf.Reset()
+	rootCmd = cmd.NewRootCommand()
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(buf)
+	rootCmd.SetArgs([]string{"list", "-n", nsName, "--problem", "--kubeconfig", kubeconfig})
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("failed to execute list --problem: %v. Output:\n%s", err, buf.String())
+	}
+
+	problemOutput := buf.String()
+	t.Logf("External metric list --problem output:\n%s", problemOutput)
+
+	if !strings.Contains(problemOutput, "ext-hpa") {
+		t.Errorf("expected ext-hpa in --problem output, got:\n%s", problemOutput)
+	}
+	if !strings.Contains(problemOutput, "ERROR") {
+		t.Errorf("expected ERROR health in --problem output, got:\n%s", problemOutput)
+	}
+}
+
+// TestE2E_TooFewReplicas verifies that an HPA sitting at minReplicas with
+// desired==current==minReplicas is described with the at-minReplicas summary.
+func TestE2E_TooFewReplicas(t *testing.T) {
+	t.Parallel()
+	kubeconfig := resolveKubeconfig(t)
+	_, client, nsName := setupTestNamespace(t, kubeconfig)
+
+	createTestRC(t, client, nsName, "toofew-rc")
+	createTooFewReplicasHPA(t, client, nsName, "toofew-hpa", "toofew-rc")
+
+	buf := new(bytes.Buffer)
+	rootCmd := cmd.NewRootCommand()
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(buf)
+	rootCmd.SetArgs([]string{"status", "toofew-hpa", "-n", nsName, "--explain", "--kubeconfig", kubeconfig})
+
+	if err := rootCmd.Execute(); err != nil {
+		var exitErr *cmd.ExitCodeError
+		if !errors.As(err, &exitErr) {
+			t.Fatalf("unexpected error (not ExitCodeError): %v. Output:\n%s", err, buf.String())
+		}
+	}
+
+	output := buf.String()
+	t.Logf("Too-few-replicas output:\n%s", output)
+
+	// The summary line for desired==current==minReplicas is "HPA is at minReplicas."
+	if !strings.Contains(output, "at minReplicas") {
+		t.Errorf("expected 'at minReplicas' summary text in output, got:\n%s", output)
+	}
+	if !strings.Contains(output, "minReplicas") {
+		t.Errorf("expected minReplicas mention in output, got:\n%s", output)
+	}
+}
+
+// TestE2E_JSONTypedDecode verifies that status -o json output decodes into the
+// typed hpaanalysis.StatusReport / Analysis structs without error and that the
+// primary scalar and slice fields are populated with expected values. This is a
+// stronger contract check than the loose map[string]interface{} decode used by
+// TestE2E_JSONOutput / TestE2E_JSONStructuredOutput.
+func TestE2E_JSONTypedDecode(t *testing.T) {
+	t.Parallel()
+	kubeconfig := resolveKubeconfig(t)
+	_, client, nsName := setupTestNamespace(t, kubeconfig)
+
+	createTestRC(t, client, nsName, "typed-rc")
+	createHealthyHPA(t, client, nsName, "typed-hpa", "typed-rc")
+
+	buf := new(bytes.Buffer)
+	rootCmd := cmd.NewRootCommand()
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(buf)
+	rootCmd.SetArgs([]string{"status", "typed-hpa", "-n", nsName, "-o", "json", "--explain", "--kubeconfig", kubeconfig})
+
+	if err := rootCmd.Execute(); err != nil {
+		var exitErr *cmd.ExitCodeError
+		if !errors.As(err, &exitErr) {
+			t.Fatalf("unexpected error (not ExitCodeError): %v. Output:\n%s", err, buf.String())
+		}
+	}
+
+	raw := buf.String()
+	t.Logf("JSON typed-decode output:\n%s", raw)
+
+	var report hpaanalysis.StatusReport
+	if err := json.Unmarshal([]byte(raw), &report); err != nil {
+		t.Fatalf("output does not decode into hpaanalysis.StatusReport: %v\nraw:\n%s", err, raw)
+	}
+
+	a := report.Analysis
+
+	// Identity fields must round-trip exactly.
+	if a.Name != "typed-hpa" {
+		t.Errorf("expected Analysis.Name=%q, got %q", "typed-hpa", a.Name)
+	}
+	if a.Namespace != nsName {
+		t.Errorf("expected Analysis.Namespace=%q, got %q", nsName, a.Namespace)
+	}
+
+	// Health must be a non-empty known state.
+	switch a.Health {
+	case "OK", "ERROR", "LIMITED", "STABILIZED":
+		// ok
+	default:
+		t.Errorf("expected Analysis.Health to be a known state, got %q", a.Health)
+	}
+
+	// HealthScore must be in [0, 100].
+	if a.HealthScore < 0 || a.HealthScore > 100 {
+		t.Errorf("expected HealthScore in [0,100], got %d", a.HealthScore)
+	}
+
+	// The healthy HPA fixture has one CPU resource metric.
+	if len(a.Metrics) == 0 {
+		t.Error("expected at least one Analysis.Metrics entry, got empty slice")
+	} else {
+		m := a.Metrics[0]
+		if m.Type != "Resource" {
+			t.Errorf("expected first metric Type=%q, got %q", "Resource", m.Type)
+		}
+		if m.Text == "" {
+			t.Error("expected non-empty Metric.Text")
+		}
+	}
+
+	// The healthy HPA fixture reports current=3, desired=5.
+	if a.Current != 3 {
+		t.Errorf("expected Analysis.Current=3, got %d", a.Current)
+	}
+	if a.Desired != 5 {
+		t.Errorf("expected Analysis.Desired=5, got %d", a.Desired)
+	}
+
+	// --explain populates the structured interpretation.
+	if len(a.StructuredInterpretation) == 0 {
+		t.Error("expected non-empty StructuredInterpretation from --explain")
+	}
+}
+
+// TestE2E_JapaneseOutput verifies that --lang=ja produces Japanese label and
+// direction strings. Time-dependent lines are avoided by asserting only on
+// stable strings (labels and the scale-up direction sentence).
+func TestE2E_JapaneseOutput(t *testing.T) {
+	t.Parallel()
+	kubeconfig := resolveKubeconfig(t)
+	_, client, nsName := setupTestNamespace(t, kubeconfig)
+
+	createTestRC(t, client, nsName, "ja-rc")
+	createHealthyHPA(t, client, nsName, "ja-hpa", "ja-rc")
+
+	buf := new(bytes.Buffer)
+	rootCmd := cmd.NewRootCommand()
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(buf)
+	rootCmd.SetArgs([]string{"status", "ja-hpa", "-n", nsName, "--lang=ja", "--explain", "--kubeconfig", kubeconfig})
+
+	if err := rootCmd.Execute(); err != nil {
+		var exitErr *cmd.ExitCodeError
+		if !errors.As(err, &exitErr) {
+			t.Fatalf("unexpected error (not ExitCodeError): %v. Output:\n%s", err, buf.String())
+		}
+	}
+
+	output := buf.String()
+	t.Logf("Japanese output:\n%s", output)
+
+	// Stable label strings that do not depend on the cluster clock.
+	for _, want := range []string{"対象", "レプリカ", "状態", "メトリクス"} {
+		if !strings.Contains(output, want) {
+			t.Errorf("expected Japanese label %q in output, got:\n%s", want, output)
+		}
+	}
+	// The healthy HPA recommends scale-up (desired=5 > current=3), so the
+	// Japanese scale-up direction sentence should appear verbatim.
+	if !strings.Contains(output, "HPAは現在スケールアップを希望しています。") {
+		t.Errorf("expected Japanese scale-up direction sentence in output, got:\n%s", output)
+	}
+}
+
+// TestE2E_MultipleProblems verifies that list --problem filters out healthy
+// HPAs and keeps only those with ERROR/LIMITED classifications, while the
+// unfiltered list shows every HPA in the namespace.
+func TestE2E_MultipleProblems(t *testing.T) {
+	t.Parallel()
+	kubeconfig := resolveKubeconfig(t)
+	_, client, nsName := setupTestNamespace(t, kubeconfig)
+
+	// Three HPAs in one namespace: healthy, broken (ERROR), limited (LIMITED).
+	createTestRC(t, client, nsName, "mp-healthy-rc")
+	createHealthyHPA(t, client, nsName, "mp-healthy-hpa", "mp-healthy-rc")
+
+	createTestRC(t, client, nsName, "mp-broken-rc")
+	createBrokenHPA(t, client, nsName, "mp-broken-hpa", "mp-broken-rc")
+
+	createTestRC(t, client, nsName, "mp-limited-rc")
+	createScalingLimitedHPA(t, client, nsName, "mp-limited-hpa", "mp-limited-rc")
+
+	// Unfiltered list must include all three HPAs.
+	allBuf := new(bytes.Buffer)
+	allCmd := cmd.NewRootCommand()
+	allCmd.SetOut(allBuf)
+	allCmd.SetErr(allBuf)
+	allCmd.SetArgs([]string{"list", "-n", nsName, "--kubeconfig", kubeconfig})
+
+	if err := allCmd.Execute(); err != nil {
+		t.Fatalf("failed to execute list: %v. Output:\n%s", err, allBuf.String())
+	}
+
+	allOutput := allBuf.String()
+	t.Logf("Multiple problems unfiltered list:\n%s", allOutput)
+	for _, name := range []string{"mp-healthy-hpa", "mp-broken-hpa", "mp-limited-hpa"} {
+		if !strings.Contains(allOutput, name) {
+			t.Errorf("expected %q in unfiltered list output, got:\n%s", name, allOutput)
+		}
+	}
+
+	// --problem must keep broken and limited HPAs while excluding the healthy one.
+	probBuf := new(bytes.Buffer)
+	probCmd := cmd.NewRootCommand()
+	probCmd.SetOut(probBuf)
+	probCmd.SetErr(probBuf)
+	probCmd.SetArgs([]string{"list", "-n", nsName, "--problem", "--kubeconfig", kubeconfig})
+
+	if err := probCmd.Execute(); err != nil {
+		t.Fatalf("failed to execute list --problem: %v. Output:\n%s", err, probBuf.String())
+	}
+
+	probOutput := probBuf.String()
+	t.Logf("Multiple problems --problem list:\n%s", probOutput)
+
+	if !strings.Contains(probOutput, "mp-broken-hpa") {
+		t.Errorf("expected mp-broken-hpa in --problem output, got:\n%s", probOutput)
+	}
+	if !strings.Contains(probOutput, "mp-limited-hpa") {
+		t.Errorf("expected mp-limited-hpa in --problem output, got:\n%s", probOutput)
+	}
+	if strings.Contains(probOutput, "mp-healthy-hpa") {
+		t.Errorf("healthy HPA mp-healthy-hpa must NOT appear in --problem output, got:\n%s", probOutput)
+	}
+}
+
+// createBrokenExternalMetricHPA creates an HPA whose ScalingActive condition is
+// False with reason FailedGetResourceMetric while the spec references an
+// External metric source. This simulates an external metrics adapter failure.
+func createBrokenExternalMetricHPA(t *testing.T, client *kubernetes.Clientset, nsName, hpaName, rcName string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	minReplicas := int32(2)
+	hpa := &autoscalingv2.HorizontalPodAutoscaler{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      hpaName,
+			Namespace: nsName,
+		},
+		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
+				APIVersion: "v1",
+				Kind:       "ReplicationController",
+				Name:       rcName,
+			},
+			MinReplicas: &minReplicas,
+			MaxReplicas: 10,
+			Metrics: []autoscalingv2.MetricSpec{
+				{
+					Type: autoscalingv2.ExternalMetricSourceType,
+					External: &autoscalingv2.ExternalMetricSource{
+						Metric: autoscalingv2.MetricIdentifier{
+							Name: "queue-depth",
+						},
+						Target: autoscalingv2.MetricTarget{
+							Type:         autoscalingv2.AverageValueMetricType,
+							AverageValue: resourcePtr("5"),
+						},
+					},
+				},
+			},
+		},
+	}
+	hpa, err := client.AutoscalingV2().HorizontalPodAutoscalers(nsName).Create(ctx, hpa, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("failed to create broken external-metric HPA %s: %v", hpaName, err)
+	}
+
+	hpa.Status = autoscalingv2.HorizontalPodAutoscalerStatus{
+		CurrentReplicas: 2,
+		DesiredReplicas: 2,
+		Conditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
+			{
+				Type:               autoscalingv2.ScalingActive,
+				Status:             corev1.ConditionFalse,
+				Reason:             "FailedGetResourceMetric",
+				Message:            "unable to get metrics for resource and external metric queue-depth: no metrics serving queue-depth",
+				LastTransitionTime: metav1.Now(),
+			},
+		},
+	}
+	if _, err := client.AutoscalingV2().HorizontalPodAutoscalers(nsName).UpdateStatus(ctx, hpa, metav1.UpdateOptions{}); err != nil {
+		t.Fatalf("failed to update broken external-metric HPA %s status: %v", hpaName, err)
+	}
+}
+
+// createTooFewReplicasHPA creates an HPA sitting at minReplicas with
+// desired==current==minReplicas and ScalingActive=True. This exercises the
+// "at minReplicas" summary path without triggering ScalingLimited penalties.
+func createTooFewReplicasHPA(t *testing.T, client *kubernetes.Clientset, nsName, hpaName, rcName string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	minReplicas := int32(3)
+	hpa := &autoscalingv2.HorizontalPodAutoscaler{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      hpaName,
+			Namespace: nsName,
+		},
+		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
+				APIVersion: "v1",
+				Kind:       "ReplicationController",
+				Name:       rcName,
+			},
+			MinReplicas: &minReplicas,
+			MaxReplicas: 10,
+			Metrics: []autoscalingv2.MetricSpec{
+				{
+					Type: autoscalingv2.ResourceMetricSourceType,
+					Resource: &autoscalingv2.ResourceMetricSource{
+						Name: corev1.ResourceCPU,
+						Target: autoscalingv2.MetricTarget{
+							Type:               autoscalingv2.UtilizationMetricType,
+							AverageUtilization: int32Ptr(80),
+						},
+					},
+				},
+			},
+		},
+	}
+	hpa, err := client.AutoscalingV2().HorizontalPodAutoscalers(nsName).Create(ctx, hpa, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("failed to create too-few-replicas HPA %s: %v", hpaName, err)
+	}
+
+	hpa.Status = autoscalingv2.HorizontalPodAutoscalerStatus{
+		CurrentReplicas: minReplicas,
+		DesiredReplicas: minReplicas,
+		Conditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
+			{
+				Type:               autoscalingv2.ScalingActive,
+				Status:             corev1.ConditionTrue,
+				Reason:             "ValidMetricFound",
+				Message:            "the HPA was able to successfully calculate a recommendation",
+				LastTransitionTime: metav1.Now(),
+			},
+			{
+				Type:               autoscalingv2.AbleToScale,
+				Status:             corev1.ConditionTrue,
+				Reason:             "ReadyForScale",
+				Message:            "recommended size matches current size",
+				LastTransitionTime: metav1.Now(),
+			},
+		},
+		CurrentMetrics: []autoscalingv2.MetricStatus{
+			{
+				Type: autoscalingv2.ResourceMetricSourceType,
+				Resource: &autoscalingv2.ResourceMetricStatus{
+					Name: corev1.ResourceCPU,
+					Current: autoscalingv2.MetricValueStatus{
+						AverageUtilization: int32Ptr(20),
+					},
+				},
+			},
+		},
+	}
+	if _, err := client.AutoscalingV2().HorizontalPodAutoscalers(nsName).UpdateStatus(ctx, hpa, metav1.UpdateOptions{}); err != nil {
+		t.Fatalf("failed to update too-few-replicas HPA %s status: %v", hpaName, err)
+	}
 }
