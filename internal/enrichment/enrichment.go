@@ -23,8 +23,8 @@ type Config struct {
 	Context    string
 	Kubeconfig string
 	Cluster    string
-	KEDA       bool
-	VPA        bool
+	KEDA       string // "auto" (default), "on" (force), "off" (disable)
+	VPA        string // "auto" (default), "on" (force), "off" (disable)
 }
 
 // Context holds reusable clients and CRD availability for enrichment
@@ -55,18 +55,18 @@ func (ec *Context) Status() Status {
 func NewContext(_ context.Context, cfg Config) *Context {
 	kedaEntry := &Entry{Source: SourceKEDA, State: StateDisabled}
 	vpaEntry := &Entry{Source: SourceVPA, State: StateDisabled}
-	if cfg.KEDA {
+	if requested(cfg.KEDA) {
 		kedaEntry.State = StateUnavailable
 		kedaEntry.Reason = "not requested"
 	}
-	if cfg.VPA {
+	if requested(cfg.VPA) {
 		vpaEntry.State = StateUnavailable
 		vpaEntry.Reason = "not requested"
 	}
 
 	status := Status{KEDA: kedaEntry, VPA: vpaEntry}
 
-	if !cfg.KEDA && !cfg.VPA {
+	if !requested(cfg.KEDA) && !requested(cfg.VPA) {
 		kedaEntry.State = StateDisabled
 		vpaEntry.State = StateDisabled
 		return &Context{status: status}
@@ -79,18 +79,18 @@ func NewContext(_ context.Context, cfg Config) *Context {
 		Cluster:    cfg.Cluster,
 	})
 	if err != nil {
-		setEnrichmentError(kedaEntry, cfg.KEDA, fmt.Sprintf("discovery client creation failed: %v", err))
-		setEnrichmentError(vpaEntry, cfg.VPA, fmt.Sprintf("discovery client creation failed: %v", err))
+		setEnrichmentError(kedaEntry, requested(cfg.KEDA), fmt.Sprintf("discovery client creation failed: %v", err))
+		setEnrichmentError(vpaEntry, requested(cfg.VPA), fmt.Sprintf("discovery client creation failed: %v", err))
 		return &Context{status: status}
 	}
 
 	crdAvail := kube.DetectCRDs(disco)
 
-	kedaEnabled := cfg.KEDA && crdAvail.KEDA
-	vpaEnabled := cfg.VPA && crdAvail.VPA
+	kedaEnabled := isEnabled(cfg.KEDA, crdAvail.KEDA)
+	vpaEnabled := isEnabled(cfg.VPA, crdAvail.VPA)
 
-	applyCRDAvailability(kedaEntry, cfg.KEDA, crdAvail.KEDA, "CRD keda.sh/v1alpha1 not found in API discovery")
-	applyCRDAvailability(vpaEntry, cfg.VPA, crdAvail.VPA, "CRD autoscaling.k8s.io/v1 not found in API discovery")
+	applyCRDAvailability(kedaEntry, requested(cfg.KEDA), crdAvail.KEDA, "CRD keda.sh/v1alpha1 not found in API discovery")
+	applyCRDAvailability(vpaEntry, requested(cfg.VPA), crdAvail.VPA, "CRD autoscaling.k8s.io/v1 not found in API discovery")
 
 	if !kedaEnabled && !vpaEnabled {
 		return &Context{status: status}
@@ -139,6 +139,33 @@ func applyCRDAvailability(entry *Entry, requested, available bool, missingReason
 	entry.State = StateUnavailable // will be updated per-HPA
 	if !available {
 		entry.Reason = missingReason
+	}
+}
+
+// isEnabled interprets a tri-state mode ("auto"|"on"|"off") against CRD
+// presence. "on" forces enablement, "off" disables, "auto" (and any
+// unrecognized/empty value) enables only when the CRD is present.
+func isEnabled(mode string, crdPresent bool) bool {
+	switch mode {
+	case "on", "true", "1":
+		return true
+	case "off", "false", "0", "":
+		return false
+	default: // "auto" or unrecognized
+		return crdPresent
+	}
+}
+
+// requested reports whether the mode asks for enrichment at all (on or auto),
+// as opposed to off/empty which skip discovery entirely. It also accepts the
+// legacy bool spellings ("true"/"1") so existing --keda=true invocations keep
+// working after the flag became a tri-state string.
+func requested(mode string) bool {
+	switch mode {
+	case "on", "auto", "true", "1":
+		return true
+	default:
+		return false
 	}
 }
 

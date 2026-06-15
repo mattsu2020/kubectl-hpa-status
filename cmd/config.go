@@ -34,8 +34,8 @@ type configFile struct {
 	ChunkSize       *int64                          `json:"chunkSize" yaml:"chunkSize"`
 	Templates       map[string]outputTemplateConfig `json:"templates" yaml:"templates"`
 	HealthWeights   hpaanalysis.HealthWeights       `json:"healthWeights" yaml:"healthWeights"`
-	Keda            *bool                           `json:"keda" yaml:"keda"`
-	Vpa             *bool                           `json:"vpa" yaml:"vpa"`
+	Keda            *string                         `json:"keda" yaml:"keda"`
+	Vpa             *string                         `json:"vpa" yaml:"vpa"`
 	ExplainPods     *bool                           `json:"explainPods" yaml:"explainPods"`
 	Simulate        []string                        `json:"simulate" yaml:"simulate"`
 	CapacityContext *bool                           `json:"capacityContext" yaml:"capacityContext"`

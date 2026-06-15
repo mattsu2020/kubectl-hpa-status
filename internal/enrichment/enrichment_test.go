@@ -86,7 +86,7 @@ func TestNewContext_BothDisabled(t *testing.T) {
 func TestNewContext_KEDARequestedButNoCluster(t *testing.T) {
 	// With an invalid kubeconfig, the discovery client should fail.
 	ec := NewContext(context.Background(), Config{
-		KEDA:       true,
+		KEDA:       "on",
 		Kubeconfig: "/nonexistent/kubeconfig",
 	})
 	if ec.KEDAEnabled() {
@@ -100,7 +100,7 @@ func TestNewContext_KEDARequestedButNoCluster(t *testing.T) {
 
 func TestNewContext_VPARequestedButNoCluster(t *testing.T) {
 	ec := NewContext(context.Background(), Config{
-		VPA:        true,
+		VPA:        "on",
 		Kubeconfig: "/nonexistent/kubeconfig",
 	})
 	if ec.VPAEnabled() {

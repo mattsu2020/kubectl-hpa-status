@@ -35,6 +35,7 @@ type commonOptions struct {
 	debug           bool
 	config          string
 	chunkSize       int64
+	concurrency     int
 	qps             float32
 	burst           int
 	outputTemplates map[string]outputTemplateConfig
@@ -55,8 +56,8 @@ type statusOptions struct {
 	dryRun                bool
 	yes                   bool
 	allowPartial          bool
-	keda                  bool
-	vpa                   bool
+	keda                  string
+	vpa                   string
 	healthWeightOverrides []string
 	healthWeights         hpaanalysis.HealthWeights
 	diagnoseMetrics       bool
@@ -229,7 +230,7 @@ func (o *statusOptions) normalizeMiscFlags() {
 	}
 }
 
-func (o *options) newClient() (*kube.Client, error) {
+func (o *commonOptions) newClient() (*kube.Client, error) {
 	kopts := kube.Options{
 		Namespace:  o.namespace,
 		Context:    o.contextName,

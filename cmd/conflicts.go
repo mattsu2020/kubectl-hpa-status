@@ -117,7 +117,7 @@ func conflictVPAResults(ctx context.Context, opts *options, hpas []autoscalingv2
 		Context:    opts.contextName,
 		Kubeconfig: opts.kubeconfig,
 		Cluster:    opts.cluster,
-		VPA:        true,
+		VPA:        "on",
 	})
 	return enrichment.BatchVPA(ctx, ec, hpas)
 }

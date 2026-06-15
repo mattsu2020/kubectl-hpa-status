@@ -162,9 +162,9 @@ func runStatusMultiple(ctx context.Context, out io.Writer, opts *options, names 
 func buildReportsConcurrently(ctx context.Context, out io.Writer, opts *options, client *kube.Client, names []string, includeInterpretation bool, ec *enrichmentContext) ([]hpaanalysis.StatusReport, error) {
 	reports := make([]hpaanalysis.StatusReport, len(names))
 	g, gctx := errgroup.WithContext(ctx)
-	limit := runtime.NumCPU()
+	limit := opts.concurrency
 	if limit < 1 {
-		limit = 1
+		limit = runtime.NumCPU()
 	}
 	g.SetLimit(limit)
 

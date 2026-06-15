@@ -135,8 +135,8 @@ func collectBundleData(ctx context.Context, client *kube.Client, opts *options, 
 	bundleOpts.rolloutImpact = true
 	bundleOpts.scaleoutBlockers = true
 	bundleOpts.controllerProfile = true
-	bundleOpts.keda = true
-	bundleOpts.vpa = true
+	bundleOpts.keda = "on"
+	bundleOpts.vpa = "on"
 	bundleOpts.scalePath = true
 	bundleOpts.events = eventOption{enabled: true, limit: 20}
 

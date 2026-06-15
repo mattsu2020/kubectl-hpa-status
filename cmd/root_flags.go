@@ -2,6 +2,7 @@
 package cmd
 
 import (
+	"runtime"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -24,6 +25,7 @@ func registerCommonFlags(cmd *cobra.Command, opts *options) {
 	cmd.PersistentFlags().BoolVarP(&opts.debug, "debug", "v", false, "include internal analysis details such as ratios and health scoring inputs")
 	cmd.PersistentFlags().StringVar(&opts.config, "config", "", "optional config file for analysis settings such as health score weights")
 	cmd.PersistentFlags().Int64Var(&opts.chunkSize, "chunk-size", opts.chunkSize, "Kubernetes list page size for list/scan/tui; set 0 to disable pagination")
+	cmd.PersistentFlags().IntVar(&opts.concurrency, "concurrency", runtime.NumCPU(), "maximum number of HPAs to analyze in parallel for multi-HPA status/timeline; defaults to the number of CPUs")
 	cmd.PersistentFlags().Float32Var(&opts.qps, "qps", 0, "client-side rate limiting queries per second (0 uses client-go default)")
 	cmd.PersistentFlags().IntVar(&opts.burst, "burst", 0, "client-side rate limiting burst size (0 uses client-go default)")
 }
@@ -44,10 +46,10 @@ func registerStatusFlags(cmd *cobra.Command, opts *options) {
 	cmd.PersistentFlags().BoolVar(&opts.recommend, "recommend", false, "alias for --suggest")
 	cmd.PersistentFlags().BoolVar(&opts.noInterpret, "no-interpret", false, "omit interpretation and show raw status-derived data")
 	cmd.PersistentFlags().Var(&opts.events, "events", "show recent HPA events: true, false, or a number")
-	cmd.PersistentFlags().BoolVar(&opts.keda, "keda", true, "enable KEDA ScaledObject integration (auto-detected when CRD is present; use --keda=false to disable)")
+	cmd.PersistentFlags().StringVar(&opts.keda, "keda", "auto", "KEDA ScaledObject enrichment: auto (enable when CRD present), on (force), off (disable)")
 	cmd.PersistentFlags().BoolVar(&opts.diagnoseMetrics, "diagnose-metrics", false, "run comprehensive metrics pipeline health checks")
 	cmd.PersistentFlags().BoolVar(&opts.metricsFreshness, "metrics-freshness", false, "analyze per-metric data freshness, source, and staleness risk")
-	cmd.PersistentFlags().BoolVar(&opts.vpa, "vpa", true, "detect VerticalPodAutoscaler conflicts (auto-detected when CRD is present; use --vpa=false to disable)")
+	cmd.PersistentFlags().StringVar(&opts.vpa, "vpa", "auto", "VPA conflict detection: auto (enable when CRD present), on (force), off (disable)")
 	cmd.PersistentFlags().BoolVar(&opts.checkResources, "check-resources", false, "check HPA target utilization against pod resource requests")
 	cmd.PersistentFlags().BoolVar(&opts.explainPods, "explain-pods", false, "analyze scale target pods for readiness, resource requests, and metric coverage")
 	cmd.PersistentFlags().StringArrayVar(&opts.simulate, "simulate", nil, "simulate HPA spec changes (e.g. maxReplicas=20); repeatable")
