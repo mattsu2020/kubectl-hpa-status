@@ -149,7 +149,7 @@ func assembleCapacityPlanInput(ctx context.Context, client *kube.Client, hpa *au
 
 			// Fetch pending pod details.
 			pendingDetails, _ := kube.FetchPendingPodDetails(ctx, client.Interface, hpa.Namespace, selector)
-			input.PendingPods = convertToCapacityPendingPods(pendingDetails)
+			input.PendingPods = convertPendingPodInfos(pendingDetails)
 		}
 	}
 
@@ -191,22 +191,6 @@ func assembleCapacityPlanInput(ctx context.Context, client *kube.Client, hpa *au
 // ---------------------------------------------------------------------------
 // Converter functions
 // ---------------------------------------------------------------------------
-
-func convertToCapacityPendingPods(details []kube.PendingPodDetail) []hpaanalysis.PendingPodInfo {
-	if len(details) == 0 {
-		return nil
-	}
-	result := make([]hpaanalysis.PendingPodInfo, 0, len(details))
-	for _, d := range details {
-		result = append(result, hpaanalysis.PendingPodInfo{
-			Name:          d.Name,
-			Phase:         "Pending",
-			Unschedulable: d.Unschedulable,
-			Reasons:       d.Reasons,
-		})
-	}
-	return result
-}
 
 func convertToCapacityContainerResources(rr *kube.ResourceRequests) []hpaanalysis.CapacityContainerResources {
 	if rr == nil {

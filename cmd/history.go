@@ -92,7 +92,7 @@ func runHistory(ctx context.Context, out io.Writer, opts *options, name string, 
 
 func historyAnomalies(a hpaanalysis.Analysis) []string {
 	var anomalies []string
-	if a.Health == "LIMITED" && a.Current == a.Max {
+	if a.Health == string(hpaanalysis.HealthLimited) && a.Current == a.Max {
 		anomalies = append(anomalies, "HPA is capped at maxReplicas; investigate capacity and target metric demand")
 	}
 	if a.ChurnAnalysis != nil && (a.ChurnAnalysis.Level == hpaanalysis.ChurnHigh || a.ChurnAnalysis.Level == hpaanalysis.ChurnCritical) {

@@ -13,6 +13,11 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
+// eventsSinceFetchLimit is the generous batch size used when fetching events
+// for a time-range query. The Events API does not support time-range field
+// selectors, so a broad batch is pulled and filtered client-side.
+const eventsSinceFetchLimit = 500
+
 // EventInfo is a compact Kubernetes Event view for workload path analysis.
 type EventInfo struct {
 	Reason    string
@@ -102,7 +107,7 @@ func FetchRecentHPAEvents(ctx context.Context, client kubernetes.Interface, name
 // order (oldest first). The Events API does not support time-range field
 // selectors, so a generous batch is fetched and filtered client-side.
 func FetchRecentHPAEventsSince(ctx context.Context, client kubernetes.Interface, namespace, name string, since time.Time) ([]corev1.Event, error) {
-	events, err := FetchRecentHPAEvents(ctx, client, namespace, name, 500)
+	events, err := FetchRecentHPAEvents(ctx, client, namespace, name, eventsSinceFetchLimit)
 	if err != nil {
 		return nil, err
 	}

@@ -1,6 +1,10 @@
 package cmd
 
-import "fmt"
+import (
+	"fmt"
+
+	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+)
 
 // Exit codes for script integration.
 const (
@@ -27,7 +31,7 @@ func warningExitCode(health, name, namespace string, watchMode bool) error {
 		return nil
 	}
 	switch health {
-	case "ERROR", "LIMITED":
+	case string(hpaanalysis.HealthError), string(hpaanalysis.HealthLimited):
 		return &ExitCodeError{
 			Code: ExitWarning,
 			Err:  fmt.Errorf("HPA %s/%s health is %s", namespace, name, health),

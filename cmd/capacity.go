@@ -22,7 +22,7 @@ func buildCapacityContext(ctx context.Context, client *kube.Client, hpa *autosca
 	}
 
 	pendingDetails, _ := kube.FetchPendingPodDetails(ctx, client.Interface, hpa.Namespace, selector)
-	result.PendingPods = convertPendingPods(pendingDetails)
+	result.PendingPods = convertPendingPodInfos(pendingDetails)
 
 	quotaInfos, _ := kube.FetchResourceQuotas(ctx, client.Interface, hpa.Namespace)
 	result.QuotaConstraints = convertQuotas(quotaInfos)
@@ -59,22 +59,6 @@ func scaleTargetSelector(
 		return nil, nil
 	}
 	return info.Selector, nil
-}
-
-func convertPendingPods(details []kube.PendingPodDetail) []hpaanalysis.PendingPodInfo {
-	if len(details) == 0 {
-		return nil
-	}
-	result := make([]hpaanalysis.PendingPodInfo, 0, len(details))
-	for _, d := range details {
-		result = append(result, hpaanalysis.PendingPodInfo{
-			Name:          d.Name,
-			Phase:         "Pending",
-			Unschedulable: d.Unschedulable,
-			Reasons:       d.Reasons,
-		})
-	}
-	return result
 }
 
 func convertQuotas(infos []kube.QuotaInfo) []hpaanalysis.QuotaConstraint {

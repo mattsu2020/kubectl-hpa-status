@@ -115,5 +115,5 @@ func writeListSARIF(out io.Writer, report hpaanalysis.ListReport) error {
 }
 
 func listItemFailed(item hpaanalysis.ListItem) bool {
-	return item.Health != "OK" || item.HealthScore < 80 || item.Issue != ""
+	return item.Health != string(hpaanalysis.HealthOK) || item.HealthScore < 80 || item.Issue != ""
 }

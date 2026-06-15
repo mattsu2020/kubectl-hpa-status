@@ -179,21 +179,21 @@ func TestConfirmApply_WritesWarning(t *testing.T) {
 	}
 }
 
-// --- convertPendingPods tests ---
+// --- convertPendingPodInfos tests ---
 
-func TestConvertPendingPods_Empty(t *testing.T) {
-	result := convertPendingPods(nil)
+func TestConvertPendingPodInfos_Empty(t *testing.T) {
+	result := convertPendingPodInfos(nil)
 	if result != nil {
 		t.Fatalf("expected nil for empty input, got %v", result)
 	}
 }
 
-func TestConvertPendingPods_WithData(t *testing.T) {
+func TestConvertPendingPodInfos_WithData(t *testing.T) {
 	details := []kube.PendingPodDetail{
 		{Name: "pod-1", Unschedulable: true, Reasons: []string{"Insufficient cpu"}},
 		{Name: "pod-2", Unschedulable: false, Reasons: nil},
 	}
-	result := convertPendingPods(details)
+	result := convertPendingPodInfos(details)
 	if len(result) != 2 {
 		t.Fatalf("expected 2 items, got %d", len(result))
 	}
