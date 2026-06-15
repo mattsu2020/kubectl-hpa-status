@@ -21,13 +21,13 @@ func buildCapacityContext(ctx context.Context, client *kube.Client, hpa *autosca
 		return result
 	}
 
-	pendingDetails := kube.FetchPendingPodDetails(ctx, client.Interface, hpa.Namespace, selector)
+	pendingDetails, _ := kube.FetchPendingPodDetails(ctx, client.Interface, hpa.Namespace, selector)
 	result.PendingPods = convertPendingPods(pendingDetails)
 
-	quotaInfos := kube.FetchResourceQuotas(ctx, client.Interface, hpa.Namespace)
+	quotaInfos, _ := kube.FetchResourceQuotas(ctx, client.Interface, hpa.Namespace)
 	result.QuotaConstraints = convertQuotas(quotaInfos)
 
-	pdbInfos := kube.FetchPodDisruptionBudgets(ctx, client.Interface, hpa.Namespace, hpa.UID)
+	pdbInfos, _ := kube.FetchPodDisruptionBudgets(ctx, client.Interface, hpa.Namespace, hpa.UID)
 	result.PDBInterference = convertPDBs(pdbInfos)
 
 	result.NodeHints = kube.GenerateNodeHints(pendingDetails, quotaInfos)

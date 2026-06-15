@@ -70,7 +70,7 @@ func runList(ctx context.Context, out io.Writer, opts *options) error {
 
 	client, err := opts.newClient()
 	if err != nil {
-		return reportListError(out, opts.output, fmt.Errorf("failed to create Kubernetes client from kubeconfig/context flags: %w", err))
+		return reportListError(out, opts.output, err)
 	}
 
 	namespace := client.Namespace
@@ -132,8 +132,8 @@ func validateListApply(opts *options, filter string) error {
 // buildListItems analyzes each HPA and returns filtered list items.
 func buildListItems(ctx context.Context, opts *options, hpas []autoscalingv2.HorizontalPodAutoscaler, filter string) []hpaanalysis.ListItem {
 	ec := newEnrichmentContext(ctx, opts)
-	kedaResults := enrichListKEDA(ctx, ec, hpas)
-	vpaResults := enrichListVPA(ctx, ec, hpas)
+	kedaResults, kedaWarnings := enrichListKEDA(ctx, ec, hpas)
+	vpaResults, vpaWarnings := enrichListVPA(ctx, ec, hpas)
 	var store *history.HealthStore
 	if opts.trend {
 		if s, err := history.NewHealthStore(); err == nil {
@@ -144,6 +144,13 @@ func buildListItems(ctx context.Context, opts *options, hpas []autoscalingv2.Hor
 	var items []hpaanalysis.ListItem
 	for i := range hpas {
 		analysis := hpaanalysis.AnalyzeWithOptions(&hpas[i], opts.apply, analysisOptions(opts.healthWeights, opts.debug))
+
+		// Surface per-namespace KEDA/VPA list failures on the affected HPAs so a
+		// permissions error is distinguishable from "no objects found". The same
+		// warning appears on every HPA in the failing namespace, which is the
+		// intended signal: operators see it on the rows they are inspecting.
+		analysis.Warnings = append(analysis.Warnings, kedaWarnings[analysis.Namespace]...)
+		analysis.Warnings = append(analysis.Warnings, vpaWarnings[analysis.Namespace]...)
 
 		key := analysis.Namespace + "/" + analysis.Name
 		if kedaResults != nil {
@@ -183,8 +190,12 @@ func attachHealthTrend(store *history.HealthStore, analysis *hpaanalysis.Analysi
 		CurrentReplicas: analysis.Current,
 		Stabilizing:     analysis.StabilizationRemaining != nil && *analysis.StabilizationRemaining > 0,
 	}
-	_ = store.Append(analysis.Namespace, analysis.Name, snapshot)
-	_ = store.Prune(analysis.Namespace, analysis.Name, retention)
+	if err := store.Append(analysis.Namespace, analysis.Name, snapshot); err != nil {
+		analysis.Warnings = append(analysis.Warnings, fmt.Sprintf("health trend append failed: %v", err))
+	}
+	if err := store.Prune(analysis.Namespace, analysis.Name, retention); err != nil {
+		analysis.Warnings = append(analysis.Warnings, fmt.Sprintf("health trend prune failed: %v", err))
+	}
 	snapshots, err := store.Load(analysis.Namespace, analysis.Name, since)
 	if err != nil || len(snapshots) == 0 {
 		return

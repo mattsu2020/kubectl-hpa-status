@@ -3,6 +3,7 @@ package kube
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -72,13 +73,13 @@ func NewClient(opts Options, extra ...ClientOption) (*Client, error) {
 		var err error
 		namespace, _, err = clientConfig.Namespace()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to create Kubernetes client from kubeconfig/context flags: %w", err)
 		}
 	}
 
 	restConfig, err := clientConfig.ClientConfig()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create Kubernetes client from kubeconfig/context flags: %w", err)
 	}
 
 	if opts.QPS > 0 {
@@ -90,7 +91,7 @@ func NewClient(opts Options, extra ...ClientOption) (*Client, error) {
 
 	client, err := kubernetes.NewForConfig(restConfig)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create Kubernetes client from kubeconfig/context flags: %w", err)
 	}
 
 	return &Client{Interface: client, Namespace: namespace}, nil

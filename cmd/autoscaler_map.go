@@ -133,7 +133,7 @@ func assembleAutoscalerMapInput(ctx context.Context, client *kube.Client, opts *
 			}
 
 			// Fetch pending pod details.
-			pendingDetails := kube.FetchPendingPodDetails(ctx, client.Interface, hpa.Namespace, selector)
+			pendingDetails, _ := kube.FetchPendingPodDetails(ctx, client.Interface, hpa.Namespace, selector)
 			input.PendingPods = convertToAutoscalerMapPendingPods(pendingDetails)
 		}
 	}
@@ -281,7 +281,7 @@ func fetchAutoscalerMapVPA(ctx context.Context, opts *options, hpa *autoscalingv
 
 // fetchAutoscalerMapPDBs fetches PodDisruptionBudgets in the namespace.
 func fetchAutoscalerMapPDBs(ctx context.Context, client *kube.Client, namespace string) []hpaanalysis.AutoscalerMapPDB {
-	pdbs := kube.FetchPodDisruptionBudgets(ctx, client.Interface, namespace, "")
+	pdbs, _ := kube.FetchPodDisruptionBudgets(ctx, client.Interface, namespace, "")
 	if len(pdbs) == 0 {
 		return nil
 	}
@@ -304,7 +304,7 @@ func fetchAutoscalerMapPDBs(ctx context.Context, client *kube.Client, namespace 
 
 // fetchAutoscalerMapQuotas fetches ResourceQuotas near their limits (ratio >= 0.7).
 func fetchAutoscalerMapQuotas(ctx context.Context, client *kube.Client, namespace string, _ int32) []hpaanalysis.AutoscalerMapQuota {
-	quotas := kube.FetchAllResourceQuotas(ctx, client.Interface, namespace)
+	quotas, _ := kube.FetchAllResourceQuotas(ctx, client.Interface, namespace)
 	if len(quotas) == 0 {
 		return nil
 	}

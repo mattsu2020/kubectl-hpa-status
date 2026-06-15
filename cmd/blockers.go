@@ -147,7 +147,7 @@ func assembleBlockerInput(ctx context.Context, client *kube.Client, hpa *autosca
 			input = enrichBlockerInputFromPods(input, podInfos)
 
 			// Fetch pending pod details.
-			pendingDetails := kube.FetchPendingPodDetails(ctx, client.Interface, hpa.Namespace, selector)
+			pendingDetails, _ := kube.FetchPendingPodDetails(ctx, client.Interface, hpa.Namespace, selector)
 			input.PendingPods = convertToBlockerPodInfos(pendingDetails)
 
 			// Fetch container statuses.
@@ -162,7 +162,7 @@ func assembleBlockerInput(ctx context.Context, client *kube.Client, hpa *autosca
 	}
 
 	// Fetch ResourceQuotas.
-	quotaInfos := kube.FetchResourceQuotas(ctx, client.Interface, hpa.Namespace)
+	quotaInfos, _ := kube.FetchResourceQuotas(ctx, client.Interface, hpa.Namespace)
 	input.Quotas = convertToBlockerQuotas(quotaInfos)
 
 	// Fetch node capacity (deep mode).

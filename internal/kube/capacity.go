@@ -34,17 +34,18 @@ type PDBInfo struct {
 }
 
 // FetchPendingPodDetails lists pods matching the selector and returns details
-// about pending/unschedulable pods.
-func FetchPendingPodDetails(ctx context.Context, client kubernetes.Interface, namespace, selector string) []PendingPodDetail {
+// about pending/unschedulable pods. A nil slice with a nil error means no
+// pending pods were found; a non-nil error means the pods list call failed.
+func FetchPendingPodDetails(ctx context.Context, client kubernetes.Interface, namespace, selector string) ([]PendingPodDetail, error) {
 	if selector == "" {
-		return nil
+		return nil, nil
 	}
 
 	pods, err := client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: selector,
 	})
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("list pending pods: %w", err)
 	}
 
 	var pending []PendingPodDetail
@@ -65,15 +66,16 @@ func FetchPendingPodDetails(ctx context.Context, client kubernetes.Interface, na
 		}
 		pending = append(pending, detail)
 	}
-	return pending
+	return pending, nil
 }
 
 // FetchResourceQuotas lists ResourceQuotas in the namespace and returns
-// quotas where resource usage is at or above 80% of the hard limit.
-func FetchResourceQuotas(ctx context.Context, client kubernetes.Interface, namespace string) []QuotaInfo {
+// quotas where resource usage is at or above 80% of the hard limit. A nil slice
+// with a nil error means no near-limit quotas were found.
+func FetchResourceQuotas(ctx context.Context, client kubernetes.Interface, namespace string) ([]QuotaInfo, error) {
 	quotas, err := client.CoreV1().ResourceQuotas(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("list resource quotas: %w", err)
 	}
 
 	var constraints []QuotaInfo
@@ -97,17 +99,17 @@ func FetchResourceQuotas(ctx context.Context, client kubernetes.Interface, names
 			}
 		}
 	}
-	return constraints
+	return constraints, nil
 }
 
 // FetchPodDisruptionBudgets lists all PDBs in the namespace. Note: this returns
 // all PDBs regardless of whether they match the HPA scale target, since PDB
 // selector matching requires resolving pod labels which may not be available
 // in the current context. Consumers should filter as needed.
-func FetchPodDisruptionBudgets(ctx context.Context, client kubernetes.Interface, namespace string, _ types.UID) []PDBInfo {
+func FetchPodDisruptionBudgets(ctx context.Context, client kubernetes.Interface, namespace string, _ types.UID) ([]PDBInfo, error) {
 	pdbs, err := client.PolicyV1().PodDisruptionBudgets(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("list pod disruption budgets: %w", err)
 	}
 
 	var matches []PDBInfo
@@ -123,7 +125,7 @@ func FetchPodDisruptionBudgets(ctx context.Context, client kubernetes.Interface,
 		}
 		matches = append(matches, info)
 	}
-	return matches
+	return matches, nil
 }
 
 // LimitRangeInfo holds parsed LimitRange constraints relevant to pod scheduling.
@@ -137,10 +139,10 @@ type LimitRangeInfo struct {
 
 // FetchLimitRanges lists LimitRange objects in the namespace and returns
 // min/max constraints for Container and Pod types.
-func FetchLimitRanges(ctx context.Context, client kubernetes.Interface, namespace string) []LimitRangeInfo {
+func FetchLimitRanges(ctx context.Context, client kubernetes.Interface, namespace string) ([]LimitRangeInfo, error) {
 	ranges, err := client.CoreV1().LimitRanges(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("list limit ranges: %w", err)
 	}
 
 	var constraints []LimitRangeInfo
@@ -174,16 +176,16 @@ func FetchLimitRanges(ctx context.Context, client kubernetes.Interface, namespac
 			}
 		}
 	}
-	return constraints
+	return constraints, nil
 }
 
 // FetchAllResourceQuotas lists all ResourceQuotas in the namespace regardless
 // of usage ratio. Unlike FetchResourceQuotas (which filters to >= 80%), this
 // returns all quotas so the caller can compute remaining headroom.
-func FetchAllResourceQuotas(ctx context.Context, client kubernetes.Interface, namespace string) []QuotaInfo {
+func FetchAllResourceQuotas(ctx context.Context, client kubernetes.Interface, namespace string) ([]QuotaInfo, error) {
 	quotas, err := client.CoreV1().ResourceQuotas(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("list all resource quotas: %w", err)
 	}
 
 	var all []QuotaInfo
@@ -203,7 +205,7 @@ func FetchAllResourceQuotas(ctx context.Context, client kubernetes.Interface, na
 			})
 		}
 	}
-	return all
+	return all, nil
 }
 
 // DetectClusterAutoscaler attempts to detect whether Cluster Autoscaler is

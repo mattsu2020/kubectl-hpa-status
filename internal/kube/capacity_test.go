@@ -20,7 +20,10 @@ func TestFetchPendingPodDetails_NoPending(t *testing.T) {
 		t.Fatalf("failed to create pod: %v", err)
 	}
 
-	result := FetchPendingPodDetails(context.Background(), client, "default", "app=web")
+	result, err := FetchPendingPodDetails(context.Background(), client, "default", "app=web")
+	if err != nil {
+		t.Fatalf("FetchPendingPodDetails: %v", err)
+	}
 
 	if len(result) != 0 {
 		t.Errorf("expected no pending pods, got %d", len(result))
@@ -46,7 +49,10 @@ func TestFetchPendingPodDetails_WithPending(t *testing.T) {
 		t.Fatalf("failed to create pod: %v", err)
 	}
 
-	result := FetchPendingPodDetails(context.Background(), client, "default", "app=web")
+	result, err := FetchPendingPodDetails(context.Background(), client, "default", "app=web")
+	if err != nil {
+		t.Fatalf("FetchPendingPodDetails: %v", err)
+	}
 
 	if len(result) != 1 {
 		t.Fatalf("expected 1 pending pod, got %d", len(result))
@@ -64,7 +70,10 @@ func TestFetchPendingPodDetails_WithPending(t *testing.T) {
 
 func TestFetchPendingPodDetails_EmptySelector(t *testing.T) {
 	client := fake.NewSimpleClientset()
-	result := FetchPendingPodDetails(context.Background(), client, "default", "")
+	result, err := FetchPendingPodDetails(context.Background(), client, "default", "")
+	if err != nil {
+		t.Fatalf("FetchPendingPodDetails: %v", err)
+	}
 	if result != nil {
 		t.Errorf("expected nil for empty selector, got %v", result)
 	}
@@ -72,7 +81,10 @@ func TestFetchPendingPodDetails_EmptySelector(t *testing.T) {
 
 func TestFetchResourceQuotas_None(t *testing.T) {
 	client := fake.NewSimpleClientset()
-	result := FetchResourceQuotas(context.Background(), client, "default")
+	result, err := FetchResourceQuotas(context.Background(), client, "default")
+	if err != nil {
+		t.Fatalf("FetchResourceQuotas: %v", err)
+	}
 	if len(result) != 0 {
 		t.Errorf("expected no quotas, got %d", len(result))
 	}
@@ -99,7 +111,10 @@ func TestFetchResourceQuotas_NearLimit(t *testing.T) {
 		t.Fatalf("failed to create resourcequota: %v", err)
 	}
 
-	result := FetchResourceQuotas(context.Background(), client, "default")
+	result, err := FetchResourceQuotas(context.Background(), client, "default")
+	if err != nil {
+		t.Fatalf("FetchResourceQuotas: %v", err)
+	}
 
 	if len(result) != 1 {
 		t.Fatalf("expected 1 quota constraint, got %d", len(result))
@@ -133,7 +148,10 @@ func TestFetchResourceQuotas_BelowThreshold(t *testing.T) {
 		t.Fatalf("failed to create resourcequota: %v", err)
 	}
 
-	result := FetchResourceQuotas(context.Background(), client, "default")
+	result, err := FetchResourceQuotas(context.Background(), client, "default")
+	if err != nil {
+		t.Fatalf("FetchResourceQuotas: %v", err)
+	}
 	if len(result) != 0 {
 		t.Errorf("expected no constraints below 80%%, got %d", len(result))
 	}

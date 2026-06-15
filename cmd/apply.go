@@ -28,7 +28,7 @@ func applySuggestionsInNamespace(ctx context.Context, out io.Writer, opts *optio
 	}
 	client, err := opts.newClient()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create Kubernetes client from kubeconfig/context flags: %w", err)
+		return nil, err
 	}
 	if namespace == "" {
 		namespace = client.Namespace

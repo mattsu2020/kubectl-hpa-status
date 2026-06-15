@@ -60,7 +60,9 @@ func runTUI(ctx context.Context, out io.Writer, opts *options, initialName strin
 	var enrichFn func(context.Context, []autoscalingv2.HorizontalPodAutoscaler) (map[string]*hpaanalysis.KEDAAnalysis, map[string]*hpaanalysis.VPAConflictInfo)
 	if ec != nil {
 		enrichFn = func(enrichCtx context.Context, hpas []autoscalingv2.HorizontalPodAutoscaler) (map[string]*hpaanalysis.KEDAAnalysis, map[string]*hpaanalysis.VPAConflictInfo) {
-			return enrichListKEDA(enrichCtx, ec, hpas), enrichListVPA(enrichCtx, ec, hpas)
+			keda, _ := enrichListKEDA(enrichCtx, ec, hpas)
+			vpa, _ := enrichListVPA(enrichCtx, ec, hpas)
+			return keda, vpa
 		}
 	}
 

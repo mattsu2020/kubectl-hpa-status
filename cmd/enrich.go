@@ -30,11 +30,15 @@ func enrichReport(ctx context.Context, ec *enrichment.Context, hpa *autoscalingv
 }
 
 // enrichListKEDA performs batched KEDA enrichment for multiple HPAs.
-func enrichListKEDA(ctx context.Context, ec *enrichment.Context, hpas []autoscalingv2.HorizontalPodAutoscaler) map[string]*hpaanalysis.KEDAAnalysis {
+// Returns the per-HPA analysis map plus per-namespace list-failure warnings
+// (namespace → messages).
+func enrichListKEDA(ctx context.Context, ec *enrichment.Context, hpas []autoscalingv2.HorizontalPodAutoscaler) (map[string]*hpaanalysis.KEDAAnalysis, map[string][]string) {
 	return enrichment.BatchKEDA(ctx, ec, hpas)
 }
 
 // enrichListVPA performs batched VPA enrichment for multiple HPAs.
-func enrichListVPA(ctx context.Context, ec *enrichment.Context, hpas []autoscalingv2.HorizontalPodAutoscaler) map[string]*hpaanalysis.VPAConflictInfo {
+// Returns the per-HPA conflict map plus per-namespace list-failure warnings
+// (namespace → messages).
+func enrichListVPA(ctx context.Context, ec *enrichment.Context, hpas []autoscalingv2.HorizontalPodAutoscaler) (map[string]*hpaanalysis.VPAConflictInfo, map[string][]string) {
 	return enrichment.BatchVPA(ctx, ec, hpas)
 }

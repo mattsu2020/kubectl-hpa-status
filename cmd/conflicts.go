@@ -31,7 +31,7 @@ type conflictItem struct {
 func runConflictScan(ctx context.Context, out io.Writer, opts *options) error {
 	client, err := opts.newClient()
 	if err != nil {
-		return fmt.Errorf("failed to create Kubernetes client from kubeconfig/context flags: %w", err)
+		return err
 	}
 	namespace := client.Namespace
 	if opts.allNamespaces {
@@ -119,7 +119,8 @@ func conflictVPAResults(ctx context.Context, opts *options, hpas []autoscalingv2
 		Cluster:    opts.cluster,
 		VPA:        "on",
 	})
-	return enrichment.BatchVPA(ctx, ec, hpas)
+	results, _ := enrichment.BatchVPA(ctx, ec, hpas)
+	return results
 }
 
 func conflictScanNeedsVPA(hpas []autoscalingv2.HorizontalPodAutoscaler) bool {

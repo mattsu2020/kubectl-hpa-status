@@ -58,7 +58,7 @@ func runFleet(ctx context.Context, out io.Writer, opts *options, risk string) er
 	}
 	client, err := opts.newClient()
 	if err != nil {
-		return fmt.Errorf("failed to create Kubernetes client from kubeconfig/context flags: %w", err)
+		return err
 	}
 	namespace := client.Namespace
 	if opts.allNamespaces {

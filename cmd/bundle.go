@@ -195,13 +195,13 @@ func collectBundleData(ctx context.Context, client *kube.Client, opts *options, 
 	}
 
 	// 10. All ResourceQuotas (not just >= 80%).
-	data.ResourceQuotas = kube.FetchAllResourceQuotas(ctx, client.Interface, hpa.Namespace)
+	data.ResourceQuotas, _ = kube.FetchAllResourceQuotas(ctx, client.Interface, hpa.Namespace)
 
 	// 11. LimitRanges.
-	data.LimitRanges = kube.FetchLimitRanges(ctx, client.Interface, hpa.Namespace)
+	data.LimitRanges, _ = kube.FetchLimitRanges(ctx, client.Interface, hpa.Namespace)
 
 	// 12. PDBs.
-	data.PDBs = kube.FetchPodDisruptionBudgets(ctx, client.Interface, hpa.Namespace, hpa.UID)
+	data.PDBs, _ = kube.FetchPodDisruptionBudgets(ctx, client.Interface, hpa.Namespace, hpa.UID)
 
 	// 13. Node capacity.
 	nodeCap, _ := kube.FetchNodeCapacity(ctx, client.Interface)

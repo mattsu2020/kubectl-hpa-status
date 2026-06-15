@@ -13,7 +13,10 @@ import (
 
 func TestFetchLimitRanges_NoLimitRanges(t *testing.T) {
 	client := fake.NewSimpleClientset()
-	result := FetchLimitRanges(context.Background(), client, "default")
+	result, err := FetchLimitRanges(context.Background(), client, "default")
+	if err != nil {
+		t.Fatalf("FetchLimitRanges: %v", err)
+	}
 	if len(result) != 0 {
 		t.Errorf("expected no limit ranges, got %d", len(result))
 	}
@@ -42,7 +45,10 @@ func TestFetchLimitRanges_WithConstraints(t *testing.T) {
 		t.Fatalf("failed to create limitrange: %v", err)
 	}
 
-	result := FetchLimitRanges(context.Background(), client, "default")
+	result, err := FetchLimitRanges(context.Background(), client, "default")
+	if err != nil {
+		t.Fatalf("FetchLimitRanges: %v", err)
+	}
 
 	if len(result) != 2 {
 		t.Fatalf("expected 2 constraints (cpu + memory), got %d", len(result))
@@ -84,7 +90,10 @@ func TestFetchLimitRanges_MaxOnly(t *testing.T) {
 		t.Fatalf("failed to create limitrange: %v", err)
 	}
 
-	result := FetchLimitRanges(context.Background(), client, "default")
+	result, err := FetchLimitRanges(context.Background(), client, "default")
+	if err != nil {
+		t.Fatalf("FetchLimitRanges: %v", err)
+	}
 
 	if len(result) != 1 {
 		t.Fatalf("expected 1 constraint, got %d", len(result))
@@ -118,7 +127,10 @@ func TestFetchAllResourceQuotas_ReturnsAll(t *testing.T) {
 		t.Fatalf("failed to create resourcequota: %v", err)
 	}
 
-	result := FetchAllResourceQuotas(context.Background(), client, "default")
+	result, err := FetchAllResourceQuotas(context.Background(), client, "default")
+	if err != nil {
+		t.Fatalf("FetchAllResourceQuotas: %v", err)
+	}
 
 	if len(result) != 1 {
 		t.Fatalf("expected 1 quota, got %d", len(result))
@@ -134,7 +146,10 @@ func TestFetchAllResourceQuotas_ReturnsAll(t *testing.T) {
 
 func TestFetchAllResourceQuotas_None(t *testing.T) {
 	client := fake.NewSimpleClientset()
-	result := FetchAllResourceQuotas(context.Background(), client, "default")
+	result, err := FetchAllResourceQuotas(context.Background(), client, "default")
+	if err != nil {
+		t.Fatalf("FetchAllResourceQuotas: %v", err)
+	}
 	if len(result) != 0 {
 		t.Errorf("expected no quotas, got %d", len(result))
 	}

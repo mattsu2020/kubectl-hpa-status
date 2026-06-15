@@ -295,9 +295,12 @@ func EnrichReport(ctx context.Context, ec *Context, hpa *autoscalingv2.Horizonta
 
 // BatchKEDA performs batched KEDA enrichment for multiple HPAs.
 // It lists ScaledObjects once per namespace and matches by scaleTargetRef.
-func BatchKEDA(ctx context.Context, ec *Context, hpas []autoscalingv2.HorizontalPodAutoscaler) map[string]*hpaanalysis.KEDAAnalysis {
+// The returned warnings map records per-namespace list failures (namespace →
+// messages) so callers can surface them (e.g. into Analysis.Warnings) instead
+// of silently treating a permissions error as "no ScaledObjects found".
+func BatchKEDA(ctx context.Context, ec *Context, hpas []autoscalingv2.HorizontalPodAutoscaler) (map[string]*hpaanalysis.KEDAAnalysis, map[string][]string) {
 	if ec == nil || !ec.kedaEnabled {
-		return nil
+		return nil, nil
 	}
 
 	namespaces := map[string]bool{}
@@ -305,10 +308,12 @@ func BatchKEDA(ctx context.Context, ec *Context, hpas []autoscalingv2.Horizontal
 		namespaces[hpas[i].Namespace] = true
 	}
 
+	warnings := map[string][]string{}
 	allScaledObjects := map[string][]*unstructured.Unstructured{}
 	for ns := range namespaces {
 		soList, err := ec.dynClient.Resource(kube.ScaledObjectGVR()).Namespace(ns).List(ctx, metav1.ListOptions{})
 		if err != nil {
+			warnings[ns] = append(warnings[ns], fmt.Sprintf("KEDA ScaledObject list failed: %v", err))
 			continue
 		}
 		for i := range soList.Items {
@@ -345,14 +350,17 @@ func BatchKEDA(ctx context.Context, ec *Context, hpas []autoscalingv2.Horizontal
 		results[key] = buildKEDAAnalysis(info, hpa)
 	}
 
-	return results
+	return results, warnings
 }
 
 // BatchVPA performs batched VPA enrichment for multiple HPAs.
 // It lists VPAs once per namespace and matches by targetRef.
-func BatchVPA(ctx context.Context, ec *Context, hpas []autoscalingv2.HorizontalPodAutoscaler) map[string]*hpaanalysis.VPAConflictInfo {
+// The returned warnings map records per-namespace list failures (namespace →
+// messages) so callers can surface them (e.g. into Analysis.Warnings) instead
+// of silently treating a permissions error as "no VPAs found".
+func BatchVPA(ctx context.Context, ec *Context, hpas []autoscalingv2.HorizontalPodAutoscaler) (map[string]*hpaanalysis.VPAConflictInfo, map[string][]string) {
 	if ec == nil || !ec.vpaEnabled {
-		return nil
+		return nil, nil
 	}
 
 	namespaces := map[string]bool{}
@@ -360,10 +368,12 @@ func BatchVPA(ctx context.Context, ec *Context, hpas []autoscalingv2.HorizontalP
 		namespaces[hpas[i].Namespace] = true
 	}
 
+	warnings := map[string][]string{}
 	allVPAs := map[string][]kube.VPAInfo{}
 	for ns := range namespaces {
 		vpaList, err := kube.FetchVPAs(ctx, ec.dynClient, ns)
 		if err != nil {
+			warnings[ns] = append(warnings[ns], fmt.Sprintf("VPA list failed: %v", err))
 			continue
 		}
 		for i := range vpaList {
@@ -391,7 +401,7 @@ func BatchVPA(ctx context.Context, ec *Context, hpas []autoscalingv2.HorizontalP
 		}
 	}
 
-	return results
+	return results, warnings
 }
 
 // scaledObjectMatchesHPA checks if a ScaledObject's scaleTargetRef

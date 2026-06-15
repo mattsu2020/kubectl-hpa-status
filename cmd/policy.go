@@ -155,7 +155,7 @@ func runPolicy(ctx context.Context, out io.Writer, opts *options, policyOpts *po
 
 	client, err := opts.newClient()
 	if err != nil {
-		return fmt.Errorf("failed to create Kubernetes client from kubeconfig/context flags: %w", err)
+		return err
 	}
 
 	var reports []hpaanalysis.PolicyReport

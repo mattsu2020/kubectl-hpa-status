@@ -148,7 +148,7 @@ func assembleCapacityPlanInput(ctx context.Context, client *kube.Client, hpa *au
 			input.ReadyPods = ready
 
 			// Fetch pending pod details.
-			pendingDetails := kube.FetchPendingPodDetails(ctx, client.Interface, hpa.Namespace, selector)
+			pendingDetails, _ := kube.FetchPendingPodDetails(ctx, client.Interface, hpa.Namespace, selector)
 			input.PendingPods = convertToCapacityPendingPods(pendingDetails)
 		}
 	}
@@ -160,11 +160,11 @@ func assembleCapacityPlanInput(ctx context.Context, client *kube.Client, hpa *au
 	}
 
 	// Fetch all ResourceQuotas (not just near-limit).
-	quotaInfos := kube.FetchAllResourceQuotas(ctx, client.Interface, hpa.Namespace)
+	quotaInfos, _ := kube.FetchAllResourceQuotas(ctx, client.Interface, hpa.Namespace)
 	input.Quotas = convertToCapacityQuotas(quotaInfos)
 
 	// Fetch LimitRanges.
-	lrInfos := kube.FetchLimitRanges(ctx, client.Interface, hpa.Namespace)
+	lrInfos, _ := kube.FetchLimitRanges(ctx, client.Interface, hpa.Namespace)
 	input.LimitRanges = convertToCapacityLimitRanges(lrInfos)
 
 	// Fetch node capacity.
@@ -179,7 +179,7 @@ func assembleCapacityPlanInput(ctx context.Context, client *kube.Client, hpa *au
 	}
 
 	// Fetch PDBs.
-	pdbInfos := kube.FetchPodDisruptionBudgets(ctx, client.Interface, hpa.Namespace, hpa.UID)
+	pdbInfos, _ := kube.FetchPodDisruptionBudgets(ctx, client.Interface, hpa.Namespace, hpa.UID)
 	input.PDBs = convertToCapacityPDBs(pdbInfos)
 
 	// Detect Cluster Autoscaler.

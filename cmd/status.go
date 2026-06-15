@@ -137,7 +137,7 @@ func runStatusMultiple(ctx context.Context, out io.Writer, opts *options, names 
 	// Create client once for all HPAs to avoid redundant kubeconfig parsing.
 	client, err := opts.newClient()
 	if err != nil {
-		return fmt.Errorf("failed to create Kubernetes client from kubeconfig/context flags: %w", err)
+		return err
 	}
 
 	reports, err := buildReportsConcurrently(ctx, out, opts, client, names, includeInterpretation, ec)
@@ -272,7 +272,7 @@ func statusTextOptions(opts *options, out io.Writer) hpaanalysis.StatusTextOptio
 func buildStatusReportWithClient(ctx context.Context, opts *options, name string, includeInterpretation bool, ec *enrichmentContext) (hpaanalysis.StatusReport, error) {
 	client, err := opts.newClient()
 	if err != nil {
-		return hpaanalysis.StatusReport{}, fmt.Errorf("failed to create Kubernetes client from kubeconfig/context flags: %w", err)
+		return hpaanalysis.StatusReport{}, err
 	}
 	return buildStatusReport(ctx, opts, client, name, includeInterpretation, ec)
 }
@@ -582,6 +582,7 @@ func recordHealthSnapshotAndTrend(_ context.Context, opts *options, hpa *autosca
 	}
 	store, storeErr := history.NewHealthStore()
 	if storeErr != nil {
+		report.Analysis.Warnings = append(report.Analysis.Warnings, fmt.Sprintf("health trend store unavailable: %v", storeErr))
 		return
 	}
 	snapshot := hpaanalysis.HealthSnapshot{
@@ -592,8 +593,12 @@ func recordHealthSnapshotAndTrend(_ context.Context, opts *options, hpa *autosca
 		CurrentReplicas: report.Analysis.Current,
 		Stabilizing:     report.Analysis.StabilizationRemaining != nil && *report.Analysis.StabilizationRemaining > 0,
 	}
-	_ = store.Append(hpa.Namespace, hpa.Name, snapshot)
-	_ = store.Prune(hpa.Namespace, hpa.Name, opts.trendRetain)
+	if err := store.Append(hpa.Namespace, hpa.Name, snapshot); err != nil {
+		report.Analysis.Warnings = append(report.Analysis.Warnings, fmt.Sprintf("health trend append failed: %v", err))
+	}
+	if err := store.Prune(hpa.Namespace, hpa.Name, opts.trendRetain); err != nil {
+		report.Analysis.Warnings = append(report.Analysis.Warnings, fmt.Sprintf("health trend prune failed: %v", err))
+	}
 
 	snapshots, loadErr := store.Load(hpa.Namespace, hpa.Name, opts.trendSince)
 	if loadErr == nil && len(snapshots) > 0 {
