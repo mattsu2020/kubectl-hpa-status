@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/style"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
 // SnapshotFromReport converts a StatusReport into a compact TimelineSnapshot

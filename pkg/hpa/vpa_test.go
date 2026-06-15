@@ -7,8 +7,6 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 )
 
 func TestAnalyzeVPA_CPUConflict(t *testing.T) {
@@ -41,7 +39,7 @@ func TestAnalyzeVPA_CPUConflict(t *testing.T) {
 		},
 	}
 
-	vpa := &kube.VPAInfo{
+	vpa := &VPAInfo{
 		Name:       "web-vpa",
 		TargetRef:  "Deployment/web",
 		TargetKind: "Deployment",
@@ -98,7 +96,7 @@ func TestAnalyzeVPA_MemoryConflict(t *testing.T) {
 		},
 	}
 
-	vpa := &kube.VPAInfo{
+	vpa := &VPAInfo{
 		Name:       "app-vpa",
 		TargetRef:  "Deployment/app",
 		TargetKind: "Deployment",
@@ -145,7 +143,7 @@ func TestAnalyzeVPA_ExternalMetricsOnly_NoConflict(t *testing.T) {
 		},
 	}
 
-	vpa := &kube.VPAInfo{
+	vpa := &VPAInfo{
 		Name:       "web-vpa",
 		TargetRef:  "Deployment/web",
 		TargetKind: "Deployment",
@@ -196,7 +194,7 @@ func TestAnalyzeVPA_NilVPA_NoOutput(t *testing.T) {
 }
 
 func TestAnalyzeVPA_NilHPA_NoOutput(t *testing.T) {
-	vpa := &kube.VPAInfo{
+	vpa := &VPAInfo{
 		Name:       "web-vpa",
 		TargetKind: "Deployment",
 		TargetName: "web",
@@ -239,7 +237,7 @@ func TestAnalyzeVPA_OffMode_NoWarning(t *testing.T) {
 		},
 	}
 
-	vpa := &kube.VPAInfo{
+	vpa := &VPAInfo{
 		Name:       "web-vpa",
 		TargetRef:  "Deployment/web",
 		TargetKind: "Deployment",

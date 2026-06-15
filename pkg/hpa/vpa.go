@@ -4,9 +4,31 @@ import (
 	"fmt"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
-
-	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 )
+
+// VPARecommendationInfo captures the visible recommendation values for one
+// container/resource pair, as extracted from a VPA object.
+type VPARecommendationInfo struct {
+	Container string `json:"container" yaml:"container"`
+	Resource  string `json:"resource" yaml:"resource"`
+	Target    string `json:"target,omitempty" yaml:"target,omitempty"`
+	Lower     string `json:"lower,omitempty" yaml:"lower,omitempty"`
+	Upper     string `json:"upper,omitempty" yaml:"upper,omitempty"`
+}
+
+// VPAInfo holds the parsed fields of a VerticalPodAutoscaler relevant to HPA
+// conflict analysis. This type lives in pkg/hpa so external consumers can
+// build conflict inputs without depending on internal/kube; internal/kube
+// re-exports it as VPAInfo for backwards compatibility.
+type VPAInfo struct {
+	Name                string                  `json:"name" yaml:"name"`
+	TargetRef           string                  `json:"targetRef" yaml:"targetRef"`
+	TargetKind          string                  `json:"targetKind" yaml:"targetKind"`
+	TargetName          string                  `json:"targetName" yaml:"targetName"`
+	UpdateMode          string                  `json:"updateMode" yaml:"updateMode"`
+	ControlledResources []string                `json:"controlledResources,omitempty" yaml:"controlledResources,omitempty"`
+	Recommendations     []VPARecommendationInfo `json:"recommendations,omitempty" yaml:"recommendations,omitempty"`
+}
 
 // VPAConflictInfo holds VPA conflict detection result.
 type VPAConflictInfo struct {
@@ -30,7 +52,7 @@ type VPARecommendation struct {
 
 // AnalyzeVPA generates warning lines when VPA conflicts with HPA.
 // Returns nil if there is no conflict to report.
-func AnalyzeVPA(hpa *autoscalingv2.HorizontalPodAutoscaler, vpa *kube.VPAInfo) []string {
+func AnalyzeVPA(hpa *autoscalingv2.HorizontalPodAutoscaler, vpa *VPAInfo) []string {
 	if hpa == nil || vpa == nil {
 		return nil
 	}
@@ -65,7 +87,7 @@ func AnalyzeVPA(hpa *autoscalingv2.HorizontalPodAutoscaler, vpa *kube.VPAInfo) [
 }
 
 // NewVPAConflictInfo converts extracted VPA data into the public analysis model.
-func NewVPAConflictInfo(vpa *kube.VPAInfo) *VPAConflictInfo {
+func NewVPAConflictInfo(vpa *VPAInfo) *VPAConflictInfo {
 	if vpa == nil {
 		return nil
 	}
@@ -78,13 +100,7 @@ func NewVPAConflictInfo(vpa *kube.VPAInfo) *VPAConflictInfo {
 		Warning:             fmt.Sprintf("VPA %s and HPA both target %s/%s with overlapping resource metrics", vpa.Name, vpa.TargetKind, vpa.TargetName),
 	}
 	for _, rec := range vpa.Recommendations {
-		info.Recommendations = append(info.Recommendations, VPARecommendation{
-			Container: rec.Container,
-			Resource:  rec.Resource,
-			Target:    rec.Target,
-			Lower:     rec.Lower,
-			Upper:     rec.Upper,
-		})
+		info.Recommendations = append(info.Recommendations, VPARecommendation(rec))
 	}
 	return info
 }

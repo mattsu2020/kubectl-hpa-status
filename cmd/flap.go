@@ -8,8 +8,9 @@ import (
 	"sort"
 	"time"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/style"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
@@ -62,9 +63,13 @@ func runFlapLive(ctx context.Context, out io.Writer, opts *options, name string,
 	if since <= 0 {
 		since = 6 * time.Hour
 	}
-	events, err := hpaanalysis.RecentEventsSince(ctx, client.Interface, hpa.Namespace, hpa.Name, time.Now().Add(-since))
+	coreEvents, err := kube.FetchRecentHPAEventsSince(ctx, client.Interface, hpa.Namespace, hpa.Name, time.Now().Add(-since))
 	if err != nil {
 		return fmt.Errorf("failed to fetch events: %w", err)
+	}
+	events := make([]hpaanalysis.Event, 0, len(coreEvents))
+	for _, ce := range coreEvents {
+		events = append(events, hpaanalysis.EventFromCore(ce))
 	}
 	prevention := hpaanalysis.AnalyzeFlappingPrevention(events, hpa)
 	diagnosis := hpaanalysis.DiagnoseFlapping(events, hpa)

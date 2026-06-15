@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/style"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
 // AppendCapacityPlanText appends the capacity plan section to out. It renders

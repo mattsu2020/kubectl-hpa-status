@@ -16,7 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
 
@@ -25,11 +25,11 @@ import (
 // --------------------------------------------------------------------------
 
 func TestRunStatus_OK(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(3, 5),
-		kube.WithResourceMetric("cpu", 80, 70),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(3, 5),
+		testutil.WithResourceMetric("cpu", 80, 70),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -57,12 +57,12 @@ func TestRunStatus_OK(t *testing.T) {
 }
 
 func TestRunStatus_ScalingLimited(t *testing.T) {
-	hpa := kube.BuildHPA("default", "api",
-		kube.WithReplicas(10, 10),
-		kube.WithMinMax(2, 10),
-		kube.WithScalingLimitedTrue("TooManyReplicas"),
+	hpa := testutil.BuildHPA("default", "api",
+		testutil.WithReplicas(10, 10),
+		testutil.WithMinMax(2, 10),
+		testutil.WithScalingLimitedTrue("TooManyReplicas"),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -94,12 +94,12 @@ func TestRunStatus_ScalingLimited(t *testing.T) {
 }
 
 func TestRunStatusSuggestShowsPatchCommand(t *testing.T) {
-	hpa := kube.BuildHPA("default", "api",
-		kube.WithReplicas(10, 10),
-		kube.WithMinMax(2, 10),
-		kube.WithScalingLimitedTrue("TooManyReplicas"),
+	hpa := testutil.BuildHPA("default", "api",
+		testutil.WithReplicas(10, 10),
+		testutil.WithMinMax(2, 10),
+		testutil.WithScalingLimitedTrue("TooManyReplicas"),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -122,12 +122,12 @@ func TestRunStatusSuggestShowsPatchCommand(t *testing.T) {
 }
 
 func TestRunStatusApplyPatchesHPA(t *testing.T) {
-	hpa := kube.BuildHPA("default", "api",
-		kube.WithReplicas(10, 10),
-		kube.WithMinMax(2, 10),
-		kube.WithScalingLimitedTrue("TooManyReplicas"),
+	hpa := testutil.BuildHPA("default", "api",
+		testutil.WithReplicas(10, 10),
+		testutil.WithMinMax(2, 10),
+		testutil.WithScalingLimitedTrue("TooManyReplicas"),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -156,12 +156,12 @@ func TestRunStatusApplyPatchesHPA(t *testing.T) {
 }
 
 func TestRunStatusApplyDefaultsToDryRun(t *testing.T) {
-	hpa := kube.BuildHPA("default", "api",
-		kube.WithReplicas(10, 10),
-		kube.WithMinMax(2, 10),
-		kube.WithScalingLimitedTrue("TooManyReplicas"),
+	hpa := testutil.BuildHPA("default", "api",
+		testutil.WithReplicas(10, 10),
+		testutil.WithMinMax(2, 10),
+		testutil.WithScalingLimitedTrue("TooManyReplicas"),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -190,11 +190,11 @@ func TestRunStatusApplyDefaultsToDryRun(t *testing.T) {
 }
 
 func TestRunStatus_MetricsFetchFailure(t *testing.T) {
-	hpa := kube.BuildHPA("default", "broken",
-		kube.WithReplicas(2, 0),
-		kube.WithScalingActiveFalse("FailedGetResourceMetric"),
+	hpa := testutil.BuildHPA("default", "broken",
+		testutil.WithReplicas(2, 0),
+		testutil.WithScalingActiveFalse("FailedGetResourceMetric"),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -219,7 +219,7 @@ func TestRunStatus_MetricsFetchFailure(t *testing.T) {
 }
 
 func TestRunStatus_NotFound(t *testing.T) {
-	fakeClient := kube.NewFakeClient()
+	fakeClient := testutil.NewFakeClient()
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -240,11 +240,11 @@ func TestRunStatus_NotFound(t *testing.T) {
 }
 
 func TestRunStatus_JSONOutput(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(3, 3),
-		kube.WithResourceMetric("cpu", 80, 70),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(3, 3),
+		testutil.WithResourceMetric("cpu", 80, 70),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -274,9 +274,9 @@ func TestRunStatus_JSONOutput(t *testing.T) {
 }
 
 func TestRunStatusMany_TextOutput(t *testing.T) {
-	webHPA := kube.BuildHPA("default", "web", kube.WithReplicas(3, 5))
-	apiHPA := kube.BuildHPA("default", "api", kube.WithReplicas(2, 2))
-	fakeClient := kube.NewFakeClient(webHPA, apiHPA)
+	webHPA := testutil.BuildHPA("default", "web", testutil.WithReplicas(3, 5))
+	apiHPA := testutil.BuildHPA("default", "api", testutil.WithReplicas(2, 2))
+	fakeClient := testutil.NewFakeClient(webHPA, apiHPA)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -298,9 +298,9 @@ func TestRunStatusMany_TextOutput(t *testing.T) {
 }
 
 func TestRunStatusMany_JSONOutput(t *testing.T) {
-	webHPA := kube.BuildHPA("default", "web", kube.WithReplicas(3, 5))
-	apiHPA := kube.BuildHPA("default", "api", kube.WithReplicas(2, 2))
-	fakeClient := kube.NewFakeClient(webHPA, apiHPA)
+	webHPA := testutil.BuildHPA("default", "web", testutil.WithReplicas(3, 5))
+	apiHPA := testutil.BuildHPA("default", "api", testutil.WithReplicas(2, 2))
+	fakeClient := testutil.NewFakeClient(webHPA, apiHPA)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -327,10 +327,10 @@ func TestRunStatusMany_JSONOutput(t *testing.T) {
 }
 
 func TestRunStatus_YAMLOutput(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(3, 3),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(3, 3),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -356,10 +356,10 @@ func TestRunStatus_YAMLOutput(t *testing.T) {
 }
 
 func TestRunStatus_WithEvents(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web", kube.WithReplicas(3, 5))
-	ev1 := kube.BuildEvent("default", "web", "SuccessfulRescale", "New size: 5")
-	ev2 := kube.BuildEvent("default", "web", "DesiredReplicasComputed", "calculated 5")
-	fakeClient := kube.NewFakeClientWithEvents(
+	hpa := testutil.BuildHPA("default", "web", testutil.WithReplicas(3, 5))
+	ev1 := testutil.BuildEvent("default", "web", "SuccessfulRescale", "New size: 5")
+	ev2 := testutil.BuildEvent("default", "web", "DesiredReplicasComputed", "calculated 5")
+	fakeClient := testutil.NewFakeClientWithEvents(
 		[]*autoscalingv2.HorizontalPodAutoscaler{hpa},
 		[]*corev1.Event{ev1, ev2},
 	)
@@ -388,12 +388,12 @@ func TestRunStatus_WithEvents(t *testing.T) {
 // --------------------------------------------------------------------------
 
 func TestRunList_MultipleHPAs(t *testing.T) {
-	webHPA := kube.BuildHPA("default", "web", kube.WithReplicas(3, 5))
-	apiHPA := kube.BuildHPA("default", "api",
-		kube.WithReplicas(2, 2),
-		kube.WithScalingActiveFalse("FailedGetResourceMetric"),
+	webHPA := testutil.BuildHPA("default", "web", testutil.WithReplicas(3, 5))
+	apiHPA := testutil.BuildHPA("default", "api",
+		testutil.WithReplicas(2, 2),
+		testutil.WithScalingActiveFalse("FailedGetResourceMetric"),
 	)
-	fakeClient := kube.NewFakeClient(webHPA, apiHPA)
+	fakeClient := testutil.NewFakeClient(webHPA, apiHPA)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -418,12 +418,12 @@ func TestRunList_MultipleHPAs(t *testing.T) {
 }
 
 func TestRunList_Filter(t *testing.T) {
-	webHPA := kube.BuildHPA("default", "web", kube.WithReplicas(3, 5))
-	apiHPA := kube.BuildHPA("default", "api",
-		kube.WithReplicas(2, 2),
-		kube.WithScalingActiveFalse("FailedGetResourceMetric"),
+	webHPA := testutil.BuildHPA("default", "web", testutil.WithReplicas(3, 5))
+	apiHPA := testutil.BuildHPA("default", "api",
+		testutil.WithReplicas(2, 2),
+		testutil.WithScalingActiveFalse("FailedGetResourceMetric"),
 	)
-	fakeClient := kube.NewFakeClient(webHPA, apiHPA)
+	fakeClient := testutil.NewFakeClient(webHPA, apiHPA)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -451,12 +451,12 @@ func TestRunList_Filter(t *testing.T) {
 }
 
 func TestRunListProblemFiltersVisibleIssues(t *testing.T) {
-	webHPA := kube.BuildHPA("default", "web", kube.WithReplicas(3, 5))
-	apiHPA := kube.BuildHPA("default", "api",
-		kube.WithReplicas(2, 2),
-		kube.WithScalingActiveFalse("FailedGetResourceMetric"),
+	webHPA := testutil.BuildHPA("default", "web", testutil.WithReplicas(3, 5))
+	apiHPA := testutil.BuildHPA("default", "api",
+		testutil.WithReplicas(2, 2),
+		testutil.WithScalingActiveFalse("FailedGetResourceMetric"),
 	)
-	fakeClient := kube.NewFakeClient(webHPA, apiHPA)
+	fakeClient := testutil.NewFakeClient(webHPA, apiHPA)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -484,12 +484,12 @@ func TestRunListProblemFiltersVisibleIssues(t *testing.T) {
 }
 
 func TestRunListHealthScoreThresholdFiltersByScore(t *testing.T) {
-	webHPA := kube.BuildHPA("default", "web", kube.WithReplicas(3, 5))
-	apiHPA := kube.BuildHPA("default", "api",
-		kube.WithReplicas(2, 2),
-		kube.WithScalingActiveFalse("FailedGetResourceMetric"),
+	webHPA := testutil.BuildHPA("default", "web", testutil.WithReplicas(3, 5))
+	apiHPA := testutil.BuildHPA("default", "api",
+		testutil.WithReplicas(2, 2),
+		testutil.WithScalingActiveFalse("FailedGetResourceMetric"),
 	)
-	fakeClient := kube.NewFakeClient(webHPA, apiHPA)
+	fakeClient := testutil.NewFakeClient(webHPA, apiHPA)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -517,9 +517,9 @@ func TestRunListHealthScoreThresholdFiltersByScore(t *testing.T) {
 }
 
 func TestRunList_SortByDesired(t *testing.T) {
-	smallHPA := kube.BuildHPA("default", "small", kube.WithReplicas(1, 2))
-	largeHPA := kube.BuildHPA("default", "large", kube.WithReplicas(5, 10))
-	fakeClient := kube.NewFakeClient(largeHPA, smallHPA)
+	smallHPA := testutil.BuildHPA("default", "small", testutil.WithReplicas(1, 2))
+	largeHPA := testutil.BuildHPA("default", "large", testutil.WithReplicas(5, 10))
+	fakeClient := testutil.NewFakeClient(largeHPA, smallHPA)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -549,11 +549,11 @@ func TestRunList_SortByDesired(t *testing.T) {
 }
 
 func TestRunList_Wide(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(3, 5),
-		kube.WithMinMax(2, 10),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(3, 5),
+		testutil.WithMinMax(2, 10),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -578,11 +578,11 @@ func TestRunList_Wide(t *testing.T) {
 }
 
 func TestRunList_LabelSelector(t *testing.T) {
-	webHPA := kube.BuildHPA("default", "web", kube.WithReplicas(3, 5))
+	webHPA := testutil.BuildHPA("default", "web", testutil.WithReplicas(3, 5))
 	webHPA.Labels = map[string]string{"app": "web", "tier": "frontend"}
-	apiHPA := kube.BuildHPA("default", "api", kube.WithReplicas(2, 2))
+	apiHPA := testutil.BuildHPA("default", "api", testutil.WithReplicas(2, 2))
 	apiHPA.Labels = map[string]string{"app": "api", "tier": "backend"}
-	fakeClient := kube.NewFakeClient(webHPA, apiHPA)
+	fakeClient := testutil.NewFakeClient(webHPA, apiHPA)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -608,17 +608,17 @@ func TestRunList_LabelSelector(t *testing.T) {
 }
 
 func TestRunListApplyBatchSummaryAndConfirmation(t *testing.T) {
-	apiHPA := kube.BuildHPA("default", "api",
-		kube.WithReplicas(10, 10),
-		kube.WithMinMax(2, 10),
-		kube.WithScalingLimitedTrue("TooManyReplicas"),
+	apiHPA := testutil.BuildHPA("default", "api",
+		testutil.WithReplicas(10, 10),
+		testutil.WithMinMax(2, 10),
+		testutil.WithScalingLimitedTrue("TooManyReplicas"),
 	)
-	webHPA := kube.BuildHPA("default", "web",
-		kube.WithReplicas(10, 10),
-		kube.WithMinMax(2, 10),
-		kube.WithScalingLimitedTrue("TooManyReplicas"),
+	webHPA := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(10, 10),
+		testutil.WithMinMax(2, 10),
+		testutil.WithScalingLimitedTrue("TooManyReplicas"),
 	)
-	fakeClient := kube.NewFakeClient(apiHPA, webHPA)
+	fakeClient := testutil.NewFakeClient(apiHPA, webHPA)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -653,12 +653,12 @@ func TestRunListApplyBatchSummaryAndConfirmation(t *testing.T) {
 }
 
 func TestRunListApplyBatchSkippedOnNoInput(t *testing.T) {
-	apiHPA := kube.BuildHPA("default", "api",
-		kube.WithReplicas(10, 10),
-		kube.WithMinMax(2, 10),
-		kube.WithScalingLimitedTrue("TooManyReplicas"),
+	apiHPA := testutil.BuildHPA("default", "api",
+		testutil.WithReplicas(10, 10),
+		testutil.WithMinMax(2, 10),
+		testutil.WithScalingLimitedTrue("TooManyReplicas"),
 	)
-	fakeClient := kube.NewFakeClient(apiHPA)
+	fakeClient := testutil.NewFakeClient(apiHPA)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -687,11 +687,11 @@ func TestRunListApplyBatchSkippedOnNoInput(t *testing.T) {
 }
 
 func TestRunListApplyBatchNoPatchesFound(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(3, 3),
-		kube.WithResourceMetric("cpu", 80, 70),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(3, 3),
+		testutil.WithResourceMetric("cpu", 80, 70),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -720,8 +720,8 @@ func TestRunListApplyBatchNoPatchesFound(t *testing.T) {
 // --------------------------------------------------------------------------
 
 func TestRunWatch_TimeoutExpires(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web", kube.WithReplicas(3, 3))
-	fakeClient := kube.NewFakeClient(hpa)
+	hpa := testutil.BuildHPA("default", "web", testutil.WithReplicas(3, 3))
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -750,12 +750,12 @@ func TestRunWatch_TimeoutExpires(t *testing.T) {
 }
 
 func TestRunWatch_UntilCondition(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(10, 10),
-		kube.WithMinMax(2, 10),
-		kube.WithScalingLimitedTrue("TooManyReplicas"),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(10, 10),
+		testutil.WithMinMax(2, 10),
+		testutil.WithScalingLimitedTrue("TooManyReplicas"),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -785,11 +785,11 @@ func TestRunWatch_UntilCondition(t *testing.T) {
 // --------------------------------------------------------------------------
 
 func TestRunStatus_ExitCode_HealthyHPA(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(3, 5),
-		kube.WithResourceMetric("cpu", 80, 70),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(3, 5),
+		testutil.WithResourceMetric("cpu", 80, 70),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -807,11 +807,11 @@ func TestRunStatus_ExitCode_HealthyHPA(t *testing.T) {
 }
 
 func TestRunStatus_ExitCode_ScalingInactive(t *testing.T) {
-	hpa := kube.BuildHPA("default", "broken",
-		kube.WithReplicas(2, 0),
-		kube.WithScalingActiveFalse("FailedGetResourceMetric"),
+	hpa := testutil.BuildHPA("default", "broken",
+		testutil.WithReplicas(2, 0),
+		testutil.WithScalingActiveFalse("FailedGetResourceMetric"),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -836,7 +836,7 @@ func TestRunStatus_ExitCode_ScalingInactive(t *testing.T) {
 }
 
 func TestRunStatus_ExitCode_NotFound(t *testing.T) {
-	fakeClient := kube.NewFakeClient()
+	fakeClient := testutil.NewFakeClient()
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -860,12 +860,12 @@ func TestRunStatus_ExitCode_NotFound(t *testing.T) {
 }
 
 func TestRunStatus_ExitCode_ScalingLimited(t *testing.T) {
-	hpa := kube.BuildHPA("default", "api",
-		kube.WithReplicas(10, 10),
-		kube.WithMinMax(2, 10),
-		kube.WithScalingLimitedTrue("TooManyReplicas"),
+	hpa := testutil.BuildHPA("default", "api",
+		testutil.WithReplicas(10, 10),
+		testutil.WithMinMax(2, 10),
+		testutil.WithScalingLimitedTrue("TooManyReplicas"),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -900,11 +900,11 @@ func isExitCodeWarning(err error) bool {
 // --------------------------------------------------------------------------
 
 func TestRunStatus_ExplainPods(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(3, 5),
-		kube.WithResourceMetric("cpu", 80, 70),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(3, 5),
+		testutil.WithResourceMetric("cpu", 80, 70),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -929,11 +929,11 @@ func TestRunStatus_ExplainPods(t *testing.T) {
 }
 
 func TestRunStatus_ExplainPods_JSON(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(3, 5),
-		kube.WithResourceMetric("cpu", 80, 70),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(3, 5),
+		testutil.WithResourceMetric("cpu", 80, 70),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -965,12 +965,12 @@ func TestRunStatus_ExplainPods_JSON(t *testing.T) {
 // --------------------------------------------------------------------------
 
 func TestRunStatus_Simulate(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(3, 3),
-		kube.WithResourceMetric("cpu", 80, 70),
-		kube.WithMinMax(1, 10),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(3, 3),
+		testutil.WithResourceMetric("cpu", 80, 70),
+		testutil.WithMinMax(1, 10),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -1009,12 +1009,12 @@ func TestRunStatus_Simulate(t *testing.T) {
 }
 
 func TestRunStatus_SimulateText(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(3, 3),
-		kube.WithResourceMetric("cpu", 80, 70),
-		kube.WithMinMax(1, 10),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(3, 3),
+		testutil.WithResourceMetric("cpu", 80, 70),
+		testutil.WithMinMax(1, 10),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -1099,11 +1099,11 @@ func TestParseSimulateOverrides(t *testing.T) {
 // --------------------------------------------------------------------------
 
 func TestRunStatus_CapacityContext(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(3, 5),
-		kube.WithResourceMetric("cpu", 80, 70),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(3, 5),
+		testutil.WithResourceMetric("cpu", 80, 70),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -1296,7 +1296,7 @@ func TestRunReplayLab_FromRecordWithCandidate(t *testing.T) {
 		t.Fatalf("failed to close record file: %v", err)
 	}
 
-	candidate := kube.BuildHPA("prod", "web", kube.WithMinMax(2, 14))
+	candidate := testutil.BuildHPA("prod", "web", testutil.WithMinMax(2, 14))
 	candidateData, err := json.Marshal(candidate)
 	if err != nil {
 		t.Fatalf("failed to marshal candidate: %v", err)
@@ -1449,9 +1449,9 @@ func TestReplayCommandPolicyLabMultipleCandidatesInfersHPA(t *testing.T) {
 		t.Fatalf("failed to close record file: %v", err)
 	}
 
-	stablePath := writeTempCandidateHPA(t, kube.BuildHPA("prod", "web", kube.WithMinMax(2, 20)))
+	stablePath := writeTempCandidateHPA(t, testutil.BuildHPA("prod", "web", testutil.WithMinMax(2, 20)))
 	defer func() { _ = os.Remove(stablePath) }()
-	fastPath := writeTempCandidateHPA(t, kube.BuildHPA("prod", "web", kube.WithMinMax(2, 30)))
+	fastPath := writeTempCandidateHPA(t, testutil.BuildHPA("prod", "web", testutil.WithMinMax(2, 30)))
 	defer func() { _ = os.Remove(fastPath) }()
 
 	root := NewRootCommand()
@@ -1505,13 +1505,13 @@ func writeTempCandidateHPA(t *testing.T, hpa *autoscalingv2.HorizontalPodAutosca
 }
 
 func TestRunWhyNotScaleShowsObservedBlockersAndUnknowns(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(10, 10),
-		kube.WithMinMax(2, 10),
-		kube.WithResourceMetric("cpu", 80, 120),
-		kube.WithScalingLimitedTrue("TooManyReplicas"),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(10, 10),
+		testutil.WithMinMax(2, 10),
+		testutil.WithResourceMetric("cpu", 80, 120),
+		testutil.WithScalingLimitedTrue("TooManyReplicas"),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -1538,11 +1538,11 @@ func TestRunWhyNotScaleShowsObservedBlockersAndUnknowns(t *testing.T) {
 }
 
 func TestRunWhyNotScaleJSON(t *testing.T) {
-	hpa := kube.BuildHPA("default", "api",
-		kube.WithReplicas(3, 3),
-		kube.WithResourceMetric("cpu", 60, 90),
+	hpa := testutil.BuildHPA("default", "api",
+		testutil.WithReplicas(3, 3),
+		testutil.WithResourceMetric("cpu", 60, 90),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -1567,7 +1567,7 @@ func TestRunWhyNotScaleJSON(t *testing.T) {
 }
 
 func TestAdvisorContainerResourceCommand(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web", kube.WithResourceMetric("cpu", 60, 70))
+	hpa := testutil.BuildHPA("default", "web", testutil.WithResourceMetric("cpu", 60, 70))
 	replicas := int32(2)
 	deploy := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "web"},
@@ -1593,7 +1593,7 @@ func TestAdvisorContainerResourceCommand(t *testing.T) {
 			},
 		},
 	}
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 	_, err := fakeClient.AppsV1().Deployments("default").Create(context.Background(), deploy, metav1.CreateOptions{})
 	if err != nil {
 		t.Fatalf("failed to create deployment: %v", err)
@@ -1614,9 +1614,9 @@ func TestAdvisorContainerResourceCommand(t *testing.T) {
 
 func TestOwnershipCommandDetectsReplicaFieldOwner(t *testing.T) {
 	replicas := int32(3)
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(6, 8),
-		kube.WithResourceMetric("cpu", 80, 70),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(6, 8),
+		testutil.WithResourceMetric("cpu", 80, 70),
 	)
 	deploy := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1641,7 +1641,7 @@ func TestOwnershipCommandDetectsReplicaFieldOwner(t *testing.T) {
 			},
 		},
 	}
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 	if _, err := fakeClient.AppsV1().Deployments("default").Create(context.Background(), deploy, metav1.CreateOptions{}); err != nil {
 		t.Fatalf("failed to create fake deployment: %v", err)
 	}
@@ -1670,7 +1670,7 @@ func TestOwnershipCommandDetectsReplicaFieldOwner(t *testing.T) {
 }
 
 func TestRunProfileDetectShowsAssumptions(t *testing.T) {
-	fakeClient := kube.NewFakeClient()
+	fakeClient := testutil.NewFakeClient()
 	opts := &options{commonOptions: commonOptions{clientOverride: fakeClient}}
 
 	var buf bytes.Buffer
@@ -1691,14 +1691,14 @@ func TestRunProfileDetectShowsAssumptions(t *testing.T) {
 
 func TestRunTimeline_Retrospective(t *testing.T) {
 	now := time.Now()
-	hpa := kube.BuildHPA("default", "web", kube.WithReplicas(3, 5))
+	hpa := testutil.BuildHPA("default", "web", testutil.WithReplicas(3, 5))
 
-	ev1 := kube.BuildEventWithTimestamp("default", "web", "SuccessfulRescale",
+	ev1 := testutil.BuildEventWithTimestamp("default", "web", "SuccessfulRescale",
 		"New size: 5; reason: cpu resource utilization above target", now.Add(-20*time.Minute))
-	ev2 := kube.BuildEventWithTimestamp("default", "web", "SuccessfulRescale",
+	ev2 := testutil.BuildEventWithTimestamp("default", "web", "SuccessfulRescale",
 		"New size: 3", now.Add(-5*time.Minute))
 
-	fakeClient := kube.NewFakeClientWithEvents(
+	fakeClient := testutil.NewFakeClientWithEvents(
 		[]*autoscalingv2.HorizontalPodAutoscaler{hpa},
 		[]*corev1.Event{ev1, ev2},
 	)
@@ -1728,12 +1728,12 @@ func TestRunTimeline_Retrospective(t *testing.T) {
 
 func TestRunTimeline_Retrospective_JSON(t *testing.T) {
 	now := time.Now()
-	hpa := kube.BuildHPA("default", "web", kube.WithReplicas(3, 5))
+	hpa := testutil.BuildHPA("default", "web", testutil.WithReplicas(3, 5))
 
-	ev1 := kube.BuildEventWithTimestamp("default", "web", "SuccessfulRescale",
+	ev1 := testutil.BuildEventWithTimestamp("default", "web", "SuccessfulRescale",
 		"New size: 5", now.Add(-10*time.Minute))
 
-	fakeClient := kube.NewFakeClientWithEvents(
+	fakeClient := testutil.NewFakeClientWithEvents(
 		[]*autoscalingv2.HorizontalPodAutoscaler{hpa},
 		[]*corev1.Event{ev1},
 	)
@@ -1759,8 +1759,8 @@ func TestRunTimeline_Retrospective_JSON(t *testing.T) {
 }
 
 func TestRunTimeline_Retrospective_NoEvents(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web", kube.WithReplicas(3, 5))
-	fakeClient := kube.NewFakeClient(hpa)
+	hpa := testutil.BuildHPA("default", "web", testutil.WithReplicas(3, 5))
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	err := runRetrospectiveTimeline(context.Background(), &buf, &options{

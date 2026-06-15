@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 )
 
 func TestNewBundleCommand(t *testing.T) {
@@ -40,11 +40,11 @@ func TestNewBundleCommand(t *testing.T) {
 }
 
 func TestBundleMarkdownOutput(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(3, 5),
-		kube.WithResourceMetric("cpu", 80, 70),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(3, 5),
+		testutil.WithResourceMetric("cpu", 80, 70),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -106,11 +106,11 @@ func TestBundleMarkdownOutput(t *testing.T) {
 }
 
 func TestBundleZipOutput(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(3, 5),
-		kube.WithResourceMetric("cpu", 80, 70),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(3, 5),
+		testutil.WithResourceMetric("cpu", 80, 70),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -176,11 +176,11 @@ func TestBundleZipOutput(t *testing.T) {
 }
 
 func TestBundleRedact(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(3, 5),
-		kube.WithResourceMetric("cpu", 80, 70),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(3, 5),
+		testutil.WithResourceMetric("cpu", 80, 70),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -219,11 +219,11 @@ func TestBundleRedact(t *testing.T) {
 }
 
 func TestBundleDefaultFormat(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(3, 5),
-		kube.WithResourceMetric("cpu", 80, 70),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(3, 5),
+		testutil.WithResourceMetric("cpu", 80, 70),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -255,11 +255,11 @@ func TestBundleDefaultFormat(t *testing.T) {
 }
 
 func TestBundleUnsupportedFormat(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(3, 5),
-		kube.WithResourceMetric("cpu", 80, 70),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(3, 5),
+		testutil.WithResourceMetric("cpu", 80, 70),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -285,11 +285,11 @@ func TestBundleUnsupportedFormat(t *testing.T) {
 }
 
 func TestBundleIncludesDoctorAnalysis(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(3, 5),
-		kube.WithResourceMetric("cpu", 80, 70),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(3, 5),
+		testutil.WithResourceMetric("cpu", 80, 70),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -323,11 +323,11 @@ func TestBundleIncludesDoctorAnalysis(t *testing.T) {
 }
 
 func TestBundleDefaultOutputPath(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(3, 5),
-		kube.WithResourceMetric("cpu", 80, 70),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(3, 5),
+		testutil.WithResourceMetric("cpu", 80, 70),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -361,7 +361,7 @@ func TestBundleDefaultOutputPath(t *testing.T) {
 }
 
 func TestBundleHPANotFound(t *testing.T) {
-	fakeClient := kube.NewFakeClient() // No HPAs.
+	fakeClient := testutil.NewFakeClient() // No HPAs.
 
 	var buf bytes.Buffer
 	opts := &options{

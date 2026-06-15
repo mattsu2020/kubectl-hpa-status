@@ -2,12 +2,14 @@ package kube
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -66,4 +68,53 @@ func coreEventTimestamp(event corev1.Event) time.Time {
 		return event.EventTime.Time
 	}
 	return time.Time{}
+}
+
+// FetchRecentHPAEvents fetches recent Kubernetes events for the specified HPA,
+// returning the raw corev1.Event values sorted by LastTimestamp descending
+// (most recent first). Callers (typically in cmd/) convert to pkg/hpa.Event
+// via hpaanalysis.EventFromCore.
+func FetchRecentHPAEvents(ctx context.Context, client kubernetes.Interface, namespace, name string, limit int64) ([]corev1.Event, error) {
+	selector := fields.OneTermEqualSelector("involvedObject.name", name)
+	events, err := client.CoreV1().
+		Events(namespace).
+		List(ctx, metav1.ListOptions{
+			FieldSelector: selector.String(),
+			Limit:         limit,
+		})
+	if err != nil {
+		return nil, fmt.Errorf("list HPA events: %w", err)
+	}
+
+	sort.Slice(events.Items, func(i, j int) bool {
+		return events.Items[i].LastTimestamp.After(events.Items[j].LastTimestamp.Time)
+	})
+
+	outLimit := len(events.Items)
+	if int64(outLimit) > limit {
+		outLimit = int(limit)
+	}
+	return events.Items[:outLimit], nil
+}
+
+// FetchRecentHPAEventsSince fetches Kubernetes events for the specified HPA
+// that occurred at or after the given time, returned in ascending chronological
+// order (oldest first). The Events API does not support time-range field
+// selectors, so a generous batch is fetched and filtered client-side.
+func FetchRecentHPAEventsSince(ctx context.Context, client kubernetes.Interface, namespace, name string, since time.Time) ([]corev1.Event, error) {
+	events, err := FetchRecentHPAEvents(ctx, client, namespace, name, 500)
+	if err != nil {
+		return nil, err
+	}
+	filtered := make([]corev1.Event, 0, len(events))
+	for _, e := range events {
+		ts := coreEventTimestamp(e)
+		if !ts.IsZero() && !ts.Before(since) {
+			filtered = append(filtered, e)
+		}
+	}
+	sort.Slice(filtered, func(i, j int) bool {
+		return coreEventTimestamp(filtered[i]).Before(coreEventTimestamp(filtered[j]))
+	})
+	return filtered, nil
 }

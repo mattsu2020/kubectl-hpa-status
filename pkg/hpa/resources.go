@@ -6,9 +6,22 @@ import (
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"k8s.io/apimachinery/pkg/api/resource"
-
-	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 )
+
+// ContainerResources holds the resource requests and limits for a single
+// container. This type lives in pkg/hpa so external consumers can construct
+// resource-check inputs without depending on internal/kube; internal/kube
+// re-exports it as ContainerResources for backwards compatibility.
+type ContainerResources struct {
+	Name     string            `json:"name" yaml:"name"`
+	Requests map[string]string `json:"requests,omitempty" yaml:"requests,omitempty"`
+	Limits   map[string]string `json:"limits,omitempty" yaml:"limits,omitempty"`
+}
+
+// ResourceRequests holds resource information for all containers in a pod template.
+type ResourceRequests struct {
+	Containers []ContainerResources `json:"containers" yaml:"containers"`
+}
 
 // Tiny resource request thresholds below which HPA utilization becomes noisy.
 const (
@@ -22,7 +35,7 @@ const (
 // CheckResourceConsistency validates that HPA resource metrics have
 // corresponding pod resource requests set and warns about potential
 // misconfigurations. Returns nil when there are no warnings.
-func CheckResourceConsistency(hpa *autoscalingv2.HorizontalPodAutoscaler, resources *kube.ResourceRequests) *ResourceCheckResult {
+func CheckResourceConsistency(hpa *autoscalingv2.HorizontalPodAutoscaler, resources *ResourceRequests) *ResourceCheckResult {
 	if hpa == nil || resources == nil {
 		return nil
 	}
@@ -77,7 +90,7 @@ func CheckResourceConsistency(hpa *autoscalingv2.HorizontalPodAutoscaler, resour
 
 // checkResourceMetricAllContainers checks a Resource-type metric (applies to
 // all containers) against every container in the pod template.
-func checkResourceMetricAllContainers(resourceName string, target autoscalingv2.MetricTarget, containerMap map[string]kube.ContainerResources) []ResourceWarning {
+func checkResourceMetricAllContainers(resourceName string, target autoscalingv2.MetricTarget, containerMap map[string]ContainerResources) []ResourceWarning {
 	var warnings []ResourceWarning
 	for containerName, cr := range containerMap {
 		warnings = append(warnings, checkSingleContainer(containerName, resourceName, target, cr)...)
@@ -86,7 +99,7 @@ func checkResourceMetricAllContainers(resourceName string, target autoscalingv2.
 }
 
 // checkSingleContainer checks a single container for resource consistency.
-func checkSingleContainer(containerName, resourceName string, target autoscalingv2.MetricTarget, cr kube.ContainerResources) []ResourceWarning {
+func checkSingleContainer(containerName, resourceName string, target autoscalingv2.MetricTarget, cr ContainerResources) []ResourceWarning {
 	var warnings []ResourceWarning
 
 	requestValue, hasRequest := cr.Requests[resourceName]
@@ -149,8 +162,8 @@ func checkSingleContainer(containerName, resourceName string, target autoscaling
 }
 
 // buildContainerMap creates a name-keyed map from a slice of ContainerResources.
-func buildContainerMap(containers []kube.ContainerResources) map[string]kube.ContainerResources {
-	m := make(map[string]kube.ContainerResources, len(containers))
+func buildContainerMap(containers []ContainerResources) map[string]ContainerResources {
+	m := make(map[string]ContainerResources, len(containers))
 	for _, c := range containers {
 		m[c.Name] = c
 	}
@@ -184,7 +197,7 @@ func tinyThreshold(resourceName string) string {
 // checkSidecarDistortion detects when a Resource-type metric (which averages
 // across all containers) is applied to a pod with containers whose requests
 // differ significantly, causing utilization distortion.
-func checkSidecarDistortion(containerMap map[string]kube.ContainerResources, resourceName string) []ResourceWarning {
+func checkSidecarDistortion(containerMap map[string]ContainerResources, resourceName string) []ResourceWarning {
 	if len(containerMap) < 2 {
 		return nil
 	}

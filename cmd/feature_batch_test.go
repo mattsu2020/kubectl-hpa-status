@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
@@ -16,8 +16,8 @@ import (
 func TestRunBehavior_TextOutput(t *testing.T) {
 	podsPolicy := autoscalingv2.PodsScalingPolicy
 	maxPolicy := autoscalingv2.MaxChangePolicySelect
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(10, 40),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(10, 40),
 	)
 	hpa.Spec.Behavior = &autoscalingv2.HorizontalPodAutoscalerBehavior{
 		ScaleUp: &autoscalingv2.HPAScalingRules{
@@ -29,7 +29,7 @@ func TestRunBehavior_TextOutput(t *testing.T) {
 			}},
 		},
 	}
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 	opts := &options{commonOptions: commonOptions{clientOverride: fakeClient}}
 
 	var buf bytes.Buffer
@@ -43,8 +43,8 @@ func TestRunBehavior_TextOutput(t *testing.T) {
 }
 
 func TestRunEstimate_TextOutput(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web", kube.WithMinMax(2, 10))
-	fakeClient := kube.NewFakeClient(hpa)
+	hpa := testutil.BuildHPA("default", "web", testutil.WithMinMax(2, 10))
+	fakeClient := testutil.NewFakeClient(hpa)
 	opts := &options{commonOptions: commonOptions{clientOverride: fakeClient}}
 
 	var buf bytes.Buffer
@@ -207,13 +207,13 @@ func TestRunFlapFromRecordDetectsReplicaRange(t *testing.T) {
 }
 
 func TestRunConflictScanDetectsMultipleHPAsAndKEDA(t *testing.T) {
-	first := kube.BuildHPA("prod", "web-cpu")
+	first := testutil.BuildHPA("prod", "web-cpu")
 	first.Spec.ScaleTargetRef.Name = "web"
-	second := kube.BuildHPA("prod", "web-keda")
+	second := testutil.BuildHPA("prod", "web-keda")
 	second.Spec.ScaleTargetRef.Name = "web"
 	second.Labels = map[string]string{"scaledobject.keda.sh/name": "web"}
 
-	fakeClient := kube.NewFakeClient(first, second)
+	fakeClient := testutil.NewFakeClient(first, second)
 	opts := &options{
 		commonOptions: commonOptions{
 			clientOverride: fakeClient,
@@ -235,8 +235,8 @@ func TestRunConflictScanDetectsMultipleHPAsAndKEDA(t *testing.T) {
 }
 
 func TestRunReadinessEnablesImpactSections(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web")
-	fakeClient := kube.NewFakeClient(hpa)
+	hpa := testutil.BuildHPA("default", "web")
+	fakeClient := testutil.NewFakeClient(hpa)
 	opts := &options{
 		commonOptions: commonOptions{clientOverride: fakeClient},
 		statusOptions: statusOptions{events: eventOption{enabled: false}},
@@ -254,9 +254,9 @@ func TestRunReadinessEnablesImpactSections(t *testing.T) {
 }
 
 func TestRunFleetSummarizesMaxSurgeRisk(t *testing.T) {
-	web := kube.BuildHPA("prod", "web", kube.WithReplicas(3, 5), kube.WithMinMax(2, 10))
-	api := kube.BuildHPA("prod", "api", kube.WithReplicas(6, 6), kube.WithMinMax(2, 8))
-	fakeClient := kube.NewFakeClient(web, api)
+	web := testutil.BuildHPA("prod", "web", testutil.WithReplicas(3, 5), testutil.WithMinMax(2, 10))
+	api := testutil.BuildHPA("prod", "api", testutil.WithReplicas(6, 6), testutil.WithMinMax(2, 8))
+	fakeClient := testutil.NewFakeClient(web, api)
 	opts := &options{
 		commonOptions: commonOptions{
 			clientOverride: fakeClient,
@@ -277,12 +277,12 @@ func TestRunFleetSummarizesMaxSurgeRisk(t *testing.T) {
 }
 
 func TestStatusHiddenFactorsText(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(3, 3),
-		kube.WithResourceMetric("cpu", 80, 84),
-		kube.WithScalingLimitedTrue("TooManyReplicas"),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(3, 3),
+		testutil.WithResourceMetric("cpu", 80, 84),
+		testutil.WithScalingLimitedTrue("TooManyReplicas"),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 	opts := &options{
 		commonOptions: commonOptions{clientOverride: fakeClient},
 		statusOptions: statusOptions{
@@ -302,11 +302,11 @@ func TestStatusHiddenFactorsText(t *testing.T) {
 }
 
 func TestStatusStructuredFormat(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(3, 5),
-		kube.WithResourceMetric("cpu", 80, 120),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(3, 5),
+		testutil.WithResourceMetric("cpu", 80, 120),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 	opts := &options{
 		commonOptions: commonOptions{clientOverride: fakeClient},
 		statusOptions: statusOptions{
@@ -349,8 +349,8 @@ func TestWriteListCIReports(t *testing.T) {
 }
 
 func TestRunTuneSuggest(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web", kube.WithMinMax(2, 10))
-	fakeClient := kube.NewFakeClient(hpa)
+	hpa := testutil.BuildHPA("default", "web", testutil.WithMinMax(2, 10))
+	fakeClient := testutil.NewFakeClient(hpa)
 	opts := &options{commonOptions: commonOptions{clientOverride: fakeClient}}
 
 	var buf bytes.Buffer

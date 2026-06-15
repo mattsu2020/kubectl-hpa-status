@@ -4,13 +4,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 func TestDiagnoseAdapterResourceOnly(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web", kube.WithResourceMetric("cpu", 80, 60))
+	hpa := testutil.BuildHPA("default", "web", testutil.WithResourceMetric("cpu", 80, 60))
 
 	got := DiagnoseAdapter(hpa, nil, nil)
 	if got.AdapterType != "none" {
@@ -22,7 +22,7 @@ func TestDiagnoseAdapterResourceOnly(t *testing.T) {
 }
 
 func TestDiagnoseAdapterExternalMetric(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web")
+	hpa := testutil.BuildHPA("default", "web")
 	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{{
 		Type: autoscalingv2.ExternalMetricSourceType,
 		External: &autoscalingv2.ExternalMetricSource{
@@ -47,7 +47,7 @@ func TestDiagnoseAdapterExternalMetric(t *testing.T) {
 }
 
 func TestDiagnoseAdapterFreshnessError(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web")
+	hpa := testutil.BuildHPA("default", "web")
 	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{{
 		Type: autoscalingv2.PodsMetricSourceType,
 		Pods: &autoscalingv2.PodsMetricSource{

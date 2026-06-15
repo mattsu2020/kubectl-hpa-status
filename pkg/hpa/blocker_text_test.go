@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/style"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
 func TestWriteBlockerText(t *testing.T) {

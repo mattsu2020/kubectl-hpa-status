@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 )
 
 func TestAnalyzeFlappingPrevention(t *testing.T) {
@@ -14,7 +14,7 @@ func TestAnalyzeFlappingPrevention(t *testing.T) {
 	tests := []struct {
 		name   string
 		events []Event
-		hpa    func() *interface { /* placeholder; we build *autoscalingv2.HPA via kube.BuildHPA */
+		hpa    func() *interface { /* placeholder; we build *autoscalingv2.HPA via testutil.BuildHPA */
 		}
 		wantNil    bool
 		checkExtra func(t *testing.T, got *FlappingPreventionReport)
@@ -223,9 +223,9 @@ func TestAnalyzeFlappingPrevention(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			hpa := kube.BuildHPA("default", "test-hpa")
+			hpa := testutil.BuildHPA("default", "test-hpa")
 			if tc.name == "custom stabilization window is reflected in report" {
-				hpa = kube.BuildHPA("default", "test-hpa", kube.WithScaleDownStabilizationWindow(120))
+				hpa = testutil.BuildHPA("default", "test-hpa", testutil.WithScaleDownStabilizationWindow(120))
 			}
 
 			got := AnalyzeFlappingPrevention(tc.events, hpa)

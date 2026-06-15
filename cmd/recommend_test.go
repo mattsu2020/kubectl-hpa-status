@@ -6,15 +6,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
 
 func TestRunRecommend_WellConfiguredHPA(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithResourceMetric("cpu", 70, 65),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithResourceMetric("cpu", 70, 65),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -34,14 +34,14 @@ func TestRunRecommend_WellConfiguredHPA(t *testing.T) {
 }
 
 func TestRunRecommend_PoorlyConfiguredHPA(t *testing.T) {
-	hpa := kube.BuildHPA("default", "bad-hpa",
-		kube.WithMinMax(0, 100),
-		kube.WithResourceMetric("cpu", 95, 99),
+	hpa := testutil.BuildHPA("default", "bad-hpa",
+		testutil.WithMinMax(0, 100),
+		testutil.WithResourceMetric("cpu", 95, 99),
 	)
 	// Set minReplicas to 0 to trigger scale-to-zero finding
 	*hpa.Spec.MinReplicas = 0
 
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -63,7 +63,7 @@ func TestRunRecommend_PoorlyConfiguredHPA(t *testing.T) {
 
 func TestRunRecommend_NonExistentHPA(t *testing.T) {
 	// Empty fake client — no HPAs registered.
-	fakeClient := kube.NewFakeClient()
+	fakeClient := testutil.NewFakeClient()
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -79,11 +79,11 @@ func TestRunRecommend_NonExistentHPA(t *testing.T) {
 }
 
 func TestRunRecommend_KEDAManagedHPA(t *testing.T) {
-	hpa := kube.BuildHPA("default", "keda-worker",
-		kube.WithKEDALabels("worker"),
-		kube.WithExternalMetricWithStatus("queue-depth", "5", "10"),
+	hpa := testutil.BuildHPA("default", "keda-worker",
+		testutil.WithKEDALabels("worker"),
+		testutil.WithExternalMetricWithStatus("queue-depth", "5", "10"),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -100,10 +100,10 @@ func TestRunRecommend_KEDAManagedHPA(t *testing.T) {
 }
 
 func TestRunRecommend_JSONOutput(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithResourceMetric("cpu", 70, 65),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithResourceMetric("cpu", 70, 65),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -126,10 +126,10 @@ func TestRunRecommend_JSONOutput(t *testing.T) {
 }
 
 func TestRunRecommend_YAMLOutput(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithResourceMetric("cpu", 70, 65),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithResourceMetric("cpu", 70, 65),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -149,14 +149,14 @@ func TestRunRecommend_YAMLOutput(t *testing.T) {
 }
 
 func TestRunRecommend_ScoreToZeroWarning(t *testing.T) {
-	hpa := kube.BuildHPA("default", "scale-to-zero",
-		kube.WithMinMax(0, 5),
-		kube.WithResourceMetric("cpu", 70, 50),
+	hpa := testutil.BuildHPA("default", "scale-to-zero",
+		testutil.WithMinMax(0, 5),
+		testutil.WithResourceMetric("cpu", 70, 50),
 	)
 	// Ensure minReplicas is 0
 	*hpa.Spec.MinReplicas = 0
 
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -174,13 +174,13 @@ func TestRunRecommend_ScoreToZeroWarning(t *testing.T) {
 
 func TestRunRecommend_ExtractsMinReplicasFromSpec(t *testing.T) {
 	minReplicas := int32(3)
-	hpa := kube.BuildHPA("default", "explicit-min",
-		kube.WithMinMax(3, 10),
-		kube.WithResourceMetric("cpu", 70, 65),
+	hpa := testutil.BuildHPA("default", "explicit-min",
+		testutil.WithMinMax(3, 10),
+		testutil.WithResourceMetric("cpu", 70, 65),
 	)
 	hpa.Spec.MinReplicas = &minReplicas
 
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -208,10 +208,10 @@ func TestNewRecommendCommand(t *testing.T) {
 }
 
 func TestRunRecommend_UsesNamespaceFromOptions(t *testing.T) {
-	hpa := kube.BuildHPA("team-a", "web",
-		kube.WithResourceMetric("cpu", 70, 65),
+	hpa := testutil.BuildHPA("team-a", "web",
+		testutil.WithResourceMetric("cpu", 70, 65),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -231,10 +231,10 @@ func TestRunRecommend_UsesNamespaceFromOptions(t *testing.T) {
 }
 
 func TestRunRecommend_HighUtilizationWarning(t *testing.T) {
-	hpa := kube.BuildHPA("default", "high-util",
-		kube.WithResourceMetric("cpu", 95, 98),
+	hpa := testutil.BuildHPA("default", "high-util",
+		testutil.WithResourceMetric("cpu", 95, 98),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -251,11 +251,11 @@ func TestRunRecommend_HighUtilizationWarning(t *testing.T) {
 }
 
 func TestRunRecommend_WithProfile(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithMinMax(2, 10),
-		kube.WithResourceMetric("cpu", 70, 65),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithMinMax(2, 10),
+		testutil.WithResourceMetric("cpu", 70, 65),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -272,11 +272,11 @@ func TestRunRecommend_WithProfile(t *testing.T) {
 }
 
 func TestRunRecommend_WithProfileLatency(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithMinMax(2, 10),
-		kube.WithResourceMetric("cpu", 70, 65),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithMinMax(2, 10),
+		testutil.WithResourceMetric("cpu", 70, 65),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{

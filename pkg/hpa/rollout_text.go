@@ -5,7 +5,7 @@ import (
 	"io"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/mattsu2020/kubectl-hpa-status/internal/style"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
 // AppendRolloutReportText appends the rollout report section to out. It renders

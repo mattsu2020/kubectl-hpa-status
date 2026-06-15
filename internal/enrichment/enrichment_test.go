@@ -352,18 +352,24 @@ func TestEnrichReport_BothDisabled(t *testing.T) {
 
 func TestBatchKEDA_NilContext(t *testing.T) {
 	hpas := []autoscalingv2.HorizontalPodAutoscaler{{}}
-	result := BatchKEDA(context.Background(), nil, hpas)
+	result, warnings := BatchKEDA(context.Background(), nil, hpas)
 	if result != nil {
 		t.Fatal("expected nil for nil context")
+	}
+	if warnings != nil {
+		t.Fatalf("expected nil warnings for nil context, got %v", warnings)
 	}
 }
 
 func TestBatchKEDA_KEDADisabled(t *testing.T) {
 	ec := &Context{kedaEnabled: false}
 	hpas := []autoscalingv2.HorizontalPodAutoscaler{{}}
-	result := BatchKEDA(context.Background(), ec, hpas)
+	result, warnings := BatchKEDA(context.Background(), ec, hpas)
 	if result != nil {
 		t.Fatal("expected nil when KEDA disabled")
+	}
+	if warnings != nil {
+		t.Fatalf("expected nil warnings when KEDA disabled, got %v", warnings)
 	}
 }
 
@@ -371,18 +377,24 @@ func TestBatchKEDA_KEDADisabled(t *testing.T) {
 
 func TestBatchVPA_NilContext(t *testing.T) {
 	hpas := []autoscalingv2.HorizontalPodAutoscaler{{}}
-	result := BatchVPA(context.Background(), nil, hpas)
+	result, warnings := BatchVPA(context.Background(), nil, hpas)
 	if result != nil {
 		t.Fatal("expected nil for nil context")
+	}
+	if warnings != nil {
+		t.Fatalf("expected nil warnings for nil context, got %v", warnings)
 	}
 }
 
 func TestBatchVPA_VPADisabled(t *testing.T) {
 	ec := &Context{vpaEnabled: false}
 	hpas := []autoscalingv2.HorizontalPodAutoscaler{{}}
-	result := BatchVPA(context.Background(), ec, hpas)
+	result, warnings := BatchVPA(context.Background(), ec, hpas)
 	if result != nil {
 		t.Fatal("expected nil when VPA disabled")
+	}
+	if warnings != nil {
+		t.Fatalf("expected nil warnings when VPA disabled, got %v", warnings)
 	}
 }
 

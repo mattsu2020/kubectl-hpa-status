@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 )
 
 func TestNewCapacityPlanCommand(t *testing.T) {
@@ -23,12 +23,12 @@ func TestNewCapacityPlanCommand(t *testing.T) {
 }
 
 func TestRunCapacityPlan_JSONOutput(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(10, 10),
-		kube.WithResourceMetric("cpu", 80, 90),
-		kube.WithMinMax(5, 10),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(10, 10),
+		testutil.WithResourceMetric("cpu", 80, 90),
+		testutil.WithMinMax(5, 10),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -69,12 +69,12 @@ func TestRunCapacityPlan_JSONOutput(t *testing.T) {
 }
 
 func TestRunCapacityPlan_TextOutput(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(10, 10),
-		kube.WithResourceMetric("cpu", 80, 90),
-		kube.WithMinMax(5, 10),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(10, 10),
+		testutil.WithResourceMetric("cpu", 80, 90),
+		testutil.WithMinMax(5, 10),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -109,12 +109,12 @@ func TestRunCapacityPlan_TextOutput(t *testing.T) {
 }
 
 func TestRunCapacityPlan_TargetMaxOverride(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(10, 10),
-		kube.WithResourceMetric("cpu", 80, 90),
-		kube.WithMinMax(5, 10),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(10, 10),
+		testutil.WithResourceMetric("cpu", 80, 90),
+		testutil.WithMinMax(5, 10),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -162,12 +162,12 @@ func TestRootHelpIncludesCapacityCommand(t *testing.T) {
 }
 
 func TestCapacityPlanFlagOnStatus(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(10, 10),
-		kube.WithResourceMetric("cpu", 80, 90),
-		kube.WithMinMax(5, 10),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(10, 10),
+		testutil.WithResourceMetric("cpu", 80, 90),
+		testutil.WithMinMax(5, 10),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 )
 
 // --------------------------------------------------------------------------
@@ -15,12 +15,12 @@ import (
 
 func TestRunStatus_ScalingInactiveWithExternalMetric(t *testing.T) {
 	// Simulates metrics-server down with an external metric configured but no status.
-	hpa := kube.BuildHPA("default", "keda-worker",
-		kube.WithReplicas(2, 0),
-		kube.WithScalingActiveFalse("FailedGetExternalMetric"),
-		kube.WithExternalMetric("queue_depth", "5"),
+	hpa := testutil.BuildHPA("default", "keda-worker",
+		testutil.WithReplicas(2, 0),
+		testutil.WithScalingActiveFalse("FailedGetExternalMetric"),
+		testutil.WithExternalMetric("queue_depth", "5"),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -42,12 +42,12 @@ func TestRunStatus_ScalingInactiveWithExternalMetric(t *testing.T) {
 
 func TestRunStatus_ImplicitMaxReplicas(t *testing.T) {
 	// current == desired == maxReplicas but no ScalingLimited condition.
-	hpa := kube.BuildHPA("default", "capped",
-		kube.WithMinMax(2, 5),
-		kube.WithDesiredAtMax(),
-		kube.WithResourceMetric("cpu", 80, 95),
+	hpa := testutil.BuildHPA("default", "capped",
+		testutil.WithMinMax(2, 5),
+		testutil.WithDesiredAtMax(),
+		testutil.WithResourceMetric("cpu", 80, 95),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -66,11 +66,11 @@ func TestRunStatus_ImplicitMaxReplicas(t *testing.T) {
 }
 
 func TestRunStatus_ScaleDownStabilized(t *testing.T) {
-	hpa := kube.BuildHPA("default", "stable",
-		kube.WithReplicas(5, 3),
-		kube.WithScaleDownStabilized(),
+	hpa := testutil.BuildHPA("default", "stable",
+		testutil.WithReplicas(5, 3),
+		testutil.WithScaleDownStabilized(),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -92,11 +92,11 @@ func TestRunStatus_ScaleDownStabilized(t *testing.T) {
 
 func TestRunStatus_ExternalMetricPresent(t *testing.T) {
 	// External metric with both spec and status present, ratio above target.
-	hpa := kube.BuildHPA("default", "queue-worker",
-		kube.WithReplicas(3, 5),
-		kube.WithExternalMetricWithStatus("queue_depth", "5", "12"),
+	hpa := testutil.BuildHPA("default", "queue-worker",
+		testutil.WithReplicas(3, 5),
+		testutil.WithExternalMetricWithStatus("queue_depth", "5", "12"),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -114,12 +114,12 @@ func TestRunStatus_ExternalMetricPresent(t *testing.T) {
 
 func TestRunStatus_KEDADetectionWithoutKEDAFlag(t *testing.T) {
 	// KEDA labels detected but --keda not set: basic KEDA diagnostics via looksLikeKEDAManaged.
-	hpa := kube.BuildHPA("default", "keda-hpa-worker",
-		kube.WithReplicas(3, 3),
-		kube.WithKEDALabels("worker"),
-		kube.WithExternalMetric("s0-azure-queue-message-count", "5"),
+	hpa := testutil.BuildHPA("default", "keda-hpa-worker",
+		testutil.WithReplicas(3, 3),
+		testutil.WithKEDALabels("worker"),
+		testutil.WithExternalMetric("s0-azure-queue-message-count", "5"),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -139,11 +139,11 @@ func TestRunStatus_KEDADetectionWithoutKEDAFlag(t *testing.T) {
 }
 
 func TestRunStatus_DebugMode(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(3, 5),
-		kube.WithResourceMetric("cpu", 80, 95),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(3, 5),
+		testutil.WithResourceMetric("cpu", 80, 95),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -163,18 +163,18 @@ func TestRunStatus_DebugMode(t *testing.T) {
 }
 
 func TestRunList_MinScore(t *testing.T) {
-	webHPA := kube.BuildHPA("default", "web",
-		kube.WithReplicas(3, 5),
-		kube.WithResourceMetric("cpu", 80, 70),
+	webHPA := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(3, 5),
+		testutil.WithResourceMetric("cpu", 80, 70),
 	)
-	apiHPA := kube.BuildHPA("default", "api",
-		kube.WithReplicas(2, 2),
+	apiHPA := testutil.BuildHPA("default", "api",
+		testutil.WithReplicas(2, 2),
 	)
-	brokenHPA := kube.BuildHPA("default", "broken",
-		kube.WithReplicas(2, 2),
-		kube.WithScalingActiveFalse("FailedGetResourceMetric"),
+	brokenHPA := testutil.BuildHPA("default", "broken",
+		testutil.WithReplicas(2, 2),
+		testutil.WithScalingActiveFalse("FailedGetResourceMetric"),
 	)
-	fakeClient := kube.NewFakeClient(webHPA, apiHPA, brokenHPA)
+	fakeClient := testutil.NewFakeClient(webHPA, apiHPA, brokenHPA)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -200,15 +200,15 @@ func TestRunList_MinScore(t *testing.T) {
 }
 
 func TestRunList_MinScoreFiltersLow(t *testing.T) {
-	webHPA := kube.BuildHPA("default", "web",
-		kube.WithReplicas(3, 5),
-		kube.WithResourceMetric("cpu", 80, 70),
+	webHPA := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(3, 5),
+		testutil.WithResourceMetric("cpu", 80, 70),
 	)
-	brokenHPA := kube.BuildHPA("default", "broken",
-		kube.WithReplicas(2, 2),
-		kube.WithScalingActiveFalse("FailedGetResourceMetric"),
+	brokenHPA := testutil.BuildHPA("default", "broken",
+		testutil.WithReplicas(2, 2),
+		testutil.WithScalingActiveFalse("FailedGetResourceMetric"),
 	)
-	fakeClient := kube.NewFakeClient(webHPA, brokenHPA)
+	fakeClient := testutil.NewFakeClient(webHPA, brokenHPA)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -229,12 +229,12 @@ func TestRunList_MinScoreFiltersLow(t *testing.T) {
 }
 
 func TestRunStatus_BehaviorWithStabilizationWindow(t *testing.T) {
-	hpa := kube.BuildHPA("default", "slow",
-		kube.WithReplicas(5, 3),
-		kube.WithScaleDownStabilized(),
-		kube.WithScaleDownStabilizationWindow(300),
+	hpa := testutil.BuildHPA("default", "slow",
+		testutil.WithReplicas(5, 3),
+		testutil.WithScaleDownStabilized(),
+		testutil.WithScaleDownStabilizationWindow(300),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{

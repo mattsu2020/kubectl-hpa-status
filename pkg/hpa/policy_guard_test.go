@@ -3,11 +3,11 @@ package hpa
 import (
 	"testing"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 )
 
 func TestGuardFixBlocksCriticalViolation(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web", kube.WithMinMax(2, 10))
+	hpa := testutil.BuildHPA("default", "web", testutil.WithMinMax(2, 10))
 	policy := PolicyFile{Rules: []PolicyRule{{
 		ID:       "replica-range",
 		Name:     "Replica range",
@@ -35,7 +35,7 @@ func TestGuardFixBlocksCriticalViolation(t *testing.T) {
 }
 
 func TestGuardFixAllowsWarningViolation(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web", kube.WithMinMax(2, 10))
+	hpa := testutil.BuildHPA("default", "web", testutil.WithMinMax(2, 10))
 	policy := PolicyFile{Rules: []PolicyRule{{
 		ID:       "replica-range",
 		Name:     "Replica range",
@@ -63,7 +63,7 @@ func TestGuardFixAllowsWarningViolation(t *testing.T) {
 }
 
 func TestGuardFixAllowsCompliantPatch(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web", kube.WithMinMax(2, 10))
+	hpa := testutil.BuildHPA("default", "web", testutil.WithMinMax(2, 10))
 	policy := PolicyFile{Rules: []PolicyRule{{
 		ID:       "replica-range",
 		Name:     "Replica range",

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -33,12 +33,12 @@ func TestAnalyzeMetricFreshness(t *testing.T) {
 		},
 		{
 			name:    "no spec metrics returns nil",
-			hpa:     kube.BuildHPA("default", "web"),
+			hpa:     testutil.BuildHPA("default", "web"),
 			wantLen: 0,
 		},
 		{
 			name:          "resource metric OK",
-			hpa:           kube.BuildHPA("default", "web", kube.WithResourceMetric("cpu", 80, 75)),
+			hpa:           testutil.BuildHPA("default", "web", testutil.WithResourceMetric("cpu", 80, 75)),
 			wantLen:       1,
 			wantStatus:    []string{"OK"},
 			wantSource:    []string{"metrics.k8s.io"},
@@ -61,7 +61,7 @@ func TestAnalyzeMetricFreshness(t *testing.T) {
 		{
 			name: "resource metric missing with ScalingActive False",
 			hpa: buildHPAWithResourceSpecOnly("default", "web", "cpu",
-				kube.WithScalingActiveFalse("FailedGetResourceMetric")),
+				testutil.WithScalingActiveFalse("FailedGetResourceMetric")),
 			wantLen:       1,
 			wantStatus:    []string{"Missing"},
 			wantSource:    []string{"metrics.k8s.io"},
@@ -71,8 +71,8 @@ func TestAnalyzeMetricFreshness(t *testing.T) {
 		},
 		{
 			name: "external metric OK",
-			hpa: kube.BuildHPA("default", "web",
-				kube.WithExternalMetricWithStatus("queue_depth", "10", "12")),
+			hpa: testutil.BuildHPA("default", "web",
+				testutil.WithExternalMetricWithStatus("queue_depth", "10", "12")),
 			wantLen:       1,
 			wantStatus:    []string{"OK"},
 			wantSource:    []string{"external.metrics.k8s.io"},
@@ -83,8 +83,8 @@ func TestAnalyzeMetricFreshness(t *testing.T) {
 		},
 		{
 			name: "external metric missing",
-			hpa: kube.BuildHPA("default", "web",
-				kube.WithExternalMetric("queue_depth", "10")),
+			hpa: testutil.BuildHPA("default", "web",
+				testutil.WithExternalMetric("queue_depth", "10")),
 			wantLen:       1,
 			wantStatus:    []string{"Missing"},
 			wantSource:    []string{"external.metrics.k8s.io"},
@@ -94,9 +94,9 @@ func TestAnalyzeMetricFreshness(t *testing.T) {
 		},
 		{
 			name: "mixed metrics CPU OK and external missing",
-			hpa: kube.BuildHPA("default", "web",
-				kube.WithResourceMetric("cpu", 80, 75),
-				kube.WithExternalMetric("queue_depth", "10")),
+			hpa: testutil.BuildHPA("default", "web",
+				testutil.WithResourceMetric("cpu", 80, 75),
+				testutil.WithExternalMetric("queue_depth", "10")),
 			wantLen:       2,
 			wantStatus:    []string{"OK", "Missing"},
 			wantSource:    []string{"metrics.k8s.io", "external.metrics.k8s.io"},
@@ -106,8 +106,8 @@ func TestAnalyzeMetricFreshness(t *testing.T) {
 		},
 		{
 			name: "event evidence for missing external metric",
-			hpa: kube.BuildHPA("default", "web",
-				kube.WithExternalMetric("queue_depth", "10")),
+			hpa: testutil.BuildHPA("default", "web",
+				testutil.WithExternalMetric("queue_depth", "10")),
 			events: []Event{
 				{Reason: "FailedGetExternalMetric", Message: "unable to get metric queue_depth: external.metrics.k8s.io unavailable"},
 			},
@@ -318,8 +318,8 @@ func TestBuildFreshnessNextSteps(t *testing.T) {
 
 // buildHPAWithResourceSpecOnly creates an HPA with a resource metric spec but
 // no matching current metric status, simulating a missing metric.
-func buildHPAWithResourceSpecOnly(namespace, name, resourceName string, extraOpts ...kube.HPAOption) *autoscalingv2.HorizontalPodAutoscaler {
-	opts := []kube.HPAOption{
+func buildHPAWithResourceSpecOnly(namespace, name, resourceName string, extraOpts ...testutil.HPAOption) *autoscalingv2.HorizontalPodAutoscaler {
+	opts := []testutil.HPAOption{
 		func(hpa *autoscalingv2.HorizontalPodAutoscaler) {
 			hpa.Spec.Metrics = append(hpa.Spec.Metrics, autoscalingv2.MetricSpec{
 				Type: autoscalingv2.ResourceMetricSourceType,
@@ -334,13 +334,13 @@ func buildHPAWithResourceSpecOnly(namespace, name, resourceName string, extraOpt
 		},
 	}
 	opts = append(opts, extraOpts...)
-	return kube.BuildHPA(namespace, name, opts...)
+	return testutil.BuildHPA(namespace, name, opts...)
 }
 
 // buildHPAWithPodsMetricSpecOnly creates an HPA with a Pods metric spec but
 // no matching current metric status.
 func buildHPAWithPodsMetricSpecOnly(namespace, name, metricName string) *autoscalingv2.HorizontalPodAutoscaler {
-	return kube.BuildHPA(namespace, name, func(hpa *autoscalingv2.HorizontalPodAutoscaler) {
+	return testutil.BuildHPA(namespace, name, func(hpa *autoscalingv2.HorizontalPodAutoscaler) {
 		hpa.Spec.Metrics = append(hpa.Spec.Metrics, autoscalingv2.MetricSpec{
 			Type: autoscalingv2.PodsMetricSourceType,
 			Pods: &autoscalingv2.PodsMetricSource{

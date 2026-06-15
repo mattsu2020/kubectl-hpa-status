@@ -6,7 +6,7 @@ import (
 	"math"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/mattsu2020/kubectl-hpa-status/internal/style"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
 // AppendWarmupText writes the warmup analysis section to out.

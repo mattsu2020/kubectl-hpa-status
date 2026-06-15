@@ -1,4 +1,5 @@
-package kube
+// Package testutil provides test helpers (fake clients, HPA builders) shared across cmd/, internal/, and pkg/hpa tests.
+package testutil
 
 import (
 	"fmt"

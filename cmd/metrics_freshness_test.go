@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -13,8 +14,8 @@ import (
 )
 
 func TestEnrichMetricFreshnessAddsAPIDiscoveryStatus(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web", kube.WithResourceMetric("cpu", 80, 75))
-	fakeClient := kube.NewFakeClient(hpa)
+	hpa := testutil.BuildHPA("default", "web", testutil.WithResourceMetric("cpu", 80, 75))
+	fakeClient := testutil.NewFakeClient(hpa)
 	fakeClient.Discovery().(*fakediscovery.FakeDiscovery).Resources = []*metav1.APIResourceList{
 		{GroupVersion: "metrics.k8s.io/v1beta1"},
 	}
@@ -40,10 +41,10 @@ func TestEnrichMetricFreshnessAddsAPIDiscoveryStatus(t *testing.T) {
 }
 
 func TestEnrichMetricFreshnessAddsKEDAEvidence(t *testing.T) {
-	hpa := kube.BuildHPA("production", "web",
-		kube.WithExternalMetric("keda-http-requests", "10"),
+	hpa := testutil.BuildHPA("production", "web",
+		testutil.WithExternalMetric("keda-http-requests", "10"),
 	)
-	client := &kube.Client{Interface: kube.NewFakeClient(hpa), Namespace: "production"}
+	client := &kube.Client{Interface: testutil.NewFakeClient(hpa), Namespace: "production"}
 	report := hpaanalysis.StatusReport{
 		Analysis: hpaanalysis.Analysis{
 			MetricFreshnessEntries: hpaanalysis.AnalyzeMetricFreshness(hpa, nil),

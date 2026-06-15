@@ -11,6 +11,8 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
+
+	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
 
 var vpaGVR = schema.GroupVersionResource{
@@ -19,26 +21,13 @@ var vpaGVR = schema.GroupVersionResource{
 	Resource: "verticalpodautoscalers",
 }
 
-// VPAInfo holds extracted information about a VerticalPodAutoscaler.
-type VPAInfo struct {
-	Name                string                  `json:"name" yaml:"name"`
-	TargetRef           string                  `json:"targetRef" yaml:"targetRef"`   // "Kind/Name"
-	TargetKind          string                  `json:"targetKind" yaml:"targetKind"` // e.g. "Deployment"
-	TargetName          string                  `json:"targetName" yaml:"targetName"`
-	UpdateMode          string                  `json:"updateMode" yaml:"updateMode"` // e.g. "Auto", "Recommender", "Off"
-	ControlledResources []string                `json:"controlledResources,omitempty" yaml:"controlledResources,omitempty"`
-	Recommendations     []VPARecommendationInfo `json:"recommendations,omitempty" yaml:"recommendations,omitempty"`
-}
+// VPAInfo holds extracted information about a VerticalPodAutoscaler. Aliased
+// from pkg/hpa for backwards compatibility.
+type VPAInfo = hpaanalysis.VPAInfo
 
 // VPARecommendationInfo captures the visible recommendation values for one
-// container/resource pair.
-type VPARecommendationInfo struct {
-	Container string `json:"container" yaml:"container"`
-	Resource  string `json:"resource" yaml:"resource"`
-	Target    string `json:"target,omitempty" yaml:"target,omitempty"`
-	Lower     string `json:"lower,omitempty" yaml:"lower,omitempty"`
-	Upper     string `json:"upper,omitempty" yaml:"upper,omitempty"`
-}
+// container/resource pair. Aliased from pkg/hpa for backwards compatibility.
+type VPARecommendationInfo = hpaanalysis.VPARecommendationInfo
 
 // FetchVPAs lists all VPAs in the given namespace using the dynamic client.
 func FetchVPAs(ctx context.Context, dynClient dynamic.Interface, namespace string) ([]unstructured.Unstructured, error) {

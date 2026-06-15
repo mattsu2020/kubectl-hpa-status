@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -18,9 +18,9 @@ func TestExportStructuredDecisionTrace_NilHPA(t *testing.T) {
 }
 
 func TestExportStructuredDecisionTrace_SingleResourceMetric(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithResourceMetric("cpu", 80, 60),
-		kube.WithReplicas(3, 3),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithResourceMetric("cpu", 80, 60),
+		testutil.WithReplicas(3, 3),
 	)
 
 	a := Analysis{
@@ -93,10 +93,10 @@ func TestExportStructuredDecisionTrace_SingleResourceMetric(t *testing.T) {
 }
 
 func TestExportStructuredDecisionTrace_MultiMetricWinner(t *testing.T) {
-	hpa := kube.BuildHPA("default", "api",
-		kube.WithResourceMetric("cpu", 80, 95),
-		kube.WithExternalMetricWithStatus("queue_depth", "10", "50"),
-		kube.WithReplicas(5, 8),
+	hpa := testutil.BuildHPA("default", "api",
+		testutil.WithResourceMetric("cpu", 80, 95),
+		testutil.WithExternalMetricWithStatus("queue_depth", "10", "50"),
+		testutil.WithReplicas(5, 8),
 	)
 
 	a := Analysis{
@@ -146,9 +146,9 @@ func TestExportStructuredDecisionTrace_MultiMetricWinner(t *testing.T) {
 }
 
 func TestExportStructuredDecisionTrace_WinnerFallback(t *testing.T) {
-	hpa := kube.BuildHPA("default", "svc",
-		kube.WithResourceMetric("cpu", 50, 80),
-		kube.WithReplicas(4, 6),
+	hpa := testutil.BuildHPA("default", "svc",
+		testutil.WithResourceMetric("cpu", 50, 80),
+		testutil.WithReplicas(4, 6),
 	)
 
 	// No MetricDecisionTrace on Analysis, so winner should be computed from metrics.
@@ -169,9 +169,9 @@ func TestExportStructuredDecisionTrace_WinnerFallback(t *testing.T) {
 }
 
 func TestExportStructuredDecisionTrace_ToleranceSuppression(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithResourceMetric("cpu", 80, 82),
-		kube.WithReplicas(3, 3),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithResourceMetric("cpu", 80, 82),
+		testutil.WithReplicas(3, 3),
 	)
 
 	a := Analysis{
@@ -207,10 +207,10 @@ func TestExportStructuredDecisionTrace_ToleranceSuppression(t *testing.T) {
 }
 
 func TestExportStructuredDecisionTrace_LimitClamp(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithResourceMetric("cpu", 50, 90),
-		kube.WithReplicas(5, 10),
-		kube.WithMinMax(1, 10),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithResourceMetric("cpu", 50, 90),
+		testutil.WithReplicas(5, 10),
+		testutil.WithMinMax(1, 10),
 	)
 
 	a := Analysis{
@@ -300,8 +300,8 @@ func TestExportStructuredDecisionTrace_Stabilization(t *testing.T) {
 }
 
 func TestExportStructuredDecisionTrace_NoMetrics(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(3, 3),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(3, 3),
 	)
 
 	a := Analysis{
@@ -328,9 +328,9 @@ func TestExportStructuredDecisionTrace_NoMetrics(t *testing.T) {
 }
 
 func TestExportStructuredDecisionTrace_JSONRoundTrip(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithResourceMetric("cpu", 80, 60),
-		kube.WithReplicas(3, 3),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithResourceMetric("cpu", 80, 60),
+		testutil.WithReplicas(3, 3),
 	)
 
 	a := Analysis{
@@ -376,9 +376,9 @@ func TestExportStructuredDecisionTrace_JSONRoundTrip(t *testing.T) {
 }
 
 func TestExportStructuredDecisionTrace_YAMLRoundTrip(t *testing.T) {
-	hpa := kube.BuildHPA("default", "api",
-		kube.WithResourceMetric("cpu", 80, 95),
-		kube.WithReplicas(5, 7),
+	hpa := testutil.BuildHPA("default", "api",
+		testutil.WithResourceMetric("cpu", 80, 95),
+		testutil.WithReplicas(5, 7),
 	)
 
 	a := Analysis{
@@ -408,9 +408,9 @@ func TestExportStructuredDecisionTrace_YAMLRoundTrip(t *testing.T) {
 }
 
 func TestBuildStructuredMetricTraces_ExternalMetric(t *testing.T) {
-	hpa := kube.BuildHPA("default", "worker",
-		kube.WithExternalMetricWithStatus("queue_depth", "10", "25"),
-		kube.WithReplicas(2, 5),
+	hpa := testutil.BuildHPA("default", "worker",
+		testutil.WithExternalMetricWithStatus("queue_depth", "10", "25"),
+		testutil.WithReplicas(2, 5),
 	)
 
 	metrics := buildStructuredMetricTraces(hpa)

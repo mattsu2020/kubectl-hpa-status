@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/style"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
 // WriteRetrospectiveTimeline renders a RetrospectiveTimeline as a compact

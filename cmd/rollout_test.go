@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 )
 
 func TestNewRolloutCommand(t *testing.T) {
@@ -23,11 +23,11 @@ func TestNewRolloutCommand(t *testing.T) {
 }
 
 func TestRunRolloutJSONOutput(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(8, 12),
-		kube.WithResourceMetric("cpu", 80, 90),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(8, 12),
+		testutil.WithResourceMetric("cpu", 80, 90),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -65,11 +65,11 @@ func TestRunRolloutJSONOutput(t *testing.T) {
 }
 
 func TestRunRolloutTextOutput(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(8, 12),
-		kube.WithResourceMetric("cpu", 80, 90),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(8, 12),
+		testutil.WithResourceMetric("cpu", 80, 90),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -98,11 +98,11 @@ func TestRunRolloutTextOutput(t *testing.T) {
 }
 
 func TestRunRolloutNoRolloutInProgress(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(5, 5),
-		kube.WithResourceMetric("cpu", 80, 70),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(5, 5),
+		testutil.WithResourceMetric("cpu", 80, 70),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{

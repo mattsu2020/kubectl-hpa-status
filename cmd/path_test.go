@@ -12,12 +12,12 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 )
 
 func TestRunPathShowsSchedulerBlocker(t *testing.T) {
 	replicas := int32(12)
-	hpa := kube.BuildHPA("default", "web", kube.WithReplicas(8, 12))
+	hpa := testutil.BuildHPA("default", "web", testutil.WithReplicas(8, 12))
 	deployUID := types.UID("deploy-web")
 	deploy := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
 
@@ -24,11 +24,11 @@ func TestNewBlockersCommand(t *testing.T) {
 }
 
 func TestRunBlockersBasicOutput(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(8, 12),
-		kube.WithResourceMetric("cpu", 80, 90),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(8, 12),
+		testutil.WithResourceMetric("cpu", 80, 90),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -72,11 +72,11 @@ func TestRunBlockersBasicOutput(t *testing.T) {
 }
 
 func TestRunBlockersNoScaleOut(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(5, 5),
-		kube.WithResourceMetric("cpu", 80, 70),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(5, 5),
+		testutil.WithResourceMetric("cpu", 80, 70),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -108,11 +108,11 @@ func TestRunBlockersNoScaleOut(t *testing.T) {
 }
 
 func TestRunBlockersTextOutput(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(8, 12),
-		kube.WithResourceMetric("cpu", 80, 90),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(8, 12),
+		testutil.WithResourceMetric("cpu", 80, 90),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{
@@ -141,11 +141,11 @@ func TestRunBlockersTextOutput(t *testing.T) {
 }
 
 func TestCapacityDeepFlagOnDoctor(t *testing.T) {
-	hpa := kube.BuildHPA("default", "web",
-		kube.WithReplicas(3, 5),
-		kube.WithResourceMetric("cpu", 80, 70),
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(3, 5),
+		testutil.WithResourceMetric("cpu", 80, 70),
 	)
-	fakeClient := kube.NewFakeClient(hpa)
+	fakeClient := testutil.NewFakeClient(hpa)
 
 	var buf bytes.Buffer
 	opts := &options{

@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
-	"github.com/mattsu2020/kubectl-hpa-status/internal/style"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 	"github.com/spf13/cobra"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -227,9 +227,13 @@ func runRetrospectiveTimeline(ctx context.Context, out io.Writer, opts *options,
 
 	// 2. Fetch events since the cutoff time.
 	sinceTime := time.Now().Add(-since)
-	events, err := hpaanalysis.RecentEventsSince(ctx, client.Interface, hpa.Namespace, hpa.Name, sinceTime)
+	coreEvents, err := kube.FetchRecentHPAEventsSince(ctx, client.Interface, hpa.Namespace, hpa.Name, sinceTime)
 	if err != nil {
 		return fmt.Errorf("failed to fetch events: %w", err)
+	}
+	events := make([]hpaanalysis.Event, 0, len(coreEvents))
+	for _, ce := range coreEvents {
+		events = append(events, hpaanalysis.EventFromCore(ce))
 	}
 
 	// 3. Build the retrospective timeline.

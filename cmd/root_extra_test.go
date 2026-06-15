@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	corev1 "k8s.io/api/core/v1"
 )
@@ -880,8 +881,8 @@ func TestDryRunResults(t *testing.T) {
 func TestBuildCapacityContext_NilSelector(t *testing.T) {
 	// With a fake client that has no scale target resources, the selector
 	// resolution will fail and return an empty result.
-	hpa := kube.BuildHPA("default", "web")
-	fakeClient := kube.NewFakeClient(hpa)
+	hpa := testutil.BuildHPA("default", "web")
+	fakeClient := testutil.NewFakeClient(hpa)
 	client := &kube.Client{Interface: fakeClient, Namespace: "default"}
 
 	result := buildCapacityContext(context.Background(), client, hpa)

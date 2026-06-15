@@ -63,7 +63,7 @@ func TestParseReplayScore(t *testing.T) {
 		{in: "single", want: []string{"single"}},
 		{in: "a,b,c", want: []string{"a", "b", "c"}},
 		{in: "a, b , c", want: []string{"a", "b", "c"}}, // trims spaces
-		{in: "a,,b", want: []string{"a", "b"}},           // drops empties
+		{in: "a,,b", want: []string{"a", "b"}},          // drops empties
 		// All-empty parts yield a non-nil empty slice (make([]string, 0, n)).
 		{in: "  ,  ,  ", want: []string{}},
 	}
@@ -97,8 +97,8 @@ func TestReplaySnapshotDurationSeconds(t *testing.T) {
 		index int
 		want  int64
 	}{
-		{0, 60}, // t1 - t0 = 60s
-		{1, 60}, // t2 - t1 = 60s
+		{0, 60},  // t1 - t0 = 60s
+		{1, 60},  // t2 - t1 = 60s
 		{2, 300}, // no next snapshot → falls back to trace.Interval (5m=300s)
 	}
 	for _, tc := range tests {
@@ -117,11 +117,11 @@ func TestReplaySnapshotDurationSeconds(t *testing.T) {
 func TestSnapshotCapped(t *testing.T) {
 	snap := hpaanalysis.TimelineSnapshot{Desired: 10}
 	tests := []struct {
-		name         string
-		snap         hpaanalysis.TimelineSnapshot
-		maxReplicas  int32
-		demandTrace  *hpaanalysis.TimelineTrace
-		want         bool
+		name        string
+		snap        hpaanalysis.TimelineSnapshot
+		maxReplicas int32
+		demandTrace *hpaanalysis.TimelineTrace
+		want        bool
 	}{
 		{name: "maxReplicas zero disables capping", snap: snap, maxReplicas: 0, want: false},
 		{name: "desired reaches max", snap: hpaanalysis.TimelineSnapshot{Desired: 10}, maxReplicas: 10, want: true},
@@ -246,8 +246,8 @@ func TestApplyReplayCandidateScaleDownStabilization(t *testing.T) {
 	trace := hpaanalysis.TimelineTrace{
 		Snapshots: []hpaanalysis.TimelineSnapshot{
 			{Timestamp: t0, Desired: 10},
-			{Timestamp: t0.Add(30 * time.Second), Desired: 5},   // within 90s window → held at 10
-			{Timestamp: t0.Add(120 * time.Second), Desired: 5},  // beyond 90s window → allowed to drop
+			{Timestamp: t0.Add(30 * time.Second), Desired: 5},  // within 90s window → held at 10
+			{Timestamp: t0.Add(120 * time.Second), Desired: 5}, // beyond 90s window → allowed to drop
 		},
 	}
 	candidate := replayCandidateConfig{
@@ -266,15 +266,15 @@ func TestApplyReplayCandidateScaleDownStabilization(t *testing.T) {
 func TestComputeReplayImpact(t *testing.T) {
 	current := replayLabSummary{
 		ScaleEvents:             10,
-		PodHours:               100,
+		PodHours:                100,
 		EstimatedUnderProvision: 3,
-		PeakReplicas:           8,
+		PeakReplicas:            8,
 	}
 	proposed := replayLabSummary{
 		ScaleEvents:             4,
-		PodHours:               80,
+		PodHours:                80,
 		EstimatedUnderProvision: 0,
-		MaxReplicas:            12,
+		MaxReplicas:             12,
 	}
 	impact := computeReplayImpact(current, proposed)
 

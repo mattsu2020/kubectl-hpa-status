@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/style"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
 // WriteReadinessDoctorText renders a ReadinessDoctorReport as plain text.

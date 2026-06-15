@@ -6,13 +6,11 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 )
 
 func TestCheckResourceConsistency_NilHPA(t *testing.T) {
-	resources := &kube.ResourceRequests{
-		Containers: []kube.ContainerResources{
+	resources := &ResourceRequests{
+		Containers: []ContainerResources{
 			{Name: "app", Requests: map[string]string{"cpu": "100m"}},
 		},
 	}
@@ -32,8 +30,8 @@ func TestCheckResourceConsistency_NilResources(t *testing.T) {
 
 func TestCheckResourceConsistency_HealthyNoWarnings(t *testing.T) {
 	hpa := buildTestHPA("cpu", 80)
-	resources := &kube.ResourceRequests{
-		Containers: []kube.ContainerResources{
+	resources := &ResourceRequests{
+		Containers: []ContainerResources{
 			{
 				Name:     "app",
 				Requests: map[string]string{"cpu": "100m"},
@@ -49,8 +47,8 @@ func TestCheckResourceConsistency_HealthyNoWarnings(t *testing.T) {
 
 func TestCheckResourceConsistency_MissingRequests(t *testing.T) {
 	hpa := buildTestHPA("cpu", 80)
-	resources := &kube.ResourceRequests{
-		Containers: []kube.ContainerResources{
+	resources := &ResourceRequests{
+		Containers: []ContainerResources{
 			{
 				Name:     "app",
 				Requests: map[string]string{},
@@ -81,8 +79,8 @@ func TestCheckResourceConsistency_MissingRequests(t *testing.T) {
 
 func TestCheckResourceConsistency_ZeroRequests(t *testing.T) {
 	hpa := buildTestHPA("cpu", 80)
-	resources := &kube.ResourceRequests{
-		Containers: []kube.ContainerResources{
+	resources := &ResourceRequests{
+		Containers: []ContainerResources{
 			{
 				Name:     "app",
 				Requests: map[string]string{"cpu": "0"},
@@ -107,8 +105,8 @@ func TestCheckResourceConsistency_ZeroRequests(t *testing.T) {
 
 func TestCheckResourceConsistency_ZeroRequestsWithSuffix(t *testing.T) {
 	hpa := buildTestHPA("cpu", 80)
-	resources := &kube.ResourceRequests{
-		Containers: []kube.ContainerResources{
+	resources := &ResourceRequests{
+		Containers: []ContainerResources{
 			{
 				Name:     "app",
 				Requests: map[string]string{"cpu": "0m"},
@@ -126,8 +124,8 @@ func TestCheckResourceConsistency_ZeroRequestsWithSuffix(t *testing.T) {
 
 func TestCheckResourceConsistency_HighTargetUtilization(t *testing.T) {
 	hpa := buildTestHPA("cpu", 95)
-	resources := &kube.ResourceRequests{
-		Containers: []kube.ContainerResources{
+	resources := &ResourceRequests{
+		Containers: []ContainerResources{
 			{
 				Name:     "app",
 				Requests: map[string]string{"cpu": "100m"},
@@ -153,8 +151,8 @@ func TestCheckResourceConsistency_HighTargetUtilization(t *testing.T) {
 
 func TestCheckResourceConsistency_TargetUtilizationExactly90(t *testing.T) {
 	hpa := buildTestHPA("cpu", 90)
-	resources := &kube.ResourceRequests{
-		Containers: []kube.ContainerResources{
+	resources := &ResourceRequests{
+		Containers: []ContainerResources{
 			{
 				Name:     "app",
 				Requests: map[string]string{"cpu": "100m"},
@@ -170,8 +168,8 @@ func TestCheckResourceConsistency_TargetUtilizationExactly90(t *testing.T) {
 
 func TestCheckResourceConsistency_MemoryMetric(t *testing.T) {
 	hpa := buildTestHPA("memory", 85)
-	resources := &kube.ResourceRequests{
-		Containers: []kube.ContainerResources{
+	resources := &ResourceRequests{
+		Containers: []ContainerResources{
 			{
 				Name:     "app",
 				Requests: map[string]string{"memory": "128Mi"},
@@ -187,8 +185,8 @@ func TestCheckResourceConsistency_MemoryMetric(t *testing.T) {
 
 func TestCheckResourceConsistency_MissingMemoryRequests(t *testing.T) {
 	hpa := buildTestHPA("memory", 70)
-	resources := &kube.ResourceRequests{
-		Containers: []kube.ContainerResources{
+	resources := &ResourceRequests{
+		Containers: []ContainerResources{
 			{
 				Name:     "app",
 				Requests: map[string]string{"cpu": "100m"},
@@ -210,8 +208,8 @@ func TestCheckResourceConsistency_MissingMemoryRequests(t *testing.T) {
 
 func TestCheckResourceConsistency_MultipleContainers(t *testing.T) {
 	hpa := buildTestHPA("cpu", 80)
-	resources := &kube.ResourceRequests{
-		Containers: []kube.ContainerResources{
+	resources := &ResourceRequests{
+		Containers: []ContainerResources{
 			{
 				Name:     "app",
 				Requests: map[string]string{"cpu": "100m"},
@@ -264,8 +262,8 @@ func TestCheckResourceConsistency_ContainerResourceMetric(t *testing.T) {
 		},
 	}
 
-	resources := &kube.ResourceRequests{
-		Containers: []kube.ContainerResources{
+	resources := &ResourceRequests{
+		Containers: []ContainerResources{
 			{
 				Name:     "app",
 				Requests: map[string]string{"cpu": "100m"},
@@ -322,8 +320,8 @@ func TestCheckResourceConsistency_ContainerResourceMetric_ContainerNotFound(t *t
 		},
 	}
 
-	resources := &kube.ResourceRequests{
-		Containers: []kube.ContainerResources{
+	resources := &ResourceRequests{
+		Containers: []ContainerResources{
 			{
 				Name:     "app",
 				Requests: map[string]string{"cpu": "100m"},
@@ -358,8 +356,8 @@ func TestCheckResourceConsistency_NoMetrics(t *testing.T) {
 		},
 	}
 
-	resources := &kube.ResourceRequests{
-		Containers: []kube.ContainerResources{
+	resources := &ResourceRequests{
+		Containers: []ContainerResources{
 			{Name: "app", Requests: map[string]string{"cpu": "100m"}},
 		},
 	}
@@ -393,8 +391,8 @@ func TestCheckResourceConsistency_ExternalMetricOnly(t *testing.T) {
 		},
 	}
 
-	resources := &kube.ResourceRequests{
-		Containers: []kube.ContainerResources{
+	resources := &ResourceRequests{
+		Containers: []ContainerResources{
 			{Name: "app", Requests: map[string]string{"cpu": "100m"}},
 		},
 	}
@@ -443,8 +441,8 @@ func TestCheckResourceConsistency_CombinedWarnings(t *testing.T) {
 		},
 	}
 
-	resources := &kube.ResourceRequests{
-		Containers: []kube.ContainerResources{
+	resources := &ResourceRequests{
+		Containers: []ContainerResources{
 			{
 				Name:     "app",
 				Requests: map[string]string{"cpu": "100m"},
@@ -505,8 +503,8 @@ func TestIsZeroQuantity(t *testing.T) {
 
 func TestCheckResourceConsistency_MissingLimits(t *testing.T) {
 	hpa := buildTestHPA("cpu", 80)
-	resources := &kube.ResourceRequests{
-		Containers: []kube.ContainerResources{
+	resources := &ResourceRequests{
+		Containers: []ContainerResources{
 			{
 				Name:     "app",
 				Requests: map[string]string{"cpu": "100m"},
@@ -534,8 +532,8 @@ func TestCheckResourceConsistency_MissingLimits(t *testing.T) {
 
 func TestCheckResourceConsistency_TinyCPURequest(t *testing.T) {
 	hpa := buildTestHPA("cpu", 80)
-	resources := &kube.ResourceRequests{
-		Containers: []kube.ContainerResources{
+	resources := &ResourceRequests{
+		Containers: []ContainerResources{
 			{
 				Name:     "app",
 				Requests: map[string]string{"cpu": "5m"},
@@ -566,8 +564,8 @@ func TestCheckResourceConsistency_TinyCPURequest(t *testing.T) {
 
 func TestCheckResourceConsistency_TinyMemoryRequest(t *testing.T) {
 	hpa := buildTestHPA("memory", 80)
-	resources := &kube.ResourceRequests{
-		Containers: []kube.ContainerResources{
+	resources := &ResourceRequests{
+		Containers: []ContainerResources{
 			{
 				Name:     "app",
 				Requests: map[string]string{"memory": "8Mi"},
@@ -592,8 +590,8 @@ func TestCheckResourceConsistency_TinyMemoryRequest(t *testing.T) {
 
 func TestCheckResourceConsistency_NormalRequestNoTinyWarning(t *testing.T) {
 	hpa := buildTestHPA("cpu", 80)
-	resources := &kube.ResourceRequests{
-		Containers: []kube.ContainerResources{
+	resources := &ResourceRequests{
+		Containers: []ContainerResources{
 			{
 				Name:     "app",
 				Requests: map[string]string{"cpu": "100m"},
@@ -613,8 +611,8 @@ func TestCheckResourceConsistency_NormalRequestNoTinyWarning(t *testing.T) {
 
 func TestCheckResourceConsistency_SidecarDistortion(t *testing.T) {
 	hpa := buildTestHPA("cpu", 80)
-	resources := &kube.ResourceRequests{
-		Containers: []kube.ContainerResources{
+	resources := &ResourceRequests{
+		Containers: []ContainerResources{
 			{
 				Name:     "app",
 				Requests: map[string]string{"cpu": "100m"},
@@ -647,8 +645,8 @@ func TestCheckResourceConsistency_SidecarDistortion(t *testing.T) {
 
 func TestCheckResourceConsistency_NoSidecarDistortionForSimilarRequests(t *testing.T) {
 	hpa := buildTestHPA("cpu", 80)
-	resources := &kube.ResourceRequests{
-		Containers: []kube.ContainerResources{
+	resources := &ResourceRequests{
+		Containers: []ContainerResources{
 			{
 				Name:     "app",
 				Requests: map[string]string{"cpu": "100m"},
@@ -673,8 +671,8 @@ func TestCheckResourceConsistency_NoSidecarDistortionForSimilarRequests(t *testi
 
 func TestCheckResourceConsistency_NoSidecarDistortionForSingleContainer(t *testing.T) {
 	hpa := buildTestHPA("cpu", 80)
-	resources := &kube.ResourceRequests{
-		Containers: []kube.ContainerResources{
+	resources := &ResourceRequests{
+		Containers: []ContainerResources{
 			{
 				Name:     "app",
 				Requests: map[string]string{"cpu": "100m"},
@@ -720,8 +718,8 @@ func TestCheckResourceConsistency_NoSidecarDistortionForContainerResourceMetric(
 		},
 	}
 
-	resources := &kube.ResourceRequests{
-		Containers: []kube.ContainerResources{
+	resources := &ResourceRequests{
+		Containers: []ContainerResources{
 			{
 				Name:     "app",
 				Requests: map[string]string{"cpu": "100m"},

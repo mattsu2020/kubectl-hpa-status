@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -12,7 +13,7 @@ import (
 // --- NewClient tests ---
 
 func TestNewClient_WithInterface(t *testing.T) {
-	fakeClient := NewFakeClient()
+	fakeClient := testutil.NewFakeClient()
 	client, err := NewClient(Options{}, WithInterface(fakeClient))
 	if err != nil {
 		t.Fatal(err)
@@ -26,7 +27,7 @@ func TestNewClient_WithInterface(t *testing.T) {
 }
 
 func TestNewClient_WithInterfaceAndExplicitNamespace(t *testing.T) {
-	fakeClient := NewFakeClient()
+	fakeClient := testutil.NewFakeClient()
 	client, err := NewClient(Options{Namespace: "custom"}, WithInterface(fakeClient))
 	if err != nil {
 		t.Fatal(err)
@@ -37,7 +38,7 @@ func TestNewClient_WithInterfaceAndExplicitNamespace(t *testing.T) {
 }
 
 func TestNewClient_WithNamespace(t *testing.T) {
-	fakeClient := NewFakeClient()
+	fakeClient := testutil.NewFakeClient()
 	client, err := NewClient(Options{}, WithInterface(fakeClient), WithNamespace("myns"))
 	if err != nil {
 		t.Fatal(err)
@@ -50,8 +51,8 @@ func TestNewClient_WithNamespace(t *testing.T) {
 // --- ListHPAs tests ---
 
 func TestListHPAs_NoChunkSize(t *testing.T) {
-	hpa := BuildHPA("default", "web")
-	fakeClient := NewFakeClient(hpa)
+	hpa := testutil.BuildHPA("default", "web")
+	fakeClient := testutil.NewFakeClient(hpa)
 	client := &Client{Interface: fakeClient, Namespace: "default"}
 
 	result, err := client.ListHPAs(context.Background(), "default", metav1.ListOptions{}, 0)
@@ -67,9 +68,9 @@ func TestListHPAs_NoChunkSize(t *testing.T) {
 }
 
 func TestListHPAs_WithChunkSize(t *testing.T) {
-	hpa1 := BuildHPA("default", "web")
-	hpa2 := BuildHPA("default", "api")
-	fakeClient := NewFakeClient(hpa1, hpa2)
+	hpa1 := testutil.BuildHPA("default", "web")
+	hpa2 := testutil.BuildHPA("default", "api")
+	fakeClient := testutil.NewFakeClient(hpa1, hpa2)
 	client := &Client{Interface: fakeClient, Namespace: "default"}
 
 	result, err := client.ListHPAs(context.Background(), "default", metav1.ListOptions{}, 500)
@@ -85,7 +86,7 @@ func TestListHPAs_WithChunkSize(t *testing.T) {
 // These exercise the test helper functions themselves to improve kube package coverage.
 
 func TestBuildHPA_Defaults(t *testing.T) {
-	hpa := BuildHPA("default", "web")
+	hpa := testutil.BuildHPA("default", "web")
 	if hpa.Namespace != "default" {
 		t.Fatalf("expected namespace default, got %q", hpa.Namespace)
 	}
@@ -104,11 +105,11 @@ func TestBuildHPA_Defaults(t *testing.T) {
 }
 
 func TestBuildHPA_WithOptions(t *testing.T) {
-	hpa := BuildHPA("ns", "api",
-		WithReplicas(5, 8),
-		WithMinMax(3, 20),
-		WithResourceMetric("cpu", 70, 85),
-		WithConditions(autoscalingv2.HorizontalPodAutoscalerCondition{
+	hpa := testutil.BuildHPA("ns", "api",
+		testutil.WithReplicas(5, 8),
+		testutil.WithMinMax(3, 20),
+		testutil.WithResourceMetric("cpu", 70, 85),
+		testutil.WithConditions(autoscalingv2.HorizontalPodAutoscalerCondition{
 			Type:   autoscalingv2.AbleToScale,
 			Status: "True",
 			Reason: "ReadyForNewScale",
@@ -132,7 +133,7 @@ func TestBuildHPA_WithOptions(t *testing.T) {
 }
 
 func TestBuildEvent(t *testing.T) {
-	ev := BuildEvent("default", "web", "ScaledUp", "New size: 5")
+	ev := testutil.BuildEvent("default", "web", "ScaledUp", "New size: 5")
 	if ev.Namespace != "default" {
 		t.Fatalf("expected namespace default, got %q", ev.Namespace)
 	}
@@ -145,14 +146,14 @@ func TestBuildEvent(t *testing.T) {
 }
 
 func TestNewFakeClient_Empty(t *testing.T) {
-	client := NewFakeClient()
+	client := testutil.NewFakeClient()
 	if client == nil {
 		t.Fatal("expected non-nil client")
 	}
 }
 
 func TestNewFakeClientWithEvents_Empty(t *testing.T) {
-	client := NewFakeClientWithEvents(nil, nil)
+	client := testutil.NewFakeClientWithEvents(nil, nil)
 	if client == nil {
 		t.Fatal("expected non-nil client")
 	}
@@ -283,7 +284,7 @@ func TestFetchPodsForScaleTarget_UnsupportedKind(t *testing.T) {
 			},
 		},
 	}
-	fakeClient := NewFakeClient()
+	fakeClient := testutil.NewFakeClient()
 	_, err := FetchPodsForScaleTarget(context.Background(), fakeClient, "default", hpa)
 	if err == nil {
 		t.Fatal("expected error for unsupported kind")
@@ -293,7 +294,7 @@ func TestFetchPodsForScaleTarget_UnsupportedKind(t *testing.T) {
 // --- FetchPodDisruptionBudgets tests ---
 
 func TestFetchPodDisruptionBudgets_Empty(t *testing.T) {
-	fakeClient := NewFakeClient()
+	fakeClient := testutil.NewFakeClient()
 	result, err := FetchPodDisruptionBudgets(context.Background(), fakeClient, "default", "")
 	if err != nil {
 		t.Fatalf("FetchPodDisruptionBudgets: %v", err)
