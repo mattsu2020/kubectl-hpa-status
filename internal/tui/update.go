@@ -274,7 +274,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.JumpProblem):
 		filtered := m.filteredItems()
 		for i, item := range filtered {
-			if item.Health != "OK" {
+			if item.Health != string(hpaanalysis.HealthOK) {
 				m.cursor = i
 				break
 			}

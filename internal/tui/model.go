@@ -515,9 +515,9 @@ var (
 
 func healthStyle(health string) lipgloss.Style {
 	switch health {
-	case "OK":
+	case string(hpaanalysis.HealthOK):
 		return okStyle
-	case "ERROR":
+	case string(hpaanalysis.HealthError):
 		return errorStyle
 	default:
 		return warnStyle

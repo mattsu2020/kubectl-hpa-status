@@ -473,11 +473,11 @@ func matchesListFilter(item hpaanalysis.ListItem, filter string) bool {
 	case "", "all":
 		return true
 	case "ok":
-		return item.Health == "OK"
+		return item.Health == string(hpaanalysis.HealthOK)
 	case "error":
-		return item.Health == "ERROR"
+		return item.Health == string(hpaanalysis.HealthError)
 	case "limited", "scalinglimited":
-		return item.Health == "LIMITED"
+		return item.Health == string(hpaanalysis.HealthLimited)
 	case "issue":
 		return item.Issue != ""
 	default:

@@ -320,7 +320,7 @@ func summarizeReplayTraceWithDemand(trace hpaanalysis.TimelineTrace, maxReplicas
 			summary.MaxReplicasReached++
 			summary.CappedDurationSeconds += seconds
 		}
-		if snap.Health == "LIMITED" || hasTimelineCondition(snap, "ScalingLimited", "True") {
+		if snap.Health == string(hpaanalysis.HealthLimited) || hasTimelineCondition(snap, "ScalingLimited", "True") {
 			summary.EstimatedUnderProvision++
 			if maxReplicas == 0 {
 				summary.CappedDurationSeconds += seconds
@@ -412,7 +412,7 @@ func applyReplayCandidate(trace hpaanalysis.TimelineTrace, candidate replayCandi
 		}
 		if desired > maxReplicas {
 			desired = maxReplicas
-			out.Snapshots[i].Health = "LIMITED"
+			out.Snapshots[i].Health = string(hpaanalysis.HealthLimited)
 		}
 		if candidate.ScaleDownStabilizationSeconds > 0 {
 			if desired >= lastHeldDesired {

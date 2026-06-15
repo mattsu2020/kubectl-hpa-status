@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
 
 // overviewIssue represents a common issue aggregated across HPAs.
@@ -32,7 +34,7 @@ func (m Model) computeOverview() (map[string]int, float64, []overviewIssue, []ov
 	for _, item := range m.items {
 		h := item.Health
 		if h == "" {
-			h = "OK"
+			h = string(hpaanalysis.HealthOK)
 		}
 		healthDist[h]++
 		totalScore += item.HealthScore
@@ -101,7 +103,12 @@ func (m Model) renderOverviewView() string {
 
 	// 2. Health Distribution.
 	sb.WriteString("Health Distribution:\n")
-	healthOrder := []string{"OK", "STABILIZED", "LIMITED", "ERROR"}
+	healthOrder := []string{
+		string(hpaanalysis.HealthOK),
+		string(hpaanalysis.HealthStabilized),
+		string(hpaanalysis.HealthLimited),
+		string(hpaanalysis.HealthError),
+	}
 	for _, state := range healthOrder {
 		count := healthDist[state]
 		if count == 0 {
@@ -110,13 +117,13 @@ func (m Model) renderOverviewView() string {
 		bar := strings.Repeat("█", count)
 		var coloredBar string
 		switch state {
-		case "OK":
+		case string(hpaanalysis.HealthOK):
 			coloredBar = okStyle.Render(bar)
-		case "STABILIZED":
+		case string(hpaanalysis.HealthStabilized):
 			coloredBar = warnStyle.Render(bar)
-		case "LIMITED":
+		case string(hpaanalysis.HealthLimited):
 			coloredBar = warnStyle.Render(bar)
-		case "ERROR":
+		case string(hpaanalysis.HealthError):
 			coloredBar = errorStyle.Render(bar)
 		default:
 			coloredBar = dimStyle.Render(bar)

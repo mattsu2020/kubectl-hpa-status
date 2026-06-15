@@ -290,11 +290,11 @@ func htmlConditionStatus(status string) string {
 func htmlFreshnessBadge(status string) string {
 	class := "cond-unknown"
 	switch status {
-	case "OK":
+	case string(FreshnessOK):
 		class = "cond-true"
-	case "Missing":
+	case string(FreshnessMissing):
 		class = "cond-false"
-	case "Stale":
+	case string(FreshnessStale):
 		class = "health-limited"
 	}
 	return fmt.Sprintf(`<span class="%s">%s</span>`, class, htmlEscape(status))

@@ -294,7 +294,7 @@ func DetectTimelineAnomalies(trace TimelineTrace) []string {
 		if absInt32(delta) >= maxInt32(3, prev.Desired/2) {
 			largeJumps++
 		}
-		if curr.Health == "ERROR" {
+		if curr.Health == string(HealthError) {
 			errorSnapshots++
 		}
 	}

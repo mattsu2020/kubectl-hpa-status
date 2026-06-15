@@ -134,7 +134,7 @@ func assembleAutoscalerMapInput(ctx context.Context, client *kube.Client, opts *
 
 			// Fetch pending pod details.
 			pendingDetails, _ := kube.FetchPendingPodDetails(ctx, client.Interface, hpa.Namespace, selector)
-			input.PendingPods = convertToAutoscalerMapPendingPods(pendingDetails)
+			input.PendingPods = convertPendingPodInfos(pendingDetails)
 		}
 	}
 
@@ -168,23 +168,6 @@ func assembleAutoscalerMapInput(ctx context.Context, client *kube.Client, opts *
 	input.Quotas = fetchAutoscalerMapQuotas(ctx, client, hpa.Namespace, hpa.Spec.MaxReplicas)
 
 	return input
-}
-
-// convertToAutoscalerMapPendingPods converts internal types to analysis types.
-func convertToAutoscalerMapPendingPods(details []kube.PendingPodDetail) []hpaanalysis.PendingPodInfo {
-	if len(details) == 0 {
-		return nil
-	}
-	result := make([]hpaanalysis.PendingPodInfo, 0, len(details))
-	for _, d := range details {
-		result = append(result, hpaanalysis.PendingPodInfo{
-			Name:          d.Name,
-			Phase:         "Pending",
-			Unschedulable: d.Unschedulable,
-			Reasons:       d.Reasons,
-		})
-	}
-	return result
 }
 
 // detectKarpenter checks for Karpenter pods or CRDs.
