@@ -734,7 +734,7 @@ func TestE2E_ListApplyDryRun(t *testing.T) {
 	rootCmd := cmd.NewRootCommand()
 	rootCmd.SetOut(buf)
 	rootCmd.SetErr(buf)
-	rootCmd.SetArgs([]string{"list", "-n", nsName, "--problem", "--fix", "--apply", "--yes", "--kubeconfig", kubeconfig})
+	rootCmd.SetArgs([]string{"list", "-n", nsName, "--problem", "--apply", "--yes", "--kubeconfig", kubeconfig})
 
 	if err := rootCmd.Execute(); err != nil {
 		t.Logf("list --problem --apply returned error: %v. Output:\n%s", err, buf.String())

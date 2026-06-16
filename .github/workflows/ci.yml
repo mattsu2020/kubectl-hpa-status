@@ -111,7 +111,6 @@ jobs:
           - "1.28"
           - "1.30"
           - "1.35"
-          - "1.36"
         include:
           - kubernetes: "1.26"
             kind-node-image: kindest/node:v1.26.15
@@ -121,8 +120,10 @@ jobs:
             kind-node-image: kindest/node:v1.30.13
           - kubernetes: "1.35"
             kind-node-image: kindest/node:v1.35.0
-          - kubernetes: "1.36"
-            kind-node-image: kindest/node:v1.36.0
+          # NOTE: Kubernetes 1.36 is intentionally omitted. As of 2026-06-16
+          # kindest/node:v1.36.0 has not been published to Docker Hub yet
+          # (kind's node images lag the upstream release). Re-add the 1.36
+          # matrix entry once the image is available.
     steps:
       - name: Checkout
         uses: actions/checkout@v6
