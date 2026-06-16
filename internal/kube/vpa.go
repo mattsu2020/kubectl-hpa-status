@@ -11,8 +11,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
-
-	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
 
 var vpaGVR = schema.GroupVersionResource{
@@ -21,13 +19,29 @@ var vpaGVR = schema.GroupVersionResource{
 	Resource: "verticalpodautoscalers",
 }
 
-// VPAInfo holds extracted information about a VerticalPodAutoscaler. Aliased
-// from pkg/hpa for backwards compatibility.
-type VPAInfo = hpaanalysis.VPAInfo
+// VPAInfo holds the parsed fields of a VerticalPodAutoscaler relevant to HPA
+// conflict analysis. This is a kube-layer DTO; callers in cmd/ convert it to
+// the analysis model (pkg/hpa.VPAInfo).
+type VPAInfo struct {
+	Name                string                  `json:"name" yaml:"name"`
+	TargetRef           string                  `json:"targetRef" yaml:"targetRef"`
+	TargetKind          string                  `json:"targetKind" yaml:"targetKind"`
+	TargetName          string                  `json:"targetName" yaml:"targetName"`
+	UpdateMode          string                  `json:"updateMode" yaml:"updateMode"`
+	ControlledResources []string                `json:"controlledResources,omitempty" yaml:"controlledResources,omitempty"`
+	Recommendations     []VPARecommendationInfo `json:"recommendations,omitempty" yaml:"recommendations,omitempty"`
+}
 
 // VPARecommendationInfo captures the visible recommendation values for one
-// container/resource pair. Aliased from pkg/hpa for backwards compatibility.
-type VPARecommendationInfo = hpaanalysis.VPARecommendationInfo
+// container/resource pair, as extracted from a VPA object. This is a
+// kube-layer DTO.
+type VPARecommendationInfo struct {
+	Container string `json:"container" yaml:"container"`
+	Resource  string `json:"resource" yaml:"resource"`
+	Target    string `json:"target,omitempty" yaml:"target,omitempty"`
+	Lower     string `json:"lower,omitempty" yaml:"lower,omitempty"`
+	Upper     string `json:"upper,omitempty" yaml:"upper,omitempty"`
+}
 
 // FetchVPAs lists all VPAs in the given namespace using the dynamic client.
 func FetchVPAs(ctx context.Context, dynClient dynamic.Interface, namespace string) ([]unstructured.Unstructured, error) {

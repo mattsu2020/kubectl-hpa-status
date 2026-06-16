@@ -135,13 +135,13 @@ func classifyListConditions(conditions []Condition) (errors, limiteds []string) 
 // overriding with "ERROR"/"LIMITED" based on classified buckets.
 func deriveListHealth(base string, errors, limiteds []string) string {
 	if base == "" {
-		base = "OK"
+		base = string(HealthOK)
 	}
 	if len(errors) > 0 {
-		return "ERROR"
+		return string(HealthError)
 	}
 	if len(limiteds) > 0 {
-		return "LIMITED"
+		return string(HealthLimited)
 	}
 	return base
 }
@@ -177,11 +177,11 @@ func trendFlappingFromAnalysis(trend *HealthTrendResult) bool {
 func healthFromAnalysis(src Analysis) (string, int) {
 	score := 100
 	switch src.Health {
-	case "ERROR":
+	case string(HealthError):
 		score = 50
-	case "LIMITED":
+	case string(HealthLimited):
 		score = 75
-	case "STABILIZED":
+	case string(HealthStabilized):
 		score = 90
 	}
 	return src.Health, score

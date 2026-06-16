@@ -463,11 +463,11 @@ func writeIncidentEscalationNotes(buf *strings.Builder, reports []StatusReport) 
 	for _, r := range reports {
 		a := r.Analysis
 		switch a.Health {
-		case "ERROR":
+		case string(HealthError):
 			buf.WriteString(fmt.Sprintf("- **%s/%s**: Escalate to **platform team** — metrics pipeline or HPA controller may be unavailable.\n",
 				a.Namespace, a.Name))
 			escalationWritten = true
-		case "LIMITED":
+		case string(HealthLimited):
 			buf.WriteString(fmt.Sprintf("- **%s/%s**: Escalate to **application team** — HPA is capped; review scaling limits and workload configuration.\n",
 				a.Namespace, a.Name))
 			escalationWritten = true
@@ -497,11 +497,11 @@ func overallSeverity(reports []StatusReport) string {
 // healthSeverity maps health state and score to a severity label.
 func healthSeverity(health string, score int) string {
 	switch {
-	case health == "ERROR" && score <= 30:
+	case health == string(HealthError) && score <= 30:
 		return "CRITICAL"
-	case health == "ERROR":
+	case health == string(HealthError):
 		return "HIGH"
-	case health == "LIMITED":
+	case health == string(HealthLimited):
 		return "MEDIUM"
 	default:
 		return "LOW"
@@ -517,11 +517,11 @@ func severityHigher(a, b string) bool {
 // severityEmoji prefixes a visual marker for the health state.
 func severityEmoji(health string) string {
 	switch health {
-	case "ERROR":
+	case string(HealthError):
 		return "[ALERT] " + health
-	case "LIMITED":
+	case string(HealthLimited):
 		return "[WARN] " + health
-	case "STABILIZED":
+	case string(HealthStabilized):
 		return "[INFO] " + health
 	default:
 		return "[OK] " + health
@@ -531,11 +531,11 @@ func severityEmoji(health string) string {
 // healthPriority returns a numeric priority for ordering (lower = more urgent).
 func healthPriority(health string) int {
 	switch health {
-	case "ERROR":
+	case string(HealthError):
 		return 0
-	case "LIMITED":
+	case string(HealthLimited):
 		return 1
-	case "STABILIZED":
+	case string(HealthStabilized):
 		return 2
 	default:
 		return 3

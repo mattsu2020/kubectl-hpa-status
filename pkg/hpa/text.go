@@ -374,11 +374,11 @@ func metricFreshnessIndicator(status string, theme style.Theme) string {
 func metricFreshnessStatusDisplay(status string, theme style.Theme) string {
 	switch status {
 	case string(FreshnessOK):
-		return theme.OK.Render("OK")
+		return theme.OK.Render(string(FreshnessOK))
 	case string(FreshnessMissing):
-		return theme.Error.Render("MISSING")
+		return theme.Error.Render(string(FreshnessMissing))
 	case string(FreshnessStale):
-		return theme.Bold.Render("STALE")
+		return theme.Bold.Render(string(FreshnessStale))
 	default:
 		return theme.Dim.Render("UNKNOWN")
 	}

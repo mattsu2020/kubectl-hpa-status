@@ -9,13 +9,14 @@ import (
 
 // This file centralizes the conversion helpers that translate kube.* data
 // types into the pkg/hpa analysis types. Several commands (capacity, capacity
-// plan, blockers, autoscaler-map) need the same translation; collecting them
-// here removes the copy-paste duplication that previously lived in each file.
+// plan, blockers, autoscaler-map, status enrichment) need the same translation;
+// collecting them here removes the copy-paste duplication that previously lived
+// in each file.
 
 // convertPendingPodDetail maps one kube.PendingPodDetail to a pending-pod
 // destination type via a builder callback. Centralizing the loop removes the
-// three identical copies that previously lived in capacity.go,
-// autoscaler_map.go, and capacity_plan.go.
+// identical copies that previously lived in capacity.go, autoscaler_map.go,
+// and capacity_plan.go.
 func convertPendingPodDetail[T any](details []kube.PendingPodDetail, build func(kube.PendingPodDetail) T) []T {
 	if len(details) == 0 {
 		return nil
@@ -29,9 +30,9 @@ func convertPendingPodDetail[T any](details []kube.PendingPodDetail, build func(
 
 func makeSlice[T any](capacity int) []T { return make([]T, 0, capacity) }
 
-// convertToPendingPodInfos translates into the analysis-side PendingPodInfo
+// convertPendingPodInfos translates into the analysis-side PendingPodInfo
 // (Phase always "Pending"). Shared by capacity, capacity-plan, autoscaler-map.
-func convertToPendingPodInfos(details []kube.PendingPodDetail) []hpaanalysis.PendingPodInfo {
+func convertPendingPodInfos(details []kube.PendingPodDetail) []hpaanalysis.PendingPodInfo {
 	return convertPendingPodDetail(details, func(d kube.PendingPodDetail) hpaanalysis.PendingPodInfo {
 		return hpaanalysis.PendingPodInfo{
 			Name:          d.Name,
@@ -53,6 +54,39 @@ func convertToBlockerPodInfos(details []kube.PendingPodDetail) []hpaanalysis.Blo
 			Reasons:       d.Reasons,
 		}
 	})
+}
+
+// convertResourceRequests translates the kube-layer ResourceRequests DTO into
+// the analysis model shape consumed by pkg/hpa.CheckResourceConsistency.
+// Returns nil when the input is nil so optional analysis fields stay unset.
+func convertResourceRequests(rr *kube.ResourceRequests) *hpaanalysis.ResourceRequests {
+	if rr == nil {
+		return nil
+	}
+	out := &hpaanalysis.ResourceRequests{
+		Containers: make([]hpaanalysis.ContainerResources, 0, len(rr.Containers)),
+	}
+	for _, c := range rr.Containers {
+		out.Containers = append(out.Containers, hpaanalysis.ContainerResources{
+			Name:     c.Name,
+			Requests: cloneStringMap(c.Requests),
+			Limits:   cloneStringMap(c.Limits),
+		})
+	}
+	return out
+}
+
+// cloneStringMap returns a shallow copy of m, or nil when m is empty so the
+// analysis struct keeps its omitempty semantics.
+func cloneStringMap(m map[string]string) map[string]string {
+	if len(m) == 0 {
+		return nil
+	}
+	cp := make(map[string]string, len(m))
+	for k, v := range m {
+		cp[k] = v
+	}
+	return cp
 }
 
 // convertQuotas translates ResourceQuota info into the analysis-side

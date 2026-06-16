@@ -69,7 +69,7 @@ func enrichResourceCheck(ctx context.Context, opts *options, client *kube.Client
 		return
 	}
 	if resources != nil {
-		report.Analysis.ResourceCheck = hpaanalysis.CheckResourceConsistency(hpa, resources)
+		report.Analysis.ResourceCheck = hpaanalysis.CheckResourceConsistency(hpa, convertResourceRequests(resources))
 	}
 }
 

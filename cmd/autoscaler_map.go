@@ -134,7 +134,7 @@ func assembleAutoscalerMapInput(ctx context.Context, client *kube.Client, opts *
 
 			// Fetch pending pod details.
 			pendingDetails, _ := kube.FetchPendingPodDetails(ctx, client.Interface, hpa.Namespace, selector)
-			input.PendingPods = convertToPendingPodInfos(pendingDetails)
+			input.PendingPods = convertPendingPodInfos(pendingDetails)
 		}
 	}
 

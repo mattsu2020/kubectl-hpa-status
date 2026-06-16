@@ -21,7 +21,7 @@ func buildCapacityContext(ctx context.Context, client *kube.Client, hpa *autosca
 	}
 
 	pendingDetails, _ := kube.FetchPendingPodDetails(ctx, client.Interface, hpa.Namespace, selector)
-	result.PendingPods = convertToPendingPodInfos(pendingDetails)
+	result.PendingPods = convertPendingPodInfos(pendingDetails)
 
 	quotaInfos, _ := kube.FetchResourceQuotas(ctx, client.Interface, hpa.Namespace)
 	result.QuotaConstraints = convertQuotas(quotaInfos)

@@ -91,12 +91,12 @@ func renderHealthTimeline(snapshots []hpaanalysis.TimelineSnapshot, width int) s
 		ch := "█"
 		var s lipgloss.Style
 		switch snap.Health {
-		case "OK":
+		case string(hpaanalysis.HealthOK):
 			s = okStyle
-		case "LIMITED", "STABILIZED":
+		case string(hpaanalysis.HealthLimited), string(hpaanalysis.HealthStabilized):
 			ch = "▓"
 			s = warnStyle
-		case "ERROR":
+		case string(hpaanalysis.HealthError):
 			ch = "░"
 			s = errorStyle
 		default:
