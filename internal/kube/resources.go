@@ -3,21 +3,26 @@ package kube
 import (
 	"context"
 
-	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
-
-	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
 
 // ContainerResources holds the resource requests and limits for a single
-// container. Aliased from pkg/hpa for backwards compatibility.
-type ContainerResources = hpaanalysis.ContainerResources
+// container, extracted from a pod template. This is a kube-layer DTO;
+// callers in cmd/ convert it to the analysis model in pkg/hpa.
+type ContainerResources struct {
+	Name     string            `json:"name" yaml:"name"`
+	Requests map[string]string `json:"requests,omitempty" yaml:"requests,omitempty"`
+	Limits   map[string]string `json:"limits,omitempty" yaml:"limits,omitempty"`
+}
 
 // ResourceRequests holds resource information for all containers in a pod
-// template. Aliased from pkg/hpa for backwards compatibility.
-type ResourceRequests = hpaanalysis.ResourceRequests
+// template. This is a kube-layer DTO; callers in cmd/ convert it to the
+// analysis model in pkg/hpa.
+type ResourceRequests struct {
+	Containers []ContainerResources `json:"containers" yaml:"containers"`
+}
 
 // FetchScaleTargetResources fetches the pod template from the scale target
 // (Deployment, StatefulSet, or ReplicaSet) and extracts container resource
@@ -68,14 +73,4 @@ func extractResourcesFromPodTemplate(tmpl *corev1.PodTemplateSpec) *ResourceRequ
 	}
 
 	return result
-}
-
-// extractResourcesFromAppsv1PodTemplate extracts resources from an apps/v1
-// Deployment, StatefulSet, or ReplicaSet pod template using the shared
-// extractResourcesFromPodTemplate helper.
-func extractResourcesFromAppsv1PodTemplate(spec *appsv1.DeploymentSpec) *ResourceRequests {
-	if spec == nil {
-		return nil
-	}
-	return extractResourcesFromPodTemplate(&spec.Template)
 }

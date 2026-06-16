@@ -266,8 +266,9 @@ func EnrichVPA(ctx context.Context, ec *Context, hpa *autoscalingv2.HorizontalPo
 		return
 	}
 
-	report.Analysis.VPAConflict = hpaanalysis.NewVPAConflictInfo(vpaInfo)
-	report.Analysis.Interpretation = append(report.Analysis.Interpretation, hpaanalysis.AnalyzeVPA(hpa, vpaInfo)...)
+	analysisVPA := convertVPAInfo(vpaInfo)
+	report.Analysis.VPAConflict = hpaanalysis.NewVPAConflictInfo(analysisVPA)
+	report.Analysis.Interpretation = append(report.Analysis.Interpretation, hpaanalysis.AnalyzeVPA(hpa, analysisVPA)...)
 }
 
 // EnrichReport applies KEDA and VPA enrichment to a StatusReport and
@@ -395,13 +396,40 @@ func BatchVPA(ctx context.Context, ec *Context, hpas []autoscalingv2.HorizontalP
 				continue
 			}
 			if vpaTargetMatchesHPA(vpa, hpa) {
-				results[hpa.Namespace+"/"+hpa.Name] = hpaanalysis.NewVPAConflictInfo(&vpa)
+				results[hpa.Namespace+"/"+hpa.Name] = hpaanalysis.NewVPAConflictInfo(convertVPAInfo(&vpa))
 				break
 			}
 		}
 	}
 
 	return results, warnings
+}
+
+// convertVPAInfo translates the kube-layer VPAInfo DTO into the analysis
+// model shape consumed by pkg/hpa analyzers. The internal/kube package must
+// not depend on pkg/hpa, so this conversion lives here at the boundary.
+func convertVPAInfo(vpa *kube.VPAInfo) *hpaanalysis.VPAInfo {
+	if vpa == nil {
+		return nil
+	}
+	out := &hpaanalysis.VPAInfo{
+		Name:                vpa.Name,
+		TargetRef:           vpa.TargetRef,
+		TargetKind:          vpa.TargetKind,
+		TargetName:          vpa.TargetName,
+		UpdateMode:          vpa.UpdateMode,
+		ControlledResources: append([]string(nil), vpa.ControlledResources...),
+	}
+	for _, r := range vpa.Recommendations {
+		out.Recommendations = append(out.Recommendations, hpaanalysis.VPARecommendationInfo{
+			Container: r.Container,
+			Resource:  r.Resource,
+			Target:    r.Target,
+			Lower:     r.Lower,
+			Upper:     r.Upper,
+		})
+	}
+	return out
 }
 
 // scaledObjectMatchesHPA checks if a ScaledObject's scaleTargetRef
