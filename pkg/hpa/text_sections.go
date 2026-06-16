@@ -14,7 +14,7 @@ import (
 // isolation.
 
 // appendScoreBreakdown renders the optional score breakdown table.
-func appendScoreBreakdown(out *[]byte, a Analysis) {
+func appendScoreBreakdown(out *[]byte, a *Analysis) {
 	if a.HealthResult == nil || len(a.HealthResult.Signals) == 0 {
 		return
 	}
@@ -27,7 +27,7 @@ func appendScoreBreakdown(out *[]byte, a Analysis) {
 }
 
 // appendConditionsSection renders the Conditions section.
-func appendConditionsSection(out *[]byte, a Analysis, theme style.Theme, labels labels) {
+func appendConditionsSection(out *[]byte, a *Analysis, theme style.Theme, labels labels) {
 	*out = append(*out, '\n')
 	*out = fmt.Appendf(*out, "%s:\n", labels.Conditions)
 	if len(a.Conditions) == 0 {
@@ -41,7 +41,7 @@ func appendConditionsSection(out *[]byte, a Analysis, theme style.Theme, labels 
 }
 
 // appendMetricsSection renders the Metrics section.
-func appendMetricsSection(out *[]byte, a Analysis, theme style.Theme, labels labels) {
+func appendMetricsSection(out *[]byte, a *Analysis, theme style.Theme, labels labels) {
 	*out = append(*out, '\n')
 	*out = fmt.Appendf(*out, "%s:\n", labels.Metrics)
 	if len(a.Metrics) == 0 {
@@ -56,11 +56,11 @@ func appendMetricsSection(out *[]byte, a Analysis, theme style.Theme, labels lab
 }
 
 // appendStabilizationAndBehavior renders the stabilization window and behavior sections.
-func appendStabilizationAndBehavior(out *[]byte, a Analysis, theme style.Theme, labels labels) {
+func appendStabilizationAndBehavior(out *[]byte, a *Analysis, theme style.Theme, labels labels) {
 	if a.StabilizationRemaining != nil && *a.StabilizationRemaining > 0 {
 		*out = append(*out, '\n')
 		if a.StabilizationConfidence != "" {
-			explain := FormatStabilizationExplain(a)
+			explain := FormatStabilizationExplain(*a)
 			*out = fmt.Appendf(*out, "%s\n", theme.Warning.Render(explain))
 		} else {
 			progress := FormatStabilizationProgress(a.StabilizationRemaining, a.StabilizationWindowSeconds)
@@ -77,7 +77,7 @@ func appendStabilizationAndBehavior(out *[]byte, a Analysis, theme style.Theme, 
 }
 
 // appendHiddenFactors renders the hidden decision factors section when requested.
-func appendHiddenFactors(out *[]byte, a Analysis, opts StatusTextOptions) {
+func appendHiddenFactors(out *[]byte, a *Analysis, opts StatusTextOptions) {
 	if !opts.HiddenFactors || len(a.HiddenFactors) == 0 {
 		return
 	}
@@ -94,7 +94,7 @@ func appendHiddenFactors(out *[]byte, a Analysis, opts StatusTextOptions) {
 }
 
 // appendSuggestionsSection renders the suggestions (or fix-mode) section.
-func appendSuggestionsSection(out *[]byte, a Analysis, opts StatusTextOptions, theme style.Theme, labels labels) {
+func appendSuggestionsSection(out *[]byte, a *Analysis, opts StatusTextOptions, theme style.Theme, labels labels) {
 	if len(a.Suggestions) == 0 {
 		return
 	}
@@ -129,7 +129,7 @@ func appendSuggestionsSection(out *[]byte, a Analysis, opts StatusTextOptions, t
 // appendKEDASection renders the KEDA ScaledObject section.
 //
 //nolint:gocyclo // Flat, sequential rendering of independent KEDA fields; splitting would obscure the output shape.
-func appendKEDASection(out *[]byte, a Analysis, theme style.Theme, labels labels) {
+func appendKEDASection(out *[]byte, a *Analysis, theme style.Theme, labels labels) {
 	if a.KEDAInfo == nil {
 		return
 	}
@@ -193,7 +193,7 @@ func appendKEDASection(out *[]byte, a Analysis, theme style.Theme, labels labels
 }
 
 // appendVPASection renders the VPA conflict section.
-func appendVPASection(out *[]byte, a Analysis, theme style.Theme) {
+func appendVPASection(out *[]byte, a *Analysis, theme style.Theme) {
 	if a.VPAConflict == nil {
 		return
 	}
@@ -214,7 +214,7 @@ func appendVPASection(out *[]byte, a Analysis, theme style.Theme) {
 }
 
 // appendMetricsDiagnosticsSection renders the metrics pipeline diagnostics section.
-func appendMetricsDiagnosticsSection(out *[]byte, a Analysis, theme style.Theme, labels labels) {
+func appendMetricsDiagnosticsSection(out *[]byte, a *Analysis, theme style.Theme, labels labels) {
 	if a.MetricsDiagnostics == nil {
 		return
 	}
@@ -242,7 +242,7 @@ func appendMetricsDiagnosticsSection(out *[]byte, a Analysis, theme style.Theme,
 // appendMetricFreshnessSection renders the metric freshness section.
 //
 //nolint:gocyclo // Flat, sequential rendering of independent freshness fields; splitting would obscure the output shape.
-func appendMetricFreshnessSection(out *[]byte, a Analysis, theme style.Theme, labels labels) {
+func appendMetricFreshnessSection(out *[]byte, a *Analysis, theme style.Theme, labels labels) {
 	if len(a.MetricFreshnessEntries) == 0 {
 		return
 	}
@@ -298,7 +298,7 @@ func appendMetricFreshnessSection(out *[]byte, a Analysis, theme style.Theme, la
 }
 
 // appendResourceCheckSection renders the resource-consistency warnings section.
-func appendResourceCheckSection(out *[]byte, a Analysis) {
+func appendResourceCheckSection(out *[]byte, a *Analysis) {
 	if a.ResourceCheck == nil || len(a.ResourceCheck.Warnings) == 0 {
 		return
 	}
@@ -314,7 +314,7 @@ func appendResourceCheckSection(out *[]byte, a Analysis) {
 }
 
 // appendPodAnalysisSection renders the pod-level analysis section.
-func appendPodAnalysisSection(out *[]byte, a Analysis, labels labels) {
+func appendPodAnalysisSection(out *[]byte, a *Analysis, labels labels) {
 	if a.PodAnalysis == nil {
 		return
 	}
@@ -334,7 +334,7 @@ func appendPodAnalysisSection(out *[]byte, a Analysis, labels labels) {
 }
 
 // appendSimulationSection renders the --simulate output section.
-func appendSimulationSection(out *[]byte, a Analysis, theme style.Theme, labels labels) {
+func appendSimulationSection(out *[]byte, a *Analysis, theme style.Theme, labels labels) {
 	if a.Simulation == nil {
 		return
 	}
@@ -364,7 +364,7 @@ func appendSimulationSection(out *[]byte, a Analysis, theme style.Theme, labels 
 // appendCapacityContextSection renders the capacity-context section.
 //
 //nolint:gocyclo // Flat, sequential rendering of independent capacity fields; splitting would obscure the output shape.
-func appendCapacityContextSection(out *[]byte, a Analysis, theme style.Theme, labels labels) {
+func appendCapacityContextSection(out *[]byte, a *Analysis, theme style.Theme, labels labels) {
 	if a.CapacityContext == nil {
 		return
 	}

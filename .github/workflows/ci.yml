@@ -81,7 +81,11 @@ jobs:
       - name: gosec
         uses: securego/gosec@v2.27.1
         with:
-          args: ./...
+          # -conf explicitly loads .gosec.yaml, which globally excludes G115
+          # (int->int32 replica-count assignments, k8s API contract) and G304
+          # (user-supplied file paths opened by this kubectl plugin). See the
+          # rationale documented in .gosec.yaml.
+          args: -conf .gosec.yaml ./...
 
   golangci-lint:
     runs-on: ubuntu-latest

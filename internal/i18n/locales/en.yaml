@@ -50,9 +50,13 @@ dir_scale_up: "HPA currently wants to scale up."
 dir_scale_down: "HPA currently wants to scale down."
 dir_at_max: "HPA is at maxReplicas."
 dir_at_min: "HPA is at minReplicas."
+dir_at_min_scale_to_zero: "HPA is at minReplicas (scale-to-zero enabled)."
 dir_unchanged: "HPA currently keeps the replica count unchanged."
 dir_no_recommendation: "HPA has no visible desired replica recommendation in status."
 dir_inactive: "HPA cannot currently compute a scaling recommendation from metrics."
+dir_scale_to_zero: "HPA wants to scale to zero (cold start will occur on next scale-up)."
+dir_scaled_to_zero: "HPA is scaled to zero (minReplicas=0); awaiting trigger to scale up."
+dir_unavailable: "HPA data is unavailable."
 
 # List headers
 list_header_namespace: "NAMESPACE"

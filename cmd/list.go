@@ -224,11 +224,12 @@ func writeListResult(out io.Writer, opts *options, report hpaanalysis.ListReport
 	}
 	return writeOutput(out, format, templateStr, report, func() error {
 		if err := hpaanalysis.WriteListText(out, report, hpaanalysis.ListTextOptions{
-			Wide:   wide,
-			Color:  shouldColorize(opts.color, out),
-			Theme:  style.NewTheme(shouldColorize(opts.color, out)),
-			Lang:   outputLang(opts.lang, opts.output),
-			Labels: labelProviderForLang(opts.lang, opts.output),
+			Wide:              wide,
+			Color:             shouldColorize(opts.color, out),
+			Theme:             style.NewTheme(shouldColorize(opts.color, out)),
+			Lang:              outputLang(opts.lang, opts.output),
+			Labels:            labelProviderForLang(opts.lang, opts.output),
+			SummaryTranslator: summaryTranslatorForLang(opts.lang, opts.output),
 		}); err != nil {
 			return err
 		}

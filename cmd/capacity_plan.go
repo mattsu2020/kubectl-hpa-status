@@ -208,19 +208,14 @@ func convertToCapacityContainerResources(rr *kube.ResourceRequests) []hpaanalysi
 }
 
 func convertToCapacityQuotas(infos []kube.QuotaInfo) []hpaanalysis.CapacityQuotaInfo {
-	if len(infos) == 0 {
-		return nil
-	}
-	result := make([]hpaanalysis.CapacityQuotaInfo, 0, len(infos))
-	for _, q := range infos {
-		result = append(result, hpaanalysis.CapacityQuotaInfo{
+	return convertQuotaDetail(infos, func(q kube.QuotaInfo) hpaanalysis.CapacityQuotaInfo {
+		return hpaanalysis.CapacityQuotaInfo{
 			Name:     q.Name,
 			Resource: q.Resource,
 			Used:     q.Used,
 			Hard:     q.Hard,
-		})
-	}
-	return result
+		}
+	})
 }
 
 func convertToCapacityLimitRanges(infos []kube.LimitRangeInfo) []hpaanalysis.LimitRangeConstraint {

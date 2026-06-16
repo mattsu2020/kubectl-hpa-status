@@ -1,0 +1,29 @@
+# gosec configuration for kubectl-hpa-status.
+#
+# The two globally-excluded rules below are intentional design choices, not
+# security defects. Documenting the rationale here so future contributors
+# understand why they are suppressed and do not re-enable them blindly.
+
+global:
+  # Audit runs but does not fail the build on findings; instead we rely on the
+  # per-rule excludes below to keep the signal clean. Keeping audit=false (the
+  # default) means NEW rule violations outside the excluded set still fail CI,
+  # which is the desired behaviour.
+  audit: false
+
+# Exclude rules that produce false positives for this codebase's domain.
+exclude:
+  # G115 (CWE-190): integer overflow conversion.
+  # All occurrences are assignments of replica counts / resource quantities
+  # into Kubernetes API *int32 fields (e.g. Spec.MaxReplicas). The values
+  # originate from the cluster API or user flags bounded to realistic replica
+  # ranges (1..~1000), never from untrusted network input, so int32 overflow
+  # is not reachable. The k8s API itself mandates int32 here.
+  - G115
+  # G304 (CWE-22): potential file inclusion via variable.
+  # This is a kubectl plugin: every occurrence opens a path the operator
+  # explicitly supplied on the command line (--manifest, --timeline-file,
+  # --controller-profile-file, --config, history store paths, etc.). Path
+  # traversal is the user's own filesystem by design; there is no untrusted
+  # input boundary to enforce.
+  - G304

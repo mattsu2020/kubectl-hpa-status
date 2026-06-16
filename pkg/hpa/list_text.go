@@ -65,6 +65,21 @@ type ListTextOptions struct {
 	Labels LabelProvider // When nil, English defaults are used. Takes precedence over Lang.
 	// Theme takes precedence over Color. When Theme is set, Color is ignored.
 	Theme style.Theme
+	// SummaryTranslator, when non-nil, localises the per-row Summary line
+	// (populated from Analysis.Summary via NewListItem). pkg/hpa cannot import
+	// internal/i18n, so the cmd layer injects i18n.Get here, mirroring
+	// StatusTextOptions.SummaryTranslator. When nil, Summary is rendered
+	// verbatim (English).
+	SummaryTranslator func(string) string
+}
+
+// translateSummary applies opts.SummaryTranslator when configured, returning
+// the original string otherwise.
+func (o ListTextOptions) translateSummary(s string) string {
+	if o.SummaryTranslator != nil {
+		return o.SummaryTranslator(s)
+	}
+	return s
 }
 
 func (o ListTextOptions) theme() style.Theme {
@@ -253,7 +268,7 @@ func WriteListText(w io.Writer, report ListReport, opts ListTextOptions) error {
 			if showTrend {
 				row = fmt.Sprintf("%s %s", row, padRight(item.TrendSparkline, 20))
 			}
-			out = fmt.Appendf(out, "%s %s\n", row, item.Summary)
+			out = fmt.Appendf(out, "%s %s\n", row, opts.translateSummary(item.Summary))
 		}
 		_, err := w.Write(out)
 		return err
@@ -283,7 +298,7 @@ func WriteListText(w io.Writer, report ListReport, opts ListTextOptions) error {
 		if showTrend {
 			row = fmt.Sprintf("%s %s", row, padRight(item.TrendSparkline, 20))
 		}
-		out = fmt.Appendf(out, "%s %s\n", row, item.Summary)
+		out = fmt.Appendf(out, "%s %s\n", row, opts.translateSummary(item.Summary))
 	}
 	_, err := w.Write(out)
 	return err

@@ -104,7 +104,10 @@ func writeWatchReport(out io.Writer, opts *options, theme style.Theme, report hp
 				Current:  &report.Analysis,
 			}, theme)
 		}
-		return hpaanalysis.WriteStatusText(out, report, theme)
+		// Use the options-aware writer so the Summary line is localised when
+		// --lang is set (dashboard/diff paths above do not yet thread
+		// StatusTextOptions and render Summary verbatim).
+		return hpaanalysis.WriteStatusTextWithOptions(out, report, statusTextOptions(opts, out))
 	})
 }
 

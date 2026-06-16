@@ -74,7 +74,9 @@ func runWhyNotScale(ctx context.Context, out io.Writer, opts *options, names []s
 }
 
 func buildWhyNotScaleReport(status hpaanalysis.StatusReport) whyNotScaleReport {
-	a := status.Analysis
+	// Pass Analysis by pointer: whyNotScale calls a chain of 16 helpers that
+	// each previously copied the 63-field Analysis struct.
+	a := &status.Analysis
 	report := whyNotScaleReport{
 		Namespace:  a.Namespace,
 		Name:       a.Name,
@@ -117,7 +119,7 @@ func buildWhyNotScaleReport(status hpaanalysis.StatusReport) whyNotScaleReport {
 	return report
 }
 
-func whyNotScaleEstimated(a hpaanalysis.Analysis) []string {
+func whyNotScaleEstimated(a *hpaanalysis.Analysis) []string {
 	var estimated []string
 
 	estimated = appendToleranceEstimates(estimated, a)
@@ -127,7 +129,7 @@ func whyNotScaleEstimated(a hpaanalysis.Analysis) []string {
 	return estimated
 }
 
-func appendToleranceEstimates(estimated []string, a hpaanalysis.Analysis) []string {
+func appendToleranceEstimates(estimated []string, a *hpaanalysis.Analysis) []string {
 	const defaultTolerance = 0.1
 
 	// Prefer structured decision trace tolerance data when available.
@@ -188,7 +190,7 @@ func appendToleranceEstimateForMetric(estimated []string, metric hpaanalysis.Met
 	return estimated
 }
 
-func appendStabilizationEstimates(estimated []string, a hpaanalysis.Analysis) []string {
+func appendStabilizationEstimates(estimated []string, a *hpaanalysis.Analysis) []string {
 	// Prefer structured decision trace stabilization data.
 	if sdt := a.StructuredDecisionTrace; sdt != nil && sdt.StabilizationEffect != nil {
 		se := sdt.StabilizationEffect
@@ -227,7 +229,7 @@ func appendStabilizationEstimates(estimated []string, a hpaanalysis.Analysis) []
 	return estimated
 }
 
-func appendMissingMetricDampeningEstimate(estimated []string, a hpaanalysis.Analysis) []string {
+func appendMissingMetricDampeningEstimate(estimated []string, a *hpaanalysis.Analysis) []string {
 	hasMissing := false
 	for _, freshness := range a.MetricFreshnessEntries {
 		if freshness.Status == string(hpaanalysis.FreshnessMissing) {
@@ -243,7 +245,7 @@ func appendMissingMetricDampeningEstimate(estimated []string, a hpaanalysis.Anal
 	return estimated
 }
 
-func whyNotScaleUnknown(_ hpaanalysis.Analysis) []string {
+func whyNotScaleUnknown(_ *hpaanalysis.Analysis) []string {
 	unknown := []string{
 		"controller-internal per-metric replica recommendations are not exposed by the HPA API",
 		"exact missing-metric dampening is not exposed by Kubernetes API",
@@ -252,7 +254,7 @@ func whyNotScaleUnknown(_ hpaanalysis.Analysis) []string {
 	return unknown
 }
 
-func whyNotScaleSummary(a hpaanalysis.Analysis) string {
+func whyNotScaleSummary(a *hpaanalysis.Analysis) string {
 	if a.Desired > a.Current {
 		return "scale-up is requested by HPA, but the target has not caught up yet"
 	}
@@ -271,7 +273,7 @@ func whyNotScaleSummary(a hpaanalysis.Analysis) string {
 	return "no visible scale change is requested in current HPA status"
 }
 
-func whyNotScaleBlockers(a hpaanalysis.Analysis) []string {
+func whyNotScaleBlockers(a *hpaanalysis.Analysis) []string {
 	var blockers []string
 	blockers = append(blockers, replicaLimitBlockers(a)...)
 	blockers = append(blockers, conditionBlockers(a)...)
@@ -282,7 +284,7 @@ func whyNotScaleBlockers(a hpaanalysis.Analysis) []string {
 	return blockers
 }
 
-func replicaLimitBlockers(a hpaanalysis.Analysis) []string {
+func replicaLimitBlockers(a *hpaanalysis.Analysis) []string {
 	var blockers []string
 	if a.Current >= a.Max || a.Desired >= a.Max || conditionStatus(a, "ScalingLimited") == "True" {
 		blockers = append(blockers, "maxReplicas may be capping scale-up")
@@ -293,7 +295,7 @@ func replicaLimitBlockers(a hpaanalysis.Analysis) []string {
 	return blockers
 }
 
-func conditionBlockers(a hpaanalysis.Analysis) []string {
+func conditionBlockers(a *hpaanalysis.Analysis) []string {
 	var blockers []string
 	if conditionStatus(a, "ScalingActive") == "False" {
 		blockers = append(blockers, "ScalingActive=False; HPA cannot compute a valid scaling recommendation")
@@ -304,14 +306,14 @@ func conditionBlockers(a hpaanalysis.Analysis) []string {
 	return blockers
 }
 
-func stabilizationBlockers(a hpaanalysis.Analysis) []string {
+func stabilizationBlockers(a *hpaanalysis.Analysis) []string {
 	if a.StabilizationRemaining != nil && *a.StabilizationRemaining > 0 {
 		return []string{fmt.Sprintf("stabilization window may hold the recommendation for about %ds", *a.StabilizationRemaining)}
 	}
 	return nil
 }
 
-func targetReplicaBlockers(a hpaanalysis.Analysis) []string {
+func targetReplicaBlockers(a *hpaanalysis.Analysis) []string {
 	if a.TargetReplicas == nil {
 		return nil
 	}
@@ -328,14 +330,14 @@ func targetReplicaBlockers(a hpaanalysis.Analysis) []string {
 	return blockers
 }
 
-func readinessBlockers(a hpaanalysis.Analysis) []string {
+func readinessBlockers(a *hpaanalysis.Analysis) []string {
 	if a.ReadinessImpact != nil && a.ReadinessImpact.LikelyAffected {
 		return []string{"not-yet-ready pods or missing PodMetrics may dampen HPA CPU/resource decisions"}
 	}
 	return nil
 }
 
-func freshnessBlockers(a hpaanalysis.Analysis) []string {
+func freshnessBlockers(a *hpaanalysis.Analysis) []string {
 	var blockers []string
 	for _, freshness := range a.MetricFreshnessEntries {
 		if freshness.Status != "" && freshness.Status != string(hpaanalysis.FreshnessOK) {
@@ -345,7 +347,7 @@ func freshnessBlockers(a hpaanalysis.Analysis) []string {
 	return blockers
 }
 
-func conditionStatus(a hpaanalysis.Analysis, conditionType string) string {
+func conditionStatus(a *hpaanalysis.Analysis, conditionType string) string {
 	for _, condition := range a.Conditions {
 		if condition.Type == conditionType {
 			return condition.Status
@@ -354,7 +356,7 @@ func conditionStatus(a hpaanalysis.Analysis, conditionType string) string {
 	return ""
 }
 
-func hasMetricPressure(a hpaanalysis.Analysis) bool {
+func hasMetricPressure(a *hpaanalysis.Analysis) bool {
 	for _, metric := range a.Metrics {
 		if metric.Ratio != nil && *metric.Ratio > 1.0 {
 			return true
@@ -363,7 +365,7 @@ func hasMetricPressure(a hpaanalysis.Analysis) bool {
 	return false
 }
 
-func whyNotScaleNextChecks(a hpaanalysis.Analysis) []string {
+func whyNotScaleNextChecks(a *hpaanalysis.Analysis) []string {
 	ns := a.Namespace
 	name := a.Name
 	checks := []string{

@@ -215,20 +215,15 @@ func convertToBlockerContainerStatuses(details []kube.ContainerStatusDetail) []h
 // convertToBlockerQuotas converts internal QuotaInfo to BlockerQuotaInfo,
 // computing the usage ratio.
 func convertToBlockerQuotas(infos []kube.QuotaInfo) []hpaanalysis.BlockerQuotaInfo {
-	if len(infos) == 0 {
-		return nil
-	}
-	result := make([]hpaanalysis.BlockerQuotaInfo, 0, len(infos))
-	for _, q := range infos {
-		result = append(result, hpaanalysis.BlockerQuotaInfo{
+	return convertQuotaDetail(infos, func(q kube.QuotaInfo) hpaanalysis.BlockerQuotaInfo {
+		return hpaanalysis.BlockerQuotaInfo{
 			Name:     q.Name,
 			Resource: q.Resource,
 			Used:     q.Used,
 			Hard:     q.Hard,
 			Ratio:    q.Ratio,
-		})
-	}
-	return result
+		}
+	})
 }
 
 // extractFailedSchedulingMessages returns messages from events with reason

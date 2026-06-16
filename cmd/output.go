@@ -96,8 +96,10 @@ func summaryTranslatorForLang(lang, output string) func(string) string {
 }
 
 // summaryTranslationKey maps an English Summary string to its i18n locale key.
-// Returns ok=false for summaries that have no locale entry (e.g. the
-// scale-to-zero variants), so they render unchanged.
+// Every string emitted by pkg/hpa.SummarizeDirection (metric_utils.go) has a
+// matching dir_* entry in locales/{en,ja}.yaml, so a Summary is always
+// translated when a translator is wired in; returns ok=false only for strings
+// the analysis layer may set outside SummarizeDirection.
 func summaryTranslationKey(summary string) (string, bool) {
 	switch summary {
 	case "HPA currently wants to scale up.":
@@ -108,12 +110,20 @@ func summaryTranslationKey(summary string) (string, bool) {
 		return "dir_at_max", true
 	case "HPA is at minReplicas.":
 		return "dir_at_min", true
+	case "HPA is at minReplicas (scale-to-zero enabled).":
+		return "dir_at_min_scale_to_zero", true
 	case "HPA currently keeps the replica count unchanged.":
 		return "dir_unchanged", true
 	case "HPA has no visible desired replica recommendation in status.":
 		return "dir_no_recommendation", true
 	case "HPA cannot currently compute a scaling recommendation from metrics.":
 		return "dir_inactive", true
+	case "HPA wants to scale to zero (cold start will occur on next scale-up).":
+		return "dir_scale_to_zero", true
+	case "HPA is scaled to zero (minReplicas=0); awaiting trigger to scale up.":
+		return "dir_scaled_to_zero", true
+	case "HPA data is unavailable.":
+		return "dir_unavailable", true
 	default:
 		return "", false
 	}

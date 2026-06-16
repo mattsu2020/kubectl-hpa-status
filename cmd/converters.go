@@ -92,18 +92,29 @@ func cloneStringMap(m map[string]string) map[string]string {
 // convertQuotas translates ResourceQuota info into the analysis-side
 // QuotaConstraint, populating the human-readable Message.
 func convertQuotas(infos []kube.QuotaInfo) []hpaanalysis.QuotaConstraint {
-	if len(infos) == 0 {
-		return nil
-	}
-	result := make([]hpaanalysis.QuotaConstraint, 0, len(infos))
-	for _, q := range infos {
-		result = append(result, hpaanalysis.QuotaConstraint{
+	return convertQuotaDetail(infos, func(q kube.QuotaInfo) hpaanalysis.QuotaConstraint {
+		return hpaanalysis.QuotaConstraint{
 			Name:     q.Name,
 			Resource: q.Resource,
 			Used:     q.Used,
 			Hard:     q.Hard,
 			Message:  fmt.Sprintf("ResourceQuota %q is near limit for %s (used=%s, hard=%s)", q.Name, q.Resource, q.Used, q.Hard),
-		})
+		}
+	})
+}
+
+// convertQuotaDetail maps each kube.QuotaInfo into a per-feature destination
+// type via a builder callback. Shared by convertQuotas, convertToBlockerQuotas
+// (blockers.go) and convertToCapacityQuotas (capacity_plan.go): all three loop
+// over the same source slice and copy the same four common fields, differing
+// only in the output struct and any extra per-feature field.
+func convertQuotaDetail[T any](infos []kube.QuotaInfo, build func(kube.QuotaInfo) T) []T {
+	if len(infos) == 0 {
+		return nil
+	}
+	result := makeSlice[T](len(infos))
+	for _, q := range infos {
+		result = append(result, build(q))
 	}
 	return result
 }

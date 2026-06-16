@@ -163,7 +163,9 @@ func metricsDiagnosticsIndicator(status string, theme style.Theme) string {
 //
 //nolint:gocyclo // Sequential delegation to per-section renderers; the orchestrator's complexity is just a flat list of calls.
 func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTextOptions) error {
-	a := report.Analysis
+	// Pass Analysis by pointer to the per-section renderers: Analysis has 63
+	// fields and each append* helper would otherwise copy it.
+	a := &report.Analysis
 	theme := opts.Theme
 	labels := resolveLabels(opts.Labels)
 	var out []byte

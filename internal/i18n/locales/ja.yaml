@@ -50,9 +50,13 @@ dir_scale_up: "HPAは現在スケールアップを希望しています。"
 dir_scale_down: "HPAは現在スケールダウンを希望しています。"
 dir_at_max: "HPAはmaxReplicasに達しています。"
 dir_at_min: "HPAはminReplicasに達しています。"
+dir_at_min_scale_to_zero: "HPAはminReplicasに達しています（ゼロスケール有効）。"
 dir_unchanged: "HPAは現在レプリカ数を維持しています。"
 dir_no_recommendation: "HPAには可視的な希望レプリカ数の推奨がありません。"
 dir_inactive: "HPAは現在メトリクスからスケーリング推奨を計算できません。"
+dir_scale_to_zero: "HPAはゼロにスケールダウンを希望しています（次回スケールアップ時にコールドスタートが発生します）。"
+dir_scaled_to_zero: "HPAはゼロにスケールダウンしました（minReplicas=0）。トリガーを待ってスケールアップします。"
+dir_unavailable: "HPAのデータを取得できません。"
 
 # リストヘッダー
 list_header_namespace: "NAMESPACE"
