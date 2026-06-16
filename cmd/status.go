@@ -256,12 +256,13 @@ func selectStatusOutput(opts *options) (string, string) {
 // statusTextOptions builds the StatusTextOptions used to render report text, including theme/lang/fix/diff settings.
 func statusTextOptions(opts *options, out io.Writer) hpaanalysis.StatusTextOptions {
 	return hpaanalysis.StatusTextOptions{
-		Theme:         style.NewTheme(shouldColorize(opts.color, out)),
-		Lang:          outputLang(opts.lang, opts.output),
-		Fix:           opts.fix,
-		Diff:          opts.diff,
-		HiddenFactors: opts.hiddenFactors,
-		Labels:        labelProviderForLang(opts.lang, opts.output),
+		Theme:             style.NewTheme(shouldColorize(opts.color, out)),
+		Lang:              outputLang(opts.lang, opts.output),
+		Fix:               opts.fix,
+		Diff:              opts.diff,
+		HiddenFactors:     opts.hiddenFactors,
+		Labels:            labelProviderForLang(opts.lang, opts.output),
+		SummaryTranslator: summaryTranslatorForLang(opts.lang, opts.output),
 	}
 }
 

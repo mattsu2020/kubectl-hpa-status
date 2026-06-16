@@ -71,6 +71,54 @@ func labelProviderForLang(lang, output string) hpaanalysis.LabelProvider {
 	return i18nLabels{lang: l}
 }
 
+// summaryTranslatorForLang returns a function that localises the Analysis.Summary
+// string (produced by pkg/hpa.SummarizeDirection in English) for the given
+// language. When the language is empty/unset, it returns nil so the Summary is
+// rendered verbatim.
+//
+// The mapping is keyed on the English source strings emitted by
+// summarizeDirectionFromReplicas and SummarizeDirection in pkg/hpa; those are
+// the only values that ever land in Analysis.Summary. pkg/hpa cannot import
+// internal/i18n (internal package visibility), so the translation is injected
+// here via StatusTextOptions.SummaryTranslator.
+func summaryTranslatorForLang(lang, output string) func(string) string {
+	l := outputLang(lang, output)
+	if l == "" {
+		return nil
+	}
+	return func(summary string) string {
+		key, ok := summaryTranslationKey(summary)
+		if !ok {
+			return summary
+		}
+		return i18n.Get(l, key)
+	}
+}
+
+// summaryTranslationKey maps an English Summary string to its i18n locale key.
+// Returns ok=false for summaries that have no locale entry (e.g. the
+// scale-to-zero variants), so they render unchanged.
+func summaryTranslationKey(summary string) (string, bool) {
+	switch summary {
+	case "HPA currently wants to scale up.":
+		return "dir_scale_up", true
+	case "HPA currently wants to scale down.":
+		return "dir_scale_down", true
+	case "HPA is at maxReplicas.":
+		return "dir_at_max", true
+	case "HPA is at minReplicas.":
+		return "dir_at_min", true
+	case "HPA currently keeps the replica count unchanged.":
+		return "dir_unchanged", true
+	case "HPA has no visible desired replica recommendation in status.":
+		return "dir_no_recommendation", true
+	case "HPA cannot currently compute a scaling recommendation from metrics.":
+		return "dir_inactive", true
+	default:
+		return "", false
+	}
+}
+
 func analysisOptions(hw hpaanalysis.HealthWeights, debug bool) hpaanalysis.AnalysisOptions {
 	return hpaanalysis.AnalysisOptions{
 		HealthWeights: hw,

@@ -701,7 +701,7 @@ func TestE2E_KEDAManagedHPA(t *testing.T) {
 	rootCmd := cmd.NewRootCommand()
 	rootCmd.SetOut(buf)
 	rootCmd.SetErr(buf)
-	rootCmd.SetArgs([]string{"status", "keda-hpa-test", "-n", nsName, "--keda", "--explain", "--kubeconfig", kubeconfig})
+	rootCmd.SetArgs([]string{"status", "keda-hpa-test", "-n", nsName, "--keda=on", "--explain", "--kubeconfig", kubeconfig})
 
 	if err := rootCmd.Execute(); err != nil {
 		t.Logf("status --keda returned error (may be expected if KEDA CRD absent): %v", err)

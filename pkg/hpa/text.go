@@ -23,6 +23,21 @@ type StatusTextOptions struct {
 	Diff          bool
 	HiddenFactors bool
 	Labels        LabelProvider // When nil, English defaults are used. Takes precedence over Lang.
+	// SummaryTranslator, when non-nil, localises the Analysis.Summary line
+	// (e.g. "HPA currently wants to scale up."). pkg/hpa cannot import the
+	// i18n package, so the cmd layer injects i18n.Get here. When nil, the
+	// Summary is rendered verbatim (English).
+	SummaryTranslator func(string) string
+}
+
+// translateSummary applies opts.SummaryTranslator to a summary string when
+// configured, returning the original string otherwise. Keeps the two render
+// sites consistent without repeating the nil check.
+func (o StatusTextOptions) translateSummary(s string) string {
+	if o.SummaryTranslator != nil {
+		return o.SummaryTranslator(s)
+	}
+	return s
 }
 
 // WatchState holds the previous and current Analysis for diff display.
@@ -162,7 +177,7 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 	appendScoreBreakdown(&out, a)
 
 	out = append(out, '\n')
-	out = fmt.Appendf(out, "%s: %s\n", labels.Summary, theme.SummaryColor(a.Summary))
+	out = fmt.Appendf(out, "%s: %s\n", labels.Summary, theme.SummaryColor(opts.translateSummary(a.Summary)))
 
 	appendConditionsSection(&out, a, theme, labels)
 	appendMetricsSection(&out, a, theme, labels)
