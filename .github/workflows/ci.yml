@@ -81,11 +81,15 @@ jobs:
       - name: gosec
         uses: securego/gosec@v2.27.1
         with:
-          # -conf explicitly loads .gosec.yaml, which globally excludes G115
-          # (int->int32 replica-count assignments, k8s API contract) and G304
-          # (user-supplied file paths opened by this kubectl plugin). See the
-          # rationale documented in .gosec.yaml.
-          args: -conf .gosec.yaml ./...
+          # -conf loads .gosec.json (gosec expects JSON, not YAML), which
+          # globally excludes two rules that are intentional for this codebase:
+          #   G115 (int->int32 overflow) — every site assigns replica counts
+          #     into Kubernetes API *int32 fields (Spec.MaxReplicas etc.),
+          #     bounded to realistic ranges, never untrusted input.
+          #   G304 (file inclusion via variable) — this is a kubectl plugin;
+          #     every os.Open is on a user-supplied CLI path (--manifest,
+          #     --timeline-file, --config, history store paths) by design.
+          args: -conf .gosec.json ./...
 
   golangci-lint:
     runs-on: ubuntu-latest
