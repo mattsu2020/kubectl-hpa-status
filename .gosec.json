@@ -1,9 +1,0 @@
-{
-  "global": {
-    "audit": false
-  },
-  "exclude": [
-    "G115",
-    "G304"
-  ]
-}

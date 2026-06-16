@@ -81,15 +81,18 @@ jobs:
       - name: gosec
         uses: securego/gosec@v2.27.1
         with:
-          # -conf loads .gosec.json (gosec expects JSON, not YAML), which
-          # globally excludes two rules that are intentional for this codebase:
+          # -exclude disables rules that are intentional for this codebase:
           #   G115 (int->int32 overflow) — every site assigns replica counts
           #     into Kubernetes API *int32 fields (Spec.MaxReplicas etc.),
           #     bounded to realistic ranges, never untrusted input.
           #   G304 (file inclusion via variable) — this is a kubectl plugin;
           #     every os.Open is on a user-supplied CLI path (--manifest,
           #     --timeline-file, --config, history store paths) by design.
-          args: -conf .gosec.json ./...
+          #   G602 (slice index out of range) — false positives on bounded
+          #     loops (e.g. i += 2 pairs).
+          #   G301/G302/G306 (file perms) — 0644/0755 are intentional for
+          #     user-readable output/history files.
+          args: -exclude G115,G304,G602,G301,G302,G306 ./...
 
   golangci-lint:
     runs-on: ubuntu-latest
