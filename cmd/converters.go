@@ -30,3 +30,36 @@ func convertPendingPodInfos(details []kube.PendingPodDetail) []hpaanalysis.Pendi
 	}
 	return result
 }
+
+// convertResourceRequests translates the kube-layer ResourceRequests DTO into
+// the analysis model shape consumed by pkg/hpa.CheckResourceConsistency.
+// Returns nil when the input is nil so optional analysis fields stay unset.
+func convertResourceRequests(rr *kube.ResourceRequests) *hpaanalysis.ResourceRequests {
+	if rr == nil {
+		return nil
+	}
+	out := &hpaanalysis.ResourceRequests{
+		Containers: make([]hpaanalysis.ContainerResources, 0, len(rr.Containers)),
+	}
+	for _, c := range rr.Containers {
+		out.Containers = append(out.Containers, hpaanalysis.ContainerResources{
+			Name:     c.Name,
+			Requests: cloneStringMap(c.Requests),
+			Limits:   cloneStringMap(c.Limits),
+		})
+	}
+	return out
+}
+
+// cloneStringMap returns a shallow copy of m, or nil when m is empty so the
+// analysis struct keeps its omitempty semantics.
+func cloneStringMap(m map[string]string) map[string]string {
+	if len(m) == 0 {
+		return nil
+	}
+	cp := make(map[string]string, len(m))
+	for k, v := range m {
+		cp[k] = v
+	}
+	return cp
+}

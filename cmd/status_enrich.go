@@ -62,7 +62,7 @@ func enrichResourceCheck(ctx context.Context, opts *options, client *kube.Client
 	}
 	resources, err := kube.FetchScaleTargetResources(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef.Kind, hpa.Spec.ScaleTargetRef.Name)
 	if err == nil && resources != nil {
-		report.Analysis.ResourceCheck = hpaanalysis.CheckResourceConsistency(hpa, resources)
+		report.Analysis.ResourceCheck = hpaanalysis.CheckResourceConsistency(hpa, convertResourceRequests(resources))
 	}
 }
 

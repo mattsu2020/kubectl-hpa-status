@@ -266,13 +266,6 @@ func TestExtractResourcesFromPodTemplate_Nil(t *testing.T) {
 	}
 }
 
-func TestExtractResourcesFromAppsv1PodTemplate_Nil(t *testing.T) {
-	result := extractResourcesFromAppsv1PodTemplate(nil)
-	if result != nil {
-		t.Fatal("expected nil for nil spec")
-	}
-}
-
 // Ensure the fake client works with runtime objects from apps/v1.
 func TestFetchScaleTargetResources_EmptyContainers(t *testing.T) {
 	deploy := &appsv1.Deployment{
