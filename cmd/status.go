@@ -290,7 +290,7 @@ func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, 
 	// only step whose error aborts the whole report (see
 	// abortOnErrorEnrichers). Skipped steps are silently ignored to avoid
 	// noise; failed steps record a message in report.Analysis.Warnings.
-	pipeline := &PipelineContext{Client: client, EC: ec, Opts: opts}
+	pipeline := &PipelineContext{Client: client, EC: ec}
 	if err := runEnrichers(ctx, buildStatusEnrichers(opts), pipeline, hpa, &report); err != nil {
 		return hpaanalysis.StatusReport{}, err
 	}

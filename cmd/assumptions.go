@@ -86,7 +86,7 @@ func runAssumptions(ctx context.Context, out io.Writer, opts *options, names []s
 	// Attempt to observe the controller-manager profile when --explain is set.
 	var observed *hpaanalysis.ControllerProfile
 	if flags.explain {
-		observed = buildControllerProfile(ctx, client, opts)
+		observed = buildControllerProfile(ctx, client, opts.assumeProfile, opts.controllerProfileFile)
 	}
 
 	reports := make([]assumptionsOutput, 0, len(names))

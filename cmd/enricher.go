@@ -9,13 +9,14 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
-// PipelineContext bundles the shared dependencies enrichers need so each
-// Enricher.Run implementation can pull out exactly what it requires without
-// bloating the Enricher interface signature.
+// PipelineContext bundles the shared dependencies enrichers need. Opts is
+// intentionally absent: each adapter captures the concrete option values it
+// needs at construction time (see newXxxEnricher) and forwards them as plain
+// parameters to the enrichXxx functions. This keeps the enrichment pipeline
+// independent of the options God Object.
 type PipelineContext struct {
 	Client *kube.Client
 	EC     *enrichmentContext
-	Opts   *options
 }
 
 // Enricher is one step of the status-report enrichment pipeline. Enrichers are
@@ -23,11 +24,10 @@ type PipelineContext struct {
 // decide whether it is enabled for the current options and then either mutate
 // the report in place or return an error.
 //
-// The Enabled method takes no arguments by design: each adapter captures the
-// options it needs at construction time (see newXxxEnricher), so the Enricher
-// contract no longer depends on the *options type. This keeps the interface
-// testable without standing up a full options struct and is the first step
-// toward splitting the options God Object into per-feature config subgroups.
+// Neither Enabled nor Run depends on *options: each adapter captures the
+// options fields it needs inside its newXxxEnricher constructor. This keeps
+// the interface testable without standing up a full options struct and is the
+// foundation for splitting options into per-feature config subgroups.
 type Enricher interface {
 	// Name is a short, stable identifier used in warning messages.
 	Name() string
@@ -42,8 +42,9 @@ type Enricher interface {
 }
 
 // buildStatusEnrichers constructs the ordered list of enrichment steps for the
-// given options. Each adapter captures the options fields it reads for its
-// Enabled() predicate at this point, so the returned slice is bound to opts.
+// given options. Each adapter captures the options fields it needs for both its
+// Enabled() predicate and Run() body at this point, so the returned slice is
+// bound to opts.
 //
 // The order matches the original sequential calls exactly because several
 // enrichers depend on fields populated by earlier steps:
@@ -107,54 +108,63 @@ func runEnrichers(ctx context.Context, enrichers []Enricher, p *PipelineContext,
 
 // --- Adapter types ---
 //
-// Each adapter is a thin wrapper around the existing enrichXxx function. The
-// adapter captures the options it needs for its Enabled() predicate at
-// construction time (newXxxEnricher) and forwards PipelineContext fields to
-// the enrichXxx function in Run(). Enrichers that unconditionally run capture
-// a constant-true predicate.
+// Each adapter captures the options fields it needs (both for the Enabled()
+// predicate and for the Run() body) at construction time. Run forwards the
+// captured values plus the PipelineContext (Client/EC) to the enrichXxx
+// function. No adapter touches *options after construction.
 
 type decisionTracesEnricher struct {
-	enabled func() bool
+	enabled             func() bool
+	decisionTrace       bool
+	decisionTraceFormat string
 }
 
 func newDecisionTracesEnricher(opts *options) Enricher {
 	return &decisionTracesEnricher{
-		enabled: func() bool { return opts.decisionTrace || opts.decisionTraceFormat != "" },
+		enabled:             func() bool { return opts.decisionTrace || opts.decisionTraceFormat != "" },
+		decisionTrace:       opts.decisionTrace,
+		decisionTraceFormat: opts.decisionTraceFormat,
 	}
 }
 
 func (*decisionTracesEnricher) Name() string    { return "decision-traces" }
 func (e *decisionTracesEnricher) Enabled() bool { return e.enabled() }
-func (*decisionTracesEnricher) Run(_ context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
-	enrichDecisionTraces(p.Opts, hpa, report)
+func (e *decisionTracesEnricher) Run(_ context.Context, _ *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
+	enrichDecisionTraces(hpa, report, e.decisionTrace, e.decisionTraceFormat)
 	return nil
 }
 
 type eventsEnricher struct {
-	enabled func() bool
+	enabled    func() bool
+	eventLimit int
 }
 
 func newEventsEnricher(opts *options) Enricher {
 	return &eventsEnricher{
-		enabled: func() bool { return opts.events.enabled || opts.flappingAdvisor },
+		enabled:    func() bool { return opts.events.enabled || opts.flappingAdvisor },
+		eventLimit: opts.events.limit,
 	}
 }
 
 func (*eventsEnricher) Name() string    { return "events" }
 func (e *eventsEnricher) Enabled() bool { return e.enabled() }
-func (*eventsEnricher) Run(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
-	enrichEvents(ctx, p.Opts, p.Client, hpa, report)
+func (e *eventsEnricher) Run(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
+	enrichEvents(ctx, p.Client, hpa, report, e.eventLimit)
 	return nil
 }
 
-type reportEnricher struct{}
+type reportEnricher struct {
+	healthWeights hpaanalysis.HealthWeights
+}
 
-func newReportEnricher(*options) Enricher { return &reportEnricher{} }
+func newReportEnricher(opts *options) Enricher {
+	return &reportEnricher{healthWeights: opts.healthWeights}
+}
 
 func (*reportEnricher) Name() string  { return "report" }
 func (*reportEnricher) Enabled() bool { return true }
-func (*reportEnricher) Run(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
-	enrichReport(ctx, p.EC, hpa, report, p.Opts.healthWeights)
+func (e *reportEnricher) Run(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
+	enrichReport(ctx, p.EC, hpa, report, e.healthWeights)
 	return nil
 }
 
@@ -170,8 +180,8 @@ func newMetricsDiagnosticsEnricher(opts *options) Enricher {
 
 func (*metricsDiagnosticsEnricher) Name() string    { return "metrics-diagnostics" }
 func (e *metricsDiagnosticsEnricher) Enabled() bool { return e.enabled() }
-func (*metricsDiagnosticsEnricher) Run(_ context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
-	enrichMetricsDiagnostics(p.Opts, hpa, report)
+func (*metricsDiagnosticsEnricher) Run(_ context.Context, _ *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
+	enrichMetricsDiagnostics(hpa, report)
 	return nil
 }
 
@@ -187,8 +197,8 @@ func newMetricFreshnessEnricher(opts *options) Enricher {
 
 func (*metricFreshnessEnricher) Name() string    { return "metric-freshness" }
 func (e *metricFreshnessEnricher) Enabled() bool { return e.enabled() }
-func (*metricFreshnessEnricher) Run(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
-	enrichMetricFreshnessReport(ctx, p.Opts, p.Client, hpa, report)
+func (e *metricFreshnessEnricher) Run(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
+	enrichMetricFreshnessReport(ctx, p.Client, hpa, report)
 	return nil
 }
 
@@ -204,8 +214,8 @@ func newResourceCheckEnricher(opts *options) Enricher {
 
 func (*resourceCheckEnricher) Name() string    { return "resource-check" }
 func (e *resourceCheckEnricher) Enabled() bool { return e.enabled() }
-func (*resourceCheckEnricher) Run(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
-	enrichResourceCheck(ctx, p.Opts, p.Client, hpa, report)
+func (e *resourceCheckEnricher) Run(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
+	enrichResourceCheck(ctx, p.Client, hpa, report)
 	return nil
 }
 
@@ -234,29 +244,41 @@ func newPodAnalysisEnricher(opts *options) Enricher {
 
 func (*podAnalysisEnricher) Name() string    { return "pod-analysis" }
 func (e *podAnalysisEnricher) Enabled() bool { return e.enabled() }
-func (*podAnalysisEnricher) Run(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
-	enrichPodAnalysis(ctx, p.Opts, p.Client, hpa, report)
+func (e *podAnalysisEnricher) Run(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
+	enrichPodAnalysis(ctx, p.Client, hpa, report)
 	return nil
 }
 
 type simulationsEnricher struct {
 	enabled func() bool
+	cfg     SimulationConfig
 }
 
 func newSimulationsEnricher(opts *options) Enricher {
 	return &simulationsEnricher{
 		enabled: func() bool { return len(opts.simulate) > 0 || len(opts.simulateMetric) > 0 },
+		cfg: SimulationConfig{
+			Overrides:       opts.simulate,
+			MetricOverrides: opts.simulateMetric,
+			DurationSeconds: opts.simulateDuration,
+			HealthWeights:   opts.healthWeights,
+			Debug:           opts.debug,
+		},
 	}
 }
 
 func (*simulationsEnricher) Name() string    { return "simulations" }
 func (e *simulationsEnricher) Enabled() bool { return e.enabled() }
-func (*simulationsEnricher) Run(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
-	return enrichSimulations(ctx, p.Opts, hpa, report)
+func (e *simulationsEnricher) Run(ctx context.Context, _ *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
+	return enrichSimulations(ctx, hpa, report, e.cfg)
 }
 
 type capacityAnalysisEnricher struct {
-	enabled func() bool
+	enabled          func() bool
+	capacityContext  bool
+	capacityHeadroom bool
+	readinessImpact  bool
+	scalePath        bool
 }
 
 func newCapacityAnalysisEnricher(opts *options) Enricher {
@@ -264,18 +286,26 @@ func newCapacityAnalysisEnricher(opts *options) Enricher {
 		enabled: func() bool {
 			return opts.capacityContext || opts.capacityHeadroom || opts.readinessImpact || opts.scalePath
 		},
+		capacityContext:  opts.capacityContext,
+		capacityHeadroom: opts.capacityHeadroom,
+		readinessImpact:  opts.readinessImpact,
+		scalePath:        opts.scalePath,
 	}
 }
 
 func (*capacityAnalysisEnricher) Name() string    { return "capacity-analysis" }
 func (e *capacityAnalysisEnricher) Enabled() bool { return e.enabled() }
-func (*capacityAnalysisEnricher) Run(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
-	enrichCapacityAnalysis(ctx, p.Opts, p.Client, hpa, report)
+func (e *capacityAnalysisEnricher) Run(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
+	enrichCapacityAnalysis(ctx, p.Client, hpa, report, e.capacityContext, e.capacityHeadroom, e.readinessImpact, e.scalePath)
 	return nil
 }
 
 type rolloutAndBlockersEnricher struct {
-	enabled func() bool
+	enabled          func() bool
+	rollout          bool
+	rolloutImpact    bool
+	capacityDeep     bool
+	scaleoutBlockers bool
 }
 
 func newRolloutAndBlockersEnricher(opts *options) Enricher {
@@ -283,18 +313,24 @@ func newRolloutAndBlockersEnricher(opts *options) Enricher {
 		enabled: func() bool {
 			return opts.rollout || opts.rolloutImpact || opts.capacityDeep || opts.scaleoutBlockers
 		},
+		rollout:          opts.rollout,
+		rolloutImpact:    opts.rolloutImpact,
+		capacityDeep:     opts.capacityDeep,
+		scaleoutBlockers: opts.scaleoutBlockers,
 	}
 }
 
 func (*rolloutAndBlockersEnricher) Name() string    { return "rollout-and-blockers" }
 func (e *rolloutAndBlockersEnricher) Enabled() bool { return e.enabled() }
-func (*rolloutAndBlockersEnricher) Run(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
-	enrichRolloutAndBlockers(ctx, p.Opts, p.Client, hpa, report)
+func (e *rolloutAndBlockersEnricher) Run(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
+	enrichRolloutAndBlockers(ctx, p.Client, hpa, report, e.rollout, e.rolloutImpact, e.capacityDeep, e.scaleoutBlockers)
 	return nil
 }
 
 type controllerProfileEnricher struct {
-	enabled func() bool
+	enabled       func() bool
+	assumeProfile string
+	profileFile   string
 }
 
 func newControllerProfileEnricher(opts *options) Enricher {
@@ -302,81 +338,99 @@ func newControllerProfileEnricher(opts *options) Enricher {
 		enabled: func() bool {
 			return opts.controllerProfile || opts.assumeProfile != "" || opts.controllerProfileFile != ""
 		},
+		assumeProfile: opts.assumeProfile,
+		profileFile:   opts.controllerProfileFile,
 	}
 }
 
 func (*controllerProfileEnricher) Name() string    { return "controller-profile" }
 func (e *controllerProfileEnricher) Enabled() bool { return e.enabled() }
-func (*controllerProfileEnricher) Run(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
-	enrichControllerProfile(ctx, p.Opts, p.Client, hpa, report)
+func (e *controllerProfileEnricher) Run(ctx context.Context, p *PipelineContext, _ *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
+	report.Analysis.ControllerProfile = buildControllerProfile(ctx, p.Client, e.assumeProfile, e.profileFile)
 	return nil
 }
 
 type capacityPlanEnricher struct {
-	enabled func() bool
+	enabled   func() bool
+	targetMax int32
 }
 
 func newCapacityPlanEnricher(opts *options) Enricher {
 	return &capacityPlanEnricher{
-		enabled: func() bool { return opts.capacityPlan },
+		enabled:   func() bool { return opts.capacityPlan },
+		targetMax: opts.targetMax,
 	}
 }
 
 func (*capacityPlanEnricher) Name() string    { return "capacity-plan" }
 func (e *capacityPlanEnricher) Enabled() bool { return e.enabled() }
-func (*capacityPlanEnricher) Run(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
-	enrichCapacityPlan(ctx, p.Opts, p.Client, hpa, report)
+func (e *capacityPlanEnricher) Run(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
+	enrichCapacityPlan(ctx, p.Client, hpa, report, e.targetMax)
 	return nil
 }
 
 type gitOpsConflictEnricher struct {
-	enabled func() bool
+	enabled      func() bool
+	manifestPath string
 }
 
 func newGitOpsConflictEnricher(opts *options) Enricher {
 	return &gitOpsConflictEnricher{
-		enabled: func() bool { return opts.gitopsCheck || opts.manifestPath != "" },
+		enabled:      func() bool { return opts.gitopsCheck || opts.manifestPath != "" },
+		manifestPath: opts.manifestPath,
 	}
 }
 
 func (*gitOpsConflictEnricher) Name() string    { return "gitops-conflict" }
 func (e *gitOpsConflictEnricher) Enabled() bool { return e.enabled() }
-func (*gitOpsConflictEnricher) Run(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
-	enrichGitOpsConflict(ctx, p.Opts, p.Client, hpa, report)
+func (e *gitOpsConflictEnricher) Run(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
+	enrichGitOpsConflict(ctx, p.Client, hpa, report, e.manifestPath)
 	return nil
 }
 
 type metricContractAndAdapterEnricher struct {
-	enabled func() bool
+	enabled            func() bool
+	metricContract     bool
+	adapterDiagnostics bool
 }
 
 func newMetricContractAndAdapterEnricher(opts *options) Enricher {
 	return &metricContractAndAdapterEnricher{
-		enabled: func() bool { return opts.metricContract || opts.adapterDiagnostics },
+		enabled:            func() bool { return opts.metricContract || opts.adapterDiagnostics },
+		metricContract:     opts.metricContract,
+		adapterDiagnostics: opts.adapterDiagnostics,
 	}
 }
 
 func (*metricContractAndAdapterEnricher) Name() string    { return "metric-contract-and-adapter" }
 func (e *metricContractAndAdapterEnricher) Enabled() bool { return e.enabled() }
-func (*metricContractAndAdapterEnricher) Run(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
-	enrichMetricContractAndAdapter(ctx, p.Opts, p.Client, hpa, report)
+func (e *metricContractAndAdapterEnricher) Run(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
+	enrichMetricContractAndAdapter(ctx, p.Client, hpa, report, e.metricContract, e.adapterDiagnostics)
 	return nil
 }
 
 type churnAndFlappingEnricher struct {
-	enabled func() bool
+	enabled         func() bool
+	churnDetect     bool
+	eventsEnabled   bool
+	flappingAdvisor bool
+	healthWeights   hpaanalysis.HealthWeights
 }
 
 func newChurnAndFlappingEnricher(opts *options) Enricher {
 	return &churnAndFlappingEnricher{
-		enabled: func() bool { return opts.churnDetect || opts.flappingAdvisor },
+		enabled:         func() bool { return opts.churnDetect || opts.flappingAdvisor },
+		churnDetect:     opts.churnDetect,
+		eventsEnabled:   opts.events.enabled,
+		flappingAdvisor: opts.flappingAdvisor,
+		healthWeights:   opts.healthWeights,
 	}
 }
 
 func (*churnAndFlappingEnricher) Name() string    { return "churn-and-flapping" }
 func (e *churnAndFlappingEnricher) Enabled() bool { return e.enabled() }
-func (*churnAndFlappingEnricher) Run(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
-	enrichChurnAndFlapping(ctx, p.Opts, hpa, report)
+func (e *churnAndFlappingEnricher) Run(ctx context.Context, _ *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
+	enrichChurnAndFlapping(ctx, hpa, report, e.churnDetect, e.eventsEnabled, e.flappingAdvisor, e.healthWeights)
 	return nil
 }
 
@@ -403,24 +457,28 @@ func newMetricHintsEnricher(opts *options) Enricher {
 
 func (*metricHintsEnricher) Name() string    { return "metric-hints" }
 func (e *metricHintsEnricher) Enabled() bool { return e.enabled() }
-func (*metricHintsEnricher) Run(_ context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
-	enrichMetricHints(p.Opts, hpa, report)
+func (e *metricHintsEnricher) Run(_ context.Context, _ *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
+	enrichMetricHints(hpa, report)
 	return nil
 }
 
 type advisorsEnricher struct {
-	enabled func() bool
+	enabled          func() bool
+	containerAdvisor bool
+	behaviorAdvisor  bool
 }
 
 func newAdvisorsEnricher(opts *options) Enricher {
 	return &advisorsEnricher{
-		enabled: func() bool { return opts.containerAdvisor || opts.behaviorAdvisor },
+		enabled:          func() bool { return opts.containerAdvisor || opts.behaviorAdvisor },
+		containerAdvisor: opts.containerAdvisor,
+		behaviorAdvisor:  opts.behaviorAdvisor,
 	}
 }
 
 func (*advisorsEnricher) Name() string    { return "advisors" }
 func (e *advisorsEnricher) Enabled() bool { return e.enabled() }
-func (*advisorsEnricher) Run(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
-	enrichAdvisors(ctx, p.Opts, p.Client, hpa, report)
+func (e *advisorsEnricher) Run(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
+	enrichAdvisors(ctx, p.Client, hpa, report, e.containerAdvisor, e.behaviorAdvisor)
 	return nil
 }

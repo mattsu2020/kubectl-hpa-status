@@ -33,7 +33,7 @@ func runProfile(ctx context.Context, out io.Writer, opts *options) error {
 	if err != nil {
 		return err
 	}
-	profile := buildControllerProfile(ctx, client, opts)
+	profile := buildControllerProfile(ctx, client, opts.assumeProfile, opts.controllerProfileFile)
 	return writeOutput(out, opts.output, opts.template, profile, func() error {
 		_, err := fmt.Fprintf(out, "Controller profile:\n  source: %s\n  sync period: %s\n  downscale stabilization: %s\n  initial readiness delay: %s\n  cpu initialization period: %s\n  tolerance: %s\n",
 			profile.Source,
@@ -60,7 +60,7 @@ func runProfileDetect(ctx context.Context, out io.Writer, opts *options) error {
 	if err != nil {
 		return err
 	}
-	profile := buildControllerProfile(ctx, client, opts)
+	profile := buildControllerProfile(ctx, client, opts.assumeProfile, opts.controllerProfileFile)
 	return writeOutput(out, opts.output, opts.template, profile, func() error {
 		confidence := "medium"
 		if profile.Source == "defaults" || len(profile.Warnings) > 0 {

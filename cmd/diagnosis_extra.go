@@ -251,14 +251,14 @@ func fillRolloutReasonAndPods(ctx context.Context, client *kube.Client, hpa *aut
 	}
 }
 
-func buildControllerProfile(ctx context.Context, client *kube.Client, opts *options) *hpaanalysis.ControllerProfile {
+func buildControllerProfile(ctx context.Context, client *kube.Client, assumeProfile, profileFile string) *hpaanalysis.ControllerProfile {
 	profile := hpaanalysis.DefaultControllerProfile()
-	if opts != nil && opts.assumeProfile != "" {
-		profile.Source = "assumed:" + opts.assumeProfile
+	if assumeProfile != "" {
+		profile.Source = "assumed:" + assumeProfile
 		return &profile
 	}
-	if opts != nil && opts.controllerProfileFile != "" {
-		loaded, err := loadControllerProfileFile(opts.controllerProfileFile)
+	if profileFile != "" {
+		loaded, err := loadControllerProfileFile(profileFile)
 		if err == nil {
 			return loaded
 		}

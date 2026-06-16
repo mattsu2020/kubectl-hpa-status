@@ -16,21 +16,34 @@ import (
 // adapters in enricher.go dispatch to these free functions by name; moving them
 // out of status.go keeps the command wiring (runStatus*, buildReportsConcurrently,
 // fetch/build helpers) in status.go and the per-feature enrichment here.
+//
+// None of these functions take *options: the Enricher adapters extract the
+// concrete values each enricher needs at construction time and forward them as
+// plain parameters. This keeps the enrichment pipeline independent of the
+// options God Object (see the Enricher interface decoupling in enricher.go).
 
-func enrichDecisionTraces(opts *options, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
-	if opts.decisionTrace {
+// SimulationConfig bundles the values the simulation enricher needs. It is a
+// small struct rather than five loose parameters because two of them are slices
+// and the set is passed through to two helper functions.
+type SimulationConfig struct {
+	Overrides       []string                  // opts.simulate
+	MetricOverrides []string                  // opts.simulateMetric
+	DurationSeconds int32                     // opts.simulateDuration
+	HealthWeights   hpaanalysis.HealthWeights // opts.healthWeights
+	Debug           bool                      // opts.debug
+}
+
+func enrichDecisionTraces(hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, decisionTrace bool, decisionTraceFormat string) {
+	if decisionTrace {
 		report.Analysis.DecisionTrace = hpaanalysis.BuildDecisionTrace(hpa, report.Analysis.Min)
 	}
-	if opts.decisionTraceFormat != "" {
+	if decisionTraceFormat != "" {
 		report.Analysis.StructuredDecisionTrace = hpaanalysis.ExportStructuredDecisionTrace(hpa, report.Analysis)
 	}
 }
 
-func enrichEvents(ctx context.Context, opts *options, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
-	if !opts.events.enabled && !opts.flappingAdvisor {
-		return
-	}
-	coreEvents, err := kube.FetchRecentHPAEvents(ctx, client.Interface, hpa.Namespace, hpa.Name, int64(opts.events.limit))
+func enrichEvents(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, eventLimit int) {
+	coreEvents, err := kube.FetchRecentHPAEvents(ctx, client.Interface, hpa.Namespace, hpa.Name, int64(eventLimit))
 	if err != nil {
 		report.Events = []hpaanalysis.Event{{Reason: "Error", Message: fmt.Sprintf("failed to list events: %v", err)}}
 		return
@@ -42,24 +55,16 @@ func enrichEvents(ctx context.Context, opts *options, client *kube.Client, hpa *
 	report.Events = events
 }
 
-func enrichMetricsDiagnostics(opts *options, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
-	if opts.diagnoseMetrics {
-		report.Analysis.MetricsDiagnostics = hpaanalysis.DiagnoseMetricsPipeline(hpa)
-	}
+func enrichMetricsDiagnostics(hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
+	report.Analysis.MetricsDiagnostics = hpaanalysis.DiagnoseMetricsPipeline(hpa)
 }
 
-func enrichMetricFreshnessReport(ctx context.Context, opts *options, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
-	if !opts.metricsFreshness {
-		return
-	}
+func enrichMetricFreshnessReport(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
 	report.Analysis.MetricFreshnessEntries = hpaanalysis.AnalyzeMetricFreshness(hpa, report.Events)
 	enrichMetricFreshness(ctx, client, hpa, report)
 }
 
-func enrichResourceCheck(ctx context.Context, opts *options, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
-	if !opts.checkResources {
-		return
-	}
+func enrichResourceCheck(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
 	resources, err := kube.FetchScaleTargetResources(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef.Kind, hpa.Spec.ScaleTargetRef.Name)
 	if err != nil {
 		// The user explicitly asked for resource checks (--check-resources);
@@ -111,33 +116,31 @@ func appendPendingTargetObservations(report *hpaanalysis.StatusReport) {
 	}
 }
 
-func enrichPodAnalysis(ctx context.Context, opts *options, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
-	if opts.explainPods {
-		report.Analysis.PodAnalysis = fetchAndAnalyzePods(ctx, client, hpa)
-	}
+func enrichPodAnalysis(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
+	report.Analysis.PodAnalysis = fetchAndAnalyzePods(ctx, client, hpa)
 }
 
-func enrichSimulations(_ context.Context, opts *options, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
-	if len(opts.simulate) > 0 {
-		applySimulationOverrides(opts, hpa, report)
+func enrichSimulations(_ context.Context, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, cfg SimulationConfig) error {
+	if len(cfg.Overrides) > 0 {
+		applySimulationOverrides(hpa, report, cfg)
 	}
-	if len(opts.simulateMetric) > 0 {
-		return applyMetricSimulation(opts, hpa, report)
+	if len(cfg.MetricOverrides) > 0 {
+		return applyMetricSimulation(hpa, report, cfg)
 	}
 	return nil
 }
 
-func applySimulationOverrides(opts *options, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
-	overrides, simErr := parseSimulateOverrides(opts.simulate)
+func applySimulationOverrides(hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, cfg SimulationConfig) {
+	overrides, simErr := parseSimulateOverrides(cfg.Overrides)
 	switch {
 	case simErr != nil:
 		report.Analysis.Interpretation = append(report.Analysis.Interpretation,
 			fmt.Sprintf("simulation error: %v", simErr))
-	case opts.simulateDuration > 0:
+	case cfg.DurationSeconds > 0:
 		sim, simErr := hpaanalysis.SimulateExtended(hpa, overrides,
-			analysisOptions(opts.healthWeights, opts.debug).HealthWeights,
+			cfg.HealthWeights,
 			hpaanalysis.SimulationExtendedOptions{
-				DurationSeconds: opts.simulateDuration,
+				DurationSeconds: cfg.DurationSeconds,
 			})
 		if simErr != nil {
 			report.Analysis.Interpretation = append(report.Analysis.Interpretation,
@@ -146,7 +149,7 @@ func applySimulationOverrides(opts *options, hpa *autoscalingv2.HorizontalPodAut
 			report.Analysis.Simulation = sim
 		}
 	default:
-		sim, simErr := hpaanalysis.SimulateHPA(hpa, overrides, analysisOptions(opts.healthWeights, opts.debug).HealthWeights)
+		sim, simErr := hpaanalysis.SimulateHPA(hpa, overrides, cfg.HealthWeights)
 		if simErr != nil {
 			report.Analysis.Interpretation = append(report.Analysis.Interpretation,
 				fmt.Sprintf("simulation error: %v", simErr))
@@ -156,12 +159,12 @@ func applySimulationOverrides(opts *options, hpa *autoscalingv2.HorizontalPodAut
 	}
 }
 
-func applyMetricSimulation(opts *options, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
-	metricOverrides, metricErr := parseSimulateMetricOverrides(opts.simulateMetric)
+func applyMetricSimulation(hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, cfg SimulationConfig) error {
+	metricOverrides, metricErr := parseSimulateMetricOverrides(cfg.MetricOverrides)
 	if metricErr != nil {
 		return fmt.Errorf("parsing --simulate-metric: %w", metricErr)
 	}
-	sim, simErr := hpaanalysis.SimulateMetricChange(hpa, metricOverrides, opts.healthWeights)
+	sim, simErr := hpaanalysis.SimulateMetricChange(hpa, metricOverrides, cfg.HealthWeights)
 	if simErr != nil {
 		return fmt.Errorf("metric simulation: %w", simErr)
 	}
@@ -173,58 +176,49 @@ func applyMetricSimulation(opts *options, hpa *autoscalingv2.HorizontalPodAutosc
 	return nil
 }
 
-func enrichCapacityAnalysis(ctx context.Context, opts *options, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
-	if opts.capacityContext {
+func enrichCapacityAnalysis(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, capacityContext, capacityHeadroom, readinessImpact, scalePath bool) {
+	if capacityContext {
 		report.Analysis.CapacityContext = buildCapacityContext(ctx, client, hpa)
 	}
-	if opts.capacityHeadroom {
+	if capacityHeadroom {
 		report.Analysis.CapacityHeadroom = buildCapacityHeadroom(ctx, client, hpa, report.Analysis.Target)
 	}
-	if opts.readinessImpact {
+	if readinessImpact {
 		report.Analysis.ReadinessImpact = buildReadinessImpact(ctx, client, hpa)
 	}
-	if opts.scalePath {
+	if scalePath {
 		report.Analysis.ScalePath = buildScalePath(ctx, client, hpa)
 	}
 }
 
-func enrichRolloutAndBlockers(ctx context.Context, opts *options, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
-	if opts.rollout || opts.rolloutImpact {
+func enrichRolloutAndBlockers(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, rollout, rolloutImpact, capacityDeep, scaleoutBlockers bool) {
+	if rollout || rolloutImpact {
 		report.Analysis.RolloutDiagnosis = buildRolloutDiagnosis(ctx, client, hpa)
 	}
-	if opts.capacityDeep || opts.scaleoutBlockers {
+	if capacityDeep || scaleoutBlockers {
 		report.Analysis.BlockerReport = buildBlockerReportForStatus(ctx, client, hpa, report.Analysis.Target)
 	}
 }
 
-func enrichControllerProfile(ctx context.Context, opts *options, client *kube.Client, _ *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
-	if opts.controllerProfile || opts.assumeProfile != "" || opts.controllerProfileFile != "" {
-		report.Analysis.ControllerProfile = buildControllerProfile(ctx, client, opts)
+func enrichCapacityPlan(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, targetMax int32) {
+	if hpa.Status.CurrentReplicas >= hpa.Spec.MaxReplicas {
+		report.Analysis.CapacityPlan = buildCapacityPlanForStatus(ctx, client, hpa, report.Analysis.Target, targetMax)
 	}
 }
 
-func enrichCapacityPlan(ctx context.Context, opts *options, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
-	if opts.capacityPlan && hpa.Status.CurrentReplicas >= hpa.Spec.MaxReplicas {
-		report.Analysis.CapacityPlan = buildCapacityPlanForStatus(ctx, client, hpa, report.Analysis.Target, opts.targetMax)
-	}
-}
-
-func enrichGitOpsConflict(ctx context.Context, opts *options, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
-	if !opts.gitopsCheck && opts.manifestPath == "" {
-		return
-	}
-	conflict := buildGitOpsConflict(ctx, client, hpa, opts.manifestPath)
+func enrichGitOpsConflict(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, manifestPath string) {
+	conflict := buildGitOpsConflict(ctx, client, hpa, manifestPath)
 	if conflict != nil {
 		report.Analysis.GitOpsConflict = conflict
 	}
 }
 
-func enrichMetricContractAndAdapter(ctx context.Context, opts *options, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
-	if opts.metricContract {
+func enrichMetricContractAndAdapter(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, metricContract, adapterDiagnostics bool) {
+	if metricContract {
 		input := buildMetricContractInput(ctx, client, hpa)
 		report.Analysis.MetricContract = hpaanalysis.AnalyzeMetricContract(input)
 	}
-	if opts.adapterDiagnostics {
+	if adapterDiagnostics {
 		if len(report.Analysis.MetricFreshnessEntries) == 0 {
 			report.Analysis.MetricFreshnessEntries = hpaanalysis.AnalyzeMetricFreshness(hpa, report.Events)
 		}
@@ -233,14 +227,14 @@ func enrichMetricContractAndAdapter(ctx context.Context, opts *options, client *
 	}
 }
 
-func enrichChurnAndFlapping(_ context.Context, opts *options, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
-	if opts.churnDetect && opts.events.enabled {
+func enrichChurnAndFlapping(_ context.Context, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, churnDetect, eventsEnabled, flappingAdvisor bool, healthWeights hpaanalysis.HealthWeights) {
+	if churnDetect && eventsEnabled {
 		report.Analysis.ChurnAnalysis = hpaanalysis.AnalyzeChurnFromEvents(report.Events, hpa)
 		if report.Analysis.ChurnAnalysis != nil {
-			hpaanalysis.ApplyChurnPenalty(&report.Analysis, opts.healthWeights)
+			hpaanalysis.ApplyChurnPenalty(&report.Analysis, healthWeights)
 		}
 	}
-	if opts.flappingAdvisor {
+	if flappingAdvisor {
 		report.Analysis.FlappingPrevention = hpaanalysis.AnalyzeFlappingPrevention(report.Events, hpa)
 	}
 }
@@ -251,10 +245,7 @@ func enrichVPAAdvisory(hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaan
 	}
 }
 
-func enrichMetricHints(opts *options, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
-	if !opts.metricHints {
-		return
-	}
+func enrichMetricHints(hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
 	report.Analysis.MetricHints = hpaanalysis.AnalyzeMetricHints(
 		hpa, report.Events, report.Analysis.MetricFreshnessEntries, report.Analysis.MetricContract)
 	if report.Analysis.MetricHints != nil && len(report.Analysis.MetricHints.Hints) > 0 {
@@ -262,11 +253,11 @@ func enrichMetricHints(opts *options, hpa *autoscalingv2.HorizontalPodAutoscaler
 	}
 }
 
-func enrichAdvisors(ctx context.Context, opts *options, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
-	if opts.containerAdvisor {
+func enrichAdvisors(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, containerAdvisor, behaviorAdvisor bool) {
+	if containerAdvisor {
 		report.Analysis.ContainerAdvisor = buildContainerAdvisor(ctx, client, hpa)
 	}
-	if opts.behaviorAdvisor {
+	if behaviorAdvisor {
 		report.Analysis.BehaviorAdvisor = hpaanalysis.AnalyzeBehaviorAdvisor(hpa)
 	}
 }
