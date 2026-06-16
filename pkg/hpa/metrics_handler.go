@@ -61,13 +61,10 @@ func (resourceHandler) FormatStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, 
 	target := FormatMetricTarget(targetSpec)
 	current := FormatMetricValue(metric.Resource.Current.AverageUtilization, metric.Resource.Current.AverageValue)
 	ratio, note := calculateRatioAndNote(metric.Resource.Current, targetSpec, target)
-	text := fmt.Sprintf("Resource %s current=%s target=%s", metric.Resource.Name, current, target)
-	if ratio != nil {
-		text = fmt.Sprintf("%s ratio=%.3f", text, *ratio)
-	}
-	if note != "" {
-		text = fmt.Sprintf("%s note=%q", text, note)
-	}
+	text := appendRatioAndNote(
+		fmt.Sprintf("Resource %s current=%s target=%s", metric.Resource.Name, current, target),
+		ratio, note,
+	)
 	return Metric{
 		Type: "Resource", Name: string(metric.Resource.Name),
 		Current: current, Target: target, Ratio: ratio, Note: note, Text: text,
@@ -124,13 +121,10 @@ func (containerResourceHandler) FormatStatus(hpa *autoscalingv2.HorizontalPodAut
 	target := FormatMetricTarget(targetSpec)
 	current := FormatMetricValueStatus(metric.ContainerResource.Current)
 	ratio, note := calculateRatioAndNote(metric.ContainerResource.Current, targetSpec, target)
-	text := fmt.Sprintf("ContainerResource %s/%s current=%s target=%s", metric.ContainerResource.Container, metric.ContainerResource.Name, current, target)
-	if ratio != nil {
-		text = fmt.Sprintf("%s ratio=%.3f", text, *ratio)
-	}
-	if note != "" {
-		text = fmt.Sprintf("%s note=%q", text, note)
-	}
+	text := appendRatioAndNote(
+		fmt.Sprintf("ContainerResource %s/%s current=%s target=%s", metric.ContainerResource.Container, metric.ContainerResource.Name, current, target),
+		ratio, note,
+	)
 	return Metric{
 		Type: "ContainerResource", Name: fmt.Sprintf("%s/%s", metric.ContainerResource.Container, metric.ContainerResource.Name),
 		Current: current, Target: target, Ratio: ratio, Note: note, Text: text,
@@ -202,12 +196,7 @@ func (podsHandler) FormatStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, metr
 	if selector != "" {
 		text = fmt.Sprintf("%s selector=%q", text, selector)
 	}
-	if ratio != nil {
-		text = fmt.Sprintf("%s ratio=%.3f", text, *ratio)
-	}
-	if note != "" {
-		text = fmt.Sprintf("%s note=%q", text, note)
-	}
+	text = appendRatioAndNote(text, ratio, note)
 	return Metric{
 		Type: "Pods", Name: metric.Pods.Metric.Name, Selector: selector,
 		Current: current, Target: target, Ratio: ratio, Note: note, Text: text,
@@ -275,12 +264,7 @@ func (objectHandler) FormatStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, me
 	if selector != "" {
 		text = fmt.Sprintf("%s selector=%q", text, selector)
 	}
-	if ratio != nil {
-		text = fmt.Sprintf("%s ratio=%.3f", text, *ratio)
-	}
-	if note != "" {
-		text = fmt.Sprintf("%s note=%q", text, note)
-	}
+	text = appendRatioAndNote(text, ratio, note)
 	return Metric{
 		Type: "Object", Name: metric.Object.Metric.Name, Selector: selector,
 		Object: name, Current: current, Target: target, Ratio: ratio, Note: note, Text: text,
@@ -351,12 +335,7 @@ func (externalHandler) FormatStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, 
 	if selector != "" {
 		text = fmt.Sprintf("%s selector=%q", text, selector)
 	}
-	if ratio != nil {
-		text = fmt.Sprintf("%s ratio=%.3f", text, *ratio)
-	}
-	if note != "" {
-		text = fmt.Sprintf("%s note=%q", text, note)
-	}
+	text = appendRatioAndNote(text, ratio, note)
 	return Metric{
 		Type: "External", Name: metric.External.Metric.Name, Selector: selector,
 		Current: current, Target: target, Ratio: ratio, Note: note, Text: text,
@@ -503,6 +482,20 @@ func specMetricSelector(spec autoscalingv2.MetricSpec) string {
 // by formatting them into stable string representations.
 func selectorsEqual(a, b *metav1.LabelSelector) bool {
 	return FormatMetricSelector(a) == FormatMetricSelector(b)
+}
+
+// appendRatioAndNote appends the standard " ratio=%.3f" and " note=%q" suffixes
+// to a metric text line when ratio and note carry data. All five FormatStatus
+// handlers render this identical tail, so centralising it keeps the output
+// format consistent and removes copy-paste drift.
+func appendRatioAndNote(text string, ratio *float64, note string) string {
+	if ratio != nil {
+		text = fmt.Sprintf("%s ratio=%.3f", text, *ratio)
+	}
+	if note != "" {
+		text = fmt.Sprintf("%s note=%q", text, note)
+	}
+	return text
 }
 
 // --- Helper functions for metric value formatting ---

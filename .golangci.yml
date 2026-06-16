@@ -14,6 +14,16 @@ linters:
     - revive
     - staticcheck
     - unused
+    # Additional linters added to lock in the mechanical clean-ups landed in
+    # the refactor pass: unparam catches always-unused params/returns,
+    # predeclared flags shadowing of builtin names, wastedassign catches
+    # assignments whose value is never read, dupl flags copy-pasted blocks,
+    # and nilnil flags `(nil, nil)` returns that callers tend to mishandle.
+    - unparam
+    - predeclared
+    - wastedassign
+    - dupl
+    - nilnil
 
   settings:
     gocyclo:
@@ -22,15 +32,27 @@ linters:
       checks:
         - all
         - -QF1012 # WriteString(Sprintf) is acceptable for readability
+    dupl:
+      # Token threshold: raise above the default so that only substantial
+      # copy-paste blocks fire. Small idiomatic repetition (e.g. struct tag
+      # lines, short flag reads) should not trip the linter.
+      threshold: 200
 
   exclusions:
     rules:
       # Test functions are table-driven with parallel subtests/assertions; their
       # cyclomatic complexity reflects test breadth, not production code quality.
       # gocyclo is enforced on production code where complexity matters most.
+      # dupl is likewise excluded from tests: shared table setup and parallel
+      # assertion blocks routinely duplicate by design.
+      # unparam is excluded from tests: builder helpers intentionally accept
+      # parameters they don't always read so individual cases can vary inputs
+      # without changing the helper signature.
       - path: _test\.go
         linters:
           - gocyclo
+          - dupl
+          - unparam
 
 formatters:
   enable:

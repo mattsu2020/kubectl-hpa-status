@@ -93,52 +93,47 @@ func DetectKEDA(hpa *autoscalingv2.HorizontalPodAutoscaler) KEDADetectionResult 
 
 	// Strong signals from labels and annotations.
 	if hasKEDAKeySignal(hpa.Labels) {
-		name, _ := extractScaledObjectName(hpa)
 		return KEDADetectionResult{
 			Managed:    true,
 			Source:     KEDADetectionLabel,
 			Confidence: KEDAConfidenceMedium,
-			Name:       name,
+			Name:       extractScaledObjectName(hpa),
 		}
 	}
 	if hasKEDAKeySignal(hpa.Annotations) {
-		name, _ := extractScaledObjectName(hpa)
 		return KEDADetectionResult{
 			Managed:    true,
 			Source:     KEDADetectionAnnotation,
 			Confidence: KEDAConfidenceMedium,
-			Name:       name,
+			Name:       extractScaledObjectName(hpa),
 		}
 	}
 
 	// Name prefix: conventional KEDA HPA naming.
 	if strings.HasPrefix(hpa.Name, "keda-hpa-") {
-		name, _ := extractScaledObjectName(hpa)
 		return KEDADetectionResult{
 			Managed:    true,
 			Source:     KEDADetectionNamePrefix,
 			Confidence: KEDAConfidenceLow,
-			Name:       name,
+			Name:       extractScaledObjectName(hpa),
 		}
 	}
 
 	// Weak fallback: a value mentioning "keda" when no stronger signal fired.
 	if hasKEDAValueFallback(hpa.Labels) {
-		name, _ := extractScaledObjectName(hpa)
 		return KEDADetectionResult{
 			Managed:    true,
 			Source:     KEDADetectionLabel,
 			Confidence: KEDAConfidenceLow,
-			Name:       name,
+			Name:       extractScaledObjectName(hpa),
 		}
 	}
 	if hasKEDAValueFallback(hpa.Annotations) {
-		name, _ := extractScaledObjectName(hpa)
 		return KEDADetectionResult{
 			Managed:    true,
 			Source:     KEDADetectionAnnotation,
 			Confidence: KEDAConfidenceLow,
-			Name:       name,
+			Name:       extractScaledObjectName(hpa),
 		}
 	}
 	return KEDADetectionResult{}
@@ -263,22 +258,26 @@ func FindScaledObjectForHPA(ctx context.Context, dynClient dynamic.Interface, _ 
 	return nil, fmt.Errorf("no ScaledObject found for HPA %s/%s", hpa.Namespace, hpa.Name)
 }
 
-func extractScaledObjectName(hpa *autoscalingv2.HorizontalPodAutoscaler) (string, bool) {
+// extractScaledObjectName derives the ScaledObject name backing this HPA from
+// the well-known scaledobject.keda.sh/name label/annotation, falling back to
+// the "keda-hpa-<name>" prefix convention. Returns "" when no derivation is
+// possible.
+func extractScaledObjectName(hpa *autoscalingv2.HorizontalPodAutoscaler) string {
 	if hpa.Labels != nil {
 		if name, ok := hpa.Labels["scaledobject.keda.sh/name"]; ok && name != "" {
-			return name, true
+			return name
 		}
 	}
 	if hpa.Annotations != nil {
 		if name, ok := hpa.Annotations["scaledobject.keda.sh/name"]; ok && name != "" {
-			return name, true
+			return name
 		}
 	}
 	// Derive from HPA name pattern "keda-hpa-<scaledobject>"
 	if strings.HasPrefix(hpa.Name, "keda-hpa-") {
-		return strings.TrimPrefix(hpa.Name, "keda-hpa-"), true
+		return strings.TrimPrefix(hpa.Name, "keda-hpa-")
 	}
-	return "", false
+	return ""
 }
 
 func extractTriggers(spec map[string]any) []KEDATrigger {

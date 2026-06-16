@@ -178,7 +178,6 @@ func buildReportsConcurrently(ctx context.Context, out io.Writer, opts *options,
 	g.SetLimit(limit)
 
 	for i, name := range names {
-		i, name := i, name
 		g.Go(func() error {
 			if gctx.Err() != nil {
 				return gctx.Err()

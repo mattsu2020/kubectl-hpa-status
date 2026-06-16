@@ -21,7 +21,10 @@ type ResourceRequests = hpaanalysis.ResourceRequests
 
 // FetchScaleTargetResources fetches the pod template from the scale target
 // (Deployment, StatefulSet, or ReplicaSet) and extracts container resource
-// requests and limits. Returns nil for unsupported kinds without error.
+// requests and limits. Returns (nil, nil) for unsupported kinds without error;
+// callers must check for a nil pointer before use.
+//
+//nolint:nilnil // nil result with no error is intentional for unsupported kinds
 func FetchScaleTargetResources(ctx context.Context, client kubernetes.Interface, namespace, kind, name string) (*ResourceRequests, error) {
 	ref := autoscalingv2.CrossVersionObjectReference{Kind: kind, Name: name}
 	info, err := FetchScaleTargetInfo(ctx, client, namespace, ref)

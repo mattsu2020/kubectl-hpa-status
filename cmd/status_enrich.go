@@ -213,14 +213,7 @@ func enrichGitOpsConflict(ctx context.Context, opts *options, client *kube.Clien
 	if !opts.gitopsCheck && opts.manifestPath == "" {
 		return
 	}
-	conflict, err := buildGitOpsConflict(ctx, client, hpa, opts.manifestPath)
-	if err != nil {
-		// GitOps check is opt-in; surface fetch/parse failures so the user
-		// knows the conflict analysis did not run rather than silently no-op.
-		report.Analysis.Warnings = append(report.Analysis.Warnings,
-			fmt.Sprintf("gitops conflict check unavailable: %v", err))
-		return
-	}
+	conflict := buildGitOpsConflict(ctx, client, hpa, opts.manifestPath)
 	if conflict != nil {
 		report.Analysis.GitOpsConflict = conflict
 	}

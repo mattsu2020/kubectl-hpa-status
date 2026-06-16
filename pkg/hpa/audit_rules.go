@@ -34,7 +34,7 @@ func stabilizationWindowAuditRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ 
 			Current:     "unset (default 300s)",
 			Recommended: "Set stabilizationWindowSeconds explicitly",
 			Patch:       patch,
-			Command:     kubectlPatchCommand(hpa, patch, true),
+			Command:     kubectlPatchCommand(hpa, patch),
 			Risk:        "low",
 		},
 	}

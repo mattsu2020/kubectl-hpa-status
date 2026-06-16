@@ -16,8 +16,11 @@ import (
 )
 
 // buildGitOpsConflict gathers manifest files and live cluster state to detect
-// conflicts between GitOps-managed replicas and HPA scaling decisions.
-func buildGitOpsConflict(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, manifestPath string) (*hpaanalysis.GitOpsConflict, error) {
+// conflicts between GitOps-managed replicas and HPA scaling decisions. It never
+// returns an error: manifest parse failures are logged as warnings and live
+// cluster fetch failures simply leave the corresponding fields empty, so the
+// caller always gets a (possibly empty) GitOpsConflict to render.
+func buildGitOpsConflict(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, manifestPath string) *hpaanalysis.GitOpsConflict {
 	// Parse manifest path to extract spec.replicas
 	var manifestReplicas *int32
 	targetKind := hpa.Spec.ScaleTargetRef.Kind
@@ -79,11 +82,15 @@ func buildGitOpsConflict(ctx context.Context, client *kube.Client, hpa *autoscal
 		KEDAManaged:       kedaManaged,
 	}
 
-	return hpaanalysis.AnalyzeGitOpsConflict(input), nil
+	return hpaanalysis.AnalyzeGitOpsConflict(input)
 }
 
 // parseManifestReplicas reads YAML/JSON manifest files and extracts spec.replicas
-// for the target resource. Supports both single files and directories.
+// for the target resource. Supports both single files and directories. Returns
+// (nil, nil) when no matching resource is found; callers treat a nil *int32 as
+// "manifest did not pin replicas" rather than an error.
+//
+//nolint:nilnil // nil replica pointer with no error means "not pinned in manifest"
 func parseManifestReplicas(manifestPath string, targetKind, targetName string) (*int32, error) {
 	info, err := os.Stat(manifestPath)
 	if err != nil {

@@ -80,7 +80,7 @@ func scalingLimitedMaxRule(ctx SuggestionContext) []Suggestion {
 	return []Suggestion{{
 		Title:       "Raise maxReplicas",
 		Description: fmt.Sprintf("The HPA is capped at maxReplicas=%d. Raising it to %d allows the controller to add capacity if metrics still require it.", hpa.Spec.MaxReplicas, nextMax),
-		Command:     kubectlPatchCommand(hpa, patch, true),
+		Command:     kubectlPatchCommand(hpa, patch),
 		Patch:       patch,
 		Risk:        "medium",
 		Preconditions: []string{
@@ -122,7 +122,7 @@ func scalingLimitedMinRule(ctx SuggestionContext) []Suggestion {
 	return []Suggestion{{
 		Title:       "Lower minReplicas",
 		Description: fmt.Sprintf("The HPA is capped at minReplicas=%d. Lowering it to %d allows further scale-down.", minReplicas, nextMin),
-		Command:     kubectlPatchCommand(hpa, patch, true),
+		Command:     kubectlPatchCommand(hpa, patch),
 		Patch:       patch,
 		Risk:        "medium",
 		Preconditions: []string{
@@ -161,7 +161,7 @@ func scaleDownStabilizedRule(ctx SuggestionContext) []Suggestion {
 	return []Suggestion{{
 		Title:       "Shorten scale-down stabilization",
 		Description: fmt.Sprintf("Scale-down is stabilized for up to %ds. Reducing the window to %ds makes scale-down respond sooner.", *window, nextWindow),
-		Command:     kubectlPatchCommand(hpa, patch, true),
+		Command:     kubectlPatchCommand(hpa, patch),
 		Patch:       patch,
 		Risk:        "medium",
 		Preconditions: []string{
@@ -197,7 +197,7 @@ func behaviorPolicyRule(ctx SuggestionContext) []Suggestion {
 		suggestions = append(suggestions, Suggestion{
 			Title:       "Add explicit scale-up policy",
 			Description: "Visible metrics are above target and scale-up behavior is implicit. Adding explicit scaleUp policies makes burst response predictable.",
-			Command:     kubectlPatchCommand(hpa, patch, true),
+			Command:     kubectlPatchCommand(hpa, patch),
 			Patch:       patch,
 			Risk:        "medium",
 			Preconditions: []string{
@@ -226,7 +226,7 @@ func behaviorPolicyRule(ctx SuggestionContext) []Suggestion {
 		suggestions = append(suggestions, Suggestion{
 			Title:       "Add explicit scale-down policy",
 			Description: "Metrics are below target and scale-down behavior is implicit. A bounded scaleDown policy keeps downscale predictable.",
-			Command:     kubectlPatchCommand(hpa, patch, true),
+			Command:     kubectlPatchCommand(hpa, patch),
 			Patch:       patch,
 			Risk:        "medium",
 			Preconditions: []string{
@@ -267,7 +267,7 @@ func toleranceRule(ctx SuggestionContext) []Suggestion {
 	return []Suggestion{{
 		Title:       "Review scale-up tolerance",
 		Description: fmt.Sprintf("%s is %.3fx target while replicas are unchanged. If your cluster enables HPAConfigurableTolerance, a lower scaleUp tolerance such as 0.05 can make small sustained pressure scale sooner.", metric.Name, metric.Ratio),
-		Command:     kubectlPatchCommand(hpa, patch, true),
+		Command:     kubectlPatchCommand(hpa, patch),
 		Patch:       patch,
 		Risk:        "medium",
 		Preconditions: []string{
@@ -425,11 +425,15 @@ func hasVisibleScaleUpPressure(hpa *autoscalingv2.HorizontalPodAutoscaler) bool 
 	return false
 }
 
-func kubectlPatchCommand(hpa *autoscalingv2.HorizontalPodAutoscaler, patch string, dryRun bool) string {
+// kubectlPatchCommand renders a copy-paste kubectl patch command with
+// --dry-run=server attached. Suggestions are intentionally non-destructive:
+// the dry-run flag is always present so operators must explicitly strip it to
+// apply a change. The now-removed dryRun parameter was always true at every
+// call site (see unparam); callers wanting a no-dry-run variant must build a
+// different command.
+func kubectlPatchCommand(hpa *autoscalingv2.HorizontalPodAutoscaler, patch string) string {
 	command := fmt.Sprintf("kubectl patch hpa %s -n %s --type=merge -p '%s'", hpa.Name, hpa.Namespace, patch)
-	if dryRun {
-		command += " --dry-run=server"
-	}
+	command += " --dry-run=server"
 	return command
 }
 

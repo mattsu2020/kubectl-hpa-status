@@ -2,9 +2,7 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	"io"
-	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -18,15 +16,11 @@ func newSupportBundleCommand(opts *options) *cobra.Command {
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: hpaNameCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			format, _ := cmd.Flags().GetString("format")
-			output, _ := cmd.Flags().GetString("output")
-			redact, _ := cmd.Flags().GetBool("redact")
+			format, output, redact := readBundleFlags(cmd)
 			return runSupportBundle(cmd.Context(), cmd.OutOrStdout(), opts, args[0], format, output, redact)
 		},
 	}
-	cmd.Flags().String("format", "markdown", "output format: markdown or zip")
-	cmd.Flags().StringP("output", "o", "", "output file path (default: hpa-support-bundle-<name>-<timestamp>.{md|zip})")
-	cmd.Flags().Bool("redact", false, "redact sensitive information (IPs, node names, pod UIDs)")
+	addBundleFlags(cmd, "hpa-support-bundle-<name>-<timestamp>.{md|zip}")
 	return cmd
 }
 
@@ -56,14 +50,7 @@ func runSupportBundle(ctx context.Context, out io.Writer, opts *options, name, f
 		format = "markdown"
 	}
 
-	if outputPath == "" {
-		ts := time.Now().Format("20060102-150405")
-		ext := ".md"
-		if format == "zip" {
-			ext = ".zip"
-		}
-		outputPath = fmt.Sprintf("hpa-support-bundle-%s-%s%s", name, ts, ext)
-	}
+	outputPath = defaultBundleOutputPath(outputPath, name, format, "hpa-support-bundle")
 
 	// Delegate to the existing bundle infrastructure.
 	return runBundle(ctx, out, &local, name, format, outputPath, redact)

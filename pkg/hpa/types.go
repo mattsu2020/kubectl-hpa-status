@@ -200,8 +200,15 @@ type Analysis struct {
 	// it is safe to raise maxReplicas. Populated when --capacity-plan is enabled
 	// or via the capacity subcommand.
 	CapacityPlan *CapacityPlan `json:"capacityPlan,omitempty" yaml:"capacityPlan,omitempty"`
-	// EnrichmentStatus holds KEDA/VPA enrichment skip reasons for diagnostic output.
-	// Populated during enrichment to explain why data may be absent.
+	// EnrichmentStatus holds KEDA/VPA enrichment skip reasons for diagnostic
+	// output, populated during enrichment to explain why data may be absent.
+	//
+	// The concrete value is internal/enrichment.Status; the field is typed
+	// interface{} because pkg/hpa cannot import the internal/enrichment package
+	// (Go internal package visibility). The value is consumed only via JSON/YAML
+	// marshalling of the surrounding Analysis — no production code reads or
+	// type-asserts it directly. Treat the serialised shape as a public contract:
+	// add fields additively, never rename or reorder existing keys.
 	EnrichmentStatus interface{} `json:"enrichmentStatus,omitempty" yaml:"enrichmentStatus,omitempty"`
 	// MetricContract holds metrics contract validation results, populated when
 	// --metric-contract is enabled.

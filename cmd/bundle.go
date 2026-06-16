@@ -26,16 +26,46 @@ func newBundleCommand(opts *options) *cobra.Command {
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: hpaNameCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			format, _ := cmd.Flags().GetString("format")
-			output, _ := cmd.Flags().GetString("output")
-			redact, _ := cmd.Flags().GetBool("redact")
+			format, output, redact := readBundleFlags(cmd)
 			return runBundle(cmd.Context(), cmd.OutOrStdout(), opts, args[0], format, output, redact)
 		},
 	}
-	cmd.Flags().String("format", "markdown", "output format: markdown or zip")
-	cmd.Flags().StringP("output", "o", "", "output file path (default: hpa-bundle-<name>-<timestamp>.{md|zip})")
-	cmd.Flags().Bool("redact", false, "redact sensitive information (IPs, node names, pod UIDs)")
+	addBundleFlags(cmd, "hpa-bundle-<name>-<timestamp>.{md|zip}")
 	return cmd
+}
+
+// addBundleFlags registers the --format / --output / --redact flags shared by
+// the bundle and support-bundle commands. Only the --output help text (the
+// default filename pattern) differs between the two commands.
+func addBundleFlags(cmd *cobra.Command, defaultOutputPattern string) {
+	cmd.Flags().String("format", "markdown", "output format: markdown or zip")
+	cmd.Flags().StringP("output", "o", "", "output file path (default: "+defaultOutputPattern+")")
+	cmd.Flags().Bool("redact", false, "redact sensitive information (IPs, node names, pod UIDs)")
+}
+
+// readBundleFlags reads the three bundle flags registered by addBundleFlags.
+// Centralising the reads keeps the two command RunE bodies identical and free
+// of copy-paste drift.
+func readBundleFlags(cmd *cobra.Command) (format, output string, redact bool) {
+	format, _ = cmd.Flags().GetString("format")
+	output, _ = cmd.Flags().GetString("output")
+	redact, _ = cmd.Flags().GetBool("redact")
+	return format, output, redact
+}
+
+// defaultBundleOutputPath resolves the bundle output path. When the caller did
+// not pass --output, it derives "hpa-bundle-<name>-<ts>.<ext>" (or the
+// support-bundle prefix) so bundle and support-bundle share one formatting path.
+func defaultBundleOutputPath(outputPath, name, format, prefix string) string {
+	if outputPath != "" {
+		return outputPath
+	}
+	ts := time.Now().Format("20060102-150405")
+	ext := ".md"
+	if format == "zip" {
+		ext = ".zip"
+	}
+	return fmt.Sprintf("%s-%s-%s%s", prefix, name, ts, ext)
 }
 
 // bundleData holds all collected diagnostic data for a single HPA.
@@ -83,14 +113,7 @@ func runBundle(ctx context.Context, out io.Writer, opts *options, name, format, 
 		redactBundleData(data)
 	}
 
-	if outputPath == "" {
-		ts := time.Now().Format("20060102-150405")
-		ext := ".md"
-		if format == "zip" {
-			ext = ".zip"
-		}
-		outputPath = fmt.Sprintf("hpa-bundle-%s-%s%s", name, ts, ext)
-	}
+	outputPath = defaultBundleOutputPath(outputPath, name, format, "hpa-bundle")
 
 	switch format {
 	case "markdown", "md":

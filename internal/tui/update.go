@@ -57,8 +57,8 @@ func (m Model) updateKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleSimInput(msg)
 	}
 	if m.viewMode == simView && m.simState != nil && !m.simState.metricMode {
-		if updated, cmd, handled := m.handleSimFieldInput(msg); handled {
-			return updated, cmd
+		if updated, handled := m.handleSimFieldInput(msg); handled {
+			return updated, nil
 		}
 	}
 	return m.handleKey(msg)
@@ -435,9 +435,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) handleSimFieldInput(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
+func (m Model) handleSimFieldInput(msg tea.KeyMsg) (tea.Model, bool) {
 	if m.simState == nil || len(m.simState.fields) == 0 {
-		return m, nil, false
+		return m, false
 	}
 	switch msg.Type {
 	case tea.KeyBackspace, tea.KeyCtrlH:
@@ -445,10 +445,10 @@ func (m Model) handleSimFieldInput(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 		if len(field.Value) > 0 {
 			field.Value = field.Value[:len(field.Value)-1]
 		}
-		return m, nil, true
+		return m, true
 	case tea.KeyRunes:
 		if len(msg.Runes) == 0 {
-			return m, nil, false
+			return m, false
 		}
 		changed := false
 		for _, r := range msg.Runes {
@@ -458,9 +458,9 @@ func (m Model) handleSimFieldInput(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 				changed = true
 			}
 		}
-		return m, nil, changed
+		return m, changed
 	}
-	return m, nil, false
+	return m, false
 }
 
 // handleEnter processes the Enter key based on the current view mode.
@@ -521,7 +521,8 @@ func (m Model) handleEscape() (tea.Model, tea.Cmd) {
 // handleSimulateKey activates the simulation panel from detail view.
 func (m Model) handleSimulateKey() (tea.Model, tea.Cmd) {
 	if m.viewMode == detailView {
-		return m, m.initSimState()
+		newM, _ := m.initSimState()
+		return newM, nil
 	}
 	return m, nil
 }
@@ -562,16 +563,19 @@ func (m Model) handleReplayKey() (tea.Model, tea.Cmd) {
 	return m, loadReplayTrace(m.replayState.filePath)
 }
 
-// initSimState creates simulation state from the currently selected HPA.
-func (m Model) initSimState() tea.Cmd {
+// initSimState creates simulation state from the currently selected HPA and
+// returns the updated model.
+//
+//nolint:unparam // tea.Cmd slot reserved for future focus/refresh commands
+func (m Model) initSimState() (tea.Model, tea.Cmd) {
 	filtered := m.filteredItems()
 	if m.cursor < 0 || m.cursor >= len(filtered) {
-		return nil
+		return m, nil
 	}
 
 	report := m.currentReport()
 	if report == nil {
-		return nil
+		return m, nil
 	}
 
 	// Get the original HPA from the report's analysis.
@@ -597,7 +601,7 @@ func (m Model) initSimState() tea.Cmd {
 		focusIndex:  0,
 	}
 	m.viewMode = simView
-	return nil
+	return m, nil
 }
 
 // runSimulation executes the simulation as a background tea.Cmd.

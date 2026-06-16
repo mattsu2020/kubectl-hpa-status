@@ -44,6 +44,11 @@ func capacitySelector(ctx context.Context, client *kube.Client, hpa *autoscaling
 	return metav1.FormatLabelSelector(selector)
 }
 
+// scaleTargetSelector resolves the label selector of the HPA's scale target.
+// Returns (nil, nil) when the scale target kind is not one we recognise;
+// callers must check for a nil selector before using it.
+//
+//nolint:nilnil // nil selector with no error is intentional for unsupported kinds
 func scaleTargetSelector(
 	ctx context.Context,
 	client *kube.Client,

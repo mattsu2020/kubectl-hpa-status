@@ -25,7 +25,10 @@ type ScaleTargetInfo struct {
 
 // FetchScaleTargetInfo resolves the HPA scale target reference into a
 // ScaleTargetInfo containing the label selector, replica counts, and pod template.
-// Returns nil for unsupported kinds without error.
+// Returns (nil, nil) for unsupported kinds without error; callers must check
+// for a nil pointer before use.
+//
+//nolint:nilnil // nil result with no error is intentional for unsupported kinds
 func FetchScaleTargetInfo(ctx context.Context, client kubernetes.Interface, namespace string, ref autoscalingv2.CrossVersionObjectReference) (*ScaleTargetInfo, error) {
 	switch ref.Kind {
 	case "Deployment":

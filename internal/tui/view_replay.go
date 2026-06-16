@@ -133,7 +133,7 @@ func replayBottleneckMarkers(analysis *hpaanalysis.ReplayAnalysis) map[string]st
 	}
 	for _, b := range analysis.Bottlenecks {
 		timeKey := b.Timestamp.Format("15:04:05")
-		marker := ""
+		var marker string
 		switch b.Severity {
 		case "high":
 			marker = errorStyle.Render("[" + b.Type + "]")

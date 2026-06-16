@@ -158,7 +158,10 @@ func resourceMap(parent map[string]any, field string) map[string]string {
 
 // FindConflictingVPA finds VPAs whose targetRef matches the HPA's scaleTargetRef.
 // Only returns a VPA when the HPA uses CPU or memory resource metrics.
-// Returns nil if no conflicting VPA is found.
+// Returns (nil, nil) when the HPA has no resource metrics or no conflicting
+// VPA exists; callers must check for a nil pointer before use.
+//
+//nolint:nilnil // nil result with no error means "no conflicting VPA"
 func FindConflictingVPA(ctx context.Context, dynClient dynamic.Interface, namespace string, hpa *autoscalingv2.HorizontalPodAutoscaler) (*VPAInfo, error) {
 	if !hasResourceMetrics(hpa) {
 		return nil, nil

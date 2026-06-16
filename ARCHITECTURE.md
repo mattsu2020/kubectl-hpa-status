@@ -30,7 +30,7 @@ Inference should be labeled with confidence language and covered by tests.
 | `internal/tui/` | Bubble Tea dashboard: model/update/view plus a per-view renderer |
 | `internal/history/` | Health snapshot store for trend/sparkline replay |
 | `internal/i18n/` | Embedded locale bundles (en/ja), dynamically loaded from `locales/` |
-| `internal/style/` | Terminal color and semantic styling |
+| `pkg/style/` | Terminal color and semantic styling (shared by cmd and pkg/hpa renderers) |
 | `internal/patch/` | Strategic merge patch helpers for suggestions |
 | `test/e2e/` | kind-backed command path tests |
 
@@ -50,11 +50,11 @@ constructor. Major commands grouped by area:
 | --- | --- |
 | Status & diagnosis | `status`, `explain`, `doctor`, `analyze`, `assumptions`, `why_not_scale`, `readiness`, `readiness_doctor` |
 | Cluster overview | `list`, `scan`, `fleet`, `watch`, `tui`, `compare` |
-| Deep analysis | `timeline`, `trace`, `path`, `replay_lab`, `simulate*`, `metrics_probe`, `metrics_contract`, `metrics_freshness` |
+| Deep analysis | `timeline`, `trace`, `path`, `replay`, `record`, `simulate*`, `metrics_probe`, `metrics_contract` |
 | Recommendations | `recommend`, `advisor`, `container_advisor`, `capacity*`, `profile`, `tune`, `slo` |
-| Lint & policy | `lint`, `policy`, `gitops_lint`, `gitops_review`, `blockers`, `conflicts` |
-| Bundles & export | `bundle*`, `incident_bundle`, `support_bundle`, `snapshot`, `export*`, `ai_context` |
-| Plumbing | `root`, `output`, `config`, `config_apply`, `helpers`, `exitcode`, `completion` |
+| Lint & policy | `lint`, `policy`, `gitops_lint`, `gitops_review`, `blockers` |
+| Bundles & export | `bundle*`, `incident_bundle`, `support_bundle`, `snapshot`, `export*` |
+| Plumbing | `root`, `output`, `config`, `helpers`, `exitcode`, `completion` |
 
 Refactoring notes:
 - `status.go` was split into per-enrichment helpers (`enrichXxx` functions
