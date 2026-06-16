@@ -11,6 +11,10 @@ updates:
       golang-x:
         patterns:
           - golang.org/x/*
+      charmbracelet:
+        patterns:
+          - github.com/charmbracelet/*
+          - github.com/muesli/*
   - package-ecosystem: github-actions
     directory: /
     schedule:

@@ -179,10 +179,10 @@ func TestConfirmApply_WritesWarning(t *testing.T) {
 	}
 }
 
-// --- convertPendingPods tests ---
+// --- convertToPendingPodInfos tests ---
 
 func TestConvertPendingPods_Empty(t *testing.T) {
-	result := convertPendingPods(nil)
+	result := convertToPendingPodInfos(nil)
 	if result != nil {
 		t.Fatalf("expected nil for empty input, got %v", result)
 	}
@@ -193,7 +193,7 @@ func TestConvertPendingPods_WithData(t *testing.T) {
 		{Name: "pod-1", Unschedulable: true, Reasons: []string{"Insufficient cpu"}},
 		{Name: "pod-2", Unschedulable: false, Reasons: nil},
 	}
-	result := convertPendingPods(details)
+	result := convertToPendingPodInfos(details)
 	if len(result) != 2 {
 		t.Fatalf("expected 2 items, got %d", len(result))
 	}
@@ -208,6 +208,72 @@ func TestConvertPendingPods_WithData(t *testing.T) {
 	}
 	if result[1].Unschedulable {
 		t.Fatal("expected Unschedulable=false for pod-2")
+	}
+}
+
+// --- convertToBlockerPodInfos tests (shared conversion path) ---
+
+func TestConvertToBlockerPodInfos_Empty(t *testing.T) {
+	result := convertToBlockerPodInfos(nil)
+	if result != nil {
+		t.Fatalf("expected nil for empty input, got %v", result)
+	}
+}
+
+func TestConvertToBlockerPodInfos_WithData(t *testing.T) {
+	details := []kube.PendingPodDetail{
+		{Name: "pod-1", Unschedulable: true, Reasons: []string{"Insufficient memory"}},
+	}
+	result := convertToBlockerPodInfos(details)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(result))
+	}
+	if result[0].Name != "pod-1" {
+		t.Fatalf("expected pod-1, got %s", result[0].Name)
+	}
+	if result[0].Phase != "Pending" {
+		t.Fatalf("expected Phase=Pending, got %s", result[0].Phase)
+	}
+	if !result[0].Unschedulable {
+		t.Fatal("expected Unschedulable=true")
+	}
+}
+
+// --- convertPDBsPlain tests (capacity_plan path: no Disruption message) ---
+
+func TestConvertPDBsPlain_NoDisruption(t *testing.T) {
+	infos := []kube.PDBInfo{{Name: "web-pdb", MinAvailable: "3"}}
+	result := convertPDBsPlain(infos)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(result))
+	}
+	if result[0].Disruption != "" {
+		t.Fatalf("expected empty Disruption for plain conversion, got %q", result[0].Disruption)
+	}
+	if result[0].MinAvailable != "3" {
+		t.Fatalf("expected MinAvailable=3, got %s", result[0].MinAvailable)
+	}
+}
+
+// --- pdbDisruptionMessage tests ---
+
+func TestPDBDisruptionMessage(t *testing.T) {
+	tests := []struct {
+		name string
+		pdb  kube.PDBInfo
+		want string
+	}{
+		{"minAvailable wins over both", kube.PDBInfo{MinAvailable: "3", MaxUnavailable: "1"}, "minAvailable"},
+		{"maxUnavailable when no min", kube.PDBInfo{MaxUnavailable: "2"}, "maxUnavailable=2"},
+		{"default when empty", kube.PDBInfo{}, "no availability constraint"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := pdbDisruptionMessage(tc.pdb)
+			if !strings.Contains(got, tc.want) {
+				t.Fatalf("pdbDisruptionMessage(%+v) = %q, want substring %q", tc.pdb, got, tc.want)
+			}
+		})
 	}
 }
 

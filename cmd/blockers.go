@@ -193,23 +193,6 @@ func enrichBlockerInputFromPods(input hpaanalysis.BlockerInput, pods []kube.PodI
 	return input
 }
 
-// convertToBlockerPodInfos converts internal PendingPodDetail to BlockerPodInfo.
-func convertToBlockerPodInfos(details []kube.PendingPodDetail) []hpaanalysis.BlockerPodInfo {
-	if len(details) == 0 {
-		return nil
-	}
-	result := make([]hpaanalysis.BlockerPodInfo, 0, len(details))
-	for _, d := range details {
-		result = append(result, hpaanalysis.BlockerPodInfo{
-			Name:          d.Name,
-			Phase:         "Pending",
-			Unschedulable: d.Unschedulable,
-			Reasons:       d.Reasons,
-		})
-	}
-	return result
-}
-
 // convertToBlockerContainerStatuses converts internal ContainerStatusDetail
 // to ContainerStatusSummary.
 func convertToBlockerContainerStatuses(details []kube.ContainerStatusDetail) []hpaanalysis.ContainerStatusSummary {

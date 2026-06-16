@@ -593,6 +593,28 @@ Interpretation lines include confidence levels to distinguish directly observabl
 CI uploads coverage to Codecov. Release Homebrew updates use the dedicated Tap [mattsu2020/homebrew-kubectl-hpa-status](https://github.com/mattsu2020/homebrew-kubectl-hpa-status).
 E2E runs on a matrix of Kubernetes 1.26 / 1.28 / 1.30 / latest-tracking kind image to continuously verify `autoscaling/v2` compatibility across the supported range.
 
+## Deprecated and Legacy Features
+
+This project follows a gradual deprecation policy: features are first marked `Deprecated` in their CLI help text, remain functional with a deprecation notice, and are removed in the next major version.
+
+| Feature | Status | Replacement | Removal Target |
+| --- | --- | --- | --- |
+| `analyze` subcommand | Deprecated (still works, prints deprecation notice) | `status NAME --explain` | v2.0 |
+
+### Migration
+
+Replace any `kubectl hpa analyze NAME` invocation with the equivalent status command:
+
+```bash
+# Before
+kubectl hpa analyze my-hpa
+
+# After (identical output; the deprecation banner goes away)
+kubectl hpa status my-hpa --explain
+```
+
+The `analyze` command exists solely for backward compatibility; new scripts and documentation should use `status --explain`.
+
 ## Feature Status
 
 ### Available Now

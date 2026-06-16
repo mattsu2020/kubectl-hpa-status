@@ -149,7 +149,7 @@ func assembleCapacityPlanInput(ctx context.Context, client *kube.Client, hpa *au
 
 			// Fetch pending pod details.
 			pendingDetails, _ := kube.FetchPendingPodDetails(ctx, client.Interface, hpa.Namespace, selector)
-			input.PendingPods = convertToCapacityPendingPods(pendingDetails)
+			input.PendingPods = convertToPendingPodInfos(pendingDetails)
 		}
 	}
 
@@ -180,7 +180,7 @@ func assembleCapacityPlanInput(ctx context.Context, client *kube.Client, hpa *au
 
 	// Fetch PDBs.
 	pdbInfos, _ := kube.FetchPodDisruptionBudgets(ctx, client.Interface, hpa.Namespace, hpa.UID)
-	input.PDBs = convertToCapacityPDBs(pdbInfos)
+	input.PDBs = convertPDBsPlain(pdbInfos)
 
 	// Detect Cluster Autoscaler.
 	input.ClusterAutoscaler = kube.DetectClusterAutoscaler(ctx, client.Interface)
@@ -191,22 +191,6 @@ func assembleCapacityPlanInput(ctx context.Context, client *kube.Client, hpa *au
 // ---------------------------------------------------------------------------
 // Converter functions
 // ---------------------------------------------------------------------------
-
-func convertToCapacityPendingPods(details []kube.PendingPodDetail) []hpaanalysis.PendingPodInfo {
-	if len(details) == 0 {
-		return nil
-	}
-	result := make([]hpaanalysis.PendingPodInfo, 0, len(details))
-	for _, d := range details {
-		result = append(result, hpaanalysis.PendingPodInfo{
-			Name:          d.Name,
-			Phase:         "Pending",
-			Unschedulable: d.Unschedulable,
-			Reasons:       d.Reasons,
-		})
-	}
-	return result
-}
 
 func convertToCapacityContainerResources(rr *kube.ResourceRequests) []hpaanalysis.CapacityContainerResources {
 	if rr == nil {
@@ -251,21 +235,6 @@ func convertToCapacityLimitRanges(infos []kube.LimitRangeInfo) []hpaanalysis.Lim
 			Resource: lr.Resource,
 			Min:      lr.Min,
 			Max:      lr.Max,
-		})
-	}
-	return result
-}
-
-func convertToCapacityPDBs(infos []kube.PDBInfo) []hpaanalysis.PDBInterference {
-	if len(infos) == 0 {
-		return nil
-	}
-	result := make([]hpaanalysis.PDBInterference, 0, len(infos))
-	for _, pdb := range infos {
-		result = append(result, hpaanalysis.PDBInterference{
-			Name:           pdb.Name,
-			MinAvailable:   pdb.MinAvailable,
-			MaxUnavailable: pdb.MaxUnavailable,
 		})
 	}
 	return result

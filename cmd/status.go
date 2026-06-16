@@ -52,7 +52,7 @@ func newAnalyzeCommand(opts *options) *cobra.Command {
 		Use:               "analyze NAME [NAME...]",
 		Aliases:           []string{"diagnose"},
 		Short:             "Analyze one or more HPAs using visible Kubernetes API signals",
-		Deprecated:        "Use 'status NAME --explain' instead. Example: kubectl-hpa-status status my-hpa --explain. The analyze subcommand will be removed in a future release.",
+		Deprecated:        "Use 'status NAME --explain' instead. Example: kubectl-hpa-status status my-hpa --explain. The analyze subcommand is scheduled for removal in v2.0.",
 		Args:              cobra.MinimumNArgs(1),
 		ValidArgsFunction: hpaNameCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {

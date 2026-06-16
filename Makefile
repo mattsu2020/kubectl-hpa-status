@@ -18,7 +18,7 @@ test-race:
 	$(GO) test -race ./...
 
 .PHONY: ci
-ci: build vet lint test docs-check
+ci: build vet lint test test-race docs-check
 	@echo "local CI checks passed"
 
 .PHONY: tidy

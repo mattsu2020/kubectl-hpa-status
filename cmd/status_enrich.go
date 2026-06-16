@@ -61,7 +61,14 @@ func enrichResourceCheck(ctx context.Context, opts *options, client *kube.Client
 		return
 	}
 	resources, err := kube.FetchScaleTargetResources(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef.Kind, hpa.Spec.ScaleTargetRef.Name)
-	if err == nil && resources != nil {
+	if err != nil {
+		// The user explicitly asked for resource checks (--check-resources);
+		// surface the fetch failure so it is not silently dropped.
+		report.Analysis.Warnings = append(report.Analysis.Warnings,
+			fmt.Sprintf("resource check unavailable: failed to read scale target resources: %v", err))
+		return
+	}
+	if resources != nil {
 		report.Analysis.ResourceCheck = hpaanalysis.CheckResourceConsistency(hpa, resources)
 	}
 }
@@ -203,10 +210,19 @@ func enrichCapacityPlan(ctx context.Context, opts *options, client *kube.Client,
 }
 
 func enrichGitOpsConflict(ctx context.Context, opts *options, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
-	if opts.gitopsCheck || opts.manifestPath != "" {
-		if conflict, err := buildGitOpsConflict(ctx, client, hpa, opts.manifestPath); err == nil && conflict != nil {
-			report.Analysis.GitOpsConflict = conflict
-		}
+	if !opts.gitopsCheck && opts.manifestPath == "" {
+		return
+	}
+	conflict, err := buildGitOpsConflict(ctx, client, hpa, opts.manifestPath)
+	if err != nil {
+		// GitOps check is opt-in; surface fetch/parse failures so the user
+		// knows the conflict analysis did not run rather than silently no-op.
+		report.Analysis.Warnings = append(report.Analysis.Warnings,
+			fmt.Sprintf("gitops conflict check unavailable: %v", err))
+		return
+	}
+	if conflict != nil {
+		report.Analysis.GitOpsConflict = conflict
 	}
 }
 

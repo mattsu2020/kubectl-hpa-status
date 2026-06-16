@@ -26,6 +26,11 @@ jobs:
       - name: Test
         run: go test -v ./...
 
+      - name: Race detector
+        # Run the race detector on the pure-logic packages where concurrency
+        # matters most (pkg/hpa atomic clock, cmd concurrent report building).
+        run: go test -race ./pkg/... ./cmd/... ./internal/...
+
       - name: Coverage
         run: |
           go test -coverprofile=coverage.out ./...

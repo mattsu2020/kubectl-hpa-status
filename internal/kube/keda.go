@@ -188,22 +188,21 @@ func ExtractKEDAInfo(u *unstructured.Unstructured) KEDAInfo {
 		ScaledObjectName: u.GetName(),
 	}
 
-	spec, ok := u.Object["spec"].(map[string]any)
+	spec, ok := nestedMap(u.Object, "spec")
 	if ok {
 		info.Triggers = extractTriggers(spec)
 		info.PollingInterval = extractInt32Ptr(spec, "pollingInterval")
 		info.CooldownPeriod = extractInt32Ptr(spec, "cooldownPeriod")
 		info.MinReplicaCount = extractInt32Ptr(spec, "minReplicaCount")
 		info.MaxReplicaCount = extractInt32Ptr(spec, "maxReplicaCount")
-		if advanced, ok := spec["advanced"].(map[string]any); ok {
+		if advanced, ok := nestedMap(spec, "advanced"); ok {
 			info.Advanced = extractAdvanced(advanced)
 		}
 		info.Fallback = extractFallback(spec)
 		info.ScalingPolicies = extractScalingPolicies(spec)
 	}
 
-	status, ok := u.Object["status"].(map[string]any)
-	if ok {
+	if status, ok := nestedMap(u.Object, "status"); ok {
 		info.Conditions = extractKEDAConditions(status)
 		// Merge trigger health status into triggers extracted from spec.
 		extractTriggerStatus(u, info.Triggers)
@@ -283,17 +282,13 @@ func extractScaledObjectName(hpa *autoscalingv2.HorizontalPodAutoscaler) (string
 }
 
 func extractTriggers(spec map[string]any) []KEDATrigger {
-	raw, ok := spec["triggers"]
-	if !ok {
-		return nil
-	}
-	triggersRaw, ok := raw.([]any)
+	triggersRaw, ok := nestedSlice(spec, "triggers")
 	if !ok {
 		return nil
 	}
 	triggers := make([]KEDATrigger, 0, len(triggersRaw))
 	for _, t := range triggersRaw {
-		tm, ok := t.(map[string]any)
+		tm, ok := mapAt(t)
 		if !ok {
 			continue
 		}
@@ -301,7 +296,7 @@ func extractTriggers(spec map[string]any) []KEDATrigger {
 			Type: stringValue(tm, "type"),
 			Name: stringValue(tm, "name"),
 		}
-		if metadata, ok := tm["metadata"].(map[string]any); ok {
+		if metadata, ok := nestedMap(tm, "metadata"); ok {
 			trigger.Metadata = make(map[string]string, len(metadata))
 			for k, v := range metadata {
 				trigger.Metadata[k] = fmt.Sprintf("%v", v)
@@ -314,11 +309,11 @@ func extractTriggers(spec map[string]any) []KEDATrigger {
 			}
 		}
 		// Extract metricType to determine the produced metric name.
-		if ms, ok := tm["metricType"].(string); ok && ms != "" {
+		if ms, ok := nestedString(tm, "metricType"); ok && ms != "" {
 			trigger.MetricName = ms
 		}
 		// Extract authenticationRef.name from the trigger spec.
-		if authRef, ok := tm["authenticationRef"].(map[string]any); ok {
+		if authRef, ok := nestedMap(tm, "authenticationRef"); ok {
 			trigger.AuthenticationRef = stringValue(authRef, "name")
 		}
 		triggers = append(triggers, trigger)
@@ -329,11 +324,11 @@ func extractTriggers(spec map[string]any) []KEDATrigger {
 // extractTriggerStatus reads status.health from the ScaledObject and merges
 // per-trigger health status (Active/Inactive/Unknown) into the triggers slice.
 func extractTriggerStatus(u *unstructured.Unstructured, triggers []KEDATrigger) {
-	status, ok := u.Object["status"].(map[string]any)
+	status, ok := nestedMap(u.Object, "status")
 	if !ok {
 		return
 	}
-	health, ok := status["health"].(map[string]any)
+	health, ok := nestedMap(status, "health")
 	if !ok {
 		// No per-trigger health; try conditions for overall status.
 		return
@@ -381,11 +376,7 @@ func mapHealthStatus(s string) string {
 
 // extractFallback reads spec.fallback from the ScaledObject.
 func extractFallback(spec map[string]any) *KEDAFallback {
-	raw, ok := spec["fallback"]
-	if !ok {
-		return nil
-	}
-	fm, ok := raw.(map[string]any)
+	fm, ok := nestedMap(spec, "fallback")
 	if !ok {
 		return nil
 	}
@@ -407,31 +398,31 @@ func extractFallback(spec map[string]any) *KEDAFallback {
 // extractScalingPolicies reads scaling policies from
 // spec.advanced.horizontalPodAutoscalerConfig.behavior.
 func extractScalingPolicies(spec map[string]any) []KEDAScalingPolicy {
-	advanced, ok := spec["advanced"].(map[string]any)
+	advanced, ok := nestedMap(spec, "advanced")
 	if !ok {
 		return nil
 	}
-	hpaConfig, ok := advanced["horizontalPodAutoscalerConfig"].(map[string]any)
+	hpaConfig, ok := nestedMap(advanced, "horizontalPodAutoscalerConfig")
 	if !ok {
 		return nil
 	}
-	behavior, ok := hpaConfig["behavior"].(map[string]any)
+	behavior, ok := nestedMap(hpaConfig, "behavior")
 	if !ok {
 		return nil
 	}
 
 	var policies []KEDAScalingPolicy
 	for _, direction := range []string{"scaleUp", "scaleDown"} {
-		rules, ok := behavior[direction].(map[string]any)
+		rules, ok := nestedMap(behavior, direction)
 		if !ok {
 			continue
 		}
-		rawPolicies, ok := rules["policies"].([]any)
+		rawPolicies, ok := nestedSlice(rules, "policies")
 		if !ok {
 			continue
 		}
 		for _, p := range rawPolicies {
-			pm, ok := p.(map[string]any)
+			pm, ok := mapAt(p)
 			if !ok {
 				continue
 			}
@@ -454,17 +445,13 @@ func extractScalingPolicies(spec map[string]any) []KEDAScalingPolicy {
 }
 
 func extractKEDAConditions(status map[string]any) []KEDACondition {
-	raw, ok := status["conditions"]
-	if !ok {
-		return nil
-	}
-	conditionsRaw, ok := raw.([]any)
+	conditionsRaw, ok := nestedSlice(status, "conditions")
 	if !ok {
 		return nil
 	}
 	conditions := make([]KEDACondition, 0, len(conditionsRaw))
 	for _, c := range conditionsRaw {
-		cm, ok := c.(map[string]any)
+		cm, ok := mapAt(c)
 		if !ok {
 			continue
 		}
@@ -479,11 +466,11 @@ func extractKEDAConditions(status map[string]any) []KEDACondition {
 }
 
 func extractScaleTargetRef(u *unstructured.Unstructured) *autoscalingv2.CrossVersionObjectReference {
-	spec, ok := u.Object["spec"].(map[string]any)
+	spec, ok := nestedMap(u.Object, "spec")
 	if !ok {
 		return nil
 	}
-	ref, ok := spec["scaleTargetRef"].(map[string]any)
+	ref, ok := nestedMap(spec, "scaleTargetRef")
 	if !ok {
 		return nil
 	}

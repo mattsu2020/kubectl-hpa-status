@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
@@ -22,7 +21,7 @@ func buildCapacityContext(ctx context.Context, client *kube.Client, hpa *autosca
 	}
 
 	pendingDetails, _ := kube.FetchPendingPodDetails(ctx, client.Interface, hpa.Namespace, selector)
-	result.PendingPods = convertPendingPods(pendingDetails)
+	result.PendingPods = convertToPendingPodInfos(pendingDetails)
 
 	quotaInfos, _ := kube.FetchResourceQuotas(ctx, client.Interface, hpa.Namespace)
 	result.QuotaConstraints = convertQuotas(quotaInfos)
@@ -59,63 +58,4 @@ func scaleTargetSelector(
 		return nil, nil
 	}
 	return info.Selector, nil
-}
-
-func convertPendingPods(details []kube.PendingPodDetail) []hpaanalysis.PendingPodInfo {
-	if len(details) == 0 {
-		return nil
-	}
-	result := make([]hpaanalysis.PendingPodInfo, 0, len(details))
-	for _, d := range details {
-		result = append(result, hpaanalysis.PendingPodInfo{
-			Name:          d.Name,
-			Phase:         "Pending",
-			Unschedulable: d.Unschedulable,
-			Reasons:       d.Reasons,
-		})
-	}
-	return result
-}
-
-func convertQuotas(infos []kube.QuotaInfo) []hpaanalysis.QuotaConstraint {
-	if len(infos) == 0 {
-		return nil
-	}
-	result := make([]hpaanalysis.QuotaConstraint, 0, len(infos))
-	for _, q := range infos {
-		result = append(result, hpaanalysis.QuotaConstraint{
-			Name:     q.Name,
-			Resource: q.Resource,
-			Used:     q.Used,
-			Hard:     q.Hard,
-			Message:  fmt.Sprintf("ResourceQuota %q is near limit for %s (used=%s, hard=%s)", q.Name, q.Resource, q.Used, q.Hard),
-		})
-	}
-	return result
-}
-
-func convertPDBs(infos []kube.PDBInfo) []hpaanalysis.PDBInterference {
-	if len(infos) == 0 {
-		return nil
-	}
-	result := make([]hpaanalysis.PDBInterference, 0, len(infos))
-	for _, p := range infos {
-		disruption := ""
-		if p.MinAvailable != "" {
-			disruption = fmt.Sprintf("minAvailable=%s may delay scale-down during disruptions", p.MinAvailable)
-		}
-		if p.MaxUnavailable != "" {
-			disruption = fmt.Sprintf("maxUnavailable=%s may limit concurrent disruptions", p.MaxUnavailable)
-		}
-		if disruption == "" {
-			disruption = "PDB present but no availability constraint specified"
-		}
-		result = append(result, hpaanalysis.PDBInterference{
-			Name:           p.Name,
-			MinAvailable:   p.MinAvailable,
-			MaxUnavailable: p.MaxUnavailable,
-			Disruption:     disruption,
-		})
-	}
-	return result
 }

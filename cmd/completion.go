@@ -3,12 +3,17 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/clientcmd/api"
 )
+
+// completionTimeout bounds API calls made while generating shell completions so
+// that a slow or unreachable cluster cannot hang the user's shell.
+const completionTimeout = 3 * time.Second
 
 func newCompletionCommand(root *cobra.Command) *cobra.Command {
 	cmd := &cobra.Command{
@@ -34,7 +39,7 @@ func newCompletionCommand(root *cobra.Command) *cobra.Command {
 }
 
 func hpaNameCompletion(opts *options) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
-	return func(_ *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
+	return func(cmd *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
 		if len(args) > 0 {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
@@ -46,9 +51,14 @@ func hpaNameCompletion(opts *options) func(*cobra.Command, []string, string) ([]
 		if opts.allNamespaces {
 			namespace = metav1.NamespaceAll
 		}
+		// Shell completion should never block the shell. Use the command's
+		// context (propagated cancellation, e.g. on Ctrl-C) and bound it to a
+		// short timeout so a slow API server cannot hang tab completion.
+		ctx, cancel := context.WithTimeout(cmd.Context(), completionTimeout)
+		defer cancel()
 		hpas, err := client.Interface.AutoscalingV2().
 			HorizontalPodAutoscalers(namespace).
-			List(context.Background(), metav1.ListOptions{})
+			List(ctx, metav1.ListOptions{})
 		if err != nil {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
@@ -142,12 +152,14 @@ func untilConditionCompletions(_ *cobra.Command, _ []string, _ string) ([]string
 // Dynamic flag completion functions that query the Kubernetes API or kubeconfig.
 
 func namespaceCompletions(opts *options) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
-	return func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+	return func(cmd *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		client, err := opts.newClient()
 		if err != nil {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
-		namespaces, err := client.Interface.CoreV1().Namespaces().List(context.Background(), metav1.ListOptions{})
+		ctx, cancel := context.WithTimeout(cmd.Context(), completionTimeout)
+		defer cancel()
+		namespaces, err := client.Interface.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
 		if err != nil {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
