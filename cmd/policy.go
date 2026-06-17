@@ -153,7 +153,7 @@ func runPolicy(ctx context.Context, out io.Writer, opts *options, policyOpts *po
 		return err
 	}
 
-	client, err := opts.newClient()
+	client, err := opts.NewClient()
 	if err != nil {
 		return err
 	}

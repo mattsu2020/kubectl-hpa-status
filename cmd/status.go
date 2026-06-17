@@ -25,7 +25,7 @@ func newStatusCommand(opts *options) *cobra.Command {
 		ValidArgsFunction: hpaNameCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			includeInterpretation := (opts.Interpret || opts.Explain || opts.Suggest) && !opts.NoInterpret
-			if opts.Watch {
+			if opts.Watch.Watch {
 				if len(args) != 1 {
 					return fmt.Errorf("--watch supports exactly one HPA name")
 				}
@@ -56,7 +56,7 @@ func newAnalyzeCommand(opts *options) *cobra.Command {
 		Args:              cobra.MinimumNArgs(1),
 		ValidArgsFunction: hpaNameCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if opts.Watch {
+			if opts.Watch.Watch {
 				if len(args) != 1 {
 					return fmt.Errorf("--watch supports exactly one HPA name")
 				}
@@ -90,7 +90,7 @@ func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []st
 
 // runStatusSingle handles the single-HPA status path, including structured/AI/apply/export output modes.
 func runStatusSingle(ctx context.Context, out io.Writer, opts *options, name string, includeInterpretation bool) error {
-	watchMode := opts.Watch
+	watchMode := opts.Watch.Watch
 	ec := newEnrichmentContext(ctx, opts)
 	report, err := buildStatusReportWithClient(ctx, opts, name, includeInterpretation, ec)
 	if err != nil {
@@ -130,10 +130,10 @@ func runStatusSingle(ctx context.Context, out io.Writer, opts *options, name str
 
 // runStatusMultiple handles the multi-HPA status path with concurrent report building and multi-report output.
 func runStatusMultiple(ctx context.Context, out io.Writer, opts *options, names []string, includeInterpretation bool) error {
-	watchMode := opts.Watch
+	watchMode := opts.Watch.Watch
 	ec := newEnrichmentContext(ctx, opts)
 	// Create client once for all HPAs to avoid redundant kubeconfig parsing.
-	client, err := opts.newClient()
+	client, err := opts.NewClient()
 	if err != nil {
 		return err
 	}
@@ -268,7 +268,7 @@ func statusTextOptions(opts *options, out io.Writer) hpaanalysis.StatusTextOptio
 
 // buildStatusReportWithClient creates a client and delegates to buildStatusReport.
 func buildStatusReportWithClient(ctx context.Context, opts *options, name string, includeInterpretation bool, ec *enrichmentContext) (hpaanalysis.StatusReport, error) {
-	client, err := opts.newClient()
+	client, err := opts.NewClient()
 	if err != nil {
 		return hpaanalysis.StatusReport{}, err
 	}

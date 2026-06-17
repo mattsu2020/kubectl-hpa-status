@@ -63,7 +63,7 @@ type assumptionsOutput struct {
 }
 
 func runAssumptions(ctx context.Context, out io.Writer, opts *options, names []string, flags assumptionsFlagOverrides) error {
-	client, err := opts.newClient()
+	client, err := opts.NewClient()
 	if err != nil {
 		return fmt.Errorf("failed to create Kubernetes client: %w", err)
 	}

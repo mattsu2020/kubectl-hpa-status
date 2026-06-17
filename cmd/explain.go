@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"github.com/mattsui2020/kubectl-hpa-status/internal/cmdoptions"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/spf13/cobra"
 )
 

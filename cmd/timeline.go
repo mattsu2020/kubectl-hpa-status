@@ -212,7 +212,7 @@ func addReplayShortcutOverrides(overrides map[string]string, maxReplicas, minRep
 }
 
 func runRetrospectiveTimeline(ctx context.Context, out io.Writer, opts *options, name string, since time.Duration, replay bool) error {
-	client, err := opts.newClient()
+	client, err := opts.NewClient()
 	if err != nil {
 		return fmt.Errorf("failed to create Kubernetes client: %w", err)
 	}
@@ -414,7 +414,7 @@ func recordOnce(ctx context.Context, opts *options, name string, interval time.D
 		return []hpaanalysis.TimelineTrace{traceFromReport(report, interval)}, nil
 	}
 
-	client, err := opts.newClient()
+	client, err := opts.NewClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Kubernetes client: %w", err)
 	}

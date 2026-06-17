@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 )
 
@@ -24,7 +25,9 @@ func TestRunStatus_ScalingInactiveWithExternalMetric(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "keda-worker", true)
 	// ScalingActive=False produces ERROR health -> ExitCodeError with code 2.
@@ -51,7 +54,9 @@ func TestRunStatus_ImplicitMaxReplicas(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "capped", true)
 	// Implicit maxReplicas produces LIMITED health -> ExitCodeError with code 2.
@@ -74,7 +79,9 @@ func TestRunStatus_ScaleDownStabilized(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "stable", true)
 	if err != nil {
@@ -100,7 +107,9 @@ func TestRunStatus_ExternalMetricPresent(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "queue-worker", true)
 	if err != nil {
@@ -123,7 +132,9 @@ func TestRunStatus_KEDADetectionWithoutKEDAFlag(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "keda-hpa-worker", true)
 	if err != nil {
@@ -147,7 +158,10 @@ func TestRunStatus_DebugMode(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient, Debug: true,
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+			Debug:          true,
+		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "web", true)
 	if err != nil {
@@ -178,7 +192,9 @@ func TestRunList_MinScore(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
 	}
 	err := runList(context.Background(), &buf, opts)
 	if err != nil {
@@ -212,8 +228,12 @@ func TestRunList_MinScoreFiltersLow(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		HealthScoreMin: 90,
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
+		List: cmdoptions.List{
+			HealthScoreMin: 90,
+		},
 	}
 	err := runList(context.Background(), &buf, opts)
 	if err != nil {
@@ -238,7 +258,9 @@ func TestRunStatus_BehaviorWithStabilizationWindow(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "slow", true)
 	if err != nil {

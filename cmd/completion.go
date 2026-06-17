@@ -43,7 +43,7 @@ func hpaNameCompletion(opts *options) func(*cobra.Command, []string, string) ([]
 		if len(args) > 0 {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
-		client, err := opts.newClient()
+		client, err := opts.NewClient()
 		if err != nil {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
@@ -153,7 +153,7 @@ func untilConditionCompletions(_ *cobra.Command, _ []string, _ string) ([]string
 
 func namespaceCompletions(opts *options) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 	return func(cmd *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-		client, err := opts.newClient()
+		client, err := opts.NewClient()
 		if err != nil {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		}

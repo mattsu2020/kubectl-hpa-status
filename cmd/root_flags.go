@@ -5,7 +5,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/mattsui2020/kubectl-hpa-status/internal/cmdoptions"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/spf13/cobra"
 )
 
@@ -103,7 +103,7 @@ func registerStatusFlags(cmd *cobra.Command, opts *options) {
 
 // registerWatchFlags registers flags specific to the watch / TUI commands.
 func registerWatchFlags(cmd *cobra.Command, opts *options) {
-	cmd.PersistentFlags().BoolVarP(&opts.Watch, "watch", "w", false, "watch HPA status periodically")
+	cmd.PersistentFlags().BoolVarP(&opts.Watch.Watch, "watch", "w", false, "watch HPA status periodically")
 	cmd.PersistentFlags().BoolVar(&opts.Dashboard, "dashboard", false, "render watch output as a compact terminal dashboard")
 	cmd.PersistentFlags().DurationVar(&opts.WatchInterval, "interval", opts.WatchInterval, "watch refresh interval")
 	cmd.PersistentFlags().DurationVar(&opts.WatchTimeout, "timeout", 0, "stop watching after this duration")

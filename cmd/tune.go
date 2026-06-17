@@ -36,7 +36,7 @@ func newTuneCommand(opts *options) *cobra.Command {
 }
 
 func runTune(ctx context.Context, out io.Writer, opts *options, name, goal string, suggest bool) error {
-	client, err := opts.newClient()
+	client, err := opts.NewClient()
 	if err != nil {
 		return fmt.Errorf("failed to create Kubernetes client: %w", err)
 	}

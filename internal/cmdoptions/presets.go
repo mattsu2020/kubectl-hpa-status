@@ -10,13 +10,15 @@ import (
 // without spelling out many boolean flags.
 type AnalysisProfile string
 
+// AnalysisProfile values name the predefined enrichment profiles that bundle
+// feature flags for a given workflow.
 const (
-	ProfileQuick    AnalysisProfile = "quick"
-	ProfileStandard AnalysisProfile = "standard"
-	ProfileIncident AnalysisProfile = "incident"
-	ProfileDoctor   AnalysisProfile = "doctor"
-	ProfileMetrics  AnalysisProfile = "metrics"
-	ProfileCapacity AnalysisProfile = "capacity"
+	ProfileQuick     AnalysisProfile = "quick"
+	ProfileStandard  AnalysisProfile = "standard"
+	ProfileIncident  AnalysisProfile = "incident"
+	ProfileDoctor    AnalysisProfile = "doctor"
+	ProfileMetrics   AnalysisProfile = "metrics"
+	ProfileCapacity  AnalysisProfile = "capacity"
 	ProfileReadiness AnalysisProfile = "readiness"
 )
 
@@ -140,27 +142,29 @@ func applyReadinessFeatures(f *Features) {
 // CommandPreset names the built-in enrichment bundle for a subcommand.
 type CommandPreset string
 
+// CommandPreset values select the enrichment bundle that ApplyCommandPreset
+// applies to a copy of Root for a given subcommand.
 const (
-	PresetDoctor          CommandPreset = "doctor"
-	PresetExplain         CommandPreset = "explain"
-	PresetMetricsProbe    CommandPreset = "metrics-probe"
-	PresetReadiness       CommandPreset = "readiness"
-	PresetBlockers        CommandPreset = "blockers"
-	PresetBundle          CommandPreset = "bundle"
-	PresetIncidentBundle  CommandPreset = "incident-bundle"
-	PresetSupportBundle   CommandPreset = "support-bundle"
-	PresetCapacityPlan    CommandPreset = "capacity-plan"
-	PresetCapacityGap     CommandPreset = "capacity-gap"
-	PresetPreflight       CommandPreset = "preflight"
-	PresetRollout         CommandPreset = "rollout"
+	PresetDoctor           CommandPreset = "doctor"
+	PresetExplain          CommandPreset = "explain"
+	PresetMetricsProbe     CommandPreset = "metrics-probe"
+	PresetReadiness        CommandPreset = "readiness"
+	PresetBlockers         CommandPreset = "blockers"
+	PresetBundle           CommandPreset = "bundle"
+	PresetIncidentBundle   CommandPreset = "incident-bundle"
+	PresetSupportBundle    CommandPreset = "support-bundle"
+	PresetCapacityPlan     CommandPreset = "capacity-plan"
+	PresetCapacityGap      CommandPreset = "capacity-gap"
+	PresetPreflight        CommandPreset = "preflight"
+	PresetRollout          CommandPreset = "rollout"
 	PresetContainerAdvisor CommandPreset = "container-advisor"
-	PresetWhyNotScale     CommandPreset = "why-not-scale"
-	PresetTrace           CommandPreset = "trace"
-	PresetPath            CommandPreset = "path"
-	PresetNodeContext     CommandPreset = "node-context"
-	PresetRolloutContext  CommandPreset = "rollout-context"
-	PresetHistory         CommandPreset = "history"
-	PresetSLO             CommandPreset = "slo"
+	PresetWhyNotScale      CommandPreset = "why-not-scale"
+	PresetTrace            CommandPreset = "trace"
+	PresetPath             CommandPreset = "path"
+	PresetNodeContext      CommandPreset = "node-context"
+	PresetRolloutContext   CommandPreset = "rollout-context"
+	PresetHistory          CommandPreset = "history"
+	PresetSLO              CommandPreset = "slo"
 )
 
 // CommandPresetOptions holds non-feature overrides applied with a command preset.
@@ -172,6 +176,33 @@ type CommandPresetOptions struct {
 	VPA                 string
 }
 
+// presetAppliers maps each command preset to the function that mutates a local
+// Root copy with that preset's enrichment bundle. Splitting the per-preset
+// logic into named functions keeps ApplyCommandPreset a flat dispatch and
+// holds cyclomatic complexity below the gocyclo threshold.
+var presetAppliers = map[CommandPreset]func(*Root, CommandPresetOptions){
+	PresetDoctor:           applyPresetDoctor,
+	PresetExplain:          applyPresetExplain,
+	PresetMetricsProbe:     applyPresetMetricsProbe,
+	PresetReadiness:        applyPresetReadiness,
+	PresetBlockers:         applyPresetBlockers,
+	PresetBundle:           applyPresetBundle,
+	PresetIncidentBundle:   applyPresetIncidentBundle,
+	PresetSupportBundle:    applyPresetSupportBundle,
+	PresetCapacityPlan:     applyPresetCapacityPlan,
+	PresetCapacityGap:      applyPresetCapacityGap,
+	PresetPreflight:        applyPresetPreflight,
+	PresetRollout:          applyPresetRollout,
+	PresetContainerAdvisor: applyPresetContainerAdvisor,
+	PresetWhyNotScale:      applyPresetWhyNotScale,
+	PresetTrace:            applyPresetTrace,
+	PresetPath:             applyPresetPath,
+	PresetNodeContext:      applyPresetNodeContext,
+	PresetRolloutContext:   applyPresetRolloutContext,
+	PresetHistory:          applyPresetHistory,
+	PresetSLO:              applyPresetSLO,
+}
+
 // ApplyCommandPreset returns a shallow copy of root with the subcommand's
 // enrichment bundle applied. Use this instead of mutating the shared opts.
 func ApplyCommandPreset(root Root, preset CommandPreset, extra ...CommandPresetOptions) Root {
@@ -180,125 +211,164 @@ func ApplyCommandPreset(root Root, preset CommandPreset, extra ...CommandPresetO
 	if len(extra) > 0 {
 		opts = extra[0]
 	}
-
-	switch preset {
-	case PresetDoctor:
-		applyDoctorFeatures(&local.Features)
-	case PresetExplain:
-		local.Explain = true
-		local.DecisionTrace = true
-		if opts.DecisionTraceFormat != "" {
-			local.DecisionTraceFormat = opts.DecisionTraceFormat
-		} else {
-			local.DecisionTraceFormat = "json"
-		}
-		if opts.StructuredFormat && local.Output == "" {
-			local.Format = "structured"
-		}
-	case PresetMetricsProbe:
-		applyMetricsProbeFeatures(&local.Features)
-	case PresetReadiness:
-		applyReadinessFeatures(&local.Features)
-	case PresetBlockers:
-		local.CapacityContext = true
-		local.ExplainPods = true
-		if opts.Events != nil {
-			local.Events = *opts.Events
-		} else {
-			local.Events = EventOption{Enabled: true, Limit: 10}
-		}
-	case PresetBundle:
-		applyDoctorFeatures(&local.Features)
-		local.ReadinessImpact = true
-		local.RolloutImpact = true
-		local.ScaleoutBlockers = true
-		local.ControllerProfile = true
-		local.ScalePath = true
-		if opts.KEDA != "" {
-			local.KEDA = opts.KEDA
-		} else {
-			local.KEDA = "on"
-		}
-		if opts.VPA != "" {
-			local.VPA = opts.VPA
-		} else {
-			local.VPA = "on"
-		}
-		if opts.Events != nil {
-			local.Events = *opts.Events
-		} else {
-			local.Events = EventOption{Enabled: true, Limit: 20}
-		}
-	case PresetIncidentBundle:
-		local.ReadinessImpact = true
-		local.RolloutImpact = true
-		local.ScaleoutBlockers = true
-		local.ControllerProfile = true
-	case PresetSupportBundle:
-		applyDoctorFeatures(&local.Features)
-		local.ReadinessImpact = true
-		local.RolloutImpact = true
-		local.ScaleoutBlockers = true
-		local.ControllerProfile = true
-		local.KEDA = "on"
-		local.VPA = "on"
-	case PresetCapacityPlan:
-		local.CheckResources = true
-		local.CapacityContext = true
-		local.CapacityDeep = true
-		local.ExplainPods = true
-	case PresetCapacityGap:
-		applyCapacityGapFeatures(&local.Features)
-	case PresetPreflight:
-		local.CheckResources = true
-		local.CapacityContext = true
-		local.CapacityDeep = true
-		local.ExplainPods = true
-	case PresetRollout:
-		local.Rollout = true
-		local.RolloutImpact = true
-		local.ReadinessImpact = true
-		local.ExplainPods = true
-	case PresetContainerAdvisor:
-		local.Explain = true
-		local.ExplainPods = true
-		local.CheckResources = true
-		local.ContainerAdvisor = true
-	case PresetWhyNotScale:
-		local.Explain = true
-		local.DiagnoseMetrics = true
-		local.MetricsFreshness = true
-		local.ReadinessImpact = true
-		local.ScalePath = true
-		local.CapacityHeadroom = true
-	case PresetTrace:
-		local.DecisionTrace = true
-	case PresetPath:
-		local.ScalePath = true
-	case PresetNodeContext:
-		local.Explain = true
-		local.ExplainPods = true
-		local.CapacityContext = true
-		local.CapacityHeadroom = true
-		local.CapacityDeep = true
-		local.ScalePath = true
-		local.ScaleoutBlockers = true
-		local.NodeAutoscaler = true
-		local.Karpenter = true
-	case PresetRolloutContext:
-		local.Explain = true
-		local.ExplainPods = true
-		local.ReadinessImpact = true
-		local.Rollout = true
-		local.RolloutImpact = true
-		local.ScalePath = true
-	case PresetHistory:
-		local.Trend = true
-		local.ChurnDetect = true
-	case PresetSLO:
-		local.Explain = true
-		local.MetricHints = true
+	if apply, ok := presetAppliers[preset]; ok {
+		apply(&local, opts)
 	}
-
 	return local
+}
+
+func applyPresetDoctor(local *Root, _ CommandPresetOptions) {
+	applyDoctorFeatures(&local.Features)
+}
+
+func applyPresetExplain(local *Root, opts CommandPresetOptions) {
+	local.Explain = true
+	local.DecisionTrace = true
+	if opts.DecisionTraceFormat != "" {
+		local.DecisionTraceFormat = opts.DecisionTraceFormat
+	} else {
+		local.DecisionTraceFormat = "json"
+	}
+	if opts.StructuredFormat && local.Output == "" {
+		local.Format = "structured"
+	}
+}
+
+func applyPresetMetricsProbe(local *Root, _ CommandPresetOptions) {
+	applyMetricsProbeFeatures(&local.Features)
+}
+
+func applyPresetReadiness(local *Root, _ CommandPresetOptions) {
+	applyReadinessFeatures(&local.Features)
+}
+
+func applyPresetBlockers(local *Root, opts CommandPresetOptions) {
+	local.CapacityContext = true
+	local.ExplainPods = true
+	if opts.Events != nil {
+		local.Events = *opts.Events
+	} else {
+		local.Events = EventOption{Enabled: true, Limit: 10}
+	}
+}
+
+func applyPresetBundle(local *Root, opts CommandPresetOptions) {
+	applyDoctorFeatures(&local.Features)
+	local.ReadinessImpact = true
+	local.RolloutImpact = true
+	local.ScaleoutBlockers = true
+	local.ControllerProfile = true
+	local.ScalePath = true
+	if opts.KEDA != "" {
+		local.KEDA = opts.KEDA
+	} else {
+		local.KEDA = "on"
+	}
+	if opts.VPA != "" {
+		local.VPA = opts.VPA
+	} else {
+		local.VPA = "on"
+	}
+	if opts.Events != nil {
+		local.Events = *opts.Events
+	} else {
+		local.Events = EventOption{Enabled: true, Limit: 20}
+	}
+}
+
+func applyPresetIncidentBundle(local *Root, _ CommandPresetOptions) {
+	local.ReadinessImpact = true
+	local.RolloutImpact = true
+	local.ScaleoutBlockers = true
+	local.ControllerProfile = true
+}
+
+func applyPresetSupportBundle(local *Root, _ CommandPresetOptions) {
+	applyDoctorFeatures(&local.Features)
+	local.ReadinessImpact = true
+	local.RolloutImpact = true
+	local.ScaleoutBlockers = true
+	local.ControllerProfile = true
+	local.KEDA = "on"
+	local.VPA = "on"
+}
+
+func applyPresetCapacityPlan(local *Root, _ CommandPresetOptions) {
+	local.CheckResources = true
+	local.CapacityContext = true
+	local.CapacityDeep = true
+	local.ExplainPods = true
+}
+
+func applyPresetCapacityGap(local *Root, _ CommandPresetOptions) {
+	applyCapacityGapFeatures(&local.Features)
+}
+
+func applyPresetPreflight(local *Root, _ CommandPresetOptions) {
+	local.CheckResources = true
+	local.CapacityContext = true
+	local.CapacityDeep = true
+	local.ExplainPods = true
+}
+
+func applyPresetRollout(local *Root, _ CommandPresetOptions) {
+	local.Rollout = true
+	local.RolloutImpact = true
+	local.ReadinessImpact = true
+	local.ExplainPods = true
+}
+
+func applyPresetContainerAdvisor(local *Root, _ CommandPresetOptions) {
+	local.Explain = true
+	local.ExplainPods = true
+	local.CheckResources = true
+	local.ContainerAdvisor = true
+}
+
+func applyPresetWhyNotScale(local *Root, _ CommandPresetOptions) {
+	local.Explain = true
+	local.DiagnoseMetrics = true
+	local.MetricsFreshness = true
+	local.ReadinessImpact = true
+	local.ScalePath = true
+	local.CapacityHeadroom = true
+}
+
+func applyPresetTrace(local *Root, _ CommandPresetOptions) {
+	local.DecisionTrace = true
+}
+
+func applyPresetPath(local *Root, _ CommandPresetOptions) {
+	local.ScalePath = true
+}
+
+func applyPresetNodeContext(local *Root, _ CommandPresetOptions) {
+	local.Explain = true
+	local.ExplainPods = true
+	local.CapacityContext = true
+	local.CapacityHeadroom = true
+	local.CapacityDeep = true
+	local.ScalePath = true
+	local.ScaleoutBlockers = true
+	local.NodeAutoscaler = true
+	local.Karpenter = true
+}
+
+func applyPresetRolloutContext(local *Root, _ CommandPresetOptions) {
+	local.Explain = true
+	local.ExplainPods = true
+	local.ReadinessImpact = true
+	local.Rollout = true
+	local.RolloutImpact = true
+	local.ScalePath = true
+}
+
+func applyPresetHistory(local *Root, _ CommandPresetOptions) {
+	local.Trend = true
+	local.ChurnDetect = true
+}
+
+func applyPresetSLO(local *Root, _ CommandPresetOptions) {
+	local.Explain = true
+	local.MetricHints = true
 }

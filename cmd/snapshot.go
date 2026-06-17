@@ -51,7 +51,7 @@ type snapshotData struct {
 }
 
 func runSnapshot(ctx context.Context, out io.Writer, opts *options, name, outputPath string, redact bool) error {
-	client, err := opts.newClient()
+	client, err := opts.NewClient()
 	if err != nil {
 		return fmt.Errorf("creating client: %w", err)
 	}

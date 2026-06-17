@@ -35,7 +35,7 @@ func newAutoscalerMapCommand(opts *options) *cobra.Command {
 func runAutoscalerMap(ctx context.Context, out io.Writer, opts *options, names []string) error {
 	outputs := make([]autoscalerMapOutput, 0, len(names))
 	for _, name := range names {
-		client, err := opts.newClient()
+		client, err := opts.NewClient()
 		if err != nil {
 			if opts.Output == "json" || opts.Output == "yaml" {
 				writeError(out, opts.Output, err)

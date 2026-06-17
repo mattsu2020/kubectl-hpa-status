@@ -29,7 +29,7 @@ func newReadinessDoctorCommand(opts *options) *cobra.Command {
 }
 
 func runReadinessDoctor(ctx context.Context, out io.Writer, opts *options, name string) error {
-	client, err := opts.newClient()
+	client, err := opts.NewClient()
 	if err != nil {
 		return fmt.Errorf("failed to create Kubernetes client: %w", err)
 	}

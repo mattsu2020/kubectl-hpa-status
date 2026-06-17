@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -30,7 +31,11 @@ func TestRunBehavior_TextOutput(t *testing.T) {
 		},
 	}
 	fakeClient := testutil.NewFakeClient(hpa)
-	opts := &options{ClientOverride: fakeClient}
+	opts := &options{
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
+	}
 
 	var buf bytes.Buffer
 	if err := runBehavior(context.Background(), &buf, opts, "web"); err != nil {
@@ -45,7 +50,11 @@ func TestRunBehavior_TextOutput(t *testing.T) {
 func TestRunEstimate_TextOutput(t *testing.T) {
 	hpa := testutil.BuildHPA("default", "web", testutil.WithMinMax(2, 10))
 	fakeClient := testutil.NewFakeClient(hpa)
-	opts := &options{ClientOverride: fakeClient}
+	opts := &options{
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
+	}
 
 	var buf bytes.Buffer
 	if err := runEstimate(context.Background(), &buf, opts, "web", 30, 0.12, 0.01); err != nil {
@@ -194,7 +203,11 @@ func TestRunFlapFromRecordDetectsReplicaRange(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	opts := &options{Namespace: "prod"}
+	opts := &options{
+		Common: cmdoptions.Common{
+			Namespace: "prod",
+		},
+	}
 	if err := runFlapFromRecord(&buf, opts, "web", tmp.Name()); err != nil {
 		t.Fatalf("runFlapFromRecord returned error: %v", err)
 	}
@@ -215,9 +228,13 @@ func TestRunConflictScanDetectsMultipleHPAsAndKEDA(t *testing.T) {
 
 	fakeClient := testutil.NewFakeClient(first, second)
 	opts := &options{
-		ClientOverride: fakeClient,
-		Namespace:      "prod",
-		Conflicts:      true,
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+			Namespace:      "prod",
+		},
+		List: cmdoptions.List{
+			Conflicts: true,
+		},
 	}
 
 	var buf bytes.Buffer
@@ -236,8 +253,12 @@ func TestRunReadinessEnablesImpactSections(t *testing.T) {
 	hpa := testutil.BuildHPA("default", "web")
 	fakeClient := testutil.NewFakeClient(hpa)
 	opts := &options{
-		ClientOverride: fakeClient,
-		Events:         EventOption{Enabled: false},
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+		},
 	}
 
 	var buf bytes.Buffer
@@ -256,8 +277,10 @@ func TestRunFleetSummarizesMaxSurgeRisk(t *testing.T) {
 	api := testutil.BuildHPA("prod", "api", testutil.WithReplicas(6, 6), testutil.WithMinMax(2, 8))
 	fakeClient := testutil.NewFakeClient(web, api)
 	opts := &options{
-		ClientOverride: fakeClient,
-		Namespace:      "prod",
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+			Namespace:      "prod",
+		},
 	}
 
 	var buf bytes.Buffer
@@ -280,9 +303,15 @@ func TestStatusHiddenFactorsText(t *testing.T) {
 	)
 	fakeClient := testutil.NewFakeClient(hpa)
 	opts := &options{
-		ClientOverride: fakeClient,
-		Events:         EventOption{Enabled: false},
-		HiddenFactors:  true,
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+			Features: cmdoptions.Features{
+				HiddenFactors: true,
+			},
+		},
 	}
 
 	var buf bytes.Buffer
@@ -302,9 +331,13 @@ func TestStatusStructuredFormat(t *testing.T) {
 	)
 	fakeClient := testutil.NewFakeClient(hpa)
 	opts := &options{
-		ClientOverride: fakeClient,
-		Events:         EventOption{Enabled: false},
-		Format:         "structured",
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+			Format: "structured",
+		},
 	}
 
 	var buf bytes.Buffer
@@ -343,7 +376,11 @@ func TestWriteListCIReports(t *testing.T) {
 func TestRunTuneSuggest(t *testing.T) {
 	hpa := testutil.BuildHPA("default", "web", testutil.WithMinMax(2, 10))
 	fakeClient := testutil.NewFakeClient(hpa)
-	opts := &options{ClientOverride: fakeClient}
+	opts := &options{
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
+	}
 
 	var buf bytes.Buffer
 	if err := runTune(context.Background(), &buf, opts, "web", "stable", true); err != nil {

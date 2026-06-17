@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
@@ -36,9 +37,13 @@ func TestRunDoctorEnablesBundledDiagnostics(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		Output:         "json",
-		Events:         EventOption{Enabled: false},
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+			Output:         "json",
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+		},
 	}
 
 	err := runDoctor(context.Background(), &buf, opts, []string{"web"})

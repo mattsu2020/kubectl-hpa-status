@@ -26,7 +26,7 @@ func applySuggestionsInNamespace(ctx context.Context, out io.Writer, opts *optio
 	if len(patches) == 0 {
 		return []string{"No applicable HPA patch was suggested."}, nil
 	}
-	client, err := opts.newClient()
+	client, err := opts.NewClient()
 	if err != nil {
 		return nil, err
 	}

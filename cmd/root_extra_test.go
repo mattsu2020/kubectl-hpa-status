@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
@@ -120,7 +121,9 @@ func TestEventOption_Type(t *testing.T) {
 func TestConfirmApply_YesResponse(t *testing.T) {
 	var out bytes.Buffer
 	opts := &options{
-		In: strings.NewReader("y\n"),
+		Common: cmdoptions.Common{
+			In: strings.NewReader("y\n"),
+		},
 	}
 	err := confirmApply(&out, opts, 1, "default", "web")
 	if err != nil {
@@ -131,7 +134,9 @@ func TestConfirmApply_YesResponse(t *testing.T) {
 func TestConfirmApply_YesFullWord(t *testing.T) {
 	var out bytes.Buffer
 	opts := &options{
-		In: strings.NewReader("yes\n"),
+		Common: cmdoptions.Common{
+			In: strings.NewReader("yes\n"),
+		},
 	}
 	err := confirmApply(&out, opts, 1, "default", "web")
 	if err != nil {
@@ -142,7 +147,9 @@ func TestConfirmApply_YesFullWord(t *testing.T) {
 func TestConfirmApply_NoResponse(t *testing.T) {
 	var out bytes.Buffer
 	opts := &options{
-		In: strings.NewReader("n\n"),
+		Common: cmdoptions.Common{
+			In: strings.NewReader("n\n"),
+		},
 	}
 	err := confirmApply(&out, opts, 1, "default", "web")
 	if err == nil {
@@ -156,7 +163,9 @@ func TestConfirmApply_NoResponse(t *testing.T) {
 func TestConfirmApply_EmptyResponse(t *testing.T) {
 	var out bytes.Buffer
 	opts := &options{
-		In: strings.NewReader("\n"),
+		Common: cmdoptions.Common{
+			In: strings.NewReader("\n"),
+		},
 	}
 	err := confirmApply(&out, opts, 1, "default", "web")
 	if err == nil {
@@ -167,7 +176,9 @@ func TestConfirmApply_EmptyResponse(t *testing.T) {
 func TestConfirmApply_WritesWarning(t *testing.T) {
 	var out bytes.Buffer
 	opts := &options{
-		In: strings.NewReader("y\n"),
+		Common: cmdoptions.Common{
+			In: strings.NewReader("y\n"),
+		},
 	}
 	_ = confirmApply(&out, opts, 2, "prod", "api")
 	output := out.String()
@@ -797,30 +808,58 @@ func TestStatusOptions_Normalize(t *testing.T) {
 		wantInterpret bool
 	}{
 		{
-			name:        "recommend implies suggest",
-			opts:        options{Recommend: true},
+			name: "recommend implies suggest",
+			opts: options{
+				Status: cmdoptions.Status{
+					Features: cmdoptions.Features{
+						Recommend: true,
+					},
+				},
+			},
 			wantSuggest: true,
 		},
 		{
-			name:        "fix implies suggest and explain",
-			opts:        options{Fix: true},
+			name: "fix implies suggest and explain",
+			opts: options{
+				Status: cmdoptions.Status{
+					Features: cmdoptions.Features{
+						Fix: true,
+					},
+				},
+			},
 			wantSuggest: true,
 			wantExplain: true,
 		},
 		{
-			name:        "apply implies suggest and explain",
-			opts:        options{Apply: true},
+			name: "apply implies suggest and explain",
+			opts: options{
+				Common: cmdoptions.Common{
+					Apply: true,
+				},
+			},
 			wantSuggest: true,
 			wantExplain: true,
 		},
 		{
-			name:        "diff implies suggest",
-			opts:        options{Diff: true},
+			name: "diff implies suggest",
+			opts: options{
+				Common: cmdoptions.Common{
+					Diff: true,
+				},
+			},
 			wantSuggest: true,
 		},
 		{
 			name: "no-interpret clears suggest",
-			opts: options{Interpret: true, Suggest: true, NoInterpret: true},
+			opts: options{
+				Status: cmdoptions.Status{
+					Features: cmdoptions.Features{
+						Interpret:   true,
+						Suggest:     true,
+						NoInterpret: true,
+					},
+				},
+			},
 		},
 	}
 	for _, tt := range tests {

@@ -3,10 +3,8 @@ package cmd
 
 import (
 	"fmt"
-	"io"
 
-	"github.com/mattsui2020/kubectl-hpa-status/internal/cmdoptions"
-	"github.com/mattsui2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/spf13/cobra"
 )
 
@@ -15,14 +13,6 @@ var (
 	commit  = "unknown"
 	date    = "unknown"
 )
-
-func (o *options) Normalize() {
-	(*cmdoptions.Root)(o).Normalize()
-}
-
-func (o *commonOptions) newClient() (*kube.Client, error) {
-	return (*cmdoptions.Common)(o).NewClient()
-}
 
 // NewRootCommand creates and returns the root cobra command for kubectl-hpa-status.
 func NewRootCommand() *cobra.Command {
@@ -57,7 +47,7 @@ func NewRootCommand() *cobra.Command {
 				return cmd.Help()
 			}
 			includeInterpretation := (opts.Interpret || opts.Explain || opts.Suggest) && !opts.NoInterpret
-			if opts.Watch {
+			if opts.Watch.Watch {
 				if len(args) != 1 {
 					return fmt.Errorf("--watch supports exactly one HPA name")
 				}
@@ -69,10 +59,12 @@ func NewRootCommand() *cobra.Command {
 
 	registerCommonFlags(root, opts)
 	registerWatchFlags(root, opts)
+	registerFlagCompletions(root, opts)
 
 	root.AddCommand(newStatusCommand(opts))
 	root.AddCommand(newExplainCommand(opts))
 	root.AddCommand(newDoctorCommand(opts))
+	root.AddCommand(newReadinessDoctorCommand(opts))
 	root.AddCommand(newWhyNotScaleCommand(opts))
 	root.AddCommand(newReadinessCommand(opts))
 	root.AddCommand(newAnalyzeCommand(opts))
@@ -133,7 +125,15 @@ func buildVersion() string {
 	return fmt.Sprintf("%s (commit: %s, built: %s)", version, commit, date)
 }
 
-// setStdin allows tests to inject stdin without reaching into unexported fields.
-func setStdin(opts *options, in io.Reader) {
-	opts.In = in
+// newVersionCommand prints version and build metadata.
+func newVersionCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Print version and build metadata",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			_, err := fmt.Fprintf(cmd.OutOrStdout(), "kubectl-hpa-status version %s\n", buildVersion())
+			return err
+		},
+	}
 }

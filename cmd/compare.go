@@ -165,7 +165,7 @@ func newCompareClient(opts *options, contextName string) (*kube.Client, error) {
 	if contextName != "" {
 		clone.ContextName = contextName
 	}
-	return clone.newClient()
+	return clone.NewClient()
 }
 
 func getCompareHPA(ctx context.Context, client *kube.Client, ref string) (*autoscalingv2.HorizontalPodAutoscaler, string, error) {

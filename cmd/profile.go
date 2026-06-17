@@ -29,7 +29,7 @@ func newProfileCommand(opts *options) *cobra.Command {
 }
 
 func runProfile(ctx context.Context, out io.Writer, opts *options) error {
-	client, err := opts.newClient()
+	client, err := opts.NewClient()
 	if err != nil {
 		return err
 	}
@@ -56,7 +56,7 @@ func runProfile(ctx context.Context, out io.Writer, opts *options) error {
 }
 
 func runProfileDetect(ctx context.Context, out io.Writer, opts *options) error {
-	client, err := opts.newClient()
+	client, err := opts.NewClient()
 	if err != nil {
 		return err
 	}

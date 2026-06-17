@@ -31,7 +31,7 @@ func newRecommendCommand(opts *options) *cobra.Command {
 }
 
 func runRecommend(ctx context.Context, out io.Writer, opts *options, args []string, profile hpaanalysis.AuditProfile) error {
-	client, err := opts.newClient()
+	client, err := opts.NewClient()
 	if err != nil {
 		return fmt.Errorf("creating client: %w", err)
 	}

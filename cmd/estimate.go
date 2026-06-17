@@ -43,7 +43,7 @@ func newEstimateCommand(opts *options) *cobra.Command {
 }
 
 func runEstimate(ctx context.Context, out io.Writer, opts *options, name string, proposedMax int32, podCost float64, carbonKg float64) error {
-	client, err := opts.newClient()
+	client, err := opts.NewClient()
 	if err != nil {
 		return fmt.Errorf("failed to create Kubernetes client: %w", err)
 	}

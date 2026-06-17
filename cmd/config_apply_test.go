@@ -1,12 +1,18 @@
 package cmd
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
+)
 
 func TestApplyEventsConfigPreservesExistingPrecedence(t *testing.T) {
 	limit := 10
 	enabled := false
 	opts := &options{
-		Events: EventOption{Enabled: false, Limit: 5},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false, Limit: 5},
+		},
 	}
 	applyEventsConfig(opts, configFile{Events: &limit, EventsEnabled: &enabled}, neverChanged)
 	if opts.Events.Enabled {
@@ -20,7 +26,9 @@ func TestApplyEventsConfigPreservesExistingPrecedence(t *testing.T) {
 func TestApplyEventsConfigSkipsExplicitFlag(t *testing.T) {
 	limit := 10
 	opts := &options{
-		Events: EventOption{Enabled: false, Limit: 5},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false, Limit: 5},
+		},
 	}
 	applyEventsConfig(opts, configFile{Events: &limit}, alwaysChanged)
 	if opts.Events.Limit != 5 {
@@ -32,7 +40,9 @@ func TestApplyHealthScoreConfigPreservesExistingPrecedence(t *testing.T) {
 	maxScore := 80
 	healthScore := 60
 	opts := &options{
-		HealthScoreMax: -1,
+		List: cmdoptions.List{
+			HealthScoreMax: -1,
+		},
 	}
 	applyHealthScoreConfig(opts, configFile{HealthScore: &healthScore, MaxScore: &maxScore}, neverChanged)
 	// HealthScore takes precedence over MaxScore when both are set.
@@ -44,7 +54,9 @@ func TestApplyHealthScoreConfigPreservesExistingPrecedence(t *testing.T) {
 func TestApplyHealthScoreConfigSkipsExplicitAliasFlag(t *testing.T) {
 	maxScore := 80
 	opts := &options{
-		HealthScoreMax: -1,
+		List: cmdoptions.List{
+			HealthScoreMax: -1,
+		},
 	}
 	applyHealthScoreConfig(opts, configFile{MaxScore: &maxScore}, alwaysChanged)
 	if opts.HealthScoreMax != -1 {

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 )
 
@@ -32,9 +33,13 @@ func TestRunCapacityPlan_JSONOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		Output:         "json",
-		Events:         EventOption{Enabled: false},
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+			Output:         "json",
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+		},
 	}
 
 	err := runCapacityPlan(context.Background(), &buf, opts, []string{"web"})
@@ -74,10 +79,14 @@ func TestRunCapacityPlan_TextOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		Output:         "",
-		Color:          "never",
-		Events:         EventOption{Enabled: false},
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+			Output:         "",
+			Color:          "never",
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+		},
 	}
 
 	err := runCapacityPlan(context.Background(), &buf, opts, []string{"web"})
@@ -110,10 +119,14 @@ func TestRunCapacityPlan_TargetMaxOverride(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		Output:         "json",
-		Events:         EventOption{Enabled: false},
-		TargetMax:      30,
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+			Output:         "json",
+		},
+		Status: cmdoptions.Status{
+			Events:    EventOption{Enabled: false},
+			TargetMax: 30,
+		},
 	}
 
 	err := runCapacityPlan(context.Background(), &buf, opts, []string{"web"})
@@ -159,11 +172,17 @@ func TestCapacityPlanFlagOnStatus(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		Output:         "json",
-		Events:         EventOption{Enabled: false},
-		CapacityPlan:   true,
-		Interpret:      true,
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+			Output:         "json",
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+			Features: cmdoptions.Features{
+				CapacityPlan: true,
+				Interpret:    true,
+			},
+		},
 	}
 
 	err := runStatus(context.Background(), &buf, opts, "web", true)
