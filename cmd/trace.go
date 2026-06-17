@@ -21,10 +21,13 @@ func newTraceCommand(opts *options) *cobra.Command {
 }
 
 func runTrace(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	opts.decisionTrace = true
+	// Enable decision-trace collection. Take a shallow copy so the shared
+	// process-wide opts is not mutated.
+	local := *opts
+	local.decisionTrace = true
 	reports := make([]hpaanalysis.StatusReport, 0, len(names))
 	for _, name := range names {
-		report, err := buildStatusReportWithClient(ctx, opts, name, false, nil)
+		report, err := buildStatusReportWithClient(ctx, &local, name, false, nil)
 		if err != nil {
 			return err
 		}

@@ -33,23 +33,26 @@ func newBlockersCommand(opts *options) *cobra.Command {
 }
 
 func runBlockers(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	// Enable the data sources needed for blocker analysis.
-	opts.capacityContext = true
-	opts.explainPods = true
-	opts.events = eventOption{enabled: true, limit: 10}
+	// Enable the data sources needed for blocker analysis. Take a shallow copy
+	// so the shared process-wide opts is not mutated (reference fields like
+	// clientOverride and outputTemplates are intentionally shared by value).
+	local := *opts
+	local.capacityContext = true
+	local.explainPods = true
+	local.events = eventOption{enabled: true, limit: 10}
 
 	outputs := make([]blockerOutput, 0, len(names))
 	for _, name := range names {
-		report, err := buildStatusReportWithClient(ctx, opts, name, false, nil)
+		report, err := buildStatusReportWithClient(ctx, &local, name, false, nil)
 		if err != nil {
-			if opts.output == "json" || opts.output == "yaml" {
-				writeError(out, opts.output, err)
+			if local.output == "json" || local.output == "yaml" {
+				writeError(out, local.output, err)
 			}
 			return err
 		}
 
 		// Build the blocker report from assembled data.
-		blockerReport := buildBlockerReport(ctx, opts, report.Analysis, report.Analysis.Namespace, name)
+		blockerReport := buildBlockerReport(ctx, &local, report.Analysis, report.Analysis.Namespace, name)
 		report.Analysis.BlockerReport = blockerReport
 
 		outputs = append(outputs, blockerOutput{
@@ -66,11 +69,11 @@ func runBlockers(ctx context.Context, out io.Writer, opts *options, names []stri
 	}
 
 	format, templateStr := outputSelection(outputConfig{
-		output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates,
+		output: local.output, template: local.template, outputTemplates: local.outputTemplates,
 	})
 
 	return writeOutput(out, format, templateStr, value, func() error {
-		theme := style.NewTheme(shouldColorize(opts.color, out))
+		theme := style.NewTheme(shouldColorize(local.color, out))
 		for i, o := range outputs {
 			if i > 0 {
 				if _, err := fmt.Fprintln(out); err != nil {

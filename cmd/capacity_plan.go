@@ -33,18 +33,19 @@ func newCapacityPlanCommand(opts *options) *cobra.Command {
 }
 
 func runCapacityPlan(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	// Enable the data sources needed for capacity plan analysis.
-	opts.checkResources = true
-	opts.capacityContext = true
-	opts.capacityDeep = true
-	opts.explainPods = true
+	// Take a shallow copy so the shared process-wide opts is not mutated.
+	local := *opts
+	local.checkResources = true
+	local.capacityContext = true
+	local.capacityDeep = true
+	local.explainPods = true
 
 	outputs := make([]capacityPlanOutput, 0, len(names))
 	for _, name := range names {
 		report, err := buildStatusReportWithClient(ctx, opts, name, false, nil)
 		if err != nil {
-			if opts.output == "json" || opts.output == "yaml" {
-				writeError(out, opts.output, err)
+			if local.output == "json" || local.output == "yaml" {
+				writeError(out, local.output, err)
 			}
 			return err
 		}
@@ -66,11 +67,11 @@ func runCapacityPlan(ctx context.Context, out io.Writer, opts *options, names []
 	}
 
 	format, templateStr := outputSelection(outputConfig{
-		output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates,
+		output: local.output, template: local.template, outputTemplates: local.outputTemplates,
 	})
 
 	return writeOutput(out, format, templateStr, value, func() error {
-		theme := style.NewTheme(shouldColorize(opts.color, out))
+		theme := style.NewTheme(shouldColorize(local.color, out))
 		for i, o := range outputs {
 			if i > 0 {
 				if _, err := fmt.Fprintln(out); err != nil {

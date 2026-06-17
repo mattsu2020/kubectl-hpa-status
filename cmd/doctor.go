@@ -23,25 +23,28 @@ func newDoctorCommand(opts *options) *cobra.Command {
 }
 
 func runDoctor(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	opts.explain = true
-	opts.diagnoseMetrics = true
-	opts.metricsFreshness = true
-	opts.checkResources = true
-	opts.explainPods = true
-	opts.capacityContext = true
-	opts.gitopsCheck = true
-	opts.metricContract = true
-	opts.churnDetect = true
-	opts.metricHints = true
-	opts.containerAdvisor = true
-	opts.behaviorAdvisor = true
-	opts.capacityDeep = true
-	opts.rollout = true
-	opts.readinessImpact = true
-	opts.scalePath = true
-	opts.flappingAdvisor = true
-	opts.trendAnomaly = true
-	opts.adapterDiagnostics = true
+	// Enable all diagnostic flags for a full doctor check. Take a shallow copy
+	// so the shared process-wide opts is not mutated.
+	local := *opts
+	local.explain = true
+	local.diagnoseMetrics = true
+	local.metricsFreshness = true
+	local.checkResources = true
+	local.explainPods = true
+	local.capacityContext = true
+	local.gitopsCheck = true
+	local.metricContract = true
+	local.churnDetect = true
+	local.metricHints = true
+	local.containerAdvisor = true
+	local.behaviorAdvisor = true
+	local.capacityDeep = true
+	local.rollout = true
+	local.readinessImpact = true
+	local.scalePath = true
+	local.flappingAdvisor = true
+	local.trendAnomaly = true
+	local.adapterDiagnostics = true
 
-	return runStatusMany(ctx, out, opts, names, !opts.noInterpret)
+	return runStatusMany(ctx, out, &local, names, !local.noInterpret)
 }
