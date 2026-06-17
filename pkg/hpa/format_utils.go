@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
+
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
 // FormatDuration returns a human-readable duration string from seconds.
@@ -135,4 +138,119 @@ func formatMetricText(m Metric, coloredNote string) string {
 		return m.Text
 	}
 	return strings.Replace(m.Text, m.Note, coloredNote, 1)
+}
+
+// --- Text-rendering helpers shared between text.go and text_sections.go ---
+//
+// These badge/indicator/duration helpers were originally defined in text.go
+// and called only from text_sections.go. Moving them here keeps text.go as
+// the orchestrator and makes the shared format surface explicit, reducing
+// the coupling that blocks a future render subpackage.
+
+// triggerStatusBadge returns a display string with a visual indicator for a KEDA trigger status.
+func triggerStatusBadge(status string, theme style.Theme) string {
+	switch status {
+	case "Active":
+		return theme.OK.Render("Active ✓")
+	case "Inactive":
+		return theme.Error.Render("Inactive ✗")
+	default:
+		return theme.Dim.Render("Unknown ?")
+	}
+}
+
+// metricsDiagnosticsStatus returns a themed display string for the overall metrics diagnostics status.
+func metricsDiagnosticsStatus(status string, theme style.Theme) string {
+	switch status {
+	case "healthy":
+		return theme.OK.Render("healthy")
+	case "degraded":
+		return theme.Bold.Render("degraded")
+	case "error":
+		return theme.Error.Render("error")
+	default:
+		return theme.Dim.Render(status)
+	}
+}
+
+// metricsDiagnosticsIndicator returns a themed status indicator for a per-metric health check.
+func metricsDiagnosticsIndicator(status string, theme style.Theme) string {
+	switch status {
+	case "healthy":
+		return theme.OK.Render("✓")
+	case "missing":
+		return theme.Error.Render("✗")
+	case "stale":
+		return theme.Bold.Render("!")
+	default:
+		return theme.Dim.Render("?")
+	}
+}
+
+// metricFreshnessIndicator returns a themed status indicator for a metric
+// freshness entry.
+func metricFreshnessIndicator(status string, theme style.Theme) string {
+	switch status {
+	case string(FreshnessOK):
+		return theme.OK.Render("✓")
+	case string(FreshnessMissing):
+		return theme.Error.Render("✗")
+	case string(FreshnessStale):
+		return theme.Bold.Render("!")
+	default:
+		return theme.Dim.Render("?")
+	}
+}
+
+// metricFreshnessStatusDisplay returns a themed display string for the
+// freshness status label.
+func metricFreshnessStatusDisplay(status string, theme style.Theme) string {
+	switch status {
+	case string(FreshnessOK):
+		return theme.OK.Render(string(FreshnessOK))
+	case string(FreshnessMissing):
+		return theme.Error.Render(string(FreshnessMissing))
+	case string(FreshnessStale):
+		return theme.Bold.Render(string(FreshnessStale))
+	default:
+		return theme.Dim.Render("UNKNOWN")
+	}
+}
+
+// formatFreshnessDuration returns a human-readable duration string
+// (e.g., "12s", "4m32s", "1h5m").
+func formatFreshnessDuration(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	seconds := int64(d.Seconds())
+	if seconds < 60 {
+		return fmt.Sprintf("%ds", seconds)
+	}
+	minutes := seconds / 60
+	secs := seconds % 60
+	if minutes < 60 {
+		return fmt.Sprintf("%dm%ds", minutes, secs)
+	}
+	hours := minutes / 60
+	mins := minutes % 60
+	return fmt.Sprintf("%dh%dm", hours, mins)
+}
+
+// emptyAsUnknown returns "<unknown>" when value is the empty string.
+func emptyAsUnknown(value string) string {
+	if value == "" {
+		return "<unknown>"
+	}
+	return value
+}
+
+// indentBlock prefixes every line of text with prefix and ensures a trailing
+// newline.
+func indentBlock(text string, prefix string) string {
+	lines := strings.Split(strings.TrimRight(text, "\n"), "\n")
+	for i, line := range lines {
+		lines[i] = prefix + line
+	}
+	return strings.Join(lines, "\n") + "\n"
 }
