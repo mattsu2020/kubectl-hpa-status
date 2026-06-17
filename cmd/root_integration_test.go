@@ -16,6 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
@@ -33,8 +34,12 @@ func TestRunStatus_OK(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		Events:         EventOption{Enabled: true, Limit: 5},
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: true, Limit: 5},
+		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "web", true)
 	if err != nil {
@@ -62,8 +67,12 @@ func TestRunStatus_ScalingLimited(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		Events:         EventOption{Enabled: false},
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "api", true)
 	if err == nil {
@@ -95,9 +104,15 @@ func TestRunStatusSuggestShowsPatchCommand(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		Events:         EventOption{Enabled: false},
-		Suggest:        true,
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+			Features: cmdoptions.Features{
+				Suggest: true,
+			},
+		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "api", true)
 	if !isExitCodeWarning(err) {
@@ -119,12 +134,16 @@ func TestRunStatusApplyPatchesHPA(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		In:             io.Reader(strings.NewReader("")),
-		Apply:          true,
-		DryRun:         false,
-		Yes:            true,
-		Events: EventOption{Enabled: false},
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+			In:             io.Reader(strings.NewReader("")),
+			Apply:          true,
+			DryRun:         false,
+			Yes:            true,
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "api", true)
 	if !isExitCodeWarning(err) {
@@ -149,12 +168,16 @@ func TestRunStatusApplyDefaultsToDryRun(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		In:             io.Reader(strings.NewReader("")),
-		Apply:          true,
-		DryRun:         true,
-		Yes:            true,
-		Events: EventOption{Enabled: false},
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+			In:             io.Reader(strings.NewReader("")),
+			Apply:          true,
+			DryRun:         true,
+			Yes:            true,
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "api", true)
 	if !isExitCodeWarning(err) {
@@ -178,8 +201,12 @@ func TestRunStatus_MetricsFetchFailure(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		Events:         EventOption{Enabled: false},
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "broken", true)
 	if !isExitCodeWarning(err) {
@@ -199,8 +226,12 @@ func TestRunStatus_NotFound(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		Events:         EventOption{Enabled: false},
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "nonexistent", false)
 	if err == nil {
@@ -220,9 +251,13 @@ func TestRunStatus_JSONOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Output:         "json",
-		ClientOverride: fakeClient,
-		Events: EventOption{Enabled: false},
+		Common: cmdoptions.Common{
+			Output:         "json",
+			ClientOverride: fakeClient,
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "web", false)
 	if err != nil {
@@ -248,8 +283,12 @@ func TestRunStatusMany_TextOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		Events:         EventOption{Enabled: false},
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+		},
 	}
 	err := runStatusMany(context.Background(), &buf, opts, []string{"web", "api"}, false)
 	if err != nil {
@@ -268,9 +307,13 @@ func TestRunStatusMany_JSONOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Output:         "json",
-		ClientOverride: fakeClient,
-		Events: EventOption{Enabled: false},
+		Common: cmdoptions.Common{
+			Output:         "json",
+			ClientOverride: fakeClient,
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+		},
 	}
 	err := runStatusMany(context.Background(), &buf, opts, []string{"web", "api"}, false)
 	if err != nil {
@@ -294,9 +337,13 @@ func TestRunStatus_YAMLOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Output:         "yaml",
-		ClientOverride: fakeClient,
-		Events: EventOption{Enabled: false},
+		Common: cmdoptions.Common{
+			Output:         "yaml",
+			ClientOverride: fakeClient,
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "web", false)
 	if err != nil {
@@ -322,8 +369,12 @@ func TestRunStatus_WithEvents(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		Events:         EventOption{Enabled: true, Limit: 5},
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: true, Limit: 5},
+		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "web", false)
 	if err != nil {
@@ -349,8 +400,12 @@ func TestRunList_MultipleHPAs(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		Events:         EventOption{Enabled: false},
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+		},
 	}
 	err := runList(context.Background(), &buf, opts)
 	if err != nil {
@@ -375,9 +430,15 @@ func TestRunList_Filter(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		Events:         EventOption{Enabled: false},
-		Filter: "error",
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+		},
+		List: cmdoptions.List{
+			Filter: "error",
+		},
 	}
 	err := runList(context.Background(), &buf, opts)
 	if err != nil {
@@ -402,9 +463,15 @@ func TestRunListProblemFiltersVisibleIssues(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		Events:         EventOption{Enabled: false},
-		Problem: true,
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+		},
+		List: cmdoptions.List{
+			Problem: true,
+		},
 	}
 	err := runList(context.Background(), &buf, opts)
 	if err != nil {
@@ -429,9 +496,15 @@ func TestRunListHealthScoreThresholdFiltersByScore(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		Events:         EventOption{Enabled: false},
-		HealthScoreMax: 80,
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+		},
+		List: cmdoptions.List{
+			HealthScoreMax: 80,
+		},
 	}
 	err := runList(context.Background(), &buf, opts)
 	if err != nil {
@@ -453,9 +526,15 @@ func TestRunList_SortByDesired(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		Events:         EventOption{Enabled: false},
-		SortBy: "desired",
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+		},
+		List: cmdoptions.List{
+			SortBy: "desired",
+		},
 	}
 	err := runList(context.Background(), &buf, opts)
 	if err != nil {
@@ -481,9 +560,13 @@ func TestRunList_Wide(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Wide:           true,
-		ClientOverride: fakeClient,
-		Events: EventOption{Enabled: false},
+		Common: cmdoptions.Common{
+			Wide:           true,
+			ClientOverride: fakeClient,
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+		},
 	}
 	err := runList(context.Background(), &buf, opts)
 	if err != nil {
@@ -506,9 +589,13 @@ func TestRunList_LabelSelector(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Selector:       "app=web",
-		ClientOverride: fakeClient,
-		Events:         EventOption{Enabled: false},
+		Common: cmdoptions.Common{
+			Selector:       "app=web",
+			ClientOverride: fakeClient,
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+		},
 	}
 	err := runList(context.Background(), &buf, opts)
 	if err != nil {
@@ -538,13 +625,19 @@ func TestRunListApplyBatchSummaryAndConfirmation(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		In:             io.Reader(strings.NewReader("")),
-		Apply:          true,
-		DryRun:         true,
-		Yes:            true,
-		Events: EventOption{Enabled: false},
-		Problem: true,
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+			In:             io.Reader(strings.NewReader("")),
+			Apply:          true,
+			DryRun:         true,
+			Yes:            true,
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+		},
+		List: cmdoptions.List{
+			Problem: true,
+		},
 	}
 	err := runList(context.Background(), &buf, opts)
 	if err != nil {
@@ -572,13 +665,19 @@ func TestRunListApplyBatchSkippedOnNoInput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		In:             io.Reader(strings.NewReader("n\n")),
-		Apply:          true,
-		DryRun:         true,
-		Yes:            false,
-		Events: EventOption{Enabled: false},
-		Problem: true,
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+			In:             io.Reader(strings.NewReader("n\n")),
+			Apply:          true,
+			DryRun:         true,
+			Yes:            false,
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+		},
+		List: cmdoptions.List{
+			Problem: true,
+		},
 	}
 	err := runList(context.Background(), &buf, opts)
 	if err != nil {
@@ -599,13 +698,19 @@ func TestRunListApplyBatchNoPatchesFound(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		In:             io.Reader(strings.NewReader("")),
-		Apply:          true,
-		DryRun:         true,
-		Yes:            true,
-		Events: EventOption{Enabled: false},
-		HealthScoreMax: 80,
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+			In:             io.Reader(strings.NewReader("")),
+			Apply:          true,
+			DryRun:         true,
+			Yes:            true,
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+		},
+		List: cmdoptions.List{
+			HealthScoreMax: 80,
+		},
 	}
 	err := runList(context.Background(), &buf, opts)
 	if err != nil {
@@ -623,10 +728,16 @@ func TestRunWatch_TimeoutExpires(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		Events:         EventOption{Enabled: false},
-		WatchInterval:  100 * time.Millisecond,
-		WatchTimeout:   250 * time.Millisecond,
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+		},
+		Watch: cmdoptions.Watch{
+			WatchInterval: 100 * time.Millisecond,
+			WatchTimeout:  250 * time.Millisecond,
+		},
 	}
 	err := runWatch(context.Background(), &buf, opts, "web", false)
 	if err == nil {
@@ -651,10 +762,16 @@ func TestRunWatch_UntilCondition(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		Events:         EventOption{Enabled: false},
-		WatchInterval:  100 * time.Millisecond,
-		UntilCondition: "scaling-limited",
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+		},
+		Watch: cmdoptions.Watch{
+			WatchInterval:  100 * time.Millisecond,
+			UntilCondition: "scaling-limited",
+		},
 	}
 	err := runWatch(context.Background(), &buf, opts, "web", false)
 	if err != nil {
@@ -679,8 +796,12 @@ func TestRunStatus_ExitCode_HealthyHPA(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		Events:         EventOption{Enabled: false},
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "web", true)
 	if err != nil {
@@ -697,8 +818,12 @@ func TestRunStatus_ExitCode_ScalingInactive(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		Events:         EventOption{Enabled: false},
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "broken", true)
 	if err == nil {
@@ -718,8 +843,12 @@ func TestRunStatus_ExitCode_NotFound(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		Events:         EventOption{Enabled: false},
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "nonexistent", false)
 	if err == nil {
@@ -743,8 +872,12 @@ func TestRunStatus_ExitCode_ScalingLimited(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		Events:         EventOption{Enabled: false},
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "api", true)
 	if err == nil {
@@ -778,9 +911,15 @@ func TestRunStatus_ExplainPods(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		Events:         EventOption{Enabled: false},
-		ExplainPods:    true,
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+			Features: cmdoptions.Features{
+				ExplainPods: true,
+			},
+		},
 	}
 
 	err := runStatus(context.Background(), &buf, opts, "web", false)
@@ -803,10 +942,16 @@ func TestRunStatus_ExplainPods_JSON(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		Output:         "json",
-		Events:         EventOption{Enabled: false},
-		ExplainPods:    true,
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+			Output:         "json",
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+			Features: cmdoptions.Features{
+				ExplainPods: true,
+			},
+		},
 	}
 
 	err := runStatus(context.Background(), &buf, opts, "web", false)
@@ -836,10 +981,14 @@ func TestRunStatus_Simulate(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		Output:         "json",
-		Events:         EventOption{Enabled: false},
-		Simulate:       []string{"maxReplicas=20"},
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+			Output:         "json",
+		},
+		Status: cmdoptions.Status{
+			Events:   EventOption{Enabled: false},
+			Simulate: []string{"maxReplicas=20"},
+		},
 	}
 
 	err := runStatus(context.Background(), &buf, opts, "web", false)
@@ -876,9 +1025,13 @@ func TestRunStatus_SimulateText(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		Events:         EventOption{Enabled: false},
-		Simulate:       []string{"maxReplicas=20"},
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
+		Status: cmdoptions.Status{
+			Events:   EventOption{Enabled: false},
+			Simulate: []string{"maxReplicas=20"},
+		},
 	}
 
 	err := runStatus(context.Background(), &buf, opts, "web", false)
@@ -961,10 +1114,16 @@ func TestRunStatus_CapacityContext(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride:  fakeClient,
-		Output:          "json",
-		Events:          EventOption{Enabled: false},
-		CapacityContext: true,
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+			Output:         "json",
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+			Features: cmdoptions.Features{
+				CapacityContext: true,
+			},
+		},
 	}
 
 	err := runStatus(context.Background(), &buf, opts, "web", false)
@@ -1025,9 +1184,12 @@ func TestRunReplay_FromFile(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		
-		Color: "never",
-		Events: EventOption{Enabled: false},
+		Common: cmdoptions.Common{
+			Color: "never",
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+		},
 	}
 
 	err = runReplay(&buf, opts, tmpFile.Name())
@@ -1080,9 +1242,13 @@ func TestRunReplay_Markdown(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Output: "markdown",
-		Color:  "never",
-		Events: EventOption{Enabled: false},
+		Common: cmdoptions.Common{
+			Output: "markdown",
+			Color:  "never",
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+		},
 	}
 
 	err = runReplay(&buf, opts, tmpFile.Name())
@@ -1099,9 +1265,12 @@ func TestRunReplay_Markdown(t *testing.T) {
 func TestRunReplay_FileNotFound(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
-		
-		Color: "never",
-		Events: EventOption{Enabled: false},
+		Common: cmdoptions.Common{
+			Color: "never",
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+		},
 	}
 
 	err := runReplay(&buf, opts, "/nonexistent/path.json")
@@ -1154,7 +1323,12 @@ func TestRunReplayLab_FromRecordWithCandidate(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	opts := &options{Namespace: "prod", Color: "never"}
+	opts := &options{
+		Common: cmdoptions.Common{
+			Namespace: "prod",
+			Color:     "never",
+		},
+	}
 	if err := runReplayLab(&buf, opts, "web", recordFile.Name(), candidateFile.Name(), nil); err != nil {
 		t.Fatalf("runReplayLab returned error: %v", err)
 	}
@@ -1195,7 +1369,12 @@ func TestRunReplayLab_FromRecordWithSetOverrides(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	opts := &options{Namespace: "prod", Color: "never"}
+	opts := &options{
+		Common: cmdoptions.Common{
+			Namespace: "prod",
+			Color:     "never",
+		},
+	}
 	overrides := map[string]string{
 		"maxReplicas":                          "20",
 		"scaleDown.stabilizationWindowSeconds": "600",
@@ -1355,7 +1534,9 @@ func TestRunWhyNotScaleShowsObservedBlockersAndUnknowns(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
 	}
 	if err := runWhyNotScale(context.Background(), &buf, opts, []string{"web"}); err != nil {
 		t.Fatalf("runWhyNotScale returned error: %v", err)
@@ -1384,8 +1565,10 @@ func TestRunWhyNotScaleJSON(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		Output:         "json",
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+			Output:         "json",
+		},
 	}
 	if err := runWhyNotScale(context.Background(), &buf, opts, []string{"api"}); err != nil {
 		t.Fatalf("runWhyNotScale returned error: %v", err)
@@ -1436,7 +1619,11 @@ func TestAdvisorContainerResourceCommand(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	runOpts := &options{ClientOverride: fakeClient}
+	runOpts := &options{
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
+	}
 	if err := runContainerAdvisor(context.Background(), &buf, runOpts, []string{"web"}); err != nil && !isExitCodeWarning(err) {
 		t.Fatalf("runContainerAdvisor returned error: %v", err)
 	}
@@ -1484,7 +1671,9 @@ func TestOwnershipCommandDetectsReplicaFieldOwner(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
 	}
 
 	if err := runOwnership(context.Background(), &buf, opts, []string{"web"}); err != nil {
@@ -1505,7 +1694,11 @@ func TestOwnershipCommandDetectsReplicaFieldOwner(t *testing.T) {
 
 func TestRunProfileDetectShowsAssumptions(t *testing.T) {
 	fakeClient := testutil.NewFakeClient()
-	opts := &options{ClientOverride: fakeClient}
+	opts := &options{
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+		},
+	}
 
 	var buf bytes.Buffer
 	if err := runProfileDetect(context.Background(), &buf, opts); err != nil {
@@ -1539,8 +1732,10 @@ func TestRunTimeline_Retrospective(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := runRetrospectiveTimeline(context.Background(), &buf, &options{
-		ClientOverride: fakeClient,
-		Color:          "never",
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+			Color:          "never",
+		},
 	}, "web", 30*time.Minute, false)
 	if err != nil {
 		t.Fatalf("runRetrospectiveTimeline returned error: %v", err)
@@ -1572,8 +1767,10 @@ func TestRunTimeline_Retrospective_JSON(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := runRetrospectiveTimeline(context.Background(), &buf, &options{
-		ClientOverride: fakeClient,
-		Output:         "json",
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+			Output:         "json",
+		},
 	}, "web", 30*time.Minute, false)
 	if err != nil {
 		t.Fatalf("runRetrospectiveTimeline JSON returned error: %v", err)
@@ -1594,8 +1791,10 @@ func TestRunTimeline_Retrospective_NoEvents(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := runRetrospectiveTimeline(context.Background(), &buf, &options{
-		ClientOverride: fakeClient,
-		Color:          "never",
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+			Color:          "never",
+		},
 	}, "web", 30*time.Minute, false)
 	if err != nil {
 		t.Fatalf("runRetrospectiveTimeline returned error: %v", err)

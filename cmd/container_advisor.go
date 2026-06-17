@@ -4,13 +4,14 @@ import (
 	"context"
 	"io"
 
-	"github.com/mattsui2020/kubectl-hpa-status/internal/cmdoptions"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/spf13/cobra"
 )
 
 func newContainerAdvisorCommand(opts *options) *cobra.Command {
 	return &cobra.Command{
 		Use:               "container-advisor NAME [NAME...]",
+		Aliases:           []string{"container-metric"},
 		Short:             "Suggest ContainerResource metrics for multi-container HPA targets",
 		Args:              cobra.MinimumNArgs(1),
 		ValidArgsFunction: hpaNameCompletion(opts),

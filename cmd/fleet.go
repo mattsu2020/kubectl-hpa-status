@@ -56,7 +56,7 @@ func runFleet(ctx context.Context, out io.Writer, opts *options, risk string) er
 	if risk != "max-surge" {
 		return fmt.Errorf("unsupported --risk %q (use max-surge)", risk)
 	}
-	client, err := opts.newClient()
+	client, err := opts.NewClient()
 	if err != nil {
 		return err
 	}

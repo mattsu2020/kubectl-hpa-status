@@ -61,7 +61,7 @@ func newSimulateCommand(opts *options) *cobra.Command {
 func runSimulate(ctx context.Context, out io.Writer, opts *options, name string,
 	setMetric, setTarget []string, tolerance string, suggest bool, _ int32) error {
 
-	client, err := opts.newClient()
+	client, err := opts.NewClient()
 	if err != nil {
 		return fmt.Errorf("failed to create Kubernetes client: %w", err)
 	}

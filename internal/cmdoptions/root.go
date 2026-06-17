@@ -1,3 +1,7 @@
+// Package cmdoptions defines the structured CLI option model shared across all
+// kubectl-hpa-status commands. Root composes the per-workflow option groups
+// (Common, Status, List, Watch); commands read and mutate copies via presets
+// and normalization helpers rather than reaching into cobra flag bindings.
 package cmdoptions
 
 import "time"

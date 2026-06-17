@@ -41,8 +41,6 @@ type configFile struct {
 	CapacityContext *bool                           `json:"capacityContext" yaml:"capacityContext"`
 }
 
-
-
 // validateConfig checks config file values for correctness and returns an
 // error describing the first invalid field encountered.
 func validateConfig(cfg configFile) error {

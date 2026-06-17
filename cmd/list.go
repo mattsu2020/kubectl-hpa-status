@@ -25,7 +25,7 @@ func newListCommand(opts *options) *cobra.Command {
 		Short:   "List HPAs and highlight visible issues",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if opts.Watch {
+			if opts.Watch.Watch {
 				return runWatchList(cmd.Context(), cmd.OutOrStdout(), opts)
 			}
 			return runList(cmd.Context(), cmd.OutOrStdout(), opts)
@@ -68,7 +68,7 @@ func runList(ctx context.Context, out io.Writer, opts *options) error {
 		return runConflictScan(ctx, out, opts)
 	}
 
-	client, err := opts.newClient()
+	client, err := opts.NewClient()
 	if err != nil {
 		return reportListError(out, opts.Output, err)
 	}

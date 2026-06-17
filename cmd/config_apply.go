@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	hpaanalysis "github.com/mattsui2020/kubectl-hpa-status/pkg/hpa"
+	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/spf13/cobra"
 )
 

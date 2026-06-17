@@ -6,8 +6,8 @@ import (
 	"io"
 	"strings"
 
-	"github.com/mattsui2020/kubectl-hpa-status/internal/cmdoptions"
-	hpaanalysis "github.com/mattsui2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
+	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/spf13/cobra"
 )
 
@@ -72,6 +72,43 @@ func runWhyNotScale(ctx context.Context, out io.Writer, opts *options, names []s
 	})
 }
 
+// collectWhyNotScaleObservations gathers human-readable signals (summary,
+// conditions, over-target metrics, max-cap, impact metric, warnings) into the
+// Observed slice. Extracted from buildWhyNotScaleReport to keep that function
+// below the gocyclo threshold.
+func collectWhyNotScaleObservations(analysis hpaanalysis.Analysis) []string {
+	var observed []string
+	observed = appendIfNotEmpty(observed, analysis.Summary)
+	for _, cond := range analysis.Conditions {
+		if cond.Status == "True" || cond.Status == "False" {
+			observed = append(observed, fmt.Sprintf("%s=%s: %s", cond.Type, cond.Status, cond.Reason))
+		}
+	}
+	for _, metric := range analysis.Metrics {
+		line := metric.Text
+		if line == "" {
+			line = fmt.Sprintf("%s %s current=%s target=%s", metric.Type, metric.Name, metric.Current, metric.Target)
+		}
+		if metric.Ratio != nil && *metric.Ratio > 1.0 {
+			observed = append(observed, line)
+		}
+	}
+	if analysis.Desired == analysis.Max && analysis.Max > 0 {
+		observed = append(observed, "maxReplicas may be capping scale-up")
+	}
+	if analysis.ImpactMetric != nil && analysis.ImpactMetric.Ratio > 1.0 {
+		observed = append(observed,
+			fmt.Sprintf("Resource metric %s ratio=%.2f", analysis.ImpactMetric.Name, analysis.ImpactMetric.Ratio))
+	}
+	for _, warning := range analysis.Warnings {
+		observed = appendIfNotEmpty(observed, warning)
+	}
+	if len(observed) == 0 {
+		observed = append(observed, "no visible scale-up pressure detected from current HPA status")
+	}
+	return observed
+}
+
 func buildWhyNotScaleReport(analysis hpaanalysis.Analysis) whyNotScaleReport {
 	report := whyNotScaleReport{
 		Namespace: analysis.Namespace,
@@ -86,40 +123,29 @@ func buildWhyNotScaleReport(analysis hpaanalysis.Analysis) whyNotScaleReport {
 		},
 	}
 
-	if analysis.Summary != "" {
-		report.Observed = append(report.Observed, analysis.Summary)
-	}
-	for _, cond := range analysis.Conditions {
-		if cond.Status == "True" || cond.Status == "False" {
-			report.Observed = append(report.Observed, fmt.Sprintf("%s=%s: %s", cond.Type, cond.Status, cond.Reason))
-		}
-	}
-	for _, metric := range analysis.Metrics {
-		line := metric.Text
-		if line == "" {
-			line = fmt.Sprintf("%s %s current=%s target=%s", metric.Type, metric.Name, metric.Current, metric.Target)
-		}
-		if metric.Ratio != nil && *metric.Ratio > 1.0 {
-			report.Observed = append(report.Observed, line)
-		}
-	}
-	if analysis.Desired == analysis.Max && analysis.Max > 0 {
-		report.Observed = append(report.Observed, "maxReplicas may be capping scale-up")
-	}
-	if analysis.ImpactMetric != nil && analysis.ImpactMetric.Ratio > 1.0 {
-		report.Observed = append(report.Observed,
-			fmt.Sprintf("Resource metric %s ratio=%.2f", analysis.ImpactMetric.Name, analysis.ImpactMetric.Ratio))
-	}
-	for _, warning := range analysis.Warnings {
-		if warning != "" {
-			report.Observed = append(report.Observed, warning)
-		}
-	}
-
-	if len(report.Observed) == 0 {
-		report.Observed = append(report.Observed, "no visible scale-up pressure detected from current HPA status")
-	}
+	report.Observed = collectWhyNotScaleObservations(analysis)
 	return report
+}
+
+// writeWhyNotScaleSection writes a titled bullet list, skipping it when lines
+// is empty. Shared by writeWhyNotScaleText to avoid tripling the cyclomatic
+// complexity with three near-identical output blocks.
+func writeWhyNotScaleSection(out io.Writer, title string, lines []string, trim bool) error {
+	if len(lines) == 0 {
+		return nil
+	}
+	if _, err := fmt.Fprintln(out, title); err != nil {
+		return err
+	}
+	for _, line := range lines {
+		if trim {
+			line = strings.TrimSpace(line)
+		}
+		if _, err := fmt.Fprintf(out, "  - %s\n", line); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func writeWhyNotScaleText(out io.Writer, report whyNotScaleReport) error {
@@ -131,35 +157,22 @@ func writeWhyNotScaleText(out io.Writer, report whyNotScaleReport) error {
 			return err
 		}
 	}
-	if len(report.Observed) > 0 {
-		if _, err := fmt.Fprintln(out, "\nObserved:"); err != nil {
-			return err
-		}
-		for _, line := range report.Observed {
-			if _, err := fmt.Fprintf(out, "  - %s\n", line); err != nil {
-				return err
-			}
-		}
+	if err := writeWhyNotScaleSection(out, "\nObserved:", report.Observed, false); err != nil {
+		return err
 	}
-	if len(report.Unknown) > 0 {
-		if _, err := fmt.Fprintln(out, "\nUnknown / not exposed:"); err != nil {
-			return err
-		}
-		for _, line := range report.Unknown {
-			if _, err := fmt.Fprintf(out, "  - %s\n", line); err != nil {
-				return err
-			}
-		}
+	if err := writeWhyNotScaleSection(out, "\nUnknown / not exposed:", report.Unknown, false); err != nil {
+		return err
 	}
-	if len(report.NextChecks) > 0 {
-		if _, err := fmt.Fprintln(out, "\nNext checks:"); err != nil {
-			return err
-		}
-		for _, line := range report.NextChecks {
-			if _, err := fmt.Fprintf(out, "  - %s\n", strings.TrimSpace(line)); err != nil {
-				return err
-			}
-		}
+	if err := writeWhyNotScaleSection(out, "\nNext checks:", report.NextChecks, true); err != nil {
+		return err
 	}
 	return nil
+}
+
+// appendIfNotEmpty appends s to slice only when s is non-empty.
+func appendIfNotEmpty(slice []string, s string) []string {
+	if s != "" {
+		return append(slice, s)
+	}
+	return slice
 }

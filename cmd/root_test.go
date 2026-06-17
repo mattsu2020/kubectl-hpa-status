@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -69,9 +70,9 @@ func TestWriteOutputTemplate(t *testing.T) {
 
 func TestOutputSelectionUsesNamedConfigTemplate(t *testing.T) {
 	opts := &options{
-		Output: "names",
-		OutputTemplates: map[string]outputTemplateConfig{
-			"names": {Type: "go-template", Template: "{{ .Analysis.Namespace }}/{{ .Analysis.Name }}"},
+		Common: cmdoptions.Common{
+			Output:          "names",
+			OutputTemplates: map[string]outputTemplateConfig{"names": {Type: "go-template", Template: "{{ .Analysis.Namespace }}/{{ .Analysis.Name }}"}},
 		},
 	}
 
@@ -88,9 +89,9 @@ func TestOutputSelectionUsesNamedConfigTemplate(t *testing.T) {
 
 func TestOutputSelectionUsesNamedJSONPathTemplate(t *testing.T) {
 	opts := &options{
-		Output: "jsonpath:summary",
-		OutputTemplates: map[string]outputTemplateConfig{
-			"summary": {Template: "{.analysis.summary}"},
+		Common: cmdoptions.Common{
+			Output:          "jsonpath:summary",
+			OutputTemplates: map[string]outputTemplateConfig{"summary": {Template: "{.analysis.summary}"}},
 		},
 	}
 
@@ -106,7 +107,11 @@ func TestOutputSelectionUsesNamedJSONPathTemplate(t *testing.T) {
 }
 
 func TestApplyHealthWeightOverrides(t *testing.T) {
-	opts := &options{HealthWeightOverrides: []string{"scalingInactive=50", "atMinimumReplicas=0"}}
+	opts := &options{
+		Common: cmdoptions.Common{
+			HealthWeightOverrides: []string{"scalingInactive=50", "atMinimumReplicas=0"},
+		},
+	}
 	if err := applyHealthWeightOverrides(opts); err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +275,7 @@ func TestVersionCommandPrintsBuildMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := out.String()
-	for _, want := range []string{"kubectl-hpa-status version", "commit=", "date="} {
+	for _, want := range []string{"kubectl-hpa-status version", "commit:", "built:"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("expected %q in version output, got %q", want, text)
 		}
@@ -306,11 +311,17 @@ func TestApplyConfigDefaultsDoesNotOverrideExplicitFlags(t *testing.T) {
 	}
 
 	opts := &options{
-		Config:         path,
-		Lang:           "en",
-		Events:         EventOption{Enabled: true, Limit: 5},
-		HealthScoreMin: -1,
-		HealthScoreMax: -1,
+		Common: cmdoptions.Common{
+			Config: path,
+			Lang:   "en",
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: true, Limit: 5},
+		},
+		List: cmdoptions.List{
+			HealthScoreMin: -1,
+			HealthScoreMax: -1,
+		},
 	}
 	if err := applyConfigDefaults(root, opts); err != nil {
 		t.Fatal(err)

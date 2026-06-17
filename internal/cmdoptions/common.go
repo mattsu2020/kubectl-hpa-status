@@ -4,8 +4,8 @@ import (
 	"io"
 	"time"
 
-	"github.com/mattsui2020/kubectl-hpa-status/internal/kube"
-	hpaanalysis "github.com/mattsui2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"k8s.io/client-go/kubernetes"
 )
 

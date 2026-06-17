@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
-	"github.com/mattsui2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/spf13/cobra"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -105,7 +105,7 @@ type bundleData struct {
 
 // runBundle orchestrates data collection and output for the bundle command.
 func runBundle(ctx context.Context, out io.Writer, opts *options, name, format, outputPath string, redact bool) error {
-	client, err := opts.newClient()
+	client, err := opts.NewClient()
 	if err != nil {
 		return fmt.Errorf("creating client: %w", err)
 	}

@@ -3,8 +3,7 @@ package cmdoptions
 import (
 	"io"
 
-	"github.com/mattsui2020/kubectl-hpa-status/internal/kube"
-	hpaanalysis "github.com/mattsui2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -32,7 +31,6 @@ type StatusWorkflowConfig interface {
 	SimulateOverrides() []string
 	SimulateMetricOverrides() []string
 	SimulateDurationSeconds() int32
-	HealthWeights() hpaanalysis.HealthWeights
 	EventLimit() (enabled bool, limit int)
 	DecisionTraceEnabled() bool
 	StructuredDecisionTraceFormat() string
@@ -47,7 +45,7 @@ type ListWorkflowConfig interface {
 	KubeClientConfig
 	ListSortBy() string
 	ListFilter() string
-	HealthScoreRange() (min, max int)
+	HealthScoreRange() (lo, hi int)
 	ProblemOnly() bool
 	SummaryMode() bool
 	IsAllNamespaces() bool
@@ -63,40 +61,92 @@ var (
 	_ ListWorkflowConfig   = (*Root)(nil)
 )
 
-func (r *Root) GetClientOverride() kubernetes.Interface { return r.Common.ClientOverride }
-func (r *Root) OutputFormat() string                    { return r.Common.Output }
-func (r *Root) OutputTemplate() string                  { return r.Common.Template }
+// GetClientOverride returns the injected Kubernetes client override, if any.
+func (r *Root) GetClientOverride() kubernetes.Interface { return r.ClientOverride }
+
+// OutputFormat returns the selected output format string.
+func (r *Root) OutputFormat() string { return r.Output }
+
+// OutputTemplate returns the raw Go template string for template output.
+func (r *Root) OutputTemplate() string { return r.Template }
+
+// NamedOutputTemplates returns the named output templates from config.
 func (r *Root) NamedOutputTemplates() map[string]OutputTemplateConfig {
-	return r.Common.OutputTemplates
+	return r.OutputTemplates
 }
-func (r *Root) ReportFormat() string { return r.Status.Report }
-func (r *Root) ColorMode() string  { return r.Common.Color }
-func (r *Root) Language() string     { return r.Common.Lang }
+
+// ReportFormat returns the structured status report format.
+func (r *Root) ReportFormat() string { return r.Report }
+
+// ColorMode returns the color preference (auto, always, never).
+func (r *Root) ColorMode() string { return r.Color }
+
+// Language returns the configured UI language code.
+func (r *Root) Language() string { return r.Lang }
+
+// FeatureFlags returns a pointer to the embedded feature flag group.
 func (r *Root) FeatureFlags() *Features {
-	return &r.Status.Features
+	return &r.Features
 }
-func (r *Root) KEDAMode() string                      { return r.Status.KEDA }
-func (r *Root) VPAMode() string                       { return r.Status.VPA }
-func (r *Root) SimulateOverrides() []string           { return r.Status.Simulate }
-func (r *Root) SimulateMetricOverrides() []string   { return r.Status.SimulateMetric }
-func (r *Root) SimulateDurationSeconds() int32      { return r.Status.SimulateDuration }
-func (r *Root) HealthWeights() hpaanalysis.HealthWeights { return r.Common.HealthWeights }
+
+// KEDAMode returns the KEDA enrichment mode.
+func (r *Root) KEDAMode() string { return r.KEDA }
+
+// VPAMode returns the VPA enrichment mode.
+func (r *Root) VPAMode() string { return r.VPA }
+
+// SimulateOverrides returns the replica/metric simulation overrides.
+func (r *Root) SimulateOverrides() []string { return r.Simulate }
+
+// SimulateMetricOverrides returns the metric-value simulation overrides.
+func (r *Root) SimulateMetricOverrides() []string { return r.SimulateMetric }
+
+// SimulateDurationSeconds returns the simulation horizon in seconds.
+func (r *Root) SimulateDurationSeconds() int32 { return r.SimulateDuration }
+
+// EventLimit reports whether event enrichment is enabled and the cap.
 func (r *Root) EventLimit() (bool, int) {
-	return r.Status.Events.Enabled, r.Status.Events.Limit
+	return r.Events.Enabled, r.Events.Limit
 }
-func (r *Root) DecisionTraceEnabled() bool            { return r.Status.DecisionTrace }
-func (r *Root) StructuredDecisionTraceFormat() string { return r.Status.DecisionTraceFormat }
-func (r *Root) AssumeControllerProfile() string       { return r.Status.AssumeProfile }
-func (r *Root) HPAControllerProfileFile() string      { return r.Status.ControllerProfileFile }
-func (r *Root) DebugAnalysis() bool                   { return r.Common.Debug }
-func (r *Root) ListSortBy() string                    { return r.List.SortBy }
-func (r *Root) ListFilter() string                    { return r.List.Filter }
-func (r *Root) HealthScoreRange() (int, int)          { return r.List.HealthScoreMin, r.List.HealthScoreMax }
-func (r *Root) ProblemOnly() bool                     { return r.List.Problem }
-func (r *Root) SummaryMode() bool                     { return r.List.Summary }
-func (r *Root) IsAllNamespaces() bool                 { return r.Common.AllNamespaces }
-func (r *Root) LabelSelector() string                 { return r.Common.Selector }
-func (r *Root) ListChunkSize() int64                  { return r.Common.ChunkSize }
+
+// DecisionTraceEnabled reports whether structured decision tracing is on.
+func (r *Root) DecisionTraceEnabled() bool { return r.DecisionTrace }
+
+// StructuredDecisionTraceFormat returns the decision trace output format.
+func (r *Root) StructuredDecisionTraceFormat() string { return r.DecisionTraceFormat }
+
+// AssumeControllerProfile returns the assumed controller profile name.
+func (r *Root) AssumeControllerProfile() string { return r.AssumeProfile }
+
+// HPAControllerProfileFile returns the controller profile file path.
+func (r *Root) HPAControllerProfileFile() string { return r.ControllerProfileFile }
+
+// DebugAnalysis reports whether verbose analysis logging is enabled.
+func (r *Root) DebugAnalysis() bool { return r.Debug }
+
+// ListSortBy returns the list sort key.
+func (r *Root) ListSortBy() string { return r.SortBy }
+
+// ListFilter returns the list filter expression.
+func (r *Root) ListFilter() string { return r.Filter }
+
+// HealthScoreRange returns the inclusive health-score filter bounds.
+func (r *Root) HealthScoreRange() (int, int) { return r.HealthScoreMin, r.HealthScoreMax }
+
+// ProblemOnly reports whether list output is restricted to HPAs with issues.
+func (r *Root) ProblemOnly() bool { return r.Problem }
+
+// SummaryMode reports whether list output is collapsed to a summary.
+func (r *Root) SummaryMode() bool { return r.Summary }
+
+// IsAllNamespaces reports whether the query spans all namespaces.
+func (r *Root) IsAllNamespaces() bool { return r.AllNamespaces }
+
+// LabelSelector returns the Kubernetes label selector string.
+func (r *Root) LabelSelector() string { return r.Selector }
+
+// ListChunkSize returns the Kubernetes API pagination page size.
+func (r *Root) ListChunkSize() int64 { return r.ChunkSize }
 
 // Stdin returns the configured input reader.
-func (r *Root) Stdin() io.Reader { return r.Common.In }
+func (r *Root) Stdin() io.Reader { return r.In }

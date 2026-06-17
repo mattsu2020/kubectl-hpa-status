@@ -83,7 +83,7 @@ func runRollout(ctx context.Context, out io.Writer, opts *options, names []strin
 
 // buildRolloutReport assembles RolloutInput and runs the rollout analysis.
 func buildRolloutReport(ctx context.Context, opts *options, analysis hpaanalysis.Analysis, name string) *hpaanalysis.RolloutReport {
-	client, err := opts.newClient()
+	client, err := opts.NewClient()
 	if err != nil {
 		return nil
 	}

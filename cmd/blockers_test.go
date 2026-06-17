@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
@@ -32,9 +33,13 @@ func TestRunBlockersBasicOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		Output:         "json",
-		Events:         EventOption{Enabled: false},
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+			Output:         "json",
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+		},
 	}
 
 	err := runBlockers(context.Background(), &buf, opts, []string{"web"})
@@ -76,9 +81,13 @@ func TestRunBlockersNoScaleOut(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		Output:         "json",
-		Events:         EventOption{Enabled: false},
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+			Output:         "json",
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+		},
 	}
 
 	err := runBlockers(context.Background(), &buf, opts, []string{"web"})
@@ -108,10 +117,14 @@ func TestRunBlockersTextOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		Output:         "",
-		Color:          "never",
-		Events:         EventOption{Enabled: false},
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+			Output:         "",
+			Color:          "never",
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+		},
 	}
 
 	err := runBlockers(context.Background(), &buf, opts, []string{"web"})
@@ -137,10 +150,16 @@ func TestCapacityDeepFlagOnDoctor(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		ClientOverride: fakeClient,
-		Output:         "json",
-		Events:         EventOption{Enabled: false},
-		CapacityDeep:   true,
+		Common: cmdoptions.Common{
+			ClientOverride: fakeClient,
+			Output:         "json",
+		},
+		Status: cmdoptions.Status{
+			Events: EventOption{Enabled: false},
+			Features: cmdoptions.Features{
+				CapacityDeep: true,
+			},
+		},
 	}
 
 	err := runDoctor(context.Background(), &buf, opts, []string{"web"})
