@@ -187,13 +187,13 @@ func analyzeMetric(metric MetricContractMetric, apiServices map[string]APIServic
 // metricsAPIForMetricType maps an HPA metric type to its metrics API.
 func metricsAPIForMetricType(metricType string) string {
 	switch metricType {
-	case "Resource", "ContainerResource":
+	case MetricTypeResource, "ContainerResource":
 		return "metrics.k8s.io/v1beta1"
-	case "Pods":
+	case MetricTypePods:
 		return "custom.metrics.k8s.io/v1beta1"
-	case "External":
+	case MetricTypeExternal:
 		return "external.metrics.k8s.io/v1beta1"
-	case "Object":
+	case MetricTypeObject:
 		return "custom.metrics.k8s.io/v1beta1"
 	default:
 		return "unknown"

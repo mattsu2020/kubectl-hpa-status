@@ -55,7 +55,7 @@ type resourceHandler struct{}
 
 func (resourceHandler) FormatStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, metric autoscalingv2.MetricStatus) Metric {
 	if metric.Resource == nil {
-		return Metric{Type: "Resource", Text: "Resource metric: <missing status>"}
+		return Metric{Type: MetricTypeResource, Text: "Resource metric: <missing status>"}
 	}
 	targetSpec := FindResourceTargetSpec(hpa, string(metric.Resource.Name))
 	target := FormatMetricTarget(targetSpec)
@@ -66,7 +66,7 @@ func (resourceHandler) FormatStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, 
 		ratio, note,
 	)
 	return Metric{
-		Type: "Resource", Name: string(metric.Resource.Name),
+		Type: MetricTypeResource, Name: string(metric.Resource.Name),
 		Current: current, Target: target, Ratio: ratio, Note: note, Text: text,
 	}
 }
@@ -115,7 +115,7 @@ type containerResourceHandler struct{}
 
 func (containerResourceHandler) FormatStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, metric autoscalingv2.MetricStatus) Metric {
 	if metric.ContainerResource == nil {
-		return Metric{Type: "ContainerResource", Text: "ContainerResource metric: <missing status>"}
+		return Metric{Type: MetricTypeContainerResource, Text: "ContainerResource metric: <missing status>"}
 	}
 	targetSpec := FindContainerResourceTargetSpec(hpa, string(metric.ContainerResource.Name), metric.ContainerResource.Container)
 	target := FormatMetricTarget(targetSpec)
@@ -126,7 +126,7 @@ func (containerResourceHandler) FormatStatus(hpa *autoscalingv2.HorizontalPodAut
 		ratio, note,
 	)
 	return Metric{
-		Type: "ContainerResource", Name: fmt.Sprintf("%s/%s", metric.ContainerResource.Container, metric.ContainerResource.Name),
+		Type: MetricTypeContainerResource, Name: fmt.Sprintf("%s/%s", metric.ContainerResource.Container, metric.ContainerResource.Name),
 		Current: current, Target: target, Ratio: ratio, Note: note, Text: text,
 	}
 }
@@ -185,7 +185,7 @@ type podsHandler struct{}
 
 func (podsHandler) FormatStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, metric autoscalingv2.MetricStatus) Metric {
 	if metric.Pods == nil {
-		return Metric{Type: "Pods", Text: "Pods metric: <missing status>"}
+		return Metric{Type: MetricTypePods, Text: "Pods metric: <missing status>"}
 	}
 	targetSpec := FindPodsTargetSpec(hpa, metric.Pods.Metric.Name, metric.Pods.Metric.Selector)
 	target := FormatMetricTarget(targetSpec)
@@ -198,7 +198,7 @@ func (podsHandler) FormatStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, metr
 	}
 	text = appendRatioAndNote(text, ratio, note)
 	return Metric{
-		Type: "Pods", Name: metric.Pods.Metric.Name, Selector: selector,
+		Type: MetricTypePods, Name: metric.Pods.Metric.Name, Selector: selector,
 		Current: current, Target: target, Ratio: ratio, Note: note, Text: text,
 	}
 }
@@ -252,7 +252,7 @@ type objectHandler struct{}
 
 func (objectHandler) FormatStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, metric autoscalingv2.MetricStatus) Metric {
 	if metric.Object == nil {
-		return Metric{Type: "Object", Text: "Object metric: <missing status>"}
+		return Metric{Type: MetricTypeObject, Text: "Object metric: <missing status>"}
 	}
 	targetSpec := FindObjectTargetSpec(hpa, metric.Object.Metric.Name, metric.Object.Metric.Selector, metric.Object.DescribedObject)
 	target := FormatMetricTarget(targetSpec)
@@ -266,7 +266,7 @@ func (objectHandler) FormatStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, me
 	}
 	text = appendRatioAndNote(text, ratio, note)
 	return Metric{
-		Type: "Object", Name: metric.Object.Metric.Name, Selector: selector,
+		Type: MetricTypeObject, Name: metric.Object.Metric.Name, Selector: selector,
 		Object: name, Current: current, Target: target, Ratio: ratio, Note: note, Text: text,
 	}
 }
@@ -324,7 +324,7 @@ type externalHandler struct{}
 
 func (externalHandler) FormatStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, metric autoscalingv2.MetricStatus) Metric {
 	if metric.External == nil {
-		return Metric{Type: "External", Text: "External metric: <missing status>"}
+		return Metric{Type: MetricTypeExternal, Text: "External metric: <missing status>"}
 	}
 	targetSpec := FindExternalTargetSpec(hpa, metric.External.Metric.Name, metric.External.Metric.Selector)
 	target := FormatMetricTarget(targetSpec)
@@ -337,7 +337,7 @@ func (externalHandler) FormatStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, 
 	}
 	text = appendRatioAndNote(text, ratio, note)
 	return Metric{
-		Type: "External", Name: metric.External.Metric.Name, Selector: selector,
+		Type: MetricTypeExternal, Name: metric.External.Metric.Name, Selector: selector,
 		Current: current, Target: target, Ratio: ratio, Note: note, Text: text,
 	}
 }

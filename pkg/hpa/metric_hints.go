@@ -78,7 +78,7 @@ func checkExternalMetricMissing(spec autoscalingv2.MetricSpec, events []Event) [
 		return nil
 	}
 	return []MetricHint{{
-		MetricType: "External", MetricName: name, Pattern: "external-metric-missing", Severity: "error",
+		MetricType: MetricTypeExternal, MetricName: name, Pattern: "external-metric-missing", Severity: "error",
 		Title:       "External metric adapter not serving metric",
 		Description: fmt.Sprintf("HPA events report FailedGetExternalMetric for metric %q", name),
 		Checks:      []string{"kubectl get --raw /apis/external.metrics.k8s.io/v1beta1", "kubectl get pods -n <adapter-namespace> -l app=prometheus-adapter"},
@@ -105,7 +105,7 @@ func checkExternalMetricStale(spec autoscalingv2.MetricSpec, freshness []MetricF
 		return nil
 	}
 	return []MetricHint{{
-		MetricType: "External", MetricName: name, Pattern: "external-metric-stale", Severity: "warning",
+		MetricType: MetricTypeExternal, MetricName: name, Pattern: "external-metric-stale", Severity: "warning",
 		Title:       "External metric data is stale",
 		Description: fmt.Sprintf("Metric %q data is stale; HPA may use outdated values for scaling decisions", name),
 		CommonCauses: []string{
@@ -151,7 +151,7 @@ func checkExternalAPIServiceUnavailable(spec autoscalingv2.MetricSpec, freshness
 		return nil
 	}
 	return []MetricHint{{
-		MetricType: "External", MetricName: name, Pattern: "external-api-service-unavailable", Severity: "error",
+		MetricType: MetricTypeExternal, MetricName: name, Pattern: "external-api-service-unavailable", Severity: "error",
 		Title:        "External metrics API service not available",
 		Description:  "The external.metrics.k8s.io APIService is not available; external metrics cannot be retrieved",
 		CommonCauses: []string{"no adapter installed for external metrics", "APIService registration failed"},
@@ -186,7 +186,7 @@ func checkObjectMetricTargetNotFound(spec autoscalingv2.MetricSpec, events []Eve
 	}
 	kind, objName := spec.Object.DescribedObject.Kind, spec.Object.DescribedObject.Name
 	return []MetricHint{{
-		MetricType: "Object", MetricName: name, Pattern: "object-metric-target-not-found", Severity: "error",
+		MetricType: MetricTypeObject, MetricName: name, Pattern: "object-metric-target-not-found", Severity: "error",
 		Title:        "Object metric target may not exist",
 		Description:  fmt.Sprintf("HPA events report FailedGetObjectMetric for %s/%s referenced by metric %q", kind, objName, name),
 		Checks:       []string{fmt.Sprintf("kubectl get %s %s", strings.ToLower(kind), objName)},

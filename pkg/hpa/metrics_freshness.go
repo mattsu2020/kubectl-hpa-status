@@ -158,13 +158,13 @@ func isFailedMetricEvent(reason string) bool {
 func eventMatchesMetricType(reason, metricType string) bool {
 	reasonLower := strings.ToLower(reason)
 	switch metricType {
-	case "Resource", "ContainerResource":
+	case MetricTypeResource, "ContainerResource":
 		return strings.Contains(reasonLower, "resource")
-	case "External":
+	case MetricTypeExternal:
 		return strings.Contains(reasonLower, "external")
-	case "Pods":
+	case MetricTypePods:
 		return strings.Contains(reasonLower, "pods") || strings.Contains(reasonLower, "pod")
-	case "Object":
+	case MetricTypeObject:
 		return strings.Contains(reasonLower, "object")
 	default:
 		return true

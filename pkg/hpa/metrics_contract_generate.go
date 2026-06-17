@@ -30,19 +30,19 @@ func GenerateContractCommands(report *MetricContractReport) []string {
 // generateMetricCommand produces a single kubectl --raw command for a metric check.
 func generateMetricCommand(namespace string, check MetricContractCheck) string {
 	switch check.MetricType {
-	case "Resource", "ContainerResource":
+	case MetricTypeResource, "ContainerResource":
 		return fmt.Sprintf(
 			"kubectl get --raw \"/apis/metrics.k8s.io/v1beta1/namespaces/%s/pods\"",
 			namespace,
 		)
-	case "Pods", "Object":
+	case MetricTypePods, "Object":
 		return fmt.Sprintf(
 			"kubectl get --raw \"/apis/custom.metrics.k8s.io/v1beta1/namespaces/%s/%s%s\"",
 			namespace,
 			strings.ToLower(check.MetricType),
 			metricSelectorSuffix(check.Selector),
 		)
-	case "External":
+	case MetricTypeExternal:
 		metricName := url.PathEscape(check.MetricName)
 		return fmt.Sprintf(
 			"kubectl get --raw \"/apis/external.metrics.k8s.io/v1beta1/namespaces/%s/%s%s\"",
