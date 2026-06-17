@@ -152,6 +152,29 @@ jobs:
           cluster_name: kind
           node_image: ${{ matrix.kind-node-image }}
 
+      - name: Install metrics-server
+        # metrics-server is required by the "real HPA behavior" E2E tests
+        # (scenario #1: CPU load driving the HPA to maxReplicas, and #2:
+        # metrics.k8s.io API detection). Without it those tests skip. The
+        # --kubelet-insecure-tls flag is needed because kind nodes serve a
+        # self-signed kubelet serving certificate.
+        run: |
+          kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+          kubectl patch deployment metrics-server -n kube-system --type='json' \
+            -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
+          kubectl wait --for=condition=available deployment/metrics-server -n kube-system --timeout=120s
+
+      - name: Install KEDA and VPA CRDs
+        # Install the optional CRDs so the CRD-present E2E branches (VPA
+        # conflict #6, KEDA ScaledObject lookup #5) actually exercise the
+        # enrichment paths instead of skipping. Install failures are
+        # non-fatal: the tests skip cleanly when a CRD is absent.
+        run: |
+          kubectl apply --server-side -f https://github.com/kedacore/keda/releases/latest/download/keda-crds.yaml 2>/dev/null || \
+            echo "KEDA CRD install failed (non-fatal; CRD-present tests will skip)"
+          kubectl apply --server-side -f https://github.com/kubernetes/autoscaler/releases/latest/download/vpa-crds.yaml 2>/dev/null || \
+            echo "VPA CRD install failed (non-fatal; CRD-present tests will skip)"
+
       - name: Run E2E Tests
         run: |
           kubectl cluster-info

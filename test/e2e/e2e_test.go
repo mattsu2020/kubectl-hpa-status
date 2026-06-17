@@ -714,6 +714,18 @@ func TestE2E_KEDAManagedHPA(t *testing.T) {
 	if !strings.Contains(output, "KEDA") {
 		t.Errorf("expected KEDA detection in output, got:\n%s", output)
 	}
+
+	// Stronger schema contract: the JSON report must still validate and
+	// reference the detected ScaledObject name from the HPA label. With the
+	// CRD absent, --keda=on surfaces a warning but the base report shape
+	// must be intact.
+	kedaRaw := runStatusJSON(t, kubeconfig, nsName, "keda-hpa-test", "--explain")
+	assertStatusReportShape(t, kedaRaw, "keda-hpa-test")
+	kedaResult := decodeStatusReportJSON(t, kedaRaw)
+	kedaAnalysis := analysisMap(t, kedaResult)
+	if _, ok := kedaAnalysis["structuredInterpretation"].([]interface{}); !ok {
+		t.Error("expected analysis.structuredInterpretation array after --explain on KEDA HPA")
+	}
 }
 
 // TestE2E_ListApplyDryRun tests batch apply workflow with multiple HPAs.
@@ -929,6 +941,21 @@ func TestE2E_MultiMetricWinner(t *testing.T) {
 		!strings.Contains(output, "Multiple current metrics") {
 		t.Errorf("expected multi-metric impact estimation in output, got:\n%s", output)
 	}
+
+	// Stronger schema contract: decode JSON and assert the winner metric is
+	// CPU (150% vs 80% target = 1.875 ratio beats memory 75% vs 70% = 1.07).
+	multiRaw := runStatusJSON(t, kubeconfig, nsName, "multi-hpa", "--explain")
+	assertStatusReportShape(t, multiRaw, "multi-hpa")
+	multiReport := decodeStatusReport(t, multiRaw)
+	if multiReport.Analysis.ImpactMetric == nil {
+		t.Fatal("expected Analysis.ImpactMetric to be populated for a multi-metric HPA")
+	}
+	if multiReport.Analysis.ImpactMetric.Name != "cpu" {
+		t.Errorf("expected winner metric cpu, got %q", multiReport.Analysis.ImpactMetric.Name)
+	}
+	if len(multiReport.Analysis.Metrics) < 2 {
+		t.Errorf("expected at least 2 metrics in Analysis.Metrics, got %d", len(multiReport.Analysis.Metrics))
+	}
 }
 
 // TestE2E_StabilizationWindow verifies that status --explain reports
@@ -960,6 +987,25 @@ func TestE2E_StabilizationWindow(t *testing.T) {
 
 	if !strings.Contains(output, "stabilized") && !strings.Contains(output, "remaining") {
 		t.Errorf("expected stabilized or remaining mention in output, got:\n%s", output)
+	}
+
+	// Stronger schema contract: decode JSON and assert the stabilization
+	// window and source match the configured behavior (300s scaleDown).
+	stabRaw := runStatusJSON(t, kubeconfig, nsName, "stabilized-hpa", "--explain")
+	assertStatusReportShape(t, stabRaw, "stabilized-hpa")
+	stabReport := decodeStatusReport(t, stabRaw)
+	a := stabReport.Analysis
+	if a.StabilizationWindowSeconds == nil {
+		t.Fatal("expected Analysis.StabilizationWindowSeconds to be populated for a stabilized HPA")
+	}
+	if *a.StabilizationWindowSeconds != 300 {
+		t.Errorf("StabilizationWindowSeconds = %d, want 300", *a.StabilizationWindowSeconds)
+	}
+	if a.StabilizationSource != "scaleDown" {
+		t.Errorf("StabilizationSource = %q, want %q", a.StabilizationSource, "scaleDown")
+	}
+	if a.StabilizationConfidence == "" {
+		t.Error("StabilizationConfidence is empty; expected a confidence label for stabilization estimates")
 	}
 }
 
