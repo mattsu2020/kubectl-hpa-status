@@ -545,3 +545,78 @@ func TestHasHPAResourceMetrics_Empty(t *testing.T) {
 		t.Fatal("expected false with no metrics")
 	}
 }
+
+// --- clearEnrichmentReason ---
+
+func TestClearEnrichmentReason_Disabled(t *testing.T) {
+	// When disabled, the entry is left untouched.
+	entry := &Entry{State: StateActive, Reason: "CRD missing"}
+	clearEnrichmentReason(entry, false)
+	if entry.State != StateActive || entry.Reason != "CRD missing" {
+		t.Fatalf("expected unchanged entry, got state=%s reason=%q", entry.State, entry.Reason)
+	}
+}
+
+func TestClearEnrichmentReason_Enabled(t *testing.T) {
+	// When enabled, state resets to unavailable and reason clears so per-HPA
+	// updates can populate fresh values.
+	entry := &Entry{State: StateActive, Reason: "previous run note"}
+	clearEnrichmentReason(entry, true)
+	if entry.State != StateUnavailable {
+		t.Fatalf("expected StateUnavailable, got %s", entry.State)
+	}
+	if entry.Reason != "" {
+		t.Fatalf("expected empty reason, got %q", entry.Reason)
+	}
+}
+
+// --- convertVPAInfo ---
+
+func TestConvertVPAInfo_Nil(t *testing.T) {
+	if result := convertVPAInfo(nil); result != nil {
+		t.Fatalf("expected nil for nil input, got %+v", result)
+	}
+}
+
+func TestConvertVPAInfo_WithData(t *testing.T) {
+	input := &kube.VPAInfo{
+		Name:                "web-vpa",
+		TargetRef:           "Deployment/web",
+		TargetKind:          "Deployment",
+		TargetName:          "web",
+		UpdateMode:          "Auto",
+		ControlledResources: []string{"cpu", "memory"},
+		Recommendations: []kube.VPARecommendationInfo{
+			{Container: "app", Resource: "cpu", Target: "500m", Lower: "250m", Upper: "1"},
+			{Container: "app", Resource: "memory", Target: "512Mi", Lower: "256Mi", Upper: "1Gi"},
+		},
+	}
+	result := convertVPAInfo(input)
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if result.Name != "web-vpa" || result.UpdateMode != "Auto" {
+		t.Fatalf("unexpected Name/UpdateMode: %+v", result)
+	}
+	if len(result.ControlledResources) != 2 {
+		t.Fatalf("expected 2 controlled resources, got %d", len(result.ControlledResources))
+	}
+	if len(result.Recommendations) != 2 {
+		t.Fatalf("expected 2 recommendations, got %d", len(result.Recommendations))
+	}
+	rec := result.Recommendations[0]
+	if rec.Container != "app" || rec.Resource != "cpu" || rec.Target != "500m" {
+		t.Fatalf("unexpected recommendation: %+v", rec)
+	}
+}
+
+func TestConvertVPAInfo_EmptyRecommendations(t *testing.T) {
+	input := &kube.VPAInfo{Name: "empty-vpa", UpdateMode: "Off"}
+	result := convertVPAInfo(input)
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if len(result.Recommendations) != 0 {
+		t.Fatalf("expected 0 recommendations, got %d", len(result.Recommendations))
+	}
+}
