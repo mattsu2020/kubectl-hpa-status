@@ -146,26 +146,26 @@ func runBundle(ctx context.Context, out io.Writer, opts *options, name, format, 
 func collectBundleData(ctx context.Context, client *kube.Client, opts *options, name string) (*bundleData, error) {
 	// Enable all doctor-level flags on a shallow copy of opts.
 	bundleOpts := copyOptions(opts)
-	bundleOpts.explain = true
-	bundleOpts.diagnoseMetrics = true
-	bundleOpts.metricsFreshness = true
-	bundleOpts.checkResources = true
-	bundleOpts.explainPods = true
-	bundleOpts.capacityContext = true
-	bundleOpts.gitopsCheck = true
-	bundleOpts.metricContract = true
-	bundleOpts.churnDetect = true
-	bundleOpts.metricHints = true
-	bundleOpts.containerAdvisor = true
-	bundleOpts.behaviorAdvisor = true
-	bundleOpts.capacityDeep = true
-	bundleOpts.readinessImpact = true
-	bundleOpts.rolloutImpact = true
-	bundleOpts.scaleoutBlockers = true
-	bundleOpts.controllerProfile = true
+	bundleOpts.features.explain = true
+	bundleOpts.features.diagnoseMetrics = true
+	bundleOpts.features.metricsFreshness = true
+	bundleOpts.features.checkResources = true
+	bundleOpts.features.explainPods = true
+	bundleOpts.features.capacityContext = true
+	bundleOpts.features.gitopsCheck = true
+	bundleOpts.features.metricContract = true
+	bundleOpts.features.churnDetect = true
+	bundleOpts.features.metricHints = true
+	bundleOpts.features.containerAdvisor = true
+	bundleOpts.features.behaviorAdvisor = true
+	bundleOpts.features.capacityDeep = true
+	bundleOpts.features.readinessImpact = true
+	bundleOpts.features.rolloutImpact = true
+	bundleOpts.features.scaleoutBlockers = true
+	bundleOpts.features.controllerProfile = true
 	bundleOpts.keda = "on"
 	bundleOpts.vpa = "on"
-	bundleOpts.scalePath = true
+	bundleOpts.features.scalePath = true
 	bundleOpts.events = eventOption{enabled: true, limit: 20}
 
 	data := &bundleData{
@@ -188,7 +188,7 @@ func collectBundleData(ctx context.Context, client *kube.Client, opts *options, 
 
 	// 3. Build full doctor-level analysis with KEDA+VPA enrichment.
 	ec := newEnrichmentContext(ctx, &bundleOpts)
-	includeInterpretation := !bundleOpts.noInterpret
+	includeInterpretation := !bundleOpts.features.noInterpret
 	statusReport, err := buildStatusReport(ctx, &bundleOpts, client, name, includeInterpretation, ec)
 	if err != nil {
 		return nil, fmt.Errorf("building status report: %w", err)

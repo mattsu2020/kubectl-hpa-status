@@ -49,11 +49,11 @@ func newMetricsProbeCommand(opts *options) *cobra.Command {
 
 func runMetricsProbe(ctx context.Context, out io.Writer, opts *options, name string, prometheusURL string) error {
 	local := copyOptions(opts)
-	local.diagnoseMetrics = true
-	local.metricsFreshness = true
-	local.metricContract = true
-	local.adapterDiagnostics = true
-	local.metricHints = true
+	local.features.diagnoseMetrics = true
+	local.features.metricsFreshness = true
+	local.features.metricContract = true
+	local.features.adapterDiagnostics = true
+	local.features.metricHints = true
 
 	report, err := buildStatusReportWithClient(ctx, &local, name, true, nil)
 	if err != nil {

@@ -26,25 +26,25 @@ func runDoctor(ctx context.Context, out io.Writer, opts *options, names []string
 	// Enable all diagnostic flags for a full doctor check. Take a shallow copy
 	// so the shared process-wide opts is not mutated.
 	local := copyOptions(opts)
-	local.explain = true
-	local.diagnoseMetrics = true
-	local.metricsFreshness = true
-	local.checkResources = true
-	local.explainPods = true
-	local.capacityContext = true
-	local.gitopsCheck = true
-	local.metricContract = true
-	local.churnDetect = true
-	local.metricHints = true
-	local.containerAdvisor = true
-	local.behaviorAdvisor = true
-	local.capacityDeep = true
-	local.rollout = true
-	local.readinessImpact = true
-	local.scalePath = true
-	local.flappingAdvisor = true
-	local.trendAnomaly = true
-	local.adapterDiagnostics = true
+	local.features.explain = true
+	local.features.diagnoseMetrics = true
+	local.features.metricsFreshness = true
+	local.features.checkResources = true
+	local.features.explainPods = true
+	local.features.capacityContext = true
+	local.features.gitopsCheck = true
+	local.features.metricContract = true
+	local.features.churnDetect = true
+	local.features.metricHints = true
+	local.features.containerAdvisor = true
+	local.features.behaviorAdvisor = true
+	local.features.capacityDeep = true
+	local.features.rollout = true
+	local.features.readinessImpact = true
+	local.features.scalePath = true
+	local.features.flappingAdvisor = true
+	local.features.trendAnomaly = true
+	local.features.adapterDiagnostics = true
 
-	return runStatusMany(ctx, out, &local, names, !local.noInterpret)
+	return runStatusMany(ctx, out, &local, names, !local.features.noInterpret)
 }

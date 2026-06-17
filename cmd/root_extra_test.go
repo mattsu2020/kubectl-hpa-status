@@ -798,12 +798,12 @@ func TestStatusOptions_Normalize(t *testing.T) {
 	}{
 		{
 			name:        "recommend implies suggest",
-			opts:        options{statusOptions: statusOptions{recommend: true}},
+			opts:        options{statusOptions: statusOptions{features: featureFlags{recommend: true}}},
 			wantSuggest: true,
 		},
 		{
 			name:        "fix implies suggest and explain",
-			opts:        options{statusOptions: statusOptions{fix: true}},
+			opts:        options{statusOptions: statusOptions{features: featureFlags{fix: true}}},
 			wantSuggest: true,
 			wantExplain: true,
 		},
@@ -820,18 +820,18 @@ func TestStatusOptions_Normalize(t *testing.T) {
 		},
 		{
 			name: "no-interpret clears suggest",
-			opts: options{statusOptions: statusOptions{interpret: true, suggest: true, noInterpret: true}},
+			opts: options{statusOptions: statusOptions{features: featureFlags{interpret: true, suggest: true, noInterpret: true}}},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			o := tt.opts
 			o.Normalize()
-			if o.suggest != tt.wantSuggest {
-				t.Errorf("suggest = %v, want %v", o.suggest, tt.wantSuggest)
+			if o.features.suggest != tt.wantSuggest {
+				t.Errorf("suggest = %v, want %v", o.features.suggest, tt.wantSuggest)
 			}
-			if o.explain != tt.wantExplain {
-				t.Errorf("explain = %v, want %v", o.explain, tt.wantExplain)
+			if o.features.explain != tt.wantExplain {
+				t.Errorf("explain = %v, want %v", o.features.explain, tt.wantExplain)
 			}
 		})
 	}

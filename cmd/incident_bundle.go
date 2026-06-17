@@ -34,9 +34,9 @@ func runIncidentBundle(ctx context.Context, out io.Writer, opts *options, name, 
 	// commands). The reference fields (clientOverride, outputTemplates) are
 	// intentionally shared by value, matching the pattern in support_bundle.go.
 	local := copyOptions(opts)
-	local.readinessImpact = true
-	local.rolloutImpact = true
-	local.scaleoutBlockers = true
-	local.controllerProfile = true
+	local.features.readinessImpact = true
+	local.features.rolloutImpact = true
+	local.features.scaleoutBlockers = true
+	local.features.controllerProfile = true
 	return runBundle(ctx, out, &local, name, format, outputPath, redact)
 }

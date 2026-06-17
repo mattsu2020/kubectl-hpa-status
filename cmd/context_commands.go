@@ -21,20 +21,20 @@ func newNodeContextCommand(opts *options) *cobra.Command {
 
 func runNodeContext(ctx context.Context, out io.Writer, opts *options, names []string) error {
 	local := copyOptions(opts)
-	local.explain = true
-	local.explainPods = true
-	local.capacityContext = true
-	local.capacityHeadroom = true
-	local.capacityDeep = true
-	local.scalePath = true
-	local.scaleoutBlockers = true
-	local.nodeAutoscaler = true
-	local.karpenter = true
+	local.features.explain = true
+	local.features.explainPods = true
+	local.features.capacityContext = true
+	local.features.capacityHeadroom = true
+	local.features.capacityDeep = true
+	local.features.scalePath = true
+	local.features.scaleoutBlockers = true
+	local.features.nodeAutoscaler = true
+	local.features.karpenter = true
 	local.events.enabled = true
 	if local.events.limit == 0 {
 		local.events.limit = 10
 	}
-	return runStatusMany(ctx, out, &local, names, !local.noInterpret)
+	return runStatusMany(ctx, out, &local, names, !local.features.noInterpret)
 }
 
 func newRolloutContextCommand(opts *options) *cobra.Command {
@@ -51,15 +51,15 @@ func newRolloutContextCommand(opts *options) *cobra.Command {
 
 func runRolloutContext(ctx context.Context, out io.Writer, opts *options, names []string) error {
 	local := copyOptions(opts)
-	local.explain = true
-	local.explainPods = true
-	local.readinessImpact = true
-	local.rollout = true
-	local.rolloutImpact = true
-	local.scalePath = true
+	local.features.explain = true
+	local.features.explainPods = true
+	local.features.readinessImpact = true
+	local.features.rollout = true
+	local.features.rolloutImpact = true
+	local.features.scalePath = true
 	local.events.enabled = true
 	if local.events.limit == 0 {
 		local.events.limit = 10
 	}
-	return runStatusMany(ctx, out, &local, names, !local.noInterpret)
+	return runStatusMany(ctx, out, &local, names, !local.features.noInterpret)
 }

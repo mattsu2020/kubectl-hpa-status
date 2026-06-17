@@ -40,12 +40,12 @@ func newWhyNotScaleCommand(opts *options) *cobra.Command {
 
 func runWhyNotScale(ctx context.Context, out io.Writer, opts *options, names []string) error {
 	local := copyOptions(opts)
-	local.explain = true
-	local.diagnoseMetrics = true
-	local.metricsFreshness = true
-	local.readinessImpact = true
-	local.scalePath = true
-	local.capacityHeadroom = true
+	local.features.explain = true
+	local.features.diagnoseMetrics = true
+	local.features.metricsFreshness = true
+	local.features.readinessImpact = true
+	local.features.scalePath = true
+	local.features.capacityHeadroom = true
 	local.events.enabled = true
 	if local.events.limit == 0 {
 		local.events.limit = 10

@@ -154,8 +154,10 @@ func TestCapacityDeepFlagOnDoctor(t *testing.T) {
 			output:         "json",
 		},
 		statusOptions: statusOptions{
-			events:       eventOption{enabled: false},
-			capacityDeep: true,
+			events: eventOption{enabled: false},
+			features: featureFlags{
+				capacityDeep: true,
+			},
 		},
 	}
 

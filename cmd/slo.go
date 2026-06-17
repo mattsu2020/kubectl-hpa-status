@@ -39,8 +39,8 @@ func newSLOCommand(opts *options) *cobra.Command {
 
 func runSLO(ctx context.Context, out io.Writer, opts *options, name, metric, target string) error {
 	local := copyOptions(opts)
-	local.explain = true
-	local.metricHints = true
+	local.features.explain = true
+	local.features.metricHints = true
 	report, err := buildStatusReportWithClient(ctx, &local, name, true, nil)
 	if err != nil {
 		return err

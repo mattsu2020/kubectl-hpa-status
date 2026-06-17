@@ -18,7 +18,7 @@ func newWatchCommand(opts *options) *cobra.Command {
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: hpaNameCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runWatch(cmd.Context(), cmd.OutOrStdout(), opts, args[0], !opts.noInterpret)
+			return runWatch(cmd.Context(), cmd.OutOrStdout(), opts, args[0], !opts.features.noInterpret)
 		},
 	}
 	return cmd

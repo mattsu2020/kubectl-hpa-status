@@ -107,8 +107,10 @@ func TestRunStatusSuggestShowsPatchCommand(t *testing.T) {
 			clientOverride: fakeClient,
 		},
 		statusOptions: statusOptions{
-			suggest: true,
-			events:  eventOption{enabled: false},
+			events: eventOption{enabled: false},
+			features: featureFlags{
+				suggest: true,
+			},
 		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "api", true)
@@ -912,8 +914,10 @@ func TestRunStatus_ExplainPods(t *testing.T) {
 			clientOverride: fakeClient,
 		},
 		statusOptions: statusOptions{
-			events:      eventOption{enabled: false},
-			explainPods: true,
+			events: eventOption{enabled: false},
+			features: featureFlags{
+				explainPods: true,
+			},
 		},
 	}
 
@@ -942,8 +946,10 @@ func TestRunStatus_ExplainPods_JSON(t *testing.T) {
 			output:         "json",
 		},
 		statusOptions: statusOptions{
-			events:      eventOption{enabled: false},
-			explainPods: true,
+			events: eventOption{enabled: false},
+			features: featureFlags{
+				explainPods: true,
+			},
 		},
 	}
 
@@ -1112,8 +1118,10 @@ func TestRunStatus_CapacityContext(t *testing.T) {
 			output:         "json",
 		},
 		statusOptions: statusOptions{
-			events:          eventOption{enabled: false},
-			capacityContext: true,
+			events: eventOption{enabled: false},
+			features: featureFlags{
+				capacityContext: true,
+			},
 		},
 	}
 

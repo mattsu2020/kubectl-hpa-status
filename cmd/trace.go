@@ -24,7 +24,7 @@ func runTrace(ctx context.Context, out io.Writer, opts *options, names []string)
 	// Enable decision-trace collection. Take a shallow copy so the shared
 	// process-wide opts is not mutated.
 	local := copyOptions(opts)
-	local.decisionTrace = true
+	local.features.decisionTrace = true
 	reports := make([]hpaanalysis.StatusReport, 0, len(names))
 	for _, name := range names {
 		report, err := buildStatusReportWithClient(ctx, &local, name, false, nil)

@@ -33,18 +33,18 @@ func runSupportBundle(ctx context.Context, out io.Writer, opts *options, name, f
 	local := copyOptions(opts)
 	local.keda = "on"
 	local.vpa = "on"
-	local.readinessImpact = true
-	local.rolloutImpact = true
-	local.scaleoutBlockers = true
-	local.controllerProfile = true
-	local.capacityDeep = true
-	local.diagnoseMetrics = true
-	local.metricsFreshness = true
-	local.metricContract = true
-	local.churnDetect = true
-	local.metricHints = true
-	local.containerAdvisor = true
-	local.behaviorAdvisor = true
+	local.features.readinessImpact = true
+	local.features.rolloutImpact = true
+	local.features.scaleoutBlockers = true
+	local.features.controllerProfile = true
+	local.features.capacityDeep = true
+	local.features.diagnoseMetrics = true
+	local.features.metricsFreshness = true
+	local.features.metricContract = true
+	local.features.churnDetect = true
+	local.features.metricHints = true
+	local.features.containerAdvisor = true
+	local.features.behaviorAdvisor = true
 
 	if format == "" {
 		format = "markdown"

@@ -24,7 +24,7 @@ func newStatusCommand(opts *options) *cobra.Command {
 		Args:              cobra.MinimumNArgs(1),
 		ValidArgsFunction: hpaNameCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			includeInterpretation := (opts.interpret || opts.explain || opts.suggest) && !opts.noInterpret
+			includeInterpretation := (opts.features.interpret || opts.features.explain || opts.features.suggest) && !opts.features.noInterpret
 			if opts.watch {
 				if len(args) != 1 {
 					return fmt.Errorf("--watch supports exactly one HPA name")
@@ -60,9 +60,9 @@ func newAnalyzeCommand(opts *options) *cobra.Command {
 				if len(args) != 1 {
 					return fmt.Errorf("--watch supports exactly one HPA name")
 				}
-				return runWatch(cmd.Context(), cmd.OutOrStdout(), opts, args[0], !opts.noInterpret)
+				return runWatch(cmd.Context(), cmd.OutOrStdout(), opts, args[0], !opts.features.noInterpret)
 			}
-			return runStatusMany(cmd.Context(), cmd.OutOrStdout(), opts, args, !opts.noInterpret)
+			return runStatusMany(cmd.Context(), cmd.OutOrStdout(), opts, args, !opts.features.noInterpret)
 		},
 	}
 }
@@ -73,7 +73,7 @@ func runStatus(ctx context.Context, out io.Writer, opts *options, name string, i
 
 func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []string, includeInterpretation bool) error {
 	if opts.format == "structured" && opts.decisionTraceFormat == "" {
-		opts.decisionTrace = true
+		opts.features.decisionTrace = true
 		opts.decisionTraceFormat = "json"
 		includeInterpretation = true
 	}
@@ -105,7 +105,7 @@ func runStatusSingle(ctx context.Context, out io.Writer, opts *options, name str
 		}
 		return writeOutput(out, "json", "", report.Analysis.StructuredDecisionTrace, nil)
 	}
-	if opts.contextForAI || opts.ask != "" {
+	if opts.features.contextForAI || opts.ask != "" {
 		return writeAIContext(out, report, opts.ask)
 	}
 	if opts.apply {
@@ -153,7 +153,7 @@ func runStatusMultiple(ctx context.Context, out io.Writer, opts *options, names 
 		}
 		return writeOutput(out, "json", "", traces, nil)
 	}
-	if opts.contextForAI || opts.ask != "" {
+	if opts.features.contextForAI || opts.ask != "" {
 		return writeAIContextMany(out, reports, opts.ask)
 	}
 
@@ -258,9 +258,9 @@ func statusTextOptions(opts *options, out io.Writer) hpaanalysis.StatusTextOptio
 	return hpaanalysis.StatusTextOptions{
 		Theme:             style.NewTheme(shouldColorize(opts.color, out)),
 		Lang:              outputLang(opts.lang, opts.output),
-		Fix:               opts.fix,
+		Fix:               opts.features.fix,
 		Diff:              opts.diff,
-		HiddenFactors:     opts.hiddenFactors,
+		HiddenFactors:     opts.features.hiddenFactors,
 		Labels:            labelProviderForLang(opts.lang, opts.output),
 		SummaryTranslator: summaryTranslatorForLang(opts.lang, opts.output),
 	}

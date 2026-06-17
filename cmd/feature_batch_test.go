@@ -286,8 +286,10 @@ func TestStatusHiddenFactorsText(t *testing.T) {
 	opts := &options{
 		commonOptions: commonOptions{clientOverride: fakeClient},
 		statusOptions: statusOptions{
-			events:        eventOption{enabled: false},
-			hiddenFactors: true,
+			events: eventOption{enabled: false},
+			features: featureFlags{
+				hiddenFactors: true,
+			},
 		},
 	}
 

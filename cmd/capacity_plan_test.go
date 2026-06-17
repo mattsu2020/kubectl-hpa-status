@@ -176,9 +176,11 @@ func TestCapacityPlanFlagOnStatus(t *testing.T) {
 			output:         "json",
 		},
 		statusOptions: statusOptions{
-			events:       eventOption{enabled: false},
-			capacityPlan: true,
-			interpret:    true,
+			events: eventOption{enabled: false},
+			features: featureFlags{
+				capacityPlan: true,
+				interpret:    true,
+			},
 		},
 	}
 

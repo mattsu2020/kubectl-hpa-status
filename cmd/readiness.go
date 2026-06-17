@@ -24,16 +24,16 @@ func newReadinessCommand(opts *options) *cobra.Command {
 
 func runReadiness(ctx context.Context, out io.Writer, opts *options, names []string) error {
 	local := copyOptions(opts)
-	local.explain = true
-	local.readinessImpact = true
-	local.explainPods = true
-	local.scalePath = true
-	local.rolloutImpact = true
-	local.metricsFreshness = true
-	local.controllerProfile = true
+	local.features.explain = true
+	local.features.readinessImpact = true
+	local.features.explainPods = true
+	local.features.scalePath = true
+	local.features.rolloutImpact = true
+	local.features.metricsFreshness = true
+	local.features.controllerProfile = true
 	local.events.enabled = true
 	if local.events.limit == 0 {
 		local.events.limit = 10
 	}
-	return runStatusMany(ctx, out, &local, names, !local.noInterpret)
+	return runStatusMany(ctx, out, &local, names, !local.features.noInterpret)
 }

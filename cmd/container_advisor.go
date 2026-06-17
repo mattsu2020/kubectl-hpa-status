@@ -22,9 +22,9 @@ func newContainerAdvisorCommand(opts *options) *cobra.Command {
 
 func runContainerAdvisor(ctx context.Context, out io.Writer, opts *options, names []string) error {
 	local := copyOptions(opts)
-	local.explain = true
-	local.explainPods = true
-	local.checkResources = true
-	local.containerAdvisor = true
-	return runStatusMany(ctx, out, &local, names, !local.noInterpret)
+	local.features.explain = true
+	local.features.explainPods = true
+	local.features.checkResources = true
+	local.features.containerAdvisor = true
+	return runStatusMany(ctx, out, &local, names, !local.features.noInterpret)
 }

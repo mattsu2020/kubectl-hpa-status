@@ -32,7 +32,7 @@ func runPath(ctx context.Context, out io.Writer, opts *options, names []string) 
 	// Enable scale-path analysis. Take a shallow copy so the shared
 	// process-wide opts is not mutated.
 	local := copyOptions(opts)
-	local.scalePath = true
+	local.features.scalePath = true
 	reports := make([]scalePathReport, 0, len(names))
 	for _, name := range names {
 		report, err := buildStatusReportWithClient(ctx, &local, name, false, nil)

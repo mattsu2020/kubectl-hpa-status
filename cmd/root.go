@@ -60,60 +60,79 @@ type commonOptions struct {
 
 // statusOptions holds flags specific to the status / analyze command:
 // interpretation, suggestions, enrichment, diagnostics, and simulation.
+// featureFlags groups the 34 enrichment/analysis boolean toggles that were
+// previously flat fields on statusOptions. Grouping them makes the feature
+// surface explicit and is the first structural step toward splitting options.
+// All fields are plain value-typed bool, so a shallow copy (copyOptions)
+// produces an independent set — callers can mutate the copy without leaking
+// flags into the shared process-wide singleton.
+type featureFlags struct {
+	// Status presentation
+	interpret     bool
+	noInterpret   bool
+	explain       bool
+	suggest       bool
+	fix           bool
+	recommend     bool
+	hiddenFactors bool
+	contextForAI  bool
+	// Metrics diagnostics
+	diagnoseMetrics    bool
+	metricsFreshness   bool
+	metricContract     bool
+	adapterDiagnostics bool
+	metricHints        bool
+	// Pod/resource analysis
+	checkResources bool
+	explainPods    bool
+	// Capacity analysis
+	capacityContext  bool
+	capacityHeadroom bool
+	capacityDeep     bool
+	capacityPlan     bool
+	scalePath        bool
+	nodeAutoscaler   bool
+	karpenter        bool
+	// Rollout & blockers
+	rollout          bool
+	rolloutImpact    bool
+	readinessImpact  bool
+	scaleoutBlockers bool
+	// Controller & decision
+	controllerProfile bool
+	decisionTrace     bool
+	// KEDA/VPA/GitOps
+	gitopsCheck bool
+	// Churn & advisors
+	churnDetect      bool
+	flappingAdvisor  bool
+	trendAnomaly     bool
+	containerAdvisor bool
+	behaviorAdvisor  bool
+}
+
 // Apply/diff/export and health-weight flags live on commonOptions because
 // list, watch, and other subcommands share them.
 type statusOptions struct {
-	interpret             bool
-	noInterpret           bool
-	explain               bool
-	suggest               bool
-	fix                   bool
+	features featureFlags
+
 	keda                  string
 	vpa                   string
-	diagnoseMetrics       bool
-	metricsFreshness      bool
-	checkResources        bool
-	explainPods           bool
 	simulate              []string
 	simulateMetric        []string
 	simulateDuration      int32
-	capacityContext       bool
-	capacityHeadroom      bool
-	capacityDeep          bool
-	capacityPlan          bool
 	targetMax             int32
-	scalePath             bool
-	decisionTrace         bool
-	rollout               bool
-	rolloutImpact         bool
-	readinessImpact       bool
-	scaleoutBlockers      bool
-	controllerProfile     bool
 	assumeProfile         string
 	controllerProfileFile string
 	format                string
-	hiddenFactors         bool
-	nodeAutoscaler        bool
-	karpenter             bool
-	contextForAI          bool
 	ask                   string
 	events                eventOption
-	recommend             bool
 	report                string
-	gitopsCheck           bool
 	manifestPath          string
-	metricContract        bool
-	churnDetect           bool
-	metricHints           bool
-	containerAdvisor      bool
-	behaviorAdvisor       bool
 	decisionTraceFormat   string
-	flappingAdvisor       bool
-	trendAnomaly          bool
 	incidentTemplate      string
 	policyGuard           string
 	policyGuardMode       string
-	adapterDiagnostics    bool
 }
 
 // listOptions holds flags specific to the list / scan commands.
@@ -184,22 +203,22 @@ func (o *options) Normalize() {
 // normalizeSuggestFlags handles the --recommend/--fix/--apply/--diff/--export
 // implication chain that enables --suggest.
 func (o *options) normalizeSuggestFlags() {
-	if o.recommend {
-		o.suggest = true
+	if o.features.recommend {
+		o.features.suggest = true
 	}
-	if o.fix || o.apply {
-		o.suggest = true
-		o.explain = true
+	if o.features.fix || o.apply {
+		o.features.suggest = true
+		o.features.explain = true
 	}
 	if o.diff {
-		o.suggest = true
+		o.features.suggest = true
 	}
 	if o.export != "" {
-		o.suggest = true
+		o.features.suggest = true
 	}
 	if o.exportPatch != "" {
 		o.export = o.exportPatch
-		o.suggest = true
+		o.features.suggest = true
 	}
 }
 
@@ -207,11 +226,11 @@ func (o *options) normalizeSuggestFlags() {
 // format is given or the structured status format is selected.
 func (o *options) normalizeDecisionTraceFlags() {
 	if o.decisionTraceFormat != "" {
-		o.decisionTrace = true
+		o.features.decisionTrace = true
 	}
 	if o.format == "structured" {
-		o.explain = true
-		o.decisionTrace = true
+		o.features.explain = true
+		o.features.decisionTrace = true
 		o.decisionTraceFormat = "json"
 	}
 }
@@ -219,37 +238,37 @@ func (o *options) normalizeDecisionTraceFlags() {
 // normalizeInsightFlags enables the deeper-insight flags implied by AI context,
 // ask, and hiddenFactors.
 func (o *options) normalizeInsightFlags() {
-	if o.contextForAI || o.ask != "" {
-		o.explain = true
-		o.diagnoseMetrics = true
-		o.metricHints = true
-		o.hiddenFactors = true
+	if o.features.contextForAI || o.ask != "" {
+		o.features.explain = true
+		o.features.diagnoseMetrics = true
+		o.features.metricHints = true
+		o.features.hiddenFactors = true
 	}
-	if o.hiddenFactors {
-		o.readinessImpact = true
-		o.metricsFreshness = true
+	if o.features.hiddenFactors {
+		o.features.readinessImpact = true
+		o.features.metricsFreshness = true
 	}
 }
 
 // normalizeCapacityFlags enables capacity/scalePath when node autoscaler
 // flavors are requested.
 func (o *options) normalizeCapacityFlags() {
-	if o.nodeAutoscaler || o.karpenter {
-		o.capacityContext = true
-		o.capacityDeep = true
-		o.scalePath = true
+	if o.features.nodeAutoscaler || o.features.karpenter {
+		o.features.capacityContext = true
+		o.features.capacityDeep = true
+		o.features.scalePath = true
 	}
 }
 
 // normalizeMiscFlags covers the remaining standalone normalizations: trend
 // anomaly escalation and the no-interpret override.
 func (o *options) normalizeMiscFlags() {
-	if o.trend && !o.trendAnomaly {
-		o.trendAnomaly = true
+	if o.trend && !o.features.trendAnomaly {
+		o.features.trendAnomaly = true
 	}
-	if o.noInterpret {
-		o.interpret = false
-		o.suggest = false
+	if o.features.noInterpret {
+		o.features.interpret = false
+		o.features.suggest = false
 	}
 }
 
@@ -314,7 +333,7 @@ func NewRootCommand() *cobra.Command {
 			if len(args) == 0 {
 				return cmd.Help()
 			}
-			includeInterpretation := (opts.interpret || opts.explain || opts.suggest) && !opts.noInterpret
+			includeInterpretation := (opts.features.interpret || opts.features.explain || opts.features.suggest) && !opts.features.noInterpret
 			if opts.watch {
 				if len(args) != 1 {
 					return fmt.Errorf("--watch supports exactly one HPA name")

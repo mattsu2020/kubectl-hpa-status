@@ -37,8 +37,8 @@ func runBlockers(ctx context.Context, out io.Writer, opts *options, names []stri
 	// so the shared process-wide opts is not mutated (reference fields like
 	// clientOverride and outputTemplates are intentionally shared by value).
 	local := copyOptions(opts)
-	local.capacityContext = true
-	local.explainPods = true
+	local.features.capacityContext = true
+	local.features.explainPods = true
 	local.events = eventOption{enabled: true, limit: 10}
 
 	outputs := make([]blockerOutput, 0, len(names))

@@ -97,7 +97,7 @@ func applyAdvancedConfig(opts *options, cfg configFile, changed flagChangedFunc)
 
 	applyPtrConfig(cfg.Keda, "keda", changed, &opts.keda)
 	applyPtrConfig(cfg.Vpa, "vpa", changed, &opts.vpa)
-	applyPtrConfig(cfg.ExplainPods, "explain-pods", changed, &opts.explainPods)
+	applyPtrConfig(cfg.ExplainPods, "explain-pods", changed, &opts.features.explainPods)
 	applySliceConfig(cfg.Simulate, "simulate", changed, &opts.simulate)
-	applyPtrConfig(cfg.CapacityContext, "capacity-context", changed, &opts.capacityContext)
+	applyPtrConfig(cfg.CapacityContext, "capacity-context", changed, &opts.features.capacityContext)
 }

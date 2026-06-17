@@ -12,8 +12,8 @@ func newExplainCommand(opts *options) *cobra.Command {
 		ValidArgsFunction: hpaNameCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			local := copyOptions(opts)
-			local.explain = true
-			local.decisionTrace = true
+			local.features.explain = true
+			local.features.decisionTrace = true
 			local.decisionTraceFormat = "json"
 			if local.output == "" {
 				local.format = "structured"
