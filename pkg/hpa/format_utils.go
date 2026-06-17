@@ -3,6 +3,7 @@ package hpa
 import (
 	"fmt"
 	"math"
+	"strings"
 )
 
 // FormatDuration returns a human-readable duration string from seconds.
@@ -80,4 +81,58 @@ func FormatCountdownBadge(remaining *int64) string {
 	default:
 		return fmt.Sprintf("⏳ %ds", sec)
 	}
+}
+
+// wrapLines splits text into lines of at most maxLen characters, breaking at
+// word boundaries when possible. Shared by blocker, capacity-plan,
+// gitops-review, and rollout text renderers.
+func wrapLines(text string, maxLen int) []string {
+	words := strings.Fields(text)
+	if len(words) == 0 {
+		return nil
+	}
+
+	var lines []string
+	var current strings.Builder
+
+	for _, word := range words {
+		if current.Len() > 0 && current.Len()+1+len(word) > maxLen {
+			lines = append(lines, current.String())
+			current.Reset()
+		}
+		if current.Len() > 0 {
+			current.WriteByte(' ')
+		}
+		current.WriteString(word)
+	}
+	if current.Len() > 0 {
+		lines = append(lines, current.String())
+	}
+	return lines
+}
+
+// progressBar renders a 10-cell unicode bar for a metric ratio (0–2 mapped to
+// 0–10 filled cells). Shared by the list and status text renderers.
+func progressBar(ratio float64) string {
+	if ratio < 0 {
+		ratio = 0
+	}
+	if ratio > 2 {
+		ratio = 2
+	}
+	filled := int((ratio/2)*10 + 0.5)
+	if filled > 10 {
+		filled = 10
+	}
+	return strings.Repeat("█", filled) + strings.Repeat("░", 10-filled)
+}
+
+// formatMetricText reconstructs a metric display line using the original Text
+// but with the note replaced by a potentially colorized version. Shared by the
+// diff and status-section text renderers.
+func formatMetricText(m Metric, coloredNote string) string {
+	if m.Note == "" || coloredNote == m.Note {
+		return m.Text
+	}
+	return strings.Replace(m.Text, m.Note, coloredNote, 1)
 }

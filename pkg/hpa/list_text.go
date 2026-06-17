@@ -337,20 +337,6 @@ func compactMetrics(metrics []Metric) string {
 	return strings.Join(parts, ",")
 }
 
-func progressBar(ratio float64) string {
-	if ratio < 0 {
-		ratio = 0
-	}
-	if ratio > 2 {
-		ratio = 2
-	}
-	filled := int((ratio/2)*10 + 0.5)
-	if filled > 10 {
-		filled = 10
-	}
-	return strings.Repeat("█", filled) + strings.Repeat("░", 10-filled)
-}
-
 func compactBehavior(behavior []BehaviorRule) string {
 	var parts []string
 	for _, rule := range behavior {

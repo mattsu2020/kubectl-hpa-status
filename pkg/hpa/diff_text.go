@@ -3,7 +3,6 @@ package hpa
 import (
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
@@ -126,13 +125,4 @@ func metricMap(metrics []Metric) map[string]string {
 		}
 	}
 	return m
-}
-
-// formatMetricText reconstructs a metric display line using the original Text
-// but with the note replaced by a potentially colorized version.
-func formatMetricText(m Metric, coloredNote string) string {
-	if m.Note == "" || coloredNote == m.Note {
-		return m.Text
-	}
-	return strings.Replace(m.Text, m.Note, coloredNote, 1)
 }
