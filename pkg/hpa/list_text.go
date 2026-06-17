@@ -43,6 +43,8 @@ type ListItem struct {
 
 // ListReport holds the list of HPA items for table output.
 type ListReport struct {
+	// APIVersion identifies the JSON/YAML schema version (see SchemaVersion).
+	APIVersion  string              `json:"apiVersion" yaml:"apiVersion"`
 	Items       []ListItem          `json:"items" yaml:"items"`
 	GitOpsDrift []GitOpsDriftSignal `json:"gitOpsDrift,omitempty" yaml:"gitOpsDrift,omitempty"`
 }
@@ -135,11 +137,11 @@ func NewListItem(src Analysis) ListItem {
 func classifyListConditions(conditions []Condition) (errors, limiteds []string) {
 	for _, condition := range conditions {
 		switch {
-		case condition.Type == "ScalingActive" && condition.Status != "True":
+		case condition.Type == ConditionScalingActive && condition.Status != "True":
 			errors = append(errors, "ERROR: "+condition.Reason)
-		case condition.Type == "AbleToScale" && condition.Status != "True":
+		case condition.Type == ConditionAbleToScale && condition.Status != "True":
 			errors = append(errors, "ERROR: "+condition.Reason)
-		case condition.Type == "ScalingLimited" && condition.Status == "True":
+		case condition.Type == ConditionScalingLimited && condition.Status == "True":
 			limiteds = append(limiteds, "LIMITED: "+condition.Reason)
 		}
 	}

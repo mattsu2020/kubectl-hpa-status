@@ -89,7 +89,7 @@ func HealthWithWeights(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas i
 
 	health = applyConditionPenalties(acc, hpa.Status.Conditions, w, health)
 	health = applyMaxReplicasCeilingPenalty(acc, hpa, w, health)
-	if hpa.Status.DesiredReplicas == minReplicas && hasCondition(hpa.Status.Conditions, "ScalingLimited", corev1.ConditionTrue) {
+	if hpa.Status.DesiredReplicas == minReplicas && hasCondition(hpa.Status.Conditions, ConditionScalingLimited, corev1.ConditionTrue) {
 		acc.AddPenalty("At minimum replicas with ScalingLimited", w.atMinimumReplicas, health)
 	}
 	acc.SetState(health)
@@ -104,18 +104,18 @@ func HealthWithWeights(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas i
 func applyConditionPenalties(acc *HealthAccumulator, conditions []autoscalingv2.HorizontalPodAutoscalerCondition, w resolvedWeights, health HealthState) HealthState {
 	for _, condition := range conditions {
 		switch {
-		case condition.Type == "ScalingActive" && condition.Status != corev1.ConditionTrue:
+		case condition.Type == ConditionScalingActive && condition.Status != corev1.ConditionTrue:
 			acc.AddPenalty("ScalingActive is not True", w.scalingInactive, HealthError)
 			health = HealthError
-		case condition.Type == "AbleToScale" && condition.Status != corev1.ConditionTrue:
+		case condition.Type == ConditionAbleToScale && condition.Status != corev1.ConditionTrue:
 			acc.AddPenalty("AbleToScale is not True", w.unableToScale, HealthError)
 			health = HealthError
-		case condition.Type == "ScalingLimited" && condition.Status == corev1.ConditionTrue:
+		case condition.Type == ConditionScalingLimited && condition.Status == corev1.ConditionTrue:
 			acc.AddPenalty("ScalingLimited is True", w.scalingLimited, HealthLimited)
 			if health != HealthError {
 				health = HealthLimited
 			}
-		case condition.Type == "AbleToScale" && condition.Reason == "ScaleDownStabilized":
+		case condition.Type == ConditionAbleToScale && condition.Reason == "ScaleDownStabilized":
 			acc.AddPenalty("ScaleDownStabilized", w.scaleDownStabilized, HealthStabilized)
 			if health == HealthOK {
 				health = HealthStabilized
@@ -130,7 +130,7 @@ func applyMaxReplicasCeilingPenalty(acc *HealthAccumulator, hpa *autoscalingv2.H
 	if hpa.Status.CurrentReplicas != hpa.Status.DesiredReplicas || hpa.Status.DesiredReplicas != hpa.Spec.MaxReplicas {
 		return health
 	}
-	hasLimited := hasCondition(hpa.Status.Conditions, "ScalingLimited", corev1.ConditionTrue)
+	hasLimited := hasCondition(hpa.Status.Conditions, ConditionScalingLimited, corev1.ConditionTrue)
 	hasPressure := hasMetricAboveTarget(hpa.Status.CurrentMetrics, hpa)
 	if !hasLimited && !hasPressure {
 		return health

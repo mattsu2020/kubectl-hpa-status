@@ -282,7 +282,8 @@ func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, 
 	}
 
 	report := hpaanalysis.StatusReport{
-		Analysis: hpaanalysis.AnalyzeWithOptions(hpa, includeInterpretation, analysisOptions(opts.healthWeights, opts.debug)),
+		APIVersion: hpaanalysis.SchemaVersion,
+		Analysis:   hpaanalysis.AnalyzeWithOptions(hpa, includeInterpretation, analysisOptions(opts.healthWeights, opts.debug)),
 	}
 
 	// Run the enrichment pipeline. buildStatusEnrichers preserves the exact

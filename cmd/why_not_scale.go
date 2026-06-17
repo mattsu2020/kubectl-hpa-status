@@ -286,7 +286,7 @@ func whyNotScaleBlockers(a *hpaanalysis.Analysis) []string {
 
 func replicaLimitBlockers(a *hpaanalysis.Analysis) []string {
 	var blockers []string
-	if a.Current >= a.Max || a.Desired >= a.Max || conditionStatus(a, "ScalingLimited") == "True" {
+	if a.Current >= a.Max || a.Desired >= a.Max || conditionStatus(a, hpaanalysis.ConditionScalingLimited) == "True" {
 		blockers = append(blockers, "maxReplicas may be capping scale-up")
 	}
 	if a.Current <= a.Min || a.Desired <= a.Min {
@@ -297,10 +297,10 @@ func replicaLimitBlockers(a *hpaanalysis.Analysis) []string {
 
 func conditionBlockers(a *hpaanalysis.Analysis) []string {
 	var blockers []string
-	if conditionStatus(a, "ScalingActive") == "False" {
+	if conditionStatus(a, hpaanalysis.ConditionScalingActive) == "False" {
 		blockers = append(blockers, "ScalingActive=False; HPA cannot compute a valid scaling recommendation")
 	}
-	if conditionStatus(a, "AbleToScale") == "False" {
+	if conditionStatus(a, hpaanalysis.ConditionAbleToScale) == "False" {
 		blockers = append(blockers, "AbleToScale=False; controller reports it cannot apply scaling")
 	}
 	return blockers

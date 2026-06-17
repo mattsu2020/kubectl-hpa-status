@@ -87,7 +87,7 @@ func runList(ctx context.Context, out io.Writer, opts *options) error {
 		return reportListError(out, opts.output, fmt.Errorf("failed to list HPAs: %w", err))
 	}
 
-	report := hpaanalysis.ListReport{Items: buildListItems(ctx, opts, hpas.Items, filter)}
+	report := hpaanalysis.ListReport{APIVersion: hpaanalysis.SchemaVersion, Items: buildListItems(ctx, opts, hpas.Items, filter)}
 	if opts.gitopsDrift {
 		report.GitOpsDrift = buildGitOpsDriftSignals(hpas.Items)
 	}
@@ -343,7 +343,7 @@ func exportListPatchesDirectory(out io.Writer, opts *options, hpas []autoscaling
 			continue
 		}
 		analysis := hpaanalysis.AnalyzeWithOptions(hpa, true, analysisOptions(opts.healthWeights, opts.debug))
-		report := hpaanalysis.StatusReport{Analysis: analysis}
+		report := hpaanalysis.StatusReport{APIVersion: hpaanalysis.SchemaVersion, Analysis: analysis}
 		var buf strings.Builder
 		if err := writeGitOpsExport(&buf, "yaml", report); err != nil {
 			return err

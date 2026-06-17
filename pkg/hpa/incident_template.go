@@ -545,11 +545,11 @@ func healthPriority(health string) int {
 // conditionImplication returns a human-readable explanation for a condition.
 func conditionImplication(c Condition) string {
 	switch {
-	case c.Type == "ScalingActive" && c.Status != "True":
+	case c.Type == ConditionScalingActive && c.Status != "True":
 		return "Metrics pipeline is not providing data; HPA cannot make scaling decisions."
-	case c.Type == "AbleToScale" && c.Status != "True":
+	case c.Type == ConditionAbleToScale && c.Status != "True":
 		return "HPA controller cannot act on scaling decisions (check RBAC or scaleTargetRef)."
-	case c.Type == "ScalingLimited" && c.Status == "True":
+	case c.Type == ConditionScalingLimited && c.Status == "True":
 		return "HPA is capped by minReplicas or maxReplicas."
 	default:
 		if c.Message != "" {

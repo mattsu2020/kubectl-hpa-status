@@ -36,7 +36,7 @@ func coreSuggestionRules() []SuggestionRule {
 // scalingActiveRule generates suggestions when ScalingActive is not True.
 func scalingActiveRule(ctx SuggestionContext) []Suggestion {
 	hpa := ctx.HPA
-	if condition := FindCondition(hpa, "ScalingActive"); condition != nil && condition.Status != corev1.ConditionTrue {
+	if condition := FindCondition(hpa, ConditionScalingActive); condition != nil && condition.Status != corev1.ConditionTrue {
 		suggestions := []Suggestion{{
 			Title:       "Restore metric availability",
 			Description: "ScalingActive is not True. Fix metrics-server or the custom/external metrics adapter before changing HPA limits.",
@@ -50,7 +50,7 @@ func scalingActiveRule(ctx SuggestionContext) []Suggestion {
 // scalingLimitedMaxRule suggests raising maxReplicas when HPA is capped at max.
 func scalingLimitedMaxRule(ctx SuggestionContext) []Suggestion {
 	hpa := ctx.HPA
-	condition := FindCondition(hpa, "ScalingLimited")
+	condition := FindCondition(hpa, ConditionScalingLimited)
 	if condition == nil || condition.Status != corev1.ConditionTrue {
 		return nil
 	}
@@ -98,7 +98,7 @@ func scalingLimitedMaxRule(ctx SuggestionContext) []Suggestion {
 func scalingLimitedMinRule(ctx SuggestionContext) []Suggestion {
 	hpa := ctx.HPA
 	minReplicas := ctx.MinReplicas
-	condition := FindCondition(hpa, "ScalingLimited")
+	condition := FindCondition(hpa, ConditionScalingLimited)
 	if condition == nil || condition.Status != corev1.ConditionTrue {
 		return nil
 	}
@@ -139,7 +139,7 @@ func scalingLimitedMinRule(ctx SuggestionContext) []Suggestion {
 // scaleDownStabilizedRule suggests shortening scale-down stabilization window.
 func scaleDownStabilizedRule(ctx SuggestionContext) []Suggestion {
 	hpa := ctx.HPA
-	condition := FindCondition(hpa, "AbleToScale")
+	condition := FindCondition(hpa, ConditionAbleToScale)
 	if condition == nil || condition.Reason != "ScaleDownStabilized" {
 		return nil
 	}

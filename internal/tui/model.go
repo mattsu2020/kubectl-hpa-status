@@ -489,7 +489,7 @@ func fetchHPAs(m Model) tea.Cmd {
 
 			item := hpaanalysis.NewListItem(analysis)
 			items = append(items, item)
-			reports[key] = &hpaanalysis.StatusReport{Analysis: analysis}
+			reports[key] = &hpaanalysis.StatusReport{APIVersion: hpaanalysis.SchemaVersion, Analysis: analysis}
 		}
 
 		return fetchResultMsg{items: items, reports: reports}

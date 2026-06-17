@@ -269,19 +269,19 @@ func RecommendedActions(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas 
 	if hpa.Status.ObservedGeneration != nil && *hpa.Status.ObservedGeneration < hpa.Generation {
 		actions = append(actions, "Wait for the HPA controller to observe the latest spec generation before trusting this status.")
 	}
-	if condition := FindCondition(hpa, "ScalingActive"); condition != nil && condition.Status != corev1.ConditionTrue {
+	if condition := FindCondition(hpa, ConditionScalingActive); condition != nil && condition.Status != corev1.ConditionTrue {
 		actions = append(actions, "Check metrics-server or custom/external metrics adapters; ScalingActive is not True.")
 		actions = append(actions, staleMetricActions(hpa)...)
 		return actions
 	}
-	if condition := FindCondition(hpa, "AbleToScale"); condition != nil && condition.Reason == "ScaleDownStabilized" {
+	if condition := FindCondition(hpa, ConditionAbleToScale); condition != nil && condition.Reason == "ScaleDownStabilized" {
 		if window := scaleDownStabilizationWindow(hpa); window != nil {
 			actions = append(actions, fmt.Sprintf("CPU or memory may already be low, but scale-down is stabilized; estimated wait up to ~%ds or review spec.behavior.scaleDown.stabilizationWindowSeconds.", *window))
 		} else {
 			actions = append(actions, "CPU or memory may already be low, but scale-down is stabilized; review HPA behavior and recent recommendations.")
 		}
 	}
-	if condition := FindCondition(hpa, "ScalingLimited"); condition != nil && condition.Status == corev1.ConditionTrue {
+	if condition := FindCondition(hpa, ConditionScalingLimited); condition != nil && condition.Status == corev1.ConditionTrue {
 		switch hpa.Status.DesiredReplicas {
 		case hpa.Spec.MaxReplicas:
 			actions = append(actions, "HPA is capped at maxReplicas; raise maxReplicas or reduce load/target utilization if more capacity is expected.")
@@ -326,7 +326,7 @@ func buildStructuredActions(hpa *autoscalingv2.HorizontalPodAutoscaler, minRepli
 	}
 
 	// ScalingActive not True → check metrics
-	if condition := FindCondition(hpa, "ScalingActive"); condition != nil && condition.Status != corev1.ConditionTrue {
+	if condition := FindCondition(hpa, ConditionScalingActive); condition != nil && condition.Status != corev1.ConditionTrue {
 		msgs = append(msgs, StructuredMessage{
 			Reason:         "RestoreMetrics",
 			Message:        "ScalingActive is not True",
@@ -339,7 +339,7 @@ func buildStructuredActions(hpa *autoscalingv2.HorizontalPodAutoscaler, minRepli
 	}
 
 	// ScaleDownStabilized
-	if condition := FindCondition(hpa, "AbleToScale"); condition != nil && condition.Reason == "ScaleDownStabilized" {
+	if condition := FindCondition(hpa, ConditionAbleToScale); condition != nil && condition.Reason == "ScaleDownStabilized" {
 		nextStep := "Review HPA behavior and recent recommendations"
 		if window := scaleDownStabilizationWindow(hpa); window != nil {
 			nextStep = fmt.Sprintf("Estimated wait up to ~%ds or review spec.behavior.scaleDown.stabilizationWindowSeconds", *window)
@@ -355,7 +355,7 @@ func buildStructuredActions(hpa *autoscalingv2.HorizontalPodAutoscaler, minRepli
 	}
 
 	// ScalingLimited
-	if condition := FindCondition(hpa, "ScalingLimited"); condition != nil && condition.Status == corev1.ConditionTrue {
+	if condition := FindCondition(hpa, ConditionScalingLimited); condition != nil && condition.Status == corev1.ConditionTrue {
 		switch hpa.Status.DesiredReplicas {
 		case hpa.Spec.MaxReplicas:
 			msgs = append(msgs, StructuredMessage{

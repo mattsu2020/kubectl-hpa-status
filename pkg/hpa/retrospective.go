@@ -114,7 +114,7 @@ func classifyEvent(event Event, prevDesired int32, hpa *autoscalingv2.Horizontal
 			Confidence: "high",
 		}
 
-	case "ScalingLimited", "TooManyReplicas", "TooFewReplicas":
+	case ConditionScalingLimited, "TooManyReplicas", "TooFewReplicas":
 		return &RetrospectiveEntry{
 			Timestamp:  event.Timestamp,
 			Category:   "scaling-limited",
@@ -222,7 +222,7 @@ func compareInt32(current, target int32) string {
 
 func formatScaleDownStabilizedTimelineMessage(hpa *autoscalingv2.HorizontalPodAutoscaler, ts time.Time) string {
 	remaining := scaleDownStabilizationWindowSeconds(hpa)
-	cond := FindCondition(hpa, "AbleToScale")
+	cond := FindCondition(hpa, ConditionAbleToScale)
 	if cond != nil && !cond.LastTransitionTime.IsZero() && remaining > 0 {
 		elapsed := ts.Sub(cond.LastTransitionTime.Time)
 		left := time.Duration(remaining)*time.Second - elapsed
@@ -314,7 +314,7 @@ func scaleDownStabilizationWindowSeconds(hpa *autoscalingv2.HorizontalPodAutosca
 // hasScaleDownStabilizedCondition checks if the HPA currently has an
 // AbleToScale condition with the ScaleDownStabilized reason.
 func hasScaleDownStabilizedCondition(hpa *autoscalingv2.HorizontalPodAutoscaler) bool {
-	cond := FindCondition(hpa, "AbleToScale")
+	cond := FindCondition(hpa, ConditionAbleToScale)
 	return cond != nil && cond.Reason == "ScaleDownStabilized"
 }
 

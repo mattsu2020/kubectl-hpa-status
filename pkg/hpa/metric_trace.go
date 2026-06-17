@@ -120,7 +120,7 @@ func determineWinner(entries []MetricTraceEntry, hpa *autoscalingv2.HorizontalPo
 // buildStabilizationEffect checks whether scale-down stabilization is active
 // and builds the effect description.
 func buildStabilizationEffect(hpa *autoscalingv2.HorizontalPodAutoscaler) *StabilizationEffect {
-	condition := FindCondition(hpa, "AbleToScale")
+	condition := FindCondition(hpa, ConditionAbleToScale)
 	if condition == nil || condition.Reason != "ScaleDownStabilized" {
 		return nil
 	}

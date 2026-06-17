@@ -60,7 +60,7 @@ func SimulateHPA(hpa *autoscalingv2.HorizontalPodAutoscaler, overrides map[strin
 func simulationStateFromAnalysis(a *Analysis) SimulationState {
 	limited := false
 	for _, c := range a.Conditions {
-		if c.Type == "ScalingLimited" && c.Status == "True" {
+		if c.Type == ConditionScalingLimited && c.Status == "True" {
 			limited = true
 			break
 		}

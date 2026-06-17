@@ -21,7 +21,7 @@ func writeClusterSummaryMarkdown(out io.Writer, report hpaanalysis.ListReport) e
 	_, _ = fmt.Fprintln(out, "\n## Summary")
 	_, _ = fmt.Fprintf(out, "- Total HPAs: %d\n", len(items))
 	_, _ = fmt.Fprintf(out, "- Healthy: %d\n", counts[string(hpaanalysis.HealthOK)])
-	_, _ = fmt.Fprintf(out, "- Limited: %d\n", counts[string(hpaanalysis.HealthLimited)]+counts["ScalingLimited"])
+	_, _ = fmt.Fprintf(out, "- Limited: %d\n", counts[string(hpaanalysis.HealthLimited)]+counts[hpaanalysis.ConditionScalingLimited])
 	_, _ = fmt.Fprintf(out, "- Error: %d\n", counts[string(hpaanalysis.HealthError)])
 	_, _ = fmt.Fprintf(out, "- Stabilized: %d\n", counts[string(hpaanalysis.HealthStabilized)])
 
@@ -56,7 +56,7 @@ func writeClusterSummaryHTML(out io.Writer, report hpaanalysis.ListReport) error
 	_, _ = fmt.Fprintln(out, "<!doctype html><html><head><meta charset=\"utf-8\"><title>HPA Cluster Health Report</title></head><body>")
 	_, _ = fmt.Fprintln(out, "<h1>HPA Cluster Health Report</h1>")
 	_, _ = fmt.Fprintf(out, "<h2>Summary</h2><ul><li>Total HPAs: %d</li><li>Healthy: %d</li><li>Limited: %d</li><li>Error: %d</li><li>Stabilized: %d</li></ul>",
-		len(items), counts[string(hpaanalysis.HealthOK)], counts[string(hpaanalysis.HealthLimited)]+counts["ScalingLimited"], counts[string(hpaanalysis.HealthError)], counts[string(hpaanalysis.HealthStabilized)])
+		len(items), counts[string(hpaanalysis.HealthOK)], counts[string(hpaanalysis.HealthLimited)]+counts[hpaanalysis.ConditionScalingLimited], counts[string(hpaanalysis.HealthError)], counts[string(hpaanalysis.HealthStabilized)])
 	_, _ = fmt.Fprintln(out, "<h2>Worst HPAs</h2><table><tr><th>Namespace</th><th>HPA</th><th>Score</th><th>Main Issue</th></tr>")
 	for _, item := range firstNListItems(items, 10) {
 		issue := item.Issue

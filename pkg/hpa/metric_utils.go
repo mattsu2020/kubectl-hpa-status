@@ -17,7 +17,7 @@ func SummarizeDirection(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas 
 	if hpa == nil {
 		return "HPA data is unavailable."
 	}
-	if condition := FindCondition(hpa, "ScalingActive"); condition != nil && condition.Status != corev1.ConditionTrue {
+	if condition := FindCondition(hpa, ConditionScalingActive); condition != nil && condition.Status != corev1.ConditionTrue {
 		return "HPA cannot currently compute a scaling recommendation from metrics."
 	}
 	if hpa.Status.DesiredReplicas == 0 && hpa.Status.CurrentReplicas > 0 {
@@ -165,9 +165,9 @@ func MostInfluentialMetric(hpa *autoscalingv2.HorizontalPodAutoscaler) (MetricIm
 func prioritizedConditions(conditions []autoscalingv2.HorizontalPodAutoscalerCondition) []autoscalingv2.HorizontalPodAutoscalerCondition {
 	out := append([]autoscalingv2.HorizontalPodAutoscalerCondition(nil), conditions...)
 	priority := map[autoscalingv2.HorizontalPodAutoscalerConditionType]int{
-		"ScalingActive":  0,
-		"AbleToScale":    1,
-		"ScalingLimited": 2,
+		ConditionScalingActive:  0,
+		ConditionAbleToScale:    1,
+		ConditionScalingLimited: 2,
 	}
 	sort.SliceStable(out, func(i, j int) bool {
 		left := priority[out[i].Type]
@@ -245,7 +245,7 @@ func scaleDownStabilizationWindow(hpa *autoscalingv2.HorizontalPodAutoscaler) *i
 // within the window, not simply LastScaleTime. This estimate is approximate
 // and based on LastScaleTime as the best available signal.
 func estimateStabilizationRemaining(hpa *autoscalingv2.HorizontalPodAutoscaler) *int64 {
-	condition := FindCondition(hpa, "AbleToScale")
+	condition := FindCondition(hpa, ConditionAbleToScale)
 	if condition == nil || condition.Reason != "ScaleDownStabilized" {
 		return nil
 	}

@@ -42,7 +42,7 @@ func staleStatusRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32, ctx *d
 }
 
 func scalingActiveDiagnosticRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32, ctx *diagnosticContext) {
-	condition := FindCondition(hpa, "ScalingActive")
+	condition := FindCondition(hpa, ConditionScalingActive)
 	if condition == nil || condition.Status == corev1.ConditionTrue {
 		return
 	}
@@ -73,7 +73,7 @@ func scalingActiveDiagnosticRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ i
 }
 
 func ableToScaleDiagnosticRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32, ctx *diagnosticContext) {
-	condition := FindCondition(hpa, "AbleToScale")
+	condition := FindCondition(hpa, ConditionAbleToScale)
 	if condition == nil {
 		return
 	}
@@ -114,7 +114,7 @@ func ableToScaleDiagnosticRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int
 }
 
 func scalingLimitedDiagnosticRule(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32, ctx *diagnosticContext) {
-	condition := FindCondition(hpa, "ScalingLimited")
+	condition := FindCondition(hpa, ConditionScalingLimited)
 	if condition == nil || condition.Status != corev1.ConditionTrue {
 		return
 	}
@@ -137,7 +137,7 @@ func scalingLimitedDiagnosticRule(hpa *autoscalingv2.HorizontalPodAutoscaler, mi
 		})
 	default:
 		ctx.cases = append(ctx.cases, interpretationCase{
-			reason:     "ScalingLimited",
+			reason:     ConditionScalingLimited,
 			message:    "[observed] The recommendation is reported as limited.",
 			severity:   SeverityWarning,
 			confidence: ConfidenceHigh,

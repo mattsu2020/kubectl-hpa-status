@@ -9,10 +9,18 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
+// SchemaVersion is the API version embedded in JSON/YAML output so consumers
+// can detect schema drift. Bump when a breaking field rename/removal occurs;
+// additive fields do not require a bump. Current shape: "hpa-status/v1".
+const SchemaVersion = "hpa-status/v1"
+
 // StatusReport holds the analysis result and events for a single HPA.
 type StatusReport struct {
-	Analysis Analysis `json:"analysis" yaml:"analysis"`
-	Events   []Event  `json:"events,omitempty" yaml:"events,omitempty"`
+	// APIVersion identifies the JSON/YAML schema version. Consumers should
+	// check this before parsing to detect incompatible schema changes.
+	APIVersion string   `json:"apiVersion" yaml:"apiVersion"`
+	Analysis   Analysis `json:"analysis" yaml:"analysis"`
+	Events     []Event  `json:"events,omitempty" yaml:"events,omitempty"`
 }
 
 // StatusTextOptions configures text output rendering with theme, language, fix mode, and diff display.

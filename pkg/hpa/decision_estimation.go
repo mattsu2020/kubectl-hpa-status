@@ -141,7 +141,7 @@ func buildMetricDecisionSignals(hpa *autoscalingv2.HorizontalPodAutoscaler) []De
 // buildToleranceDecisionSignal creates a signal when tolerance is suppressing
 // scaling for all metrics.
 func buildToleranceDecisionSignal(hpa *autoscalingv2.HorizontalPodAutoscaler) *DecisionSignal {
-	condition := FindCondition(hpa, "AbleToScale")
+	condition := FindCondition(hpa, ConditionAbleToScale)
 	if condition == nil {
 		return nil
 	}
@@ -173,7 +173,7 @@ func buildConditionDecisionSignals(hpa *autoscalingv2.HorizontalPodAutoscaler) [
 			})
 		case condition.Type == autoscalingv2.ScalingLimited && condition.Status == "True":
 			signals = append(signals, DecisionSignal{
-				Reason:     "ScalingLimited",
+				Reason:     ConditionScalingLimited,
 				Message:    condition.Message,
 				Source:     "HPAController",
 				Confidence: string(ConfidenceHigh),
