@@ -23,7 +23,7 @@ func newPreflightCommand(opts *options) *cobra.Command {
 }
 
 func runPreflight(ctx context.Context, out io.Writer, opts *options, names []string, raiseMax int32) error {
-	local := *opts
+	local := copyOptions(opts)
 	local.targetMax = raiseMax
 	local.checkResources = true
 	local.capacityContext = true

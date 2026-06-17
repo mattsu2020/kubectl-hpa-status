@@ -25,7 +25,7 @@ func newDoctorCommand(opts *options) *cobra.Command {
 func runDoctor(ctx context.Context, out io.Writer, opts *options, names []string) error {
 	// Enable all diagnostic flags for a full doctor check. Take a shallow copy
 	// so the shared process-wide opts is not mutated.
-	local := *opts
+	local := copyOptions(opts)
 	local.explain = true
 	local.diagnoseMetrics = true
 	local.metricsFreshness = true

@@ -36,7 +36,7 @@ func newRolloutCommand(opts *options) *cobra.Command {
 
 func runRollout(ctx context.Context, out io.Writer, opts *options, names []string) error {
 	// Create local copy to avoid mutating the original options.
-	local := *opts
+	local := copyOptions(opts)
 	local.rollout = true
 	local.rolloutImpact = true
 	local.readinessImpact = true

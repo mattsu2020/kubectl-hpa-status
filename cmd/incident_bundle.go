@@ -33,7 +33,7 @@ func runIncidentBundle(ctx context.Context, out io.Writer, opts *options, name, 
 	// any subsequent command in the same process (e.g. tests that run multiple
 	// commands). The reference fields (clientOverride, outputTemplates) are
 	// intentionally shared by value, matching the pattern in support_bundle.go.
-	local := *opts
+	local := copyOptions(opts)
 	local.readinessImpact = true
 	local.rolloutImpact = true
 	local.scaleoutBlockers = true

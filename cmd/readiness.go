@@ -23,7 +23,7 @@ func newReadinessCommand(opts *options) *cobra.Command {
 }
 
 func runReadiness(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	local := *opts
+	local := copyOptions(opts)
 	local.explain = true
 	local.readinessImpact = true
 	local.explainPods = true

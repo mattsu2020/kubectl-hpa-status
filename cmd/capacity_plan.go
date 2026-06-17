@@ -34,7 +34,7 @@ func newCapacityPlanCommand(opts *options) *cobra.Command {
 
 func runCapacityPlan(ctx context.Context, out io.Writer, opts *options, names []string) error {
 	// Take a shallow copy so the shared process-wide opts is not mutated.
-	local := *opts
+	local := copyOptions(opts)
 	local.checkResources = true
 	local.capacityContext = true
 	local.capacityDeep = true

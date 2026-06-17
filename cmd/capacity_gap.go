@@ -20,7 +20,7 @@ func newCapacityGapCommand(opts *options) *cobra.Command {
 }
 
 func runCapacityGap(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	local := *opts
+	local := copyOptions(opts)
 	local.explain = true
 	local.explainPods = true
 	local.readinessImpact = true

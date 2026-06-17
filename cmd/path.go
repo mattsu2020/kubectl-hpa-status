@@ -31,7 +31,7 @@ func newPathCommand(opts *options) *cobra.Command {
 func runPath(ctx context.Context, out io.Writer, opts *options, names []string) error {
 	// Enable scale-path analysis. Take a shallow copy so the shared
 	// process-wide opts is not mutated.
-	local := *opts
+	local := copyOptions(opts)
 	local.scalePath = true
 	reports := make([]scalePathReport, 0, len(names))
 	for _, name := range names {

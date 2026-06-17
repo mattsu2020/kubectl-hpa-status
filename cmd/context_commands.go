@@ -20,7 +20,7 @@ func newNodeContextCommand(opts *options) *cobra.Command {
 }
 
 func runNodeContext(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	local := *opts
+	local := copyOptions(opts)
 	local.explain = true
 	local.explainPods = true
 	local.capacityContext = true
@@ -50,7 +50,7 @@ func newRolloutContextCommand(opts *options) *cobra.Command {
 }
 
 func runRolloutContext(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	local := *opts
+	local := copyOptions(opts)
 	local.explain = true
 	local.explainPods = true
 	local.readinessImpact = true

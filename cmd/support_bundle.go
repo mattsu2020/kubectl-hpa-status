@@ -30,7 +30,7 @@ func newSupportBundleCommand(opts *options) *cobra.Command {
 // to the bundle.
 func runSupportBundle(ctx context.Context, out io.Writer, opts *options, name, format, outputPath string, redact bool) error {
 	// Force-enable KEDA and VPA enrichment for support bundles.
-	local := *opts
+	local := copyOptions(opts)
 	local.keda = "on"
 	local.vpa = "on"
 	local.readinessImpact = true

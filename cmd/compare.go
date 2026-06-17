@@ -161,7 +161,7 @@ func runCompareAll(ctx context.Context, out io.Writer, opts *options, fromContex
 }
 
 func newCompareClient(opts *options, contextName string) (*kube.Client, error) {
-	clone := *opts
+	clone := copyOptions(opts)
 	if contextName != "" {
 		clone.contextName = contextName
 	}

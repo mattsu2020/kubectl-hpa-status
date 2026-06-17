@@ -92,6 +92,11 @@ type bundleData struct {
 	// Raw pod info for table rendering.
 	PodInfos []kube.PodInfo
 
+	// Warnings records non-fatal collection errors (RBAC denials, API server
+	// timeouts) so the bundle consumer can see why a section is empty rather
+	// than guessing. Best-effort collection never fails the whole bundle.
+	Warnings []string
+
 	Namespace string
 	HPAName   string
 	Timestamp time.Time
@@ -140,7 +145,7 @@ func runBundle(ctx context.Context, out io.Writer, opts *options, name, format, 
 // are shared but bundle code never writes through them.
 func collectBundleData(ctx context.Context, client *kube.Client, opts *options, name string) (*bundleData, error) {
 	// Enable all doctor-level flags on a shallow copy of opts.
-	bundleOpts := *opts
+	bundleOpts := copyOptions(opts)
 	bundleOpts.explain = true
 	bundleOpts.diagnoseMetrics = true
 	bundleOpts.metricsFreshness = true
@@ -213,21 +218,36 @@ func collectBundleData(ctx context.Context, client *kube.Client, opts *options, 
 
 	// 9. Container statuses.
 	if selector != "" {
-		containerStatuses, _ := kube.FetchContainerStatuses(ctx, client.Interface, hpa.Namespace, selector)
+		containerStatuses, err := kube.FetchContainerStatuses(ctx, client.Interface, hpa.Namespace, selector)
+		if err != nil {
+			data.Warnings = append(data.Warnings, fmt.Sprintf("container statuses: %v", err))
+		}
 		data.ContainerStatuses = containerStatuses
 	}
 
 	// 10. All ResourceQuotas (not just >= 80%).
-	data.ResourceQuotas, _ = kube.FetchAllResourceQuotas(ctx, client.Interface, hpa.Namespace)
+	data.ResourceQuotas, err = kube.FetchAllResourceQuotas(ctx, client.Interface, hpa.Namespace)
+	if err != nil {
+		data.Warnings = append(data.Warnings, fmt.Sprintf("resource quotas: %v", err))
+	}
 
 	// 11. LimitRanges.
-	data.LimitRanges, _ = kube.FetchLimitRanges(ctx, client.Interface, hpa.Namespace)
+	data.LimitRanges, err = kube.FetchLimitRanges(ctx, client.Interface, hpa.Namespace)
+	if err != nil {
+		data.Warnings = append(data.Warnings, fmt.Sprintf("limit ranges: %v", err))
+	}
 
 	// 12. PDBs.
-	data.PDBs, _ = kube.FetchPodDisruptionBudgets(ctx, client.Interface, hpa.Namespace, hpa.UID)
+	data.PDBs, err = kube.FetchPodDisruptionBudgets(ctx, client.Interface, hpa.Namespace, hpa.UID)
+	if err != nil {
+		data.Warnings = append(data.Warnings, fmt.Sprintf("pod disruption budgets: %v", err))
+	}
 
 	// 13. Node capacity.
-	nodeCap, _ := kube.FetchNodeCapacity(ctx, client.Interface)
+	nodeCap, err := kube.FetchNodeCapacity(ctx, client.Interface)
+	if err != nil {
+		data.Warnings = append(data.Warnings, fmt.Sprintf("node capacity: %v", err))
+	}
 	data.NodeCapacity = nodeCap
 
 	return data, nil

@@ -36,7 +36,7 @@ func runBlockers(ctx context.Context, out io.Writer, opts *options, names []stri
 	// Enable the data sources needed for blocker analysis. Take a shallow copy
 	// so the shared process-wide opts is not mutated (reference fields like
 	// clientOverride and outputTemplates are intentionally shared by value).
-	local := *opts
+	local := copyOptions(opts)
 	local.capacityContext = true
 	local.explainPods = true
 	local.events = eventOption{enabled: true, limit: 10}

@@ -51,7 +51,7 @@ func newScanCommand(opts *options) *cobra.Command {
 			// Shallow copy to avoid mutating shared state.
 			// NOTE: reference fields (clientOverride, outputTemplates, etc.) are shared.
 			// This is safe because runList does not mutate them.
-			scanOpts := *opts
+			scanOpts := copyOptions(opts)
 			scanOpts.allNamespaces = true
 			scanOpts.problem = true
 			scanOpts.wide = true

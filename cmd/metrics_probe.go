@@ -48,7 +48,7 @@ func newMetricsProbeCommand(opts *options) *cobra.Command {
 }
 
 func runMetricsProbe(ctx context.Context, out io.Writer, opts *options, name string, prometheusURL string) error {
-	local := *opts
+	local := copyOptions(opts)
 	local.diagnoseMetrics = true
 	local.metricsFreshness = true
 	local.metricContract = true

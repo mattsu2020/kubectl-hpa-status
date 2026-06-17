@@ -425,7 +425,7 @@ func recordOnce(ctx context.Context, opts *options, name string, interval time.D
 	var records []hpaanalysis.TimelineTrace
 	err = kube.ListHPAsEachPage(ctx, client.Interface, namespace, metav1.ListOptions{LabelSelector: opts.selector}, opts.chunkSize, func(page *autoscalingv2.HorizontalPodAutoscalerList) error {
 		for i := range page.Items {
-			local := *opts
+			local := copyOptions(opts)
 			local.namespace = page.Items[i].Namespace
 			report, err := buildStatusReportWithClient(ctx, &local, page.Items[i].Name, true, ec)
 			if err != nil {

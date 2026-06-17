@@ -39,7 +39,7 @@ func newWhyNotScaleCommand(opts *options) *cobra.Command {
 }
 
 func runWhyNotScale(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	local := *opts
+	local := copyOptions(opts)
 	local.explain = true
 	local.diagnoseMetrics = true
 	local.metricsFreshness = true

@@ -148,6 +148,19 @@ type options struct {
 	watchOptions
 }
 
+// copyOptions returns a shallow copy of opts suitable for per-command
+// mutation. Several commands (blockers, doctor, bundle, scan, explain, etc.)
+// force-enable enrichment flags for their workflow; mutating the shared
+// process-wide *options singleton would leak those flags into subsequent
+// commands, so each takes a copy first.
+//
+// Reference-typed fields (clientOverride, outputTemplates) are shared by value
+// — both the copy and the original point to the same underlying map/slice.
+// Callers that need to diverge on those must deep-copy them explicitly.
+func copyOptions(opts *options) options {
+	return *opts
+}
+
 // Normalize resolves implied flag settings for the status command.
 // Instead of scattering this logic in PersistentPreRun, this method
 // centralizes the flag normalization rules:

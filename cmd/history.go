@@ -47,7 +47,7 @@ func newHistoryCommand(opts *options) *cobra.Command {
 }
 
 func runHistory(ctx context.Context, out io.Writer, opts *options, name string, since time.Duration, prometheusURL string) error {
-	local := *opts
+	local := copyOptions(opts)
 	local.events = eventOption{enabled: true, limit: 50}
 	local.churnDetect = true
 	local.trend = true

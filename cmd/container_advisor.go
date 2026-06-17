@@ -21,7 +21,7 @@ func newContainerAdvisorCommand(opts *options) *cobra.Command {
 }
 
 func runContainerAdvisor(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	local := *opts
+	local := copyOptions(opts)
 	local.explain = true
 	local.explainPods = true
 	local.checkResources = true
