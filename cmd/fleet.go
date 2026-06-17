@@ -61,10 +61,10 @@ func runFleet(ctx context.Context, out io.Writer, opts *options, risk string) er
 		return err
 	}
 	namespace := client.Namespace
-	if opts.allNamespaces {
+	if opts.AllNamespaces {
 		namespace = metav1.NamespaceAll
 	}
-	hpas, err := client.ListHPAs(ctx, namespace, metav1.ListOptions{LabelSelector: opts.selector}, opts.chunkSize)
+	hpas, err := client.ListHPAs(ctx, namespace, metav1.ListOptions{LabelSelector: opts.Selector}, opts.ChunkSize)
 	if err != nil {
 		return fmt.Errorf("failed to list HPAs: %w", err)
 	}
@@ -121,7 +121,7 @@ func buildFleetReport(hpas []autoscalingv2.HorizontalPodAutoscaler, risk string)
 }
 
 func writeFleetReport(out io.Writer, opts *options, report fleetReport) error {
-	format, _ := outputSelection(outputConfig{report: opts.report, output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates})
+	format, _ := outputSelection(outputConfig{report: opts.Report, output: opts.Output, template: opts.Template, outputTemplates: opts.OutputTemplates})
 	switch format {
 	case "json":
 		encoder := json.NewEncoder(out)

@@ -18,7 +18,7 @@ func TestRunRecommend_WellConfiguredHPA(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{clientOverride: fakeClient},
+		ClientOverride: fakeClient,
 	}
 	err := runRecommend(context.Background(), &buf, opts, []string{"web"}, "")
 	if err != nil {
@@ -45,7 +45,7 @@ func TestRunRecommend_PoorlyConfiguredHPA(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{clientOverride: fakeClient},
+		ClientOverride: fakeClient,
 	}
 	err := runRecommend(context.Background(), &buf, opts, []string{"bad-hpa"}, "")
 	if err != nil {
@@ -67,7 +67,7 @@ func TestRunRecommend_NonExistentHPA(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{clientOverride: fakeClient},
+		ClientOverride: fakeClient,
 	}
 	err := runRecommend(context.Background(), &buf, opts, []string{"nonexistent"}, "")
 	if err == nil {
@@ -87,7 +87,7 @@ func TestRunRecommend_KEDAManagedHPA(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{clientOverride: fakeClient},
+		ClientOverride: fakeClient,
 	}
 	err := runRecommend(context.Background(), &buf, opts, []string{"keda-worker"}, "")
 	if err != nil {
@@ -107,7 +107,7 @@ func TestRunRecommend_JSONOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{clientOverride: fakeClient, output: "json"},
+		ClientOverride: fakeClient, Output: "json",
 	}
 	err := runRecommend(context.Background(), &buf, opts, []string{"web"}, "")
 	if err != nil {
@@ -133,7 +133,7 @@ func TestRunRecommend_YAMLOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{clientOverride: fakeClient, output: "yaml"},
+		ClientOverride: fakeClient, Output: "yaml",
 	}
 	err := runRecommend(context.Background(), &buf, opts, []string{"web"}, "")
 	if err != nil {
@@ -160,7 +160,7 @@ func TestRunRecommend_ScoreToZeroWarning(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{clientOverride: fakeClient},
+		ClientOverride: fakeClient,
 	}
 	err := runRecommend(context.Background(), &buf, opts, []string{"scale-to-zero"}, "")
 	if err != nil {
@@ -184,7 +184,7 @@ func TestRunRecommend_ExtractsMinReplicasFromSpec(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{clientOverride: fakeClient},
+		ClientOverride: fakeClient,
 	}
 	err := runRecommend(context.Background(), &buf, opts, []string{"explicit-min"}, "")
 	if err != nil {
@@ -215,10 +215,8 @@ func TestRunRecommend_UsesNamespaceFromOptions(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{
-			clientOverride: fakeClient,
-			namespace:      "team-a",
-		},
+		ClientOverride: fakeClient,
+		Namespace:      "team-a",
 	}
 	err := runRecommend(context.Background(), &buf, opts, []string{"web"}, "")
 	if err != nil {
@@ -238,7 +236,7 @@ func TestRunRecommend_HighUtilizationWarning(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{clientOverride: fakeClient},
+		ClientOverride: fakeClient,
 	}
 	err := runRecommend(context.Background(), &buf, opts, []string{"high-util"}, "")
 	if err != nil {
@@ -259,7 +257,7 @@ func TestRunRecommend_WithProfile(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{clientOverride: fakeClient},
+		ClientOverride: fakeClient,
 	}
 	err := runRecommend(context.Background(), &buf, opts, []string{"web"}, hpaanalysis.ProfileCritical)
 	if err != nil {
@@ -280,7 +278,7 @@ func TestRunRecommend_WithProfileLatency(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{clientOverride: fakeClient},
+		ClientOverride: fakeClient,
 	}
 	err := runRecommend(context.Background(), &buf, opts, []string{"web"}, hpaanalysis.ProfileLatency)
 	if err != nil {

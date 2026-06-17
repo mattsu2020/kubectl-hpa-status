@@ -266,7 +266,7 @@ func recordHealthSnapshotAndTrend(_ context.Context, opts *options, hpa *autosca
 	// History recording is an explicit opt-in side effect: without --trend we
 	// do not touch the local health store, so plain `status` runs (and CI) stay
 	// free of unexpected local file writes.
-	if !opts.trend {
+	if !opts.Trend {
 		return
 	}
 	store, storeErr := history.NewHealthStore()
@@ -285,11 +285,11 @@ func recordHealthSnapshotAndTrend(_ context.Context, opts *options, hpa *autosca
 	if err := store.Append(hpa.Namespace, hpa.Name, snapshot); err != nil {
 		report.Analysis.Warnings = append(report.Analysis.Warnings, fmt.Sprintf("health trend append failed: %v", err))
 	}
-	if err := store.Prune(hpa.Namespace, hpa.Name, opts.trendRetain); err != nil {
+	if err := store.Prune(hpa.Namespace, hpa.Name, opts.TrendRetain); err != nil {
 		report.Analysis.Warnings = append(report.Analysis.Warnings, fmt.Sprintf("health trend prune failed: %v", err))
 	}
 
-	snapshots, loadErr := store.Load(hpa.Namespace, hpa.Name, opts.trendSince)
+	snapshots, loadErr := store.Load(hpa.Namespace, hpa.Name, opts.TrendSince)
 	if loadErr == nil && len(snapshots) > 0 {
 		trend := hpaanalysis.AnalyzeHealthTrend(snapshots)
 		report.Analysis.HealthTrend = &trend

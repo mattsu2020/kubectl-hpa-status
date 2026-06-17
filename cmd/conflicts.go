@@ -34,10 +34,10 @@ func runConflictScan(ctx context.Context, out io.Writer, opts *options) error {
 		return err
 	}
 	namespace := client.Namespace
-	if opts.allNamespaces {
+	if opts.AllNamespaces {
 		namespace = metav1.NamespaceAll
 	}
-	hpas, err := client.ListHPAs(ctx, namespace, metav1.ListOptions{LabelSelector: opts.selector}, opts.chunkSize)
+	hpas, err := client.ListHPAs(ctx, namespace, metav1.ListOptions{LabelSelector: opts.Selector}, opts.ChunkSize)
 	if err != nil {
 		return fmt.Errorf("failed to list HPAs: %w", err)
 	}
@@ -113,10 +113,10 @@ func detectHPAConflicts(ctx context.Context, opts *options, hpas []autoscalingv2
 
 func conflictVPAResults(ctx context.Context, opts *options, hpas []autoscalingv2.HorizontalPodAutoscaler) map[string]*hpaanalysis.VPAConflictInfo {
 	ec := enrichment.NewContext(ctx, enrichment.Config{
-		Namespace:  opts.namespace,
-		Context:    opts.contextName,
-		Kubeconfig: opts.kubeconfig,
-		Cluster:    opts.cluster,
+		Namespace:  opts.Namespace,
+		Context:    opts.ContextName,
+		Kubeconfig: opts.Kubeconfig,
+		Cluster:    opts.Cluster,
 		VPA:        "on",
 	})
 	results, _ := enrichment.BatchVPA(ctx, ec, hpas)
@@ -144,7 +144,7 @@ func conflictScanNeedsVPA(hpas []autoscalingv2.HorizontalPodAutoscaler) bool {
 }
 
 func writeConflictScanReport(out io.Writer, opts *options, report conflictScanReport) error {
-	format, _ := outputSelection(outputConfig{report: opts.report, output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates})
+	format, _ := outputSelection(outputConfig{report: opts.Report, output: opts.Output, template: opts.Template, outputTemplates: opts.OutputTemplates})
 	switch format {
 	case "json":
 		encoder := json.NewEncoder(out)

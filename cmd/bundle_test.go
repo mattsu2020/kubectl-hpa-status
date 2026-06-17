@@ -48,13 +48,9 @@ func TestBundleMarkdownOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{
-			clientOverride: fakeClient,
-			namespace:      "default",
-		},
-		statusOptions: statusOptions{
-			events: eventOption{enabled: false},
-		},
+		ClientOverride: fakeClient,
+		Namespace:      "default",
+		Events:         EventOption{Enabled: false},
 	}
 
 	tmpDir := t.TempDir()
@@ -114,13 +110,9 @@ func TestBundleZipOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{
-			clientOverride: fakeClient,
-			namespace:      "default",
-		},
-		statusOptions: statusOptions{
-			events: eventOption{enabled: false},
-		},
+		ClientOverride: fakeClient,
+		Namespace:      "default",
+		Events:         EventOption{Enabled: false},
 	}
 
 	tmpDir := t.TempDir()
@@ -184,13 +176,9 @@ func TestBundleRedact(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{
-			clientOverride: fakeClient,
-			namespace:      "default",
-		},
-		statusOptions: statusOptions{
-			events: eventOption{enabled: false},
-		},
+		ClientOverride: fakeClient,
+		Namespace:      "default",
+		Events:         EventOption{Enabled: false},
 	}
 
 	tmpDir := t.TempDir()
@@ -227,13 +215,9 @@ func TestBundleDefaultFormat(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{
-			clientOverride: fakeClient,
-			namespace:      "default",
-		},
-		statusOptions: statusOptions{
-			events: eventOption{enabled: false},
-		},
+		ClientOverride: fakeClient,
+		Namespace:      "default",
+		Events:         EventOption{Enabled: false},
 	}
 
 	tmpDir := t.TempDir()
@@ -263,13 +247,9 @@ func TestBundleUnsupportedFormat(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{
-			clientOverride: fakeClient,
-			namespace:      "default",
-		},
-		statusOptions: statusOptions{
-			events: eventOption{enabled: false},
-		},
+		ClientOverride: fakeClient,
+		Namespace:      "default",
+		Events:         EventOption{Enabled: false},
 	}
 
 	tmpDir := t.TempDir()
@@ -293,13 +273,9 @@ func TestBundleIncludesDoctorAnalysis(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{
-			clientOverride: fakeClient,
-			namespace:      "default",
-		},
-		statusOptions: statusOptions{
-			events: eventOption{enabled: false},
-		},
+		ClientOverride: fakeClient,
+		Namespace:      "default",
+		Events:         EventOption{Enabled: false},
 	}
 
 	tmpDir := t.TempDir()
@@ -331,13 +307,9 @@ func TestBundleDefaultOutputPath(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{
-			clientOverride: fakeClient,
-			namespace:      "default",
-		},
-		statusOptions: statusOptions{
-			events: eventOption{enabled: false},
-		},
+		ClientOverride: fakeClient,
+		Namespace:      "default",
+		Events:         EventOption{Enabled: false},
 	}
 
 	// Change to temp dir so default output file is created there.
@@ -365,13 +337,9 @@ func TestBundleHPANotFound(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{
-			clientOverride: fakeClient,
-			namespace:      "default",
-		},
-		statusOptions: statusOptions{
-			events: eventOption{enabled: false},
-		},
+		ClientOverride: fakeClient,
+		Namespace:      "default",
+		Events:         EventOption{Enabled: false},
 	}
 
 	tmpDir := t.TempDir()

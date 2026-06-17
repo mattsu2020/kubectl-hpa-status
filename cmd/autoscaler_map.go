@@ -37,8 +37,8 @@ func runAutoscalerMap(ctx context.Context, out io.Writer, opts *options, names [
 	for _, name := range names {
 		client, err := opts.newClient()
 		if err != nil {
-			if opts.output == "json" || opts.output == "yaml" {
-				writeError(out, opts.output, err)
+			if opts.Output == "json" || opts.Output == "yaml" {
+				writeError(out, opts.Output, err)
 			}
 			return err
 		}
@@ -47,8 +47,8 @@ func runAutoscalerMap(ctx context.Context, out io.Writer, opts *options, names [
 			HorizontalPodAutoscalers(client.Namespace).
 			Get(ctx, name, metav1.GetOptions{})
 		if err != nil {
-			if opts.output == "json" || opts.output == "yaml" {
-				writeError(out, opts.output, err)
+			if opts.Output == "json" || opts.Output == "yaml" {
+				writeError(out, opts.Output, err)
 			}
 			return err
 		}
@@ -70,11 +70,11 @@ func runAutoscalerMap(ctx context.Context, out io.Writer, opts *options, names [
 	}
 
 	format, templateStr := outputSelection(outputConfig{
-		output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates,
+		output: opts.Output, template: opts.Template, outputTemplates: opts.OutputTemplates,
 	})
 
 	return writeOutput(out, format, templateStr, value, func() error {
-		theme := style.NewTheme(shouldColorize(opts.color, out))
+		theme := style.NewTheme(shouldColorize(opts.Color, out))
 		for i, o := range outputs {
 			if i > 0 {
 				if _, err := fmt.Fprintln(out); err != nil {
@@ -189,10 +189,10 @@ func fetchAutoscalerMapKEDA(ctx context.Context, opts *options, hpa *autoscaling
 	}
 
 	dynClient, _, err := kube.NewDynamicClient(kube.Options{
-		Kubeconfig: opts.kubeconfig,
-		Context:    opts.contextName,
-		QPS:        opts.qps,
-		Burst:      opts.burst,
+		Kubeconfig: opts.Kubeconfig,
+		Context:    opts.ContextName,
+		QPS:        opts.QPS,
+		Burst:      opts.Burst,
 	})
 	if err != nil {
 		return nil
@@ -239,10 +239,10 @@ func fetchAutoscalerMapVPA(ctx context.Context, opts *options, hpa *autoscalingv
 	}
 
 	dynClient, _, err := kube.NewDynamicClient(kube.Options{
-		Kubeconfig: opts.kubeconfig,
-		Context:    opts.contextName,
-		QPS:        opts.qps,
-		Burst:      opts.burst,
+		Kubeconfig: opts.Kubeconfig,
+		Context:    opts.ContextName,
+		QPS:        opts.QPS,
+		Burst:      opts.Burst,
 	})
 	if err != nil {
 		return nil

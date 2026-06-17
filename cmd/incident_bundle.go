@@ -27,16 +27,6 @@ func newIncidentBundleCommand(opts *options) *cobra.Command {
 }
 
 func runIncidentBundle(ctx context.Context, out io.Writer, opts *options, name, format, outputPath string, redact bool) error {
-	// Force-enable incident-relevant enrichment flags. Take a shallow copy first
-	// so the shared process-wide opts is not mutated: mutating it directly would
-	// leak readinessImpact/rolloutImpact/scaleoutBlockers/controllerProfile into
-	// any subsequent command in the same process (e.g. tests that run multiple
-	// commands). The reference fields (clientOverride, outputTemplates) are
-	// intentionally shared by value, matching the pattern in support_bundle.go.
-	local := copyOptions(opts)
-	local.features.readinessImpact = true
-	local.features.rolloutImpact = true
-	local.features.scaleoutBlockers = true
-	local.features.controllerProfile = true
+	local := applyCommandPreset(opts, presetIncidentBundle)
 	return runBundle(ctx, out, &local, name, format, outputPath, redact)
 }

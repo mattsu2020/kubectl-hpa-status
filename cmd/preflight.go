@@ -4,30 +4,23 @@ import (
 	"context"
 	"io"
 
+	"github.com/mattsui2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/spf13/cobra"
 )
 
 func newPreflightCommand(opts *options) *cobra.Command {
-	cmd := &cobra.Command{
+	return &cobra.Command{
 		Use:               "preflight NAME [NAME...]",
-		Short:             "Validate quota and capacity before raising HPA maxReplicas",
+		Short:             "Validate capacity and workload prerequisites before raising HPA limits",
 		Args:              cobra.MinimumNArgs(1),
 		ValidArgsFunction: hpaNameCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			raiseMax, _ := cmd.Flags().GetInt32("raise-max")
-			return runPreflight(cmd.Context(), cmd.OutOrStdout(), opts, args, raiseMax)
+			return runPreflight(cmd.Context(), cmd.OutOrStdout(), opts, args)
 		},
 	}
-	cmd.Flags().Int32("raise-max", 0, "proposed maxReplicas value to validate")
-	return cmd
 }
 
-func runPreflight(ctx context.Context, out io.Writer, opts *options, names []string, raiseMax int32) error {
-	local := copyOptions(opts)
-	local.targetMax = raiseMax
-	local.features.checkResources = true
-	local.features.capacityContext = true
-	local.features.capacityDeep = true
-	local.features.explainPods = true
-	return runCapacityPlan(ctx, out, &local, names)
+func runPreflight(ctx context.Context, out io.Writer, opts *options, names []string) error {
+	local := applyCommandPreset(opts, cmdoptions.PresetPreflight)
+	return runStatusMany(ctx, out, &local, names, !local.NoInterpret)
 }

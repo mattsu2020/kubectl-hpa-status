@@ -4,14 +4,14 @@ import (
 	"context"
 	"io"
 
+	"github.com/mattsui2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/spf13/cobra"
 )
 
 func newContainerAdvisorCommand(opts *options) *cobra.Command {
 	return &cobra.Command{
 		Use:               "container-advisor NAME [NAME...]",
-		Aliases:           []string{"container-metric"},
-		Short:             "Suggest ContainerResource HPA metrics for multi-container workloads",
+		Short:             "Suggest ContainerResource metrics for multi-container HPA targets",
 		Args:              cobra.MinimumNArgs(1),
 		ValidArgsFunction: hpaNameCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -21,10 +21,6 @@ func newContainerAdvisorCommand(opts *options) *cobra.Command {
 }
 
 func runContainerAdvisor(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	local := copyOptions(opts)
-	local.features.explain = true
-	local.features.explainPods = true
-	local.features.checkResources = true
-	local.features.containerAdvisor = true
-	return runStatusMany(ctx, out, &local, names, !local.features.noInterpret)
+	local := applyCommandPreset(opts, cmdoptions.PresetContainerAdvisor)
+	return runStatusMany(ctx, out, &local, names, !local.NoInterpret)
 }

@@ -39,7 +39,7 @@ func newCompareCommand(opts *options) *cobra.Command {
 			fromContext, _ := cmd.Flags().GetString("from-context")
 			toContext, _ := cmd.Flags().GetString("to-context")
 			onlyDrift, _ := cmd.Flags().GetBool("only-drift")
-			if opts.allNamespaces && len(args) == 0 {
+			if opts.AllNamespaces && len(args) == 0 {
 				return runCompareAll(cmd.Context(), cmd.OutOrStdout(), opts, fromContext, toContext, onlyDrift)
 			}
 			if len(args) != 2 {
@@ -72,7 +72,7 @@ func runCompare(ctx context.Context, out io.Writer, opts *options, fromRef, toRe
 		return err
 	}
 	report := buildCompareReport(fromLabel, toLabel, fromHPA, toHPA)
-	return writeOutput(out, opts.output, opts.template, report, func() error {
+	return writeOutput(out, opts.Output, opts.Template, report, func() error {
 		_, err := fmt.Fprintf(out, "HPA Compare: %s -> %s\n\n", report.From, report.To)
 		if err != nil {
 			return err
@@ -114,11 +114,11 @@ func runCompareAll(ctx context.Context, out io.Writer, opts *options, fromContex
 	if err != nil {
 		return err
 	}
-	fromHPAs, err := fromClient.ListHPAs(ctx, metav1.NamespaceAll, metav1.ListOptions{LabelSelector: opts.selector}, opts.chunkSize)
+	fromHPAs, err := fromClient.ListHPAs(ctx, metav1.NamespaceAll, metav1.ListOptions{LabelSelector: opts.Selector}, opts.ChunkSize)
 	if err != nil {
 		return err
 	}
-	toHPAs, err := toClient.ListHPAs(ctx, metav1.NamespaceAll, metav1.ListOptions{LabelSelector: opts.selector}, opts.chunkSize)
+	toHPAs, err := toClient.ListHPAs(ctx, metav1.NamespaceAll, metav1.ListOptions{LabelSelector: opts.Selector}, opts.ChunkSize)
 	if err != nil {
 		return err
 	}
@@ -142,7 +142,7 @@ func runCompareAll(ctx context.Context, out io.Writer, opts *options, fromContex
 		}
 	}
 	list := compareListReport{Items: reports}
-	return writeOutput(out, opts.output, opts.template, list, func() error {
+	return writeOutput(out, opts.Output, opts.Template, list, func() error {
 		if len(reports) == 0 {
 			_, err := fmt.Fprintln(out, "No HPA drift found.")
 			return err
@@ -163,7 +163,7 @@ func runCompareAll(ctx context.Context, out io.Writer, opts *options, fromContex
 func newCompareClient(opts *options, contextName string) (*kube.Client, error) {
 	clone := copyOptions(opts)
 	if contextName != "" {
-		clone.contextName = contextName
+		clone.ContextName = contextName
 	}
 	return clone.newClient()
 }

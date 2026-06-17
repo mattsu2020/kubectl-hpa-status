@@ -13,50 +13,50 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-// --- eventOption tests ---
+// --- EventOption tests ---
 
 func TestEventOption_Set_True(t *testing.T) {
-	var o eventOption
+	var o EventOption
 	if err := o.Set("true"); err != nil {
 		t.Fatal(err)
 	}
-	if !o.enabled || o.limit != 5 {
-		t.Fatalf("expected enabled=true, limit=5, got enabled=%v, limit=%d", o.enabled, o.limit)
+	if !o.Enabled || o.Limit != 5 {
+		t.Fatalf("expected enabled=true, limit=5, got enabled=%v, limit=%d", o.Enabled, o.Limit)
 	}
 }
 
 func TestEventOption_Set_Empty(t *testing.T) {
-	var o eventOption
+	var o EventOption
 	if err := o.Set(""); err != nil {
 		t.Fatal(err)
 	}
-	if !o.enabled || o.limit != 5 {
-		t.Fatalf("expected enabled=true, limit=5, got enabled=%v, limit=%d", o.enabled, o.limit)
+	if !o.Enabled || o.Limit != 5 {
+		t.Fatalf("expected enabled=true, limit=5, got enabled=%v, limit=%d", o.Enabled, o.Limit)
 	}
 }
 
 func TestEventOption_Set_False(t *testing.T) {
-	o := eventOption{enabled: true, limit: 5}
+	o := EventOption{Enabled: true, Limit: 5}
 	if err := o.Set("false"); err != nil {
 		t.Fatal(err)
 	}
-	if o.enabled {
+	if o.Enabled {
 		t.Fatal("expected enabled=false")
 	}
 }
 
 func TestEventOption_Set_Number(t *testing.T) {
-	var o eventOption
+	var o EventOption
 	if err := o.Set("10"); err != nil {
 		t.Fatal(err)
 	}
-	if !o.enabled || o.limit != 10 {
-		t.Fatalf("expected enabled=true, limit=10, got enabled=%v, limit=%d", o.enabled, o.limit)
+	if !o.Enabled || o.Limit != 10 {
+		t.Fatalf("expected enabled=true, limit=10, got enabled=%v, limit=%d", o.Enabled, o.Limit)
 	}
 }
 
 func TestEventOption_Set_InvalidString(t *testing.T) {
-	var o eventOption
+	var o EventOption
 	err := o.Set("abc")
 	if err == nil {
 		t.Fatal("expected error for non-numeric string")
@@ -64,7 +64,7 @@ func TestEventOption_Set_InvalidString(t *testing.T) {
 }
 
 func TestEventOption_Set_Zero(t *testing.T) {
-	var o eventOption
+	var o EventOption
 	err := o.Set("0")
 	if err == nil {
 		t.Fatal("expected error for zero limit")
@@ -72,7 +72,7 @@ func TestEventOption_Set_Zero(t *testing.T) {
 }
 
 func TestEventOption_Set_Negative(t *testing.T) {
-	var o eventOption
+	var o EventOption
 	err := o.Set("-5")
 	if err == nil {
 		t.Fatal("expected error for negative limit")
@@ -80,12 +80,12 @@ func TestEventOption_Set_Negative(t *testing.T) {
 }
 
 func TestEventOption_Set_PreservesExistingLimit(t *testing.T) {
-	o := eventOption{enabled: false, limit: 10}
+	o := EventOption{Enabled: false, Limit: 10}
 	if err := o.Set("true"); err != nil {
 		t.Fatal(err)
 	}
-	if o.limit != 10 {
-		t.Fatalf("expected limit=10 to be preserved, got %d", o.limit)
+	if o.Limit != 10 {
+		t.Fatalf("expected limit=10 to be preserved, got %d", o.Limit)
 	}
 }
 
@@ -100,16 +100,16 @@ func TestEventOption_String(t *testing.T) {
 		{true, 10, "10"},
 	}
 	for _, tt := range tests {
-		o := eventOption{enabled: tt.enabled, limit: tt.limit}
+		o := EventOption{Enabled: tt.enabled, Limit: tt.limit}
 		got := o.String()
 		if got != tt.want {
-			t.Errorf("eventOption{enabled=%v, limit=%d}.String() = %q, want %q", tt.enabled, tt.limit, got, tt.want)
+			t.Errorf("EventOption{enabled=%v, limit=%d}.String() = %q, want %q", tt.enabled, tt.limit, got, tt.want)
 		}
 	}
 }
 
 func TestEventOption_Type(t *testing.T) {
-	var o eventOption
+	var o EventOption
 	if o.Type() != "boolOrInt" {
 		t.Fatalf("expected type 'boolOrInt', got %q", o.Type())
 	}
@@ -120,7 +120,7 @@ func TestEventOption_Type(t *testing.T) {
 func TestConfirmApply_YesResponse(t *testing.T) {
 	var out bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{in: strings.NewReader("y\n")},
+		In: strings.NewReader("y\n"),
 	}
 	err := confirmApply(&out, opts, 1, "default", "web")
 	if err != nil {
@@ -131,7 +131,7 @@ func TestConfirmApply_YesResponse(t *testing.T) {
 func TestConfirmApply_YesFullWord(t *testing.T) {
 	var out bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{in: strings.NewReader("yes\n")},
+		In: strings.NewReader("yes\n"),
 	}
 	err := confirmApply(&out, opts, 1, "default", "web")
 	if err != nil {
@@ -142,7 +142,7 @@ func TestConfirmApply_YesFullWord(t *testing.T) {
 func TestConfirmApply_NoResponse(t *testing.T) {
 	var out bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{in: strings.NewReader("n\n")},
+		In: strings.NewReader("n\n"),
 	}
 	err := confirmApply(&out, opts, 1, "default", "web")
 	if err == nil {
@@ -156,7 +156,7 @@ func TestConfirmApply_NoResponse(t *testing.T) {
 func TestConfirmApply_EmptyResponse(t *testing.T) {
 	var out bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{in: strings.NewReader("\n")},
+		In: strings.NewReader("\n"),
 	}
 	err := confirmApply(&out, opts, 1, "default", "web")
 	if err == nil {
@@ -167,7 +167,7 @@ func TestConfirmApply_EmptyResponse(t *testing.T) {
 func TestConfirmApply_WritesWarning(t *testing.T) {
 	var out bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{in: strings.NewReader("y\n")},
+		In: strings.NewReader("y\n"),
 	}
 	_ = confirmApply(&out, opts, 2, "prod", "api")
 	output := out.String()
@@ -798,40 +798,40 @@ func TestStatusOptions_Normalize(t *testing.T) {
 	}{
 		{
 			name:        "recommend implies suggest",
-			opts:        options{statusOptions: statusOptions{features: featureFlags{recommend: true}}},
+			opts:        options{Recommend: true},
 			wantSuggest: true,
 		},
 		{
 			name:        "fix implies suggest and explain",
-			opts:        options{statusOptions: statusOptions{features: featureFlags{fix: true}}},
+			opts:        options{Fix: true},
 			wantSuggest: true,
 			wantExplain: true,
 		},
 		{
 			name:        "apply implies suggest and explain",
-			opts:        options{commonOptions: commonOptions{apply: true}},
+			opts:        options{Apply: true},
 			wantSuggest: true,
 			wantExplain: true,
 		},
 		{
 			name:        "diff implies suggest",
-			opts:        options{commonOptions: commonOptions{diff: true}},
+			opts:        options{Diff: true},
 			wantSuggest: true,
 		},
 		{
 			name: "no-interpret clears suggest",
-			opts: options{statusOptions: statusOptions{features: featureFlags{interpret: true, suggest: true, noInterpret: true}}},
+			opts: options{Interpret: true, Suggest: true, NoInterpret: true},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			o := tt.opts
 			o.Normalize()
-			if o.features.suggest != tt.wantSuggest {
-				t.Errorf("suggest = %v, want %v", o.features.suggest, tt.wantSuggest)
+			if o.Suggest != tt.wantSuggest {
+				t.Errorf("suggest = %v, want %v", o.Suggest, tt.wantSuggest)
 			}
-			if o.features.explain != tt.wantExplain {
-				t.Errorf("explain = %v, want %v", o.features.explain, tt.wantExplain)
+			if o.Explain != tt.wantExplain {
+				t.Errorf("explain = %v, want %v", o.Explain, tt.wantExplain)
 			}
 		})
 	}

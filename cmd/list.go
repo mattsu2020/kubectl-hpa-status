@@ -25,19 +25,19 @@ func newListCommand(opts *options) *cobra.Command {
 		Short:   "List HPAs and highlight visible issues",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if opts.watch {
+			if opts.Watch {
 				return runWatchList(cmd.Context(), cmd.OutOrStdout(), opts)
 			}
 			return runList(cmd.Context(), cmd.OutOrStdout(), opts)
 		},
 	}
-	cmd.Flags().StringVar(&opts.sortBy, "sort-by", "", "sort list by namespace, name, current, desired, diff, health-score, or issue")
-	cmd.Flags().StringVar(&opts.filter, "filter", "", "filter list by all, ok, error, limited, scaling-limited, or issue")
-	cmd.Flags().IntVar(&opts.healthScoreMax, "health-score", -1, "show only HPAs with health score at or below this threshold")
-	cmd.Flags().IntVar(&opts.healthScoreMax, "max-score", -1, "show only HPAs with health score at or below this threshold")
-	cmd.Flags().IntVar(&opts.healthScoreMin, "min-score", -1, "show only HPAs with health score at or above this threshold")
-	cmd.Flags().BoolVar(&opts.problem, "problem", false, "show only HPAs with visible problems")
-	cmd.Flags().BoolVar(&opts.gitopsDrift, "gitops-drift", false, "detect Argo CD/Flux-managed HPAs that should be checked for live-vs-Git drift")
+	cmd.Flags().StringVar(&opts.SortBy, "sort-by", "", "sort list by namespace, name, current, desired, diff, health-score, or issue")
+	cmd.Flags().StringVar(&opts.Filter, "filter", "", "filter list by all, ok, error, limited, scaling-limited, or issue")
+	cmd.Flags().IntVar(&opts.HealthScoreMax, "health-score", -1, "show only HPAs with health score at or below this threshold")
+	cmd.Flags().IntVar(&opts.HealthScoreMax, "max-score", -1, "show only HPAs with health score at or below this threshold")
+	cmd.Flags().IntVar(&opts.HealthScoreMin, "min-score", -1, "show only HPAs with health score at or above this threshold")
+	cmd.Flags().BoolVar(&opts.Problem, "problem", false, "show only HPAs with visible problems")
+	cmd.Flags().BoolVar(&opts.GitOpsDrift, "gitops-drift", false, "detect Argo CD/Flux-managed HPAs that should be checked for live-vs-Git drift")
 	return cmd
 }
 
@@ -52,53 +52,53 @@ func newScanCommand(opts *options) *cobra.Command {
 			// NOTE: reference fields (clientOverride, outputTemplates, etc.) are shared.
 			// This is safe because runList does not mutate them.
 			scanOpts := copyOptions(opts)
-			scanOpts.allNamespaces = true
-			scanOpts.problem = true
-			scanOpts.wide = true
+			scanOpts.AllNamespaces = true
+			scanOpts.Problem = true
+			scanOpts.Wide = true
 			return runList(cmd.Context(), cmd.OutOrStdout(), &scanOpts)
 		},
 	}
-	cmd.Flags().BoolVar(&opts.summary, "summary", false, "include cluster summary and prioritized actions in markdown/html reports")
-	cmd.Flags().BoolVar(&opts.conflicts, "conflicts", false, "detect HPAs and related controllers that may conflict on the same scale target")
+	cmd.Flags().BoolVar(&opts.Summary, "summary", false, "include cluster summary and prioritized actions in markdown/html reports")
+	cmd.Flags().BoolVar(&opts.Conflicts, "conflicts", false, "detect HPAs and related controllers that may conflict on the same scale target")
 	return cmd
 }
 
 func runList(ctx context.Context, out io.Writer, opts *options) error {
-	if opts.conflicts {
+	if opts.Conflicts {
 		return runConflictScan(ctx, out, opts)
 	}
 
 	client, err := opts.newClient()
 	if err != nil {
-		return reportListError(out, opts.output, err)
+		return reportListError(out, opts.Output, err)
 	}
 
 	namespace := client.Namespace
-	if opts.allNamespaces {
+	if opts.AllNamespaces {
 		namespace = metav1.NamespaceAll
 	}
-	filter := opts.filter
-	if opts.problem && filter == "" {
+	filter := opts.Filter
+	if opts.Problem && filter == "" {
 		filter = "issue"
 	}
 
-	hpas, err := client.ListHPAs(ctx, namespace, metav1.ListOptions{LabelSelector: opts.selector}, opts.chunkSize)
+	hpas, err := client.ListHPAs(ctx, namespace, metav1.ListOptions{LabelSelector: opts.Selector}, opts.ChunkSize)
 	if err != nil {
-		return reportListError(out, opts.output, fmt.Errorf("failed to list HPAs: %w", err))
+		return reportListError(out, opts.Output, fmt.Errorf("failed to list HPAs: %w", err))
 	}
 
 	report := hpaanalysis.ListReport{APIVersion: hpaanalysis.SchemaVersion, Items: buildListItems(ctx, opts, hpas.Items, filter)}
-	if opts.gitopsDrift {
+	if opts.GitOpsDrift {
 		report.GitOpsDrift = buildGitOpsDriftSignals(hpas.Items)
 	}
 
-	sortBy := opts.sortBy
-	if opts.problem && sortBy == "" {
+	sortBy := opts.SortBy
+	if opts.Problem && sortBy == "" {
 		sortBy = "problem"
 	}
 	sortListItems(report.Items, sortBy)
 
-	if opts.apply {
+	if opts.Apply {
 		if err := validateListApply(opts, filter); err != nil {
 			return err
 		}
@@ -106,7 +106,7 @@ func runList(ctx context.Context, out io.Writer, opts *options) error {
 			return err
 		}
 	}
-	if opts.export == "directory" {
+	if opts.Export == "directory" {
 		return exportListPatchesDirectory(out, opts, hpas.Items, report.Items)
 	}
 
@@ -123,7 +123,7 @@ func reportListError(out io.Writer, output string, listErr error) error {
 
 // validateListApply ensures --apply is used with a bounded filter.
 func validateListApply(opts *options, filter string) error {
-	if !opts.problem && filter == "" && opts.healthScoreMin <= 0 && opts.healthScoreMax <= 0 {
+	if !opts.Problem && filter == "" && opts.HealthScoreMin <= 0 && opts.HealthScoreMax <= 0 {
 		return fmt.Errorf("--apply with list requires --problem, --filter, --health-score, --max-score, or --min-score to avoid applying suggestions to an unbounded set")
 	}
 	return nil
@@ -135,7 +135,7 @@ func buildListItems(ctx context.Context, opts *options, hpas []autoscalingv2.Hor
 	kedaResults, kedaWarnings := enrichListKEDA(ctx, ec, hpas)
 	vpaResults, vpaWarnings := enrichListVPA(ctx, ec, hpas)
 	var store *history.HealthStore
-	if opts.trend {
+	if opts.Trend {
 		if s, err := history.NewHealthStore(); err == nil {
 			store = s
 		}
@@ -143,7 +143,7 @@ func buildListItems(ctx context.Context, opts *options, hpas []autoscalingv2.Hor
 
 	var items []hpaanalysis.ListItem
 	for i := range hpas {
-		analysis := hpaanalysis.AnalyzeWithOptions(&hpas[i], opts.apply, analysisOptions(opts.healthWeights, opts.debug))
+		analysis := hpaanalysis.AnalyzeWithOptions(&hpas[i], opts.Apply, analysisOptions(opts.HealthWeights, opts.Debug))
 
 		// Surface per-namespace KEDA/VPA list failures on the affected HPAs so a
 		// permissions error is distinguishable from "no objects found". The same
@@ -164,14 +164,14 @@ func buildListItems(ctx context.Context, opts *options, hpas []autoscalingv2.Hor
 			}
 		}
 		if analysis.KEDAInfo != nil || analysis.VPAConflict != nil {
-			hpaanalysis.ApplyEnrichmentPenalties(&analysis, opts.healthWeights)
+			hpaanalysis.ApplyEnrichmentPenalties(&analysis, opts.HealthWeights)
 		}
 		if store != nil {
-			attachHealthTrend(store, &analysis, opts.trendSince, opts.trendRetain)
+			attachHealthTrend(store, &analysis, opts.TrendSince, opts.TrendRetain)
 		}
 
 		item := hpaanalysis.NewListItem(analysis)
-		if matchesListFilter(item, filter) && matchesHealthScoreRange(item, opts.healthScoreMin, opts.healthScoreMax) {
+		if matchesListFilter(item, filter) && matchesHealthScoreRange(item, opts.HealthScoreMin, opts.HealthScoreMax) {
 			items = append(items, item)
 		}
 	}
@@ -206,14 +206,14 @@ func attachHealthTrend(store *history.HealthStore, analysis *hpaanalysis.Analysi
 
 // writeListResult renders the list report in the selected output format.
 func writeListResult(out io.Writer, opts *options, report hpaanalysis.ListReport) error {
-	wide := opts.wide || opts.output == "wide"
+	wide := opts.Wide || opts.Output == "wide"
 	format, templateStr := outputSelection(outputConfig{
-		report: opts.report, output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates,
+		report: opts.Report, output: opts.Output, template: opts.Template, outputTemplates: opts.OutputTemplates,
 	})
-	if opts.summary && (format == "markdown" || format == "md") {
+	if opts.Summary && (format == "markdown" || format == "md") {
 		return writeClusterSummaryMarkdown(out, report)
 	}
-	if opts.summary && format == "html" {
+	if opts.Summary && format == "html" {
 		return writeClusterSummaryHTML(out, report)
 	}
 	if format == "junit" {
@@ -225,11 +225,11 @@ func writeListResult(out io.Writer, opts *options, report hpaanalysis.ListReport
 	return writeOutput(out, format, templateStr, report, func() error {
 		if err := hpaanalysis.WriteListText(out, report, hpaanalysis.ListTextOptions{
 			Wide:              wide,
-			Color:             shouldColorize(opts.color, out),
-			Theme:             style.NewTheme(shouldColorize(opts.color, out)),
-			Lang:              outputLang(opts.lang, opts.output),
-			Labels:            labelProviderForLang(opts.lang, opts.output),
-			SummaryTranslator: summaryTranslatorForLang(opts.lang, opts.output),
+			Color:             shouldColorize(opts.Color, out),
+			Theme:             style.NewTheme(shouldColorize(opts.Color, out)),
+			Lang:              outputLang(opts.Lang, opts.Output),
+			Labels:            labelProviderForLang(opts.Lang, opts.Output),
+			SummaryTranslator: summaryTranslatorForLang(opts.Lang, opts.Output),
 		}); err != nil {
 			return err
 		}
@@ -342,7 +342,7 @@ func exportListPatchesDirectory(out io.Writer, opts *options, hpas []autoscaling
 		if !selected[hpa.Namespace+"/"+hpa.Name] {
 			continue
 		}
-		analysis := hpaanalysis.AnalyzeWithOptions(hpa, true, analysisOptions(opts.healthWeights, opts.debug))
+		analysis := hpaanalysis.AnalyzeWithOptions(hpa, true, analysisOptions(opts.HealthWeights, opts.Debug))
 		report := hpaanalysis.StatusReport{APIVersion: hpaanalysis.SchemaVersion, Analysis: analysis}
 		var buf strings.Builder
 		if err := writeGitOpsExport(&buf, "yaml", report); err != nil {
@@ -369,7 +369,7 @@ func collectBatchEntries(opts *options, hpas []autoscalingv2.HorizontalPodAutosc
 		if !selected[hpa.Namespace+"/"+hpa.Name] {
 			continue
 		}
-		analysis := hpaanalysis.AnalyzeWithOptions(hpa, true, analysisOptions(opts.healthWeights, opts.debug))
+		analysis := hpaanalysis.AnalyzeWithOptions(hpa, true, analysisOptions(opts.HealthWeights, opts.Debug))
 		for _, s := range analysis.Suggestions {
 			if s.Apply && s.Patch != "" {
 				entries = append(entries, batchEntry{
@@ -408,28 +408,28 @@ func printBatchSummary(out io.Writer, entries []batchEntry) error {
 
 // confirmBatchApply prompts the user to confirm the batch operation.
 func confirmBatchApply(out io.Writer, opts *options, count int) (bool, error) {
-	if opts.yes {
+	if opts.Yes {
 		return true, nil
 	}
 	action := "dry-run"
-	if !opts.dryRun {
+	if !opts.DryRun {
 		action = "apply"
 	}
 	// When stdin was not explicitly wired (e.g. by tests or an embedding
 	// caller) and the process stdin is not an interactive terminal, a prompt
 	// would either block forever or silently consume non-confirmation input.
 	// Require an explicit --yes/-y in that case. A caller that deliberately
-	// sets opts.in is allowed to drive the prompt programmatically.
-	if opts.in == nil {
+	// sets opts.In is allowed to drive the prompt programmatically.
+	if opts.In == nil {
 		if !stdinIsTerminal(os.Stdin) {
 			return false, fmt.Errorf("cannot prompt for confirmation (stdin is not a terminal); pass --yes/-y to apply non-interactively")
 		}
-		opts.in = os.Stdin
+		opts.In = os.Stdin
 	}
 	if _, err := fmt.Fprintf(out, "%s %d patches? [y/N]: ", action, count); err != nil {
 		return false, fmt.Errorf("write output: %w", err)
 	}
-	scanner := bufio.NewScanner(opts.in)
+	scanner := bufio.NewScanner(opts.In)
 	if !scanner.Scan() {
 		return false, nil
 	}

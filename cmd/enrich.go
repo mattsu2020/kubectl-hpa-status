@@ -15,12 +15,12 @@ type enrichmentContext = enrichment.Context
 // newEnrichmentContext creates an enrichment context from CLI options.
 func newEnrichmentContext(ctx context.Context, opts *options) *enrichment.Context {
 	return enrichment.NewContext(ctx, enrichment.Config{
-		Namespace:  opts.namespace,
-		Context:    opts.contextName,
-		Kubeconfig: opts.kubeconfig,
-		Cluster:    opts.cluster,
-		KEDA:       opts.keda,
-		VPA:        opts.vpa,
+		Namespace:  opts.Namespace,
+		Context:    opts.ContextName,
+		Kubeconfig: opts.Kubeconfig,
+		Cluster:    opts.Cluster,
+		KEDA:       opts.KEDA,
+		VPA:        opts.VPA,
 	})
 }
 

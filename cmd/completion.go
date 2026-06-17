@@ -48,7 +48,7 @@ func hpaNameCompletion(opts *options) func(*cobra.Command, []string, string) ([]
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
 		namespace := client.Namespace
-		if opts.allNamespaces {
+		if opts.AllNamespaces {
 			namespace = metav1.NamespaceAll
 		}
 		// Shell completion should never block the shell. Use the command's
@@ -64,7 +64,7 @@ func hpaNameCompletion(opts *options) func(*cobra.Command, []string, string) ([]
 		}
 		names := make([]string, 0, len(hpas.Items))
 		for _, hpa := range hpas.Items {
-			if opts.allNamespaces {
+			if opts.AllNamespaces {
 				names = append(names, fmt.Sprintf("%s/%s\t%s", hpa.Namespace, hpa.Name, hpa.Spec.ScaleTargetRef.Name))
 				continue
 			}
@@ -174,8 +174,8 @@ func namespaceCompletions(opts *options) func(*cobra.Command, []string, string) 
 func contextCompletions(opts *options) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 	return func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-		if opts.kubeconfig != "" {
-			loadingRules.ExplicitPath = opts.kubeconfig
+		if opts.Kubeconfig != "" {
+			loadingRules.ExplicitPath = opts.Kubeconfig
 		}
 		config, err := loadingRules.Load()
 		if err != nil {
@@ -204,4 +204,5 @@ func registerFlagCompletions(root *cobra.Command, opts *options) {
 	_ = root.RegisterFlagCompletionFunc("until-condition", untilConditionCompletions)
 	_ = root.RegisterFlagCompletionFunc("namespace", namespaceCompletions(opts))
 	_ = root.RegisterFlagCompletionFunc("context", contextCompletions(opts))
+	_ = root.RegisterFlagCompletionFunc("analysis-profile", analysisProfileCompletions)
 }

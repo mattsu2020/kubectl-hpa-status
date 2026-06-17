@@ -30,7 +30,7 @@ func TestRunBehavior_TextOutput(t *testing.T) {
 		},
 	}
 	fakeClient := testutil.NewFakeClient(hpa)
-	opts := &options{commonOptions: commonOptions{clientOverride: fakeClient}}
+	opts := &options{ClientOverride: fakeClient}
 
 	var buf bytes.Buffer
 	if err := runBehavior(context.Background(), &buf, opts, "web"); err != nil {
@@ -45,7 +45,7 @@ func TestRunBehavior_TextOutput(t *testing.T) {
 func TestRunEstimate_TextOutput(t *testing.T) {
 	hpa := testutil.BuildHPA("default", "web", testutil.WithMinMax(2, 10))
 	fakeClient := testutil.NewFakeClient(hpa)
-	opts := &options{commonOptions: commonOptions{clientOverride: fakeClient}}
+	opts := &options{ClientOverride: fakeClient}
 
 	var buf bytes.Buffer
 	if err := runEstimate(context.Background(), &buf, opts, "web", 30, 0.12, 0.01); err != nil {
@@ -194,7 +194,7 @@ func TestRunFlapFromRecordDetectsReplicaRange(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	opts := &options{commonOptions: commonOptions{namespace: "prod"}}
+	opts := &options{Namespace: "prod"}
 	if err := runFlapFromRecord(&buf, opts, "web", tmp.Name()); err != nil {
 		t.Fatalf("runFlapFromRecord returned error: %v", err)
 	}
@@ -215,11 +215,9 @@ func TestRunConflictScanDetectsMultipleHPAsAndKEDA(t *testing.T) {
 
 	fakeClient := testutil.NewFakeClient(first, second)
 	opts := &options{
-		commonOptions: commonOptions{
-			clientOverride: fakeClient,
-			namespace:      "prod",
-		},
-		listOptions: listOptions{conflicts: true},
+		ClientOverride: fakeClient,
+		Namespace:      "prod",
+		Conflicts:      true,
 	}
 
 	var buf bytes.Buffer
@@ -238,8 +236,8 @@ func TestRunReadinessEnablesImpactSections(t *testing.T) {
 	hpa := testutil.BuildHPA("default", "web")
 	fakeClient := testutil.NewFakeClient(hpa)
 	opts := &options{
-		commonOptions: commonOptions{clientOverride: fakeClient},
-		statusOptions: statusOptions{events: eventOption{enabled: false}},
+		ClientOverride: fakeClient,
+		Events:         EventOption{Enabled: false},
 	}
 
 	var buf bytes.Buffer
@@ -258,10 +256,8 @@ func TestRunFleetSummarizesMaxSurgeRisk(t *testing.T) {
 	api := testutil.BuildHPA("prod", "api", testutil.WithReplicas(6, 6), testutil.WithMinMax(2, 8))
 	fakeClient := testutil.NewFakeClient(web, api)
 	opts := &options{
-		commonOptions: commonOptions{
-			clientOverride: fakeClient,
-			namespace:      "prod",
-		},
+		ClientOverride: fakeClient,
+		Namespace:      "prod",
 	}
 
 	var buf bytes.Buffer
@@ -284,13 +280,9 @@ func TestStatusHiddenFactorsText(t *testing.T) {
 	)
 	fakeClient := testutil.NewFakeClient(hpa)
 	opts := &options{
-		commonOptions: commonOptions{clientOverride: fakeClient},
-		statusOptions: statusOptions{
-			events: eventOption{enabled: false},
-			features: featureFlags{
-				hiddenFactors: true,
-			},
-		},
+		ClientOverride: fakeClient,
+		Events:         EventOption{Enabled: false},
+		HiddenFactors:  true,
 	}
 
 	var buf bytes.Buffer
@@ -310,11 +302,9 @@ func TestStatusStructuredFormat(t *testing.T) {
 	)
 	fakeClient := testutil.NewFakeClient(hpa)
 	opts := &options{
-		commonOptions: commonOptions{clientOverride: fakeClient},
-		statusOptions: statusOptions{
-			events: eventOption{enabled: false},
-			format: "structured",
-		},
+		ClientOverride: fakeClient,
+		Events:         EventOption{Enabled: false},
+		Format:         "structured",
 	}
 
 	var buf bytes.Buffer
@@ -353,7 +343,7 @@ func TestWriteListCIReports(t *testing.T) {
 func TestRunTuneSuggest(t *testing.T) {
 	hpa := testutil.BuildHPA("default", "web", testutil.WithMinMax(2, 10))
 	fakeClient := testutil.NewFakeClient(hpa)
-	opts := &options{commonOptions: commonOptions{clientOverride: fakeClient}}
+	opts := &options{ClientOverride: fakeClient}
 
 	var buf bytes.Buffer
 	if err := runTune(context.Background(), &buf, opts, "web", "stable", true); err != nil {

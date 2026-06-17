@@ -37,18 +37,18 @@ func newCompatCommand(opts *options) *cobra.Command {
 
 func runCompat(ctx context.Context, out io.Writer, opts *options) error {
 	disco, err := kube.NewDiscoveryClient(kube.Options{
-		Namespace:  opts.namespace,
-		Context:    opts.contextName,
-		Kubeconfig: opts.kubeconfig,
-		Cluster:    opts.cluster,
-		QPS:        opts.qps,
-		Burst:      opts.burst,
+		Namespace:  opts.Namespace,
+		Context:    opts.ContextName,
+		Kubeconfig: opts.Kubeconfig,
+		Cluster:    opts.Cluster,
+		QPS:        opts.QPS,
+		Burst:      opts.Burst,
 	})
 	if err != nil {
 		return err
 	}
 	report := buildCompatReport(ctx, disco)
-	return writeOutput(out, opts.output, opts.template, report, func() error {
+	return writeOutput(out, opts.Output, opts.Template, report, func() error {
 		_, err := fmt.Fprintf(out, "Cluster: %s\nHPA API: %s\n\nCompatibility:\n", report.ClusterVersion, report.HPAAPI)
 		if err != nil {
 			return err

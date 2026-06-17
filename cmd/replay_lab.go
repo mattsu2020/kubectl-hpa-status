@@ -82,13 +82,13 @@ func runReplayLab(out io.Writer, opts *options, name, recordPath, candidatePath 
 
 func runReplayPolicyLab(out io.Writer, opts *options, name, recordPath string, candidatePaths []string, overrides map[string]string, score string) error {
 	if name == "" {
-		inferred, err := inferRecordedTraceName(recordPath, opts.namespace)
+		inferred, err := inferRecordedTraceName(recordPath, opts.Namespace)
 		if err != nil {
 			return err
 		}
 		name = inferred
 	}
-	trace, err := loadRecordedTrace(recordPath, opts.namespace, name)
+	trace, err := loadRecordedTrace(recordPath, opts.Namespace, name)
 	if err != nil {
 		return err
 	}

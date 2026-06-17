@@ -35,19 +35,14 @@ func newRolloutCommand(opts *options) *cobra.Command {
 }
 
 func runRollout(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	// Create local copy to avoid mutating the original options.
-	local := copyOptions(opts)
-	local.features.rollout = true
-	local.features.rolloutImpact = true
-	local.features.readinessImpact = true
-	local.features.explainPods = true
+	local := applyCommandPreset(opts, presetRollout)
 
 	outputs := make([]rolloutOutput, 0, len(names))
 	for _, name := range names {
 		report, err := buildStatusReportWithClient(ctx, &local, name, false, nil)
 		if err != nil {
-			if local.output == "json" || local.output == "yaml" {
-				writeError(out, local.output, err)
+			if local.Output == "json" || local.Output == "yaml" {
+				writeError(out, local.Output, err)
 			}
 			return err
 		}
@@ -67,11 +62,11 @@ func runRollout(ctx context.Context, out io.Writer, opts *options, names []strin
 	}
 
 	format, templateStr := outputSelection(outputConfig{
-		output: local.output, template: local.template, outputTemplates: local.outputTemplates,
+		output: local.Output, template: local.Template, outputTemplates: local.OutputTemplates,
 	})
 
 	return writeOutput(out, format, templateStr, value, func() error {
-		theme := style.NewTheme(shouldColorize(local.color, out))
+		theme := style.NewTheme(shouldColorize(local.Color, out))
 		for i, o := range outputs {
 			if i > 0 {
 				if _, err := fmt.Fprintln(out); err != nil {

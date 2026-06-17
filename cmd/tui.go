@@ -34,13 +34,13 @@ func runTUI(ctx context.Context, out io.Writer, opts *options, initialName strin
 		return fmt.Errorf("tui requires an interactive terminal; use 'watch' for non-interactive streaming")
 	}
 
-	if opts.watchTimeout > 0 {
+	if opts.WatchTimeout > 0 {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, opts.watchTimeout)
+		ctx, cancel = context.WithTimeout(ctx, opts.WatchTimeout)
 		defer cancel()
 	}
 
-	interval := opts.watchInterval
+	interval := opts.WatchInterval
 	if interval < time.Second {
 		interval = time.Second
 	}
@@ -51,7 +51,7 @@ func runTUI(ctx context.Context, out io.Writer, opts *options, initialName strin
 	}
 
 	namespace := client.Namespace
-	if opts.allNamespaces {
+	if opts.AllNamespaces {
 		namespace = ""
 	}
 
@@ -67,15 +67,15 @@ func runTUI(ctx context.Context, out io.Writer, opts *options, initialName strin
 	}
 
 	model := tui.NewModel(client.Interface, namespace, tui.Options{
-		AllNamespaces: opts.allNamespaces,
-		Debug:         opts.debug,
-		ChunkSize:     opts.chunkSize,
+		AllNamespaces: opts.AllNamespaces,
+		Debug:         opts.Debug,
+		ChunkSize:     opts.ChunkSize,
 		Interval:      interval,
 		InitialName:   initialName,
 		InitialNS:     client.Namespace,
 		StartInDetail: startInDetail,
 		EnrichHPAs:    enrichFn,
-		HealthWeights: opts.healthWeights,
+		HealthWeights: opts.HealthWeights,
 		ApplyFn: func(applyCtx context.Context, ns, name, patch string) error {
 			_, err := client.Interface.AutoscalingV2().
 				HorizontalPodAutoscalers(ns).

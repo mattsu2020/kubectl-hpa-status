@@ -117,8 +117,8 @@ func runSimulate(ctx context.Context, out io.Writer, opts *options, name string,
 
 	// Render output.
 	format, _ := outputSelection(outputConfig{
-		report: opts.report, output: opts.output, template: opts.template,
-		outputTemplates: opts.outputTemplates,
+		report: opts.Report, output: opts.Output, template: opts.Template,
+		outputTemplates: opts.OutputTemplates,
 	})
 
 	switch format {
@@ -134,7 +134,7 @@ func runSimulate(ctx context.Context, out io.Writer, opts *options, name string,
 		_, err = out.Write(data)
 		return err
 	default:
-		theme := style.NewTheme(shouldColorize(opts.color, out))
+		theme := style.NewTheme(shouldColorize(opts.Color, out))
 		return writeSimulateText(out, report, theme)
 	}
 }

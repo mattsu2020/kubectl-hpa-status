@@ -24,34 +24,12 @@ func newSupportBundleCommand(opts *options) *cobra.Command {
 	return cmd
 }
 
-// runSupportBundle orchestrates data collection for the support-bundle command.
-// It delegates to the existing bundle infrastructure with KEDA and VPA flags
-// force-enabled, and appends KEDA ScaledObject and VPA recommendation data
-// to the bundle.
 func runSupportBundle(ctx context.Context, out io.Writer, opts *options, name, format, outputPath string, redact bool) error {
-	// Force-enable KEDA and VPA enrichment for support bundles.
-	local := copyOptions(opts)
-	local.keda = "on"
-	local.vpa = "on"
-	local.features.readinessImpact = true
-	local.features.rolloutImpact = true
-	local.features.scaleoutBlockers = true
-	local.features.controllerProfile = true
-	local.features.capacityDeep = true
-	local.features.diagnoseMetrics = true
-	local.features.metricsFreshness = true
-	local.features.metricContract = true
-	local.features.churnDetect = true
-	local.features.metricHints = true
-	local.features.containerAdvisor = true
-	local.features.behaviorAdvisor = true
+	local := applyCommandPreset(opts, presetSupportBundle)
 
 	if format == "" {
 		format = "markdown"
 	}
-
 	outputPath = defaultBundleOutputPath(outputPath, name, format, "hpa-support-bundle")
-
-	// Delegate to the existing bundle infrastructure.
 	return runBundle(ctx, out, &local, name, format, outputPath, redact)
 }

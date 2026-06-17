@@ -72,7 +72,7 @@ func runEstimate(ctx context.Context, out io.Writer, opts *options, name string,
 		AdditionalCarbonKgHour:  float64(additional) * carbonKg,
 		AvailabilityNote:        "Higher maxReplicas can reduce capacity risk only if quota, node capacity, and metric availability are healthy; run preflight before applying.",
 	}
-	format, templateStr := outputSelection(outputConfig{output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates})
+	format, templateStr := outputSelection(outputConfig{output: opts.Output, template: opts.Template, outputTemplates: opts.OutputTemplates})
 	return writeOutput(out, format, templateStr, result, func() error {
 		_, _ = fmt.Fprintln(out, "Estimate:")
 		_, _ = fmt.Fprintf(out, "- Current maxReplicas: %d\n", result.CurrentMaxReplicas)

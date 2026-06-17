@@ -86,7 +86,7 @@ func runAssumptions(ctx context.Context, out io.Writer, opts *options, names []s
 	// Attempt to observe the controller-manager profile when --explain is set.
 	var observed *hpaanalysis.ControllerProfile
 	if flags.explain {
-		observed = buildControllerProfile(ctx, client, opts.assumeProfile, opts.controllerProfileFile)
+		observed = buildControllerProfile(ctx, client, opts.AssumeProfile, opts.ControllerProfileFile)
 	}
 
 	reports := make([]assumptionsOutput, 0, len(names))
@@ -108,7 +108,7 @@ func runAssumptions(ctx context.Context, out io.Writer, opts *options, names []s
 	}
 
 	format, templateStr := outputSelection(outputConfig{
-		output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates,
+		output: opts.Output, template: opts.Template, outputTemplates: opts.OutputTemplates,
 	})
 
 	for i, report := range reports {
@@ -119,7 +119,7 @@ func runAssumptions(ctx context.Context, out io.Writer, opts *options, names []s
 		}
 		if err := writeOutput(out, format, templateStr, report, func() error {
 			return hpaanalysis.WriteAssumptionsTextWithExplain(out, report.Assumptions,
-				flags.explain, style.NewTheme(shouldColorize(opts.color, out)))
+				flags.explain, style.NewTheme(shouldColorize(opts.Color, out)))
 		}); err != nil {
 			return err
 		}

@@ -31,13 +31,9 @@ func TestRunRolloutJSONOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{
-			clientOverride: fakeClient,
-			output:         "json",
-		},
-		statusOptions: statusOptions{
-			events: eventOption{enabled: false},
-		},
+		ClientOverride: fakeClient,
+		Output:         "json",
+		Events:         EventOption{Enabled: false},
 	}
 
 	err := runRollout(context.Background(), &buf, opts, []string{"web"})
@@ -73,14 +69,10 @@ func TestRunRolloutTextOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{
-			clientOverride: fakeClient,
-			output:         "",
-			color:          "never",
-		},
-		statusOptions: statusOptions{
-			events: eventOption{enabled: false},
-		},
+		ClientOverride: fakeClient,
+		Output:         "",
+		Color:          "never",
+		Events:         EventOption{Enabled: false},
 	}
 
 	err := runRollout(context.Background(), &buf, opts, []string{"web"})
@@ -106,13 +98,9 @@ func TestRunRolloutNoRolloutInProgress(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{
-			clientOverride: fakeClient,
-			output:         "json",
-		},
-		statusOptions: statusOptions{
-			events: eventOption{enabled: false},
-		},
+		ClientOverride: fakeClient,
+		Output:         "json",
+		Events:         EventOption{Enabled: false},
 	}
 
 	err := runRollout(context.Background(), &buf, opts, []string{"web"})

@@ -2,24 +2,16 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	"io"
 
-	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsui2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/spf13/cobra"
 )
-
-type scalePathReport struct {
-	Namespace string                 `json:"namespace" yaml:"namespace"`
-	Name      string                 `json:"name" yaml:"name"`
-	Target    string                 `json:"target" yaml:"target"`
-	ScalePath *hpaanalysis.ScalePath `json:"scalePath" yaml:"scalePath"`
-}
 
 func newPathCommand(opts *options) *cobra.Command {
 	return &cobra.Command{
 		Use:               "path NAME [NAME...]",
-		Short:             "Explain the HPA scale path from desired replicas to pods and scheduler capacity",
+		Short:             "Explain the path from HPA desired replicas to ready pods",
 		Args:              cobra.MinimumNArgs(1),
 		ValidArgsFunction: hpaNameCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -29,50 +21,6 @@ func newPathCommand(opts *options) *cobra.Command {
 }
 
 func runPath(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	// Enable scale-path analysis. Take a shallow copy so the shared
-	// process-wide opts is not mutated.
-	local := copyOptions(opts)
-	local.features.scalePath = true
-	reports := make([]scalePathReport, 0, len(names))
-	for _, name := range names {
-		report, err := buildStatusReportWithClient(ctx, &local, name, false, nil)
-		if err != nil {
-			if local.output == "json" || local.output == "yaml" {
-				writeError(out, local.output, err)
-			}
-			return err
-		}
-		reports = append(reports, scalePathReport{
-			Namespace: report.Analysis.Namespace,
-			Name:      report.Analysis.Name,
-			Target:    report.Analysis.Target,
-			ScalePath: report.Analysis.ScalePath,
-		})
-	}
-
-	value := any(reports)
-	if len(reports) == 1 {
-		value = reports[0]
-	}
-	format, templateStr := outputSelection(outputConfig{
-		output: local.output, template: local.template, outputTemplates: local.outputTemplates,
-	})
-	return writeOutput(out, format, templateStr, value, func() error {
-		for i, report := range reports {
-			if i > 0 {
-				if _, err := fmt.Fprintln(out); err != nil {
-					return err
-				}
-			}
-			if len(reports) > 1 {
-				if _, err := fmt.Fprintf(out, "HPA %s/%s\n", report.Namespace, report.Name); err != nil {
-					return err
-				}
-			}
-			if err := hpaanalysis.WriteScalePathText(out, report.ScalePath); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
+	local := applyCommandPreset(opts, cmdoptions.PresetPath)
+	return runStatusMany(ctx, out, &local, names, !local.NoInterpret)
 }

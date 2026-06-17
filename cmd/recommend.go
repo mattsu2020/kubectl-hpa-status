@@ -57,10 +57,10 @@ func runRecommend(ctx context.Context, out io.Writer, opts *options, args []stri
 		}
 
 		format, templateStr := outputSelection(outputConfig{
-			report: opts.report, output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates,
+			report: opts.Report, output: opts.Output, template: opts.Template, outputTemplates: opts.OutputTemplates,
 		})
 		if err := writeOutput(out, format, templateStr, report, func() error {
-			return hpaanalysis.WriteAuditText(out, report, labelProviderForLang(opts.lang, opts.output))
+			return hpaanalysis.WriteAuditText(out, report, labelProviderForLang(opts.Lang, opts.Output))
 		}); err != nil {
 			return err
 		}

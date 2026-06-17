@@ -118,12 +118,12 @@ func runReadinessDoctor(ctx context.Context, out io.Writer, opts *options, name 
 	report := hpaanalysis.AnalyzeReadinessDoctor(input)
 
 	format, templateStr := outputSelection(outputConfig{
-		output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates,
+		output: opts.Output, template: opts.Template, outputTemplates: opts.OutputTemplates,
 	})
 
 	return writeOutput(out, format, templateStr, report, func() error {
 		return hpaanalysis.WriteReadinessDoctorText(out, report,
-			style.NewTheme(shouldColorize(opts.color, out)))
+			style.NewTheme(shouldColorize(opts.Color, out)))
 	})
 }
 

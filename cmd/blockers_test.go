@@ -32,13 +32,9 @@ func TestRunBlockersBasicOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{
-			clientOverride: fakeClient,
-			output:         "json",
-		},
-		statusOptions: statusOptions{
-			events: eventOption{enabled: false},
-		},
+		ClientOverride: fakeClient,
+		Output:         "json",
+		Events:         EventOption{Enabled: false},
 	}
 
 	err := runBlockers(context.Background(), &buf, opts, []string{"web"})
@@ -80,13 +76,9 @@ func TestRunBlockersNoScaleOut(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{
-			clientOverride: fakeClient,
-			output:         "json",
-		},
-		statusOptions: statusOptions{
-			events: eventOption{enabled: false},
-		},
+		ClientOverride: fakeClient,
+		Output:         "json",
+		Events:         EventOption{Enabled: false},
 	}
 
 	err := runBlockers(context.Background(), &buf, opts, []string{"web"})
@@ -116,14 +108,10 @@ func TestRunBlockersTextOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{
-			clientOverride: fakeClient,
-			output:         "",
-			color:          "never",
-		},
-		statusOptions: statusOptions{
-			events: eventOption{enabled: false},
-		},
+		ClientOverride: fakeClient,
+		Output:         "",
+		Color:          "never",
+		Events:         EventOption{Enabled: false},
 	}
 
 	err := runBlockers(context.Background(), &buf, opts, []string{"web"})
@@ -149,16 +137,10 @@ func TestCapacityDeepFlagOnDoctor(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{
-			clientOverride: fakeClient,
-			output:         "json",
-		},
-		statusOptions: statusOptions{
-			events: eventOption{enabled: false},
-			features: featureFlags{
-				capacityDeep: true,
-			},
-		},
+		ClientOverride: fakeClient,
+		Output:         "json",
+		Events:         EventOption{Enabled: false},
+		CapacityDeep:   true,
 	}
 
 	err := runDoctor(context.Background(), &buf, opts, []string{"web"})

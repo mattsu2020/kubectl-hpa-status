@@ -32,13 +32,9 @@ func TestRunCapacityPlan_JSONOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{
-			clientOverride: fakeClient,
-			output:         "json",
-		},
-		statusOptions: statusOptions{
-			events: eventOption{enabled: false},
-		},
+		ClientOverride: fakeClient,
+		Output:         "json",
+		Events:         EventOption{Enabled: false},
 	}
 
 	err := runCapacityPlan(context.Background(), &buf, opts, []string{"web"})
@@ -78,14 +74,10 @@ func TestRunCapacityPlan_TextOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{
-			clientOverride: fakeClient,
-			output:         "",
-			color:          "never",
-		},
-		statusOptions: statusOptions{
-			events: eventOption{enabled: false},
-		},
+		ClientOverride: fakeClient,
+		Output:         "",
+		Color:          "never",
+		Events:         EventOption{Enabled: false},
 	}
 
 	err := runCapacityPlan(context.Background(), &buf, opts, []string{"web"})
@@ -118,14 +110,10 @@ func TestRunCapacityPlan_TargetMaxOverride(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{
-			clientOverride: fakeClient,
-			output:         "json",
-		},
-		statusOptions: statusOptions{
-			events:    eventOption{enabled: false},
-			targetMax: 30,
-		},
+		ClientOverride: fakeClient,
+		Output:         "json",
+		Events:         EventOption{Enabled: false},
+		TargetMax:      30,
 	}
 
 	err := runCapacityPlan(context.Background(), &buf, opts, []string{"web"})
@@ -171,17 +159,11 @@ func TestCapacityPlanFlagOnStatus(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{
-			clientOverride: fakeClient,
-			output:         "json",
-		},
-		statusOptions: statusOptions{
-			events: eventOption{enabled: false},
-			features: featureFlags{
-				capacityPlan: true,
-				interpret:    true,
-			},
-		},
+		ClientOverride: fakeClient,
+		Output:         "json",
+		Events:         EventOption{Enabled: false},
+		CapacityPlan:   true,
+		Interpret:      true,
 	}
 
 	err := runStatus(context.Background(), &buf, opts, "web", true)

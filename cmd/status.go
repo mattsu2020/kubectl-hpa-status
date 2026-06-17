@@ -24,8 +24,8 @@ func newStatusCommand(opts *options) *cobra.Command {
 		Args:              cobra.MinimumNArgs(1),
 		ValidArgsFunction: hpaNameCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			includeInterpretation := (opts.features.interpret || opts.features.explain || opts.features.suggest) && !opts.features.noInterpret
-			if opts.watch {
+			includeInterpretation := (opts.Interpret || opts.Explain || opts.Suggest) && !opts.NoInterpret
+			if opts.Watch {
 				if len(args) != 1 {
 					return fmt.Errorf("--watch supports exactly one HPA name")
 				}
@@ -56,13 +56,13 @@ func newAnalyzeCommand(opts *options) *cobra.Command {
 		Args:              cobra.MinimumNArgs(1),
 		ValidArgsFunction: hpaNameCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if opts.watch {
+			if opts.Watch {
 				if len(args) != 1 {
 					return fmt.Errorf("--watch supports exactly one HPA name")
 				}
-				return runWatch(cmd.Context(), cmd.OutOrStdout(), opts, args[0], !opts.features.noInterpret)
+				return runWatch(cmd.Context(), cmd.OutOrStdout(), opts, args[0], !opts.NoInterpret)
 			}
-			return runStatusMany(cmd.Context(), cmd.OutOrStdout(), opts, args, !opts.features.noInterpret)
+			return runStatusMany(cmd.Context(), cmd.OutOrStdout(), opts, args, !opts.NoInterpret)
 		},
 	}
 }
@@ -72,13 +72,13 @@ func runStatus(ctx context.Context, out io.Writer, opts *options, name string, i
 }
 
 func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []string, includeInterpretation bool) error {
-	if opts.format == "structured" && opts.decisionTraceFormat == "" {
-		opts.features.decisionTrace = true
-		opts.decisionTraceFormat = "json"
+	if opts.Format == "structured" && opts.DecisionTraceFormat == "" {
+		opts.DecisionTrace = true
+		opts.DecisionTraceFormat = "json"
 		includeInterpretation = true
 	}
 
-	if opts.apply && len(names) > 1 {
+	if opts.Apply && len(names) > 1 {
 		return fmt.Errorf("--apply supports only a single HPA at a time; use 'list --apply' for batch mode")
 	}
 
@@ -90,33 +90,33 @@ func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []st
 
 // runStatusSingle handles the single-HPA status path, including structured/AI/apply/export output modes.
 func runStatusSingle(ctx context.Context, out io.Writer, opts *options, name string, includeInterpretation bool) error {
-	watchMode := opts.watch
+	watchMode := opts.Watch
 	ec := newEnrichmentContext(ctx, opts)
 	report, err := buildStatusReportWithClient(ctx, opts, name, includeInterpretation, ec)
 	if err != nil {
-		if opts.output == "json" || opts.output == "yaml" {
-			writeError(out, opts.output, err)
+		if opts.Output == "json" || opts.Output == "yaml" {
+			writeError(out, opts.Output, err)
 		}
 		return err
 	}
-	if opts.format == "structured" {
+	if opts.Format == "structured" {
 		if report.Analysis.StructuredDecisionTrace == nil {
 			report.Analysis.StructuredDecisionTrace = hpaanalysis.ExportStructuredDecisionTrace(nil, report.Analysis)
 		}
 		return writeOutput(out, "json", "", report.Analysis.StructuredDecisionTrace, nil)
 	}
-	if opts.features.contextForAI || opts.ask != "" {
-		return writeAIContext(out, report, opts.ask)
+	if opts.ContextForAI || opts.Ask != "" {
+		return writeAIContext(out, report, opts.Ask)
 	}
-	if opts.apply {
+	if opts.Apply {
 		applied, err := applySuggestions(ctx, out, opts, name, report.Analysis.Suggestions)
 		if err != nil {
 			return err
 		}
 		report.Analysis.Actions = append(report.Analysis.Actions, applied...)
 	}
-	if opts.export != "" {
-		return writeGitOpsExport(out, opts.export, report)
+	if opts.Export != "" {
+		return writeGitOpsExport(out, opts.Export, report)
 	}
 
 	format, templateStr := selectStatusOutput(opts)
@@ -130,7 +130,7 @@ func runStatusSingle(ctx context.Context, out io.Writer, opts *options, name str
 
 // runStatusMultiple handles the multi-HPA status path with concurrent report building and multi-report output.
 func runStatusMultiple(ctx context.Context, out io.Writer, opts *options, names []string, includeInterpretation bool) error {
-	watchMode := opts.watch
+	watchMode := opts.Watch
 	ec := newEnrichmentContext(ctx, opts)
 	// Create client once for all HPAs to avoid redundant kubeconfig parsing.
 	client, err := opts.newClient()
@@ -143,18 +143,18 @@ func runStatusMultiple(ctx context.Context, out io.Writer, opts *options, names 
 		return err
 	}
 
-	if opts.export != "" {
-		return writeReportsGitOpsExport(out, opts.export, reports)
+	if opts.Export != "" {
+		return writeReportsGitOpsExport(out, opts.Export, reports)
 	}
-	if opts.format == "structured" {
+	if opts.Format == "structured" {
 		traces := make([]*hpaanalysis.StructuredDecisionTrace, 0, len(reports))
 		for i := range reports {
 			traces = append(traces, reports[i].Analysis.StructuredDecisionTrace)
 		}
 		return writeOutput(out, "json", "", traces, nil)
 	}
-	if opts.features.contextForAI || opts.ask != "" {
-		return writeAIContextMany(out, reports, opts.ask)
+	if opts.ContextForAI || opts.Ask != "" {
+		return writeAIContextMany(out, reports, opts.Ask)
 	}
 
 	format, templateStr := selectStatusOutput(opts)
@@ -171,7 +171,7 @@ func runStatusMultiple(ctx context.Context, out io.Writer, opts *options, names 
 func buildReportsConcurrently(ctx context.Context, out io.Writer, opts *options, client *kube.Client, names []string, includeInterpretation bool, ec *enrichmentContext) ([]hpaanalysis.StatusReport, error) {
 	reports := make([]hpaanalysis.StatusReport, len(names))
 	g, gctx := errgroup.WithContext(ctx)
-	limit := opts.concurrency
+	limit := opts.Concurrency
 	if limit < 1 {
 		limit = runtime.NumCPU()
 	}
@@ -184,12 +184,12 @@ func buildReportsConcurrently(ctx context.Context, out io.Writer, opts *options,
 			}
 			report, err := buildStatusReport(gctx, opts, client, name, includeInterpretation, ec)
 			if err != nil {
-				if opts.output == "json" || opts.output == "yaml" {
-					writeError(out, opts.output, err)
+				if opts.Output == "json" || opts.Output == "yaml" {
+					writeError(out, opts.Output, err)
 				}
 				return err
 			}
-			if opts.apply {
+			if opts.Apply {
 				applied, err := applySuggestions(gctx, out, opts, name, report.Analysis.Suggestions)
 				if err != nil {
 					return err
@@ -249,20 +249,20 @@ func checkReportsWarningExitCodes(reports []hpaanalysis.StatusReport, watchMode 
 // selectStatusOutput resolves the output format and template string from the user's report/output/template selection.
 func selectStatusOutput(opts *options) (string, string) {
 	return outputSelection(outputConfig{
-		report: opts.report, output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates,
+		report: opts.Report, output: opts.Output, template: opts.Template, outputTemplates: opts.OutputTemplates,
 	})
 }
 
 // statusTextOptions builds the StatusTextOptions used to render report text, including theme/lang/fix/diff settings.
 func statusTextOptions(opts *options, out io.Writer) hpaanalysis.StatusTextOptions {
 	return hpaanalysis.StatusTextOptions{
-		Theme:             style.NewTheme(shouldColorize(opts.color, out)),
-		Lang:              outputLang(opts.lang, opts.output),
-		Fix:               opts.features.fix,
-		Diff:              opts.diff,
-		HiddenFactors:     opts.features.hiddenFactors,
-		Labels:            labelProviderForLang(opts.lang, opts.output),
-		SummaryTranslator: summaryTranslatorForLang(opts.lang, opts.output),
+		Theme:             style.NewTheme(shouldColorize(opts.Color, out)),
+		Lang:              outputLang(opts.Lang, opts.Output),
+		Fix:               opts.Fix,
+		Diff:              opts.Diff,
+		HiddenFactors:     opts.HiddenFactors,
+		Labels:            labelProviderForLang(opts.Lang, opts.Output),
+		SummaryTranslator: summaryTranslatorForLang(opts.Lang, opts.Output),
 	}
 }
 
@@ -283,7 +283,7 @@ func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, 
 
 	report := hpaanalysis.StatusReport{
 		APIVersion: hpaanalysis.SchemaVersion,
-		Analysis:   hpaanalysis.AnalyzeWithOptions(hpa, includeInterpretation, analysisOptions(opts.healthWeights, opts.debug)),
+		Analysis:   hpaanalysis.AnalyzeWithOptions(hpa, includeInterpretation, analysisOptions(opts.HealthWeights, opts.Debug)),
 	}
 
 	// Run the enrichment pipeline. buildStatusEnrichers preserves the exact

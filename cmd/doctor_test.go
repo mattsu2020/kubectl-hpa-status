@@ -36,13 +36,9 @@ func TestRunDoctorEnablesBundledDiagnostics(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		commonOptions: commonOptions{
-			clientOverride: fakeClient,
-			output:         "json",
-		},
-		statusOptions: statusOptions{
-			events: eventOption{enabled: false},
-		},
+		ClientOverride: fakeClient,
+		Output:         "json",
+		Events:         EventOption{Enabled: false},
 	}
 
 	err := runDoctor(context.Background(), &buf, opts, []string{"web"})

@@ -69,7 +69,7 @@ func runOwnership(ctx context.Context, out io.Writer, opts *options, names []str
 	} else {
 		value = ownershipListReport{Items: reports}
 	}
-	return writeOutput(out, opts.output, opts.template, value, func() error {
+	return writeOutput(out, opts.Output, opts.Template, value, func() error {
 		writeOwnershipText(out, reports)
 		return nil
 	})

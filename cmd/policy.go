@@ -167,10 +167,10 @@ func runPolicy(ctx context.Context, out io.Writer, opts *options, policyOpts *po
 		reports = append(reports, *hpaanalysis.EvaluatePolicies(hpa, policyFile))
 	} else {
 		namespace := client.Namespace
-		if opts.allNamespaces {
+		if opts.AllNamespaces {
 			namespace = metav1.NamespaceAll
 		}
-		hpas, err := client.ListHPAs(ctx, namespace, metav1.ListOptions{LabelSelector: opts.selector}, opts.chunkSize)
+		hpas, err := client.ListHPAs(ctx, namespace, metav1.ListOptions{LabelSelector: opts.Selector}, opts.ChunkSize)
 		if err != nil {
 			return fmt.Errorf("failed to list HPAs: %w", err)
 		}
@@ -181,10 +181,10 @@ func runPolicy(ctx context.Context, out io.Writer, opts *options, policyOpts *po
 
 	report := policyListReport{Items: reports}
 	format, templateStr := outputSelection(outputConfig{
-		report: opts.report, output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates,
+		report: opts.Report, output: opts.Output, template: opts.Template, outputTemplates: opts.OutputTemplates,
 	})
 	if err := writeOutput(out, format, templateStr, report, func() error {
-		return writePolicyText(out, report, style.NewTheme(shouldColorize(opts.color, out)))
+		return writePolicyText(out, report, style.NewTheme(shouldColorize(opts.Color, out)))
 	}); err != nil {
 		return err
 	}

@@ -41,11 +41,7 @@ type configFile struct {
 	CapacityContext *bool                           `json:"capacityContext" yaml:"capacityContext"`
 }
 
-// outputTemplateConfig defines a named output template entry in the config file.
-type outputTemplateConfig struct {
-	Type     string `json:"type" yaml:"type"`
-	Template string `json:"template" yaml:"template"`
-}
+
 
 // validateConfig checks config file values for correctness and returns an
 // error describing the first invalid field encountered.
@@ -104,7 +100,7 @@ func loadConfigFile(path string) (configFile, error) {
 // applyConfigDefaults resolves the config file path, loads the config, and
 // applies its values as defaults for any flags the user did not set explicitly.
 func applyConfigDefaults(cmd *cobra.Command, opts *options) error {
-	path, explicit := opts.config, opts.config != ""
+	path, explicit := opts.Config, opts.Config != ""
 	if path == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -127,7 +123,7 @@ func applyConfigDefaults(cmd *cobra.Command, opts *options) error {
 // applyHealthWeightOverrides parses --health-weight name=value flags and
 // applies the overrides to the options healthWeights struct.
 func applyHealthWeightOverrides(opts *options) error {
-	for _, override := range opts.healthWeightOverrides {
+	for _, override := range opts.HealthWeightOverrides {
 		key, value, ok := strings.Cut(override, "=")
 		if !ok {
 			return fmt.Errorf("invalid --health-weight %q; expected name=value", override)
@@ -138,21 +134,21 @@ func applyHealthWeightOverrides(opts *options) error {
 		}
 		switch normalizeSelector(key) {
 		case "scalinginactive":
-			opts.healthWeights.ScalingInactive = hpaanalysis.IntWeight(parsed)
+			opts.HealthWeights.ScalingInactive = hpaanalysis.IntWeight(parsed)
 		case "unabletoscale":
-			opts.healthWeights.UnableToScale = hpaanalysis.IntWeight(parsed)
+			opts.HealthWeights.UnableToScale = hpaanalysis.IntWeight(parsed)
 		case "scalinglimited":
-			opts.healthWeights.ScalingLimited = hpaanalysis.IntWeight(parsed)
+			opts.HealthWeights.ScalingLimited = hpaanalysis.IntWeight(parsed)
 		case "implicitmaxreplicas":
-			opts.healthWeights.ImplicitMaxReplicas = hpaanalysis.IntWeight(parsed)
+			opts.HealthWeights.ImplicitMaxReplicas = hpaanalysis.IntWeight(parsed)
 		case "scaledownstabilized":
-			opts.healthWeights.ScaleDownStabilized = hpaanalysis.IntWeight(parsed)
+			opts.HealthWeights.ScaleDownStabilized = hpaanalysis.IntWeight(parsed)
 		case "atminimumreplicas":
-			opts.healthWeights.AtMinimumReplicas = hpaanalysis.IntWeight(parsed)
+			opts.HealthWeights.AtMinimumReplicas = hpaanalysis.IntWeight(parsed)
 		case "kedainactivetrigger":
-			opts.healthWeights.KEDAInactiveTrigger = hpaanalysis.IntWeight(parsed)
+			opts.HealthWeights.KEDAInactiveTrigger = hpaanalysis.IntWeight(parsed)
 		case "vpaconflict":
-			opts.healthWeights.VPAConflict = hpaanalysis.IntWeight(parsed)
+			opts.HealthWeights.VPAConflict = hpaanalysis.IntWeight(parsed)
 		default:
 			return fmt.Errorf("unknown health weight %q", key)
 		}

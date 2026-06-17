@@ -4,32 +4,27 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 
-	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsui2020/kubectl-hpa-status/internal/cmdoptions"
+	hpaanalysis "github.com/mattsui2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/spf13/cobra"
 )
 
 type whyNotScaleReport struct {
-	Namespace        string   `json:"namespace" yaml:"namespace"`
-	Name             string   `json:"name" yaml:"name"`
-	Target           string   `json:"target" yaml:"target"`
-	Summary          string   `json:"summary" yaml:"summary"`
-	Observed         []string `json:"observed" yaml:"observed"`
-	PossibleBlockers []string `json:"possibleBlockers,omitempty" yaml:"possibleBlockers,omitempty"`
-	Estimated        []string `json:"estimated,omitempty" yaml:"estimated,omitempty"`
-	Unknown          []string `json:"unknown,omitempty" yaml:"unknown,omitempty"`
-	NextChecks       []string `json:"nextChecks,omitempty" yaml:"nextChecks,omitempty"`
-}
-
-type whyNotScaleListReport struct {
-	Items []whyNotScaleReport `json:"items" yaml:"items"`
+	Namespace  string   `json:"namespace" yaml:"namespace"`
+	Name       string   `json:"name" yaml:"name"`
+	Target     string   `json:"target" yaml:"target"`
+	Summary    string   `json:"summary" yaml:"summary"`
+	Observed   []string `json:"observed" yaml:"observed"`
+	Unknown    []string `json:"unknown" yaml:"unknown"`
+	NextChecks []string `json:"nextChecks" yaml:"nextChecks"`
 }
 
 func newWhyNotScaleCommand(opts *options) *cobra.Command {
 	return &cobra.Command{
 		Use:               "why-not-scale NAME [NAME...]",
-		Aliases:           []string{"why"},
-		Short:             "Explain why an HPA is not visibly scaling",
+		Short:             "Explain why an HPA is not scaling out despite high metrics",
 		Args:              cobra.MinimumNArgs(1),
 		ValidArgsFunction: hpaNameCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -39,376 +34,132 @@ func newWhyNotScaleCommand(opts *options) *cobra.Command {
 }
 
 func runWhyNotScale(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	local := copyOptions(opts)
-	local.features.explain = true
-	local.features.diagnoseMetrics = true
-	local.features.metricsFreshness = true
-	local.features.readinessImpact = true
-	local.features.scalePath = true
-	local.features.capacityHeadroom = true
-	local.events.enabled = true
-	if local.events.limit == 0 {
-		local.events.limit = 10
-	}
+	local := applyCommandPreset(opts, cmdoptions.PresetWhyNotScale)
 
-	ec := newEnrichmentContext(ctx, &local)
 	reports := make([]whyNotScaleReport, 0, len(names))
 	for _, name := range names {
-		status, err := buildStatusReportWithClient(ctx, &local, name, true, ec)
+		statusReport, err := buildStatusReportWithClient(ctx, &local, name, true, nil)
 		if err != nil {
+			if local.Output == "json" || local.Output == "yaml" {
+				writeError(out, local.Output, err)
+			}
 			return err
 		}
-		reports = append(reports, buildWhyNotScaleReport(status))
+		reports = append(reports, buildWhyNotScaleReport(statusReport.Analysis))
 	}
 
-	var value any
+	value := any(reports)
 	if len(reports) == 1 {
 		value = reports[0]
-	} else {
-		value = whyNotScaleListReport{Items: reports}
 	}
-	return writeOutput(out, opts.output, opts.template, value, func() error {
-		writeWhyNotScaleText(out, reports)
+
+	format, templateStr := outputSelection(outputConfig{
+		output: local.Output, template: local.Template, outputTemplates: local.OutputTemplates,
+	})
+
+	return writeOutput(out, format, templateStr, value, func() error {
+		for i, report := range reports {
+			if i > 0 {
+				if _, err := fmt.Fprintln(out); err != nil {
+					return err
+				}
+			}
+			if err := writeWhyNotScaleText(out, report); err != nil {
+				return err
+			}
+		}
 		return nil
 	})
 }
 
-func buildWhyNotScaleReport(status hpaanalysis.StatusReport) whyNotScaleReport {
-	// Pass Analysis by pointer: whyNotScale calls a chain of 16 helpers that
-	// each previously copied the 63-field Analysis struct.
-	a := &status.Analysis
+func buildWhyNotScaleReport(analysis hpaanalysis.Analysis) whyNotScaleReport {
 	report := whyNotScaleReport{
-		Namespace:  a.Namespace,
-		Name:       a.Name,
-		Target:     a.Target,
-		Summary:    whyNotScaleSummary(a),
-		Estimated:  whyNotScaleEstimated(a),
-		Unknown:    whyNotScaleUnknown(a),
-		NextChecks: whyNotScaleNextChecks(a),
+		Namespace: analysis.Namespace,
+		Name:      analysis.Name,
+		Target:    analysis.Target,
+		Summary:   analysis.Summary,
+		Unknown: []string{
+			"controller-internal per-metric replica recommendations are not exposed through the HPA API",
+		},
+		NextChecks: []string{
+			fmt.Sprintf("kubectl describe hpa %s -n %s", analysis.Name, analysis.Namespace),
+		},
 	}
 
-	report.Observed = append(report.Observed,
-		fmt.Sprintf("replicas: current=%d desired=%d min=%d max=%d", a.Current, a.Desired, a.Min, a.Max),
-		fmt.Sprintf("health: %s score=%d", a.Health, a.HealthScore),
-	)
-	for _, metric := range a.Metrics {
-		if metric.Ratio != nil {
-			report.Observed = append(report.Observed,
-				fmt.Sprintf("%s metric %s ratio=%.2f current=%s target=%s", metric.Type, metric.Name, *metric.Ratio, metric.Current, metric.Target))
-		} else if metric.Text != "" {
-			report.Observed = append(report.Observed, metric.Text)
+	if analysis.Summary != "" {
+		report.Observed = append(report.Observed, analysis.Summary)
+	}
+	for _, cond := range analysis.Conditions {
+		if cond.Status == "True" || cond.Status == "False" {
+			report.Observed = append(report.Observed, fmt.Sprintf("%s=%s: %s", cond.Type, cond.Status, cond.Reason))
 		}
 	}
-	for _, condition := range a.Conditions {
-		report.Observed = append(report.Observed,
-			fmt.Sprintf("%s=%s reason=%s", condition.Type, condition.Status, condition.Reason))
+	for _, metric := range analysis.Metrics {
+		line := metric.Text
+		if line == "" {
+			line = fmt.Sprintf("%s %s current=%s target=%s", metric.Type, metric.Name, metric.Current, metric.Target)
+		}
+		if metric.Ratio != nil && *metric.Ratio > 1.0 {
+			report.Observed = append(report.Observed, line)
+		}
 	}
-	if a.TargetReplicas != nil {
-		tr := a.TargetReplicas
-		report.Observed = append(report.Observed,
-			fmt.Sprintf("target pods: ready=%d notReady=%d pending=%d total=%d", tr.ReadyReplicas, tr.NotReady, tr.Pending, tr.TotalReplicas))
+	if analysis.Desired == analysis.Max && analysis.Max > 0 {
+		report.Observed = append(report.Observed, "maxReplicas may be capping scale-up")
 	}
-	if a.ReadinessImpact != nil && a.ReadinessImpact.LikelyAffected {
-		report.Observed = append(report.Observed, a.ReadinessImpact.Evidence...)
+	if analysis.ImpactMetric != nil && analysis.ImpactMetric.Ratio > 1.0 {
+		report.Observed = append(report.Observed,
+			fmt.Sprintf("Resource metric %s ratio=%.2f", analysis.ImpactMetric.Name, analysis.ImpactMetric.Ratio))
+	}
+	for _, warning := range analysis.Warnings {
+		if warning != "" {
+			report.Observed = append(report.Observed, warning)
+		}
 	}
 
-	report.PossibleBlockers = append(report.PossibleBlockers, whyNotScaleBlockers(a)...)
-	if len(report.PossibleBlockers) == 0 {
-		report.PossibleBlockers = append(report.PossibleBlockers, "no hard blocker is visible from HPA status; controller tolerance, stabilization, or metric freshness may still explain no visible change")
+	if len(report.Observed) == 0 {
+		report.Observed = append(report.Observed, "no visible scale-up pressure detected from current HPA status")
 	}
 	return report
 }
 
-func whyNotScaleEstimated(a *hpaanalysis.Analysis) []string {
-	var estimated []string
-
-	estimated = appendToleranceEstimates(estimated, a)
-	estimated = appendStabilizationEstimates(estimated, a)
-	estimated = appendMissingMetricDampeningEstimate(estimated, a)
-
-	return estimated
-}
-
-func appendToleranceEstimates(estimated []string, a *hpaanalysis.Analysis) []string {
-	const defaultTolerance = 0.1
-
-	// Prefer structured decision trace tolerance data when available.
-	if sdt := a.StructuredDecisionTrace; sdt != nil && sdt.ToleranceEffect != nil {
-		return appendStructuredToleranceEstimates(estimated, sdt.ToleranceEffect)
+func writeWhyNotScaleText(out io.Writer, report whyNotScaleReport) error {
+	if _, err := fmt.Fprintf(out, "Why not scale: %s/%s\n", report.Namespace, report.Name); err != nil {
+		return err
 	}
-
-	// Fall back to MetricDecisionTrace tolerance data.
-	if mdt := a.MetricDecisionTrace; mdt != nil && mdt.ToleranceEffect != nil {
-		return appendMetricToleranceEstimates(estimated, mdt.ToleranceEffect)
-	}
-
-	// Estimate from metric ratios when no trace is available.
-	for _, metric := range a.Metrics {
-		estimated = appendToleranceEstimateForMetric(estimated, metric, defaultTolerance)
-	}
-
-	return estimated
-}
-
-func appendStructuredToleranceEstimates(estimated []string, te *hpaanalysis.ToleranceTrace) []string {
-	if len(te.SuppressedMetrics) > 0 {
-		for _, name := range te.SuppressedMetrics {
-			estimated = append(estimated,
-				fmt.Sprintf("tolerance (default %.2f) likely suppressed scaling for metric %s", te.EffectiveTolerance, name))
-		}
-	} else if te.Note != "" {
-		estimated = append(estimated, te.Note)
-	}
-	return estimated
-}
-
-func appendMetricToleranceEstimates(estimated []string, te *hpaanalysis.ToleranceEffect) []string {
-	if len(te.SuppressedMetrics) > 0 {
-		for _, name := range te.SuppressedMetrics {
-			estimated = append(estimated,
-				fmt.Sprintf("tolerance (default %.2f) likely suppressed scaling for metric %s", te.DefaultTolerance, name))
-		}
-	} else if te.Note != "" {
-		estimated = append(estimated, te.Note)
-	}
-	return estimated
-}
-
-func appendToleranceEstimateForMetric(estimated []string, metric hpaanalysis.Metric, defaultTolerance float64) []string {
-	if metric.Ratio == nil {
-		return estimated
-	}
-	ratio := *metric.Ratio
-	distance := ratio - 1.0
-	if distance < 0 {
-		distance = -distance
-	}
-	if distance > 0 && distance <= defaultTolerance {
-		estimated = append(estimated,
-			fmt.Sprintf("%s metric %s ratio=%.2f is within tolerance band (default %.2f); scaling suppressed", metric.Type, metric.Name, ratio, defaultTolerance))
-	}
-	return estimated
-}
-
-func appendStabilizationEstimates(estimated []string, a *hpaanalysis.Analysis) []string {
-	// Prefer structured decision trace stabilization data.
-	if sdt := a.StructuredDecisionTrace; sdt != nil && sdt.StabilizationEffect != nil {
-		se := sdt.StabilizationEffect
-		if se.Note != "" {
-			estimated = append(estimated, se.Note)
-		} else if se.SuppressedDirection != "" {
-			estimated = append(estimated,
-				fmt.Sprintf("stabilization window may be holding a %s decision", se.SuppressedDirection))
-		}
-		return estimated
-	}
-
-	// Fall back to MetricDecisionTrace stabilization data.
-	if mdt := a.MetricDecisionTrace; mdt != nil && mdt.StabilizationEffect != nil {
-		se := mdt.StabilizationEffect
-		if se.Note != "" {
-			estimated = append(estimated, se.Note)
-		} else if se.SuppressedScaleDown {
-			estimated = append(estimated,
-				fmt.Sprintf("scale-down stabilization window (%ds) may be suppressing scale-down", se.WindowSeconds))
-		}
-		return estimated
-	}
-
-	// Estimate from Analysis stabilization fields.
-	if a.StabilizationWindowSeconds != nil && *a.StabilizationWindowSeconds > 0 {
-		if a.StabilizationRemaining != nil && *a.StabilizationRemaining > 0 {
-			estimated = append(estimated,
-				fmt.Sprintf("scale-down stabilization window (%ds) may hold recommendation for about %ds", *a.StabilizationWindowSeconds, *a.StabilizationRemaining))
-		} else {
-			estimated = append(estimated,
-				fmt.Sprintf("scale-down stabilization window (%ds) may be delaying scale-down decisions", *a.StabilizationWindowSeconds))
+	if report.Summary != "" {
+		if _, err := fmt.Fprintf(out, "%s\n", report.Summary); err != nil {
+			return err
 		}
 	}
-
-	return estimated
-}
-
-func appendMissingMetricDampeningEstimate(estimated []string, a *hpaanalysis.Analysis) []string {
-	hasMissing := false
-	for _, freshness := range a.MetricFreshnessEntries {
-		if freshness.Status == string(hpaanalysis.FreshnessMissing) {
-			hasMissing = true
-			break
+	if len(report.Observed) > 0 {
+		if _, err := fmt.Fprintln(out, "\nObserved:"); err != nil {
+			return err
 		}
-	}
-	if !hasMissing {
-		return estimated
-	}
-	estimated = append(estimated,
-		"missing metrics may cause conservative dampening; the HPA controller may use fewer pods than expected in utilization calculations")
-	return estimated
-}
-
-func whyNotScaleUnknown(_ *hpaanalysis.Analysis) []string {
-	unknown := []string{
-		"controller-internal per-metric replica recommendations are not exposed by the HPA API",
-		"exact missing-metric dampening is not exposed by Kubernetes API",
-		"controller-internal recommendation history is not visible",
-	}
-	return unknown
-}
-
-func whyNotScaleSummary(a *hpaanalysis.Analysis) string {
-	if a.Desired > a.Current {
-		return "scale-up is requested by HPA, but the target has not caught up yet"
-	}
-	if a.Desired < a.Current {
-		return "scale-down is requested by HPA, but replicas have not converged yet"
-	}
-	if a.Current >= a.Max {
-		return "HPA is at maxReplicas; additional scale-up is capped"
-	}
-	if a.Current <= a.Min {
-		return "HPA is at minReplicas; additional scale-down is capped"
-	}
-	if hasMetricPressure(a) {
-		return "metric pressure is visible, but desiredReplicas still equals currentReplicas"
-	}
-	return "no visible scale change is requested in current HPA status"
-}
-
-func whyNotScaleBlockers(a *hpaanalysis.Analysis) []string {
-	var blockers []string
-	blockers = append(blockers, replicaLimitBlockers(a)...)
-	blockers = append(blockers, conditionBlockers(a)...)
-	blockers = append(blockers, stabilizationBlockers(a)...)
-	blockers = append(blockers, targetReplicaBlockers(a)...)
-	blockers = append(blockers, readinessBlockers(a)...)
-	blockers = append(blockers, freshnessBlockers(a)...)
-	return blockers
-}
-
-func replicaLimitBlockers(a *hpaanalysis.Analysis) []string {
-	var blockers []string
-	if a.Current >= a.Max || a.Desired >= a.Max || conditionStatus(a, hpaanalysis.ConditionScalingLimited) == "True" {
-		blockers = append(blockers, "maxReplicas may be capping scale-up")
-	}
-	if a.Current <= a.Min || a.Desired <= a.Min {
-		blockers = append(blockers, "minReplicas may be capping scale-down")
-	}
-	return blockers
-}
-
-func conditionBlockers(a *hpaanalysis.Analysis) []string {
-	var blockers []string
-	if conditionStatus(a, hpaanalysis.ConditionScalingActive) == "False" {
-		blockers = append(blockers, "ScalingActive=False; HPA cannot compute a valid scaling recommendation")
-	}
-	if conditionStatus(a, hpaanalysis.ConditionAbleToScale) == "False" {
-		blockers = append(blockers, "AbleToScale=False; controller reports it cannot apply scaling")
-	}
-	return blockers
-}
-
-func stabilizationBlockers(a *hpaanalysis.Analysis) []string {
-	if a.StabilizationRemaining != nil && *a.StabilizationRemaining > 0 {
-		return []string{fmt.Sprintf("stabilization window may hold the recommendation for about %ds", *a.StabilizationRemaining)}
-	}
-	return nil
-}
-
-func targetReplicaBlockers(a *hpaanalysis.Analysis) []string {
-	if a.TargetReplicas == nil {
-		return nil
-	}
-	var blockers []string
-	if a.TargetReplicas.Pending > 0 {
-		blockers = append(blockers, fmt.Sprintf("%d target pod(s) are Pending", a.TargetReplicas.Pending))
-	}
-	if a.TargetReplicas.NotReady > 0 {
-		blockers = append(blockers, fmt.Sprintf("%d target pod(s) are NotReady", a.TargetReplicas.NotReady))
-	}
-	if a.TargetReplicas.Unschedulable > 0 {
-		blockers = append(blockers, fmt.Sprintf("%d Pending pod(s) are Unschedulable", a.TargetReplicas.Unschedulable))
-	}
-	return blockers
-}
-
-func readinessBlockers(a *hpaanalysis.Analysis) []string {
-	if a.ReadinessImpact != nil && a.ReadinessImpact.LikelyAffected {
-		return []string{"not-yet-ready pods or missing PodMetrics may dampen HPA CPU/resource decisions"}
-	}
-	return nil
-}
-
-func freshnessBlockers(a *hpaanalysis.Analysis) []string {
-	var blockers []string
-	for _, freshness := range a.MetricFreshnessEntries {
-		if freshness.Status != "" && freshness.Status != string(hpaanalysis.FreshnessOK) {
-			blockers = append(blockers, fmt.Sprintf("metric freshness for %s is %s", freshness.Name, freshness.Status))
-		}
-	}
-	return blockers
-}
-
-func conditionStatus(a *hpaanalysis.Analysis, conditionType string) string {
-	for _, condition := range a.Conditions {
-		if condition.Type == conditionType {
-			return condition.Status
-		}
-	}
-	return ""
-}
-
-func hasMetricPressure(a *hpaanalysis.Analysis) bool {
-	for _, metric := range a.Metrics {
-		if metric.Ratio != nil && *metric.Ratio > 1.0 {
-			return true
-		}
-	}
-	return false
-}
-
-func whyNotScaleNextChecks(a *hpaanalysis.Analysis) []string {
-	ns := a.Namespace
-	name := a.Name
-	checks := []string{
-		fmt.Sprintf("kubectl describe hpa %s -n %s", name, ns),
-		fmt.Sprintf("kubectl top pods -n %s", ns),
-	}
-	if a.Target != "" {
-		checks = append(checks, fmt.Sprintf("kubectl get pods -n %s --show-labels", ns))
-		checks = append(checks, fmt.Sprintf("kubectl describe %s -n %s", a.Target, ns))
-	}
-	if a.Current >= a.Max || a.Desired >= a.Max {
-		checks = append(checks, fmt.Sprintf("kubectl hpa_status preflight %s -n %s --raise-max %d", name, ns, a.Max+5))
-	}
-	return checks
-}
-
-func writeWhyNotScaleText(out io.Writer, reports []whyNotScaleReport) {
-	for i, report := range reports {
-		if i > 0 {
-			_, _ = fmt.Fprintln(out)
-		}
-		_, _ = fmt.Fprintf(out, "Why not scale: %s/%s\n", report.Namespace, report.Name)
-		_, _ = fmt.Fprintf(out, "Summary: %s\n\n", report.Summary)
-		writeWhySection(out, "Observed", report.Observed)
-		writeWhySection(out, "Possible blockers", report.PossibleBlockers)
-		writeWhySection(out, "Estimated", report.Estimated)
-		writeWhySection(out, "Unknown", report.Unknown)
-		if len(report.NextChecks) > 0 {
-			_, _ = fmt.Fprintln(out, "Next checks:")
-			for _, check := range report.NextChecks {
-				_, _ = fmt.Fprintf(out, "  %s\n", check)
+		for _, line := range report.Observed {
+			if _, err := fmt.Fprintf(out, "  - %s\n", line); err != nil {
+				return err
 			}
 		}
 	}
-}
-
-func writeWhySection(out io.Writer, title string, items []string) {
-	if len(items) == 0 {
-		return
+	if len(report.Unknown) > 0 {
+		if _, err := fmt.Fprintln(out, "\nUnknown / not exposed:"); err != nil {
+			return err
+		}
+		for _, line := range report.Unknown {
+			if _, err := fmt.Fprintf(out, "  - %s\n", line); err != nil {
+				return err
+			}
+		}
 	}
-	_, _ = fmt.Fprintf(out, "%s:\n", title)
-	for _, item := range items {
-		_, _ = fmt.Fprintf(out, "  - %s\n", item)
+	if len(report.NextChecks) > 0 {
+		if _, err := fmt.Fprintln(out, "\nNext checks:"); err != nil {
+			return err
+		}
+		for _, line := range report.NextChecks {
+			if _, err := fmt.Fprintf(out, "  - %s\n", strings.TrimSpace(line)); err != nil {
+				return err
+			}
+		}
 	}
-	_, _ = fmt.Fprintln(out)
+	return nil
 }

@@ -67,7 +67,7 @@ func runTune(ctx context.Context, out io.Writer, opts *options, name, goal strin
 	if !suggest {
 		report.SuggestedBehavior = ""
 	}
-	format, templateStr := outputSelection(outputConfig{output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates})
+	format, templateStr := outputSelection(outputConfig{output: opts.Output, template: opts.Template, outputTemplates: opts.OutputTemplates})
 	return writeOutput(out, format, templateStr, report, func() error {
 		_, _ = fmt.Fprintf(out, "HPA Tuning Advisor: %s/%s\n\nGoal: %s\n\nFindings:\n", report.Namespace, report.Name, report.Goal)
 		if len(report.Findings) == 0 {

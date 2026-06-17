@@ -1,191 +1,182 @@
 package cmd
 
-import (
-	"testing"
-)
+import "testing"
 
-// TestNormalize_FlagImplications verifies the documented implication chains
-// in options.Normalize. Each rule was previously scattered across
-// PersistentPreRun; the Normalize method now centralizes them and these
-// tests pin the contract.
 func TestNormalize_FlagImplications(t *testing.T) {
 	t.Run("recommend implies suggest", func(t *testing.T) {
 		o := &options{}
-		o.features.recommend = true
+		o.Recommend = true
 		o.Normalize()
-		if !o.features.suggest {
+		if !o.Suggest {
 			t.Fatal("recommend should imply suggest")
 		}
 	})
 
 	t.Run("fix implies suggest and explain", func(t *testing.T) {
 		o := &options{}
-		o.features.fix = true
+		o.Fix = true
 		o.Normalize()
-		if !o.features.suggest || !o.features.explain {
+		if !o.Suggest || !o.Explain {
 			t.Fatal("fix should imply suggest and explain")
 		}
 	})
 
 	t.Run("apply implies suggest and explain", func(t *testing.T) {
 		o := &options{}
-		o.apply = true
+		o.Apply = true
 		o.Normalize()
-		if !o.features.suggest || !o.features.explain {
+		if !o.Suggest || !o.Explain {
 			t.Fatal("apply should imply suggest and explain")
 		}
 	})
 
 	t.Run("diff implies suggest", func(t *testing.T) {
 		o := &options{}
-		o.diff = true
+		o.Diff = true
 		o.Normalize()
-		if !o.features.suggest {
+		if !o.Suggest {
 			t.Fatal("diff should imply suggest")
 		}
 	})
 
 	t.Run("export implies suggest", func(t *testing.T) {
 		o := &options{}
-		o.export = "yaml"
+		o.Export = "yaml"
 		o.Normalize()
-		if !o.features.suggest {
+		if !o.Suggest {
 			t.Fatal("export should imply suggest")
 		}
 	})
 
 	t.Run("exportPatch promotes to export and implies suggest", func(t *testing.T) {
 		o := &options{}
-		o.exportPatch = "kustomize"
+		o.ExportPatch = "kustomize"
 		o.Normalize()
-		if o.export != "kustomize" {
-			t.Fatalf("exportPatch should set export to same value, got %q", o.export)
+		if o.Export != "kustomize" {
+			t.Fatalf("exportPatch should set export to same value, got %q", o.Export)
 		}
-		if !o.features.suggest {
+		if !o.Suggest {
 			t.Fatal("exportPatch should imply suggest")
 		}
 	})
 
 	t.Run("decisionTraceFormat implies decisionTrace", func(t *testing.T) {
 		o := &options{}
-		o.decisionTraceFormat = "json"
+		o.DecisionTraceFormat = "json"
 		o.Normalize()
-		if !o.features.decisionTrace {
+		if !o.DecisionTrace {
 			t.Fatal("decisionTraceFormat should imply decisionTrace")
 		}
 	})
 
 	t.Run("structured format implies explain, decisionTrace json", func(t *testing.T) {
 		o := &options{}
-		o.format = "structured"
+		o.Format = "structured"
 		o.Normalize()
-		if !o.features.explain || !o.features.decisionTrace {
+		if !o.Explain || !o.DecisionTrace {
 			t.Fatal("structured format should imply explain and decisionTrace")
 		}
-		if o.decisionTraceFormat != "json" {
-			t.Fatalf("structured format should set decisionTraceFormat to json, got %q", o.decisionTraceFormat)
+		if o.DecisionTraceFormat != "json" {
+			t.Fatalf("structured format should set decisionTraceFormat to json, got %q", o.DecisionTraceFormat)
 		}
 	})
 
 	t.Run("contextForAI implies explain, diagnoseMetrics, metricHints, hiddenFactors", func(t *testing.T) {
 		o := &options{}
-		o.features.contextForAI = true
+		o.ContextForAI = true
 		o.Normalize()
-		if !o.features.explain || !o.features.diagnoseMetrics || !o.features.metricHints || !o.features.hiddenFactors {
+		if !o.Explain || !o.DiagnoseMetrics || !o.MetricHints || !o.HiddenFactors {
 			t.Fatal("contextForAI should imply explain, diagnoseMetrics, metricHints, hiddenFactors")
 		}
 	})
 
 	t.Run("ask implies explain, diagnoseMetrics, metricHints, hiddenFactors", func(t *testing.T) {
 		o := &options{}
-		o.ask = "why is it capped?"
+		o.Ask = "why is it capped?"
 		o.Normalize()
-		if !o.features.explain || !o.features.diagnoseMetrics || !o.features.metricHints || !o.features.hiddenFactors {
+		if !o.Explain || !o.DiagnoseMetrics || !o.MetricHints || !o.HiddenFactors {
 			t.Fatal("ask should imply explain, diagnoseMetrics, metricHints, hiddenFactors")
 		}
 	})
 
 	t.Run("hiddenFactors implies readinessImpact, metricsFreshness", func(t *testing.T) {
 		o := &options{}
-		o.features.hiddenFactors = true
+		o.HiddenFactors = true
 		o.Normalize()
-		if !o.features.readinessImpact || !o.features.metricsFreshness {
+		if !o.ReadinessImpact || !o.MetricsFreshness {
 			t.Fatal("hiddenFactors should imply readinessImpact and metricsFreshness")
 		}
 	})
 
 	t.Run("nodeAutoscaler implies capacityContext, capacityDeep, scalePath", func(t *testing.T) {
 		o := &options{}
-		o.features.nodeAutoscaler = true
+		o.NodeAutoscaler = true
 		o.Normalize()
-		if !o.features.capacityContext || !o.features.capacityDeep || !o.features.scalePath {
+		if !o.CapacityContext || !o.CapacityDeep || !o.ScalePath {
 			t.Fatal("nodeAutoscaler should imply capacityContext, capacityDeep, scalePath")
 		}
 	})
 
 	t.Run("karpenter implies capacityContext, capacityDeep, scalePath", func(t *testing.T) {
 		o := &options{}
-		o.features.karpenter = true
+		o.Karpenter = true
 		o.Normalize()
-		if !o.features.capacityContext || !o.features.capacityDeep || !o.features.scalePath {
+		if !o.CapacityContext || !o.CapacityDeep || !o.ScalePath {
 			t.Fatal("karpenter should imply capacityContext, capacityDeep, scalePath")
 		}
 	})
 
 	t.Run("trend implies trendAnomaly", func(t *testing.T) {
 		o := &options{}
-		o.trend = true
+		o.Trend = true
 		o.Normalize()
-		if !o.features.trendAnomaly {
+		if !o.TrendAnomaly {
 			t.Fatal("trend should imply trendAnomaly")
 		}
 	})
 
 	t.Run("trendAnomaly already set is preserved", func(t *testing.T) {
 		o := &options{}
-		o.trend = true
-		o.features.trendAnomaly = true
+		o.Trend = true
+		o.TrendAnomaly = true
 		o.Normalize()
-		if !o.features.trendAnomaly {
+		if !o.TrendAnomaly {
 			t.Fatal("trendAnomaly should stay true when already set")
 		}
 	})
 
 	t.Run("no-interpret clears interpret and suggest", func(t *testing.T) {
 		o := &options{}
-		o.features.interpret = true
-		o.features.suggest = true
-		o.features.explain = true
-		o.features.noInterpret = true
+		o.Interpret = true
+		o.Suggest = true
+		o.Explain = true
+		o.NoInterpret = true
 		o.Normalize()
-		if o.features.interpret {
+		if o.Interpret {
 			t.Fatal("no-interpret should clear interpret")
 		}
-		if o.features.suggest {
+		if o.Suggest {
 			t.Fatal("no-interpret should clear suggest")
 		}
-		if !o.features.explain {
+		if !o.Explain {
 			t.Fatal("no-interpret should NOT clear explain (only interpret+suggest)")
+		}
+	})
+
+	t.Run("analysis-profile incident enables incident bundle", func(t *testing.T) {
+		o := &options{}
+		o.AnalysisProfile = "incident"
+		o.Normalize()
+		if !o.ScaleoutBlockers || !o.DiagnoseMetrics {
+			t.Fatal("incident profile should enable incident-oriented flags")
 		}
 	})
 
 	t.Run("empty options stays mostly empty", func(t *testing.T) {
 		o := &options{}
 		o.Normalize()
-		// No implication should fire; flags stay false.
-		if o.features.suggest || o.features.explain || o.features.decisionTrace || o.features.capacityContext {
+		if o.Suggest || o.Explain || o.DecisionTrace || o.CapacityContext {
 			t.Fatal("empty options should not trigger any implication")
 		}
-	})
-}
-
-// TestNewClient_NamespaceDefault confirms the namespace fallback logic
-// embedded in commonOptions when a fake client override is supplied.
-func TestNewClient_NamespaceDefault(t *testing.T) {
-	t.Run("explicit namespace preserved with override", func(_ *testing.T) {
-		o := &commonOptions{namespace: "my-ns"}
-		// clientOverride nil triggers real kubeconfig path which we cannot
-		// exercise here; this test only covers the override branch.
-		_ = o
 	})
 }

@@ -92,7 +92,7 @@ func runFlapLive(ctx context.Context, out io.Writer, opts *options, name string,
 }
 
 func runFlapFromRecord(out io.Writer, opts *options, name, path string) error {
-	trace, err := loadRecordedTrace(path, opts.namespace, name)
+	trace, err := loadRecordedTrace(path, opts.Namespace, name)
 	if err != nil {
 		return err
 	}
@@ -116,7 +116,7 @@ func runFlapFromRecord(out io.Writer, opts *options, name, path string) error {
 }
 
 func writeFlapReport(out io.Writer, opts *options, report flapReport) error {
-	format, _ := outputSelection(outputConfig{report: opts.report, output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates})
+	format, _ := outputSelection(outputConfig{report: opts.Report, output: opts.Output, template: opts.Template, outputTemplates: opts.OutputTemplates})
 	switch format {
 	case "json":
 		encoder := json.NewEncoder(out)
@@ -130,7 +130,7 @@ func writeFlapReport(out io.Writer, opts *options, report flapReport) error {
 		_, err = out.Write(data)
 		return err
 	default:
-		theme := style.NewTheme(shouldColorize(opts.color, out))
+		theme := style.NewTheme(shouldColorize(opts.Color, out))
 		_, _ = fmt.Fprintf(out, "Flapping Analysis: %s/%s\n", report.Namespace, report.Name)
 		_, _ = fmt.Fprintf(out, "  source: %s\n", report.Source)
 		if report.Snapshots > 0 {

@@ -9,7 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
+	"github.com/mattsui2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/spf13/cobra"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -145,28 +146,7 @@ func runBundle(ctx context.Context, out io.Writer, opts *options, name, format, 
 // are shared but bundle code never writes through them.
 func collectBundleData(ctx context.Context, client *kube.Client, opts *options, name string) (*bundleData, error) {
 	// Enable all doctor-level flags on a shallow copy of opts.
-	bundleOpts := copyOptions(opts)
-	bundleOpts.features.explain = true
-	bundleOpts.features.diagnoseMetrics = true
-	bundleOpts.features.metricsFreshness = true
-	bundleOpts.features.checkResources = true
-	bundleOpts.features.explainPods = true
-	bundleOpts.features.capacityContext = true
-	bundleOpts.features.gitopsCheck = true
-	bundleOpts.features.metricContract = true
-	bundleOpts.features.churnDetect = true
-	bundleOpts.features.metricHints = true
-	bundleOpts.features.containerAdvisor = true
-	bundleOpts.features.behaviorAdvisor = true
-	bundleOpts.features.capacityDeep = true
-	bundleOpts.features.readinessImpact = true
-	bundleOpts.features.rolloutImpact = true
-	bundleOpts.features.scaleoutBlockers = true
-	bundleOpts.features.controllerProfile = true
-	bundleOpts.keda = "on"
-	bundleOpts.vpa = "on"
-	bundleOpts.features.scalePath = true
-	bundleOpts.events = eventOption{enabled: true, limit: 20}
+	bundleOpts := applyCommandPreset(opts, cmdoptions.PresetBundle)
 
 	data := &bundleData{
 		Namespace: client.Namespace,
@@ -188,7 +168,7 @@ func collectBundleData(ctx context.Context, client *kube.Client, opts *options, 
 
 	// 3. Build full doctor-level analysis with KEDA+VPA enrichment.
 	ec := newEnrichmentContext(ctx, &bundleOpts)
-	includeInterpretation := !bundleOpts.features.noInterpret
+	includeInterpretation := !bundleOpts.NoInterpret
 	statusReport, err := buildStatusReport(ctx, &bundleOpts, client, name, includeInterpretation, ec)
 	if err != nil {
 		return nil, fmt.Errorf("building status report: %w", err)

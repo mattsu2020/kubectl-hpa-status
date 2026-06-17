@@ -69,8 +69,8 @@ func newRecordCommand(opts *options) *cobra.Command {
 		ValidArgsFunction: hpaNameCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path := outputPath
-			if path == "" && opts.output != "" && !isKnownOutputFormat(opts.output) {
-				path = opts.output
+			if path == "" && opts.Output != "" && !isKnownOutputFormat(opts.Output) {
+				path = opts.Output
 			}
 			if path == "" {
 				path = "hpa-history.jsonl"
@@ -247,8 +247,8 @@ func runRetrospectiveTimeline(ctx context.Context, out io.Writer, opts *options,
 
 	// 5. Render based on output format.
 	format, _ := outputSelection(outputConfig{
-		report: opts.report, output: opts.output, template: opts.template,
-		outputTemplates: opts.outputTemplates,
+		report: opts.Report, output: opts.Output, template: opts.Template,
+		outputTemplates: opts.OutputTemplates,
 	})
 
 	// Replay mode rendering.
@@ -278,7 +278,7 @@ func renderRetrospectiveReplay(out io.Writer, replayAnalysis *hpaanalysis.Replay
 	case "html":
 		return hpaanalysis.WriteReplayHTML(out, replayAnalysis, tl)
 	default:
-		theme := style.NewTheme(shouldColorize(opts.color, out))
+		theme := style.NewTheme(shouldColorize(opts.Color, out))
 		return hpaanalysis.WriteReplayText(out, replayAnalysis, tl, theme)
 	}
 }
@@ -301,7 +301,7 @@ func renderRetrospective(out io.Writer, tl hpaanalysis.RetrospectiveTimeline, fo
 	case "html":
 		return hpaanalysis.WriteRetrospectiveHTML(out, tl)
 	default:
-		theme := style.NewTheme(shouldColorize(opts.color, out))
+		theme := style.NewTheme(shouldColorize(opts.Color, out))
 		return hpaanalysis.WriteRetrospectiveTimeline(out, tl, theme)
 	}
 }
@@ -312,7 +312,7 @@ func runTimeline(ctx context.Context, out io.Writer, opts *options, name string,
 		interval = time.Second
 	}
 
-	theme := style.NewTheme(shouldColorize(opts.color, out))
+	theme := style.NewTheme(shouldColorize(opts.Color, out))
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -335,7 +335,7 @@ func runTimeline(ctx context.Context, out io.Writer, opts *options, name string,
 
 		trace := hpaanalysis.TimelineTrace{
 			HPAName:   name,
-			Namespace: opts.namespace,
+			Namespace: opts.Namespace,
 			Start:     snapshots[0].Timestamp,
 			Interval:  interval,
 			Snapshots: snapshots,
@@ -419,14 +419,14 @@ func recordOnce(ctx context.Context, opts *options, name string, interval time.D
 		return nil, fmt.Errorf("failed to create Kubernetes client: %w", err)
 	}
 	namespace := client.Namespace
-	if opts.allNamespaces {
+	if opts.AllNamespaces {
 		namespace = metav1.NamespaceAll
 	}
 	var records []hpaanalysis.TimelineTrace
-	err = kube.ListHPAsEachPage(ctx, client.Interface, namespace, metav1.ListOptions{LabelSelector: opts.selector}, opts.chunkSize, func(page *autoscalingv2.HorizontalPodAutoscalerList) error {
+	err = kube.ListHPAsEachPage(ctx, client.Interface, namespace, metav1.ListOptions{LabelSelector: opts.Selector}, opts.ChunkSize, func(page *autoscalingv2.HorizontalPodAutoscalerList) error {
 		for i := range page.Items {
 			local := copyOptions(opts)
-			local.namespace = page.Items[i].Namespace
+			local.Namespace = page.Items[i].Namespace
 			report, err := buildStatusReportWithClient(ctx, &local, page.Items[i].Name, true, ec)
 			if err != nil {
 				return err
@@ -496,11 +496,11 @@ func writeRecordSummary(out io.Writer, path string, counts map[string]int, chang
 }
 
 func runTimelineFromRecord(out io.Writer, opts *options, name, path string) error {
-	trace, err := loadRecordedTrace(path, opts.namespace, name)
+	trace, err := loadRecordedTrace(path, opts.Namespace, name)
 	if err != nil {
 		return err
 	}
-	format, _ := outputSelection(outputConfig{report: opts.report, output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates})
+	format, _ := outputSelection(outputConfig{report: opts.Report, output: opts.Output, template: opts.Template, outputTemplates: opts.OutputTemplates})
 	switch format {
 	case "json":
 		encoder := json.NewEncoder(out)
@@ -518,7 +518,7 @@ func runTimelineFromRecord(out io.Writer, opts *options, name, path string) erro
 	case "html":
 		return hpaanalysis.WriteTimelineHTML(out, *trace)
 	default:
-		theme := style.NewTheme(shouldColorize(opts.color, out))
+		theme := style.NewTheme(shouldColorize(opts.Color, out))
 		return hpaanalysis.WriteTimelineTable(out, *trace, theme)
 	}
 }
@@ -610,14 +610,14 @@ func runReplay(out io.Writer, opts *options, filePath string) error {
 		return fmt.Errorf("failed to parse trace file: %w", err)
 	}
 
-	format, _ := outputSelection(outputConfig{report: opts.report, output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates})
+	format, _ := outputSelection(outputConfig{report: opts.Report, output: opts.Output, template: opts.Template, outputTemplates: opts.OutputTemplates})
 	switch format {
 	case "markdown", "md":
 		return hpaanalysis.WriteTimelineMarkdown(out, trace)
 	case "html":
 		return hpaanalysis.WriteTimelineHTML(out, trace)
 	default:
-		theme := style.NewTheme(shouldColorize(opts.color, out))
+		theme := style.NewTheme(shouldColorize(opts.Color, out))
 		return hpaanalysis.WriteTimelineTable(out, trace, theme)
 	}
 }

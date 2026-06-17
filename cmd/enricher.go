@@ -121,9 +121,9 @@ type decisionTracesEnricher struct {
 
 func newDecisionTracesEnricher(opts *options) Enricher {
 	return &decisionTracesEnricher{
-		enabled:             func() bool { return opts.features.decisionTrace || opts.decisionTraceFormat != "" },
-		decisionTrace:       opts.features.decisionTrace,
-		decisionTraceFormat: opts.decisionTraceFormat,
+		enabled:             func() bool { return opts.DecisionTrace || opts.DecisionTraceFormat != "" },
+		decisionTrace:       opts.DecisionTrace,
+		decisionTraceFormat: opts.DecisionTraceFormat,
 	}
 }
 
@@ -141,8 +141,8 @@ type eventsEnricher struct {
 
 func newEventsEnricher(opts *options) Enricher {
 	return &eventsEnricher{
-		enabled:    func() bool { return opts.events.enabled || opts.features.flappingAdvisor },
-		eventLimit: opts.events.limit,
+		enabled:    func() bool { return opts.Events.Enabled || opts.FlappingAdvisor },
+		eventLimit: opts.Events.Limit,
 	}
 }
 
@@ -158,7 +158,7 @@ type reportEnricher struct {
 }
 
 func newReportEnricher(opts *options) Enricher {
-	return &reportEnricher{healthWeights: opts.healthWeights}
+	return &reportEnricher{healthWeights: opts.HealthWeights}
 }
 
 func (*reportEnricher) Name() string  { return "report" }
@@ -174,7 +174,7 @@ type metricsDiagnosticsEnricher struct {
 
 func newMetricsDiagnosticsEnricher(opts *options) Enricher {
 	return &metricsDiagnosticsEnricher{
-		enabled: func() bool { return opts.features.diagnoseMetrics },
+		enabled: func() bool { return opts.DiagnoseMetrics },
 	}
 }
 
@@ -191,7 +191,7 @@ type metricFreshnessEnricher struct {
 
 func newMetricFreshnessEnricher(opts *options) Enricher {
 	return &metricFreshnessEnricher{
-		enabled: func() bool { return opts.features.metricsFreshness },
+		enabled: func() bool { return opts.MetricsFreshness },
 	}
 }
 
@@ -208,7 +208,7 @@ type resourceCheckEnricher struct {
 
 func newResourceCheckEnricher(opts *options) Enricher {
 	return &resourceCheckEnricher{
-		enabled: func() bool { return opts.features.checkResources },
+		enabled: func() bool { return opts.CheckResources },
 	}
 }
 
@@ -238,7 +238,7 @@ type podAnalysisEnricher struct {
 
 func newPodAnalysisEnricher(opts *options) Enricher {
 	return &podAnalysisEnricher{
-		enabled: func() bool { return opts.features.explainPods },
+		enabled: func() bool { return opts.ExplainPods },
 	}
 }
 
@@ -256,13 +256,13 @@ type simulationsEnricher struct {
 
 func newSimulationsEnricher(opts *options) Enricher {
 	return &simulationsEnricher{
-		enabled: func() bool { return len(opts.simulate) > 0 || len(opts.simulateMetric) > 0 },
+		enabled: func() bool { return len(opts.Simulate) > 0 || len(opts.SimulateMetric) > 0 },
 		cfg: SimulationConfig{
-			Overrides:       opts.simulate,
-			MetricOverrides: opts.simulateMetric,
-			DurationSeconds: opts.simulateDuration,
-			HealthWeights:   opts.healthWeights,
-			Debug:           opts.debug,
+			Overrides:       opts.Simulate,
+			MetricOverrides: opts.SimulateMetric,
+			DurationSeconds: opts.SimulateDuration,
+			HealthWeights:   opts.HealthWeights,
+			Debug:           opts.Debug,
 		},
 	}
 }
@@ -284,12 +284,12 @@ type capacityAnalysisEnricher struct {
 func newCapacityAnalysisEnricher(opts *options) Enricher {
 	return &capacityAnalysisEnricher{
 		enabled: func() bool {
-			return opts.features.capacityContext || opts.features.capacityHeadroom || opts.features.readinessImpact || opts.features.scalePath
+			return opts.CapacityContext || opts.CapacityHeadroom || opts.ReadinessImpact || opts.ScalePath
 		},
-		capacityContext:  opts.features.capacityContext,
-		capacityHeadroom: opts.features.capacityHeadroom,
-		readinessImpact:  opts.features.readinessImpact,
-		scalePath:        opts.features.scalePath,
+		capacityContext:  opts.CapacityContext,
+		capacityHeadroom: opts.CapacityHeadroom,
+		readinessImpact:  opts.ReadinessImpact,
+		scalePath:        opts.ScalePath,
 	}
 }
 
@@ -311,12 +311,12 @@ type rolloutAndBlockersEnricher struct {
 func newRolloutAndBlockersEnricher(opts *options) Enricher {
 	return &rolloutAndBlockersEnricher{
 		enabled: func() bool {
-			return opts.features.rollout || opts.features.rolloutImpact || opts.features.capacityDeep || opts.features.scaleoutBlockers
+			return opts.Rollout || opts.RolloutImpact || opts.CapacityDeep || opts.ScaleoutBlockers
 		},
-		rollout:          opts.features.rollout,
-		rolloutImpact:    opts.features.rolloutImpact,
-		capacityDeep:     opts.features.capacityDeep,
-		scaleoutBlockers: opts.features.scaleoutBlockers,
+		rollout:          opts.Rollout,
+		rolloutImpact:    opts.RolloutImpact,
+		capacityDeep:     opts.CapacityDeep,
+		scaleoutBlockers: opts.ScaleoutBlockers,
 	}
 }
 
@@ -336,10 +336,10 @@ type controllerProfileEnricher struct {
 func newControllerProfileEnricher(opts *options) Enricher {
 	return &controllerProfileEnricher{
 		enabled: func() bool {
-			return opts.features.controllerProfile || opts.assumeProfile != "" || opts.controllerProfileFile != ""
+			return opts.ControllerProfile || opts.AssumeProfile != "" || opts.ControllerProfileFile != ""
 		},
-		assumeProfile: opts.assumeProfile,
-		profileFile:   opts.controllerProfileFile,
+		assumeProfile: opts.AssumeProfile,
+		profileFile:   opts.ControllerProfileFile,
 	}
 }
 
@@ -357,8 +357,8 @@ type capacityPlanEnricher struct {
 
 func newCapacityPlanEnricher(opts *options) Enricher {
 	return &capacityPlanEnricher{
-		enabled:   func() bool { return opts.features.capacityPlan },
-		targetMax: opts.targetMax,
+		enabled:   func() bool { return opts.CapacityPlan },
+		targetMax: opts.TargetMax,
 	}
 }
 
@@ -376,8 +376,8 @@ type gitOpsConflictEnricher struct {
 
 func newGitOpsConflictEnricher(opts *options) Enricher {
 	return &gitOpsConflictEnricher{
-		enabled:      func() bool { return opts.features.gitopsCheck || opts.manifestPath != "" },
-		manifestPath: opts.manifestPath,
+		enabled:      func() bool { return opts.GitOpsCheck || opts.ManifestPath != "" },
+		manifestPath: opts.ManifestPath,
 	}
 }
 
@@ -396,9 +396,9 @@ type metricContractAndAdapterEnricher struct {
 
 func newMetricContractAndAdapterEnricher(opts *options) Enricher {
 	return &metricContractAndAdapterEnricher{
-		enabled:            func() bool { return opts.features.metricContract || opts.features.adapterDiagnostics },
-		metricContract:     opts.features.metricContract,
-		adapterDiagnostics: opts.features.adapterDiagnostics,
+		enabled:            func() bool { return opts.MetricContract || opts.AdapterDiagnostics },
+		metricContract:     opts.MetricContract,
+		adapterDiagnostics: opts.AdapterDiagnostics,
 	}
 }
 
@@ -419,11 +419,11 @@ type churnAndFlappingEnricher struct {
 
 func newChurnAndFlappingEnricher(opts *options) Enricher {
 	return &churnAndFlappingEnricher{
-		enabled:         func() bool { return opts.features.churnDetect || opts.features.flappingAdvisor },
-		churnDetect:     opts.features.churnDetect,
-		eventsEnabled:   opts.events.enabled,
-		flappingAdvisor: opts.features.flappingAdvisor,
-		healthWeights:   opts.healthWeights,
+		enabled:         func() bool { return opts.ChurnDetect || opts.FlappingAdvisor },
+		churnDetect:     opts.ChurnDetect,
+		eventsEnabled:   opts.Events.Enabled,
+		flappingAdvisor: opts.FlappingAdvisor,
+		healthWeights:   opts.HealthWeights,
 	}
 }
 
@@ -451,7 +451,7 @@ type metricHintsEnricher struct {
 
 func newMetricHintsEnricher(opts *options) Enricher {
 	return &metricHintsEnricher{
-		enabled: func() bool { return opts.features.metricHints },
+		enabled: func() bool { return opts.MetricHints },
 	}
 }
 
@@ -470,9 +470,9 @@ type advisorsEnricher struct {
 
 func newAdvisorsEnricher(opts *options) Enricher {
 	return &advisorsEnricher{
-		enabled:          func() bool { return opts.features.containerAdvisor || opts.features.behaviorAdvisor },
-		containerAdvisor: opts.features.containerAdvisor,
-		behaviorAdvisor:  opts.features.behaviorAdvisor,
+		enabled:          func() bool { return opts.ContainerAdvisor || opts.BehaviorAdvisor },
+		containerAdvisor: opts.ContainerAdvisor,
+		behaviorAdvisor:  opts.BehaviorAdvisor,
 	}
 }
 

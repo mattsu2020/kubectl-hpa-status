@@ -38,9 +38,7 @@ func newSLOCommand(opts *options) *cobra.Command {
 }
 
 func runSLO(ctx context.Context, out io.Writer, opts *options, name, metric, target string) error {
-	local := copyOptions(opts)
-	local.features.explain = true
-	local.features.metricHints = true
+	local := applyCommandPreset(opts, presetSLO)
 	report, err := buildStatusReportWithClient(ctx, &local, name, true, nil)
 	if err != nil {
 		return err
@@ -66,7 +64,7 @@ func runSLO(ctx context.Context, out io.Writer, opts *options, name, metric, tar
 	if len(report.Analysis.Metrics) == 0 {
 		result.Findings = append(result.Findings, "no current HPA metrics are visible; SLO correlation may require adapter diagnostics")
 	}
-	format, templateStr := outputSelection(outputConfig{output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates})
+	format, templateStr := outputSelection(outputConfig{output: opts.Output, template: opts.Template, outputTemplates: opts.OutputTemplates})
 	return writeOutput(out, format, templateStr, result, func() error {
 		_, _ = fmt.Fprintf(out, "SLO-aware HPA Report: %s/%s\n", result.Namespace, result.Name)
 		_, _ = fmt.Fprintf(out, "SLO: %s target=%s\n\nFindings:\n", result.Metric, result.Target)

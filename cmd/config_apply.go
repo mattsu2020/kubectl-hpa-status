@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	hpaanalysis "github.com/mattsui2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/spf13/cobra"
 )
 
@@ -25,10 +25,6 @@ func applySliceConfig[T any](value []T, flagName string, changed flagChangedFunc
 	}
 }
 
-// applyConfig applies config file values only when the corresponding CLI flag
-// was not explicitly set by the user. The flag-change check is flag-kind
-// agnostic (persistent or local) so that status-local flags registered by
-// Phase C still respect --config precedence.
 func applyConfig(cmd *cobra.Command, opts *options, cfg configFile) {
 	changed := func(name string) bool {
 		return flagChanged(cmd, name)
@@ -42,22 +38,22 @@ func applyConfig(cmd *cobra.Command, opts *options, cfg configFile) {
 }
 
 func applyPersistentConfig(opts *options, cfg configFile, changed flagChangedFunc) {
-	applyStringConfig(cfg.Namespace, "namespace", changed, &opts.namespace)
-	applyPtrConfig(cfg.AllNamespaces, "all-namespaces", changed, &opts.allNamespaces)
-	applyStringConfig(cfg.Output, "output", changed, &opts.output)
-	applyPtrConfig(cfg.Wide, "wide", changed, &opts.wide)
-	applyStringConfig(cfg.Selector, "selector", changed, &opts.selector)
-	applyStringConfig(cfg.Color, "color", changed, &opts.color)
-	applyStringConfig(cfg.Lang, "lang", changed, &opts.lang)
-	applyPtrConfig(cfg.Debug, "debug", changed, &opts.debug)
-	applyPtrConfig(cfg.Dashboard, "dashboard", changed, &opts.dashboard)
-	applyPtrConfig(cfg.ChunkSize, "chunk-size", changed, &opts.chunkSize)
+	applyStringConfig(cfg.Namespace, "namespace", changed, &opts.Namespace)
+	applyPtrConfig(cfg.AllNamespaces, "all-namespaces", changed, &opts.AllNamespaces)
+	applyStringConfig(cfg.Output, "output", changed, &opts.Output)
+	applyPtrConfig(cfg.Wide, "wide", changed, &opts.Wide)
+	applyStringConfig(cfg.Selector, "selector", changed, &opts.Selector)
+	applyStringConfig(cfg.Color, "color", changed, &opts.Color)
+	applyStringConfig(cfg.Lang, "lang", changed, &opts.Lang)
+	applyPtrConfig(cfg.Debug, "debug", changed, &opts.Debug)
+	applyPtrConfig(cfg.Dashboard, "dashboard", changed, &opts.Dashboard)
+	applyPtrConfig(cfg.ChunkSize, "chunk-size", changed, &opts.ChunkSize)
 }
 
 func applyLocalConfig(opts *options, cfg configFile, changed flagChangedFunc) {
-	applyStringConfig(cfg.SortBy, "sort-by", changed, &opts.sortBy)
-	applyStringConfig(cfg.Filter, "filter", changed, &opts.filter)
-	applyPtrConfig(cfg.MinScore, "min-score", changed, &opts.healthScoreMin)
+	applyStringConfig(cfg.SortBy, "sort-by", changed, &opts.SortBy)
+	applyStringConfig(cfg.Filter, "filter", changed, &opts.Filter)
+	applyPtrConfig(cfg.MinScore, "min-score", changed, &opts.HealthScoreMin)
 }
 
 func applyEventsConfig(opts *options, cfg configFile, changed flagChangedFunc) {
@@ -66,11 +62,11 @@ func applyEventsConfig(opts *options, cfg configFile, changed flagChangedFunc) {
 	}
 
 	if cfg.Events != nil {
-		opts.events.enabled = true
-		opts.events.limit = *cfg.Events
+		opts.Events.Enabled = true
+		opts.Events.Limit = *cfg.Events
 	}
 	if cfg.EventsEnabled != nil {
-		opts.events.enabled = *cfg.EventsEnabled
+		opts.Events.Enabled = *cfg.EventsEnabled
 	}
 }
 
@@ -81,23 +77,23 @@ func applyHealthScoreConfig(opts *options, cfg configFile, changed flagChangedFu
 
 	switch {
 	case cfg.HealthScore != nil:
-		opts.healthScoreMax = *cfg.HealthScore
+		opts.HealthScoreMax = *cfg.HealthScore
 	case cfg.MaxScore != nil:
-		opts.healthScoreMax = *cfg.MaxScore
+		opts.HealthScoreMax = *cfg.MaxScore
 	}
 }
 
 func applyAdvancedConfig(opts *options, cfg configFile, changed flagChangedFunc) {
 	if len(cfg.Templates) > 0 {
-		opts.outputTemplates = cfg.Templates
+		opts.OutputTemplates = cfg.Templates
 	}
 	if cfg.HealthWeights != (hpaanalysis.HealthWeights{}) {
-		opts.healthWeights = cfg.HealthWeights
+		opts.HealthWeights = cfg.HealthWeights
 	}
 
-	applyPtrConfig(cfg.Keda, "keda", changed, &opts.keda)
-	applyPtrConfig(cfg.Vpa, "vpa", changed, &opts.vpa)
-	applyPtrConfig(cfg.ExplainPods, "explain-pods", changed, &opts.features.explainPods)
-	applySliceConfig(cfg.Simulate, "simulate", changed, &opts.simulate)
-	applyPtrConfig(cfg.CapacityContext, "capacity-context", changed, &opts.features.capacityContext)
+	applyPtrConfig(cfg.Keda, "keda", changed, &opts.KEDA)
+	applyPtrConfig(cfg.Vpa, "vpa", changed, &opts.VPA)
+	applyPtrConfig(cfg.ExplainPods, "explain-pods", changed, &opts.ExplainPods)
+	applySliceConfig(cfg.Simulate, "simulate", changed, &opts.Simulate)
+	applyPtrConfig(cfg.CapacityContext, "capacity-context", changed, &opts.CapacityContext)
 }

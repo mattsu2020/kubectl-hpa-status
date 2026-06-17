@@ -15,7 +15,7 @@ func newExportCommand(opts *options) *cobra.Command {
 				return cmd.Help()
 			}
 			local := copyOptions(opts)
-			local.output = "prometheus"
+			local.Output = "prometheus"
 			return runList(cmd.Context(), cmd.OutOrStdout(), &local)
 		},
 	}

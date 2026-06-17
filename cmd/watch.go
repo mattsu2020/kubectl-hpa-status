@@ -18,30 +18,30 @@ func newWatchCommand(opts *options) *cobra.Command {
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: hpaNameCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runWatch(cmd.Context(), cmd.OutOrStdout(), opts, args[0], !opts.features.noInterpret)
+			return runWatch(cmd.Context(), cmd.OutOrStdout(), opts, args[0], !opts.NoInterpret)
 		},
 	}
 	return cmd
 }
 
 func runWatch(ctx context.Context, out io.Writer, opts *options, name string, includeInterpretation bool) error {
-	if opts.dashboard && opts.output == "" && isInteractiveTerminal(out) {
+	if opts.Dashboard && opts.Output == "" && isInteractiveTerminal(out) {
 		return runTUI(ctx, out, opts, name, true)
 	}
 
-	if opts.watchTimeout > 0 {
+	if opts.WatchTimeout > 0 {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, opts.watchTimeout)
+		ctx, cancel = context.WithTimeout(ctx, opts.WatchTimeout)
 		defer cancel()
 	}
 
-	interval := opts.watchInterval
+	interval := opts.WatchInterval
 	if interval < time.Second {
 		_, _ = fmt.Fprintf(out, "Warning: interval %s is below 1s; clamping to 1s to reduce API server load.\n", interval)
 		interval = time.Second
 	}
 
-	theme := style.NewTheme(shouldColorize(opts.color, out))
+	theme := style.NewTheme(shouldColorize(opts.Color, out))
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -64,8 +64,8 @@ func runWatch(ctx context.Context, out io.Writer, opts *options, name string, in
 
 		writeStabilizationCountdown(out, &report.Analysis)
 
-		if opts.untilCondition != "" && reportHasCondition(report, opts.untilCondition) {
-			_, err := fmt.Fprintf(out, "\nStopped: condition %q is present.\n", opts.untilCondition)
+		if opts.UntilCondition != "" && reportHasCondition(report, opts.UntilCondition) {
+			_, err := fmt.Fprintf(out, "\nStopped: condition %q is present.\n", opts.UntilCondition)
 			return err
 		}
 		select {
@@ -93,9 +93,9 @@ func clearWatchScreen(out io.Writer, theme style.Theme) error {
 
 // writeWatchReport renders the current report via the selected format, choosing dashboard/diff/text rendering inside the fallback.
 func writeWatchReport(out io.Writer, opts *options, theme style.Theme, report hpaanalysis.StatusReport, previous *hpaanalysis.Analysis) error {
-	format, templateStr := outputSelection(outputConfig{report: opts.report, output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates})
+	format, templateStr := outputSelection(outputConfig{report: opts.Report, output: opts.Output, template: opts.Template, outputTemplates: opts.OutputTemplates})
 	return writeOutput(out, format, templateStr, report, func() error {
-		if opts.dashboard {
+		if opts.Dashboard {
 			return hpaanalysis.WriteStatusDashboard(out, report, theme)
 		}
 		if previous != nil {
@@ -128,19 +128,19 @@ func writeStabilizationCountdown(out io.Writer, a *hpaanalysis.Analysis) {
 }
 
 func runWatchList(ctx context.Context, out io.Writer, opts *options) error {
-	if opts.watchTimeout > 0 {
+	if opts.WatchTimeout > 0 {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, opts.watchTimeout)
+		ctx, cancel = context.WithTimeout(ctx, opts.WatchTimeout)
 		defer cancel()
 	}
 
-	interval := opts.watchInterval
+	interval := opts.WatchInterval
 	if interval < time.Second {
 		_, _ = fmt.Fprintf(out, "Warning: interval %s is below 1s; clamping to 1s to reduce API server load.\n", interval)
 		interval = time.Second
 	}
 
-	theme := style.NewTheme(shouldColorize(opts.color, out))
+	theme := style.NewTheme(shouldColorize(opts.Color, out))
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 

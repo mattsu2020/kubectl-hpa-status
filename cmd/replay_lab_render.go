@@ -15,7 +15,7 @@ import (
 // structs and analysis logic remain in replay_lab.go.
 
 func writeReplayLabReport(out io.Writer, opts *options, report replayLabReport) error {
-	format, _ := outputSelection(outputConfig{report: opts.report, output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates})
+	format, _ := outputSelection(outputConfig{report: opts.Report, output: opts.Output, template: opts.Template, outputTemplates: opts.OutputTemplates})
 	switch format {
 	case "json":
 		encoder := json.NewEncoder(out)

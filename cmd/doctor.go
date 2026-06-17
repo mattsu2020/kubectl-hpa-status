@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 
+	"github.com/mattsui2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/spf13/cobra"
 )
 
@@ -23,28 +24,6 @@ func newDoctorCommand(opts *options) *cobra.Command {
 }
 
 func runDoctor(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	// Enable all diagnostic flags for a full doctor check. Take a shallow copy
-	// so the shared process-wide opts is not mutated.
-	local := copyOptions(opts)
-	local.features.explain = true
-	local.features.diagnoseMetrics = true
-	local.features.metricsFreshness = true
-	local.features.checkResources = true
-	local.features.explainPods = true
-	local.features.capacityContext = true
-	local.features.gitopsCheck = true
-	local.features.metricContract = true
-	local.features.churnDetect = true
-	local.features.metricHints = true
-	local.features.containerAdvisor = true
-	local.features.behaviorAdvisor = true
-	local.features.capacityDeep = true
-	local.features.rollout = true
-	local.features.readinessImpact = true
-	local.features.scalePath = true
-	local.features.flappingAdvisor = true
-	local.features.trendAnomaly = true
-	local.features.adapterDiagnostics = true
-
-	return runStatusMany(ctx, out, &local, names, !local.features.noInterpret)
+	local := applyCommandPreset(opts, cmdoptions.PresetDoctor)
+	return runStatusMany(ctx, out, &local, names, !local.NoInterpret)
 }

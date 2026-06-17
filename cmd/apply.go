@@ -64,7 +64,7 @@ func applySuggestionsInNamespace(ctx context.Context, out io.Writer, opts *optio
 		return nil, err
 	}
 
-	if opts.dryRun {
+	if opts.DryRun {
 		if _, err := fmt.Fprintln(out, "Dry-run mode is enabled; patches were validated but not persisted. Use --dry-run=false to apply changes."); err != nil {
 			return nil, err
 		}
@@ -72,20 +72,20 @@ func applySuggestionsInNamespace(ctx context.Context, out io.Writer, opts *optio
 	}
 
 	// Real apply path: confirm unless skipped.
-	if !opts.yes && !skipConfirm {
+	if !opts.Yes && !skipConfirm {
 		if err := confirmApply(out, opts, len(patches), namespace, name); err != nil {
 			return nil, err
 		}
 	}
 
-	return executePatches(ctx, out, client, namespace, name, patches, opts.allowPartial)
+	return executePatches(ctx, out, client, namespace, name, patches, opts.AllowPartial)
 }
 
 func guardPatches(out io.Writer, opts *options, current *autoscalingv2.HorizontalPodAutoscaler, patches []hpaanalysis.Suggestion) ([]hpaanalysis.Suggestion, error) {
-	if opts.policyGuard == "" {
+	if opts.PolicyGuard == "" {
 		return patches, nil
 	}
-	policyFile, err := hpaanalysis.LoadPolicyFile(opts.policyGuard)
+	policyFile, err := hpaanalysis.LoadPolicyFile(opts.PolicyGuard)
 	if err != nil {
 		return nil, err
 	}
@@ -93,14 +93,14 @@ func guardPatches(out io.Writer, opts *options, current *autoscalingv2.Horizonta
 	if err := hpaanalysis.WritePolicyGuardText(out, result); err != nil {
 		return nil, err
 	}
-	switch opts.policyGuardMode {
+	switch opts.PolicyGuardMode {
 	case "", "block":
 		if len(result.Blocked) > 0 {
 			return nil, fmt.Errorf("policy guard blocked %d patch(es)", len(result.Blocked))
 		}
 	case "warn":
 	default:
-		return nil, fmt.Errorf("invalid --policy-guard-mode %q; use block or warn", opts.policyGuardMode)
+		return nil, fmt.Errorf("invalid --policy-guard-mode %q; use block or warn", opts.PolicyGuardMode)
 	}
 	return result.Allowed, nil
 }
@@ -152,17 +152,17 @@ func confirmApply(out io.Writer, opts *options, count int, namespace, name strin
 	// caller) and the process stdin is not an interactive terminal, a prompt
 	// would either block forever or silently consume non-confirmation input.
 	// Require an explicit --yes/-y in that case. A caller that deliberately
-	// sets opts.in is allowed to drive the prompt programmatically.
-	if opts.in == nil {
+	// sets opts.In is allowed to drive the prompt programmatically.
+	if opts.In == nil {
 		if !stdinIsTerminal(os.Stdin) {
 			return fmt.Errorf("cannot prompt for confirmation (stdin is not a terminal); pass --yes/-y to apply non-interactively")
 		}
-		opts.in = os.Stdin
+		opts.In = os.Stdin
 	}
 	if _, err := fmt.Fprintf(out, "Apply %d patches to HPA %s/%s? [y/N]: ", count, namespace, name); err != nil {
 		return err
 	}
-	scanner := bufio.NewScanner(opts.in)
+	scanner := bufio.NewScanner(opts.In)
 	if !scanner.Scan() {
 		if err := scanner.Err(); err != nil {
 			return err

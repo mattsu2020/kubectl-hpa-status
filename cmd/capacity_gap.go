@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 
+	"github.com/mattsui2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/spf13/cobra"
 )
 
@@ -20,17 +21,10 @@ func newCapacityGapCommand(opts *options) *cobra.Command {
 }
 
 func runCapacityGap(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	local := copyOptions(opts)
-	local.features.explain = true
-	local.features.explainPods = true
-	local.features.readinessImpact = true
-	local.features.capacityHeadroom = true
-	local.features.capacityDeep = true
-	local.features.scalePath = true
-	local.features.scaleoutBlockers = true
-	local.events.enabled = true
-	if local.events.limit == 0 {
-		local.events.limit = 10
+	local := applyCommandPreset(opts, cmdoptions.PresetCapacityGap)
+	local.Events.Enabled = true
+	if local.Events.Limit == 0 {
+		local.Events.Limit = 10
 	}
-	return runStatusMany(ctx, out, &local, names, !local.features.noInterpret)
+	return runStatusMany(ctx, out, &local, names, !local.NoInterpret)
 }

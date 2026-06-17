@@ -47,11 +47,9 @@ func newHistoryCommand(opts *options) *cobra.Command {
 }
 
 func runHistory(ctx context.Context, out io.Writer, opts *options, name string, since time.Duration, prometheusURL string) error {
-	local := copyOptions(opts)
-	local.events = eventOption{enabled: true, limit: 50}
-	local.features.churnDetect = true
-	local.trend = true
-	local.trendSince = since
+	local := applyCommandPreset(opts, presetHistory)
+	local.Events = EventOption{Enabled: true, Limit: 50}
+	local.TrendSince = since
 	report, err := buildStatusReportWithClient(ctx, &local, name, true, nil)
 	if err != nil {
 		return err
@@ -70,7 +68,7 @@ func runHistory(ctx context.Context, out io.Writer, opts *options, name string, 
 	if prometheusURL != "" {
 		result.Queries = buildPrometheusHistoryQueries(prometheusURL, report.Analysis, since)
 	}
-	format, templateStr := outputSelection(outputConfig{output: opts.output, template: opts.template, outputTemplates: opts.outputTemplates})
+	format, templateStr := outputSelection(outputConfig{output: opts.Output, template: opts.Template, outputTemplates: opts.OutputTemplates})
 	return writeOutput(out, format, templateStr, result, func() error {
 		_, _ = fmt.Fprintf(out, "HPA history: %s/%s since=%s\n", result.Namespace, result.Name, result.Since)
 		_, _ = fmt.Fprintf(out, "Health: %s (%d/100)\n", result.Health, result.HealthScore)

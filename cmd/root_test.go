@@ -69,16 +69,14 @@ func TestWriteOutputTemplate(t *testing.T) {
 
 func TestOutputSelectionUsesNamedConfigTemplate(t *testing.T) {
 	opts := &options{
-		commonOptions: commonOptions{
-			output: "names",
-			outputTemplates: map[string]outputTemplateConfig{
-				"names": {Type: "go-template", Template: "{{ .Analysis.Namespace }}/{{ .Analysis.Name }}"},
-			},
+		Output: "names",
+		OutputTemplates: map[string]outputTemplateConfig{
+			"names": {Type: "go-template", Template: "{{ .Analysis.Namespace }}/{{ .Analysis.Name }}"},
 		},
 	}
 
 	format, templateStr := outputSelection(outputConfig{
-		output: opts.output, outputTemplates: opts.outputTemplates,
+		output: opts.Output, outputTemplates: opts.OutputTemplates,
 	})
 	if format != "go-template" {
 		t.Fatalf("expected go-template format, got %q", format)
@@ -90,16 +88,14 @@ func TestOutputSelectionUsesNamedConfigTemplate(t *testing.T) {
 
 func TestOutputSelectionUsesNamedJSONPathTemplate(t *testing.T) {
 	opts := &options{
-		commonOptions: commonOptions{
-			output: "jsonpath:summary",
-			outputTemplates: map[string]outputTemplateConfig{
-				"summary": {Template: "{.analysis.summary}"},
-			},
+		Output: "jsonpath:summary",
+		OutputTemplates: map[string]outputTemplateConfig{
+			"summary": {Template: "{.analysis.summary}"},
 		},
 	}
 
 	format, templateStr := outputSelection(outputConfig{
-		output: opts.output, outputTemplates: opts.outputTemplates,
+		output: opts.Output, outputTemplates: opts.OutputTemplates,
 	})
 	if format != "jsonpath" {
 		t.Fatalf("expected jsonpath format, got %q", format)
@@ -110,15 +106,15 @@ func TestOutputSelectionUsesNamedJSONPathTemplate(t *testing.T) {
 }
 
 func TestApplyHealthWeightOverrides(t *testing.T) {
-	opts := &options{commonOptions: commonOptions{healthWeightOverrides: []string{"scalingInactive=50", "atMinimumReplicas=0"}}}
+	opts := &options{HealthWeightOverrides: []string{"scalingInactive=50", "atMinimumReplicas=0"}}
 	if err := applyHealthWeightOverrides(opts); err != nil {
 		t.Fatal(err)
 	}
-	if opts.healthWeights.ScalingInactive == nil || *opts.healthWeights.ScalingInactive != 50 {
-		t.Fatalf("expected scalingInactive=50, got %v", opts.healthWeights.ScalingInactive)
+	if opts.HealthWeights.ScalingInactive == nil || *opts.HealthWeights.ScalingInactive != 50 {
+		t.Fatalf("expected scalingInactive=50, got %v", opts.HealthWeights.ScalingInactive)
 	}
-	if opts.healthWeights.AtMinimumReplicas == nil || *opts.healthWeights.AtMinimumReplicas != 0 {
-		t.Fatalf("expected atMinimumReplicas=0, got %v", opts.healthWeights.AtMinimumReplicas)
+	if opts.HealthWeights.AtMinimumReplicas == nil || *opts.HealthWeights.AtMinimumReplicas != 0 {
+		t.Fatalf("expected atMinimumReplicas=0, got %v", opts.HealthWeights.AtMinimumReplicas)
 	}
 }
 
@@ -310,24 +306,26 @@ func TestApplyConfigDefaultsDoesNotOverrideExplicitFlags(t *testing.T) {
 	}
 
 	opts := &options{
-		commonOptions: commonOptions{config: path, lang: "en"},
-		statusOptions: statusOptions{events: eventOption{enabled: true, limit: 5}},
-		listOptions:   listOptions{healthScoreMin: -1, healthScoreMax: -1},
+		Config:         path,
+		Lang:           "en",
+		Events:         EventOption{Enabled: true, Limit: 5},
+		HealthScoreMin: -1,
+		HealthScoreMax: -1,
 	}
 	if err := applyConfigDefaults(root, opts); err != nil {
 		t.Fatal(err)
 	}
-	if opts.namespace != "team-a" {
-		t.Fatalf("expected namespace from config, got %q", opts.namespace)
+	if opts.Namespace != "team-a" {
+		t.Fatalf("expected namespace from config, got %q", opts.Namespace)
 	}
-	if opts.lang != "en" {
-		t.Fatalf("expected explicit lang to win, got %q", opts.lang)
+	if opts.Lang != "en" {
+		t.Fatalf("expected explicit lang to win, got %q", opts.Lang)
 	}
-	if opts.events.limit != 3 {
-		t.Fatalf("expected events from config, got %d", opts.events.limit)
+	if opts.Events.Limit != 3 {
+		t.Fatalf("expected events from config, got %d", opts.Events.Limit)
 	}
-	if opts.healthScoreMin != 60 {
-		t.Fatalf("expected min score from config, got %d", opts.healthScoreMin)
+	if opts.HealthScoreMin != 60 {
+		t.Fatalf("expected min score from config, got %d", opts.HealthScoreMin)
 	}
 }
 
