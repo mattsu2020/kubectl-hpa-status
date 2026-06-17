@@ -37,3 +37,14 @@ func EventFromCore(event corev1.Event) Event {
 		Timestamp: eventTimestamp(event),
 	}
 }
+
+// EventsFromCore converts a slice of corev1.Event to a slice of Event. It
+// preserves input order and allocates a fresh slice so callers never share
+// backing arrays with the input.
+func EventsFromCore(coreEvents []corev1.Event) []Event {
+	events := make([]Event, 0, len(coreEvents))
+	for _, ce := range coreEvents {
+		events = append(events, EventFromCore(ce))
+	}
+	return events
+}

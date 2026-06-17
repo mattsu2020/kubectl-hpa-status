@@ -45,9 +45,9 @@ func runTUI(ctx context.Context, out io.Writer, opts *options, initialName strin
 		interval = time.Second
 	}
 
-	client, err := opts.NewClient()
+	client, err := newClientOrDefault(opts)
 	if err != nil {
-		return fmt.Errorf("failed to create Kubernetes client: %w", err)
+		return err
 	}
 
 	namespace := client.Namespace

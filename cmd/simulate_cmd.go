@@ -7,11 +7,11 @@ import (
 	"io"
 	"strings"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 	"github.com/spf13/cobra"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 )
 
@@ -61,12 +61,12 @@ func newSimulateCommand(opts *options) *cobra.Command {
 func runSimulate(ctx context.Context, out io.Writer, opts *options, name string,
 	setMetric, setTarget []string, tolerance string, suggest bool, _ int32) error {
 
-	client, err := opts.NewClient()
+	client, err := newClientOrDefault(opts)
 	if err != nil {
-		return fmt.Errorf("failed to create Kubernetes client: %w", err)
+		return err
 	}
 
-	hpa, err := client.Interface.AutoscalingV2().HorizontalPodAutoscalers(client.Namespace).Get(ctx, name, metav1.GetOptions{})
+	hpa, err := kube.GetHPAFromClient(ctx, client, name)
 	if err != nil {
 		return fmt.Errorf("failed to get HPA %s/%s: %w", client.Namespace, name, err)
 	}

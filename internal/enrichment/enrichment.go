@@ -291,7 +291,7 @@ func EnrichReport(ctx context.Context, ec *Context, hpa *autoscalingv2.Horizonta
 	}
 
 	// Attach enrichment status to analysis for diagnostic output.
-	report.Analysis.EnrichmentStatus = ec.status
+	report.Analysis.EnrichmentStatus = ec.status.ToAnalysisStatus()
 }
 
 // BatchKEDA performs batched KEDA enrichment for multiple HPAs.

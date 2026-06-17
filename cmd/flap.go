@@ -12,7 +12,6 @@ import (
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 	"github.com/spf13/cobra"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 )
 
@@ -52,11 +51,11 @@ func newFlapCommand(opts *options) *cobra.Command {
 }
 
 func runFlapLive(ctx context.Context, out io.Writer, opts *options, name string, since time.Duration) error {
-	client, err := opts.NewClient()
+	client, err := newClientOrDefault(opts)
 	if err != nil {
-		return fmt.Errorf("failed to create Kubernetes client: %w", err)
+		return err
 	}
-	hpa, err := client.Interface.AutoscalingV2().HorizontalPodAutoscalers(client.Namespace).Get(ctx, name, metav1.GetOptions{})
+	hpa, err := kube.GetHPAFromClient(ctx, client, name)
 	if err != nil {
 		return fmt.Errorf("failed to get HPA %s/%s: %w", client.Namespace, name, err)
 	}
@@ -67,10 +66,7 @@ func runFlapLive(ctx context.Context, out io.Writer, opts *options, name string,
 	if err != nil {
 		return fmt.Errorf("failed to fetch events: %w", err)
 	}
-	events := make([]hpaanalysis.Event, 0, len(coreEvents))
-	for _, ce := range coreEvents {
-		events = append(events, hpaanalysis.EventFromCore(ce))
-	}
+	events := hpaanalysis.EventsFromCore(coreEvents)
 	prevention := hpaanalysis.AnalyzeFlappingPrevention(events, hpa)
 	diagnosis := hpaanalysis.DiagnoseFlapping(events, hpa)
 	report := flapReport{

@@ -152,26 +152,6 @@ func TestMatchesListFilter(t *testing.T) {
 	}
 }
 
-func TestMatchesHealthScoreThreshold(t *testing.T) {
-	item := hpaanalysis.ListItem{HealthScore: 75}
-
-	if !matchesHealthScoreThreshold(item, -1) {
-		t.Fatal("expected disabled threshold to match")
-	}
-	if !matchesHealthScoreThreshold(item, 0) {
-		t.Fatal("expected zero threshold to match as disabled")
-	}
-	if !matchesHealthScoreThreshold(item, 80) {
-		t.Fatal("expected score 75 to match threshold 80")
-	}
-	if matchesHealthScoreThreshold(item, 60) {
-		t.Fatal("did not expect score 75 to match threshold 60")
-	}
-	if !matchesHealthScoreThreshold(item, 120) {
-		t.Fatal("expected threshold above 100 to be clamped and match")
-	}
-}
-
 func TestMatchesHealthScoreRange(t *testing.T) {
 	item := hpaanalysis.ListItem{HealthScore: 75}
 

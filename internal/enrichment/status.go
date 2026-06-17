@@ -1,5 +1,7 @@
 package enrichment
 
+import hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+
 // Source identifies which enrichment system produced a status entry.
 type Source string
 
@@ -54,4 +56,26 @@ func (s *Status) VPAEntry() Entry {
 		return *s.VPA
 	}
 	return Entry{Source: SourceVPA, State: StateDisabled}
+}
+
+// ToAnalysisStatus converts the internal Status into the JSON-mirror type
+// defined in pkg/hpa. This keeps pkg/hpa free of any dependency on this
+// internal package while preserving the serialised contract.
+func (s Status) ToAnalysisStatus() *hpaanalysis.EnrichmentStatus {
+	out := &hpaanalysis.EnrichmentStatus{}
+	if s.KEDA != nil {
+		out.KEDA = &hpaanalysis.EnrichmentStatusEntry{
+			Source: hpaanalysis.EnrichmentSource(s.KEDA.Source),
+			State:  hpaanalysis.EnrichmentState(s.KEDA.State),
+			Reason: s.KEDA.Reason,
+		}
+	}
+	if s.VPA != nil {
+		out.VPA = &hpaanalysis.EnrichmentStatusEntry{
+			Source: hpaanalysis.EnrichmentSource(s.VPA.Source),
+			State:  hpaanalysis.EnrichmentState(s.VPA.State),
+			Reason: s.VPA.Reason,
+		}
+	}
+	return out
 }

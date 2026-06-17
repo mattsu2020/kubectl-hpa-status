@@ -88,9 +88,7 @@ func buildRolloutReport(ctx context.Context, opts *options, analysis hpaanalysis
 		return nil
 	}
 
-	hpa, err := client.Interface.AutoscalingV2().
-		HorizontalPodAutoscalers(client.Namespace).
-		Get(ctx, name, metav1.GetOptions{})
+	hpa, err := kube.GetHPAFromClient(ctx, client, name)
 	if err != nil {
 		return nil
 	}

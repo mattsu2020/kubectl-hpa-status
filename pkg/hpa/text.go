@@ -125,9 +125,8 @@ func WriteStatusDashboard(w io.Writer, report StatusReport, theme style.Theme) e
 // WriteStatusTextWithOptions writes a status report with full rendering options.
 // The rendering is organized as a sequence of independent section renderers;
 // each append*Section helper appends its output only when the corresponding
-// analysis field is populated. See text_sections.go for the section bodies.
-//
-//nolint:gocyclo // Sequential delegation to per-section renderers; the orchestrator's complexity is just a flat list of calls.
+// analysis field is populated. See text_sections.go and text_extras.go for the
+// section bodies.
 func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTextOptions) error {
 	// Pass Analysis by pointer to the per-section renderers: Analysis has 63
 	// fields and each append* helper would otherwise copy it.
@@ -151,64 +150,16 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 	appendMetricsSection(&out, a, theme, labels)
 	appendStabilizationAndBehavior(&out, a, theme, labels)
 	appendHiddenFactors(&out, a, opts)
-
-	if a.HealthTrend != nil && len(a.HealthTrend.Snapshots) > 0 {
-		out = append(out, '\n')
-		trendText := FormatTrendText(*a.HealthTrend)
-		out = fmt.Appendf(out, "%s\n", trendText)
-	}
-
-	if a.ControllerProfile != nil {
-		out = append(out, '\n')
-		appendControllerProfileText(&out, a.ControllerProfile)
-	}
-
-	if len(a.Actions) > 0 {
-		out = append(out, '\n')
-		out = fmt.Appendf(out, "%s:\n", labels.Actions)
-		for _, action := range a.Actions {
-			out = fmt.Appendf(out, "  - %s\n", theme.ActionLine(action))
-		}
-	}
-
+	appendHealthTrendSection(&out, a)
+	appendControllerProfileSection(&out, a)
+	appendActionsSection(&out, a, theme, labels)
 	appendSuggestionsSection(&out, a, opts, theme, labels)
-
-	if len(a.Interpretation) > 0 {
-		out = append(out, '\n')
-		out = fmt.Appendf(out, "%s:\n", labels.Interpretation)
-		for _, line := range a.Interpretation {
-			out = fmt.Appendf(out, "  - %s\n", theme.InterpretationLine(line))
-		}
-	}
-
-	if len(a.Debug) > 0 {
-		out = append(out, '\n')
-		out = fmt.Appendf(out, "%s:\n", labels.Debug)
-		for _, line := range a.Debug {
-			out = fmt.Appendf(out, "  - %s\n", theme.Dim.Render(line))
-		}
-	}
-
-	if len(a.DecisionSignals) > 0 {
-		out = append(out, '\n')
-		out = fmt.Appendf(out, "%s\n", FormatDecisionSignals(a.DecisionSignals))
-	}
-
-	if a.DecisionTrace != nil {
-		out = append(out, '\n')
-		AppendDecisionTraceText(&out, a.DecisionTrace)
-	}
-
-	if a.StructuredDecisionTrace != nil {
-		out = append(out, '\n')
-		AppendStructuredDecisionTraceText(&out, a.StructuredDecisionTrace, opts.Labels)
-	}
-
-	if a.AdapterDiagnostics != nil {
-		out = append(out, '\n')
-		AppendAdapterDiagnosticsText(&out, a.AdapterDiagnostics)
-	}
-
+	appendInterpretationSection(&out, a, theme, labels)
+	appendDebugSection(&out, a, theme, labels)
+	appendDecisionSignalsSection(&out, a)
+	appendDecisionTraceSection(&out, a)
+	appendStructuredDecisionTraceSection(&out, a, opts)
+	appendAdapterDiagnosticsSection(&out, a)
 	appendKEDASection(&out, a, theme, labels)
 	appendVPASection(&out, a, theme)
 	appendMetricsDiagnosticsSection(&out, a, theme, labels)
@@ -217,67 +168,17 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 	appendPodAnalysisSection(&out, a, labels)
 	appendSimulationSection(&out, a, theme, labels)
 	appendCapacityContextSection(&out, a, theme, labels)
-
-	if a.CapacityHeadroom != nil {
-		out = append(out, '\n')
-		appendCapacityHeadroomText(&out, a.CapacityHeadroom, theme)
-	}
-
-	if a.ReadinessImpact != nil {
-		out = append(out, '\n')
-		appendReadinessImpactText(&out, a.ReadinessImpact, theme)
-	}
-
-	if a.ScalePath != nil {
-		out = append(out, '\n')
-		appendScalePathText(&out, a.ScalePath, theme)
-	}
-
-	if a.RolloutDiagnosis != nil {
-		out = append(out, '\n')
-		appendRolloutDiagnosisText(&out, a.RolloutDiagnosis, theme)
-	}
-
-	if a.BlockerReport != nil {
-		AppendBlockerText(&out, a.BlockerReport, theme, labels)
-		appendScaleoutBlockersText(&out, a.BlockerReport, theme)
-	}
-
-	if a.CapacityPlan != nil {
-		AppendCapacityPlanText(&out, a.CapacityPlan, theme, labels)
-	}
-
-	if a.MetricContract != nil {
-		out = append(out, '\n')
-		appendMetricContractText(&out, a.MetricContract, theme)
-	}
-
-	if a.ContainerAdvisor != nil {
-		AppendContainerAdvisorText(&out, a.ContainerAdvisor, labels)
-	}
-
-	if a.BehaviorAdvisor != nil {
-		AppendBehaviorAdvisorText(&out, a.BehaviorAdvisor, labels)
-	}
-
-	if a.FlappingPrevention != nil {
-		AppendFlappingPreventionText(&out, a.FlappingPrevention, labels)
-	}
-
-	if a.MetricHints != nil && len(a.MetricHints.TroubleshootingFlows) > 0 {
-		out = append(out, '\n')
-		out = append(out, "Metric Troubleshooting:\n"...)
-		for _, flow := range a.MetricHints.TroubleshootingFlows {
-			out = fmt.Appendf(out, "  [%s] %s (%s/%s)\n", flow.Severity, flow.Title, flow.MetricType, flow.MetricName)
-			for _, step := range flow.Steps {
-				out = fmt.Appendf(out, "    %d. %s\n", step.StepNumber, step.Description)
-				if step.Command != "" {
-					out = fmt.Appendf(out, "       $ %s\n", step.Command)
-				}
-			}
-		}
-	}
-
+	appendCapacityHeadroomSection(&out, a, theme)
+	appendReadinessImpactSection(&out, a, theme)
+	appendScalePathSection(&out, a, theme)
+	appendRolloutDiagnosisSection(&out, a, theme)
+	appendBlockerReportSection(&out, a, theme, labels)
+	appendCapacityPlanSection(&out, a, theme, labels)
+	appendMetricContractSection(&out, a, theme)
+	appendContainerAdvisorSection(&out, a, labels)
+	appendBehaviorAdvisorSection(&out, a, labels)
+	appendFlappingPreventionSection(&out, a, labels)
+	appendMetricHintsSection(&out, a)
 	appendEventsSection(&out, report, labels)
 
 	_, err := w.Write(out)

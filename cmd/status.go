@@ -53,6 +53,7 @@ func newAnalyzeCommand(opts *options) *cobra.Command {
 		Aliases:           []string{"diagnose"},
 		Short:             "Analyze one or more HPAs using visible Kubernetes API signals",
 		Deprecated:        "Use 'status NAME --explain' instead. Example: kubectl-hpa-status status my-hpa --explain. The analyze subcommand is scheduled for removal in v2.0.",
+		Hidden:            true,
 		Args:              cobra.MinimumNArgs(1),
 		ValidArgsFunction: hpaNameCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -307,9 +308,7 @@ func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, 
 
 // fetchHPA retrieves a single HPA and wraps known API errors with actionable guidance.
 func fetchHPA(ctx context.Context, client *kube.Client, name string) (*autoscalingv2.HorizontalPodAutoscaler, error) {
-	hpa, err := client.Interface.AutoscalingV2().
-		HorizontalPodAutoscalers(client.Namespace).
-		Get(ctx, name, metav1.GetOptions{})
+	hpa, err := kube.GetHPAFromClient(ctx, client, name)
 	if err != nil {
 		return nil, hpaFetchError(err, name, client.Namespace)
 	}

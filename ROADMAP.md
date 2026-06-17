@@ -6,6 +6,7 @@ This roadmap tracks planned work that is visible to users and contributors. It i
 
 - **E2E scenario coverage:** Expand kind E2E coverage for multi-metric HPAs, behavior policies, KEDA-style external metrics, VPA conflict detection, and stabilization boundary cases.
 - **README sync quality gate:** Keep `README.md` and `README.ja.md` structurally aligned through `make docs-check` and CI.
+- **Remove deprecated `analyze` command:** The `analyze` (alias `diagnose`) subcommand is hidden from `--help` and scheduled for removal in v2.0. Users should migrate to `status NAME --explain`.
 
 ## Medium Term
 

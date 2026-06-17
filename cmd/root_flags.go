@@ -3,6 +3,7 @@ package cmd
 
 import (
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
@@ -16,12 +17,12 @@ func registerCommonFlags(cmd *cobra.Command, opts *options) {
 	cmd.PersistentFlags().StringVar(&opts.ContextName, "context", "", "kubeconfig context")
 	cmd.PersistentFlags().StringVar(&opts.Kubeconfig, "kubeconfig", "", "path to kubeconfig")
 	cmd.PersistentFlags().StringVar(&opts.Cluster, "cluster", "", "kubeconfig cluster")
-	cmd.PersistentFlags().StringVarP(&opts.Output, "output", "o", "", "output format: table, wide, json, yaml, jsonpath=..., template=...")
+	cmd.PersistentFlags().StringVarP(&opts.Output, "output", "o", "", "output format: "+strings.Join(outputFlagDisplayValues, ", ")+", jsonpath=..., template=...")
 	cmd.PersistentFlags().StringVar(&opts.Template, "template", "", "template string to use when -o jsonpath or -o go-template/template is specified")
 	cmd.PersistentFlags().BoolVar(&opts.Wide, "wide", false, "show additional columns in table output")
 	cmd.PersistentFlags().StringVarP(&opts.Selector, "selector", "l", "", "label selector for list and scan, for example app=web,tier!=canary")
-	cmd.PersistentFlags().StringVar(&opts.Color, "color", opts.Color, "colorize table output: auto, always, never")
-	cmd.PersistentFlags().StringVar(&opts.Lang, "lang", "", "text output language: en or ja")
+	cmd.PersistentFlags().StringVar(&opts.Color, "color", opts.Color, "colorize table output: "+strings.Join(validColorValues, ", "))
+	cmd.PersistentFlags().StringVar(&opts.Lang, "lang", "", "text output language: "+strings.Join(validLangValues, ", "))
 	cmd.PersistentFlags().BoolVarP(&opts.Debug, "debug", "v", false, "include internal analysis details such as ratios and health scoring inputs")
 	cmd.PersistentFlags().StringVar(&opts.Config, "config", "", "optional config file for analysis settings such as health score weights")
 	cmd.PersistentFlags().Int64Var(&opts.ChunkSize, "chunk-size", opts.ChunkSize, "Kubernetes list page size for list/scan/tui; set 0 to disable pagination")

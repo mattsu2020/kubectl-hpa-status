@@ -10,7 +10,6 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 	"github.com/spf13/cobra"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 type capacityPlanOutput struct {
@@ -94,9 +93,7 @@ func buildCapacityPlan(ctx context.Context, opts *options, analysis hpaanalysis.
 		return nil
 	}
 
-	hpa, err := client.Interface.AutoscalingV2().
-		HorizontalPodAutoscalers(client.Namespace).
-		Get(ctx, name, metav1.GetOptions{})
+	hpa, err := kube.GetHPAFromClient(ctx, client, name)
 	if err != nil {
 		return nil
 	}

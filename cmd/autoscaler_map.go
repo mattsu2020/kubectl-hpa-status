@@ -43,9 +43,7 @@ func runAutoscalerMap(ctx context.Context, out io.Writer, opts *options, names [
 			return err
 		}
 
-		hpa, err := client.Interface.AutoscalingV2().
-			HorizontalPodAutoscalers(client.Namespace).
-			Get(ctx, name, metav1.GetOptions{})
+		hpa, err := kube.GetHPAFromClient(ctx, client, name)
 		if err != nil {
 			if opts.Output == "json" || opts.Output == "yaml" {
 				writeError(out, opts.Output, err)

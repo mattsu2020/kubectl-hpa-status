@@ -1,9 +1,18 @@
 package cmdoptions
 
-// Features groups enrichment and analysis boolean toggles for the status workflow.
-// All fields are plain value-typed bool so a shallow copy produces an independent set.
+// Features groups enrichment and analysis boolean toggles for the status
+// workflow. Fields are organized into logical domains via comment sections; a
+// full sub-struct split was considered but rejected because every flag is
+// accessed as f.<Name> throughout cmd/ and pkg/hpa/, and grouping behind
+// sub-structs would force a pervasive rename for no behavioral gain. All
+// fields are plain value-typed bool so a shallow copy produces an independent
+// set.
+//
+// When adding a new flag: (1) place it in the matching domain section below,
+// (2) register it in featureSetters, (3) wire it into any command preset that
+// should enable it in presets.go.
 type Features struct {
-	// Status presentation
+	// --- Presentation: controls which human-facing sections are rendered. ---
 	Interpret     bool
 	NoInterpret   bool
 	Explain       bool
@@ -12,16 +21,19 @@ type Features struct {
 	Recommend     bool
 	HiddenFactors bool
 	ContextForAI  bool
-	// Metrics diagnostics
+
+	// --- Metrics diagnostics: inspect the metrics pipeline health. ---
 	DiagnoseMetrics    bool
 	MetricsFreshness   bool
 	MetricContract     bool
 	AdapterDiagnostics bool
 	MetricHints        bool
-	// Pod/resource analysis
+
+	// --- Pod/resource analysis: workload-level inspection. ---
 	CheckResources bool
 	ExplainPods    bool
-	// Capacity analysis
+
+	// --- Capacity analysis: cluster headroom and scale-out feasibility. ---
 	CapacityContext  bool
 	CapacityHeadroom bool
 	CapacityDeep     bool
@@ -29,17 +41,21 @@ type Features struct {
 	ScalePath        bool
 	NodeAutoscaler   bool
 	Karpenter        bool
-	// Rollout & blockers
+
+	// --- Rollout & blockers: deployment progress and scale-out gates. ---
 	Rollout          bool
 	RolloutImpact    bool
 	ReadinessImpact  bool
 	ScaleoutBlockers bool
-	// Controller & decision
+
+	// --- Controller & decision: HPA controller timing and decision trace. ---
 	ControllerProfile bool
 	DecisionTrace     bool
-	// KEDA/VPA/GitOps
+
+	// --- KEDA/VPA/GitOps: enrichment integrations. ---
 	GitOpsCheck bool
-	// Churn & advisors
+
+	// --- Churn & advisors: thrashing detection and tuning advisors. ---
 	ChurnDetect      bool
 	FlappingAdvisor  bool
 	TrendAnomaly     bool

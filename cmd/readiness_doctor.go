@@ -29,14 +29,12 @@ func newReadinessDoctorCommand(opts *options) *cobra.Command {
 }
 
 func runReadinessDoctor(ctx context.Context, out io.Writer, opts *options, name string) error {
-	client, err := opts.NewClient()
+	client, err := newClientOrDefault(opts)
 	if err != nil {
-		return fmt.Errorf("failed to create Kubernetes client: %w", err)
+		return err
 	}
 
-	hpa, err := client.Interface.AutoscalingV2().
-		HorizontalPodAutoscalers(client.Namespace).
-		Get(ctx, name, metav1.GetOptions{})
+	hpa, err := kube.GetHPAFromClient(ctx, client, name)
 	if err != nil {
 		return fmt.Errorf("failed to get HPA %s: %w", name, err)
 	}

@@ -2,7 +2,8 @@ package cmd
 
 import "github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 
-// EventOption is re-exported from cmdoptions for use in cmd/ struct literals.
+// EventOption is re-exported from internal/cmdoptions/events.go for use in
+// cmd/ struct literals.
 type EventOption = cmdoptions.EventOption
 
 // Package-level type aliases re-export the cmdoptions model under the names

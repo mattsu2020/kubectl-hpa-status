@@ -48,11 +48,7 @@ func enrichEvents(ctx context.Context, client *kube.Client, hpa *autoscalingv2.H
 		report.Events = []hpaanalysis.Event{{Reason: "Error", Message: fmt.Sprintf("failed to list events: %v", err)}}
 		return
 	}
-	events := make([]hpaanalysis.Event, 0, len(coreEvents))
-	for _, ce := range coreEvents {
-		events = append(events, hpaanalysis.EventFromCore(ce))
-	}
-	report.Events = events
+	report.Events = hpaanalysis.EventsFromCore(coreEvents)
 }
 
 func enrichMetricsDiagnostics(hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {

@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 	"github.com/spf13/cobra"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func newAssumptionsCommand(opts *options) *cobra.Command {
@@ -63,9 +63,9 @@ type assumptionsOutput struct {
 }
 
 func runAssumptions(ctx context.Context, out io.Writer, opts *options, names []string, flags assumptionsFlagOverrides) error {
-	client, err := opts.NewClient()
+	client, err := newClientOrDefault(opts)
 	if err != nil {
-		return fmt.Errorf("failed to create Kubernetes client: %w", err)
+		return err
 	}
 
 	// Build overrides from non-empty flag values.
@@ -92,9 +92,7 @@ func runAssumptions(ctx context.Context, out io.Writer, opts *options, names []s
 	reports := make([]assumptionsOutput, 0, len(names))
 
 	for _, name := range names {
-		hpa, err := client.Interface.AutoscalingV2().
-			HorizontalPodAutoscalers(client.Namespace).
-			Get(ctx, name, metav1.GetOptions{})
+		hpa, err := kube.GetHPAFromClient(ctx, client, name)
 		if err != nil {
 			return fmt.Errorf("failed to get HPA %s: %w", name, err)
 		}

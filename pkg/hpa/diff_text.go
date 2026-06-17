@@ -10,8 +10,6 @@ import (
 // WriteStatusDiff writes a status display that highlights changes between the
 // previous and current analysis. Changed fields are shown with emphasis;
 // unchanged fields are dimmed when the theme supports it.
-//
-//nolint:gocyclo // Sequential diff rendering of independent status sections; each section is self-contained.
 func WriteStatusDiff(w io.Writer, state WatchState, theme style.Theme) error {
 	// When there is no previous state, fall back to full status display.
 	if state.Previous == nil {
@@ -43,65 +41,11 @@ func WriteStatusDiff(w io.Writer, state WatchState, theme style.Theme) error {
 		out = fmt.Appendf(out, "Summary: %s\n", theme.Dim.Render(a.Summary))
 	}
 
-	// Conditions: highlight changed statuses
-	out = append(out, '\n')
-	out = append(out, "Conditions:\n"...)
-	if len(a.Conditions) == 0 {
-		out = append(out, "  No conditions reported.\n"...)
-	} else {
-		prevCondMap := conditionMap(prev.Conditions)
-		for _, condition := range a.Conditions {
-			statusText := theme.ConditionStatus(condition.Type, condition.Status)
-			prevStatus := prevCondMap[condition.Type]
-			if prevStatus != "" && prevStatus != condition.Status {
-				out = fmt.Appendf(out, "  %-15s %s (was %s) %-24s %s\n", condition.Type, statusText, prevStatus, condition.Reason, condition.Message)
-			} else {
-				out = fmt.Appendf(out, "  %-15s %-7s %-24s %s\n", condition.Type, statusText, condition.Reason, condition.Message)
-			}
-		}
-	}
-
-	// Metrics: highlight changed values
-	out = append(out, '\n')
-	out = append(out, "Metrics:\n"...)
-	if len(a.Metrics) == 0 {
-		out = append(out, "  No current metrics reported.\n"...)
-	} else {
-		prevMetricMap := metricMap(prev.Metrics)
-		for _, metric := range a.Metrics {
-			note := theme.MetricNote(metric.Note)
-			text := formatMetricText(metric, note)
-			if prevText, ok := prevMetricMap[metric.Name]; ok && prevText != metric.Text {
-				out = fmt.Appendf(out, "  - %s\n", text)
-			} else {
-				out = fmt.Appendf(out, "  - %s\n", theme.Dim.Render(text))
-			}
-		}
-	}
-
-	if len(a.Behavior) > 0 {
-		out = append(out, '\n')
-		out = append(out, "Behavior:\n"...)
-		for _, behavior := range a.Behavior {
-			out = fmt.Appendf(out, "  - %s\n", behavior.Text)
-		}
-	}
-
-	if len(a.Actions) > 0 {
-		out = append(out, '\n')
-		out = append(out, "Recommended actions:\n"...)
-		for _, action := range a.Actions {
-			out = fmt.Appendf(out, "  - %s\n", theme.ActionLine(action))
-		}
-	}
-
-	if len(a.Interpretation) > 0 {
-		out = append(out, '\n')
-		out = append(out, "Interpretation:\n"...)
-		for _, line := range a.Interpretation {
-			out = fmt.Appendf(out, "  - %s\n", theme.InterpretationLine(line))
-		}
-	}
+	appendDiffConditionsSection(&out, a, prev, theme)
+	appendDiffMetricsSection(&out, a, prev, theme)
+	appendDiffBehaviorSection(&out, a)
+	appendDiffActionsSection(&out, a, theme)
+	appendDiffInterpretationSection(&out, a, theme)
 
 	_, writeErr := w.Write(out)
 	return writeErr

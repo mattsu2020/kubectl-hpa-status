@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/spf13/cobra"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func newRecommendCommand(opts *options) *cobra.Command {
@@ -31,15 +31,13 @@ func newRecommendCommand(opts *options) *cobra.Command {
 }
 
 func runRecommend(ctx context.Context, out io.Writer, opts *options, args []string, profile hpaanalysis.AuditProfile) error {
-	client, err := opts.NewClient()
+	client, err := newClientOrDefault(opts)
 	if err != nil {
-		return fmt.Errorf("creating client: %w", err)
+		return err
 	}
 
 	for _, hpaName := range args {
-		hpa, err := client.Interface.AutoscalingV2().
-			HorizontalPodAutoscalers(client.Namespace).
-			Get(ctx, hpaName, metav1.GetOptions{})
+		hpa, err := kube.GetHPAFromClient(ctx, client, hpaName)
 		if err != nil {
 			return fmt.Errorf("getting HPA %s: %w", hpaName, err)
 		}

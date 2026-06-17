@@ -13,6 +13,34 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
+// Accepted config-file values. These are the single source of truth shared by
+// validateConfig below and the cobra flag descriptions in root_flags.go. Output
+// values are kept in canonical (normalized) form because validateConfig
+// normalizes user input before comparison.
+var (
+	validColorValues  = []string{"auto", "always", "never"}
+	validOutputValues = []string{"table", "wide", "json", "yaml", "jsonpath", "template", "gotemplate"}
+	validLangValues   = []string{"en", "ja"}
+
+	// outputFlagDisplayValues mirrors validOutputValues but keeps the
+	// kubectl-conventional "go-template" spelling for the --help string.
+	outputFlagDisplayValues = []string{"table", "wide", "json", "yaml", "jsonpath", "go-template"}
+)
+
+// isAcceptedNormalized reports whether value (already normalized) is one of the
+// accepted options, treating the empty string as "unset/allowed".
+func isAcceptedNormalized(value string, accepted []string) bool {
+	if value == "" {
+		return true
+	}
+	for _, a := range accepted {
+		if value == a {
+			return true
+		}
+	}
+	return false
+}
+
 // configFile mirrors the YAML structure accepted by --config.
 type configFile struct {
 	Namespace       string                          `json:"namespace" yaml:"namespace"`
@@ -58,22 +86,18 @@ func validateConfig(cfg configFile) error {
 		return fmt.Errorf("config healthScore must be in [0, 100], got %d", *cfg.HealthScore)
 	}
 
-	switch strings.ToLower(cfg.Color) {
-	case "", "auto", "always", "never":
-	default:
-		return fmt.Errorf("config color must be one of auto, always, never; got %q", cfg.Color)
+	if !isAcceptedNormalized(strings.ToLower(cfg.Color), validColorValues) {
+		return fmt.Errorf("config color must be one of %s; got %q", strings.Join(validColorValues, ", "), cfg.Color)
 	}
 
-	switch normalizeSelector(cfg.Output) {
-	case "", "table", "wide", "json", "yaml", "jsonpath", "template", "gotemplate":
-	default:
-		return fmt.Errorf("config output must be one of table, wide, json, yaml, jsonpath, template; got %q", cfg.Output)
+	// normalizeSelector collapses "go-template" into "gotemplate", so validate
+	// against the canonical "gotemplate" spelling used in validOutputValues.
+	if !isAcceptedNormalized(normalizeSelector(cfg.Output), validOutputValues) {
+		return fmt.Errorf("config output must be one of %s; got %q", strings.Join(validOutputValues, ", "), cfg.Output)
 	}
 
-	switch strings.ToLower(cfg.Lang) {
-	case "", "en", "ja":
-	default:
-		return fmt.Errorf("config lang must be one of en, ja; got %q", cfg.Lang)
+	if !isAcceptedNormalized(strings.ToLower(cfg.Lang), validLangValues) {
+		return fmt.Errorf("config lang must be one of %s; got %q", strings.Join(validLangValues, ", "), cfg.Lang)
 	}
 
 	return nil

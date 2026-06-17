@@ -212,15 +212,13 @@ func addReplayShortcutOverrides(overrides map[string]string, maxReplicas, minRep
 }
 
 func runRetrospectiveTimeline(ctx context.Context, out io.Writer, opts *options, name string, since time.Duration, replay bool) error {
-	client, err := opts.NewClient()
+	client, err := newClientOrDefault(opts)
 	if err != nil {
-		return fmt.Errorf("failed to create Kubernetes client: %w", err)
+		return err
 	}
 
 	// 1. Fetch the HPA object (needed for behavior, conditions, metrics).
-	hpa, err := client.Interface.AutoscalingV2().
-		HorizontalPodAutoscalers(client.Namespace).
-		Get(ctx, name, metav1.GetOptions{})
+	hpa, err := kube.GetHPAFromClient(ctx, client, name)
 	if err != nil {
 		return fmt.Errorf("failed to get HPA %s/%s: %w", client.Namespace, name, err)
 	}
@@ -231,10 +229,7 @@ func runRetrospectiveTimeline(ctx context.Context, out io.Writer, opts *options,
 	if err != nil {
 		return fmt.Errorf("failed to fetch events: %w", err)
 	}
-	events := make([]hpaanalysis.Event, 0, len(coreEvents))
-	for _, ce := range coreEvents {
-		events = append(events, hpaanalysis.EventFromCore(ce))
-	}
+	events := hpaanalysis.EventsFromCore(coreEvents)
 
 	// 3. Build the retrospective timeline.
 	tl := hpaanalysis.BuildRetrospectiveTimeline(events, hpa, sinceTime)
@@ -414,9 +409,9 @@ func recordOnce(ctx context.Context, opts *options, name string, interval time.D
 		return []hpaanalysis.TimelineTrace{traceFromReport(report, interval)}, nil
 	}
 
-	client, err := opts.NewClient()
+	client, err := newClientOrDefault(opts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create Kubernetes client: %w", err)
+		return nil, err
 	}
 	namespace := client.Namespace
 	if opts.AllNamespaces {

@@ -203,13 +203,13 @@ type Analysis struct {
 	// EnrichmentStatus holds KEDA/VPA enrichment skip reasons for diagnostic
 	// output, populated during enrichment to explain why data may be absent.
 	//
-	// The concrete value is internal/enrichment.Status; the field is typed
-	// interface{} because pkg/hpa cannot import the internal/enrichment package
-	// (Go internal package visibility). The value is consumed only via JSON/YAML
-	// marshalling of the surrounding Analysis — no production code reads or
-	// type-asserts it directly. Treat the serialised shape as a public contract:
-	// add fields additively, never rename or reorder existing keys.
-	EnrichmentStatus interface{} `json:"enrichmentStatus,omitempty" yaml:"enrichmentStatus,omitempty"`
+	// This is a JSON-mirror of internal/enrichment.Status, defined here because
+	// pkg/hpa cannot import the internal/enrichment package (Go internal package
+	// visibility). The internal/enrichment package converts its Status into this
+	// type before attaching it to Analysis. Treat the serialised shape as a
+	// public contract: add fields additively, never rename or reorder existing
+	// keys.
+	EnrichmentStatus *EnrichmentStatus `json:"enrichmentStatus,omitempty" yaml:"enrichmentStatus,omitempty"`
 	// MetricContract holds metrics contract validation results, populated when
 	// --metric-contract is enabled.
 	MetricContract *MetricContractReport `json:"metricContract,omitempty" yaml:"metricContract,omitempty"`
@@ -394,4 +394,46 @@ type GuardWarning struct {
 	Suggestion Suggestion `json:"suggestion" yaml:"suggestion"`
 	Reason     string     `json:"reason" yaml:"reason"`
 	PolicyRule string     `json:"policyRule" yaml:"policyRule"`
+}
+
+// EnrichmentSource identifies which enrichment system produced a status entry.
+type EnrichmentSource string
+
+const (
+	// EnrichmentSourceKEDA indicates KEDA ScaledObject enrichment.
+	EnrichmentSourceKEDA EnrichmentSource = "keda"
+	// EnrichmentSourceVPA indicates VerticalPodAutoscaler enrichment.
+	EnrichmentSourceVPA EnrichmentSource = "vpa"
+)
+
+// EnrichmentState describes the outcome of an enrichment operation.
+type EnrichmentState string
+
+const (
+	// EnrichmentStateActive means enrichment data was successfully retrieved.
+	EnrichmentStateActive EnrichmentState = "active"
+	// EnrichmentStateSkipped means the HPA was not relevant for this enrichment.
+	EnrichmentStateSkipped EnrichmentState = "skipped"
+	// EnrichmentStateDisabled means the enrichment source was not requested.
+	EnrichmentStateDisabled EnrichmentState = "disabled"
+	// EnrichmentStateUnavailable means the required CRD is not installed.
+	EnrichmentStateUnavailable EnrichmentState = "unavailable"
+	// EnrichmentStateError means enrichment failed due to an error.
+	EnrichmentStateError EnrichmentState = "error"
+)
+
+// EnrichmentStatusEntry records the outcome for a single enrichment source.
+// JSON-mirror of internal/enrichment.Entry.
+type EnrichmentStatusEntry struct {
+	Source EnrichmentSource `json:"source" yaml:"source"`
+	State  EnrichmentState  `json:"state" yaml:"state"`
+	Reason string           `json:"reason,omitempty" yaml:"reason,omitempty"`
+}
+
+// EnrichmentStatus holds the enrichment outcomes for all sources.
+// JSON-mirror of internal/enrichment.Status; attached to Analysis for
+// visibility in --debug and -o json output.
+type EnrichmentStatus struct {
+	KEDA *EnrichmentStatusEntry `json:"keda,omitempty" yaml:"keda,omitempty"`
+	VPA  *EnrichmentStatusEntry `json:"vpa,omitempty" yaml:"vpa,omitempty"`
 }

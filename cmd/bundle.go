@@ -14,7 +14,6 @@ import (
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/spf13/cobra"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 )
 
@@ -105,9 +104,9 @@ type bundleData struct {
 
 // runBundle orchestrates data collection and output for the bundle command.
 func runBundle(ctx context.Context, out io.Writer, opts *options, name, format, outputPath string, redact bool) error {
-	client, err := opts.NewClient()
+	client, err := newClientOrDefault(opts)
 	if err != nil {
-		return fmt.Errorf("creating client: %w", err)
+		return err
 	}
 
 	data, err := collectBundleData(ctx, client, opts, name)
@@ -155,9 +154,7 @@ func collectBundleData(ctx context.Context, client *kube.Client, opts *options, 
 	}
 
 	// 1. Fetch HPA YAML.
-	hpa, err := client.Interface.AutoscalingV2().
-		HorizontalPodAutoscalers(client.Namespace).
-		Get(ctx, name, metav1.GetOptions{})
+	hpa, err := kube.GetHPAFromClient(ctx, client, name)
 	if err != nil {
 		return nil, fmt.Errorf("getting HPA %s: %w", name, err)
 	}

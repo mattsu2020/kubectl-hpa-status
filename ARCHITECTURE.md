@@ -62,10 +62,30 @@ Refactoring notes:
   `internal/kube/`.
 - `output.go` handles format routing; config loading lives in `config.go` /
   `config_apply.go`.
+- HPA fetch (`kube.GetHPAFromClient`) and event conversion
+  (`hpaanalysis.EventsFromCore`) are centralized in `internal/kube/hpa.go` and
+  `pkg/hpa/events.go` respectively; commands call them instead of inlining the
+  raw client calls.
+- Client creation goes through `newClientOrDefault` (`cmd/client_helpers.go`)
+  so the standard "failed to create Kubernetes client" message is shared.
+- `EnrichmentStatus` on `Analysis` is now a typed `*hpaanalysis.EnrichmentStatus`
+  (mirror of `internal/enrichment.Status` via `Status.ToAnalysisStatus`) instead
+  of `interface{}`.
+- Config-file accepted values for color/output/lang are defined once in
+  `config.go` (`validColorValues` / `validOutputValues` / `validLangValues`)
+  and reused by both `validateConfig` and the flag descriptions in
+  `root_flags.go`.
+- The text orchestrators (`WriteStatusTextWithOptions`, `WriteStatusDiff`,
+  `WriteHTMLReport`) delegate to per-section renderers (`text_extras.go`,
+  `diff_text_sections.go`, `report_html_sections.go`) so no `//nolint:gocyclo`
+  exemption is needed on the orchestrator body.
 - The `options` struct in `root.go` is shared across all commands. Per-command
   option splits and `cmd/` sub-packages are deferred: shared types/helpers
   create import-cycle risk, so prefer adding fields over splitting until a
-  dedicated interface boundary is designed.
+  dedicated interface boundary is designed. When that boundary lands, extract
+  one sub-package at a time (start with the most self-contained group, e.g.
+  `bundle_*`) and re-export the shared symbols through a thin facade to keep
+  the rest of `cmd/` compiling.
 
 `pkg/hpa` is kept importable so downstream tools can reuse the analysis model
 without depending on Cobra command wiring.

@@ -51,9 +51,9 @@ type snapshotData struct {
 }
 
 func runSnapshot(ctx context.Context, out io.Writer, opts *options, name, outputPath string, redact bool) error {
-	client, err := opts.NewClient()
+	client, err := newClientOrDefault(opts)
 	if err != nil {
-		return fmt.Errorf("creating client: %w", err)
+		return err
 	}
 
 	data, err := collectSnapshotData(ctx, client, opts, name)
@@ -88,9 +88,7 @@ func collectSnapshotData(ctx context.Context, client *kube.Client, opts *options
 	}
 
 	// 1. Fetch HPA
-	hpa, err := client.Interface.AutoscalingV2().
-		HorizontalPodAutoscalers(client.Namespace).
-		Get(ctx, name, metav1.GetOptions{})
+	hpa, err := kube.GetHPAFromClient(ctx, client, name)
 	if err != nil {
 		return nil, fmt.Errorf("getting HPA %s: %w", name, err)
 	}
