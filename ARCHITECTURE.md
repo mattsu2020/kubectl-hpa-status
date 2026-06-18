@@ -86,6 +86,18 @@ Refactoring notes:
   one sub-package at a time (start with the most self-contained group, e.g.
   `bundle_*`) and re-export the shared symbols through a thin facade to keep
   the rest of `cmd/` compiling.
+- `cmd/options_bridge.go` is the single vocabulary for `internal/cmdoptions`
+  symbols inside `cmd/`. Every preset const, type alias
+  (`options`, `commonOptions`, `commandPresetOptions`, ...), and helper
+  (`applyCommandPreset`, `defaultRootOptions`, `validAnalysisProfiles`) lives
+  there; command files must NOT import `internal/cmdoptions` directly. Add new
+  presets/types to the bridge rather than reaching into the package.
+- `Analysis.Warnings` (`[]string`) records enrichment-pipeline failures and
+  notable skip reasons. They are rendered in plain-text status output (via
+  `appendWarningsSection`) as well as JSON/YAML, so a transient fetch failure
+  or RBAC denial is visible to operators instead of silently degrading to an
+  empty sub-report. New enrichment steps should append to `Warnings` on
+  best-effort failure rather than swallowing the error.
 
 `pkg/hpa` is kept importable so downstream tools can reuse the analysis model
 without depending on Cobra command wiring.
