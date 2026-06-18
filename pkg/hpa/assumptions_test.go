@@ -4,23 +4,16 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func buildAssumptionsHPA() *autoscalingv2.HorizontalPodAutoscaler {
-	return &autoscalingv2.HorizontalPodAutoscaler{
-		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "production"},
-		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
-				Kind: "Deployment",
-				Name: "web",
-			},
-			MinReplicas: int32Ptr(1),
-			MaxReplicas: 10,
-		},
-	}
+	return testutil.BuildHPA("production", "web",
+		testutil.WithMinMax(1, 10),
+		testutil.WithScaleTargetRef("Deployment", "web"),
+	)
 }
 
 func TestDetectControllerAssumptions(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -786,21 +787,14 @@ func resourcePtr(q resource.Quantity) *resource.Quantity {
 }
 
 func buildScalingLimitedHPA(maxReplicas, desiredReplicas int32) *autoscalingv2.HorizontalPodAutoscaler {
-	return &autoscalingv2.HorizontalPodAutoscaler{
-		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "test-hpa"},
-		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{Kind: "Deployment", Name: "web"},
-			MaxReplicas:    maxReplicas,
-			MinReplicas:    int32PtrForSuggestion(1),
-		},
-		Status: autoscalingv2.HorizontalPodAutoscalerStatus{
-			CurrentReplicas: desiredReplicas - 1,
-			DesiredReplicas: desiredReplicas,
-			Conditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
-				{Type: "ScalingActive", Status: corev1.ConditionTrue},
-				{Type: "ScalingLimited", Status: corev1.ConditionTrue, Reason: "TooManyReplicas"},
-				{Type: "AbleToScale", Status: corev1.ConditionTrue},
-			},
-		},
-	}
+	return testutil.BuildHPA("default", "test-hpa",
+		testutil.WithMinMax(1, maxReplicas),
+		testutil.WithReplicas(desiredReplicas-1, desiredReplicas),
+		testutil.WithScaleTargetRef("Deployment", "web"),
+		testutil.WithConditions(
+			autoscalingv2.HorizontalPodAutoscalerCondition{Type: "ScalingActive", Status: corev1.ConditionTrue},
+			autoscalingv2.HorizontalPodAutoscalerCondition{Type: "ScalingLimited", Status: corev1.ConditionTrue, Reason: "TooManyReplicas"},
+			autoscalingv2.HorizontalPodAutoscalerCondition{Type: "AbleToScale", Status: corev1.ConditionTrue},
+		),
+	)
 }

@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestBuildRetrospectiveTimeline_BasicScaleUp(t *testing.T) {
@@ -362,20 +362,12 @@ func TestWriteRetrospectiveTimeline_HTML(t *testing.T) {
 
 // buildRetrospectiveTestHPA creates a minimal HPA for testing purposes.
 func buildRetrospectiveTestHPA(namespace, name string) *autoscalingv2.HorizontalPodAutoscaler {
-	minReplicas := int32(1)
-	return &autoscalingv2.HorizontalPodAutoscaler{
-		ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: name},
-		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{Kind: "Deployment", Name: name},
-			MinReplicas:    &minReplicas,
-			MaxReplicas:    10,
-		},
-		Status: autoscalingv2.HorizontalPodAutoscalerStatus{
-			CurrentReplicas: 3,
-			DesiredReplicas: 3,
-			Conditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
-				{Type: autoscalingv2.ScalingActive, Status: corev1.ConditionTrue, Reason: "ValidMetricFound"},
-			},
-		},
-	}
+	return testutil.BuildHPA(namespace, name,
+		testutil.WithMinMax(1, 10),
+		testutil.WithReplicas(3, 3),
+		testutil.WithScaleTargetRef("Deployment", name),
+		testutil.WithConditions(
+			autoscalingv2.HorizontalPodAutoscalerCondition{Type: autoscalingv2.ScalingActive, Status: corev1.ConditionTrue, Reason: "ValidMetricFound"},
+		),
+	)
 }

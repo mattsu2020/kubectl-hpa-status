@@ -6,20 +6,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func buildChurnTestHPA() *autoscalingv2.HorizontalPodAutoscaler {
-	minVal := int32(1)
-	return &autoscalingv2.HorizontalPodAutoscaler{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-hpa", Namespace: "default"},
-		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{Kind: "Deployment", Name: "test"},
-			MinReplicas:    &minVal,
-			MaxReplicas:    10,
-		},
-	}
+	return testutil.BuildHPA("default", "test-hpa",
+		testutil.WithMinMax(1, 10),
+		testutil.WithScaleTargetRef("Deployment", "test"),
+	)
 }
 
 func rescaleEvent(to int32, ts time.Time) Event {
