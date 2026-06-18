@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestSimulateExtended(t *testing.T) {
@@ -241,41 +241,10 @@ func TestTargetAverageUtilizationOverride(t *testing.T) {
 
 // buildTestHPAWithResourceMetric creates a simple HPA with a resource metric for testing.
 func buildTestHPAWithResourceMetric(current, desired, minReplicas, maxReplicas, targetUtil, currentUtil int32) *autoscalingv2.HorizontalPodAutoscaler {
-	return &autoscalingv2.HorizontalPodAutoscaler{
-		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "test-hpa"},
-		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
-				Kind: "Deployment", Name: "app",
-			},
-			MinReplicas: &minReplicas,
-			MaxReplicas: maxReplicas,
-			Metrics: []autoscalingv2.MetricSpec{
-				{
-					Type: autoscalingv2.ResourceMetricSourceType,
-					Resource: &autoscalingv2.ResourceMetricSource{
-						Name: "cpu",
-						Target: autoscalingv2.MetricTarget{
-							Type:               autoscalingv2.UtilizationMetricType,
-							AverageUtilization: &targetUtil,
-						},
-					},
-				},
-			},
-		},
-		Status: autoscalingv2.HorizontalPodAutoscalerStatus{
-			CurrentReplicas: current,
-			DesiredReplicas: desired,
-			CurrentMetrics: []autoscalingv2.MetricStatus{
-				{
-					Type: autoscalingv2.ResourceMetricSourceType,
-					Resource: &autoscalingv2.ResourceMetricStatus{
-						Name: "cpu",
-						Current: autoscalingv2.MetricValueStatus{
-							AverageUtilization: &currentUtil,
-						},
-					},
-				},
-			},
-		},
-	}
+	return testutil.BuildHPA("default", "test-hpa",
+		testutil.WithMinMax(minReplicas, maxReplicas),
+		testutil.WithReplicas(current, desired),
+		testutil.WithScaleTargetRef("Deployment", "app"),
+		testutil.WithResourceMetric("cpu", targetUtil, currentUtil),
+	)
 }
