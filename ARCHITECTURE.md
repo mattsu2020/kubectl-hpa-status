@@ -86,6 +86,19 @@ Refactoring notes:
   one sub-package at a time (start with the most self-contained group, e.g.
   `bundle_*`) and re-export the shared symbols through a thin facade to keep
   the rest of `cmd/` compiling.
+- Two cobra-free layers have already been extracted out of `cmd/`:
+  `internal/kubeconv` (kube.* -> pkg/hpa DTO conversion, with `cmd/converters.go`
+  as a thin facade) and `internal/render` (output format routing and
+  serialization, with `cmd/output.go` as a thin facade). When the `cmd/` split
+  lands, callers migrate to `kubeconv.*` / `render.*` directly and the facades
+  shrink.
+- `pkg/hpa/render` extraction of the ~30 `*_text.go`/`report*.go` files is
+  blocked by a genuine import cycle: non-render files in `pkg/hpa`
+  (`analysis_phases.go`, `interpret.go`, `metrics_handler.go`,
+  `suggestion_rules.go`) call back into the render functions
+  (`WriteStatusText`, `FormatMetricStatus`, ...). Splitting requires injecting
+  those call sites through an interface or moving the callers out first; it is
+  not a mechanical file move.
 - `cmd/options_bridge.go` is the single vocabulary for `internal/cmdoptions`
   symbols inside `cmd/`. Every preset const, type alias
   (`options`, `commonOptions`, `commandPresetOptions`, ...), and helper
