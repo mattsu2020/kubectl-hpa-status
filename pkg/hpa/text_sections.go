@@ -419,3 +419,18 @@ func appendEventsSection(out *[]byte, report StatusReport, labels labels) {
 		*out = fmt.Appendf(*out, "  - %s: %s\n", event.Reason, event.Message)
 	}
 }
+
+// appendWarningsSection renders Analysis.Warnings. These are enrichment-pipeline
+// errors and notable skip reasons (e.g. an optional CRD lookup that failed).
+// Without this section the warnings only surfaced in JSON/YAML output, leaving
+// plain-text users unaware of why an expected piece of analysis was missing.
+func appendWarningsSection(out *[]byte, a *Analysis, labels labels) {
+	if len(a.Warnings) == 0 {
+		return
+	}
+	*out = append(*out, '\n')
+	*out = fmt.Appendf(*out, "%s:\n", labels.Warning)
+	for _, warning := range a.Warnings {
+		*out = fmt.Appendf(*out, "  - %s\n", warning)
+	}
+}

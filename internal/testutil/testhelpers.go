@@ -265,3 +265,105 @@ func WithDesiredAtMax() HPAOption {
 		hpa.Status.DesiredReplicas = hpa.Spec.MaxReplicas
 	}
 }
+
+// WithGeneration sets ObjectMeta.Generation on the HPA. Some analysis paths
+// (e.g. status-vs-spec staleness) key off Generation.
+func WithGeneration(gen int64) HPAOption {
+	return func(hpa *autoscalingv2.HorizontalPodAutoscaler) {
+		hpa.ObjectMeta.Generation = gen
+	}
+}
+
+// WithScaleTargetRef overrides the HPA's ScaleTargetRef (kind/name/apiVersion).
+func WithScaleTargetRef(kind, name string) HPAOption {
+	return func(hpa *autoscalingv2.HorizontalPodAutoscaler) {
+		hpa.Spec.ScaleTargetRef = autoscalingv2.CrossVersionObjectReference{Kind: kind, Name: name}
+	}
+}
+
+// WithPodsMetric adds a Pods metric spec and status. targetValue and
+// currentValue are AverageValue quantities (e.g. "500m", "10").
+func WithPodsMetric(name string, targetValue, currentValue string) HPAOption {
+	return func(hpa *autoscalingv2.HorizontalPodAutoscaler) {
+		target := resource.MustParse(targetValue)
+		current := resource.MustParse(currentValue)
+		hpa.Spec.Metrics = append(hpa.Spec.Metrics, autoscalingv2.MetricSpec{
+			Type: autoscalingv2.PodsMetricSourceType,
+			Pods: &autoscalingv2.PodsMetricSource{
+				Metric: autoscalingv2.MetricIdentifier{Name: name},
+				Target: autoscalingv2.MetricTarget{Type: autoscalingv2.AverageValueMetricType, AverageValue: &target},
+			},
+		})
+		hpa.Status.CurrentMetrics = append(hpa.Status.CurrentMetrics, autoscalingv2.MetricStatus{
+			Type: autoscalingv2.PodsMetricSourceType,
+			Pods: &autoscalingv2.PodsMetricStatus{
+				Metric:  autoscalingv2.MetricIdentifier{Name: name},
+				Current: autoscalingv2.MetricValueStatus{AverageValue: &current},
+			},
+		})
+	}
+}
+
+// WithObjectMetric adds an Object metric spec and status. The described object
+// defaults to the HPA's ScaleTargetRef; override with WithScaleTargetRef first.
+func WithObjectMetric(name string, targetValue, currentValue string) HPAOption {
+	return func(hpa *autoscalingv2.HorizontalPodAutoscaler) {
+		target := resource.MustParse(targetValue)
+		current := resource.MustParse(currentValue)
+		ref := autoscalingv2.CrossVersionObjectReference{
+			Kind: hpa.Spec.ScaleTargetRef.Kind,
+			Name: hpa.Spec.ScaleTargetRef.Name,
+		}
+		hpa.Spec.Metrics = append(hpa.Spec.Metrics, autoscalingv2.MetricSpec{
+			Type: autoscalingv2.ObjectMetricSourceType,
+			Object: &autoscalingv2.ObjectMetricSource{
+				Metric:  autoscalingv2.MetricIdentifier{Name: name, Selector: nil},
+				Target:  autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType, Value: &target},
+				DescribedObject: ref,
+			},
+		})
+		hpa.Status.CurrentMetrics = append(hpa.Status.CurrentMetrics, autoscalingv2.MetricStatus{
+			Type: autoscalingv2.ObjectMetricSourceType,
+			Object: &autoscalingv2.ObjectMetricStatus{
+				Metric:  autoscalingv2.MetricIdentifier{Name: name},
+				Current: autoscalingv2.MetricValueStatus{Value: &current},
+			},
+		})
+	}
+}
+
+// WithContainerResourceMetric adds a ContainerResource metric spec and status.
+func WithContainerResourceMetric(container, resourceName string, targetUtil, currentUtil int32) HPAOption {
+	return func(hpa *autoscalingv2.HorizontalPodAutoscaler) {
+		hpa.Spec.Metrics = append(hpa.Spec.Metrics, autoscalingv2.MetricSpec{
+			Type: autoscalingv2.ContainerResourceMetricSourceType,
+			ContainerResource: &autoscalingv2.ContainerResourceMetricSource{
+				Name:      corev1.ResourceName(resourceName),
+				Container: container,
+				Target: autoscalingv2.MetricTarget{
+					Type:               autoscalingv2.UtilizationMetricType,
+					AverageUtilization: &targetUtil,
+				},
+			},
+		})
+		hpa.Status.CurrentMetrics = append(hpa.Status.CurrentMetrics, autoscalingv2.MetricStatus{
+			Type: autoscalingv2.ContainerResourceMetricSourceType,
+			ContainerResource: &autoscalingv2.ContainerResourceMetricStatus{
+				Name:      corev1.ResourceName(resourceName),
+				Container: container,
+				Current: autoscalingv2.MetricValueStatus{
+					AverageUtilization: &currentUtil,
+				},
+			},
+		})
+	}
+}
+
+// WithBehavior sets the HPA spec.behavior field directly, replacing any
+// existing behavior. Use this when a test needs both scaleUp and scaleDown
+// rules configured simultaneously.
+func WithBehavior(b *autoscalingv2.HorizontalPodAutoscalerBehavior) HPAOption {
+	return func(hpa *autoscalingv2.HorizontalPodAutoscaler) {
+		hpa.Spec.Behavior = b
+	}
+}

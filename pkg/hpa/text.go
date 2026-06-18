@@ -180,6 +180,7 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 	appendFlappingPreventionSection(&out, a, labels)
 	appendMetricHintsSection(&out, a)
 	appendEventsSection(&out, report, labels)
+	appendWarningsSection(&out, a, labels)
 
 	_, err := w.Write(out)
 	return err
