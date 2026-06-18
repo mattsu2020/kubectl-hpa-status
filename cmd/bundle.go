@@ -157,7 +157,12 @@ func collectBundleData(ctx context.Context, client *kube.Client, opts *options, 
 	if err != nil {
 		return nil, fmt.Errorf("getting HPA %s: %w", name, err)
 	}
-	data.HPA, _ = yaml.Marshal(hpa)
+	if marshaled, err := yaml.Marshal(hpa); err != nil {
+		// Propagate rather than silently producing an empty HPA section in the bundle.
+		data.Warnings = append(data.Warnings, fmt.Sprintf("marshal HPA YAML: %v", err))
+	} else {
+		data.HPA = marshaled
+	}
 
 	// 2. Fetch scale target YAML (reuse snapshot helper).
 	data.ScaleTarget = fetchSnapshotTarget(ctx, client, hpa)
@@ -180,7 +185,12 @@ func collectBundleData(ctx context.Context, client *kube.Client, opts *options, 
 	// 6. Pods (reuse snapshot helper) + raw PodInfos for table rendering.
 	data.Pods = fetchSnapshotPods(ctx, client, hpa)
 	if selector != "" {
-		podInfos, _ := kube.FetchPodInfosForSelector(ctx, client.Interface, client.Namespace, selector)
+		podInfos, err := kube.FetchPodInfosForSelector(ctx, client.Interface, client.Namespace, selector)
+		if err != nil {
+			// Mirror steps 9-13: surface the failure rather than silently leaving
+			// the PodInfos table empty.
+			data.Warnings = append(data.Warnings, fmt.Sprintf("pod infos: %v", err))
+		}
 		data.PodInfos = podInfos
 	}
 

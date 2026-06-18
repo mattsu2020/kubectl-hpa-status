@@ -47,7 +47,7 @@ func runRollout(ctx context.Context, out io.Writer, opts *options, names []strin
 			return err
 		}
 
-		rolloutReport := buildRolloutReport(ctx, &local, report.Analysis, name)
+		rolloutReport := buildRolloutReport(ctx, &local, &report.Analysis, name)
 		outputs = append(outputs, rolloutOutput{
 			Namespace: report.Analysis.Namespace,
 			Name:      report.Analysis.Name,
@@ -82,7 +82,9 @@ func runRollout(ctx context.Context, out io.Writer, opts *options, names []strin
 }
 
 // buildRolloutReport assembles RolloutInput and runs the rollout analysis.
-func buildRolloutReport(ctx context.Context, opts *options, analysis hpaanalysis.Analysis, name string) *hpaanalysis.RolloutReport {
+// Warnings discovered while gathering live state are appended to analysis.Warnings
+// so they surface in the report rather than being silently dropped.
+func buildRolloutReport(ctx context.Context, opts *options, analysis *hpaanalysis.Analysis, name string) *hpaanalysis.RolloutReport {
 	client, err := opts.NewClient()
 	if err != nil {
 		return nil
@@ -98,7 +100,9 @@ func buildRolloutReport(ctx context.Context, opts *options, analysis hpaanalysis
 }
 
 // assembleRolloutInput gathers all observable signals for rollout analysis.
-func assembleRolloutInput(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, analysis hpaanalysis.Analysis) hpaanalysis.RolloutInput {
+// Fetch failures are appended to analysis.Warnings so callers can see why a
+// signal is missing instead of silently treating it as absent.
+func assembleRolloutInput(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, analysis *hpaanalysis.Analysis) hpaanalysis.RolloutInput {
 	input := hpaanalysis.RolloutInput{
 		Namespace: hpa.Namespace,
 		HPAName:   hpa.Name,
@@ -132,6 +136,10 @@ func assembleRolloutInput(ctx context.Context, client *kube.Client, hpa *autosca
 			input.RolloutInProgress = deploymentRolloutInProgress(deploy)
 			input.UpdatedReplicas = deploy.Status.UpdatedReplicas
 			input.NewReplicaSetContainerNames = extractNewReplicaSetContainers(ctx, client, hpa.Namespace, deploy)
+		} else {
+			// Surface the fetch failure so RolloutInProgress=0 isn't mistaken
+			// for "no rollout in progress" on an RBAC-denied or transient error.
+			analysis.Warnings = append(analysis.Warnings, fmt.Sprintf("could not read Deployment %s/%s rollout status: %v", hpa.Namespace, ref.Name, err))
 		}
 	case "StatefulSet":
 		sts, err := client.Interface.AppsV1().StatefulSets(hpa.Namespace).Get(ctx, ref.Name, metav1.GetOptions{})
@@ -142,6 +150,8 @@ func assembleRolloutInput(ctx context.Context, client *kube.Client, hpa *autosca
 			for _, c := range sts.Spec.Template.Spec.Containers {
 				input.NewReplicaSetContainerNames = append(input.NewReplicaSetContainerNames, c.Name)
 			}
+		} else {
+			analysis.Warnings = append(analysis.Warnings, fmt.Sprintf("could not read StatefulSet %s/%s rollout status: %v", hpa.Namespace, ref.Name, err))
 		}
 	}
 

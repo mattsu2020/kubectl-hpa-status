@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -134,8 +135,13 @@ func buildListItems(ctx context.Context, opts *options, hpas []autoscalingv2.Hor
 	vpaResults, vpaWarnings := enrichListVPA(ctx, ec, hpas)
 	var store *history.HealthStore
 	if opts.Trend {
-		if s, err := history.NewHealthStore(); err == nil {
+		s, err := history.NewHealthStore()
+		if err == nil {
 			store = s
+		} else {
+			// Surface the init failure so --trend silently producing no trend data
+			// (e.g. an unwritable cache dir) is not mistaken for "no history yet".
+			fmt.Fprintf(os.Stderr, "warning: health trend store unavailable, --trend will show no data: %v\n", err)
 		}
 	}
 

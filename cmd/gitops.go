@@ -40,6 +40,7 @@ func buildGitOpsConflict(ctx context.Context, client *kube.Client, hpa *autoscal
 	fluxAnnotations := make(map[string]string)
 	kedaManaged := false
 	var liveReplicas int32
+	var liveFetchWarnings []string
 
 	switch targetKind {
 	case "Deployment":
@@ -53,6 +54,10 @@ func buildGitOpsConflict(ctx context.Context, client *kube.Client, hpa *autoscal
 					kedaManaged = true
 				}
 			}
+		} else {
+			// Surface the fetch failure instead of silently leaving liveReplicas=0,
+			// which would otherwise produce a misleading drift analysis.
+			liveFetchWarnings = append(liveFetchWarnings, fmt.Sprintf("could not read live Deployment %s/%s replicas: %v", hpa.Namespace, targetName, err))
 		}
 	case "StatefulSet":
 		sts, err := client.Interface.AppsV1().StatefulSets(hpa.Namespace).Get(ctx, targetName, metav1.GetOptions{})
@@ -65,6 +70,8 @@ func buildGitOpsConflict(ctx context.Context, client *kube.Client, hpa *autoscal
 					kedaManaged = true
 				}
 			}
+		} else {
+			liveFetchWarnings = append(liveFetchWarnings, fmt.Sprintf("could not read live StatefulSet %s/%s replicas: %v", hpa.Namespace, targetName, err))
 		}
 	}
 
@@ -82,7 +89,9 @@ func buildGitOpsConflict(ctx context.Context, client *kube.Client, hpa *autoscal
 		KEDAManaged:       kedaManaged,
 	}
 
-	return hpaanalysis.AnalyzeGitOpsConflict(input)
+	conflict := hpaanalysis.AnalyzeGitOpsConflict(input)
+	conflict.Warnings = append(conflict.Warnings, liveFetchWarnings...)
+	return conflict
 }
 
 // parseManifestReplicas reads YAML/JSON manifest files and extracts spec.replicas

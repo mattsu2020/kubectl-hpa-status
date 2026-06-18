@@ -74,6 +74,10 @@ func buildCompatReport(_ context.Context, disco discovery.DiscoveryInterface) co
 	report := compatReport{HPAAPI: "unknown"}
 	if version, err := disco.ServerVersion(); err == nil {
 		report.ClusterVersion = version.GitVersion
+	} else {
+		// Surface the discovery failure rather than silently reporting "unknown",
+		// so an RBAC denial or unreachable API is not mistaken for an old cluster.
+		report.Checks = append(report.Checks, compatCheck("WARN", "cluster version discovery", fmt.Sprintf("server version query failed: %v", err)))
 	}
 	if report.ClusterVersion == "" {
 		report.ClusterVersion = "unknown"
@@ -85,9 +89,13 @@ func buildCompatReport(_ context.Context, disco discovery.DiscoveryInterface) co
 				break
 			}
 		}
+	} else {
+		// Distinguish "API genuinely absent" (handled by the ERROR check below)
+		// from "the discovery call itself failed". Without this, an RBAC denial
+		// looks identical to a cluster that lacks autoscaling/v2.
+		report.Checks = append(report.Checks, compatCheck("WARN", "HPA API discovery", fmt.Sprintf("autoscaling/v2 lookup failed: %v", err)))
 	}
-	major, minor := parseKubeMinor(report.ClusterVersion)
-	_ = major
+	minor := parseKubeMinor(report.ClusterVersion)
 	report.Checks = append(report.Checks,
 		compatCheck("OK", "multiple metrics", "supported by autoscaling/v2"),
 		compatCheck("OK", "containerResource metrics", "stable in Kubernetes v1.30+"),
@@ -110,16 +118,18 @@ func compatCheck(status, feature, message string) compatCheckResult {
 	return compatCheckResult{Status: status, Feature: feature, Message: message}
 }
 
-func parseKubeMinor(version string) (int, int) {
+// parseKubeMinor returns the Kubernetes minor version parsed from a GitVersion
+// string (e.g. "v1.35.1" -> 35). Returns 0 when the value cannot be parsed,
+// which the caller treats as "unknown".
+func parseKubeMinor(version string) int {
 	version = strings.TrimPrefix(version, "v")
 	parts := strings.Split(version, ".")
 	if len(parts) < 2 {
-		return 0, 0
+		return 0
 	}
-	major, _ := strconv.Atoi(parts[0])
 	minorStr := strings.TrimRightFunc(parts[1], func(r rune) bool {
 		return r < '0' || r > '9'
 	})
 	minor, _ := strconv.Atoi(minorStr)
-	return major, minor
+	return minor
 }
