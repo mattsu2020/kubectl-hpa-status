@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
@@ -397,22 +398,15 @@ func TestAnalyzeAddsKEDADiagnosticsAndSuggestion(t *testing.T) {
 }
 
 func baseHPA() *autoscalingv2.HorizontalPodAutoscaler {
-	minReplicas := int32(2)
-	return &autoscalingv2.HorizontalPodAutoscaler{
-		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "web", Generation: 1},
-		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{Kind: "Deployment", Name: "web"},
-			MinReplicas:    &minReplicas,
-			MaxReplicas:    10,
-		},
-		Status: autoscalingv2.HorizontalPodAutoscalerStatus{
-			CurrentReplicas: 2,
-			DesiredReplicas: 2,
-			Conditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
-				{Type: "ScalingActive", Status: corev1.ConditionTrue, Reason: "ValidMetricFound"},
-			},
-		},
-	}
+	return testutil.BuildHPA("default", "web",
+		testutil.WithMinMax(2, 10),
+		testutil.WithReplicas(2, 2),
+		testutil.WithGeneration(1),
+		testutil.WithScaleTargetRef("Deployment", "web"),
+		testutil.WithConditions(
+			autoscalingv2.HorizontalPodAutoscalerCondition{Type: "ScalingActive", Status: corev1.ConditionTrue, Reason: "ValidMetricFound"},
+		),
+	)
 }
 
 func containsSuggestion(suggestions []Suggestion, title string) bool {
