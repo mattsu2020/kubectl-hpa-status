@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/spf13/cobra"
@@ -145,7 +144,7 @@ func runBundle(ctx context.Context, out io.Writer, opts *options, name, format, 
 // are shared but bundle code never writes through them.
 func collectBundleData(ctx context.Context, client *kube.Client, opts *options, name string) (*bundleData, error) {
 	// Enable all doctor-level flags on a shallow copy of opts.
-	bundleOpts := applyCommandPreset(opts, cmdoptions.PresetBundle)
+	bundleOpts := applyCommandPreset(opts, presetBundle)
 
 	data := &bundleData{
 		Namespace: client.Namespace,

@@ -6,15 +6,29 @@ import "github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 // cmd/ struct literals.
 type EventOption = cmdoptions.EventOption
 
-// Package-level type aliases re-export the cmdoptions model under the names
-// the cmd package historically used, so existing command files compile without
-// rewriting every reference.
+// This file is the single source of truth for the cmd -> internal/cmdoptions
+// bridge. Every cmdoptions symbol referenced from cmd/ MUST go through one of
+// the aliases, consts, or helpers below so there is exactly one vocabulary for
+// presets and option types across all command files. Do not import
+// internal/cmdoptions symbols (Preset*, CommandPresetOptions, ...) directly
+// from individual command files; add or use the bridge entry here instead.
+
+// Type aliases re-export the cmdoptions model under the names the cmd package
+// uses in command wiring and struct literals.
 type (
 	options              = cmdoptions.Root
+	commonOptions        = cmdoptions.Common
+	statusOptions        = cmdoptions.Status
+	listOptions          = cmdoptions.List
+	watchOptions         = cmdoptions.Watch
+	featuresOptions      = cmdoptions.Features
 	outputTemplateConfig = cmdoptions.OutputTemplateConfig
-	commandPreset        = cmdoptions.CommandPreset
+	commandPresetOptions = cmdoptions.CommandPresetOptions
 )
 
+// Preset consts cover every CommandPreset defined in internal/cmdoptions. New
+// presets must be added here so command files stay free of direct cmdoptions
+// references.
 const (
 	presetDoctor           = cmdoptions.PresetDoctor
 	presetExplain          = cmdoptions.PresetExplain
@@ -42,6 +56,16 @@ func copyOptions(opts *options) options {
 	return opts.Copy()
 }
 
-func applyCommandPreset(opts *options, preset commandPreset, extra ...cmdoptions.CommandPresetOptions) options {
+func applyCommandPreset(opts *options, preset cmdoptions.CommandPreset, extra ...commandPresetOptions) options {
 	return cmdoptions.ApplyCommandPreset(*opts, preset, extra...)
+}
+
+// defaultRootOptions seeds an options struct with the shared defaults.
+func defaultRootOptions() options {
+	return cmdoptions.DefaultRoot()
+}
+
+// validAnalysisProfiles exposes the analysis-profile names for shell completion.
+func validAnalysisProfiles() []string {
+	return cmdoptions.ValidAnalysisProfiles()
 }

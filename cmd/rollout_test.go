@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 )
 
@@ -32,11 +31,11 @@ func TestRunRolloutJSONOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 			Output:         "json",
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
 	}
@@ -74,12 +73,12 @@ func TestRunRolloutTextOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 			Output:         "",
 			Color:          "never",
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
 	}
@@ -107,11 +106,11 @@ func TestRunRolloutNoRolloutInProgress(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 			Output:         "json",
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
 	}

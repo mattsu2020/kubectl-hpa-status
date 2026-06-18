@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -70,7 +69,7 @@ func TestWriteOutputTemplate(t *testing.T) {
 
 func TestOutputSelectionUsesNamedConfigTemplate(t *testing.T) {
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			Output:          "names",
 			OutputTemplates: map[string]outputTemplateConfig{"names": {Type: "go-template", Template: "{{ .Analysis.Namespace }}/{{ .Analysis.Name }}"}},
 		},
@@ -89,7 +88,7 @@ func TestOutputSelectionUsesNamedConfigTemplate(t *testing.T) {
 
 func TestOutputSelectionUsesNamedJSONPathTemplate(t *testing.T) {
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			Output:          "jsonpath:summary",
 			OutputTemplates: map[string]outputTemplateConfig{"summary": {Template: "{.analysis.summary}"}},
 		},
@@ -108,7 +107,7 @@ func TestOutputSelectionUsesNamedJSONPathTemplate(t *testing.T) {
 
 func TestApplyHealthWeightOverrides(t *testing.T) {
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			HealthWeightOverrides: []string{"scalingInactive=50", "atMinimumReplicas=0"},
 		},
 	}
@@ -291,14 +290,14 @@ func TestApplyConfigDefaultsDoesNotOverrideExplicitFlags(t *testing.T) {
 	}
 
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			Config: path,
 			Lang:   "en",
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: true, Limit: 5},
 		},
-		List: cmdoptions.List{
+		List: listOptions{
 			HealthScoreMin: -1,
 			HealthScoreMax: -1,
 		},

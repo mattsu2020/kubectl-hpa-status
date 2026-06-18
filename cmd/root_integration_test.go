@@ -16,7 +16,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
@@ -34,10 +33,10 @@ func TestRunStatus_OK(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: true, Limit: 5},
 		},
 	}
@@ -67,10 +66,10 @@ func TestRunStatus_ScalingLimited(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
 	}
@@ -104,12 +103,12 @@ func TestRunStatusSuggestShowsPatchCommand(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
-			Features: cmdoptions.Features{
+			Features: featuresOptions{
 				Suggest: true,
 			},
 		},
@@ -134,14 +133,14 @@ func TestRunStatusApplyPatchesHPA(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 			In:             io.Reader(strings.NewReader("")),
 			Apply:          true,
 			DryRun:         false,
 			Yes:            true,
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
 	}
@@ -168,14 +167,14 @@ func TestRunStatusApplyDefaultsToDryRun(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 			In:             io.Reader(strings.NewReader("")),
 			Apply:          true,
 			DryRun:         true,
 			Yes:            true,
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
 	}
@@ -201,10 +200,10 @@ func TestRunStatus_MetricsFetchFailure(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
 	}
@@ -226,10 +225,10 @@ func TestRunStatus_NotFound(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
 	}
@@ -251,11 +250,11 @@ func TestRunStatus_JSONOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			Output:         "json",
 			ClientOverride: fakeClient,
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
 	}
@@ -283,10 +282,10 @@ func TestRunStatusMany_TextOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
 	}
@@ -307,11 +306,11 @@ func TestRunStatusMany_JSONOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			Output:         "json",
 			ClientOverride: fakeClient,
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
 	}
@@ -337,11 +336,11 @@ func TestRunStatus_YAMLOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			Output:         "yaml",
 			ClientOverride: fakeClient,
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
 	}
@@ -369,10 +368,10 @@ func TestRunStatus_WithEvents(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: true, Limit: 5},
 		},
 	}
@@ -400,10 +399,10 @@ func TestRunList_MultipleHPAs(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
 	}
@@ -430,13 +429,13 @@ func TestRunList_Filter(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
-		List: cmdoptions.List{
+		List: listOptions{
 			Filter: "error",
 		},
 	}
@@ -463,13 +462,13 @@ func TestRunListProblemFiltersVisibleIssues(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
-		List: cmdoptions.List{
+		List: listOptions{
 			Problem: true,
 		},
 	}
@@ -496,13 +495,13 @@ func TestRunListHealthScoreThresholdFiltersByScore(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
-		List: cmdoptions.List{
+		List: listOptions{
 			HealthScoreMax: 80,
 		},
 	}
@@ -526,13 +525,13 @@ func TestRunList_SortByDesired(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
-		List: cmdoptions.List{
+		List: listOptions{
 			SortBy: "desired",
 		},
 	}
@@ -560,11 +559,11 @@ func TestRunList_Wide(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			Wide:           true,
 			ClientOverride: fakeClient,
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
 	}
@@ -589,11 +588,11 @@ func TestRunList_LabelSelector(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			Selector:       "app=web",
 			ClientOverride: fakeClient,
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
 	}
@@ -625,17 +624,17 @@ func TestRunListApplyBatchSummaryAndConfirmation(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 			In:             io.Reader(strings.NewReader("")),
 			Apply:          true,
 			DryRun:         true,
 			Yes:            true,
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
-		List: cmdoptions.List{
+		List: listOptions{
 			Problem: true,
 		},
 	}
@@ -665,17 +664,17 @@ func TestRunListApplyBatchSkippedOnNoInput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 			In:             io.Reader(strings.NewReader("n\n")),
 			Apply:          true,
 			DryRun:         true,
 			Yes:            false,
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
-		List: cmdoptions.List{
+		List: listOptions{
 			Problem: true,
 		},
 	}
@@ -698,17 +697,17 @@ func TestRunListApplyBatchNoPatchesFound(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 			In:             io.Reader(strings.NewReader("")),
 			Apply:          true,
 			DryRun:         true,
 			Yes:            true,
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
-		List: cmdoptions.List{
+		List: listOptions{
 			HealthScoreMax: 80,
 		},
 	}
@@ -728,13 +727,13 @@ func TestRunWatch_TimeoutExpires(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
-		Watch: cmdoptions.Watch{
+		Watch: watchOptions{
 			WatchInterval: 100 * time.Millisecond,
 			WatchTimeout:  250 * time.Millisecond,
 		},
@@ -762,13 +761,13 @@ func TestRunWatch_UntilCondition(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
-		Watch: cmdoptions.Watch{
+		Watch: watchOptions{
 			WatchInterval:  100 * time.Millisecond,
 			UntilCondition: "scaling-limited",
 		},
@@ -796,10 +795,10 @@ func TestRunStatus_ExitCode_HealthyHPA(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
 	}
@@ -818,10 +817,10 @@ func TestRunStatus_ExitCode_ScalingInactive(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
 	}
@@ -843,10 +842,10 @@ func TestRunStatus_ExitCode_NotFound(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
 	}
@@ -872,10 +871,10 @@ func TestRunStatus_ExitCode_ScalingLimited(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
 	}
@@ -911,12 +910,12 @@ func TestRunStatus_ExplainPods(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
-			Features: cmdoptions.Features{
+			Features: featuresOptions{
 				ExplainPods: true,
 			},
 		},
@@ -942,13 +941,13 @@ func TestRunStatus_ExplainPods_JSON(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 			Output:         "json",
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
-			Features: cmdoptions.Features{
+			Features: featuresOptions{
 				ExplainPods: true,
 			},
 		},
@@ -981,11 +980,11 @@ func TestRunStatus_Simulate(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 			Output:         "json",
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events:   EventOption{Enabled: false},
 			Simulate: []string{"maxReplicas=20"},
 		},
@@ -1025,10 +1024,10 @@ func TestRunStatus_SimulateText(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events:   EventOption{Enabled: false},
 			Simulate: []string{"maxReplicas=20"},
 		},
@@ -1114,13 +1113,13 @@ func TestRunStatus_CapacityContext(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 			Output:         "json",
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
-			Features: cmdoptions.Features{
+			Features: featuresOptions{
 				CapacityContext: true,
 			},
 		},
@@ -1184,10 +1183,10 @@ func TestRunReplay_FromFile(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			Color: "never",
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
 	}
@@ -1242,11 +1241,11 @@ func TestRunReplay_Markdown(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			Output: "markdown",
 			Color:  "never",
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
 	}
@@ -1265,10 +1264,10 @@ func TestRunReplay_Markdown(t *testing.T) {
 func TestRunReplay_FileNotFound(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			Color: "never",
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
 	}
@@ -1324,7 +1323,7 @@ func TestRunReplayLab_FromRecordWithCandidate(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			Namespace: "prod",
 			Color:     "never",
 		},
@@ -1370,7 +1369,7 @@ func TestRunReplayLab_FromRecordWithSetOverrides(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			Namespace: "prod",
 			Color:     "never",
 		},
@@ -1534,7 +1533,7 @@ func TestRunWhyNotScaleShowsObservedBlockersAndUnknowns(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
 	}
@@ -1565,7 +1564,7 @@ func TestRunWhyNotScaleJSON(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 			Output:         "json",
 		},
@@ -1620,7 +1619,7 @@ func TestAdvisorContainerResourceCommand(t *testing.T) {
 
 	var buf bytes.Buffer
 	runOpts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
 	}
@@ -1671,7 +1670,7 @@ func TestOwnershipCommandDetectsReplicaFieldOwner(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
 	}
@@ -1695,7 +1694,7 @@ func TestOwnershipCommandDetectsReplicaFieldOwner(t *testing.T) {
 func TestRunProfileDetectShowsAssumptions(t *testing.T) {
 	fakeClient := testutil.NewFakeClient()
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
 	}
@@ -1732,7 +1731,7 @@ func TestRunTimeline_Retrospective(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := runRetrospectiveTimeline(context.Background(), &buf, &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 			Color:          "never",
 		},
@@ -1767,7 +1766,7 @@ func TestRunTimeline_Retrospective_JSON(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := runRetrospectiveTimeline(context.Background(), &buf, &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 			Output:         "json",
 		},
@@ -1791,7 +1790,7 @@ func TestRunTimeline_Retrospective_NoEvents(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := runRetrospectiveTimeline(context.Background(), &buf, &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 			Color:          "never",
 		},

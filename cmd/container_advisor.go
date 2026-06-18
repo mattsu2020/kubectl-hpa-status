@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/spf13/cobra"
 )
 
@@ -22,6 +21,6 @@ func newContainerAdvisorCommand(opts *options) *cobra.Command {
 }
 
 func runContainerAdvisor(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	local := applyCommandPreset(opts, cmdoptions.PresetContainerAdvisor)
+	local := applyCommandPreset(opts, presetContainerAdvisor)
 	return runStatusMany(ctx, out, &local, names, !local.NoInterpret)
 }

@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
@@ -19,7 +18,7 @@ func TestRunRecommend_WellConfiguredHPA(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
 	}
@@ -48,7 +47,7 @@ func TestRunRecommend_PoorlyConfiguredHPA(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
 	}
@@ -72,7 +71,7 @@ func TestRunRecommend_NonExistentHPA(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
 	}
@@ -94,7 +93,7 @@ func TestRunRecommend_KEDAManagedHPA(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
 	}
@@ -116,7 +115,7 @@ func TestRunRecommend_JSONOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 			Output:         "json",
 		},
@@ -145,7 +144,7 @@ func TestRunRecommend_YAMLOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 			Output:         "yaml",
 		},
@@ -175,7 +174,7 @@ func TestRunRecommend_ScoreToZeroWarning(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
 	}
@@ -201,7 +200,7 @@ func TestRunRecommend_ExtractsMinReplicasFromSpec(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
 	}
@@ -234,7 +233,7 @@ func TestRunRecommend_UsesNamespaceFromOptions(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 			Namespace:      "team-a",
 		},
@@ -257,7 +256,7 @@ func TestRunRecommend_HighUtilizationWarning(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
 	}
@@ -280,7 +279,7 @@ func TestRunRecommend_WithProfile(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
 	}
@@ -303,7 +302,7 @@ func TestRunRecommend_WithProfileLatency(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
 	}

@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/spf13/cobra"
 )
 
@@ -21,8 +20,8 @@ func newNodeContextCommand(opts *options) *cobra.Command {
 }
 
 func runNodeContext(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	local := applyCommandPreset(opts, presetNodeContext, cmdoptions.CommandPresetOptions{
-		Events: &cmdoptions.EventOption{Enabled: true, Limit: 10},
+	local := applyCommandPreset(opts, presetNodeContext, commandPresetOptions{
+		Events: &EventOption{Enabled: true, Limit: 10},
 	})
 	return runStatusMany(ctx, out, &local, names, !local.NoInterpret)
 }
@@ -40,8 +39,8 @@ func newRolloutContextCommand(opts *options) *cobra.Command {
 }
 
 func runRolloutContext(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	local := applyCommandPreset(opts, presetRolloutContext, cmdoptions.CommandPresetOptions{
-		Events: &cmdoptions.EventOption{Enabled: true, Limit: 10},
+	local := applyCommandPreset(opts, presetRolloutContext, commandPresetOptions{
+		Events: &EventOption{Enabled: true, Limit: 10},
 	})
 	return runStatusMany(ctx, out, &local, names, !local.NoInterpret)
 }

@@ -2,15 +2,13 @@ package cmd
 
 import (
 	"testing"
-
-	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 )
 
 func TestApplyEventsConfigPreservesExistingPrecedence(t *testing.T) {
 	limit := 10
 	enabled := false
 	opts := &options{
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false, Limit: 5},
 		},
 	}
@@ -26,7 +24,7 @@ func TestApplyEventsConfigPreservesExistingPrecedence(t *testing.T) {
 func TestApplyEventsConfigSkipsExplicitFlag(t *testing.T) {
 	limit := 10
 	opts := &options{
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false, Limit: 5},
 		},
 	}
@@ -40,7 +38,7 @@ func TestApplyHealthScoreConfigPreservesExistingPrecedence(t *testing.T) {
 	maxScore := 80
 	healthScore := 60
 	opts := &options{
-		List: cmdoptions.List{
+		List: listOptions{
 			HealthScoreMax: -1,
 		},
 	}
@@ -54,7 +52,7 @@ func TestApplyHealthScoreConfigPreservesExistingPrecedence(t *testing.T) {
 func TestApplyHealthScoreConfigSkipsExplicitAliasFlag(t *testing.T) {
 	maxScore := 80
 	opts := &options{
-		List: cmdoptions.List{
+		List: listOptions{
 			HealthScoreMax: -1,
 		},
 	}

@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/spf13/cobra"
 )
 
@@ -24,6 +23,6 @@ func newDoctorCommand(opts *options) *cobra.Command {
 }
 
 func runDoctor(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	local := applyCommandPreset(opts, cmdoptions.PresetDoctor)
+	local := applyCommandPreset(opts, presetDoctor)
 	return runStatusMany(ctx, out, &local, names, !local.NoInterpret)
 }

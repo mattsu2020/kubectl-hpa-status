@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/spf13/cobra"
 )
 
@@ -112,5 +111,5 @@ func registerWatchFlags(cmd *cobra.Command, opts *options) {
 }
 
 func analysisProfileCompletions(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-	return cmdoptions.ValidAnalysisProfiles(), cobra.ShellCompDirectiveNoFileComp
+	return validAnalysisProfiles(), cobra.ShellCompDirectiveNoFileComp
 }

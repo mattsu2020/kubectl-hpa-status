@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/spf13/cobra"
 )
 
@@ -21,6 +20,6 @@ func newPathCommand(opts *options) *cobra.Command {
 }
 
 func runPath(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	local := applyCommandPreset(opts, cmdoptions.PresetPath)
+	local := applyCommandPreset(opts, presetPath)
 	return runStatusMany(ctx, out, &local, names, !local.NoInterpret)
 }

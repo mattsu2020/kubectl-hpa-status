@@ -12,7 +12,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 )
 
@@ -78,11 +77,11 @@ func TestRunPathShowsSchedulerBlocker(t *testing.T) {
 	}
 	client := fake.NewClientset(hpa, deploy, rs, pod, event)
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: client,
 			Namespace:      "default",
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
 	}

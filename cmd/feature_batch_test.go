@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -32,7 +31,7 @@ func TestRunBehavior_TextOutput(t *testing.T) {
 	}
 	fakeClient := testutil.NewFakeClient(hpa)
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
 	}
@@ -51,7 +50,7 @@ func TestRunEstimate_TextOutput(t *testing.T) {
 	hpa := testutil.BuildHPA("default", "web", testutil.WithMinMax(2, 10))
 	fakeClient := testutil.NewFakeClient(hpa)
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
 	}
@@ -204,7 +203,7 @@ func TestRunFlapFromRecordDetectsReplicaRange(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			Namespace: "prod",
 		},
 	}
@@ -228,11 +227,11 @@ func TestRunConflictScanDetectsMultipleHPAsAndKEDA(t *testing.T) {
 
 	fakeClient := testutil.NewFakeClient(first, second)
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 			Namespace:      "prod",
 		},
-		List: cmdoptions.List{
+		List: listOptions{
 			Conflicts: true,
 		},
 	}
@@ -253,10 +252,10 @@ func TestRunReadinessEnablesImpactSections(t *testing.T) {
 	hpa := testutil.BuildHPA("default", "web")
 	fakeClient := testutil.NewFakeClient(hpa)
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
 	}
@@ -277,7 +276,7 @@ func TestRunFleetSummarizesMaxSurgeRisk(t *testing.T) {
 	api := testutil.BuildHPA("prod", "api", testutil.WithReplicas(6, 6), testutil.WithMinMax(2, 8))
 	fakeClient := testutil.NewFakeClient(web, api)
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 			Namespace:      "prod",
 		},
@@ -303,12 +302,12 @@ func TestStatusHiddenFactorsText(t *testing.T) {
 	)
 	fakeClient := testutil.NewFakeClient(hpa)
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
-			Features: cmdoptions.Features{
+			Features: featuresOptions{
 				HiddenFactors: true,
 			},
 		},
@@ -331,10 +330,10 @@ func TestStatusStructuredFormat(t *testing.T) {
 	)
 	fakeClient := testutil.NewFakeClient(hpa)
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 			Format: "structured",
 		},
@@ -377,7 +376,7 @@ func TestRunTuneSuggest(t *testing.T) {
 	hpa := testutil.BuildHPA("default", "web", testutil.WithMinMax(2, 10))
 	fakeClient := testutil.NewFakeClient(hpa)
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
 	}

@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
@@ -33,11 +32,11 @@ func TestRunBlockersBasicOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 			Output:         "json",
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
 	}
@@ -81,11 +80,11 @@ func TestRunBlockersNoScaleOut(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 			Output:         "json",
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
 	}
@@ -117,12 +116,12 @@ func TestRunBlockersTextOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 			Output:         "",
 			Color:          "never",
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
 	}
@@ -150,13 +149,13 @@ func TestCapacityDeepFlagOnDoctor(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 			Output:         "json",
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
-			Features: cmdoptions.Features{
+			Features: featuresOptions{
 				CapacityDeep: true,
 			},
 		},

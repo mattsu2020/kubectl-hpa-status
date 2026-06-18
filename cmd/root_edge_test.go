@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 )
 
@@ -25,7 +24,7 @@ func TestRunStatus_ScalingInactiveWithExternalMetric(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
 	}
@@ -54,7 +53,7 @@ func TestRunStatus_ImplicitMaxReplicas(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
 	}
@@ -79,7 +78,7 @@ func TestRunStatus_ScaleDownStabilized(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
 	}
@@ -107,7 +106,7 @@ func TestRunStatus_ExternalMetricPresent(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
 	}
@@ -132,7 +131,7 @@ func TestRunStatus_KEDADetectionWithoutKEDAFlag(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
 	}
@@ -158,7 +157,7 @@ func TestRunStatus_DebugMode(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 			Debug:          true,
 		},
@@ -192,7 +191,7 @@ func TestRunList_MinScore(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
 	}
@@ -228,10 +227,10 @@ func TestRunList_MinScoreFiltersLow(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
-		List: cmdoptions.List{
+		List: listOptions{
 			HealthScoreMin: 90,
 		},
 	}
@@ -258,7 +257,7 @@ func TestRunStatus_BehaviorWithStabilizationWindow(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 		},
 	}

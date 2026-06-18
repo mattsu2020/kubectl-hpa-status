@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
@@ -121,7 +120,7 @@ func TestEventOption_Type(t *testing.T) {
 func TestConfirmApply_YesResponse(t *testing.T) {
 	var out bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			In: strings.NewReader("y\n"),
 		},
 	}
@@ -134,7 +133,7 @@ func TestConfirmApply_YesResponse(t *testing.T) {
 func TestConfirmApply_YesFullWord(t *testing.T) {
 	var out bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			In: strings.NewReader("yes\n"),
 		},
 	}
@@ -147,7 +146,7 @@ func TestConfirmApply_YesFullWord(t *testing.T) {
 func TestConfirmApply_NoResponse(t *testing.T) {
 	var out bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			In: strings.NewReader("n\n"),
 		},
 	}
@@ -163,7 +162,7 @@ func TestConfirmApply_NoResponse(t *testing.T) {
 func TestConfirmApply_EmptyResponse(t *testing.T) {
 	var out bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			In: strings.NewReader("\n"),
 		},
 	}
@@ -176,7 +175,7 @@ func TestConfirmApply_EmptyResponse(t *testing.T) {
 func TestConfirmApply_WritesWarning(t *testing.T) {
 	var out bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			In: strings.NewReader("y\n"),
 		},
 	}
@@ -810,8 +809,8 @@ func TestStatusOptions_Normalize(t *testing.T) {
 		{
 			name: "recommend implies suggest",
 			opts: options{
-				Status: cmdoptions.Status{
-					Features: cmdoptions.Features{
+				Status: statusOptions{
+					Features: featuresOptions{
 						Recommend: true,
 					},
 				},
@@ -821,8 +820,8 @@ func TestStatusOptions_Normalize(t *testing.T) {
 		{
 			name: "fix implies suggest and explain",
 			opts: options{
-				Status: cmdoptions.Status{
-					Features: cmdoptions.Features{
+				Status: statusOptions{
+					Features: featuresOptions{
 						Fix: true,
 					},
 				},
@@ -833,7 +832,7 @@ func TestStatusOptions_Normalize(t *testing.T) {
 		{
 			name: "apply implies suggest and explain",
 			opts: options{
-				Common: cmdoptions.Common{
+				Common: commonOptions{
 					Apply: true,
 				},
 			},
@@ -843,7 +842,7 @@ func TestStatusOptions_Normalize(t *testing.T) {
 		{
 			name: "diff implies suggest",
 			opts: options{
-				Common: cmdoptions.Common{
+				Common: commonOptions{
 					Diff: true,
 				},
 			},
@@ -852,8 +851,8 @@ func TestStatusOptions_Normalize(t *testing.T) {
 		{
 			name: "no-interpret clears suggest",
 			opts: options{
-				Status: cmdoptions.Status{
-					Features: cmdoptions.Features{
+				Status: statusOptions{
+					Features: featuresOptions{
 						Interpret:   true,
 						Suggest:     true,
 						NoInterpret: true,

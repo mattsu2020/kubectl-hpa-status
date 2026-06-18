@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/spf13/cobra"
 )
 
@@ -12,7 +11,7 @@ func newExplainCommand(opts *options) *cobra.Command {
 		Args:              cobra.MinimumNArgs(1),
 		ValidArgsFunction: hpaNameCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			local := applyCommandPreset(opts, cmdoptions.PresetExplain, cmdoptions.CommandPresetOptions{
+			local := applyCommandPreset(opts, presetExplain, commandPresetOptions{
 				StructuredFormat: true,
 			})
 			return runStatusMany(cmd.Context(), cmd.OutOrStdout(), &local, args, true)

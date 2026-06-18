@@ -6,7 +6,6 @@ import (
 	"io"
 	"strings"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/spf13/cobra"
 )
@@ -34,7 +33,7 @@ func newWhyNotScaleCommand(opts *options) *cobra.Command {
 }
 
 func runWhyNotScale(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	local := applyCommandPreset(opts, cmdoptions.PresetWhyNotScale)
+	local := applyCommandPreset(opts, presetWhyNotScale)
 
 	reports := make([]whyNotScaleReport, 0, len(names))
 	for _, name := range names {

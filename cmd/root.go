@@ -4,7 +4,6 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/spf13/cobra"
 )
 
@@ -17,7 +16,7 @@ var (
 // NewRootCommand creates and returns the root cobra command for kubectl-hpa-status.
 func NewRootCommand() *cobra.Command {
 	opts := &options{}
-	*opts = cmdoptions.DefaultRoot()
+	*opts = defaultRootOptions()
 
 	root := &cobra.Command{
 		Use:           "kubectl-hpa-status",

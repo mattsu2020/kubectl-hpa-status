@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/spf13/cobra"
 )
 
@@ -21,6 +20,6 @@ func newReadinessCommand(opts *options) *cobra.Command {
 }
 
 func runReadiness(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	local := applyCommandPreset(opts, cmdoptions.PresetReadiness)
+	local := applyCommandPreset(opts, presetReadiness)
 	return runStatusMany(ctx, out, &local, names, !local.NoInterpret)
 }

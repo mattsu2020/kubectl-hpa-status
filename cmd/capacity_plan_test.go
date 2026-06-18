@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 )
 
@@ -33,11 +32,11 @@ func TestRunCapacityPlan_JSONOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 			Output:         "json",
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
 	}
@@ -79,12 +78,12 @@ func TestRunCapacityPlan_TextOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 			Output:         "",
 			Color:          "never",
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
 		},
 	}
@@ -119,11 +118,11 @@ func TestRunCapacityPlan_TargetMaxOverride(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 			Output:         "json",
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events:    EventOption{Enabled: false},
 			TargetMax: 30,
 		},
@@ -172,13 +171,13 @@ func TestCapacityPlanFlagOnStatus(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: cmdoptions.Common{
+		Common: commonOptions{
 			ClientOverride: fakeClient,
 			Output:         "json",
 		},
-		Status: cmdoptions.Status{
+		Status: statusOptions{
 			Events: EventOption{Enabled: false},
-			Features: cmdoptions.Features{
+			Features: featuresOptions{
 				CapacityPlan: true,
 				Interpret:    true,
 			},
