@@ -57,47 +57,46 @@ func newCompareCommand(opts *options) *cobra.Command {
 func runCompare(ctx context.Context, out io.Writer, opts *options, fromRef, toRef, fromContext, toContext string) error {
 	fromClient, err := newCompareClient(opts, fromContext)
 	if err != nil {
-		return err
+		return fmt.Errorf("creating FROM client: %w", err)
 	}
 	toClient, err := newCompareClient(opts, toContext)
 	if err != nil {
-		return err
+		return fmt.Errorf("creating TO client: %w", err)
 	}
 	fromHPA, fromLabel, err := getCompareHPA(ctx, fromClient, fromRef)
 	if err != nil {
-		return err
+		return fmt.Errorf("fetching FROM HPA %s: %w", fromRef, err)
 	}
 	toHPA, toLabel, err := getCompareHPA(ctx, toClient, toRef)
 	if err != nil {
-		return err
+		return fmt.Errorf("fetching TO HPA %s: %w", toRef, err)
 	}
 	report := buildCompareReport(fromLabel, toLabel, fromHPA, toHPA)
 	return writeOutput(out, opts.Output, opts.Template, report, func() error {
-		_, err := fmt.Fprintf(out, "HPA Compare: %s -> %s\n\n", report.From, report.To)
-		if err != nil {
-			return err
+		if _, err := fmt.Fprintf(out, "HPA Compare: %s -> %s\n\n", report.From, report.To); err != nil {
+			return fmt.Errorf("write compare header: %w", err)
 		}
 		if len(report.Differences) == 0 {
 			if _, err := fmt.Fprintln(out, "Different:\n  none"); err != nil {
-				return err
+				return fmt.Errorf("write compare differences: %w", err)
 			}
 		} else {
 			if _, err := fmt.Fprintln(out, "Different:"); err != nil {
-				return err
+				return fmt.Errorf("write compare differences: %w", err)
 			}
 			for _, diff := range report.Differences {
 				if _, err := fmt.Fprintf(out, "  %s: from=%s to=%s\n", diff.Field, diff.From, diff.To); err != nil {
-					return err
+					return fmt.Errorf("write compare differences: %w", err)
 				}
 			}
 		}
 		if len(report.Risks) > 0 {
 			if _, err := fmt.Fprintln(out, "\nRisk:"); err != nil {
-				return err
+				return fmt.Errorf("write compare risks: %w", err)
 			}
 			for _, risk := range report.Risks {
 				if _, err := fmt.Fprintf(out, "  - %s\n", risk); err != nil {
-					return err
+					return fmt.Errorf("write compare risks: %w", err)
 				}
 			}
 		}
@@ -108,19 +107,19 @@ func runCompare(ctx context.Context, out io.Writer, opts *options, fromRef, toRe
 func runCompareAll(ctx context.Context, out io.Writer, opts *options, fromContext, toContext string, onlyDrift bool) error {
 	fromClient, err := newCompareClient(opts, fromContext)
 	if err != nil {
-		return err
+		return fmt.Errorf("creating FROM client: %w", err)
 	}
 	toClient, err := newCompareClient(opts, toContext)
 	if err != nil {
-		return err
+		return fmt.Errorf("creating TO client: %w", err)
 	}
 	fromHPAs, err := fromClient.ListHPAs(ctx, metav1.NamespaceAll, metav1.ListOptions{LabelSelector: opts.Selector}, opts.ChunkSize)
 	if err != nil {
-		return err
+		return fmt.Errorf("listing FROM HPAs: %w", err)
 	}
 	toHPAs, err := toClient.ListHPAs(ctx, metav1.NamespaceAll, metav1.ListOptions{LabelSelector: opts.Selector}, opts.ChunkSize)
 	if err != nil {
-		return err
+		return fmt.Errorf("listing TO HPAs: %w", err)
 	}
 	toMap := map[string]*autoscalingv2.HorizontalPodAutoscaler{}
 	for i := range toHPAs.Items {
@@ -143,21 +142,33 @@ func runCompareAll(ctx context.Context, out io.Writer, opts *options, fromContex
 	}
 	list := compareListReport{Items: reports}
 	return writeOutput(out, opts.Output, opts.Template, list, func() error {
-		if len(reports) == 0 {
-			_, err := fmt.Fprintln(out, "No HPA drift found.")
-			return err
-		}
-		for _, report := range reports {
-			_, _ = fmt.Fprintf(out, "HPA drift: %s -> %s\n", report.From, report.To)
-			for _, diff := range report.Differences {
-				_, _ = fmt.Fprintf(out, "  - %s: %s -> %s\n", diff.Field, diff.From, diff.To)
-			}
-			for _, risk := range report.Risks {
-				_, _ = fmt.Fprintf(out, "  risk: %s\n", risk)
-			}
+		return renderCompareDriftText(out, reports)
+	})
+}
+
+func renderCompareDriftText(out io.Writer, reports []compareReport) error {
+	if len(reports) == 0 {
+		if _, err := fmt.Fprintln(out, "No HPA drift found."); err != nil {
+			return fmt.Errorf("write compare drift: %w", err)
 		}
 		return nil
-	})
+	}
+	for _, report := range reports {
+		if _, err := fmt.Fprintf(out, "HPA drift: %s -> %s\n", report.From, report.To); err != nil {
+			return fmt.Errorf("write compare drift: %w", err)
+		}
+		for _, diff := range report.Differences {
+			if _, err := fmt.Fprintf(out, "  - %s: %s -> %s\n", diff.Field, diff.From, diff.To); err != nil {
+				return fmt.Errorf("write compare drift: %w", err)
+			}
+		}
+		for _, risk := range report.Risks {
+			if _, err := fmt.Fprintf(out, "  risk: %s\n", risk); err != nil {
+				return fmt.Errorf("write compare drift: %w", err)
+			}
+		}
+	}
+	return nil
 }
 
 func newCompareClient(opts *options, contextName string) (*kube.Client, error) {
@@ -172,7 +183,7 @@ func getCompareHPA(ctx context.Context, client *kube.Client, ref string) (*autos
 	namespace, name := splitNamespacedRef(ref, client.Namespace)
 	hpa, err := client.Interface.AutoscalingV2().HorizontalPodAutoscalers(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("get HPA %s/%s: %w", namespace, name, err)
 	}
 	return hpa, namespace + "/" + name, nil
 }

@@ -38,12 +38,12 @@ func applyListSuggestions(ctx context.Context, out io.Writer, opts *options, hpa
 	}
 
 	if err := printBatchSummary(out, entries); err != nil {
-		return err
+		return fmt.Errorf("write batch summary: %w", err)
 	}
 
 	confirmed, err := confirmBatchApply(out, opts, len(entries))
 	if err != nil {
-		return err
+		return fmt.Errorf("confirm batch apply: %w", err)
 	}
 	if !confirmed {
 		return nil
@@ -58,12 +58,14 @@ func exportListPatchesDirectory(out io.Writer, opts *options, hpas []autoscaling
 		selected[item.Namespace+"/"+item.Name] = true
 	}
 	if len(selected) == 0 {
-		_, err := fmt.Fprintln(out, "No HPAs selected for patch export.")
-		return err
+		if _, err := fmt.Fprintln(out, "No HPAs selected for patch export."); err != nil {
+			return fmt.Errorf("write output: %w", err)
+		}
+		return nil
 	}
 	dir := "hpa-patches"
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
+		return fmt.Errorf("create patch export directory %s: %w", dir, err)
 	}
 	written := 0
 	for i := range hpas {
@@ -75,19 +77,21 @@ func exportListPatchesDirectory(out io.Writer, opts *options, hpas []autoscaling
 		report := hpaanalysis.StatusReport{APIVersion: hpaanalysis.SchemaVersion, Analysis: analysis}
 		var buf strings.Builder
 		if err := writeGitOpsExport(&buf, "yaml", report); err != nil {
-			return err
+			return fmt.Errorf("render patch for %s/%s: %w", hpa.Namespace, hpa.Name, err)
 		}
 		if strings.Contains(buf.String(), "no applicable") {
 			continue
 		}
 		path := fmt.Sprintf("%s/%s-%s-hpa-patch.yaml", dir, hpa.Namespace, hpa.Name)
 		if err := os.WriteFile(path, []byte(buf.String()), 0o644); err != nil {
-			return err
+			return fmt.Errorf("write patch file %s: %w", path, err)
 		}
 		written++
 	}
-	_, err := fmt.Fprintf(out, "Exported %d HPA patch file(s) to %s\n", written, dir)
-	return err
+	if _, err := fmt.Fprintf(out, "Exported %d HPA patch file(s) to %s\n", written, dir); err != nil {
+		return fmt.Errorf("write output: %w", err)
+	}
+	return nil
 }
 
 // collectBatchEntries gathers applicable suggestions from selected HPAs.

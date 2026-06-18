@@ -118,7 +118,7 @@ func collectApplicablePatches(suggestions []hpaanalysis.Suggestion) []hpaanalysi
 func printProposedPatches(out io.Writer, current *autoscalingv2.HorizontalPodAutoscaler, patches []hpaanalysis.Suggestion) error {
 	for _, suggestion := range patches {
 		if _, err := fmt.Fprintf(out, "\nProposed patch: %s\n%s\n", suggestion.Title, hpaanalysis.SuggestionDiff(current.Spec.MinReplicas, current.Status.DesiredReplicas, current.Spec.MaxReplicas, suggestion.Patch)); err != nil {
-			return err
+			return fmt.Errorf("write proposed patch: %w", err)
 		}
 	}
 	return nil
@@ -146,7 +146,7 @@ func dryRunResults(patches []hpaanalysis.Suggestion) []string {
 
 func confirmApply(out io.Writer, opts *options, count int, namespace, name string) error {
 	if _, err := fmt.Fprintf(out, "\nWARNING: About to apply %d patch(es) to HPA %s/%s. This will modify the live cluster.\n", count, namespace, name); err != nil {
-		return err
+		return fmt.Errorf("write apply warning: %w", err)
 	}
 	// When stdin was not explicitly wired (e.g. by tests or an embedding
 	// caller) and the process stdin is not an interactive terminal, a prompt
@@ -160,12 +160,12 @@ func confirmApply(out io.Writer, opts *options, count int, namespace, name strin
 		opts.In = os.Stdin
 	}
 	if _, err := fmt.Fprintf(out, "Apply %d patches to HPA %s/%s? [y/N]: ", count, namespace, name); err != nil {
-		return err
+		return fmt.Errorf("write apply prompt: %w", err)
 	}
 	scanner := bufio.NewScanner(opts.In)
 	if !scanner.Scan() {
 		if err := scanner.Err(); err != nil {
-			return err
+			return fmt.Errorf("read confirmation input: %w", err)
 		}
 		return fmt.Errorf("apply skipped")
 	}

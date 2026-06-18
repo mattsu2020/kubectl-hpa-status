@@ -65,7 +65,7 @@ type assumptionsOutput struct {
 func runAssumptions(ctx context.Context, out io.Writer, opts *options, names []string, flags assumptionsFlagOverrides) error {
 	client, err := newClientOrDefault(opts)
 	if err != nil {
-		return err
+		return fmt.Errorf("creating client: %w", err)
 	}
 
 	// Build overrides from non-empty flag values.
@@ -112,14 +112,14 @@ func runAssumptions(ctx context.Context, out io.Writer, opts *options, names []s
 	for i, report := range reports {
 		if i > 0 {
 			if _, err := fmt.Fprintln(out); err != nil {
-				return err
+				return fmt.Errorf("write assumptions separator: %w", err)
 			}
 		}
 		if err := writeOutput(out, format, templateStr, report, func() error {
 			return hpaanalysis.WriteAssumptionsTextWithExplain(out, report.Assumptions,
 				flags.explain, style.NewTheme(shouldColorize(opts.Color, out)))
 		}); err != nil {
-			return err
+			return fmt.Errorf("write assumptions report for %s/%s: %w", report.Namespace, report.Name, err)
 		}
 	}
 

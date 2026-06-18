@@ -55,7 +55,7 @@ func newBehaviorCommand(opts *options) *cobra.Command {
 func runBehavior(ctx context.Context, out io.Writer, opts *options, name string) error {
 	client, err := newClientOrDefault(opts)
 	if err != nil {
-		return err
+		return fmt.Errorf("creating client: %w", err)
 	}
 	hpa, err := kube.GetHPAFromClient(ctx, client, name)
 	if err != nil {

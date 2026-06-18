@@ -76,11 +76,11 @@ func runAutoscalerMap(ctx context.Context, out io.Writer, opts *options, names [
 		for i, o := range outputs {
 			if i > 0 {
 				if _, err := fmt.Fprintln(out); err != nil {
-					return err
+					return fmt.Errorf("write autoscaler-map separator: %w", err)
 				}
 			}
 			if err := hpaanalysis.WriteAutoscalerMapText(out, o.Map, theme); err != nil {
-				return err
+				return fmt.Errorf("write autoscaler-map report for %s/%s: %w", o.Namespace, o.Name, err)
 			}
 		}
 		return nil

@@ -76,11 +76,11 @@ func runBlockers(ctx context.Context, out io.Writer, opts *options, names []stri
 		for i, o := range outputs {
 			if i > 0 {
 				if _, err := fmt.Fprintln(out); err != nil {
-					return err
+					return fmt.Errorf("write blockers separator: %w", err)
 				}
 			}
 			if err := hpaanalysis.WriteBlockerText(out, o.Report, theme); err != nil {
-				return err
+				return fmt.Errorf("write blockers report for %s/%s: %w", o.Namespace, o.Name, err)
 			}
 		}
 		return nil
