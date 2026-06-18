@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -222,14 +223,10 @@ func TestDiagnoseFlapping_NonRescaleEventsIgnored(t *testing.T) {
 }
 
 func buildFlappingTestHPA(stabilizationWindow int32, policies []autoscalingv2.HPAScalingPolicy) *autoscalingv2.HorizontalPodAutoscaler {
-	hpa := &autoscalingv2.HorizontalPodAutoscaler{
-		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "test-hpa"},
-		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{Kind: "Deployment", Name: "web"},
-			MinReplicas:    flappingPtrInt32(2),
-			MaxReplicas:    10,
-		},
-	}
+	hpa := testutil.BuildHPA("default", "test-hpa",
+		testutil.WithMinMax(2, 10),
+		testutil.WithScaleTargetRef("Deployment", "web"),
+	)
 	if policies != nil || stabilizationWindow > 0 {
 		hpa.Spec.Behavior = &autoscalingv2.HorizontalPodAutoscalerBehavior{
 			ScaleDown: &autoscalingv2.HPAScalingRules{
@@ -240,5 +237,3 @@ func buildFlappingTestHPA(stabilizationWindow int32, policies []autoscalingv2.HP
 	}
 	return hpa
 }
-
-func flappingPtrInt32(v int32) *int32 { return &v }

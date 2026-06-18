@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestAnalyzeMetricHints(t *testing.T) {
@@ -146,99 +146,73 @@ func TestAnalyzeMetricHints(t *testing.T) {
 
 // buildExternalMetricHPA creates an HPA with a single external metric and no status.
 func buildExternalMetricHPA(metricName string) *autoscalingv2.HorizontalPodAutoscaler {
-	return &autoscalingv2.HorizontalPodAutoscaler{
-		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "default"},
-		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{Kind: "Deployment", Name: "web"},
-			MinReplicas:    int32PtrForHintTest(1),
-			MaxReplicas:    10,
-			Metrics: []autoscalingv2.MetricSpec{{
-				Type: autoscalingv2.ExternalMetricSourceType,
-				External: &autoscalingv2.ExternalMetricSource{
-					Metric: autoscalingv2.MetricIdentifier{Name: metricName},
-					Target: autoscalingv2.MetricTarget{Value: quantityPtrForHintTest(resource.MustParse("100"))},
-				},
-			}},
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithMinMax(1, 10),
+		testutil.WithScaleTargetRef("Deployment", "web"),
+	)
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{{
+		Type: autoscalingv2.ExternalMetricSourceType,
+		External: &autoscalingv2.ExternalMetricSource{
+			Metric: autoscalingv2.MetricIdentifier{Name: metricName},
+			Target: autoscalingv2.MetricTarget{Value: quantityPtrForHintTest(resource.MustParse("100"))},
 		},
-	}
+	}}
+	return hpa
 }
 
 // buildExternalMetricHPAWithStatus creates an HPA with an external metric and matching status.
 func buildExternalMetricHPAWithStatus(metricName string) *autoscalingv2.HorizontalPodAutoscaler {
-	return &autoscalingv2.HorizontalPodAutoscaler{
-		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "default"},
-		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{Kind: "Deployment", Name: "web"},
-			MinReplicas:    int32PtrForHintTest(1),
-			MaxReplicas:    10,
-			Metrics: []autoscalingv2.MetricSpec{{
-				Type: autoscalingv2.ExternalMetricSourceType,
-				External: &autoscalingv2.ExternalMetricSource{
-					Metric: autoscalingv2.MetricIdentifier{Name: metricName},
-					Target: autoscalingv2.MetricTarget{Value: quantityPtrForHintTest(resource.MustParse("100"))},
-				},
-			}},
+	hpa := buildExternalMetricHPA(metricName)
+	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{{
+		Type: autoscalingv2.ExternalMetricSourceType,
+		External: &autoscalingv2.ExternalMetricStatus{
+			Metric:  autoscalingv2.MetricIdentifier{Name: metricName},
+			Current: autoscalingv2.MetricValueStatus{Value: quantityPtrForHintTest(resource.MustParse("50"))},
 		},
-		Status: autoscalingv2.HorizontalPodAutoscalerStatus{
-			CurrentMetrics: []autoscalingv2.MetricStatus{{
-				Type: autoscalingv2.ExternalMetricSourceType,
-				External: &autoscalingv2.ExternalMetricStatus{
-					Metric:  autoscalingv2.MetricIdentifier{Name: metricName},
-					Current: autoscalingv2.MetricValueStatus{Value: quantityPtrForHintTest(resource.MustParse("50"))},
-				},
-			}},
-		},
-	}
+	}}
+	return hpa
 }
 
 // buildPodsMetricHPA creates an HPA with a single Pods metric.
 func buildPodsMetricHPA(metricName string) *autoscalingv2.HorizontalPodAutoscaler {
-	return &autoscalingv2.HorizontalPodAutoscaler{
-		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "default"},
-		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{Kind: "Deployment", Name: "web"},
-			MinReplicas:    int32PtrForHintTest(1),
-			MaxReplicas:    10,
-			Metrics: []autoscalingv2.MetricSpec{{
-				Type: autoscalingv2.PodsMetricSourceType,
-				Pods: &autoscalingv2.PodsMetricSource{
-					Metric: autoscalingv2.MetricIdentifier{Name: metricName},
-					Target: autoscalingv2.MetricTarget{AverageValue: quantityPtrForHintTest(resource.MustParse("100"))},
-				},
-			}},
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithMinMax(1, 10),
+		testutil.WithScaleTargetRef("Deployment", "web"),
+	)
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{{
+		Type: autoscalingv2.PodsMetricSourceType,
+		Pods: &autoscalingv2.PodsMetricSource{
+			Metric: autoscalingv2.MetricIdentifier{Name: metricName},
+			Target: autoscalingv2.MetricTarget{AverageValue: quantityPtrForHintTest(resource.MustParse("100"))},
 		},
-	}
+	}}
+	return hpa
 }
 
 // buildResourceMetricHPAWithStatus creates an HPA with a resource (CPU) metric and matching status.
 func buildResourceMetricHPAWithStatus() *autoscalingv2.HorizontalPodAutoscaler {
-	return &autoscalingv2.HorizontalPodAutoscaler{
-		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "default"},
-		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{Kind: "Deployment", Name: "web"},
-			MinReplicas:    int32PtrForHintTest(1),
-			MaxReplicas:    10,
-			Metrics: []autoscalingv2.MetricSpec{{
-				Type: autoscalingv2.ResourceMetricSourceType,
-				Resource: &autoscalingv2.ResourceMetricSource{
-					Name: "cpu",
-					Target: autoscalingv2.MetricTarget{
-						Type:               autoscalingv2.UtilizationMetricType,
-						AverageUtilization: int32PtrForHintTest(80),
-					},
-				},
-			}},
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithMinMax(1, 10),
+		testutil.WithScaleTargetRef("Deployment", "web"),
+	)
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{{
+		Type: autoscalingv2.ResourceMetricSourceType,
+		Resource: &autoscalingv2.ResourceMetricSource{
+			Name: "cpu",
+			Target: autoscalingv2.MetricTarget{
+				Type:               autoscalingv2.UtilizationMetricType,
+				AverageUtilization: int32PtrForHintTest(80),
+			},
 		},
-		Status: autoscalingv2.HorizontalPodAutoscalerStatus{
-			CurrentMetrics: []autoscalingv2.MetricStatus{{
-				Type: autoscalingv2.ResourceMetricSourceType,
-				Resource: &autoscalingv2.ResourceMetricStatus{
-					Name:    "cpu",
-					Current: autoscalingv2.MetricValueStatus{AverageUtilization: int32PtrForHintTest(50)},
-				},
-			}},
+	}}
+	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{{
+		Type: autoscalingv2.ResourceMetricSourceType,
+		Resource: &autoscalingv2.ResourceMetricStatus{
+			Name:    "cpu",
+			Current: autoscalingv2.MetricValueStatus{AverageUtilization: int32PtrForHintTest(50)},
 		},
-	}
+	}}
+	return hpa
 }
 
 func int32PtrForHintTest(v int32) *int32 { return &v }
