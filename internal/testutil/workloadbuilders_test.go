@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -195,7 +194,7 @@ func TestNewFakeClientWithObjects_AcceptsWorkloads(t *testing.T) {
 		t.Fatalf("expected pod Running, got %q", gotPod.Status.Phase)
 	}
 
-	var _ *appsv1.Deployment = gotDeploy // type assertion smoke test
+	var _ = gotDeploy // type assertion smoke test
 }
 
 func TestBuildHPA_MetricOptions(t *testing.T) {

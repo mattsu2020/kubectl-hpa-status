@@ -152,8 +152,8 @@ func BuildStatefulSet(namespace, name string, opts ...StatefulSetOption) *appsv1
 	}
 	if s.statusSet {
 		sts.Status = appsv1.StatefulSetStatus{
-			Replicas:        s.replicas,
-			ReadyReplicas:   s.ready,
+			Replicas:      s.replicas,
+			ReadyReplicas: s.ready,
 		}
 	}
 	return sts

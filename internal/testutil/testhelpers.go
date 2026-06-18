@@ -270,7 +270,7 @@ func WithDesiredAtMax() HPAOption {
 // (e.g. status-vs-spec staleness) key off Generation.
 func WithGeneration(gen int64) HPAOption {
 	return func(hpa *autoscalingv2.HorizontalPodAutoscaler) {
-		hpa.ObjectMeta.Generation = gen
+		hpa.Generation = gen
 	}
 }
 
@@ -317,8 +317,8 @@ func WithObjectMetric(name string, targetValue, currentValue string) HPAOption {
 		hpa.Spec.Metrics = append(hpa.Spec.Metrics, autoscalingv2.MetricSpec{
 			Type: autoscalingv2.ObjectMetricSourceType,
 			Object: &autoscalingv2.ObjectMetricSource{
-				Metric:  autoscalingv2.MetricIdentifier{Name: name, Selector: nil},
-				Target:  autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType, Value: &target},
+				Metric:          autoscalingv2.MetricIdentifier{Name: name, Selector: nil},
+				Target:          autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType, Value: &target},
 				DescribedObject: ref,
 			},
 		})
