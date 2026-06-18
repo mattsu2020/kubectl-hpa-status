@@ -458,6 +458,9 @@ func containsLine(lines []string, want string) bool {
 	return false
 }
 
+// boolPtr returns a pointer to b, used for optional table-driven bool fields.
+func boolPtr(b bool) *bool { return &b }
+
 func TestWriteStatusDiff_NoChanges(t *testing.T) {
 	analysis := Analyze(baseHPA(), false)
 	prev := analysis // copy
@@ -938,118 +941,127 @@ func TestFormatMetricStatusIncludesExternalSelector(t *testing.T) {
 	}
 }
 
-func TestMostInfluentialMetricConsidersExternalMetrics(t *testing.T) {
-	hpa := baseHPA()
-	target := resource.MustParse("10")
-	current := resource.MustParse("20")
-	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{
-		resourceMetricSpec(corev1.ResourceCPU, 80),
+func TestMostInfluentialMetricConsidersNonResourceMetrics(t *testing.T) {
+	// Each row pairs a baseline cpu resource metric (ratio ~1.06) with a second
+	// metric of a different type whose ratio is larger, so the second metric
+	// must win MostInfluentialMetric.
+	tests := []struct {
+		name         string
+		secondSpec   autoscalingv2.MetricSpec
+		secondStatus autoscalingv2.MetricStatus
+		wantName     string
+		wantRatioMin float64
+		wantRatioMax float64
+		checkRatio   bool
+	}{
 		{
-			Type: autoscalingv2.ExternalMetricSourceType,
-			External: &autoscalingv2.ExternalMetricSource{
-				Metric: autoscalingv2.MetricIdentifier{Name: "queue_depth"},
-				Target: autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType, Value: &target},
-			},
+			name: "External",
+			secondSpec: func() autoscalingv2.MetricSpec {
+				v := resource.MustParse("10")
+				return autoscalingv2.MetricSpec{
+					Type: autoscalingv2.ExternalMetricSourceType,
+					External: &autoscalingv2.ExternalMetricSource{
+						Metric: autoscalingv2.MetricIdentifier{Name: "queue_depth"},
+						Target: autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType, Value: &v},
+					},
+				}
+			}(),
+			secondStatus: func() autoscalingv2.MetricStatus {
+				v := resource.MustParse("20")
+				return autoscalingv2.MetricStatus{
+					Type: autoscalingv2.ExternalMetricSourceType,
+					External: &autoscalingv2.ExternalMetricStatus{
+						Metric:  autoscalingv2.MetricIdentifier{Name: "queue_depth"},
+						Current: autoscalingv2.MetricValueStatus{Value: &v},
+					},
+				}
+			}(),
+			wantName:     "queue_depth",
+			wantRatioMin: 1.9,
+			wantRatioMax: 2.1,
+			checkRatio:   true,
 		},
-	}
-	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{
-		resourceMetricStatus(corev1.ResourceCPU, 85),
 		{
-			Type: autoscalingv2.ExternalMetricSourceType,
-			External: &autoscalingv2.ExternalMetricStatus{
-				Metric:  autoscalingv2.MetricIdentifier{Name: "queue_depth"},
-				Current: autoscalingv2.MetricValueStatus{Value: &current},
-			},
+			name: "Pods",
+			secondSpec: func() autoscalingv2.MetricSpec {
+				v := resource.MustParse("100m")
+				return autoscalingv2.MetricSpec{
+					Type: autoscalingv2.PodsMetricSourceType,
+					Pods: &autoscalingv2.PodsMetricSource{
+						Metric: autoscalingv2.MetricIdentifier{Name: "requests_per_second"},
+						Target: autoscalingv2.MetricTarget{Type: autoscalingv2.AverageValueMetricType, AverageValue: &v},
+					},
+				}
+			}(),
+			secondStatus: func() autoscalingv2.MetricStatus {
+				v := resource.MustParse("180m")
+				return autoscalingv2.MetricStatus{
+					Type: autoscalingv2.PodsMetricSourceType,
+					Pods: &autoscalingv2.PodsMetricStatus{
+						Metric:  autoscalingv2.MetricIdentifier{Name: "requests_per_second"},
+						Current: autoscalingv2.MetricValueStatus{AverageValue: &v},
+					},
+				}
+			}(),
+			wantName:     "requests_per_second",
+			wantRatioMin: 1.7,
+			wantRatioMax: 1.9,
+			checkRatio:   true,
 		},
-	}
-
-	got, ok := MostInfluentialMetric(hpa)
-	if !ok {
-		t.Fatal("expected an impact estimate")
-	}
-	// External queue_depth ratio is 2.0 (20/10), CPU ratio is ~1.06 (85/80).
-	// External has larger distance from target, so it should win.
-	if got.Name != "queue_depth" {
-		t.Fatalf("expected queue_depth to be most influential, got %s", got.Name)
-	}
-	if got.Ratio < 1.9 || got.Ratio > 2.1 {
-		t.Fatalf("expected ratio around 2.0, got %.3f", got.Ratio)
-	}
-}
-
-func TestMostInfluentialMetricConsidersPodsMetrics(t *testing.T) {
-	hpa := baseHPA()
-	averageTarget := resource.MustParse("100m")
-	averageCurrent := resource.MustParse("180m")
-	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{
-		resourceMetricSpec(corev1.ResourceCPU, 80),
 		{
-			Type: autoscalingv2.PodsMetricSourceType,
-			Pods: &autoscalingv2.PodsMetricSource{
-				Metric: autoscalingv2.MetricIdentifier{Name: "requests_per_second"},
-				Target: autoscalingv2.MetricTarget{Type: autoscalingv2.AverageValueMetricType, AverageValue: &averageTarget},
-			},
-		},
-	}
-	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{
-		resourceMetricStatus(corev1.ResourceCPU, 85),
-		{
-			Type: autoscalingv2.PodsMetricSourceType,
-			Pods: &autoscalingv2.PodsMetricStatus{
-				Metric:  autoscalingv2.MetricIdentifier{Name: "requests_per_second"},
-				Current: autoscalingv2.MetricValueStatus{AverageValue: &averageCurrent},
-			},
-		},
-	}
-
-	got, ok := MostInfluentialMetric(hpa)
-	if !ok {
-		t.Fatal("expected an impact estimate")
-	}
-	// Pods metric ratio is 1.8 (180m/100m), CPU ratio is ~1.06 (85/80).
-	if got.Name != "requests_per_second" {
-		t.Fatalf("expected requests_per_second to be most influential, got %s", got.Name)
-	}
-}
-
-func TestMostInfluentialMetricConsidersContainerResourceMetrics(t *testing.T) {
-	hpa := baseHPA()
-	containerTarget := int32(50)
-	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{
-		resourceMetricSpec(corev1.ResourceCPU, 80),
-		{
-			Type: autoscalingv2.ContainerResourceMetricSourceType,
-			ContainerResource: &autoscalingv2.ContainerResourceMetricSource{
-				Name:      corev1.ResourceCPU,
-				Container: "sidecar",
-				Target: autoscalingv2.MetricTarget{
-					Type:               autoscalingv2.UtilizationMetricType,
-					AverageUtilization: &containerTarget,
-				},
-			},
-		},
-	}
-	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{
-		resourceMetricStatus(corev1.ResourceCPU, 85),
-		{
-			Type: autoscalingv2.ContainerResourceMetricSourceType,
-			ContainerResource: &autoscalingv2.ContainerResourceMetricStatus{
-				Name:      corev1.ResourceCPU,
-				Container: "sidecar",
-				Current: autoscalingv2.MetricValueStatus{
-					AverageUtilization: func() *int32 { v := int32(90); return &v }(),
-				},
-			},
+			name: "ContainerResource",
+			secondSpec: func() autoscalingv2.MetricSpec {
+				v := int32(50)
+				return autoscalingv2.MetricSpec{
+					Type: autoscalingv2.ContainerResourceMetricSourceType,
+					ContainerResource: &autoscalingv2.ContainerResourceMetricSource{
+						Name:      corev1.ResourceCPU,
+						Container: "sidecar",
+						Target:    autoscalingv2.MetricTarget{Type: autoscalingv2.UtilizationMetricType, AverageUtilization: &v},
+					},
+				}
+			}(),
+			secondStatus: func() autoscalingv2.MetricStatus {
+				v := int32(90)
+				return autoscalingv2.MetricStatus{
+					Type: autoscalingv2.ContainerResourceMetricSourceType,
+					ContainerResource: &autoscalingv2.ContainerResourceMetricStatus{
+						Name:      corev1.ResourceCPU,
+						Container: "sidecar",
+						Current:   autoscalingv2.MetricValueStatus{AverageUtilization: &v},
+					},
+				}
+			}(),
+			wantName:     "sidecar/cpu",
+			wantRatioMin: 1.7,
+			wantRatioMax: 1.9,
+			checkRatio:   true,
 		},
 	}
 
-	got, ok := MostInfluentialMetric(hpa)
-	if !ok {
-		t.Fatal("expected an impact estimate")
-	}
-	// ContainerResource sidecar/cpu ratio is 1.8 (90/50), CPU ratio is ~1.06 (85/80).
-	if got.Name != "sidecar/cpu" {
-		t.Fatalf("expected sidecar/cpu to be most influential, got %s", got.Name)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			hpa := baseHPA()
+			hpa.Spec.Metrics = []autoscalingv2.MetricSpec{
+				resourceMetricSpec(corev1.ResourceCPU, 80),
+				tc.secondSpec,
+			}
+			hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{
+				resourceMetricStatus(corev1.ResourceCPU, 85),
+				tc.secondStatus,
+			}
+
+			got, ok := MostInfluentialMetric(hpa)
+			if !ok {
+				t.Fatal("expected an impact estimate")
+			}
+			if got.Name != tc.wantName {
+				t.Fatalf("most influential metric = %q, want %q", got.Name, tc.wantName)
+			}
+			if tc.checkRatio && (got.Ratio < tc.wantRatioMin || got.Ratio > tc.wantRatioMax) {
+				t.Fatalf("ratio = %.3f, want in [%.1f, %.1f]", got.Ratio, tc.wantRatioMin, tc.wantRatioMax)
+			}
+		})
 	}
 }
 
@@ -1113,460 +1125,330 @@ func TestDiagnoseMetricsPipeline_NilHPA(t *testing.T) {
 	}
 }
 
-func TestDiagnoseMetricsPipeline_NoSpecMetrics(t *testing.T) {
-	hpa := baseHPA()
-	got := DiagnoseMetricsPipeline(hpa)
-	if got == nil {
-		t.Fatal("expected non-nil result")
-	}
-	if got.OverallStatus != "healthy" {
-		t.Fatalf("expected healthy for no spec metrics, got %s", got.OverallStatus)
-	}
-	if len(got.PerMetricChecks) != 0 {
-		t.Fatalf("expected no per-metric checks, got %d", len(got.PerMetricChecks))
-	}
-}
-
-func TestDiagnoseMetricsPipeline_AllMetricsMissing(t *testing.T) {
-	hpa := baseHPA()
-	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{
-		resourceMetricSpec(corev1.ResourceCPU, 80),
-		resourceMetricSpec(corev1.ResourceMemory, 70),
-	}
-	// No current metrics set — simulates metrics server being down.
-
-	got := DiagnoseMetricsPipeline(hpa)
-	if got == nil {
-		t.Fatal("expected non-nil result")
-	}
-	if got.OverallStatus != "error" {
-		t.Fatalf("expected error overall status, got %s", got.OverallStatus)
-	}
-	if len(got.PerMetricChecks) != 2 {
-		t.Fatalf("expected 2 per-metric checks, got %d", len(got.PerMetricChecks))
-	}
-	for _, check := range got.PerMetricChecks {
-		if check.Status != "missing" {
-			t.Fatalf("expected missing status for %s, got %s", check.MetricName, check.Status)
-		}
-		if check.Details == "" {
-			t.Fatalf("expected non-empty details for %s", check.MetricName)
-		}
-		if check.Remediation == "" {
-			t.Fatalf("expected non-empty remediation for %s", check.MetricName)
-		}
-	}
-	if len(got.RemediationSteps) == 0 {
-		t.Fatal("expected remediation steps for all-missing metrics")
-	}
-}
-
-func TestDiagnoseMetricsPipeline_AllMetricsHealthy(t *testing.T) {
-	hpa := baseHPA()
-	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{
-		resourceMetricSpec(corev1.ResourceCPU, 80),
-		resourceMetricSpec(corev1.ResourceMemory, 70),
-	}
-	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{
-		resourceMetricStatus(corev1.ResourceCPU, 75),
-		resourceMetricStatus(corev1.ResourceMemory, 65),
-	}
-
-	got := DiagnoseMetricsPipeline(hpa)
-	if got == nil {
-		t.Fatal("expected non-nil result")
-	}
-	if got.OverallStatus != "healthy" {
-		t.Fatalf("expected healthy overall status, got %s", got.OverallStatus)
-	}
-	if len(got.PerMetricChecks) != 2 {
-		t.Fatalf("expected 2 per-metric checks, got %d", len(got.PerMetricChecks))
-	}
-	for _, check := range got.PerMetricChecks {
-		if check.Status != "healthy" {
-			t.Fatalf("expected healthy status for %s, got %s", check.MetricName, check.Status)
-		}
-	}
-	if len(got.RemediationSteps) != 0 {
-		t.Fatalf("expected no remediation steps for healthy metrics, got %d", len(got.RemediationSteps))
-	}
-}
-
-func TestDiagnoseMetricsPipeline_PartialMatches(t *testing.T) {
-	hpa := baseHPA()
-	target := resource.MustParse("10")
-	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{
-		resourceMetricSpec(corev1.ResourceCPU, 80),
-		{
+func TestDiagnoseMetricsPipeline(t *testing.T) {
+	// externalValueSpec/Status build a value-type External metric pair. Reused
+	// across the partial-match and external-healthy cases.
+	externalValueSpec := func(name string) autoscalingv2.MetricSpec {
+		target := resource.MustParse("10")
+		return autoscalingv2.MetricSpec{
 			Type: autoscalingv2.ExternalMetricSourceType,
 			External: &autoscalingv2.ExternalMetricSource{
-				Metric: autoscalingv2.MetricIdentifier{Name: "queue_depth"},
+				Metric: autoscalingv2.MetricIdentifier{Name: name},
 				Target: autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType, Value: &target},
 			},
-		},
-	}
-	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{
-		resourceMetricStatus(corev1.ResourceCPU, 75),
-		// External metric intentionally omitted — simulates partial missing.
-	}
-
-	got := DiagnoseMetricsPipeline(hpa)
-	if got == nil {
-		t.Fatal("expected non-nil result")
-	}
-	if got.OverallStatus != "degraded" {
-		t.Fatalf("expected degraded overall status, got %s", got.OverallStatus)
-	}
-	if len(got.PerMetricChecks) != 2 {
-		t.Fatalf("expected 2 per-metric checks, got %d", len(got.PerMetricChecks))
-	}
-
-	cpuHealthy := false
-	queueMissing := false
-	for _, check := range got.PerMetricChecks {
-		if check.MetricName == "cpu" && check.Status == "healthy" {
-			cpuHealthy = true
-		}
-		if check.MetricName == "queue_depth" && check.Status == "missing" {
-			queueMissing = true
 		}
 	}
-	if !cpuHealthy {
-		t.Fatal("expected cpu to be healthy")
-	}
-	if !queueMissing {
-		t.Fatal("expected queue_depth to be missing")
-	}
-	if len(got.RemediationSteps) == 0 {
-		t.Fatal("expected remediation steps for partial missing metrics")
-	}
-}
-
-func TestDiagnoseMetricsPipeline_ExternalMetricHealthy(t *testing.T) {
-	hpa := baseHPA()
-	target := resource.MustParse("10")
-	current := resource.MustParse("12")
-	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{
-		{
-			Type: autoscalingv2.ExternalMetricSourceType,
-			External: &autoscalingv2.ExternalMetricSource{
-				Metric: autoscalingv2.MetricIdentifier{Name: "queue_depth"},
-				Target: autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType, Value: &target},
-			},
-		},
-	}
-	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{
-		{
+	externalValueStatus := func(name string) autoscalingv2.MetricStatus {
+		current := resource.MustParse("12")
+		return autoscalingv2.MetricStatus{
 			Type: autoscalingv2.ExternalMetricSourceType,
 			External: &autoscalingv2.ExternalMetricStatus{
-				Metric:  autoscalingv2.MetricIdentifier{Name: "queue_depth"},
+				Metric:  autoscalingv2.MetricIdentifier{Name: name},
 				Current: autoscalingv2.MetricValueStatus{Value: &current},
 			},
+		}
+	}
+
+	tests := []struct {
+		name             string
+		specMetrics      []autoscalingv2.MetricSpec
+		currentMetrics   []autoscalingv2.MetricStatus
+		wantOverall      string
+		wantNumChecks    int
+		wantStatusByName map[string]string // metric name -> expected status (empty means don't check)
+		wantRemediation  *bool             // nil = don't check; otherwise expect non-empty matching the dereferenced value
+		wantMetricType   string            // optional: assert MetricType of the first check
+	}{
+		{
+			name:          "NoSpecMetrics",
+			wantOverall:   "healthy",
+			wantNumChecks: 0,
 		},
-	}
-
-	got := DiagnoseMetricsPipeline(hpa)
-	if got == nil {
-		t.Fatal("expected non-nil result")
-	}
-	if got.OverallStatus != "healthy" {
-		t.Fatalf("expected healthy overall status, got %s", got.OverallStatus)
-	}
-	if len(got.PerMetricChecks) != 1 {
-		t.Fatalf("expected 1 per-metric check, got %d", len(got.PerMetricChecks))
-	}
-	if got.PerMetricChecks[0].Status != "healthy" {
-		t.Fatalf("expected healthy, got %s", got.PerMetricChecks[0].Status)
-	}
-	if got.PerMetricChecks[0].MetricType != "External" {
-		t.Fatalf("expected External metric type, got %s", got.PerMetricChecks[0].MetricType)
-	}
-}
-
-func TestApplyEnrichmentPenalties_KEDAInactiveTrigger(t *testing.T) {
-	a := &Analysis{
-		Health:      "OK",
-		HealthScore: 95,
-		KEDAInfo: &KEDAAnalysis{
-			Triggers: []KEDATriggerSummary{
-				{Type: "prometheus", Status: "Inactive"},
+		{
+			name: "AllMetricsMissing",
+			specMetrics: []autoscalingv2.MetricSpec{
+				resourceMetricSpec(corev1.ResourceCPU, 80),
+				resourceMetricSpec(corev1.ResourceMemory, 70),
 			},
+			// No current metrics set — simulates metrics server being down.
+			wantOverall:     "error",
+			wantNumChecks:   2,
+			wantRemediation: boolPtr(true),
 		},
-	}
-	ApplyEnrichmentPenalties(a, HealthWeights{})
-	if a.HealthScore != 80 {
-		t.Errorf("expected score 80 (95-15), got %d", a.HealthScore)
-	}
-	if a.Health != "LIMITED" {
-		t.Errorf("expected LIMITED health, got %s", a.Health)
-	}
-}
-
-func TestApplyEnrichmentPenalties_VPAConflict(t *testing.T) {
-	a := &Analysis{
-		Health:      "OK",
-		HealthScore: 95,
-		VPAConflict: &VPAConflictInfo{
-			VPAName:    "my-vpa",
-			UpdateMode: "Auto",
-		},
-	}
-	ApplyEnrichmentPenalties(a, HealthWeights{})
-	if a.HealthScore != 75 {
-		t.Errorf("expected score 75 (95-20), got %d", a.HealthScore)
-	}
-	if a.Health != "LIMITED" {
-		t.Errorf("expected LIMITED health, got %s", a.Health)
-	}
-}
-
-func TestApplyEnrichmentPenalties_BothPenalties(t *testing.T) {
-	a := &Analysis{
-		Health:      "OK",
-		HealthScore: 95,
-		KEDAInfo: &KEDAAnalysis{
-			Triggers: []KEDATriggerSummary{
-				{Type: "prometheus", Status: "Inactive"},
+		{
+			name: "AllMetricsHealthy",
+			specMetrics: []autoscalingv2.MetricSpec{
+				resourceMetricSpec(corev1.ResourceCPU, 80),
+				resourceMetricSpec(corev1.ResourceMemory, 70),
 			},
+			currentMetrics: []autoscalingv2.MetricStatus{
+				resourceMetricStatus(corev1.ResourceCPU, 75),
+				resourceMetricStatus(corev1.ResourceMemory, 65),
+			},
+			wantOverall:   "healthy",
+			wantNumChecks: 2,
 		},
-		VPAConflict: &VPAConflictInfo{
-			VPAName:    "my-vpa",
-			UpdateMode: "Auto",
+		{
+			name: "PartialMatches",
+			specMetrics: []autoscalingv2.MetricSpec{
+				resourceMetricSpec(corev1.ResourceCPU, 80),
+				externalValueSpec("queue_depth"),
+			},
+			currentMetrics: []autoscalingv2.MetricStatus{
+				resourceMetricStatus(corev1.ResourceCPU, 75),
+				// External metric intentionally omitted — simulates partial missing.
+			},
+			wantOverall:      "degraded",
+			wantNumChecks:    2,
+			wantStatusByName: map[string]string{"cpu": "healthy", "queue_depth": "missing"},
+			wantRemediation:  boolPtr(true),
+		},
+		{
+			name:           "ExternalMetricHealthy",
+			specMetrics:    []autoscalingv2.MetricSpec{externalValueSpec("queue_depth")},
+			currentMetrics: []autoscalingv2.MetricStatus{externalValueStatus("queue_depth")},
+			wantOverall:    "healthy",
+			wantNumChecks:  1,
+			wantMetricType: "External",
 		},
 	}
-	ApplyEnrichmentPenalties(a, HealthWeights{})
-	if a.HealthScore != 60 {
-		t.Errorf("expected score 60 (95-15-20), got %d", a.HealthScore)
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			hpa := baseHPA()
+			hpa.Spec.Metrics = tc.specMetrics
+			hpa.Status.CurrentMetrics = tc.currentMetrics
+
+			got := DiagnoseMetricsPipeline(hpa)
+			if got == nil {
+				t.Fatal("expected non-nil result")
+			}
+			if got.OverallStatus != tc.wantOverall {
+				t.Errorf("OverallStatus = %q, want %q", got.OverallStatus, tc.wantOverall)
+			}
+			if len(got.PerMetricChecks) != tc.wantNumChecks {
+				t.Fatalf("got %d PerMetricChecks, want %d", len(got.PerMetricChecks), tc.wantNumChecks)
+			}
+			if tc.wantStatusByName != nil {
+				for name, wantStatus := range tc.wantStatusByName {
+					found := false
+					for _, check := range got.PerMetricChecks {
+						if check.MetricName == name {
+							found = true
+							if check.Status != wantStatus {
+								t.Errorf("metric %s status = %q, want %q", name, check.Status, wantStatus)
+							}
+						}
+					}
+					if !found {
+						t.Errorf("metric %s not found in checks", name)
+					}
+				}
+			}
+			if tc.wantMetricType != "" && got.PerMetricChecks[0].MetricType != tc.wantMetricType {
+				t.Errorf("first check MetricType = %q, want %q", got.PerMetricChecks[0].MetricType, tc.wantMetricType)
+			}
+			if tc.wantRemediation != nil {
+				gotRemediation := len(got.RemediationSteps) > 0
+				if gotRemediation != *tc.wantRemediation {
+					t.Errorf("RemediationSteps present = %v, want %v", gotRemediation, *tc.wantRemediation)
+				}
+			}
+		})
 	}
 }
 
-func TestApplyEnrichmentPenalties_NilEnrichment(t *testing.T) {
-	a := &Analysis{
-		Health:      "OK",
-		HealthScore: 95,
+func TestApplyEnrichmentPenalties(t *testing.T) {
+	// inactiveKEDA returns a KEDAAnalysis whose only trigger is Inactive, which
+	// triggers the KEDA penalty.
+	inactiveKEDA := func() *KEDAAnalysis {
+		return &KEDAAnalysis{
+			Triggers: []KEDATriggerSummary{{Type: "prometheus", Status: "Inactive"}},
+		}
 	}
-	ApplyEnrichmentPenalties(a, HealthWeights{})
-	if a.HealthScore != 95 {
-		t.Errorf("expected score 95 unchanged, got %d", a.HealthScore)
+	// activeKEDA returns a KEDAAnalysis whose trigger is Active (no penalty).
+	activeKEDA := func() *KEDAAnalysis {
+		return &KEDAAnalysis{
+			Triggers: []KEDATriggerSummary{{Type: "prometheus", Status: "Active"}},
+		}
 	}
-	if a.Health != "OK" {
-		t.Errorf("expected OK health unchanged, got %s", a.Health)
+	vpaConflict := func() *VPAConflictInfo {
+		return &VPAConflictInfo{VPAName: "my-vpa", UpdateMode: "Auto"}
+	}
+
+	tests := []struct {
+		name       string
+		health     string
+		score      int
+		keda       func() *KEDAAnalysis
+		vpa        func() *VPAConflictInfo
+		weights    HealthWeights
+		wantScore  int
+		wantHealth string
+	}{
+		{name: "KEDAInactiveTrigger", health: "OK", score: 95, keda: inactiveKEDA, wantScore: 80, wantHealth: "LIMITED"},
+		{name: "VPAConflict", health: "OK", score: 95, vpa: vpaConflict, wantScore: 75, wantHealth: "LIMITED"},
+		{name: "BothPenalties", health: "OK", score: 95, keda: inactiveKEDA, vpa: vpaConflict, wantScore: 60, wantHealth: "LIMITED"},
+		{name: "NilEnrichment", health: "OK", score: 95, wantScore: 95, wantHealth: "OK"},
+		{name: "CustomWeights", health: "OK", score: 95, keda: inactiveKEDA, vpa: vpaConflict,
+			weights:   HealthWeights{KEDAInactiveTrigger: IntWeight(30), VPAConflict: IntWeight(40)},
+			wantScore: 25, wantHealth: "LIMITED"},
+		{name: "ScoreNotBelowZero", health: "OK", score: 10, keda: inactiveKEDA, vpa: vpaConflict, wantScore: 0, wantHealth: "LIMITED"},
+		{name: "DoesNotDowngradeERROR", health: "ERROR", score: 55, keda: inactiveKEDA, wantScore: 40, wantHealth: "ERROR"},
+		{name: "KEDAHealthyTriggersNoPenalty", health: "OK", score: 95, keda: activeKEDA, wantScore: 95, wantHealth: "OK"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			a := &Analysis{Health: tc.health, HealthScore: tc.score}
+			if tc.keda != nil {
+				a.KEDAInfo = tc.keda()
+			}
+			if tc.vpa != nil {
+				a.VPAConflict = tc.vpa()
+			}
+			ApplyEnrichmentPenalties(a, tc.weights)
+			if a.HealthScore != tc.wantScore {
+				t.Errorf("HealthScore = %d, want %d", a.HealthScore, tc.wantScore)
+			}
+			if a.Health != tc.wantHealth {
+				t.Errorf("Health = %q, want %q", a.Health, tc.wantHealth)
+			}
+		})
 	}
 }
 
+// TestApplyEnrichmentPenalties_NilAnalysis verifies the function is nil-safe.
 func TestApplyEnrichmentPenalties_NilAnalysis(_ *testing.T) {
 	ApplyEnrichmentPenalties(nil, HealthWeights{})
 	// Should not panic.
 }
 
-func TestApplyEnrichmentPenalties_CustomWeights(t *testing.T) {
-	a := &Analysis{
-		Health:      "OK",
-		HealthScore: 95,
-		KEDAInfo: &KEDAAnalysis{
-			Triggers: []KEDATriggerSummary{
-				{Type: "prometheus", Status: "Inactive"},
+func TestBuildSuggestions(t *testing.T) {
+	tests := []struct {
+		name           string
+		setup          func(hpa *autoscalingv2.HorizontalPodAutoscaler)
+		wantSuggestion string
+		wantPresent    bool
+	}{
+		{
+			name: "NoRaiseMaxReplicasWhenCurrentReplicasZero",
+			setup: func(hpa *autoscalingv2.HorizontalPodAutoscaler) {
+				hpa.Status.CurrentReplicas = 0
+				hpa.Status.DesiredReplicas = 10
+				hpa.Spec.MaxReplicas = 10
+				hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
+					{Type: "ScalingActive", Status: corev1.ConditionTrue, Reason: "ValidMetricFound"},
+					{Type: "ScalingLimited", Status: corev1.ConditionTrue, Reason: "TooManyReplicas"},
+				}
 			},
+			wantSuggestion: "Raise maxReplicas",
+			wantPresent:    false,
 		},
-		VPAConflict: &VPAConflictInfo{
-			VPAName:    "my-vpa",
-			UpdateMode: "Auto",
-		},
-	}
-	ApplyEnrichmentPenalties(a, HealthWeights{
-		KEDAInactiveTrigger: IntWeight(30),
-		VPAConflict:         IntWeight(40),
-	})
-	if a.HealthScore != 25 {
-		t.Errorf("expected score 25 (95-30-40), got %d", a.HealthScore)
-	}
-}
-
-func TestApplyEnrichmentPenalties_ScoreNotBelowZero(t *testing.T) {
-	a := &Analysis{
-		Health:      "OK",
-		HealthScore: 10,
-		KEDAInfo: &KEDAAnalysis{
-			Triggers: []KEDATriggerSummary{
-				{Type: "prometheus", Status: "Inactive"},
+		{
+			name: "RaiseMaxReplicasWhenCurrentReplicasPositive",
+			setup: func(hpa *autoscalingv2.HorizontalPodAutoscaler) {
+				hpa.Status.CurrentReplicas = 10
+				hpa.Status.DesiredReplicas = 10
+				hpa.Spec.MaxReplicas = 10
+				hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
+					{Type: "ScalingActive", Status: corev1.ConditionTrue, Reason: "ValidMetricFound"},
+					{Type: "ScalingLimited", Status: corev1.ConditionTrue, Reason: "TooManyReplicas"},
+				}
 			},
+			wantSuggestion: "Raise maxReplicas",
+			wantPresent:    true,
 		},
-		VPAConflict: &VPAConflictInfo{
-			VPAName:    "my-vpa",
-			UpdateMode: "Auto",
-		},
-	}
-	ApplyEnrichmentPenalties(a, HealthWeights{})
-	if a.HealthScore != 0 {
-		t.Errorf("expected score clamped to 0, got %d", a.HealthScore)
-	}
-}
-
-func TestApplyEnrichmentPenalties_DoesNotDowngradeERROR(t *testing.T) {
-	a := &Analysis{
-		Health:      "ERROR",
-		HealthScore: 55,
-		KEDAInfo: &KEDAAnalysis{
-			Triggers: []KEDATriggerSummary{
-				{Type: "prometheus", Status: "Inactive"},
+		{
+			name: "NoLowerMinReplicasWhenMinIsOne",
+			setup: func(hpa *autoscalingv2.HorizontalPodAutoscaler) {
+				minReplicas := int32(1)
+				hpa.Spec.MinReplicas = &minReplicas
+				hpa.Status.CurrentReplicas = 1
+				hpa.Status.DesiredReplicas = 1
+				hpa.Spec.MaxReplicas = 10
+				hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
+					{Type: "ScalingActive", Status: corev1.ConditionTrue, Reason: "ValidMetricFound"},
+					{Type: "ScalingLimited", Status: corev1.ConditionTrue, Reason: "TooFewReplicas"},
+				}
 			},
+			wantSuggestion: "Lower minReplicas",
+			wantPresent:    false,
 		},
-	}
-	ApplyEnrichmentPenalties(a, HealthWeights{})
-	if a.HealthScore != 40 {
-		t.Errorf("expected score 40 (55-15), got %d", a.HealthScore)
-	}
-	if a.Health != "ERROR" {
-		t.Errorf("expected ERROR health preserved, got %s", a.Health)
-	}
-}
-
-func TestApplyEnrichmentPenalties_KEDAHealthyTriggersNoPenalty(t *testing.T) {
-	a := &Analysis{
-		Health:      "OK",
-		HealthScore: 95,
-		KEDAInfo: &KEDAAnalysis{
-			Triggers: []KEDATriggerSummary{
-				{Type: "prometheus", Status: "Active"},
+		{
+			name: "LowerMinReplicasWhenMinAboveOne",
+			setup: func(hpa *autoscalingv2.HorizontalPodAutoscaler) {
+				minReplicas := int32(3)
+				hpa.Spec.MinReplicas = &minReplicas
+				hpa.Status.CurrentReplicas = 3
+				hpa.Status.DesiredReplicas = 3
+				hpa.Spec.MaxReplicas = 10
+				hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
+					{Type: "ScalingActive", Status: corev1.ConditionTrue, Reason: "ValidMetricFound"},
+					{Type: "ScalingLimited", Status: corev1.ConditionTrue, Reason: "TooFewReplicas"},
+				}
 			},
+			wantSuggestion: "Lower minReplicas",
+			wantPresent:    true,
+		},
+		{
+			name: "NoShortenStabilizationAtDefault300s",
+			setup: func(hpa *autoscalingv2.HorizontalPodAutoscaler) {
+				window := int32(300)
+				hpa.Spec.Behavior = &autoscalingv2.HorizontalPodAutoscalerBehavior{
+					ScaleDown: &autoscalingv2.HPAScalingRules{StabilizationWindowSeconds: &window},
+				}
+				hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
+					{Type: "ScalingActive", Status: corev1.ConditionTrue, Reason: "ValidMetricFound"},
+					{Type: "AbleToScale", Status: corev1.ConditionTrue, Reason: "ScaleDownStabilized", Message: "recent recommendations were higher"},
+				}
+			},
+			wantSuggestion: "Shorten scale-down stabilization",
+			wantPresent:    false,
+		},
+		{
+			name: "ShortenStabilizationAtExplicitlyHighWindow",
+			setup: func(hpa *autoscalingv2.HorizontalPodAutoscaler) {
+				window := int32(600)
+				hpa.Spec.Behavior = &autoscalingv2.HorizontalPodAutoscalerBehavior{
+					ScaleDown: &autoscalingv2.HPAScalingRules{StabilizationWindowSeconds: &window},
+				}
+				hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
+					{Type: "ScalingActive", Status: corev1.ConditionTrue, Reason: "ValidMetricFound"},
+					{Type: "AbleToScale", Status: corev1.ConditionTrue, Reason: "ScaleDownStabilized", Message: "recent recommendations were higher"},
+				}
+			},
+			wantSuggestion: "Shorten scale-down stabilization",
+			wantPresent:    true,
+		},
+		{
+			name: "ShortenStabilizationAtExplicitlySetBelow300s",
+			setup: func(hpa *autoscalingv2.HorizontalPodAutoscaler) {
+				window := int32(120)
+				hpa.Spec.Behavior = &autoscalingv2.HorizontalPodAutoscalerBehavior{
+					ScaleDown: &autoscalingv2.HPAScalingRules{StabilizationWindowSeconds: &window},
+				}
+				hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
+					{Type: "ScalingActive", Status: corev1.ConditionTrue, Reason: "ValidMetricFound"},
+					{Type: "AbleToScale", Status: corev1.ConditionTrue, Reason: "ScaleDownStabilized", Message: "recent recommendations were higher"},
+				}
+			},
+			wantSuggestion: "Shorten scale-down stabilization",
+			wantPresent:    true,
 		},
 	}
-	ApplyEnrichmentPenalties(a, HealthWeights{})
-	if a.HealthScore != 95 {
-		t.Errorf("expected score 95 unchanged, got %d", a.HealthScore)
-	}
-	if a.Health != "OK" {
-		t.Errorf("expected OK health unchanged, got %s", a.Health)
-	}
-}
 
-func TestBuildSuggestions_NoRaiseMaxReplicasWhenCurrentReplicasZero(t *testing.T) {
-	hpa := baseHPA()
-	hpa.Status.CurrentReplicas = 0
-	hpa.Status.DesiredReplicas = 10
-	hpa.Spec.MaxReplicas = 10
-	hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
-		{Type: "ScalingActive", Status: corev1.ConditionTrue, Reason: "ValidMetricFound"},
-		{Type: "ScalingLimited", Status: corev1.ConditionTrue, Reason: "TooManyReplicas"},
-	}
-
-	minReplicas := *hpa.Spec.MinReplicas
-	suggestions := BuildSuggestions(hpa, minReplicas)
-	if containsSuggestion(suggestions, "Raise maxReplicas") {
-		t.Fatalf("expected no Raise maxReplicas suggestion when currentReplicas=0, got %#v", suggestions)
-	}
-}
-
-func TestBuildSuggestions_RaiseMaxReplicasWhenCurrentReplicasPositive(t *testing.T) {
-	hpa := baseHPA()
-	hpa.Status.CurrentReplicas = 10
-	hpa.Status.DesiredReplicas = 10
-	hpa.Spec.MaxReplicas = 10
-	hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
-		{Type: "ScalingActive", Status: corev1.ConditionTrue, Reason: "ValidMetricFound"},
-		{Type: "ScalingLimited", Status: corev1.ConditionTrue, Reason: "TooManyReplicas"},
-	}
-
-	minReplicas := *hpa.Spec.MinReplicas
-	suggestions := BuildSuggestions(hpa, minReplicas)
-	if !containsSuggestion(suggestions, "Raise maxReplicas") {
-		t.Fatalf("expected Raise maxReplicas suggestion when currentReplicas>0, got %#v", suggestions)
-	}
-}
-
-func TestBuildSuggestions_NoLowerMinReplicasWhenMinIsOne(t *testing.T) {
-	minReplicas := int32(1)
-	hpa := baseHPA()
-	hpa.Spec.MinReplicas = &minReplicas
-	hpa.Status.CurrentReplicas = 1
-	hpa.Status.DesiredReplicas = 1
-	hpa.Spec.MaxReplicas = 10
-	hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
-		{Type: "ScalingActive", Status: corev1.ConditionTrue, Reason: "ValidMetricFound"},
-		{Type: "ScalingLimited", Status: corev1.ConditionTrue, Reason: "TooFewReplicas"},
-	}
-
-	suggestions := BuildSuggestions(hpa, minReplicas)
-	if containsSuggestion(suggestions, "Lower minReplicas") {
-		t.Fatalf("expected no Lower minReplicas suggestion when minReplicas=1, got %#v", suggestions)
-	}
-}
-
-func TestBuildSuggestions_LowerMinReplicasWhenMinAboveOne(t *testing.T) {
-	minReplicas := int32(3)
-	hpa := baseHPA()
-	hpa.Spec.MinReplicas = &minReplicas
-	hpa.Status.CurrentReplicas = 3
-	hpa.Status.DesiredReplicas = 3
-	hpa.Spec.MaxReplicas = 10
-	hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
-		{Type: "ScalingActive", Status: corev1.ConditionTrue, Reason: "ValidMetricFound"},
-		{Type: "ScalingLimited", Status: corev1.ConditionTrue, Reason: "TooFewReplicas"},
-	}
-
-	suggestions := BuildSuggestions(hpa, minReplicas)
-	if !containsSuggestion(suggestions, "Lower minReplicas") {
-		t.Fatalf("expected Lower minReplicas suggestion when minReplicas=3, got %#v", suggestions)
-	}
-}
-
-func TestBuildSuggestions_NoShortenStabilizationAtDefault300s(t *testing.T) {
-	window := int32(300)
-	hpa := baseHPA()
-	hpa.Spec.Behavior = &autoscalingv2.HorizontalPodAutoscalerBehavior{
-		ScaleDown: &autoscalingv2.HPAScalingRules{
-			StabilizationWindowSeconds: &window,
-		},
-	}
-	hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
-		{Type: "ScalingActive", Status: corev1.ConditionTrue, Reason: "ValidMetricFound"},
-		{Type: "AbleToScale", Status: corev1.ConditionTrue, Reason: "ScaleDownStabilized", Message: "recent recommendations were higher"},
-	}
-
-	minReplicas := *hpa.Spec.MinReplicas
-	suggestions := BuildSuggestions(hpa, minReplicas)
-	if containsSuggestion(suggestions, "Shorten scale-down stabilization") {
-		t.Fatalf("expected no Shorten suggestion at default 300s window, got %#v", suggestions)
-	}
-}
-
-func TestBuildSuggestions_ShortenStabilizationAtExplicitlyHighWindow(t *testing.T) {
-	window := int32(600)
-	hpa := baseHPA()
-	hpa.Spec.Behavior = &autoscalingv2.HorizontalPodAutoscalerBehavior{
-		ScaleDown: &autoscalingv2.HPAScalingRules{
-			StabilizationWindowSeconds: &window,
-		},
-	}
-	hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
-		{Type: "ScalingActive", Status: corev1.ConditionTrue, Reason: "ValidMetricFound"},
-		{Type: "AbleToScale", Status: corev1.ConditionTrue, Reason: "ScaleDownStabilized", Message: "recent recommendations were higher"},
-	}
-
-	minReplicas := *hpa.Spec.MinReplicas
-	suggestions := BuildSuggestions(hpa, minReplicas)
-	if !containsSuggestion(suggestions, "Shorten scale-down stabilization") {
-		t.Fatalf("expected Shorten suggestion at 600s window, got %#v", suggestions)
-	}
-}
-
-func TestBuildSuggestions_ShortenStabilizationAtExplicitlySetBelow300s(t *testing.T) {
-	window := int32(120)
-	hpa := baseHPA()
-	hpa.Spec.Behavior = &autoscalingv2.HorizontalPodAutoscalerBehavior{
-		ScaleDown: &autoscalingv2.HPAScalingRules{
-			StabilizationWindowSeconds: &window,
-		},
-	}
-	hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
-		{Type: "ScalingActive", Status: corev1.ConditionTrue, Reason: "ValidMetricFound"},
-		{Type: "AbleToScale", Status: corev1.ConditionTrue, Reason: "ScaleDownStabilized", Message: "recent recommendations were higher"},
-	}
-
-	minReplicas := *hpa.Spec.MinReplicas
-	suggestions := BuildSuggestions(hpa, minReplicas)
-	if !containsSuggestion(suggestions, "Shorten scale-down stabilization") {
-		t.Fatalf("expected Shorten suggestion at explicitly set 120s window, got %#v", suggestions)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			hpa := baseHPA()
+			tc.setup(hpa)
+			minReplicas := *hpa.Spec.MinReplicas
+			suggestions := BuildSuggestions(hpa, minReplicas)
+			got := containsSuggestion(suggestions, tc.wantSuggestion)
+			if got != tc.wantPresent {
+				t.Fatalf("suggestion %q present = %v, want %v (suggestions: %#v)", tc.wantSuggestion, got, tc.wantPresent, suggestions)
+			}
+		})
 	}
 }
 
@@ -1809,66 +1691,79 @@ func TestPodsMetricMatching_DistinguishesSelector(t *testing.T) {
 	}
 }
 
-func TestHealthScore_NoMinReplicasPenaltyWithoutScalingLimited(t *testing.T) {
-	hpa := baseHPA()
-	// At minReplicas=2 but no ScalingLimited condition — normal low-traffic state.
-	hpa.Status.CurrentReplicas = 2
-	hpa.Status.DesiredReplicas = 2
-	_, score := Health(hpa, 2)
-	if score != 100 {
-		t.Fatalf("expected no penalty at minReplicas without ScalingLimited, got score=%d", score)
+func TestHealthScorePenaltyGating(t *testing.T) {
+	tests := []struct {
+		name          string
+		setup         func(hpa *autoscalingv2.HorizontalPodAutoscaler)
+		wantFullScore bool // true: expect score==100; false: expect score<100
+	}{
+		{
+			name: "NoMinReplicasPenaltyWithoutScalingLimited",
+			setup: func(hpa *autoscalingv2.HorizontalPodAutoscaler) {
+				// At minReplicas=2 but no ScalingLimited — normal low-traffic state.
+				hpa.Status.CurrentReplicas = 2
+				hpa.Status.DesiredReplicas = 2
+			},
+			wantFullScore: true,
+		},
+		{
+			name: "MinReplicasPenaltyWithScalingLimited",
+			setup: func(hpa *autoscalingv2.HorizontalPodAutoscaler) {
+				hpa.Status.CurrentReplicas = 2
+				hpa.Status.DesiredReplicas = 2
+				hpa.Status.Conditions = append(hpa.Status.Conditions,
+					autoscalingv2.HorizontalPodAutoscalerCondition{Type: "ScalingLimited", Status: corev1.ConditionTrue, Reason: "TooFewReplicas"},
+				)
+			},
+			wantFullScore: false,
+		},
+		{
+			name: "ImplicitMaxReplicas_NoPenaltyWithoutPressure",
+			setup: func(hpa *autoscalingv2.HorizontalPodAutoscaler) {
+				hpa.Status.CurrentReplicas = 10
+				hpa.Status.DesiredReplicas = 10
+				hpa.Spec.MaxReplicas = 10
+				// No ScalingLimited, no metric above target — no penalty expected.
+			},
+			wantFullScore: true,
+		},
+		{
+			name: "ImplicitMaxReplicas_PenaltyWithMetricPressure",
+			setup: func(hpa *autoscalingv2.HorizontalPodAutoscaler) {
+				hpa.Status.CurrentReplicas = 10
+				hpa.Status.DesiredReplicas = 10
+				hpa.Spec.MaxReplicas = 10
+				hpa.Spec.Metrics = []autoscalingv2.MetricSpec{resourceMetricSpec(corev1.ResourceCPU, 80)}
+				hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{resourceMetricStatus(corev1.ResourceCPU, 90)} // ratio > 1.0
+			},
+			wantFullScore: false,
+		},
+		{
+			name: "ImplicitMaxReplicas_PenaltyWithScalingLimited",
+			setup: func(hpa *autoscalingv2.HorizontalPodAutoscaler) {
+				hpa.Status.CurrentReplicas = 10
+				hpa.Status.DesiredReplicas = 10
+				hpa.Spec.MaxReplicas = 10
+				hpa.Status.Conditions = append(hpa.Status.Conditions,
+					autoscalingv2.HorizontalPodAutoscalerCondition{Type: "ScalingLimited", Status: corev1.ConditionTrue, Reason: "TooManyReplicas"},
+				)
+			},
+			wantFullScore: false,
+		},
 	}
-}
 
-func TestHealthScore_MinReplicasPenaltyWithScalingLimited(t *testing.T) {
-	hpa := baseHPA()
-	hpa.Status.CurrentReplicas = 2
-	hpa.Status.DesiredReplicas = 2
-	hpa.Status.Conditions = append(hpa.Status.Conditions,
-		autoscalingv2.HorizontalPodAutoscalerCondition{Type: "ScalingLimited", Status: corev1.ConditionTrue, Reason: "TooFewReplicas"},
-	)
-	_, score := Health(hpa, 2)
-	if score >= 100 {
-		t.Fatalf("expected penalty when at minReplicas with ScalingLimited=True, got score=%d", score)
-	}
-}
-
-func TestHealthScore_ImplicitMaxReplicas_NoPenaltyWithoutPressure(t *testing.T) {
-	hpa := baseHPA()
-	hpa.Status.CurrentReplicas = 10
-	hpa.Status.DesiredReplicas = 10
-	hpa.Spec.MaxReplicas = 10
-	// No ScalingLimited, no metric above target — no penalty expected.
-	_, score := Health(hpa, 2)
-	if score != 100 {
-		t.Fatalf("expected no implicit max penalty without pressure, got score=%d", score)
-	}
-}
-
-func TestHealthScore_ImplicitMaxReplicas_PenaltyWithMetricPressure(t *testing.T) {
-	hpa := baseHPA()
-	hpa.Status.CurrentReplicas = 10
-	hpa.Status.DesiredReplicas = 10
-	hpa.Spec.MaxReplicas = 10
-	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{resourceMetricSpec(corev1.ResourceCPU, 80)}
-	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{resourceMetricStatus(corev1.ResourceCPU, 90)} // ratio > 1.0
-	_, score := Health(hpa, 2)
-	if score >= 100 {
-		t.Fatalf("expected implicit max penalty with metric pressure, got score=%d", score)
-	}
-}
-
-func TestHealthScore_ImplicitMaxReplicas_PenaltyWithScalingLimited(t *testing.T) {
-	hpa := baseHPA()
-	hpa.Status.CurrentReplicas = 10
-	hpa.Status.DesiredReplicas = 10
-	hpa.Spec.MaxReplicas = 10
-	hpa.Status.Conditions = append(hpa.Status.Conditions,
-		autoscalingv2.HorizontalPodAutoscalerCondition{Type: "ScalingLimited", Status: corev1.ConditionTrue, Reason: "TooManyReplicas"},
-	)
-	_, score := Health(hpa, 2)
-	if score >= 100 {
-		t.Fatalf("expected implicit max penalty with ScalingLimited, got score=%d", score)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			hpa := baseHPA()
+			tc.setup(hpa)
+			_, score := Health(hpa, 2)
+			if tc.wantFullScore && score != 100 {
+				t.Fatalf("score = %d, want 100 (no penalty)", score)
+			}
+			if !tc.wantFullScore && score >= 100 {
+				t.Fatalf("score = %d, want < 100 (penalty expected)", score)
+			}
+		})
 	}
 }
 
@@ -2069,45 +1964,62 @@ func TestDefaultMinReplicasConstant(t *testing.T) {
 	}
 }
 
-func TestValidateHPA_NilHPA(t *testing.T) {
-	result := validateHPA(nil)
-	if result == nil {
-		t.Fatal("expected error result for nil HPA")
+func TestValidateHPA(t *testing.T) {
+	tests := []struct {
+		name      string
+		hpa       func() *autoscalingv2.HorizontalPodAutoscaler
+		wantNil   bool
+		wantError bool // when wantNil is false, whether result.Health == "ERROR"
+	}{
+		{name: "NilHPA", hpa: func() *autoscalingv2.HorizontalPodAutoscaler { return nil }, wantNil: false, wantError: true},
+		{name: "ValidHPA", hpa: baseHPA, wantNil: true},
+		{
+			name: "EmptyScaleTargetRef",
+			hpa: func() *autoscalingv2.HorizontalPodAutoscaler {
+				hpa := baseHPA()
+				hpa.Spec.ScaleTargetRef = autoscalingv2.CrossVersionObjectReference{}
+				return hpa
+			},
+			wantNil: false,
+		},
 	}
-	if result.Health != "ERROR" {
-		t.Fatalf("expected ERROR health, got %s", result.Health)
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := validateHPA(tc.hpa())
+			if tc.wantNil {
+				if result != nil {
+					t.Fatalf("expected nil result, got %+v", result)
+				}
+				return
+			}
+			if result == nil {
+				t.Fatal("expected non-nil error result")
+			}
+			if tc.wantError && result.Health != "ERROR" {
+				t.Errorf("Health = %q, want ERROR", result.Health)
+			}
+		})
 	}
 }
 
-func TestValidateHPA_ValidHPA(t *testing.T) {
-	result := validateHPA(baseHPA())
-	if result != nil {
-		t.Fatalf("expected nil for valid HPA, got %+v", result)
+func TestResolveMinReplicas(t *testing.T) {
+	tests := []struct {
+		name string
+		min  *int32
+		want int32
+	}{
+		{name: "Default", min: nil, want: DefaultMinReplicas},
+		{name: "Explicit", min: func() *int32 { v := int32(5); return &v }(), want: 5},
 	}
-}
 
-func TestValidateHPA_EmptyScaleTargetRef(t *testing.T) {
-	hpa := baseHPA()
-	hpa.Spec.ScaleTargetRef = autoscalingv2.CrossVersionObjectReference{}
-	result := validateHPA(hpa)
-	if result == nil {
-		t.Fatal("expected error for empty scaleTargetRef")
-	}
-}
-
-func TestResolveMinReplicas_Default(t *testing.T) {
-	hpa := baseHPA()
-	hpa.Spec.MinReplicas = nil
-	if val := resolveMinReplicas(hpa); val != DefaultMinReplicas {
-		t.Fatalf("expected %d, got %d", DefaultMinReplicas, val)
-	}
-}
-
-func TestResolveMinReplicas_Explicit(t *testing.T) {
-	minVal := int32(5)
-	hpa := baseHPA()
-	hpa.Spec.MinReplicas = &minVal
-	if val := resolveMinReplicas(hpa); val != 5 {
-		t.Fatalf("expected 5, got %d", val)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			hpa := baseHPA()
+			hpa.Spec.MinReplicas = tc.min
+			if got := resolveMinReplicas(hpa); got != tc.want {
+				t.Errorf("resolveMinReplicas = %d, want %d", got, tc.want)
+			}
+		})
 	}
 }
