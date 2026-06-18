@@ -1,15 +1,18 @@
-package hpa
+package render
 
 import (
 	"bytes"
 	"strings"
 	"testing"
+
+	hpa "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 )
 
-func sampleStatusReport() StatusReport {
+func sampleStatusReport() hpa.StatusReport {
 	ratio := 0.975
-	return StatusReport{
-		Analysis: Analysis{
+	return hpa.StatusReport{
+		Analysis: hpa.Analysis{
 			Namespace:   "default",
 			Name:        "web-hpa",
 			Target:      "Deployment/web",
@@ -20,21 +23,21 @@ func sampleStatusReport() StatusReport {
 			Health:      "OK",
 			HealthScore: 95,
 			Summary:     "HPA is operating normally.",
-			Conditions: []Condition{
+			Conditions: []hpa.Condition{
 				{Type: "ScalingActive", Status: "True", Reason: "ValidMetricFound", Message: "the HPA was able to successfully calculate a replica count"},
 				{Type: "AbleToScale", Status: "True", Reason: "ReadyForNewScale", Message: "recommended size matches current size"},
 			},
-			Metrics: []Metric{
+			Metrics: []hpa.Metric{
 				{Name: "cpu", Current: "78%", Target: "80%", Ratio: &ratio, Text: "cpu 78%/80%"},
 			},
 			Actions: []string{
 				"No immediate action required.",
 			},
-			Suggestions: []Suggestion{
+			Suggestions: []hpa.Suggestion{
 				{Title: "Increase maxReplicas", Description: "Consider raising maxReplicas to allow more headroom.", Command: "kubectl patch hpa web-hpa -p '{\"spec\":{\"maxReplicas\":20}}'", Risk: "low"},
 			},
 		},
-		Events: []Event{
+		Events: []hpa.Event{
 			{Reason: "SuccessfulRescale", Message: "New size: 5; reason: cpu resource utilization"},
 		},
 	}
@@ -85,8 +88,8 @@ func TestWriteMarkdownReportMetricRatio(t *testing.T) {
 }
 
 func TestWriteMarkdownReportEmptyFields(t *testing.T) {
-	report := StatusReport{
-		Analysis: Analysis{
+	report := hpa.StatusReport{
+		Analysis: hpa.Analysis{
 			Namespace:   "default",
 			Name:        "empty-hpa",
 			Health:      "OK",
@@ -111,12 +114,12 @@ func TestWriteMarkdownReportEmptyFields(t *testing.T) {
 }
 
 func TestWriteMarkdownReportEscapesPipes(t *testing.T) {
-	report := StatusReport{
-		Analysis: Analysis{
+	report := hpa.StatusReport{
+		Analysis: hpa.Analysis{
 			Namespace: "default",
 			Name:      "pipe-test",
 			Target:    "Deployment/svc|web",
-			Conditions: []Condition{
+			Conditions: []hpa.Condition{
 				{Type: "ScalingActive", Status: "True", Reason: "OK", Message: "metric | pipe"},
 			},
 		},
@@ -209,8 +212,8 @@ func TestWriteHTMLReportHealthColorCoding(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.health, func(t *testing.T) {
-			report := StatusReport{
-				Analysis: Analysis{
+			report := hpa.StatusReport{
+				Analysis: hpa.Analysis{
 					Name:        "test",
 					Health:      tc.health,
 					HealthScore: 50,
@@ -228,8 +231,8 @@ func TestWriteHTMLReportHealthColorCoding(t *testing.T) {
 }
 
 func TestWriteHTMLReportEmptyFields(t *testing.T) {
-	report := StatusReport{
-		Analysis: Analysis{
+	report := hpa.StatusReport{
+		Analysis: hpa.Analysis{
 			Namespace: "default",
 			Name:      "empty-hpa",
 		},
@@ -249,8 +252,8 @@ func TestWriteHTMLReportEmptyFields(t *testing.T) {
 }
 
 func TestWriteMarkdownListReport(t *testing.T) {
-	report := ListReport{
-		Items: []ListItem{
+	report := hpa.ListReport{
+		Items: []hpa.ListItem{
 			{
 				Namespace:   "default",
 				Name:        "web-hpa",
@@ -298,7 +301,7 @@ func TestWriteMarkdownListReport(t *testing.T) {
 }
 
 func TestWriteMarkdownListReportEmpty(t *testing.T) {
-	report := ListReport{}
+	report := hpa.ListReport{}
 	var buf bytes.Buffer
 	if err := WriteMarkdownListReport(&buf, report); err != nil {
 		t.Fatalf("WriteMarkdownListReport returned error: %v", err)
@@ -311,8 +314,8 @@ func TestWriteMarkdownListReportEmpty(t *testing.T) {
 }
 
 func TestWriteHTMLListReport(t *testing.T) {
-	report := ListReport{
-		Items: []ListItem{
+	report := hpa.ListReport{
+		Items: []hpa.ListItem{
 			{
 				Namespace:   "default",
 				Name:        "web-hpa",
@@ -354,7 +357,7 @@ func TestWriteHTMLListReport(t *testing.T) {
 }
 
 func TestWriteHTMLListReportEmpty(t *testing.T) {
-	report := ListReport{}
+	report := hpa.ListReport{}
 	var buf bytes.Buffer
 	if err := WriteHTMLListReport(&buf, report); err != nil {
 		t.Fatalf("WriteHTMLListReport returned error: %v", err)
@@ -379,17 +382,17 @@ func TestHTMLEscape(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.input, func(t *testing.T) {
-			got := htmlEscape(tc.input)
+			got := rendutil.HTMLEscape(tc.input)
 			if got != tc.expected {
-				t.Errorf("htmlEscape(%q) = %q, want %q", tc.input, got, tc.expected)
+				t.Errorf("rendutil.HTMLEscape(%q) = %q, want %q", tc.input, got, tc.expected)
 			}
 		})
 	}
 }
 
 func TestEscapeMarkdown(t *testing.T) {
-	got := escapeMarkdown("value | pipe")
+	got := rendutil.EscapeMarkdown("value | pipe")
 	if got != `value \| pipe` {
-		t.Errorf("escapeMarkdown = %q, want %q", got, `value \| pipe`)
+		t.Errorf("rendutil.EscapeMarkdown = %q, want %q", got, `value \| pipe`)
 	}
 }

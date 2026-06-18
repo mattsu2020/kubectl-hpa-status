@@ -12,6 +12,7 @@ import (
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	hparender "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/render"
 	"github.com/spf13/cobra"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -283,7 +284,7 @@ func buildSnapshotReport(ctx context.Context, _ *kube.Client, opts *options, hpa
 	}
 
 	var sb strings.Builder
-	if err := hpaanalysis.WriteMarkdownReport(&sb, statusReport); err != nil {
+	if err := hparender.WriteMarkdownReport(&sb, statusReport); err != nil {
 		return []byte(fmt.Sprintf("# Error rendering report: %v\n", err))
 	}
 	return []byte(sb.String())

@@ -1,14 +1,17 @@
-package hpa
+package render
 
 import (
 	"io"
 	"strings"
+
+	hpa "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 )
 
 // WriteHTMLReport writes a single StatusReport as a standalone HTML document
 // with inline CSS for portable viewing. The body is assembled by delegating to
 // the per-section renderers in report_html_sections.go.
-func WriteHTMLReport(w io.Writer, report StatusReport) error {
+func WriteHTMLReport(w io.Writer, report hpa.StatusReport) error {
 	a := report.Analysis
 	var out strings.Builder
 
@@ -18,16 +21,16 @@ func WriteHTMLReport(w io.Writer, report StatusReport) error {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>HPA Status Report: `)
-	out.WriteString(htmlEscape(a.Name))
+	out.WriteString(rendutil.HTMLEscape(a.Name))
 	out.WriteString("</title>\n<style>\n")
-	out.WriteString(htmlCSS())
+	out.WriteString(rendutil.HTMLCSS())
 	out.WriteString("</style>\n</head>\n<body>\n")
 
 	out.WriteString(`<h1>HPA Status Report: `)
-	out.WriteString(htmlEscape(a.Name))
+	out.WriteString(rendutil.HTMLEscape(a.Name))
 	if a.Namespace != "" {
 		out.WriteString(" <span class=\"namespace\">(")
-		out.WriteString(htmlEscape(a.Namespace))
+		out.WriteString(rendutil.HTMLEscape(a.Namespace))
 		out.WriteString(")</span>")
 	}
 	out.WriteString("</h1>\n")
@@ -60,21 +63,21 @@ func htmlConditionStatus(status string) string {
 	case "False":
 		class = "cond-false"
 	}
-	return formatHTMLSpan(class, htmlEscape(status))
+	return formatHTMLSpan(class, rendutil.HTMLEscape(status))
 }
 
 // htmlFreshnessBadge returns a color-coded freshness status badge for HTML.
 func htmlFreshnessBadge(status string) string {
 	class := "cond-unknown"
 	switch status {
-	case string(FreshnessOK):
+	case string(hpa.FreshnessOK):
 		class = "cond-true"
-	case string(FreshnessMissing):
+	case string(hpa.FreshnessMissing):
 		class = "cond-false"
-	case string(FreshnessStale):
+	case string(hpa.FreshnessStale):
 		class = "health-limited"
 	}
-	return formatHTMLSpan(class, htmlEscape(status))
+	return formatHTMLSpan(class, rendutil.HTMLEscape(status))
 }
 
 func formatHTMLSpan(class, content string) string {

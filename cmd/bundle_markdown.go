@@ -7,6 +7,7 @@ import (
 	"time"
 
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	hparender "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/render"
 )
 
 // writeBundleMarkdown renders all bundle sections to an io.Writer. The first
@@ -82,7 +83,7 @@ func writeBundleTOC(b *bundleWriter) {
 
 func writeBundleStatusSummary(b *bundleWriter, data *bundleData) {
 	b.Print("## HPA Status Summary\n\n")
-	if err := hpaanalysis.WriteMarkdownReport(b.w, data.StatusReport); err != nil {
+	if err := hparender.WriteMarkdownReport(b.w, data.StatusReport); err != nil {
 		b.Printf("_Error rendering status summary: %v_\n", err)
 	}
 	b.Print("\n---\n\n")

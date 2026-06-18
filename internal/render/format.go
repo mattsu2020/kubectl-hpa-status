@@ -17,6 +17,7 @@ import (
 	"text/template"
 
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	hparender "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/render"
 	"k8s.io/client-go/util/jsonpath"
 	"sigs.k8s.io/yaml"
 )
@@ -174,7 +175,7 @@ func EscapePrometheusLabelValue(s string) string {
 func Markdown(out io.Writer, value any) error {
 	switch report := value.(type) {
 	case hpaanalysis.StatusReport:
-		return hpaanalysis.WriteMarkdownReport(out, report)
+		return hparender.WriteMarkdownReport(out, report)
 	case []hpaanalysis.StatusReport:
 		for i, r := range report {
 			if i > 0 {
@@ -182,13 +183,13 @@ func Markdown(out io.Writer, value any) error {
 					return err
 				}
 			}
-			if err := hpaanalysis.WriteMarkdownReport(out, r); err != nil {
+			if err := hparender.WriteMarkdownReport(out, r); err != nil {
 				return err
 			}
 		}
 		return nil
 	case hpaanalysis.ListReport:
-		return hpaanalysis.WriteMarkdownListReport(out, report)
+		return hparender.WriteMarkdownListReport(out, report)
 	default:
 		return fmt.Errorf("markdown output requires a StatusReport or ListReport, got %T", value)
 	}
@@ -198,7 +199,7 @@ func Markdown(out io.Writer, value any) error {
 func HTML(out io.Writer, value any) error {
 	switch report := value.(type) {
 	case hpaanalysis.StatusReport:
-		return hpaanalysis.WriteHTMLReport(out, report)
+		return hparender.WriteHTMLReport(out, report)
 	case []hpaanalysis.StatusReport:
 		for i, r := range report {
 			if i > 0 {
@@ -206,13 +207,13 @@ func HTML(out io.Writer, value any) error {
 					return err
 				}
 			}
-			if err := hpaanalysis.WriteHTMLReport(out, r); err != nil {
+			if err := hparender.WriteHTMLReport(out, r); err != nil {
 				return err
 			}
 		}
 		return nil
 	case hpaanalysis.ListReport:
-		return hpaanalysis.WriteHTMLListReport(out, report)
+		return hparender.WriteHTMLListReport(out, report)
 	default:
 		return fmt.Errorf("html output requires a StatusReport or ListReport, got %T", value)
 	}
@@ -222,7 +223,7 @@ func HTML(out io.Writer, value any) error {
 func Incident(out io.Writer, value any) error {
 	switch report := value.(type) {
 	case hpaanalysis.StatusReport:
-		return hpaanalysis.WriteIncidentReport(out, report)
+		return hparender.WriteIncidentReport(out, report)
 	case []hpaanalysis.StatusReport:
 		for i, r := range report {
 			if i > 0 {
@@ -230,7 +231,7 @@ func Incident(out io.Writer, value any) error {
 					return err
 				}
 			}
-			if err := hpaanalysis.WriteIncidentReport(out, r); err != nil {
+			if err := hparender.WriteIncidentReport(out, r); err != nil {
 				return err
 			}
 		}

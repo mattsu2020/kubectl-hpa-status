@@ -1,14 +1,22 @@
-package hpa
+// Package render holds the Markdown/HTML report renderers extracted from
+// pkg/hpa. The renderers consume the pkg/hpa analysis model (Analysis,
+// StatusReport, ListReport) and the shared escape/format helpers in
+// pkg/hpa/rendutil. pkg/hpa retains the data model and analysis logic; this
+// package is the pure presentation layer.
+package render
 
 import (
 	"fmt"
 	"io"
 	"strings"
+
+	hpa "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 )
 
 // WriteMarkdownReport writes a single StatusReport as a Markdown document.
 // The output is suitable for Slack, Notion, or incident reports.
-func WriteMarkdownReport(w io.Writer, report StatusReport) error {
+func WriteMarkdownReport(w io.Writer, report hpa.StatusReport) error {
 	var out strings.Builder
 	// Pass Analysis by pointer: 11 append* helpers each previously copied the
 	// 63-field Analysis struct.
@@ -31,7 +39,7 @@ func WriteMarkdownReport(w io.Writer, report StatusReport) error {
 	return err
 }
 
-func appendMarkdownHeader(out *strings.Builder, a *Analysis) {
+func appendMarkdownHeader(out *strings.Builder, a *hpa.Analysis) {
 	out.WriteString("# HPA Status Report: ")
 	out.WriteString(a.Name)
 	if a.Namespace != "" {
@@ -56,7 +64,7 @@ func appendMarkdownHeader(out *strings.Builder, a *Analysis) {
 	out.WriteString("\n")
 }
 
-func appendMarkdownSummary(out *strings.Builder, a *Analysis) {
+func appendMarkdownSummary(out *strings.Builder, a *hpa.Analysis) {
 	out.WriteString("## Summary\n\n")
 	if a.Summary != "" {
 		out.WriteString(a.Summary)
@@ -67,7 +75,7 @@ func appendMarkdownSummary(out *strings.Builder, a *Analysis) {
 	out.WriteString("\n")
 }
 
-func appendMarkdownConditions(out *strings.Builder, a *Analysis) {
+func appendMarkdownConditions(out *strings.Builder, a *hpa.Analysis) {
 	// Conditions table
 	out.WriteString("## Conditions\n\n")
 	if len(a.Conditions) == 0 {
@@ -83,14 +91,14 @@ func appendMarkdownConditions(out *strings.Builder, a *Analysis) {
 			out.WriteString(" | ")
 			out.WriteString(c.Reason)
 			out.WriteString(" | ")
-			out.WriteString(escapeMarkdown(c.Message))
+			out.WriteString(rendutil.EscapeMarkdown(c.Message))
 			out.WriteString(" |\n")
 		}
 	}
 	out.WriteString("\n")
 }
 
-func appendMarkdownMetrics(out *strings.Builder, a *Analysis) {
+func appendMarkdownMetrics(out *strings.Builder, a *hpa.Analysis) {
 	// Metrics table
 	out.WriteString("## Metrics\n\n")
 	if len(a.Metrics) == 0 {
@@ -121,7 +129,7 @@ func appendMarkdownMetrics(out *strings.Builder, a *Analysis) {
 	out.WriteString("\n")
 }
 
-func appendMarkdownActions(out *strings.Builder, a *Analysis) {
+func appendMarkdownActions(out *strings.Builder, a *hpa.Analysis) {
 	// Recommendations
 	if len(a.Actions) == 0 {
 		return
@@ -135,7 +143,7 @@ func appendMarkdownActions(out *strings.Builder, a *Analysis) {
 	out.WriteString("\n")
 }
 
-func appendMarkdownSuggestions(out *strings.Builder, a *Analysis) {
+func appendMarkdownSuggestions(out *strings.Builder, a *hpa.Analysis) {
 	// Suggestions
 	if len(a.Suggestions) == 0 {
 		return
@@ -161,7 +169,7 @@ func appendMarkdownSuggestions(out *strings.Builder, a *Analysis) {
 	out.WriteString("\n")
 }
 
-func appendMarkdownEvents(out *strings.Builder, report StatusReport) {
+func appendMarkdownEvents(out *strings.Builder, report hpa.StatusReport) {
 	// Events
 	if len(report.Events) == 0 {
 		return
@@ -173,13 +181,13 @@ func appendMarkdownEvents(out *strings.Builder, report StatusReport) {
 		out.WriteString("| ")
 		out.WriteString(e.Reason)
 		out.WriteString(" | ")
-		out.WriteString(escapeMarkdown(e.Message))
+		out.WriteString(rendutil.EscapeMarkdown(e.Message))
 		out.WriteString(" |\n")
 	}
 	out.WriteString("\n")
 }
 
-func appendMarkdownPodAnalysis(out *strings.Builder, a *Analysis) {
+func appendMarkdownPodAnalysis(out *strings.Builder, a *hpa.Analysis) {
 	// Pod Analysis
 	if a.PodAnalysis == nil {
 		return
@@ -192,7 +200,7 @@ func appendMarkdownPodAnalysis(out *strings.Builder, a *Analysis) {
 		out.WriteString("| Pod | Container | Resource | Category |\n")
 		out.WriteString("|-----|-----------|----------|----------|\n")
 		for _, issue := range pa.ResourceIssues {
-			out.WriteString(fmt.Sprintf("| %s | %s | %s | %s |\n", escapeMarkdown(issue.Pod), escapeMarkdown(issue.Container), escapeMarkdown(issue.Resource), escapeMarkdown(issue.Category)))
+			out.WriteString(fmt.Sprintf("| %s | %s | %s | %s |\n", rendutil.EscapeMarkdown(issue.Pod), rendutil.EscapeMarkdown(issue.Container), rendutil.EscapeMarkdown(issue.Resource), rendutil.EscapeMarkdown(issue.Category)))
 		}
 		out.WriteString("\n")
 	}
@@ -205,13 +213,13 @@ func appendMarkdownPodAnalysis(out *strings.Builder, a *Analysis) {
 			if msg == "" {
 				msg = "OK"
 			}
-			out.WriteString(fmt.Sprintf("| %s | %v | %s |\n", escapeMarkdown(check.Container), check.Found, escapeMarkdown(msg)))
+			out.WriteString(fmt.Sprintf("| %s | %v | %s |\n", rendutil.EscapeMarkdown(check.Container), check.Found, rendutil.EscapeMarkdown(msg)))
 		}
 		out.WriteString("\n")
 	}
 }
 
-func appendMarkdownSimulation(out *strings.Builder, a *Analysis) {
+func appendMarkdownSimulation(out *strings.Builder, a *hpa.Analysis) {
 	// Simulation
 	if a.Simulation == nil {
 		return
@@ -235,7 +243,7 @@ func appendMarkdownSimulation(out *strings.Builder, a *Analysis) {
 	out.WriteString("\n")
 }
 
-func appendMarkdownMetricFreshness(out *strings.Builder, a *Analysis) {
+func appendMarkdownMetricFreshness(out *strings.Builder, a *hpa.Analysis) {
 	// Metrics Freshness
 	if len(a.MetricFreshnessEntries) == 0 {
 		return
@@ -268,7 +276,7 @@ func appendMarkdownMetricFreshness(out *strings.Builder, a *Analysis) {
 	}
 }
 
-func appendMarkdownCapacityContext(out *strings.Builder, a *Analysis) {
+func appendMarkdownCapacityContext(out *strings.Builder, a *hpa.Analysis) {
 	// Capacity Context
 	if a.CapacityContext == nil {
 		return
@@ -284,7 +292,7 @@ func appendMarkdownCapacityContext(out *strings.Builder, a *Analysis) {
 		out.WriteString("|------|---------------|--------|\n")
 		for _, p := range cc.PendingPods {
 			reasons := strings.Join(p.Reasons, "; ")
-			out.WriteString(fmt.Sprintf("| %s | %v | %s |\n", escapeMarkdown(p.Name), p.Unschedulable, escapeMarkdown(reasons)))
+			out.WriteString(fmt.Sprintf("| %s | %v | %s |\n", rendutil.EscapeMarkdown(p.Name), p.Unschedulable, rendutil.EscapeMarkdown(reasons)))
 		}
 		out.WriteString("\n")
 	}
@@ -293,7 +301,7 @@ func appendMarkdownCapacityContext(out *strings.Builder, a *Analysis) {
 		out.WriteString("| Name | Resource | Used | Hard | Message |\n")
 		out.WriteString("|------|----------|------|------|--------|\n")
 		for _, q := range cc.QuotaConstraints {
-			out.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s |\n", escapeMarkdown(q.Name), escapeMarkdown(q.Resource), escapeMarkdown(q.Used), escapeMarkdown(q.Hard), escapeMarkdown(q.Message)))
+			out.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s |\n", rendutil.EscapeMarkdown(q.Name), rendutil.EscapeMarkdown(q.Resource), rendutil.EscapeMarkdown(q.Used), rendutil.EscapeMarkdown(q.Hard), rendutil.EscapeMarkdown(q.Message)))
 		}
 		out.WriteString("\n")
 	}
@@ -302,7 +310,7 @@ func appendMarkdownCapacityContext(out *strings.Builder, a *Analysis) {
 		out.WriteString("| Name | Disruption |\n")
 		out.WriteString("|------|-----------|\n")
 		for _, p := range cc.PDBInterference {
-			out.WriteString(fmt.Sprintf("| %s | %s |\n", escapeMarkdown(p.Name), escapeMarkdown(p.Disruption)))
+			out.WriteString(fmt.Sprintf("| %s | %s |\n", rendutil.EscapeMarkdown(p.Name), rendutil.EscapeMarkdown(p.Disruption)))
 		}
 		out.WriteString("\n")
 	}
@@ -315,7 +323,7 @@ func appendMarkdownCapacityContext(out *strings.Builder, a *Analysis) {
 	}
 }
 
-func appendMarkdownStructuredDecisionTrace(out *strings.Builder, a *Analysis) {
+func appendMarkdownStructuredDecisionTrace(out *strings.Builder, a *hpa.Analysis) {
 	// Structured Decision Trace
 	if a.StructuredDecisionTrace == nil {
 		return
@@ -362,7 +370,7 @@ func appendMarkdownStructuredDecisionTrace(out *strings.Builder, a *Analysis) {
 		out.WriteString("|------|-------------|--------|--------|------------|\n")
 		for _, step := range sdt.DecisionPath {
 			out.WriteString(fmt.Sprintf("| %d | %s | %s | %s | %s |\n",
-				step.Step, step.Description, escapeMarkdown(step.Result), step.Impact, string(step.Confidence)))
+				step.Step, step.Description, rendutil.EscapeMarkdown(step.Result), step.Impact, string(step.Confidence)))
 		}
 		out.WriteString("\n")
 	}

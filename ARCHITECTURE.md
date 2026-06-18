@@ -92,13 +92,17 @@ Refactoring notes:
   serialization, with `cmd/output.go` as a thin facade). When the `cmd/` split
   lands, callers migrate to `kubeconv.*` / `render.*` directly and the facades
   shrink.
-- `pkg/hpa/render` extraction of the ~30 `*_text.go`/`report*.go` files is
-  blocked by a genuine import cycle: non-render files in `pkg/hpa`
-  (`analysis_phases.go`, `interpret.go`, `metrics_handler.go`,
-  `suggestion_rules.go`) call back into the render functions
-  (`WriteStatusText`, `FormatMetricStatus`, ...). Splitting requires injecting
-  those call sites through an interface or moving the callers out first; it is
-  not a mechanical file move.
+- `pkg/hpa/render` extraction of the report renderers is complete: the
+  Markdown/HTML/list/incident report files (`report_markdown.go`,
+  `report_html.go`, `report_html_sections.go`, `report_list.go`,
+  `report_incident.go`) now live in `pkg/hpa/render`, and the shared
+  HTML/Markdown escape helpers (`escapeMarkdown`, `htmlEscape`,
+  `htmlHealthBadge`, `htmlCSS`) live in `pkg/hpa/rendutil` to break the
+  import cycle (both `pkg/hpa` and `pkg/hpa/render` need them). The remaining
+  `*_text.go` files (status text, diff text, advisor text) are still in
+  `pkg/hpa` because they share the `FormatMetricStatus`/`labels` machinery
+  with the analysis core; moving them requires injecting those call sites
+  through an interface first.
 - `cmd/options_bridge.go` is the single vocabulary for `internal/cmdoptions`
   symbols inside `cmd/`. Every preset const, type alias
   (`options`, `commonOptions`, `commandPresetOptions`, ...), and helper
