@@ -10,7 +10,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 )
@@ -75,7 +74,7 @@ func TestRunPathShowsSchedulerBlocker(t *testing.T) {
 		Message:       "0/5 nodes available: insufficient cpu",
 		LastTimestamp: metav1.Now(),
 	}
-	client := fake.NewClientset(hpa, deploy, rs, pod, event)
+	client := testutil.NewFakeClientWithObjects(hpa, deploy, rs, pod, event)
 	opts := &options{
 		Common: commonOptions{
 			ClientOverride: client,

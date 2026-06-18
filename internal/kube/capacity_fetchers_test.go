@@ -4,15 +4,15 @@ import (
 	"context"
 	"testing"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes/fake"
 )
 
 func TestFetchLimitRanges_NoLimitRanges(t *testing.T) {
-	client := fake.NewSimpleClientset()
+	client := testutil.NewFakeClientWithObjects()
 	result, err := FetchLimitRanges(context.Background(), client, "default")
 	if err != nil {
 		t.Fatalf("FetchLimitRanges: %v", err)
@@ -23,7 +23,7 @@ func TestFetchLimitRanges_NoLimitRanges(t *testing.T) {
 }
 
 func TestFetchLimitRanges_WithConstraints(t *testing.T) {
-	client := fake.NewSimpleClientset()
+	client := testutil.NewFakeClientWithObjects()
 	if _, err := client.CoreV1().LimitRanges("default").Create(context.Background(), &corev1.LimitRange{
 		ObjectMeta: metav1.ObjectMeta{Name: "resource-limits"},
 		Spec: corev1.LimitRangeSpec{
@@ -73,7 +73,7 @@ func TestFetchLimitRanges_WithConstraints(t *testing.T) {
 }
 
 func TestFetchLimitRanges_MaxOnly(t *testing.T) {
-	client := fake.NewSimpleClientset()
+	client := testutil.NewFakeClientWithObjects()
 	if _, err := client.CoreV1().LimitRanges("default").Create(context.Background(), &corev1.LimitRange{
 		ObjectMeta: metav1.ObjectMeta{Name: "max-only"},
 		Spec: corev1.LimitRangeSpec{
@@ -107,7 +107,7 @@ func TestFetchLimitRanges_MaxOnly(t *testing.T) {
 }
 
 func TestFetchAllResourceQuotas_ReturnsAll(t *testing.T) {
-	client := fake.NewSimpleClientset()
+	client := testutil.NewFakeClientWithObjects()
 	if _, err := client.CoreV1().ResourceQuotas("default").Create(context.Background(), &corev1.ResourceQuota{
 		ObjectMeta: metav1.ObjectMeta{Name: "compute"},
 		Spec: corev1.ResourceQuotaSpec{
@@ -145,7 +145,7 @@ func TestFetchAllResourceQuotas_ReturnsAll(t *testing.T) {
 }
 
 func TestFetchAllResourceQuotas_None(t *testing.T) {
-	client := fake.NewSimpleClientset()
+	client := testutil.NewFakeClientWithObjects()
 	result, err := FetchAllResourceQuotas(context.Background(), client, "default")
 	if err != nil {
 		t.Fatalf("FetchAllResourceQuotas: %v", err)
@@ -156,7 +156,7 @@ func TestFetchAllResourceQuotas_None(t *testing.T) {
 }
 
 func TestDetectClusterAutoscaler_WithNodeAnnotation(t *testing.T) {
-	client := fake.NewSimpleClientset()
+	client := testutil.NewFakeClientWithObjects()
 	if _, err := client.CoreV1().Nodes().Create(context.Background(), &corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "node-1",
@@ -175,7 +175,7 @@ func TestDetectClusterAutoscaler_WithNodeAnnotation(t *testing.T) {
 }
 
 func TestDetectClusterAutoscaler_WithDeployment(t *testing.T) {
-	client := fake.NewSimpleClientset()
+	client := testutil.NewFakeClientWithObjects()
 	if _, err := client.AppsV1().Deployments("kube-system").Create(context.Background(), &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-autoscaler"},
 		Spec: appsv1.DeploymentSpec{
@@ -194,7 +194,7 @@ func TestDetectClusterAutoscaler_WithDeployment(t *testing.T) {
 }
 
 func TestDetectClusterAutoscaler_NotFound(t *testing.T) {
-	client := fake.NewSimpleClientset()
+	client := testutil.NewFakeClientWithObjects()
 	// Create a node without the annotation.
 	if _, err := client.CoreV1().Nodes().Create(context.Background(), &corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{Name: "node-1"},

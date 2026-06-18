@@ -5,14 +5,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes/fake"
 )
 
 func TestFetchPendingPodDetails_NoPending(t *testing.T) {
-	client := fake.NewSimpleClientset()
+	client := testutil.NewFakeClientWithObjects()
 	if _, err := client.CoreV1().Pods("default").Create(context.Background(), &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Name: "pod-1", Labels: map[string]string{"app": "web"}},
 		Status:     corev1.PodStatus{Phase: corev1.PodRunning},
@@ -31,7 +31,7 @@ func TestFetchPendingPodDetails_NoPending(t *testing.T) {
 }
 
 func TestFetchPendingPodDetails_WithPending(t *testing.T) {
-	client := fake.NewSimpleClientset()
+	client := testutil.NewFakeClientWithObjects()
 	if _, err := client.CoreV1().Pods("default").Create(context.Background(), &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Name: "pod-pending", Labels: map[string]string{"app": "web"}},
 		Status: corev1.PodStatus{
@@ -69,7 +69,7 @@ func TestFetchPendingPodDetails_WithPending(t *testing.T) {
 }
 
 func TestFetchPendingPodDetails_EmptySelector(t *testing.T) {
-	client := fake.NewSimpleClientset()
+	client := testutil.NewFakeClientWithObjects()
 	result, err := FetchPendingPodDetails(context.Background(), client, "default", "")
 	if err != nil {
 		t.Fatalf("FetchPendingPodDetails: %v", err)
@@ -80,7 +80,7 @@ func TestFetchPendingPodDetails_EmptySelector(t *testing.T) {
 }
 
 func TestFetchResourceQuotas_None(t *testing.T) {
-	client := fake.NewSimpleClientset()
+	client := testutil.NewFakeClientWithObjects()
 	result, err := FetchResourceQuotas(context.Background(), client, "default")
 	if err != nil {
 		t.Fatalf("FetchResourceQuotas: %v", err)
@@ -91,7 +91,7 @@ func TestFetchResourceQuotas_None(t *testing.T) {
 }
 
 func TestFetchResourceQuotas_NearLimit(t *testing.T) {
-	client := fake.NewSimpleClientset()
+	client := testutil.NewFakeClientWithObjects()
 	if _, err := client.CoreV1().ResourceQuotas("default").Create(context.Background(), &corev1.ResourceQuota{
 		ObjectMeta: metav1.ObjectMeta{Name: "compute"},
 		Spec: corev1.ResourceQuotaSpec{
@@ -128,7 +128,7 @@ func TestFetchResourceQuotas_NearLimit(t *testing.T) {
 }
 
 func TestFetchResourceQuotas_BelowThreshold(t *testing.T) {
-	client := fake.NewSimpleClientset()
+	client := testutil.NewFakeClientWithObjects()
 	if _, err := client.CoreV1().ResourceQuotas("default").Create(context.Background(), &corev1.ResourceQuota{
 		ObjectMeta: metav1.ObjectMeta{Name: "compute"},
 		Spec: corev1.ResourceQuotaSpec{

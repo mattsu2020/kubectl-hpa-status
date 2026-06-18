@@ -6,13 +6,13 @@ import (
 	"testing"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/client-go/kubernetes/fake"
 )
 
 func TestScaleTargetSelectorWrapsGetErrorsWithTarget(t *testing.T) {
-	client := &kube.Client{Interface: fake.NewSimpleClientset()} //nolint:staticcheck // SA1019 deprecated, no replacement without applyconfig
+	client := &kube.Client{Interface: testutil.NewFakeClientWithObjects()}
 
 	tests := []struct {
 		kind string
@@ -46,7 +46,7 @@ func TestScaleTargetSelectorWrapsGetErrorsWithTarget(t *testing.T) {
 }
 
 func TestScaleTargetSelectorIgnoresUnsupportedKind(t *testing.T) {
-	client := &kube.Client{Interface: fake.NewSimpleClientset()} //nolint:staticcheck // SA1019 deprecated, no replacement without applyconfig
+	client := &kube.Client{Interface: testutil.NewFakeClientWithObjects()}
 
 	selector, err := scaleTargetSelector(context.Background(), client, "default", autoscalingv2.CrossVersionObjectReference{
 		Kind: "Job",

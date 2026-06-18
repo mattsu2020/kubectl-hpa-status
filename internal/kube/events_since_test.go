@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/kubernetes/fake"
 )
 
 func TestFetchRecentHPAEventsSince_TimeFiltering(t *testing.T) {
@@ -42,7 +42,7 @@ func TestFetchRecentHPAEventsSince_TimeFiltering(t *testing.T) {
 			LastTimestamp: metav1.NewTime(e.timestamp),
 		})
 	}
-	client := fake.NewSimpleClientset(objects...)
+	client := testutil.NewFakeClientWithObjects(objects...)
 
 	since := now.Add(-30 * time.Minute)
 	result, err := FetchRecentHPAEventsSince(context.Background(), client, namespace, hpaName, since)
@@ -86,7 +86,7 @@ func TestFetchRecentHPAEventsSince_AscendingOrder(t *testing.T) {
 			LastTimestamp: metav1.NewTime(now.Add(-5 * time.Minute)),
 		},
 	}
-	client := fake.NewSimpleClientset(objects...)
+	client := testutil.NewFakeClientWithObjects(objects...)
 
 	since := now.Add(-15 * time.Minute)
 	result, err := FetchRecentHPAEventsSince(context.Background(), client, namespace, hpaName, since)
@@ -119,7 +119,7 @@ func TestFetchRecentHPAEventsSince_ZeroTimestamps(t *testing.T) {
 			Reason:         "SuccessfulRescale", Message: "New size: 5",
 		},
 	}
-	client := fake.NewSimpleClientset(objects...)
+	client := testutil.NewFakeClientWithObjects(objects...)
 
 	since := time.Now().Add(-30 * time.Minute)
 	result, err := FetchRecentHPAEventsSince(context.Background(), client, namespace, hpaName, since)

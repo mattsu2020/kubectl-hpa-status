@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -12,7 +13,7 @@ import (
 
 func TestFetchContainerStatuses(t *testing.T) {
 	t.Run("empty selector", func(t *testing.T) {
-		client := fake.NewSimpleClientset()
+		client := testutil.NewFakeClientWithObjects()
 		result, err := FetchContainerStatuses(context.Background(), client, "default", "")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -132,5 +133,5 @@ func fakeClientWithPods(pods ...*corev1.Pod) *fake.Clientset {
 	for _, pod := range pods {
 		objects = append(objects, pod)
 	}
-	return fake.NewSimpleClientset(objects...) //nolint:staticcheck // SA1019 deprecated, no replacement
+	return testutil.NewFakeClientWithObjects(objects...)
 }

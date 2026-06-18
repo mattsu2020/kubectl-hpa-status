@@ -4,12 +4,12 @@ import (
 	"context"
 	"testing"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes/fake"
 )
 
 func TestFetchScaleTargetInfo_Deployment(t *testing.T) {
@@ -49,7 +49,7 @@ func TestFetchScaleTargetInfo_Deployment(t *testing.T) {
 		},
 	}
 
-	client := fake.NewClientset(deploy)
+	client := testutil.NewFakeClientWithObjects(deploy)
 	ref := autoscalingv2.CrossVersionObjectReference{
 		Kind: "Deployment",
 		Name: "web",
@@ -121,7 +121,7 @@ func TestFetchScaleTargetInfo_StatefulSet(t *testing.T) {
 		},
 	}
 
-	client := fake.NewClientset(sts)
+	client := testutil.NewFakeClientWithObjects(sts)
 	ref := autoscalingv2.CrossVersionObjectReference{
 		Kind: "StatefulSet",
 		Name: "db",
@@ -178,7 +178,7 @@ func TestFetchScaleTargetInfo_ReplicaSet(t *testing.T) {
 		},
 	}
 
-	client := fake.NewClientset(rs)
+	client := testutil.NewFakeClientWithObjects(rs)
 	ref := autoscalingv2.CrossVersionObjectReference{
 		Kind: "ReplicaSet",
 		Name: "web-abc123",
@@ -203,7 +203,7 @@ func TestFetchScaleTargetInfo_ReplicaSet(t *testing.T) {
 }
 
 func TestFetchScaleTargetInfo_UnknownKind(t *testing.T) {
-	client := fake.NewClientset()
+	client := testutil.NewFakeClientWithObjects()
 	ref := autoscalingv2.CrossVersionObjectReference{
 		Kind: "DaemonSet",
 		Name: "agent",
@@ -219,7 +219,7 @@ func TestFetchScaleTargetInfo_UnknownKind(t *testing.T) {
 }
 
 func TestFetchScaleTargetInfo_DeploymentNotFound(t *testing.T) {
-	client := fake.NewClientset()
+	client := testutil.NewFakeClientWithObjects()
 	ref := autoscalingv2.CrossVersionObjectReference{
 		Kind: "Deployment",
 		Name: "missing",
@@ -253,7 +253,7 @@ func TestFetchScaleTargetInfo_NilSelector(t *testing.T) {
 		},
 	}
 
-	client := fake.NewClientset(deploy)
+	client := testutil.NewFakeClientWithObjects(deploy)
 	ref := autoscalingv2.CrossVersionObjectReference{
 		Kind: "Deployment",
 		Name: "web",
@@ -313,7 +313,7 @@ func TestFetchScaleTargetInfo_MultipleContainers(t *testing.T) {
 		},
 	}
 
-	client := fake.NewClientset(deploy)
+	client := testutil.NewFakeClientWithObjects(deploy)
 	ref := autoscalingv2.CrossVersionObjectReference{
 		Kind: "Deployment",
 		Name: "web",

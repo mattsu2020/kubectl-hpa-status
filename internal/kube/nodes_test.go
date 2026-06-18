@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -81,5 +82,5 @@ func fakeClientWithNodes(nodes ...*corev1.Node) *fake.Clientset {
 	for _, node := range nodes {
 		objects = append(objects, node)
 	}
-	return fake.NewSimpleClientset(objects...) //nolint:staticcheck // SA1019 deprecated, no replacement
+	return testutil.NewFakeClientWithObjects(objects...)
 }
