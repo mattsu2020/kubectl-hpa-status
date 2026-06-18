@@ -4,50 +4,34 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func buildVPAAdvisorHPA(withResourceMetric bool) *autoscalingv2.HorizontalPodAutoscaler {
-	hpa := &autoscalingv2.HorizontalPodAutoscaler{
-		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "default"},
-		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{Kind: "Deployment", Name: "web"},
-			MinReplicas:    int32Ptr(1),
-			MaxReplicas:    10,
-		},
+	opts := []testutil.HPAOption{
+		testutil.WithMinMax(1, 10),
+		testutil.WithScaleTargetRef("Deployment", "web"),
 	}
 	if withResourceMetric {
-		hpa.Spec.Metrics = []autoscalingv2.MetricSpec{{
-			Type: autoscalingv2.ResourceMetricSourceType,
-			Resource: &autoscalingv2.ResourceMetricSource{
-				Name: corev1.ResourceCPU,
-				Target: autoscalingv2.MetricTarget{
-					AverageUtilization: int32Ptr(80),
-				},
-			},
-		}}
+		opts = append(opts, testutil.WithResourceMetric("cpu", 80, 0))
 	}
-	return hpa
+	return testutil.BuildHPA("default", "web", opts...)
 }
 
 func buildExternalOnlyHPA() *autoscalingv2.HorizontalPodAutoscaler {
-	return &autoscalingv2.HorizontalPodAutoscaler{
-		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "default"},
-		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{Kind: "Deployment", Name: "web"},
-			MinReplicas:    int32Ptr(1),
-			MaxReplicas:    10,
-			Metrics: []autoscalingv2.MetricSpec{{
-				Type: autoscalingv2.ExternalMetricSourceType,
-				External: &autoscalingv2.ExternalMetricSource{
-					Metric: autoscalingv2.MetricIdentifier{Name: "queue-depth"},
-					Target: autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType},
-				},
-			}},
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithMinMax(1, 10),
+		testutil.WithScaleTargetRef("Deployment", "web"),
+	)
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{{
+		Type: autoscalingv2.ExternalMetricSourceType,
+		External: &autoscalingv2.ExternalMetricSource{
+			Metric: autoscalingv2.MetricIdentifier{Name: "queue-depth"},
+			Target: autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType},
 		},
-	}
+	}}
+	return hpa
 }
 
 func TestAnalyzeVPAAdvisory(t *testing.T) {

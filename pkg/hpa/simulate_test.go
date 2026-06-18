@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestSimulateHPA_NilHPA(t *testing.T) {
@@ -161,27 +161,14 @@ func TestSimulateHPA_SelectPolicy(t *testing.T) {
 }
 
 func buildSimHPA(current, desired, maxReplicas int32) *autoscalingv2.HorizontalPodAutoscaler {
-	minReplicas := int32(1)
-	return &autoscalingv2.HorizontalPodAutoscaler{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-hpa", Namespace: "default"},
-		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
-				Kind: "Deployment",
-				Name: "test-deploy",
+	return testutil.BuildHPA("default", "test-hpa",
+		testutil.WithMinMax(1, maxReplicas),
+		testutil.WithReplicas(current, desired),
+		testutil.WithScaleTargetRef("Deployment", "test-deploy"),
+		testutil.WithConditions(
+			autoscalingv2.HorizontalPodAutoscalerCondition{
+				Type: autoscalingv2.ScalingActive, Status: corev1.ConditionTrue, Reason: "ValidMetricFound",
 			},
-			MinReplicas: &minReplicas,
-			MaxReplicas: maxReplicas,
-		},
-		Status: autoscalingv2.HorizontalPodAutoscalerStatus{
-			CurrentReplicas: current,
-			DesiredReplicas: desired,
-			Conditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
-				{
-					Type:   autoscalingv2.ScalingActive,
-					Status: corev1.ConditionTrue,
-					Reason: "ValidMetricFound",
-				},
-			},
-		},
-	}
+		),
+	)
 }

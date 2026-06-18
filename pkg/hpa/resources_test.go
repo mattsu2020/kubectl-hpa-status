@@ -3,6 +3,7 @@ package hpa
 import (
 	"testing"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -752,28 +753,22 @@ func warningCategories(warnings []ResourceWarning) []string {
 }
 
 func buildTestHPA(resourceName string, targetUtil int32) *autoscalingv2.HorizontalPodAutoscaler {
-	return &autoscalingv2.HorizontalPodAutoscaler{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: "default",
-			Name:      "web-hpa",
-		},
-		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
-				Kind: "Deployment",
-				Name: "web",
-			},
-			Metrics: []autoscalingv2.MetricSpec{
-				{
-					Type: autoscalingv2.ResourceMetricSourceType,
-					Resource: &autoscalingv2.ResourceMetricSource{
-						Name: corev1.ResourceName(resourceName),
-						Target: autoscalingv2.MetricTarget{
-							Type:               autoscalingv2.UtilizationMetricType,
-							AverageUtilization: &targetUtil,
-						},
-					},
+	// BuildHPA's WithResourceMetric adds both spec and status; this fixture only
+	// wants the spec side, so build the base HPA then attach the spec manually.
+	hpa := testutil.BuildHPA("default", "web-hpa",
+		testutil.WithScaleTargetRef("Deployment", "web"),
+	)
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{
+		{
+			Type: autoscalingv2.ResourceMetricSourceType,
+			Resource: &autoscalingv2.ResourceMetricSource{
+				Name: corev1.ResourceName(resourceName),
+				Target: autoscalingv2.MetricTarget{
+					Type:               autoscalingv2.UtilizationMetricType,
+					AverageUtilization: &targetUtil,
 				},
 			},
 		},
 	}
+	return hpa
 }
