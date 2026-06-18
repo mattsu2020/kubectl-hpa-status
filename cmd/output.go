@@ -128,8 +128,9 @@ func analysisOptions(hw hpaanalysis.HealthWeights, debug bool) hpaanalysis.Analy
 }
 
 func reportHasCondition(report hpaanalysis.StatusReport, condition string) bool {
-	for _, c := range report.Analysis.Conditions {
-		if c.Type == condition {
+	want := normalizeSelector(condition)
+	for _, current := range report.Analysis.Conditions {
+		if normalizeSelector(current.Type) == want {
 			return true
 		}
 	}
@@ -148,6 +149,7 @@ func normalizeSelector(value string) string {
 // The pure format-routing/serialization functions now live in internal/render.
 // These unexported wrappers keep the historical cmd/ call sites compiling; they
 // should migrate to render.* directly when the cmd/ sub-package split lands.
+// Only the functions actually called from cmd/ are re-exported.
 
 func writeOutput(out io.Writer, format string, templateStr string, value any, writeText func() error) error {
 	return render.Format(out, format, templateStr, value, writeText)
@@ -157,36 +159,12 @@ func parsePrefixedFormat(format string) (expr string, kind string, ok bool) {
 	return render.ParsePrefixedFormat(format)
 }
 
-func writeJSONPath(out io.Writer, expression string, value any) error {
-	return render.JSONPath(out, expression, value)
-}
-
-func writeTemplate(out io.Writer, expression string, value any) error {
-	return render.Template(out, expression, value)
-}
-
-func writePrometheus(w io.Writer, value any) error {
-	return render.Prometheus(w, value)
-}
-
 func writePrometheusMetrics(w io.Writer, namespace, name string, healthScore int, current, desired, minR, maxR int32) error {
 	return render.PrometheusMetrics(w, namespace, name, healthScore, current, desired, minR, maxR)
 }
 
 func escapePrometheusLabelValue(s string) string {
 	return render.EscapePrometheusLabelValue(s)
-}
-
-func writeMarkdown(out io.Writer, value any) error {
-	return render.Markdown(out, value)
-}
-
-func writeHTML(out io.Writer, value any) error {
-	return render.HTML(out, value)
-}
-
-func writeIncident(out io.Writer, value any) error {
-	return render.Incident(out, value)
 }
 
 func writeError(out io.Writer, format string, err error) {
