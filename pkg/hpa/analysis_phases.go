@@ -9,6 +9,7 @@ import (
 // collectBase populates namespace, name, target, replicas, summary, and
 // creation timestamp from the HPA source.
 func collectBase(src *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) Analysis {
+	summary, summaryKey := SummarizeDirectionWithKey(src, minReplicas)
 	return Analysis{
 		Namespace:         src.Namespace,
 		Name:              src.Name,
@@ -17,7 +18,8 @@ func collectBase(src *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) 
 		Desired:           src.Status.DesiredReplicas,
 		Min:               minReplicas,
 		Max:               src.Spec.MaxReplicas,
-		Summary:           SummarizeDirection(src, minReplicas),
+		Summary:           summary,
+		SummaryKey:        summaryKey,
 		CreationTimestamp: src.CreationTimestamp,
 	}
 }

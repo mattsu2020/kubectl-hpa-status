@@ -1,6 +1,7 @@
 package hpa
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -108,10 +109,10 @@ func TestSimulateMetricChange_InvalidMetricName(t *testing.T) {
 
 	_, err := SimulateMetricChange(hpa, map[string]string{"nonexistent": "80%"}, HealthWeights{})
 	if err == nil {
-		t.Error("expected error for unknown metric name")
+		t.Fatal("expected error for unknown metric name")
 	}
-	if !strings.Contains(err.Error(), "not found") {
-		t.Errorf("expected 'not found' error, got: %v", err)
+	if !errors.Is(err, ErrMetricNotFound) {
+		t.Errorf("expected ErrMetricNotFound, got: %v", err)
 	}
 }
 

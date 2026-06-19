@@ -88,6 +88,10 @@ func runCapacityPlan(ctx context.Context, out io.Writer, opts *options, names []
 // buildCapacityPlan assembles CapacityPlanInput from various fetchers and runs
 // the capacity plan analysis.
 func buildCapacityPlan(ctx context.Context, opts *options, analysis hpaanalysis.Analysis, name string) *hpaanalysis.CapacityPlan {
+	// Best-effort client: a client-creation failure here is not fatal to the
+	// overall status report; returning nil lets the caller skip the capacity
+	// plan section and record a warning instead of aborting. Bypasses the
+	// standard "failed to create Kubernetes client" wrapper for that reason.
 	client, err := opts.NewClient()
 	if err != nil {
 		return nil

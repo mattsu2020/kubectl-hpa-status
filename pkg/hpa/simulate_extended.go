@@ -11,7 +11,7 @@ import (
 // and extended risk assessment. It does not mutate the original HPA.
 func SimulateExtended(hpa *autoscalingv2.HorizontalPodAutoscaler, overrides map[string]string, weights HealthWeights, extOpts SimulationExtendedOptions) (*SimulationResult, error) {
 	if hpa == nil {
-		return nil, fmt.Errorf("HPA must not be nil")
+		return nil, ErrNilHPA
 	}
 
 	// Run the base simulation.

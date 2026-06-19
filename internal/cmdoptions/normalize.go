@@ -1,5 +1,23 @@
 package cmdoptions
 
+import (
+	"fmt"
+	"os"
+	"sync"
+)
+
+// deprecationWarned tracks whether each deprecated alias has already emitted its
+// stderr notice in this process, so we warn once per alias rather than on every
+// normalize call.
+var deprecationWarned sync.Map
+
+func warnDeprecatedOnce(flagName, reason string) {
+	if _, loaded := deprecationWarned.LoadOrStore(flagName, struct{}{}); loaded {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "warning: --%s is deprecated: %s\n", flagName, reason)
+}
+
 // Normalize resolves implied flag settings for the status workflow.
 func (r *Root) Normalize() {
 	r.applyAnalysisProfile()
@@ -19,6 +37,7 @@ func (r *Root) applyAnalysisProfile() {
 
 func (r *Root) normalizeSuggestFlags() {
 	if r.Recommend {
+		warnDeprecatedOnce("recommend", "use --suggest instead; scheduled for removal in v2.0")
 		r.Suggest = true
 	}
 	if r.Fix || r.Apply {
@@ -32,6 +51,7 @@ func (r *Root) normalizeSuggestFlags() {
 		r.Suggest = true
 	}
 	if r.ExportPatch != "" {
+		warnDeprecatedOnce("export-patch", "use --export instead; scheduled for removal in v2.0")
 		r.Export = r.ExportPatch
 		r.Suggest = true
 	}

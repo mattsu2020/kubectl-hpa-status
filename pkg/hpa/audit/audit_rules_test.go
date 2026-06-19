@@ -1,8 +1,6 @@
-package hpa
+package audit
 
 import (
-	"bytes"
-	"strings"
 	"testing"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -11,8 +9,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// Local test helpers mirroring pkg/hpa.int32Ptr / resourcePtr so this test
+// file is self-contained within the audit sub-package.
+func int32Ptr(v int32) *int32 { return &v }
+
+func resourcePtr(q resource.Quantity) *resource.Quantity { return &q }
+
 // ---------------------------------------------------------------------------
-// 1. stabilizationWindowAuditRule
+// 1. stabilizationWindowRule
 // ---------------------------------------------------------------------------
 
 func TestStabilizationWindowAuditRule(t *testing.T) {
@@ -69,7 +73,7 @@ func TestStabilizationWindowAuditRule(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := stabilizationWindowAuditRule(tt.hpa, tt.minReplicas)
+			got := stabilizationWindowRule(tt.hpa, tt.minReplicas)
 			if len(got) != tt.wantFindings {
 				t.Fatalf("expected %d findings, got %d", tt.wantFindings, len(got))
 			}
@@ -86,7 +90,7 @@ func TestStabilizationWindowAuditRule(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 2. replicaRangeAuditRule
+// 2. replicaRangeRule
 // ---------------------------------------------------------------------------
 
 func TestReplicaRangeAuditRule(t *testing.T) {
@@ -150,7 +154,7 @@ func TestReplicaRangeAuditRule(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := replicaRangeAuditRule(tt.hpa, tt.minReplicas)
+			got := replicaRangeRule(tt.hpa, tt.minReplicas)
 			if len(got) != tt.wantFindings {
 				t.Fatalf("expected %d findings, got %d", tt.wantFindings, len(got))
 			}
@@ -164,7 +168,7 @@ func TestReplicaRangeAuditRule(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 3. behaviorPolicyAuditRule
+// 3. behaviorPolicyRule
 // ---------------------------------------------------------------------------
 
 func TestBehaviorPolicyAuditRule(t *testing.T) {
@@ -242,7 +246,7 @@ func TestBehaviorPolicyAuditRule(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := behaviorPolicyAuditRule(tt.hpa, tt.minReplicas)
+			got := behaviorPolicyRule(tt.hpa, tt.minReplicas)
 			if len(got) != tt.wantFindings {
 				t.Fatalf("expected %d findings, got %d", tt.wantFindings, len(got))
 			}
@@ -256,7 +260,7 @@ func TestBehaviorPolicyAuditRule(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 4. metricCoverageAuditRule
+// 4. metricCoverageRule
 // ---------------------------------------------------------------------------
 
 func TestMetricCoverageAuditRule(t *testing.T) {
@@ -358,7 +362,7 @@ func TestMetricCoverageAuditRule(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := metricCoverageAuditRule(tt.hpa, tt.minReplicas)
+			got := metricCoverageRule(tt.hpa, tt.minReplicas)
 			if len(got) != tt.wantFindings {
 				t.Fatalf("expected %d findings, got %d", tt.wantFindings, len(got))
 			}
@@ -372,7 +376,7 @@ func TestMetricCoverageAuditRule(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 5. toleranceAuditRule
+// 5. toleranceRule
 // ---------------------------------------------------------------------------
 
 func TestToleranceAuditRule(t *testing.T) {
@@ -445,7 +449,7 @@ func TestToleranceAuditRule(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := toleranceAuditRule(tt.hpa, tt.minReplicas)
+			got := toleranceRule(tt.hpa, tt.minReplicas)
 			if len(got) != tt.wantFindings {
 				t.Fatalf("expected %d findings, got %d", tt.wantFindings, len(got))
 			}
@@ -457,7 +461,7 @@ func TestToleranceAuditRule(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 6. scaleToZeroAuditRule
+// 6. scaleToZeroRule
 // ---------------------------------------------------------------------------
 
 func TestScaleToZeroAuditRule(t *testing.T) {
@@ -497,7 +501,7 @@ func TestScaleToZeroAuditRule(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := scaleToZeroAuditRule(tt.hpa, tt.minReplicas)
+			got := scaleToZeroRule(tt.hpa, tt.minReplicas)
 			if len(got) != tt.wantFindings {
 				t.Fatalf("expected %d findings, got %d", tt.wantFindings, len(got))
 			}
@@ -514,7 +518,7 @@ func TestScaleToZeroAuditRule(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 7. resourceRequestAuditRule
+// 7. resourceRequestRule
 // ---------------------------------------------------------------------------
 
 func TestResourceRequestAuditRule(t *testing.T) {
@@ -611,7 +615,7 @@ func TestResourceRequestAuditRule(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := resourceRequestAuditRule(tt.hpa, tt.minReplicas)
+			got := resourceRequestRule(tt.hpa, tt.minReplicas)
 			if len(got) != tt.wantFindings {
 				t.Fatalf("expected %d findings, got %d", tt.wantFindings, len(got))
 			}
@@ -623,7 +627,7 @@ func TestResourceRequestAuditRule(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 8. kedaAuditRule
+// 8. kedaRule
 // ---------------------------------------------------------------------------
 
 func TestKEDAAuditRule(t *testing.T) {
@@ -691,7 +695,7 @@ func TestKEDAAuditRule(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := kedaAuditRule(tt.hpa, tt.minReplicas)
+			got := kedaRule(tt.hpa, tt.minReplicas)
 			if len(got) != tt.wantFindings {
 				t.Fatalf("expected %d findings, got %d", tt.wantFindings, len(got))
 			}
@@ -703,7 +707,7 @@ func TestKEDAAuditRule(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 9. targetUtilizationAuditRule
+// 9. targetUtilizationRule
 // ---------------------------------------------------------------------------
 
 func TestTargetUtilizationAuditRule(t *testing.T) {
@@ -848,7 +852,7 @@ func TestTargetUtilizationAuditRule(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := targetUtilizationAuditRule(tt.hpa, tt.minReplicas)
+			got := targetUtilizationRule(tt.hpa, tt.minReplicas)
 			if len(got) != tt.wantFindings {
 				t.Fatalf("expected %d findings, got %d", tt.wantFindings, len(got))
 			}
@@ -865,9 +869,9 @@ func TestTargetUtilizationAuditRule(t *testing.T) {
 // 10. AuditHPA entry point
 // ---------------------------------------------------------------------------
 
-func TestAuditHPA(t *testing.T) {
+func TestRun(t *testing.T) {
 	t.Run("nil HPA returns score 0", func(t *testing.T) {
-		report := AuditHPA(nil, 1)
+		report := Run(nil, 1)
 		if report.Score != 0 {
 			t.Fatalf("expected score 0, got %d", report.Score)
 		}
@@ -919,7 +923,7 @@ func TestAuditHPA(t *testing.T) {
 				},
 			},
 		}
-		report := AuditHPA(hpa, 2)
+		report := Run(hpa, 2)
 		// Well-configured HPA should still have some info findings (resource-requests, tolerance)
 		// but score should be high (no warnings/critical)
 		if report.Score < 80 {
@@ -959,7 +963,7 @@ func TestAuditHPA(t *testing.T) {
 				},
 			},
 		}
-		report := AuditHPA(hpa, 0)
+		report := Run(hpa, 0)
 		// Poorly configured: scale-to-zero (warning -10), high utilization (warning -10),
 		// stabilization window (warning -10), nil minReplicas (info), wide range (warning -10),
 		// behavior policies (2 info), tolerance (info), resource-requests (info)
@@ -980,7 +984,7 @@ func TestAuditHPA(t *testing.T) {
 				MaxReplicas: 5,
 			},
 		}
-		report := AuditHPA(hpa, 1)
+		report := Run(hpa, 1)
 		if report.Summary == "" {
 			t.Fatal("expected non-empty summary")
 		}
@@ -1009,7 +1013,7 @@ func TestAuditHPA(t *testing.T) {
 				},
 			},
 		}
-		report := AuditHPA(hpa, 0)
+		report := Run(hpa, 0)
 		if report.Score < 0 {
 			t.Fatalf("expected score >= 0, got %d", report.Score)
 		}
@@ -1017,11 +1021,11 @@ func TestAuditHPA(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 11. coreAuditRules count
+// 11. coreRules count
 // ---------------------------------------------------------------------------
 
 func TestCoreAuditRules(t *testing.T) {
-	rules := coreAuditRules()
+	rules := coreRules()
 	if len(rules) != 9 {
 		t.Fatalf("expected 9 audit rules, got %d", len(rules))
 	}
@@ -1033,7 +1037,7 @@ func TestCoreAuditRules(t *testing.T) {
 
 func TestProfileSpecificRules(t *testing.T) {
 	tests := []struct {
-		profile       AuditProfile
+		profile       Profile
 		wantRuleCount int
 	}{
 		{ProfileLatency, 2},
@@ -1041,8 +1045,8 @@ func TestProfileSpecificRules(t *testing.T) {
 		{ProfileBatch, 1},
 		{ProfileKEDA, 2},
 		{ProfileCritical, 2},
-		{AuditProfile(""), 0},
-		{AuditProfile("unknown"), 0},
+		{Profile(""), 0},
+		{Profile("unknown"), 0},
 	}
 	for _, tt := range tests {
 		t.Run(string(tt.profile), func(t *testing.T) {
@@ -1179,7 +1183,7 @@ func TestCriticalMinReplicasRule(t *testing.T) {
 	}
 }
 
-func TestAuditHPAWithProfile(t *testing.T) {
+func TestRunWithProfile(t *testing.T) {
 	t.Run("empty profile behaves like AuditHPA", func(t *testing.T) {
 		hpa := &autoscalingv2.HorizontalPodAutoscaler{
 			ObjectMeta: metav1.ObjectMeta{Name: "test-hpa", Namespace: "default"},
@@ -1213,8 +1217,8 @@ func TestAuditHPAWithProfile(t *testing.T) {
 				},
 			},
 		}
-		reportDefault := AuditHPA(hpa, 2)
-		reportEmpty := AuditHPAWithProfile(hpa, 2, "")
+		reportDefault := Run(hpa, 2)
+		reportEmpty := RunWithProfile(hpa, 2, "")
 		if reportDefault.Score != reportEmpty.Score {
 			t.Fatalf("expected same score, got %d vs %d", reportDefault.Score, reportEmpty.Score)
 		}
@@ -1241,7 +1245,7 @@ func TestAuditHPAWithProfile(t *testing.T) {
 			},
 			Status: autoscalingv2.HorizontalPodAutoscalerStatus{CurrentReplicas: 4},
 		}
-		report := AuditHPAWithProfile(hpa, 1, ProfileCritical)
+		report := RunWithProfile(hpa, 1, ProfileCritical)
 		found := false
 		for _, f := range report.Findings {
 			if f.ID == "critical-min-replicas" || f.ID == "critical-max-headroom" {
@@ -1259,127 +1263,3 @@ func TestAuditHPAWithProfile(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 12. WriteAuditText
-// ---------------------------------------------------------------------------
-
-func TestWriteAuditText(t *testing.T) {
-	t.Run("with findings outputs severity title and description", func(t *testing.T) {
-		report := &AuditReport{
-			Namespace: "default",
-			Name:      "web-hpa",
-			Target:    "Deployment/web",
-			Score:     80,
-			Summary:   "Found 0 critical, 1 warnings, 0 informational findings (score: 80/100)",
-			Findings: []AuditFinding{
-				{
-					ID:          "stabilization-window",
-					Title:       "Stabilization window not explicitly configured",
-					Description: "scaleDown.stabilizationWindowSeconds is unset.",
-					Severity:    AuditWarning,
-					Category:    "stabilization",
-					Current:     "unset (default 300s)",
-					Recommended: "Set stabilizationWindowSeconds explicitly",
-				},
-			},
-		}
-
-		var buf bytes.Buffer
-		if err := WriteAuditText(&buf, report, nil); err != nil {
-			t.Fatal(err)
-		}
-
-		output := buf.String()
-		for _, want := range []string{
-			"warning",
-			"Stabilization window not explicitly configured",
-			"scaleDown.stabilizationWindowSeconds is unset.",
-			"stabilization-window",
-			"unset (default 300s)",
-			"Set stabilizationWindowSeconds explicitly",
-		} {
-			if !strings.Contains(output, want) {
-				t.Fatalf("expected %q in output, got:\n%s", want, output)
-			}
-		}
-	})
-
-	t.Run("no findings outputs no findings message", func(t *testing.T) {
-		report := &AuditReport{
-			Namespace: "default",
-			Name:      "perfect-hpa",
-			Target:    "Deployment/web",
-			Score:     100,
-			Summary:   "No best-practice issues found.",
-			Findings:  []AuditFinding{},
-		}
-
-		var buf bytes.Buffer
-		if err := WriteAuditText(&buf, report, nil); err != nil {
-			t.Fatal(err)
-		}
-
-		output := buf.String()
-		if !strings.Contains(output, "No findings.") {
-			t.Fatalf("expected 'No findings.' in output, got:\n%s", output)
-		}
-		if !strings.Contains(output, "100/100") {
-			t.Fatalf("expected score in output, got:\n%s", output)
-		}
-	})
-
-	t.Run("nil provider uses English defaults", func(t *testing.T) {
-		report := &AuditReport{
-			Namespace: "default",
-			Name:      "test-hpa",
-			Target:    "Deployment/test",
-			Score:     90,
-			Summary:   "No best-practice issues found.",
-			Findings:  []AuditFinding{},
-		}
-
-		var buf bytes.Buffer
-		if err := WriteAuditText(&buf, report, nil); err != nil {
-			t.Fatal(err)
-		}
-
-		output := buf.String()
-		if !strings.Contains(output, "Target:") {
-			t.Fatalf("expected English default label 'Target:' in output, got:\n%s", output)
-		}
-		if !strings.Contains(output, "Compliance Score:") {
-			t.Fatalf("expected English default label 'Compliance Score:' in output, got:\n%s", output)
-		}
-	})
-
-	t.Run("finding with command outputs command line", func(t *testing.T) {
-		report := &AuditReport{
-			Namespace: "default",
-			Name:      "web-hpa",
-			Target:    "Deployment/web",
-			Score:     80,
-			Summary:   "Found 0 critical, 1 warnings, 0 informational findings (score: 80/100)",
-			Findings: []AuditFinding{
-				{
-					ID:          "stabilization-window",
-					Title:       "Stabilization window not explicitly configured",
-					Description: "scaleDown.stabilizationWindowSeconds is unset.",
-					Severity:    AuditWarning,
-					Command:     "kubectl patch hpa web-hpa -n default --type=merge -p '{}' --dry-run=server",
-				},
-			},
-		}
-
-		var buf bytes.Buffer
-		if err := WriteAuditText(&buf, report, nil); err != nil {
-			t.Fatal(err)
-		}
-
-		output := buf.String()
-		if !strings.Contains(output, "Command:") {
-			t.Fatalf("expected 'Command:' in output, got:\n%s", output)
-		}
-		if !strings.Contains(output, "kubectl patch") {
-			t.Fatalf("expected kubectl command in output, got:\n%s", output)
-		}
-	})
-}

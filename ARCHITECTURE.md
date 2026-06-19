@@ -115,6 +115,134 @@ Refactoring notes:
   or RBAC denial is visible to operators instead of silently degrading to an
   empty sub-report. New enrichment steps should append to `Warnings` on
   best-effort failure rather than swallowing the error.
+- Sentinel errors live in `pkg/hpa/errors.go`, `internal/kube/errors.go`, and
+  `cmd/errors.go`. Wrap them with `fmt.Errorf("...: %w", ErrXxx)` at the call
+  site so callers can match with `errors.Is` instead of substring-matching the
+  English message. The current set: `ErrNilHPA`, `ErrNilReport`,
+  `ErrMetricNotFound` (pkg/hpa); `ErrScaledObjectNotFound`,
+  `ErrUnsupportedScaleTargetKind`, `ErrKEDACRDNotDetected`, `ErrVPACRDNotDetected`
+  (internal/kube); `ErrHPANotFound` (cmd, returned wrapped from the status
+  fetch path). Prefer adding a new sentinel over a new unmatchable error
+  string.
+- `Analysis.SummaryKey` carries the stable i18n key (e.g. `dir_scale_up`)
+  produced by `pkg/hpa.SummarizeDirectionWithKey` alongside the English
+  `Summary` text. Renderers receive both via
+  `StatusTextOptions.SummaryTranslator` / `ListTextOptions.SummaryTranslator`
+  (signature `func(summary, key string) string`) and look up the locale via the
+  key, falling back to the English summary when the key is empty (Summary was
+  overwritten outside the direction switch, e.g. the stale prefix). Do not
+  reintroduce an English-string-to-key switch in cmd/ — the key is canonical.
+  `internal/i18n/i18n_test.go` enforces both locale key parity and that every
+  `dir_*` key resolves in every locale.
+- `DetectCRDs` returns per-source discovery errors in
+  `CRDAvailability.KEDError` / `VPAError` (wrapping `ErrKEDACRDNotDetected` /
+  `ErrVPACRDNotDetected`) so callers can distinguish "CRD is absent" from
+  "discovery failed" (RBAC denial, network timeout). The enrichment layer
+  surfaces the real cause in each `Status.Entry.Reason` instead of the old
+  hard-coded "CRD ... not found" string.
+- Client creation goes through `newClientOrDefault(opts)`
+  (`cmd/client_helpers.go`) so the standard "failed to create Kubernetes
+  client" prefix is applied consistently. The intentional bypass sites (which
+  need a different error contract) are documented in `client_helpers.go`:
+  best-effort nil-return paths (`rollout.go`, `blockers.go`,
+  `capacity_plan.go`), silent shell completion (`completion.go`), structured
+  JSON/YAML error output (`autoscaler_map.go`, `list.go`), and the
+  `applySuggestions` dual-return contract (`apply.go`).
+- The metric dispatch layer lives in `metrics_handler.go` (the
+  `MetricHandler` interface + the public `FormatMetricStatus` /
+  `FormatMetricTarget` / `FormatMetricSelector` API and the spec/status lookup
+  helpers). Each `MetricSourceType` has its own handler file
+  (`metric_handler_resource.go`, `metric_handler_container.go`,
+  `metric_handler_pods.go`, `metric_handler_object.go`,
+  `metric_handler_external.go`). Add a new metric type by implementing
+  `MetricHandler` and registering it in `metricHandlers` — no caller changes.
+- Bundle Markdown rendering is split across `bundle_markdown.go` (the
+  top-level section orchestrator and most sections) and
+  `bundle_markdown_metrics.go` (the events + metrics diagnostics family:
+  pipeline diagnostics, freshness, contract). The split keeps each metrics
+  sub-table editable in isolation.
+- The `record` / `replay` cobra command constructors live in
+  `replay_commands.go`; the heavy lifting stays in `replay_lab*.go` and
+  `runRecord` (in `timeline.go`).
+- Deprecated flag aliases (`--recommend`, `--export-patch`) are annotated
+  `[deprecated]` in `--help` via `markFlagDeprecated` and emit a one-time
+  stderr notice through `internal/cmdoptions.warnDeprecatedOnce` when
+  actually used. Both are scheduled for removal in v2.0 (see `ROADMAP.md`),
+  alongside the hidden `analyze` subcommand.
+- Test files are organised by source area rather than as monolithic grab-bags:
+  `commands_batch_test.go` (run-command smoke tests),
+  `render_batch_test.go` (renderer smoke tests),
+  `records_batch_test.go` (record/replay smoke tests),
+  `converters_extra_test.go` (converter unit tests),
+  `output_extra_test.go` (output-rendering unit tests),
+  `root_extra_test.go` (remaining unit tests),
+  `root_integration_test.go` (status/list/watch/exit-code integration tests),
+  `replay_timeline_integration_test.go` (replay/why-not-scale/advisor/
+  ownership/profile/retrospective-timeline integration tests).
+- Leaf domains under `pkg/hpa` are being extracted one at a time into
+  self-contained sub-packages that depend only on autoscaling/v2 types (no
+  shared clock/labels/`FormatMetricStatus` helpers). Each extraction keeps the
+  `hpaanalysis.*` public API stable via type aliases and thin wrapper functions
+  in `pkg/hpa`, so `cmd/` and `internal/` callers keep compiling without new
+  imports. Completed so far:
+  - `pkg/hpa/keda` — KEDA ScaledObject analysis (`keda.Analysis`, `keda.Analyze`).
+    Re-exported as `hpaanalysis.KEDAAnalysis`, `hpaanalysis.AnalyzeKEDA`, etc.
+  - `pkg/hpa/vpa` — VPA/HPA coexistence conflict analysis (`vpa.Info`,
+    `vpa.ConflictInfo`, `vpa.Advisory`, `vpa.Analyze`, `vpa.AnalyzeAdvisory`).
+    Re-exported as `hpaanalysis.VPAInfo`, `hpaanalysis.VPAConflictInfo`,
+    `hpaanalysis.AnalyzeVPA`, `hpaanalysis.AnalyzeVPAAdvisory`, etc. The
+    canonical types drop the `VPA` prefix to avoid stuttering
+    (`vpa.VPAConflictInfo` → `vpa.ConflictInfo`); the aliases preserve the
+    historical names.
+  - `pkg/hpa/audit` — best-practice configuration audits (`audit.Run`,
+    `audit.RunWithProfile`, `audit.Report`, `audit.Finding`, `audit.Severity`,
+    `audit.Profile`). Re-exported as `hpaanalysis.AuditHPA`,
+    `hpaanalysis.AuditHPAWithProfile`, `hpaanalysis.AuditReport`, etc. The
+    canonical types drop the `Audit` prefix to avoid stuttering
+    (`audit.AuditReport` → `audit.Report`); the aliases preserve the
+    historical names.
+  Domains that depend on the shared clock (`now()`), labels machinery, or
+  `FormatMetricStatus` (capacity, retrospective, timeline, metrics, decision,
+  simulate) remain in `pkg/hpa` until those shared helpers are extracted into a
+  core sub-package; that extraction is deferred until a domain that needs them
+  is moved.
+- Audit, blocker, pod-analysis, events, and the remaining mid-risk domains
+  (warmup, flapping, churn, policy, lint, readiness) were assessed for
+  extraction. Audit has been extracted (see above). The remaining domains
+  each depend on one or more shared helpers that still span the analysis core
+  (`FormatMetricStatus`, the `labels` machinery). They are intentionally left
+  in `pkg/hpa` as a single cohesive analysis package; extracting the labels
+  machinery into a shared core sub-package is the prerequisite for the next
+  batch of domain extractions.
+- Shared helpers have been progressively extracted into `pkg/hpa/internal/`
+  sub-packages so leaf domains can use them without reaching back into the
+  analysis core:
+  - `pkg/hpa/internal/clock` — swappable time source (`clock.Now`,
+    `clock.SetForTest`). `pkg/hpa` re-exports as `now()` / `SetClockForTest`.
+  - `pkg/hpa/internal/conditions` — HPA condition lookup and stabilization
+    math (`conditions.Find`, `conditions.ScaleDownStabilizationWindow`,
+    `conditions.EstimateStabilizationRemaining`, condition constants).
+    `pkg/hpa` re-exports as `FindCondition` etc.
+  - `pkg/hpa/internal/util` — small dependency-free helpers
+    (`util.LooksLikeKEDAManaged`, `util.MarshalJSON`,
+    `util.KubectlPatchCommand`, `util.MissingPolicies`). `pkg/hpa` re-exports
+    via unexported wrappers (`looksLikeKEDAManaged`, `marshalJSON`, etc.).
+- The `cmd/bundle` and `cmd/replay` sub-package extractions were assessed and
+  deferred. Both groups depend on 10+ unexported `cmd/`-package helpers
+  (`newClientOrDefault`, `applyCommandPreset`, `fetchSnapshot*`,
+  `capacitySelector`, `redactBytes`, `loadRecordedTrace`, `traceReplicaRange`,
+  `parseSimulateOverrides`, `outputSelection`, `writeOutput`,
+  `hpaNameCompletion`) that are scattered across `snapshot.go`, `capacity.go`,
+  `timeline.go`, `output.go`, `client_helpers.go`, `options_bridge.go`,
+  `enrich.go`, `status.go`, and `completion.go`. Extracting these helpers into
+  a shared sub-package is the prerequisite; until then, bundle/replay stay in
+  `package cmd` alongside the rest of the command wiring.
+- README badges are organised with 5 primary badges (CI, Go Reference, Go
+  Report Card, Release, License) shown inline, and the remaining 8
+  (CodeQL, Release workflow, Stars, GoReleaser, golangci-lint, Krew,
+  Kubernetes, Codecov) collapsed under a `<details>` toggle to keep the
+  initial render fast. Both `README.md` and `README.ja.md` follow this layout;
+  `make docs-check` enforces structural parity.
 
 `pkg/hpa` is kept importable so downstream tools can reuse the analysis model
 without depending on Cobra command wiring.

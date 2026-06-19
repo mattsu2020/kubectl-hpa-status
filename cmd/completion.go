@@ -43,6 +43,9 @@ func hpaNameCompletion(opts *options) func(*cobra.Command, []string, string) ([]
 		if len(args) > 0 {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
+		// Shell completion: a client-creation failure must stay silent (no
+		// stderr message, no wrapper) so the shell only sees the
+		// NoFileComp directive. Bypasses the standard wrapper intentionally.
 		client, err := opts.NewClient()
 		if err != nil {
 			return nil, cobra.ShellCompDirectiveNoFileComp
@@ -153,6 +156,8 @@ func untilConditionCompletions(_ *cobra.Command, _ []string, _ string) ([]string
 
 func namespaceCompletions(opts *options) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 	return func(cmd *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+		// Shell completion: see hpaNameCompletion for why client-creation
+		// failures stay silent and bypass the standard error wrapper.
 		client, err := opts.NewClient()
 		if err != nil {
 			return nil, cobra.ShellCompDirectiveNoFileComp

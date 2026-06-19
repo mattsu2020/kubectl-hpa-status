@@ -85,6 +85,10 @@ func runRollout(ctx context.Context, out io.Writer, opts *options, names []strin
 // Warnings discovered while gathering live state are appended to analysis.Warnings
 // so they surface in the report rather than being silently dropped.
 func buildRolloutReport(ctx context.Context, opts *options, analysis *hpaanalysis.Analysis, name string) *hpaanalysis.RolloutReport {
+	// Best-effort client: a client-creation failure here is not fatal to the
+	// overall status report; returning nil lets the caller skip the rollout
+	// section and record a warning instead of aborting. Bypasses the standard
+	// "failed to create Kubernetes client" wrapper for that reason.
 	client, err := opts.NewClient()
 	if err != nil {
 		return nil

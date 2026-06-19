@@ -1,20 +1,194 @@
-package hpa
+// Package audit runs best-practice configuration audits against an HPA,
+// producing a scored Report with actionable findings. It is a self-contained
+// domain depending only on autoscaling/v2 types plus the shared
+// pkg/hpa/internal/{util,conditions} helpers. The cmd/ layer reaches it
+// through the pkg/hpa re-export facade (hpaanalysis.AuditHPA, etc.). The
+// *_text.go renderer stays in pkg/hpa because it shares the labels machinery.
+package audit
 
 import (
 	"fmt"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
+
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
 )
 
-// stabilizationWindowAuditRule checks whether the scale-down stabilization window
+// healthScoreMax is the starting audit score; findings deduct from it.
+// Mirrors pkg/hpa.healthScoreMax (unexported there). Keep in sync.
+const healthScoreMax = 100
+
+// Severity represents the severity of an audit finding.
+type Severity string
+
+const (
+	// AuditCritical indicates a critical finding requiring immediate attention.
+	AuditCritical Severity = "critical"
+	// AuditWarning indicates a finding that warrants operator attention.
+	AuditWarning Severity = "warning"
+	// AuditInfo indicates an informational finding or best-practice suggestion.
+	AuditInfo Severity = "info"
+)
+
+// Finding represents a single best-practice audit finding.
+type Finding struct {
+	// ID is a unique identifier for the audit rule that produced this finding.
+	ID string `json:"id" yaml:"id"`
+	// Title is a short description of the finding.
+	Title string `json:"title" yaml:"title"`
+	// Description provides detailed context about the finding.
+	Description string `json:"description" yaml:"description"`
+	// Severity is the severity level: critical, warning, or info.
+	Severity Severity `json:"severity" yaml:"severity"`
+	// Category groups related findings (e.g. "stabilization", "replica-range").
+	Category string `json:"category" yaml:"category"`
+	// Current shows the current configuration value.
+	Current string `json:"current,omitempty" yaml:"current,omitempty"`
+	// Recommended shows the recommended configuration value.
+	Recommended string `json:"recommended,omitempty" yaml:"recommended,omitempty"`
+	// Patch is a JSON merge patch to fix the finding, if applicable.
+	Patch string `json:"patch,omitempty" yaml:"patch,omitempty"`
+	// Command is the kubectl command to apply the patch.
+	Command string `json:"command,omitempty" yaml:"command,omitempty"`
+	// Risk indicates the risk level of applying the patch.
+	Risk string `json:"risk,omitempty" yaml:"risk,omitempty"`
+	// References lists URLs or docs for further reading.
+	References []string `json:"references,omitempty" yaml:"references,omitempty"`
+}
+
+// Profile represents a workload profile that adjusts audit rule thresholds.
+type Profile string
+
+const (
+	// ProfileLatency optimizes for low-latency workloads: fast scale-up, slow scale-down.
+	ProfileLatency Profile = "latency"
+	// ProfileCost optimizes for cost efficiency: low minReplicas, aggressive scale-down.
+	ProfileCost Profile = "cost"
+	// ProfileBatch is for batch workloads: high CPU tolerance, no urgent scale-up.
+	ProfileBatch Profile = "batch"
+	// ProfileKEDA is for KEDA-managed workloads: scale-to-zero, trigger/cooldown focus.
+	ProfileKEDA Profile = "keda"
+	// ProfileCritical is for critical workloads: maxReplicas headroom, capacity checks.
+	ProfileCritical Profile = "critical"
+)
+
+// Report holds the complete audit result for an HPA.
+type Report struct {
+	// Namespace is the HPA namespace.
+	Namespace string `json:"namespace" yaml:"namespace"`
+	// Name is the HPA name.
+	Name string `json:"name" yaml:"name"`
+	// Target is the scaleTargetRef in "Kind/Name" format.
+	Target string `json:"target" yaml:"target"`
+	// Score is the compliance score from 0 (worst) to 100 (fully compliant).
+	Score int `json:"score" yaml:"score"`
+	// Findings lists all audit findings.
+	Findings []Finding `json:"findings" yaml:"findings"`
+	// Summary is a human-readable one-line summary of the audit.
+	Summary string `json:"summary" yaml:"summary"`
+	// Profile indicates the workload profile used for threshold adjustments, if any.
+	Profile Profile `json:"profile,omitempty" yaml:"profile,omitempty"`
+}
+
+// Rule examines an HPA for best-practice compliance and returns findings.
+type Rule func(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []Finding
+
+// Run runs all audit rules against the HPA and returns a compliance report.
+func Run(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) *Report {
+	return RunWithProfile(hpa, minReplicas, "")
+}
+
+// RunWithProfile runs all audit rules against the HPA using the given
+// workload profile to adjust thresholds. An empty profile uses defaults.
+func RunWithProfile(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32, profile Profile) *Report {
+	if hpa == nil {
+		return &Report{Score: 0, Summary: "HPA is nil"}
+	}
+
+	report := &Report{
+		Namespace: hpa.Namespace,
+		Name:      hpa.Name,
+		Target:    fmt.Sprintf("%s/%s", hpa.Spec.ScaleTargetRef.Kind, hpa.Spec.ScaleTargetRef.Name),
+		Score:     healthScoreMax, // start at 100
+		Profile:   profile,
+	}
+
+	for _, rule := range coreRulesWithProfile(profile) {
+		findings := rule(hpa, minReplicas)
+		report.Findings = append(report.Findings, findings...)
+	}
+
+	// Calculate score based on findings
+	for _, f := range report.Findings {
+		switch f.Severity {
+		case AuditCritical:
+			report.Score -= 20
+		case AuditWarning:
+			report.Score -= 10
+			// AuditInfo: no deduction
+		}
+	}
+	if report.Score < 0 {
+		report.Score = 0
+	}
+
+	report.Summary = buildAuditSummary(report)
+	return report
+}
+
+// coreRules returns the ordered list of best-practice audit rules.
+func coreRules() []Rule {
+	return coreRulesWithProfile("")
+}
+
+// coreRulesWithProfile returns the base audit rules plus any
+// profile-specific rules that apply for the given workload profile.
+func coreRulesWithProfile(profile Profile) []Rule {
+	base := []Rule{
+		stabilizationWindowRule,
+		replicaRangeRule,
+		behaviorPolicyRule,
+		metricCoverageRule,
+		toleranceRule,
+		scaleToZeroRule,
+		resourceRequestRule,
+		kedaRule,
+		targetUtilizationRule,
+	}
+
+	profileRules := profileSpecificRules(profile)
+	return append(base, profileRules...)
+}
+
+func buildAuditSummary(report *Report) string {
+	critical := 0
+	warning := 0
+	info := 0
+	for _, f := range report.Findings {
+		switch f.Severity {
+		case AuditCritical:
+			critical++
+		case AuditWarning:
+			warning++
+		case AuditInfo:
+			info++
+		}
+	}
+	if len(report.Findings) == 0 {
+		return "No best-practice issues found."
+	}
+	return fmt.Sprintf("Found %d critical, %d warnings, %d informational findings (score: %d/100)", critical, warning, info, report.Score)
+}
+
+// stabilizationWindowRule checks whether the scale-down stabilization window
 // is explicitly configured. When unset, the controller-manager default (300s)
 // applies implicitly, which can surprise operators across Kubernetes upgrades.
-func stabilizationWindowAuditRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []AuditFinding {
+func stabilizationWindowRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []Finding {
 	if hpa.Spec.Behavior != nil && hpa.Spec.Behavior.ScaleDown != nil && hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds != nil {
 		return nil
 	}
 
-	patch := marshalJSON(map[string]any{
+	patch := util.MarshalJSON(map[string]any{
 		"spec": map[string]any{
 			"behavior": map[string]any{
 				"scaleDown": map[string]any{
@@ -24,7 +198,7 @@ func stabilizationWindowAuditRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ 
 		},
 	})
 
-	return []AuditFinding{
+	return []Finding{
 		{
 			ID:          "stabilization-window",
 			Title:       "Stabilization window not explicitly configured",
@@ -34,18 +208,18 @@ func stabilizationWindowAuditRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ 
 			Current:     "unset (default 300s)",
 			Recommended: "Set stabilizationWindowSeconds explicitly",
 			Patch:       patch,
-			Command:     kubectlPatchCommand(hpa, patch),
+			Command:     util.KubectlPatchCommand(hpa, patch),
 			Risk:        "low",
 		},
 	}
 }
 
-// replicaRangeAuditRule checks for wide replica ranges and unset minReplicas.
-func replicaRangeAuditRule(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []AuditFinding {
-	var findings []AuditFinding
+// replicaRangeRule checks for wide replica ranges and unset minReplicas.
+func replicaRangeRule(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []Finding {
+	var findings []Finding
 
 	if minReplicas > 0 && hpa.Spec.MaxReplicas/minReplicas > 10 {
-		findings = append(findings, AuditFinding{
+		findings = append(findings, Finding{
 			ID:          "replica-range",
 			Title:       "Wide replica range may indicate instability",
 			Description: fmt.Sprintf("maxReplicas/minReplicas ratio is %d (>10x). A wide range can cause large, abrupt scaling events. Consider narrowing the range or adding stepped scaling policies.", hpa.Spec.MaxReplicas/minReplicas),
@@ -57,7 +231,7 @@ func replicaRangeAuditRule(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplic
 	}
 
 	if hpa.Spec.MinReplicas == nil {
-		findings = append(findings, AuditFinding{
+		findings = append(findings, Finding{
 			ID:          "replica-range",
 			Title:       "minReplicas uses default value",
 			Description: "spec.minReplicas is nil, so the Kubernetes default of 1 applies. Explicit configuration makes the intent clear and avoids depending on controller defaults.",
@@ -71,12 +245,12 @@ func replicaRangeAuditRule(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplic
 	return findings
 }
 
-// behaviorPolicyAuditRule checks for missing explicit scaleUp and scaleDown policies.
-func behaviorPolicyAuditRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []AuditFinding {
-	var findings []AuditFinding
+// behaviorPolicyRule checks for missing explicit scaleUp and scaleDown policies.
+func behaviorPolicyRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []Finding {
+	var findings []Finding
 
-	if missingPolicies(hpa.Spec.Behavior, "scaleUp") {
-		findings = append(findings, AuditFinding{
+	if util.MissingPolicies(hpa.Spec.Behavior, "scaleUp") {
+		findings = append(findings, Finding{
 			ID:          "behavior-policy",
 			Title:       "No explicit scaleUp policies configured",
 			Description: "Without explicit scaleUp policies, the HPA controller uses default behavior which may not match your workload's scaling needs. Adding policies makes burst response predictable.",
@@ -87,8 +261,8 @@ func behaviorPolicyAuditRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32
 		})
 	}
 
-	if missingPolicies(hpa.Spec.Behavior, "scaleDown") {
-		findings = append(findings, AuditFinding{
+	if util.MissingPolicies(hpa.Spec.Behavior, "scaleDown") {
+		findings = append(findings, Finding{
 			ID:          "behavior-policy",
 			Title:       "No explicit scaleDown policies configured",
 			Description: "Without explicit scaleDown policies, the HPA controller uses default behavior which may cause aggressive downscaling. Adding policies keeps downscale predictable.",
@@ -102,17 +276,17 @@ func behaviorPolicyAuditRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32
 	return findings
 }
 
-// metricCoverageAuditRule checks for single-metric configurations and missing
+// metricCoverageRule checks for single-metric configurations and missing
 // resource metrics.
-func metricCoverageAuditRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []AuditFinding {
-	var findings []AuditFinding
+func metricCoverageRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []Finding {
+	var findings []Finding
 
 	if len(hpa.Spec.Metrics) == 0 {
 		return findings
 	}
 
 	if len(hpa.Spec.Metrics) == 1 {
-		findings = append(findings, AuditFinding{
+		findings = append(findings, Finding{
 			ID:          "metric-coverage",
 			Title:       "Single metric configured",
 			Description: "Only one metric is configured. A single signal can be noisy or delayed. Consider adding a safety metric (e.g., CPU alongside a queue-depth metric) to improve scaling reliability.",
@@ -132,7 +306,7 @@ func metricCoverageAuditRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32
 	}
 
 	if !hasResource {
-		findings = append(findings, AuditFinding{
+		findings = append(findings, Finding{
 			ID:          "metric-coverage",
 			Title:       "No resource metrics configured",
 			Description: "All configured metrics are external, custom, pods, or object types. Consider adding CPU or memory as a safety signal; resource metrics are reliably available and can catch scenarios where business metrics are delayed.",
@@ -146,10 +320,10 @@ func metricCoverageAuditRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32
 	return findings
 }
 
-// toleranceAuditRule checks whether the tolerance is explicitly configured.
-func toleranceAuditRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []AuditFinding {
+// toleranceRule checks whether the tolerance is explicitly configured.
+func toleranceRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []Finding {
 	if hpa.Spec.Behavior == nil {
-		return []AuditFinding{{
+		return []Finding{{
 			ID:          "tolerance",
 			Title:       "Tolerance uses default value",
 			Description: "Tolerance is not explicitly set. The default 0.1 (10%) applies. Workloads with tight scaling requirements may benefit from a narrower tolerance for faster response.",
@@ -167,7 +341,7 @@ func toleranceAuditRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []A
 		return nil
 	}
 
-	return []AuditFinding{{
+	return []Finding{{
 		ID:          "tolerance",
 		Title:       "Tolerance uses default value",
 		Description: "Tolerance uses the default 0.1 (10%). Workloads with tight scaling requirements may benefit from a narrower tolerance.",
@@ -178,13 +352,13 @@ func toleranceAuditRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []A
 	}}
 }
 
-// scaleToZeroAuditRule warns when scale-to-zero is enabled.
-func scaleToZeroAuditRule(_ *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []AuditFinding {
+// scaleToZeroRule warns when scale-to-zero is enabled.
+func scaleToZeroRule(_ *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []Finding {
 	if minReplicas != 0 {
 		return nil
 	}
 
-	return []AuditFinding{
+	return []Finding{
 		{
 			ID:          "scale-to-zero",
 			Title:       "Scale-to-zero enabled",
@@ -197,17 +371,17 @@ func scaleToZeroAuditRule(_ *autoscalingv2.HorizontalPodAutoscaler, minReplicas 
 	}
 }
 
-// resourceRequestAuditRule notes that Resource metrics require corresponding
+// resourceRequestRule notes that Resource metrics require corresponding
 // resource requests on the pod containers.
-func resourceRequestAuditRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []AuditFinding {
-	var findings []AuditFinding
+func resourceRequestRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []Finding {
+	var findings []Finding
 
 	for _, spec := range hpa.Spec.Metrics {
 		if spec.Type != autoscalingv2.ResourceMetricSourceType {
 			continue
 		}
 		name := string(spec.Resource.Name)
-		findings = append(findings, AuditFinding{
+		findings = append(findings, Finding{
 			ID:          "resource-requests",
 			Title:       fmt.Sprintf("Verify %s resource requests", name),
 			Description: fmt.Sprintf("Resource metric %q is configured. HPA utilization calculations depend on container resource requests being set correctly. Missing or zero requests produce misleading utilization percentages.", name),
@@ -221,13 +395,13 @@ func resourceRequestAuditRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int3
 	return findings
 }
 
-// kedaAuditRule warns when an HPA appears to be KEDA-managed.
-func kedaAuditRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []AuditFinding {
-	if !looksLikeKEDAManaged(hpa) {
+// kedaRule warns when an HPA appears to be KEDA-managed.
+func kedaRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []Finding {
+	if !util.LooksLikeKEDAManaged(hpa) {
 		return nil
 	}
 
-	return []AuditFinding{
+	return []Finding{
 		{
 			ID:          "keda-managed",
 			Title:       "HPA appears KEDA-managed",
@@ -240,9 +414,9 @@ func kedaAuditRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []AuditF
 	}
 }
 
-// targetUtilizationAuditRule checks for extreme target utilization values.
-func targetUtilizationAuditRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []AuditFinding {
-	var findings []AuditFinding
+// targetUtilizationRule checks for extreme target utilization values.
+func targetUtilizationRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []Finding {
+	var findings []Finding
 
 	for _, spec := range hpa.Spec.Metrics {
 		if spec.Type != autoscalingv2.ResourceMetricSourceType || spec.Resource == nil {
@@ -258,7 +432,7 @@ func targetUtilizationAuditRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ in
 		name := string(spec.Resource.Name)
 
 		if utilization > 90 {
-			findings = append(findings, AuditFinding{
+			findings = append(findings, Finding{
 				ID:          "target-utilization",
 				Title:       fmt.Sprintf("High %s target utilization (>90%%)", name),
 				Description: fmt.Sprintf("%s target utilization is set to %d%%, which leaves little headroom for traffic bursts. Consider lowering to 70-80%% for production workloads.", name, utilization),
@@ -268,7 +442,7 @@ func targetUtilizationAuditRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ in
 				Recommended: "70-80% for production workloads",
 			})
 		} else if utilization < 30 {
-			findings = append(findings, AuditFinding{
+			findings = append(findings, Finding{
 				ID:          "target-utilization",
 				Title:       fmt.Sprintf("Low %s target utilization (<30%%)", name),
 				Description: fmt.Sprintf("%s target utilization is set to %d%%, which may cause over-provisioning and unnecessary resource costs. Verify this low threshold is intentional.", name, utilization),
@@ -322,29 +496,29 @@ func metricTypeName(spec autoscalingv2.MetricSpec) string {
 
 // profileSpecificRules returns audit rules that apply only when a specific
 // workload profile is selected. Each rule applies profile-adjusted thresholds.
-func profileSpecificRules(profile AuditProfile) []AuditRule {
+func profileSpecificRules(profile Profile) []Rule {
 	switch profile {
 	case ProfileLatency:
-		return []AuditRule{
+		return []Rule{
 			latencyStabilizationRule,
 			latencyScaleUpPolicyRule,
 		}
 	case ProfileCost:
-		return []AuditRule{
+		return []Rule{
 			costMinReplicasRule,
 			costScaleDownRule,
 		}
 	case ProfileBatch:
-		return []AuditRule{
+		return []Rule{
 			batchToleranceRule,
 		}
 	case ProfileKEDA:
-		return []AuditRule{
+		return []Rule{
 			kedaScaleToZeroRule,
 			kedaCooldownRule,
 		}
 	case ProfileCritical:
-		return []AuditRule{
+		return []Rule{
 			criticalMaxHeadroomRule,
 			criticalMinReplicasRule,
 		}
@@ -355,7 +529,7 @@ func profileSpecificRules(profile AuditProfile) []AuditRule {
 
 // latencyStabilizationRule warns when the scale-up stabilization window is
 // too long for a latency-sensitive workload.
-func latencyStabilizationRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []AuditFinding {
+func latencyStabilizationRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []Finding {
 	if hpa.Spec.Behavior == nil || hpa.Spec.Behavior.ScaleUp == nil {
 		return nil
 	}
@@ -365,7 +539,7 @@ func latencyStabilizationRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int3
 		return nil
 	}
 
-	return []AuditFinding{
+	return []Finding{
 		{
 			ID:          "latency-stabilization",
 			Title:       "Scale-up stabilization window too long for latency profile",
@@ -380,9 +554,9 @@ func latencyStabilizationRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int3
 
 // latencyScaleUpPolicyRule warns when no scaleUp policy is configured or when
 // the policy period is too long for latency-sensitive workloads.
-func latencyScaleUpPolicyRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []AuditFinding {
-	if missingPolicies(hpa.Spec.Behavior, "scaleUp") {
-		return []AuditFinding{
+func latencyScaleUpPolicyRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []Finding {
+	if util.MissingPolicies(hpa.Spec.Behavior, "scaleUp") {
+		return []Finding{
 			{
 				ID:          "latency-scale-up-policy",
 				Title:       "No scaleUp policy for latency-sensitive workload",
@@ -401,7 +575,7 @@ func latencyScaleUpPolicyRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int3
 
 	for _, p := range hpa.Spec.Behavior.ScaleUp.Policies {
 		if p.PeriodSeconds > 30 {
-			return []AuditFinding{
+			return []Finding{
 				{
 					ID:          "latency-scale-up-period",
 					Title:       "ScaleUp policy period too long for latency profile",
@@ -420,12 +594,12 @@ func latencyScaleUpPolicyRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int3
 
 // costMinReplicasRule warns when minReplicas is higher than necessary for a
 // cost-optimized workload.
-func costMinReplicasRule(_ *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []AuditFinding {
+func costMinReplicasRule(_ *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []Finding {
 	if minReplicas <= 2 {
 		return nil
 	}
 
-	return []AuditFinding{
+	return []Finding{
 		{
 			ID:          "cost-min-replicas",
 			Title:       "minReplicas higher than recommended for cost profile",
@@ -439,14 +613,14 @@ func costMinReplicasRule(_ *autoscalingv2.HorizontalPodAutoscaler, minReplicas i
 }
 
 // costScaleDownRule warns when scale-down is too slow for cost optimization.
-func costScaleDownRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []AuditFinding {
+func costScaleDownRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []Finding {
 	if hpa.Spec.Behavior == nil || hpa.Spec.Behavior.ScaleDown == nil {
 		return nil
 	}
 
 	window := hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds
 	if window != nil && *window > 120 {
-		return []AuditFinding{
+		return []Finding{
 			{
 				ID:          "cost-scaledown-window",
 				Title:       "Scale-down stabilization window too long for cost profile",
@@ -463,7 +637,7 @@ func costScaleDownRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []Au
 }
 
 // batchToleranceRule warns when tolerance is too tight for batch workloads.
-func batchToleranceRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []AuditFinding {
+func batchToleranceRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []Finding {
 	// Default HPA tolerance is 0.1 (10%).
 	toleranceValue := 0.1
 	if hpa.Spec.Behavior != nil {
@@ -475,7 +649,7 @@ func batchToleranceRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []A
 	}
 
 	if toleranceValue < 0.3 {
-		return []AuditFinding{
+		return []Finding{
 			{
 				ID:          "batch-tolerance",
 				Title:       "Tolerance too tight for batch workload",
@@ -493,12 +667,12 @@ func batchToleranceRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []A
 
 // kedaScaleToZeroRule recommends scale-to-zero for KEDA-managed workloads
 // that still have minReplicas > 0.
-func kedaScaleToZeroRule(_ *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []AuditFinding {
+func kedaScaleToZeroRule(_ *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []Finding {
 	if minReplicas == 0 {
 		return nil
 	}
 
-	return []AuditFinding{
+	return []Finding{
 		{
 			ID:          "keda-scale-to-zero",
 			Title:       "KEDA workload not configured for scale-to-zero",
@@ -513,14 +687,14 @@ func kedaScaleToZeroRule(_ *autoscalingv2.HorizontalPodAutoscaler, minReplicas i
 
 // kedaCooldownRule warns when scale-down stabilization is too long for
 // KEDA workloads that should respond quickly to trigger changes.
-func kedaCooldownRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []AuditFinding {
+func kedaCooldownRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []Finding {
 	if hpa.Spec.Behavior == nil || hpa.Spec.Behavior.ScaleDown == nil {
 		return nil
 	}
 
 	window := hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds
 	if window != nil && *window > 300 {
-		return []AuditFinding{
+		return []Finding{
 			{
 				ID:          "keda-cooldown",
 				Title:       "Scale-down stabilization too long for KEDA profile",
@@ -538,7 +712,7 @@ func kedaCooldownRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []Aud
 
 // criticalMaxHeadroomRule warns when there is insufficient headroom between
 // current and maxReplicas for critical workloads.
-func criticalMaxHeadroomRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []AuditFinding {
+func criticalMaxHeadroomRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []Finding {
 	current := hpa.Status.CurrentReplicas
 	maxRep := hpa.Spec.MaxReplicas
 
@@ -550,7 +724,7 @@ func criticalMaxHeadroomRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32
 	headroomPercent := float64(headroom) / float64(current) * 100
 
 	if headroomPercent < 50 {
-		return []AuditFinding{
+		return []Finding{
 			{
 				ID:          "critical-max-headroom",
 				Title:       "Insufficient maxReplicas headroom for critical workload",
@@ -568,12 +742,12 @@ func criticalMaxHeadroomRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32
 
 // criticalMinReplicasRule warns when minReplicas is below the minimum
 // recommended for critical workloads.
-func criticalMinReplicasRule(_ *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []AuditFinding {
+func criticalMinReplicasRule(_ *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []Finding {
 	if minReplicas >= 2 {
 		return nil
 	}
 
-	return []AuditFinding{
+	return []Finding{
 		{
 			ID:          "critical-min-replicas",
 			Title:       "minReplicas too low for critical workload",

@@ -1,6 +1,7 @@
 package i18n
 
 import (
+	"sort"
 	"strings"
 	"testing"
 )
@@ -71,7 +72,9 @@ func TestDirectionKeysPresent(t *testing.T) {
 	b := Load("en")
 	directions := []string{
 		"dir_scale_up", "dir_scale_down", "dir_at_max",
-		"dir_at_min", "dir_unchanged", "dir_no_recommendation", "dir_inactive",
+		"dir_at_min", "dir_at_min_scale_to_zero", "dir_unchanged",
+		"dir_no_recommendation", "dir_inactive", "dir_scale_to_zero",
+		"dir_scaled_to_zero", "dir_unavailable",
 	}
 	for _, key := range directions {
 		if _, ok := b[key]; !ok {
@@ -81,6 +84,66 @@ func TestDirectionKeysPresent(t *testing.T) {
 			t.Errorf("expected %q value to end with period or contain replicas info, got %q", key, b[key])
 		}
 	}
+}
+
+// TestLocaleKeyParity asserts every key present in en.yaml is also present in
+// every other locale, and vice versa. This guards against silent
+// key-return-on-missing (i18n.go Get fallback) regressions when a new key is
+// added to one locale but not the others.
+func TestLocaleKeyParity(t *testing.T) {
+	en := Load("en")
+	ja := Load("ja")
+	enKeys := sortedKeys(en)
+	jaKeys := sortedKeys(ja)
+	if len(enKeys) != len(jaKeys) {
+		t.Fatalf("locale key count mismatch: en=%d ja=%d", len(enKeys), len(jaKeys))
+	}
+	for i, k := range enKeys {
+		if jaKeys[i] != k {
+			t.Errorf("locale key mismatch at index %d: en=%q ja=%q", i, k, jaKeys[i])
+		}
+	}
+}
+
+// TestDirectionKeysExistInAllLocales asserts every dir_* key produced by
+// pkg/hpa.SummarizeDirectionWithKey resolves in every loaded locale. This
+// locks the contract between pkg/hpa (key producer) and the locale files
+// (key consumer) so a key rename cannot silently fall back to the raw key
+// string in user output.
+func TestDirectionKeysExistInAllLocales(t *testing.T) {
+	directionKeys := []string{
+		"dir_scale_up", "dir_scale_down", "dir_at_max",
+		"dir_at_min", "dir_at_min_scale_to_zero", "dir_unchanged",
+		"dir_no_recommendation", "dir_inactive", "dir_scale_to_zero",
+		"dir_scaled_to_zero", "dir_unavailable",
+	}
+	for _, lang := range []string{"en", "ja"} {
+		b := Load(lang)
+		for _, key := range directionKeys {
+			v, ok := b[key]
+			if !ok {
+				t.Errorf("direction key %q missing from %s locale", key, lang)
+				continue
+			}
+			if v == "" {
+				t.Errorf("direction key %q is empty in %s locale", key, lang)
+			}
+			// Get must never return the key itself for a direction key, which
+			// would indicate a missing-lookup regression.
+			if got := Get(lang, key); got == key {
+				t.Errorf("Get(%q, %q) returned the key unchanged; locale entry is missing", lang, key)
+			}
+		}
+	}
+}
+
+func sortedKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func TestAllLabelKeysExistInBothLocales(t *testing.T) {

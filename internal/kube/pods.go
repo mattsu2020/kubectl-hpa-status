@@ -26,7 +26,7 @@ type PodInfo struct {
 func FetchPodsForScaleTarget(ctx context.Context, client kubernetes.Interface, namespace string, hpa *autoscalingv2.HorizontalPodAutoscaler) ([]string, error) {
 	ref := hpa.Spec.ScaleTargetRef
 	if ref.Kind != "Deployment" && ref.Kind != "StatefulSet" && ref.Kind != "ReplicaSet" {
-		return nil, fmt.Errorf("unsupported scale target kind %q", ref.Kind)
+		return nil, fmt.Errorf("kind %q: %w", ref.Kind, ErrUnsupportedScaleTargetKind)
 	}
 
 	selector, err := resolveLabelSelector(ctx, client, namespace, ref)
@@ -133,6 +133,6 @@ func resolveLabelSelector(ctx context.Context, client kubernetes.Interface, name
 		}
 		return "", nil
 	default:
-		return "", fmt.Errorf("unsupported scale target kind %q", ref.Kind)
+		return "", fmt.Errorf("kind %q: %w", ref.Kind, ErrUnsupportedScaleTargetKind)
 	}
 }

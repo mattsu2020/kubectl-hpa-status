@@ -255,7 +255,7 @@ func FindScaledObjectForHPA(ctx context.Context, dynClient dynamic.Interface, _ 
 		}
 	}
 
-	return nil, fmt.Errorf("no ScaledObject found for HPA %s/%s", hpa.Namespace, hpa.Name)
+	return nil, fmt.Errorf("hpa %s/%s: %w", hpa.Namespace, hpa.Name, ErrScaledObjectNotFound)
 }
 
 // extractScaledObjectName derives the ScaledObject name backing this HPA from

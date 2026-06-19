@@ -6,6 +6,8 @@ import (
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
+
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
 )
 
 // interpretationCase is a shared representation used by both Interpret() and
@@ -220,47 +222,11 @@ func KEDADiagnostics(hpa *autoscalingv2.HorizontalPodAutoscaler) []DiagnosticEnt
 // HPAs with custom names and no KEDA labels/annotations). For authoritative
 // detection, use internal/kube/keda.go DetectKEDA() which performs real
 // ScaledObject CRD lookups when the KEDA API is available.
+//
+// The canonical implementation lives in pkg/hpa/internal/util; this is a thin
+// wrapper preserving the unexported call sites in pkg/hpa.
 func looksLikeKEDAManaged(hpa *autoscalingv2.HorizontalPodAutoscaler) bool {
-	// Strong signals first: official keda.sh key prefix or exact managed-by.
-	if hasKEDAKeySignal(hpa.Labels) || hasKEDAKeySignal(hpa.Annotations) {
-		return true
-	}
-
-	// Medium signal: conventional KEDA HPA name prefix.
-	if strings.HasPrefix(hpa.Name, "keda-hpa-") {
-		return true
-	}
-
-	// Weak fallback: a value mentioning "keda" when no stronger signal fired.
-	// This is intentionally last to minimize false positives from unrelated
-	// values that happen to contain the substring "keda".
-	return hasKEDAValueFallback(hpa.Labels) || hasKEDAValueFallback(hpa.Annotations)
-}
-
-// hasKEDAKeySignal reports whether any key uses the official keda.sh prefix or
-// the canonical managed-by key is set to "keda".
-func hasKEDAKeySignal(m map[string]string) bool {
-	for key, value := range m {
-		lk := strings.ToLower(key)
-		if strings.Contains(lk, "keda.sh/") {
-			return true
-		}
-		if lk == "app.kubernetes.io/managed-by" && strings.EqualFold(value, "keda") {
-			return true
-		}
-	}
-	return false
-}
-
-// hasKEDAValueFallback reports whether any value contains the substring "keda".
-// This is a weak, false-positive-prone signal used only as a last resort.
-func hasKEDAValueFallback(m map[string]string) bool {
-	for _, value := range m {
-		if strings.Contains(strings.ToLower(value), "keda") {
-			return true
-		}
-	}
-	return false
+	return util.LooksLikeKEDAManaged(hpa)
 }
 
 // RecommendedActions generates actionable recommendation strings.

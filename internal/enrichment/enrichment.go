@@ -89,8 +89,12 @@ func NewContext(_ context.Context, cfg Config) *Context {
 	kedaEnabled := isEnabled(cfg.KEDA, crdAvail.KEDA)
 	vpaEnabled := isEnabled(cfg.VPA, crdAvail.VPA)
 
-	applyCRDAvailability(kedaEntry, requested(cfg.KEDA), crdAvail.KEDA, "CRD keda.sh/v1alpha1 not found in API discovery")
-	applyCRDAvailability(vpaEntry, requested(cfg.VPA), crdAvail.VPA, "CRD autoscaling.k8s.io/v1 not found in API discovery")
+	// Surface the real discovery outcome in each Entry.Reason. When discovery
+	// itself failed (RBAC denial, network timeout), the wrapped error replaces
+	// the misleading hard-coded "CRD ... not found" string so operators see the
+	// actual cause. A nil error means the CRD is simply absent.
+	applyCRDAvailability(kedaEntry, requested(cfg.KEDA), crdAvail.KEDA, crdReason(crdAvail.KEDError))
+	applyCRDAvailability(vpaEntry, requested(cfg.VPA), crdAvail.VPA, crdReason(crdAvail.VPAError))
 
 	if !kedaEnabled && !vpaEnabled {
 		return &Context{status: status}
@@ -120,6 +124,18 @@ func NewContext(_ context.Context, cfg Config) *Context {
 		vpaEnabled:  vpaEnabled,
 		status:      status,
 	}
+}
+
+// crdReason formats a DetectCRDs per-source error for display in an enrichment
+// Status entry. A nil error means the CRD is simply absent, so we keep the
+// historical short string; a non-nil error carries the real discovery failure
+// (RBAC denial, network timeout, etc.) and is surfaced verbatim so operators
+// see the actual cause instead of a misleading "not found".
+func crdReason(err error) string {
+	if err == nil {
+		return "CRD not found in API discovery"
+	}
+	return err.Error()
 }
 
 // setEnrichmentError marks the entry as errored with the given reason when enabled is true.

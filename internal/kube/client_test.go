@@ -1,6 +1,7 @@
 package kube
 
 import (
+	"errors"
 	stdtesting "testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -35,6 +36,12 @@ func TestDetectCRDs_BothPresent(t *stdtesting.T) {
 	if !avail.VPA {
 		t.Error("expected VPA to be detected")
 	}
+	if avail.KEDError != nil {
+		t.Errorf("did not expect KEDA error when CRD present, got: %v", avail.KEDError)
+	}
+	if avail.VPAError != nil {
+		t.Errorf("did not expect VPA error when CRD present, got: %v", avail.VPAError)
+	}
 }
 
 func TestDetectCRDs_NeitherPresent(t *stdtesting.T) {
@@ -49,6 +56,14 @@ func TestDetectCRDs_NeitherPresent(t *stdtesting.T) {
 	}
 	if avail.VPA {
 		t.Error("did not expect VPA detection")
+	}
+	// Absent CRDs still populate the wrapped sentinel error so callers can
+	// distinguish "absent" from "discovery failed" downstream.
+	if !errors.Is(avail.KEDError, ErrKEDACRDNotDetected) {
+		t.Errorf("expected KEDError to wrap ErrKEDACRDNotDetected, got: %v", avail.KEDError)
+	}
+	if !errors.Is(avail.VPAError, ErrVPACRDNotDetected) {
+		t.Errorf("expected VPAError to wrap ErrVPACRDNotDetected, got: %v", avail.VPAError)
 	}
 }
 
@@ -71,6 +86,12 @@ func TestDetectCRDs_KEDAOnly(t *stdtesting.T) {
 	}
 	if avail.VPA {
 		t.Error("did not expect VPA detection")
+	}
+	if avail.KEDError != nil {
+		t.Errorf("did not expect KEDA error when CRD present, got: %v", avail.KEDError)
+	}
+	if !errors.Is(avail.VPAError, ErrVPACRDNotDetected) {
+		t.Errorf("expected VPAError to wrap ErrVPACRDNotDetected, got: %v", avail.VPAError)
 	}
 }
 

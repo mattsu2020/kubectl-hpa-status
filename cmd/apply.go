@@ -26,6 +26,9 @@ func applySuggestionsInNamespace(ctx context.Context, out io.Writer, opts *optio
 	if len(patches) == 0 {
 		return []string{"No applicable HPA patch was suggested."}, nil
 	}
+	// applySuggestions returns (messages, err) rather than a single error,
+	// so it surfaces the raw client-creation error to the caller instead of
+	// the standard wrapper. The caller wraps it for display.
 	client, err := opts.NewClient()
 	if err != nil {
 		return nil, err

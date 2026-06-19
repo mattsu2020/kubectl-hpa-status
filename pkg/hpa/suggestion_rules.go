@@ -9,6 +9,8 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
 )
 
 // SuggestionRule is a function that examines an HPA and returns concrete
@@ -368,18 +370,9 @@ func staleMetricSuggestions(hpa *autoscalingv2.HorizontalPodAutoscaler) []Sugges
 	return suggestions
 }
 
+// missingPolicies delegates to util.MissingPolicies.
 func missingPolicies(behavior *autoscalingv2.HorizontalPodAutoscalerBehavior, direction string) bool {
-	if behavior == nil {
-		return true
-	}
-	var rules *autoscalingv2.HPAScalingRules
-	switch direction {
-	case "scaleUp":
-		rules = behavior.ScaleUp
-	case "scaleDown":
-		rules = behavior.ScaleDown
-	}
-	return rules == nil || len(rules.Policies) == 0
+	return util.MissingPolicies(behavior, direction)
 }
 
 func visibleScaleDownPressure(hpa *autoscalingv2.HorizontalPodAutoscaler) bool {
@@ -431,21 +424,14 @@ func hasVisibleScaleUpPressure(hpa *autoscalingv2.HorizontalPodAutoscaler) bool 
 // apply a change. The now-removed dryRun parameter was always true at every
 // call site (see unparam); callers wanting a no-dry-run variant must build a
 // different command.
+// kubectlPatchCommand delegates to util.KubectlPatchCommand.
 func kubectlPatchCommand(hpa *autoscalingv2.HorizontalPodAutoscaler, patch string) string {
-	command := fmt.Sprintf("kubectl patch hpa %s -n %s --type=merge -p '%s'", hpa.Name, hpa.Namespace, patch)
-	command += " --dry-run=server"
-	return command
+	return util.KubectlPatchCommand(hpa, patch)
 }
 
+// marshalJSON delegates to util.MarshalJSON.
 func marshalJSON(value any) string {
-	data, err := json.Marshal(value)
-	if err != nil {
-		// Callers always pass internal map[string]any literals built from HPA
-		// fields, so a marshal failure is not expected. Return an empty JSON
-		// object rather than crashing the CLI on a single bad value.
-		return "{}"
-	}
-	return string(data)
+	return util.MarshalJSON(value)
 }
 
 // SuggestionDiff renders a field-level diff of a suggestion's patch against

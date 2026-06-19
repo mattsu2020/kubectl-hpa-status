@@ -12,14 +12,17 @@ import (
 
 // ListItem is a compact row representation for list output.
 type ListItem struct {
-	Namespace         string      `json:"namespace" yaml:"namespace"`
-	Name              string      `json:"name" yaml:"name"`
-	Target            string      `json:"target" yaml:"target"`
-	Current           int32       `json:"currentReplicas" yaml:"currentReplicas"`
-	Desired           int32       `json:"desiredReplicas" yaml:"desiredReplicas"`
-	Min               int32       `json:"minReplicas" yaml:"minReplicas"`
-	Max               int32       `json:"maxReplicas" yaml:"maxReplicas"`
-	Summary           string      `json:"summary" yaml:"summary"`
+	Namespace string `json:"namespace" yaml:"namespace"`
+	Name      string `json:"name" yaml:"name"`
+	Target    string `json:"target" yaml:"target"`
+	Current   int32  `json:"currentReplicas" yaml:"currentReplicas"`
+	Desired   int32  `json:"desiredReplicas" yaml:"desiredReplicas"`
+	Min       int32  `json:"minReplicas" yaml:"minReplicas"`
+	Max       int32  `json:"maxReplicas" yaml:"maxReplicas"`
+	Summary   string `json:"summary" yaml:"summary"`
+	// SummaryKey mirrors Analysis.SummaryKey for locale lookup; empty when
+	// Summary was overwritten outside SummarizeDirection.
+	SummaryKey        string      `json:"summaryKey,omitempty" yaml:"summaryKey,omitempty"`
 	Health            string      `json:"health" yaml:"health"`
 	HealthScore       int         `json:"healthScore" yaml:"healthScore"`
 	Issue             string      `json:"issue,omitempty" yaml:"issue,omitempty"`
@@ -68,18 +71,20 @@ type ListTextOptions struct {
 	// Theme takes precedence over Color. When Theme is set, Color is ignored.
 	Theme style.Theme
 	// SummaryTranslator, when non-nil, localises the per-row Summary line
-	// (populated from Analysis.Summary via NewListItem). pkg/hpa cannot import
-	// internal/i18n, so the cmd layer injects i18n.Get here, mirroring
+	// (populated from Analysis.Summary via NewListItem). It receives the
+	// English summary text and the stable SummaryKey (see
+	// StatusTextOptions.SummaryTranslator for the contract). pkg/hpa cannot
+	// import internal/i18n, so the cmd layer injects i18n.Get here, mirroring
 	// StatusTextOptions.SummaryTranslator. When nil, Summary is rendered
 	// verbatim (English).
-	SummaryTranslator func(string) string
+	SummaryTranslator func(summary, key string) string
 }
 
 // translateSummary applies opts.SummaryTranslator when configured, returning
 // the original string otherwise.
-func (o ListTextOptions) translateSummary(s string) string {
+func (o ListTextOptions) translateSummary(s, key string) string {
 	if o.SummaryTranslator != nil {
-		return o.SummaryTranslator(s)
+		return o.SummaryTranslator(s, key)
 	}
 	return s
 }
@@ -116,6 +121,7 @@ func NewListItem(src Analysis) ListItem {
 		Min:                src.Min,
 		Max:                src.Max,
 		Summary:            src.Summary,
+		SummaryKey:         src.SummaryKey,
 		Health:             health,
 		HealthScore:        src.HealthScore,
 		Issue:              issue,
@@ -270,7 +276,7 @@ func WriteListText(w io.Writer, report ListReport, opts ListTextOptions) error {
 			if showTrend {
 				row = fmt.Sprintf("%s %s", row, padRight(item.TrendSparkline, 20))
 			}
-			out = fmt.Appendf(out, "%s %s\n", row, opts.translateSummary(item.Summary))
+			out = fmt.Appendf(out, "%s %s\n", row, opts.translateSummary(item.Summary, item.SummaryKey))
 		}
 		_, err := w.Write(out)
 		return err
@@ -300,7 +306,7 @@ func WriteListText(w io.Writer, report ListReport, opts ListTextOptions) error {
 		if showTrend {
 			row = fmt.Sprintf("%s %s", row, padRight(item.TrendSparkline, 20))
 		}
-		out = fmt.Appendf(out, "%s %s\n", row, opts.translateSummary(item.Summary))
+		out = fmt.Appendf(out, "%s %s\n", row, opts.translateSummary(item.Summary, item.SummaryKey))
 	}
 	_, err := w.Write(out)
 	return err

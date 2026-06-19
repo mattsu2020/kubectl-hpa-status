@@ -29,7 +29,7 @@ type conflictItem struct {
 }
 
 func runConflictScan(ctx context.Context, out io.Writer, opts *options) error {
-	client, err := opts.NewClient()
+	client, err := newClientOrDefault(opts)
 	if err != nil {
 		return err
 	}

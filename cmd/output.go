@@ -66,60 +66,23 @@ func labelProviderForLang(lang, output string) hpaanalysis.LabelProvider {
 }
 
 // summaryTranslatorForLang returns a function that localises the Analysis.Summary
-// string (produced by pkg/hpa.SummarizeDirection in English) for the given
-// language. When the language is empty/unset, it returns nil so the Summary is
-// rendered verbatim.
-//
-// The mapping is keyed on the English source strings emitted by
-// summarizeDirectionFromReplicas and SummarizeDirection in pkg/hpa; those are
-// the only values that ever land in Analysis.Summary. pkg/hpa cannot import
+// string for the given language, keyed on the stable SummaryKey produced by
+// pkg/hpa.SummarizeDirectionWithKey. When the language is empty/unset it
+// returns nil so the Summary is rendered verbatim. When the key is empty
+// (Summary was overwritten outside SummarizeDirection, e.g. the stale prefix),
+// the original English summary is returned unchanged. pkg/hpa cannot import
 // internal/i18n (internal package visibility), so the translation is injected
 // here via StatusTextOptions.SummaryTranslator.
-func summaryTranslatorForLang(lang, output string) func(string) string {
+func summaryTranslatorForLang(lang, output string) func(string, string) string {
 	l := outputLang(lang, output)
 	if l == "" {
 		return nil
 	}
-	return func(summary string) string {
-		key, ok := summaryTranslationKey(summary)
-		if !ok {
+	return func(summary, key string) string {
+		if key == "" {
 			return summary
 		}
 		return i18n.Get(l, key)
-	}
-}
-
-// summaryTranslationKey maps an English Summary string to its i18n locale key.
-// Every string emitted by pkg/hpa.SummarizeDirection (metric_utils.go) has a
-// matching dir_* entry in locales/{en,ja}.yaml, so a Summary is always
-// translated when a translator is wired in; returns ok=false only for strings
-// the analysis layer may set outside SummarizeDirection.
-func summaryTranslationKey(summary string) (string, bool) {
-	switch summary {
-	case "HPA currently wants to scale up.":
-		return "dir_scale_up", true
-	case "HPA currently wants to scale down.":
-		return "dir_scale_down", true
-	case "HPA is at maxReplicas.":
-		return "dir_at_max", true
-	case "HPA is at minReplicas.":
-		return "dir_at_min", true
-	case "HPA is at minReplicas (scale-to-zero enabled).":
-		return "dir_at_min_scale_to_zero", true
-	case "HPA currently keeps the replica count unchanged.":
-		return "dir_unchanged", true
-	case "HPA has no visible desired replica recommendation in status.":
-		return "dir_no_recommendation", true
-	case "HPA cannot currently compute a scaling recommendation from metrics.":
-		return "dir_inactive", true
-	case "HPA wants to scale to zero (cold start will occur on next scale-up).":
-		return "dir_scale_to_zero", true
-	case "HPA is scaled to zero (minReplicas=0); awaiting trigger to scale up.":
-		return "dir_scaled_to_zero", true
-	case "HPA data is unavailable.":
-		return "dir_unavailable", true
-	default:
-		return "", false
 	}
 }
 

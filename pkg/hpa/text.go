@@ -29,19 +29,23 @@ type StatusTextOptions struct {
 	Diff          bool
 	HiddenFactors bool
 	Labels        LabelProvider // When nil, English defaults are used. Takes precedence over Lang.
-	// SummaryTranslator, when non-nil, localises the Analysis.Summary line
-	// (e.g. "HPA currently wants to scale up."). pkg/hpa cannot import the
-	// i18n package, so the cmd layer injects i18n.Get here. When nil, the
-	// Summary is rendered verbatim (English).
-	SummaryTranslator func(string) string
+	// SummaryTranslator, when non-nil, localises the Analysis.Summary line.
+	// It receives both the English summary text and the stable SummaryKey
+	// (e.g. "dir_scale_up") produced by pkg/hpa.SummarizeDirectionWithKey;
+	// translators should prefer the key for locale lookup and fall back to
+	// summary when the key is empty (Summary was overwritten outside the
+	// direction switch). pkg/hpa cannot import the i18n package, so the cmd
+	// layer injects i18n.Get here. When nil, the Summary is rendered verbatim
+	// (English).
+	SummaryTranslator func(summary, key string) string
 }
 
 // translateSummary applies opts.SummaryTranslator to a summary string when
 // configured, returning the original string otherwise. Keeps the two render
 // sites consistent without repeating the nil check.
-func (o StatusTextOptions) translateSummary(s string) string {
+func (o StatusTextOptions) translateSummary(s, key string) string {
 	if o.SummaryTranslator != nil {
-		return o.SummaryTranslator(s)
+		return o.SummaryTranslator(s, key)
 	}
 	return s
 }
@@ -144,7 +148,7 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 	appendScoreBreakdown(&out, a)
 
 	out = append(out, '\n')
-	out = fmt.Appendf(out, "%s: %s\n", labels.Summary, theme.SummaryColor(opts.translateSummary(a.Summary)))
+	out = fmt.Appendf(out, "%s: %s\n", labels.Summary, theme.SummaryColor(opts.translateSummary(a.Summary, a.SummaryKey)))
 
 	appendConditionsSection(&out, a, theme, labels)
 	appendMetricsSection(&out, a, theme, labels)

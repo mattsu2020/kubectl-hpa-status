@@ -90,6 +90,10 @@ func runBlockers(ctx context.Context, out io.Writer, opts *options, names []stri
 // buildBlockerReport assembles BlockerInput from various fetchers and runs
 // the blocker analysis engine.
 func buildBlockerReport(ctx context.Context, opts *options, analysis hpaanalysis.Analysis, namespace, name string) *hpaanalysis.BlockerReport {
+	// Best-effort client: a client-creation failure here is not fatal to the
+	// overall status report; returning nil lets the caller skip the blocker
+	// section and record a warning instead of aborting. Bypasses the standard
+	// "failed to create Kubernetes client" wrapper for that reason.
 	client, err := opts.NewClient()
 	if err != nil {
 		return nil

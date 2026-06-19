@@ -67,6 +67,9 @@ func runList(ctx context.Context, out io.Writer, opts *options) error {
 		return runConflictScan(ctx, out, opts)
 	}
 
+	// Uses the raw error so reportListError can render a list-specific error
+	// document for JSON/YAML output; the standard wrapper would only add an
+	// English prefix that breaks the structured output contract.
 	client, err := opts.NewClient()
 	if err != nil {
 		return reportListError(out, opts.Output, err)

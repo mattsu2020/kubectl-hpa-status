@@ -93,7 +93,7 @@ type contractTestMetric struct {
 // GenerateContractYAML produces a YAML test contract document from the report.
 func GenerateContractYAML(report *MetricContractReport) ([]byte, error) {
 	if report == nil {
-		return nil, fmt.Errorf("report is nil")
+		return nil, ErrNilReport
 	}
 
 	contract := contractTestYAML{
@@ -132,7 +132,7 @@ func GenerateContractYAML(report *MetricContractReport) ([]byte, error) {
 // contract with status, verification commands, and remediation steps.
 func GenerateContractMarkdown(report *MetricContractReport) ([]byte, error) {
 	if report == nil {
-		return nil, fmt.Errorf("report is nil")
+		return nil, ErrNilReport
 	}
 
 	var buf strings.Builder
@@ -180,7 +180,7 @@ func GenerateContractMarkdown(report *MetricContractReport) ([]byte, error) {
 // Each metric check becomes a testcase; status "ok" passes, anything else fails.
 func GenerateContractJUnit(report *MetricContractReport) ([]byte, error) {
 	if report == nil {
-		return nil, fmt.Errorf("report is nil")
+		return nil, ErrNilReport
 	}
 
 	suite := xmlJUnitTestSuite{

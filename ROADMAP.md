@@ -7,6 +7,10 @@ This roadmap tracks planned work that is visible to users and contributors. It i
 - **E2E scenario coverage:** Expand kind E2E coverage for multi-metric HPAs, behavior policies, KEDA-style external metrics, VPA conflict detection, and stabilization boundary cases.
 - **README sync quality gate:** Keep `README.md` and `README.ja.md` structurally aligned through `make docs-check` and CI.
 - **Remove deprecated `analyze` command:** The `analyze` (alias `diagnose`) subcommand is hidden from `--help` and scheduled for removal in v2.0. Users should migrate to `status NAME --explain`.
+- **Remove deprecated flag aliases (v2.0):** The following aliases are marked `[deprecated]` in `--help` and emit a one-time stderr notice when used; all are scheduled for removal in v2.0:
+  - `--recommend` → use `--suggest`
+  - `--export-patch` → use `--export`
+  Migration is mechanical (drop the alias, use the canonical flag). No behavioral change is involved.
 
 ## Medium Term
 

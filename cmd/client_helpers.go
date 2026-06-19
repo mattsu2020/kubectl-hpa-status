@@ -8,7 +8,14 @@ import (
 
 // wrapClientError formats a Kubernetes client creation error with the standard
 // user-facing message used across subcommands. Callers that need a different
-// message (or no message) can keep using opts.NewClient() directly.
+// message (or no message) can keep using opts.NewClient() directly; in that
+// case they should carry a comment explaining why the bypass is intentional
+// (best-effort fetch, shell completion, structured JSON/YAML error output,
+// applySuggestions dual-return). The intentional bypass sites today are:
+//   - rollout.go, blockers.go, capacity_plan.go (best-effort nil on failure)
+//   - completion.go hpaNameCompletion + namespaceCompletions (silent shell comp)
+//   - autoscaler_map.go, list.go (structured JSON/YAML error documents)
+//   - apply.go applySuggestions (dual messages+err return contract)
 func wrapClientError(err error) error {
 	return fmt.Errorf("failed to create Kubernetes client: %w", err)
 }

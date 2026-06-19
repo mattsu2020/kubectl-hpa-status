@@ -14,55 +14,56 @@ import (
 
 // SummarizeDirection returns a one-line summary of the HPA scaling direction.
 func SummarizeDirection(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) string {
+	summary, _ := SummarizeDirectionWithKey(hpa, minReplicas)
+	return summary
+}
+
+// SummarizeDirectionWithKey returns the same one-line summary as
+// SummarizeDirection plus the stable i18n key (e.g. "dir_scale_up") that
+// identifies which branch produced the summary. Callers that need to localize
+// the summary should use this form and translate via the key; the English
+// summary is the fallback when no translator is wired in. The key is empty
+// only if hpa is nil and SummarizeDirection's nil-handling branch ran, which
+// cannot happen for a real Analysis (Analysis is never built from a nil HPA).
+func SummarizeDirectionWithKey(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) (string, string) {
 	if hpa == nil {
-		return "HPA data is unavailable."
+		return "HPA data is unavailable.", "dir_unavailable"
 	}
 	if condition := FindCondition(hpa, ConditionScalingActive); condition != nil && condition.Status != corev1.ConditionTrue {
-		return "HPA cannot currently compute a scaling recommendation from metrics."
+		return "HPA cannot currently compute a scaling recommendation from metrics.", "dir_inactive"
 	}
 	if hpa.Status.DesiredReplicas == 0 && hpa.Status.CurrentReplicas > 0 {
 		if minReplicas == 0 {
-			return "HPA wants to scale to zero (cold start will occur on next scale-up)."
+			return "HPA wants to scale to zero (cold start will occur on next scale-up).", "dir_scale_to_zero"
 		}
-		return "HPA has no visible desired replica recommendation in status."
+		return "HPA has no visible desired replica recommendation in status.", "dir_no_recommendation"
 	}
 	if minReplicas == 0 && hpa.Status.DesiredReplicas == 0 && hpa.Status.CurrentReplicas == 0 {
-		return "HPA is scaled to zero (minReplicas=0); awaiting trigger to scale up."
+		return "HPA is scaled to zero (minReplicas=0); awaiting trigger to scale up.", "dir_scaled_to_zero"
 	}
 
 	return summarizeDirectionFromReplicas(hpa.Status.CurrentReplicas, hpa.Status.DesiredReplicas, hpa.Spec.MaxReplicas, minReplicas)
 }
 
-func summarizeDirectionFromReplicas(current, desired, maxReplicas, minReplicas int32) string {
+func summarizeDirectionFromReplicas(current, desired, maxReplicas, minReplicas int32) (string, string) {
 	switch {
 	case desired > current:
-		return "HPA currently wants to scale up."
+		return "HPA currently wants to scale up.", "dir_scale_up"
 	case desired < current:
-		return "HPA currently wants to scale down."
+		return "HPA currently wants to scale down.", "dir_scale_down"
 	case desired == maxReplicas:
-		return "HPA is at maxReplicas."
+		return "HPA is at maxReplicas.", "dir_at_max"
 	case desired == minReplicas && minReplicas == 0:
-		return "HPA is at minReplicas (scale-to-zero enabled)."
+		return "HPA is at minReplicas (scale-to-zero enabled).", "dir_at_min_scale_to_zero"
 	case desired == minReplicas:
-		return "HPA is at minReplicas."
+		return "HPA is at minReplicas.", "dir_at_min"
 	default:
-		return "HPA currently keeps the replica count unchanged."
+		return "HPA currently keeps the replica count unchanged.", "dir_unchanged"
 	}
 }
 
-// FindCondition returns the HPA condition matching the given type, or nil.
-// Returns nil safely when hpa is nil.
-func FindCondition(hpa *autoscalingv2.HorizontalPodAutoscaler, conditionType string) *autoscalingv2.HorizontalPodAutoscalerCondition {
-	if hpa == nil {
-		return nil
-	}
-	for i := range hpa.Status.Conditions {
-		if string(hpa.Status.Conditions[i].Type) == conditionType {
-			return &hpa.Status.Conditions[i]
-		}
-	}
-	return nil
-}
+// FindCondition is re-exported from pkg/hpa/internal/conditions; see
+// conditions.go for the canonical implementation.
 
 func calculateRatioAndNote(currentVal autoscalingv2.MetricValueStatus, targetVal autoscalingv2.MetricTarget, targetStr string) (*float64, string) {
 	var ratio *float64
@@ -228,40 +229,6 @@ func CompareQuantityToTarget(current, target *resource.Quantity) string {
 	default:
 		return "current value equals target"
 	}
-}
-
-func scaleDownStabilizationWindow(hpa *autoscalingv2.HorizontalPodAutoscaler) *int32 {
-	if hpa.Spec.Behavior == nil || hpa.Spec.Behavior.ScaleDown == nil {
-		return nil
-	}
-	return hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds
-}
-
-// estimateStabilizationRemaining estimates how many seconds remain before
-// the scale-down stabilization window expires. Returns nil if the HPA is
-// not in a ScaleDownStabilized state or required data is unavailable.
-//
-// Caveat: Kubernetes downscale stabilization uses the max recommendation
-// within the window, not simply LastScaleTime. This estimate is approximate
-// and based on LastScaleTime as the best available signal.
-func estimateStabilizationRemaining(hpa *autoscalingv2.HorizontalPodAutoscaler) *int64 {
-	condition := FindCondition(hpa, ConditionAbleToScale)
-	if condition == nil || condition.Reason != "ScaleDownStabilized" {
-		return nil
-	}
-	window := scaleDownStabilizationWindow(hpa)
-	if window == nil {
-		return nil
-	}
-	if hpa.Status.LastScaleTime == nil {
-		return nil
-	}
-	elapsed := now().Sub(hpa.Status.LastScaleTime.Time).Seconds()
-	remaining := int64(float64(*window) - elapsed)
-	if remaining < 0 {
-		remaining = 0
-	}
-	return &remaining
 }
 
 func selectorSuffix(selector *metav1.LabelSelector) string {

@@ -35,6 +35,9 @@ func newAutoscalerMapCommand(opts *options) *cobra.Command {
 func runAutoscalerMap(ctx context.Context, out io.Writer, opts *options, names []string) error {
 	outputs := make([]autoscalerMapOutput, 0, len(names))
 	for _, name := range names {
+		// Uses the raw error so JSON/YAML output can emit a structured error
+		// document via writeError; the standard wrapper would only add an
+		// English prefix that breaks the structured output contract.
 		client, err := opts.NewClient()
 		if err != nil {
 			if opts.Output == "json" || opts.Output == "yaml" {

@@ -15,7 +15,7 @@ import (
 // The original HPA is not mutated; a deep copy is used internally.
 func SimulateMetricChange(hpa *autoscalingv2.HorizontalPodAutoscaler, metricOverrides map[string]string, weights HealthWeights) (*SimulationResult, error) {
 	if hpa == nil {
-		return nil, fmt.Errorf("HPA must not be nil")
+		return nil, ErrNilHPA
 	}
 
 	beforeAnalysis := AnalyzeWithOptions(hpa, true, AnalysisOptions{HealthWeights: weights})
@@ -59,7 +59,7 @@ func SimulateMetricChange(hpa *autoscalingv2.HorizontalPodAutoscaler, metricOver
 func applyMetricOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, name, value string) error {
 	spec, found := resolveMetricSpec(hpa, name)
 	if !found {
-		return fmt.Errorf("metric %q not found in HPA spec", name)
+		return fmt.Errorf("metric %q: %w", name, ErrMetricNotFound)
 	}
 
 	idx, found := findCurrentMetric(hpa, name)

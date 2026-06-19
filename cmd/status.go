@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"runtime"
@@ -134,7 +135,7 @@ func runStatusMultiple(ctx context.Context, out io.Writer, opts *options, names 
 	watchMode := opts.Watch.Watch
 	ec := newEnrichmentContext(ctx, opts)
 	// Create client once for all HPAs to avoid redundant kubeconfig parsing.
-	client, err := opts.NewClient()
+	client, err := newClientOrDefault(opts)
 	if err != nil {
 		return err
 	}
@@ -269,7 +270,7 @@ func statusTextOptions(opts *options, out io.Writer) hpaanalysis.StatusTextOptio
 
 // buildStatusReportWithClient creates a client and delegates to buildStatusReport.
 func buildStatusReportWithClient(ctx context.Context, opts *options, name string, includeInterpretation bool, ec *enrichmentContext) (hpaanalysis.StatusReport, error) {
-	client, err := opts.NewClient()
+	client, err := newClientOrDefault(opts)
 	if err != nil {
 		return hpaanalysis.StatusReport{}, err
 	}
@@ -320,7 +321,8 @@ func hpaFetchError(err error, name, namespace string) error {
 	if apierrors.IsNotFound(err) {
 		return fmt.Errorf("HPA %q was not found in namespace %q. "+
 			"If the cluster is running Kubernetes older than 1.23, the autoscaling/v2 API may not be available. "+
-			"Check with: kubectl api-resources | grep autoscaling. Original error: %w", name, namespace, err)
+			"Check with: kubectl api-resources | grep autoscaling. Original error: %w",
+			name, namespace, errors.Join(ErrHPANotFound, err))
 	}
 	if apierrors.IsMethodNotSupported(err) {
 		return fmt.Errorf("the Kubernetes API server does not support the autoscaling/v2 API. "+

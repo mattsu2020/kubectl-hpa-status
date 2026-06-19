@@ -179,9 +179,16 @@ func newOverrides(opts Options) *clientcmd.ConfigOverrides {
 }
 
 // CRDAvailability holds the results of a one-time CRD availability check.
+// KEDError / VPAError carry the discovery error (if any) for each source so
+// callers can distinguish "CRD is simply absent" (nil error) from "discovery
+// failed" (non-nil error, e.g. RBAC denial or network timeout). They wrap
+// ErrKEDACRDNotDetected / ErrVPACRDNotDetected respectively, so callers can
+// match with errors.Is.
 type CRDAvailability struct {
-	KEDA bool
-	VPA  bool
+	KEDA     bool
+	VPA      bool
+	KEDError error
+	VPAError error
 }
 
 // NewDiscoveryClient creates a discovery client from the same Options used for
@@ -200,19 +207,25 @@ func NewDiscoveryClient(opts Options) (discovery.DiscoveryInterface, error) {
 }
 
 // DetectCRDs checks whether KEDA and VPA CRDs are installed on the cluster.
-// Any discovery error (including CRD not found) is treated as absent.
-// The function never returns an error.
+// Each source's discovery error is preserved in CRDAvailability.KEDError /
+// VPAError (wrapping ErrKEDACRDNotDetected / ErrVPACRDNotDetected) so callers
+// can distinguish "CRD is absent" (the wrapped discovery error, typically a
+// not-found) from "discovery itself failed" (e.g. RBAC denial, network
+// timeout). The function never returns a top-level error: callers consume the
+// per-source results and surface them via Status entries.
 func DetectCRDs(disco discovery.DiscoveryInterface) CRDAvailability {
 	var avail CRDAvailability
 
-	_, err := disco.ServerResourcesForGroupVersion("keda.sh/v1alpha1")
-	if err == nil {
+	if _, err := disco.ServerResourcesForGroupVersion("keda.sh/v1alpha1"); err == nil {
 		avail.KEDA = true
+	} else {
+		avail.KEDError = fmt.Errorf("keda.sh/v1alpha1: %w: %w", ErrKEDACRDNotDetected, err)
 	}
 
-	_, err = disco.ServerResourcesForGroupVersion("autoscaling.k8s.io/v1")
-	if err == nil {
+	if _, err := disco.ServerResourcesForGroupVersion("autoscaling.k8s.io/v1"); err == nil {
 		avail.VPA = true
+	} else {
+		avail.VPAError = fmt.Errorf("autoscaling.k8s.io/v1: %w: %w", ErrVPACRDNotDetected, err)
 	}
 
 	return avail

@@ -14,7 +14,7 @@ import (
 // overrides are invalid.
 func SimulateHPA(hpa *autoscalingv2.HorizontalPodAutoscaler, overrides map[string]string, weights HealthWeights) (*SimulationResult, error) {
 	if hpa == nil {
-		return nil, fmt.Errorf("HPA must not be nil")
+		return nil, ErrNilHPA
 	}
 
 	beforeAnalysis := AnalyzeWithOptions(hpa, true, AnalysisOptions{HealthWeights: weights})

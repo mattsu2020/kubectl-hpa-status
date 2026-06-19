@@ -9,6 +9,7 @@ import (
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"k8s.io/client-go/discovery"
 )
 
@@ -132,4 +133,17 @@ func parseKubeMinor(version string) int {
 	})
 	minor, _ := strconv.Atoi(minorStr)
 	return minor
+}
+
+// markFlagDeprecated annotates a flag so that its --help text and the generated
+// docs make the deprecation visible. pflag has no first-class Deprecated field,
+// so the convention here is to prefix the usage string with "[deprecated] " so
+// the rename is visible to users running --help. The runtime stderr notice is
+// emitted by internal/cmdoptions.warnDeprecatedOnce when the alias is actually
+// used. Removal of the flagged aliases is scheduled for v2.0; see ROADMAP.md.
+func markFlagDeprecated(flags *pflag.FlagSet, name, reason string) {
+	if f := flags.Lookup(name); f != nil {
+		f.Usage = fmt.Sprintf("[deprecated] %s", reason)
+		f.Hidden = false // keep visible in --help so users learn about the rename
+	}
 }

@@ -116,6 +116,13 @@ type Analysis struct {
 	HiddenFactors []HiddenDecisionFactor `json:"hiddenFactors,omitempty" yaml:"hiddenFactors,omitempty"`
 	// Summary is a one-line direction summary of the HPA scaling state.
 	Summary string `json:"summary" yaml:"summary"`
+	// SummaryKey is the stable i18n key (e.g. "dir_scale_up") that identifies
+	// which branch of SummarizeDirection produced Summary. It lets renderers
+	// translate Summary without re-deriving the decision switch from the
+	// English text, and gives machine consumers a stable enum. Empty only when
+	// Summary has been overwritten outside SummarizeDirection (e.g. the stale
+	// prefix); in that case Summary renders verbatim.
+	SummaryKey string `json:"summaryKey,omitempty" yaml:"summaryKey,omitempty"`
 	// Conditions lists the HPA conditions sorted by priority.
 	Conditions []Condition `json:"conditions" yaml:"conditions"`
 	// Metrics lists formatted metric data for each current metric.

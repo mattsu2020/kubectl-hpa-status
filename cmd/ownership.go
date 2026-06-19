@@ -46,7 +46,7 @@ func newOwnershipCommand(opts *options) *cobra.Command {
 }
 
 func runOwnership(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	client, err := opts.NewClient()
+	client, err := newClientOrDefault(opts)
 	if err != nil {
 		return err
 	}
