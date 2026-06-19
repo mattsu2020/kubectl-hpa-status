@@ -201,19 +201,26 @@ Refactoring notes:
     canonical types drop the `Audit` prefix to avoid stuttering
     (`audit.AuditReport` → `audit.Report`); the aliases preserve the
     historical names.
+  - `pkg/hpa/blocker` — scale-out blocker detection (`blocker.AnalyzeBlockers`,
+    `blocker.Report`, `blocker.Finding`, `blocker.Severity`). Re-exported as
+    `hpaanalysis.AnalyzeBlockers`, `hpaanalysis.BlockerReport`, etc. Types drop
+    the `Blocker` prefix in the canonical package.
+  - `pkg/hpa/warmup` — pod warmup bottleneck analysis (`warmup.AnalyzeWarmup`,
+    `warmup.Analysis`, `warmup.Bottleneck`, `warmup.Input`). Re-exported as
+    `hpaanalysis.AnalyzeWarmup`, `hpaanalysis.WarmupAnalysis`, etc. Types drop
+    the `Warmup` prefix in the canonical package.
   Domains that depend on the shared clock (`now()`), labels machinery, or
   `FormatMetricStatus` (capacity, retrospective, timeline, metrics, decision,
   simulate) remain in `pkg/hpa` until those shared helpers are extracted into a
   core sub-package; that extraction is deferred until a domain that needs them
   is moved.
-- Audit, blocker, pod-analysis, events, and the remaining mid-risk domains
-  (warmup, flapping, churn, policy, lint, readiness) were assessed for
-  extraction. Audit has been extracted (see above). The remaining domains
-  each depend on one or more shared helpers that still span the analysis core
-  (`FormatMetricStatus`, the `labels` machinery). They are intentionally left
-  in `pkg/hpa` as a single cohesive analysis package; extracting the labels
-  machinery into a shared core sub-package is the prerequisite for the next
-  batch of domain extractions.
+- Audit, blocker, warmup, keda, and vpa have been extracted into
+  self-contained sub-packages. The remaining mid-risk domains (pod-analysis,
+  events, flapping, churn, policy, lint, readiness) each depend on one or more
+  shared helpers that still span the analysis core (`FormatMetricStatus`, the
+  `labels` machinery). They are intentionally left in `pkg/hpa` as a single
+  cohesive analysis package; extracting those helpers into a shared core
+  sub-package is the prerequisite for the next batch of domain extractions.
 - Shared helpers have been progressively extracted into `pkg/hpa/internal/`
   sub-packages so leaf domains can use them without reaching back into the
   analysis core:
@@ -227,6 +234,10 @@ Refactoring notes:
     (`util.LooksLikeKEDAManaged`, `util.MarshalJSON`,
     `util.KubectlPatchCommand`, `util.MissingPolicies`). `pkg/hpa` re-exports
     via unexported wrappers (`looksLikeKEDAManaged`, `marshalJSON`, etc.).
+  - `pkg/hpa/internal/confidence` — shared evidence-tier enums
+    (`confidence.Severity`, `confidence.Confidence`, `confidence.Classification`
+    with their constants). `pkg/hpa` re-exports as `Severity` /
+    `ConfidenceHigh` / etc.
 - The `cmd/bundle` and `cmd/replay` sub-package extractions were assessed and
   deferred. Both groups depend on 10+ unexported `cmd/`-package helpers
   (`newClientOrDefault`, `applyCommandPreset`, `fetchSnapshot*`,

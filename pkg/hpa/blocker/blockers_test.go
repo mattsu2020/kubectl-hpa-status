@@ -1,4 +1,4 @@
-package hpa
+package blocker
 
 import (
 	"strings"
@@ -6,7 +6,7 @@ import (
 )
 
 func TestAnalyzeBlockers_ScaleOutWithPendingAndQuota(t *testing.T) {
-	input := BlockerInput{
+	input := Input{
 		DesiredReplicas:       12,
 		CurrentReplicas:       8,
 		TargetReadyReplicas:   8,
@@ -15,14 +15,14 @@ func TestAnalyzeBlockers_ScaleOutWithPendingAndQuota(t *testing.T) {
 		MaxReplicas:           20,
 		ReadyPods:             8,
 		TotalPods:             12,
-		PendingPods: []BlockerPodInfo{
+		PendingPods: []PodInfo{
 			{Name: "web-1", Phase: "Pending", Unschedulable: true, Reasons: []string{"Insufficient cpu"}},
 			{Name: "web-2", Phase: "Pending", Unschedulable: true, Reasons: []string{"Insufficient cpu"}},
 			{Name: "web-3", Phase: "Pending", Unschedulable: true, Reasons: []string{"Insufficient cpu"}},
 			{Name: "web-4", Phase: "Pending"},
 		},
 		FailedSchedulingEvents: []string{"0/3 nodes available: Insufficient cpu (3)"},
-		Quotas: []BlockerQuotaInfo{
+		Quotas: []QuotaInfo{
 			{Name: "compute", Resource: "requests.cpu", Used: "45", Hard: "48", Ratio: 0.9375},
 		},
 		ScalingActive: true,
@@ -66,7 +66,7 @@ func TestAnalyzeBlockers_ScaleOutWithPendingAndQuota(t *testing.T) {
 }
 
 func TestAnalyzeBlockers_NoScaleOutNeeded(t *testing.T) {
-	input := BlockerInput{
+	input := Input{
 		DesiredReplicas:     8,
 		CurrentReplicas:     8,
 		TargetReadyReplicas: 8,
@@ -84,7 +84,7 @@ func TestAnalyzeBlockers_NoScaleOutNeeded(t *testing.T) {
 }
 
 func TestAnalyzeBlockers_ContainerFailure(t *testing.T) {
-	input := BlockerInput{
+	input := Input{
 		DesiredReplicas:     5,
 		CurrentReplicas:     3,
 		TargetReadyReplicas: 2,
@@ -113,15 +113,15 @@ func TestAnalyzeBlockers_ContainerFailure(t *testing.T) {
 	}
 }
 
-func TestAnalyzeBlockers_BlockerSeverityOrder(t *testing.T) {
-	input := BlockerInput{
+func TestAnalyzeBlockers_SeverityOrder(t *testing.T) {
+	input := Input{
 		DesiredReplicas:     12,
 		CurrentReplicas:     8,
 		TargetReadyReplicas: 8,
-		PendingPods: []BlockerPodInfo{
+		PendingPods: []PodInfo{
 			{Name: "web-1", Phase: "Pending", Unschedulable: true},
 		},
-		Quotas: []BlockerQuotaInfo{
+		Quotas: []QuotaInfo{
 			{Name: "compute", Resource: "requests.cpu", Used: "40", Hard: "48", Ratio: 0.83},
 		},
 		ScalingActive: true,
@@ -141,7 +141,7 @@ func TestAnalyzeBlockers_BlockerSeverityOrder(t *testing.T) {
 }
 
 func TestAnalyzeBlockers_EmptyInput(t *testing.T) {
-	input := BlockerInput{
+	input := Input{
 		DesiredReplicas:     3,
 		CurrentReplicas:     3,
 		TargetReadyReplicas: 3,
@@ -160,7 +160,7 @@ func TestAnalyzeBlockers_EmptyInput(t *testing.T) {
 }
 
 func TestSortFindingsBySeverity(t *testing.T) {
-	findings := []BlockerFinding{
+	findings := []Finding{
 		{ID: "info", Severity: BlockerInfo, Message: "info"},
 		{ID: "high", Severity: BlockerHigh, Message: "high"},
 		{ID: "medium", Severity: BlockerMedium, Message: "medium"},

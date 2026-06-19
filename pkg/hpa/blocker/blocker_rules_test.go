@@ -1,4 +1,4 @@
-package hpa
+package blocker
 
 import (
 	"strings"
@@ -7,7 +7,7 @@ import (
 
 func TestScaleOutDesiredRule(t *testing.T) {
 	t.Run("wants scale out", func(t *testing.T) {
-		input := BlockerInput{DesiredReplicas: 12, CurrentReplicas: 8}
+		input := Input{DesiredReplicas: 12, CurrentReplicas: 8}
 		findings := scaleOutDesiredRule(input)
 		if len(findings) != 1 {
 			t.Fatalf("expected 1 finding, got %d", len(findings))
@@ -21,7 +21,7 @@ func TestScaleOutDesiredRule(t *testing.T) {
 	})
 
 	t.Run("no scale out needed", func(t *testing.T) {
-		input := BlockerInput{DesiredReplicas: 8, CurrentReplicas: 8}
+		input := Input{DesiredReplicas: 8, CurrentReplicas: 8}
 		findings := scaleOutDesiredRule(input)
 		if len(findings) != 0 {
 			t.Fatalf("expected 0 findings, got %d", len(findings))
@@ -29,7 +29,7 @@ func TestScaleOutDesiredRule(t *testing.T) {
 	})
 
 	t.Run("scale down", func(t *testing.T) {
-		input := BlockerInput{DesiredReplicas: 5, CurrentReplicas: 8}
+		input := Input{DesiredReplicas: 5, CurrentReplicas: 8}
 		findings := scaleOutDesiredRule(input)
 		if len(findings) != 0 {
 			t.Fatalf("expected 0 findings for scale-down, got %d", len(findings))
@@ -39,10 +39,10 @@ func TestScaleOutDesiredRule(t *testing.T) {
 
 func TestPendingPodsRule(t *testing.T) {
 	t.Run("pending pods exist", func(t *testing.T) {
-		input := BlockerInput{
+		input := Input{
 			DesiredReplicas: 12,
 			CurrentReplicas: 8,
-			PendingPods: []BlockerPodInfo{
+			PendingPods: []PodInfo{
 				{Name: "web-abc", Phase: "Pending", Unschedulable: true},
 				{Name: "web-def", Phase: "Pending"},
 			},
@@ -60,7 +60,7 @@ func TestPendingPodsRule(t *testing.T) {
 	})
 
 	t.Run("no pending pods", func(t *testing.T) {
-		input := BlockerInput{DesiredReplicas: 8, CurrentReplicas: 8}
+		input := Input{DesiredReplicas: 8, CurrentReplicas: 8}
 		findings := pendingPodsRule(input)
 		if len(findings) != 0 {
 			t.Fatalf("expected 0 findings, got %d", len(findings))
@@ -70,8 +70,8 @@ func TestPendingPodsRule(t *testing.T) {
 
 func TestUnschedulableRule(t *testing.T) {
 	t.Run("unschedulable pods", func(t *testing.T) {
-		input := BlockerInput{
-			PendingPods: []BlockerPodInfo{
+		input := Input{
+			PendingPods: []PodInfo{
 				{Name: "web-abc", Phase: "Pending", Unschedulable: true, Reasons: []string{"0/3 nodes available"}},
 			},
 		}
@@ -85,7 +85,7 @@ func TestUnschedulableRule(t *testing.T) {
 	})
 
 	t.Run("failed scheduling event", func(t *testing.T) {
-		input := BlockerInput{
+		input := Input{
 			FailedSchedulingEvents: []string{"0/3 nodes available: Insufficient cpu (3)"},
 		}
 		findings := unschedulableRule(input)
@@ -104,7 +104,7 @@ func TestUnschedulableRule(t *testing.T) {
 	})
 
 	t.Run("no scheduling issues", func(t *testing.T) {
-		input := BlockerInput{}
+		input := Input{}
 		findings := unschedulableRule(input)
 		if len(findings) != 0 {
 			t.Fatalf("expected 0 findings, got %d", len(findings))
@@ -114,7 +114,7 @@ func TestUnschedulableRule(t *testing.T) {
 
 func TestContainerFailureRule(t *testing.T) {
 	t.Run("image pull backoff", func(t *testing.T) {
-		input := BlockerInput{
+		input := Input{
 			ContainerStatuses: []ContainerStatusSummary{
 				{Pod: "web-abc", Container: "app", Waiting: true, WaitingReason: "ImagePullBackOff"},
 			},
@@ -132,7 +132,7 @@ func TestContainerFailureRule(t *testing.T) {
 	})
 
 	t.Run("crash loop back off", func(t *testing.T) {
-		input := BlockerInput{
+		input := Input{
 			ContainerStatuses: []ContainerStatusSummary{
 				{Pod: "web-abc", Container: "app", Waiting: true, WaitingReason: "CrashLoopBackOff", RestartCount: 5},
 			},
@@ -150,7 +150,7 @@ func TestContainerFailureRule(t *testing.T) {
 	})
 
 	t.Run("no container issues", func(t *testing.T) {
-		input := BlockerInput{
+		input := Input{
 			ContainerStatuses: []ContainerStatusSummary{
 				{Pod: "web-abc", Container: "app", Waiting: false},
 			},
@@ -162,7 +162,7 @@ func TestContainerFailureRule(t *testing.T) {
 	})
 
 	t.Run("multiple pods consolidated", func(t *testing.T) {
-		input := BlockerInput{
+		input := Input{
 			ContainerStatuses: []ContainerStatusSummary{
 				{Pod: "web-1", Container: "app", Waiting: true, WaitingReason: "ImagePullBackOff"},
 				{Pod: "web-2", Container: "app", Waiting: true, WaitingReason: "ImagePullBackOff"},
@@ -187,8 +187,8 @@ func TestContainerFailureRule(t *testing.T) {
 
 func TestQuotaNearLimitRule(t *testing.T) {
 	t.Run("quota near limit", func(t *testing.T) {
-		input := BlockerInput{
-			Quotas: []BlockerQuotaInfo{
+		input := Input{
+			Quotas: []QuotaInfo{
 				{Name: "compute", Resource: "requests.cpu", Used: "47.5", Hard: "48", Ratio: 0.99},
 			},
 		}
@@ -205,8 +205,8 @@ func TestQuotaNearLimitRule(t *testing.T) {
 	})
 
 	t.Run("quota at 85 percent", func(t *testing.T) {
-		input := BlockerInput{
-			Quotas: []BlockerQuotaInfo{
+		input := Input{
+			Quotas: []QuotaInfo{
 				{Name: "compute", Resource: "requests.cpu", Used: "40", Hard: "48", Ratio: 0.85},
 			},
 		}
@@ -220,7 +220,7 @@ func TestQuotaNearLimitRule(t *testing.T) {
 	})
 
 	t.Run("no quota constraints", func(t *testing.T) {
-		input := BlockerInput{}
+		input := Input{}
 		findings := quotaNearLimitRule(input)
 		if len(findings) != 0 {
 			t.Fatalf("expected 0 findings, got %d", len(findings))
@@ -230,7 +230,7 @@ func TestQuotaNearLimitRule(t *testing.T) {
 
 func TestReadinessStalledRule(t *testing.T) {
 	t.Run("readiness stalled", func(t *testing.T) {
-		input := BlockerInput{
+		input := Input{
 			DesiredReplicas:     12,
 			CurrentReplicas:     12,
 			TargetReadyReplicas: 8,
@@ -249,11 +249,11 @@ func TestReadinessStalledRule(t *testing.T) {
 	})
 
 	t.Run("not stalled with pending pods", func(t *testing.T) {
-		input := BlockerInput{
+		input := Input{
 			DesiredReplicas:     12,
 			CurrentReplicas:     12,
 			TargetReadyReplicas: 8,
-			PendingPods:         []BlockerPodInfo{{Name: "web-abc", Phase: "Pending"}},
+			PendingPods:         []PodInfo{{Name: "web-abc", Phase: "Pending"}},
 		}
 		findings := readinessStalledRule(input)
 		if len(findings) != 0 {
@@ -262,7 +262,7 @@ func TestReadinessStalledRule(t *testing.T) {
 	})
 
 	t.Run("all ready", func(t *testing.T) {
-		input := BlockerInput{
+		input := Input{
 			DesiredReplicas:     8,
 			CurrentReplicas:     8,
 			TargetReadyReplicas: 8,
@@ -276,7 +276,7 @@ func TestReadinessStalledRule(t *testing.T) {
 
 func TestNodeCapacityRule(t *testing.T) {
 	t.Run("no nodes", func(t *testing.T) {
-		input := BlockerInput{
+		input := Input{
 			NodeCapacity: &NodeCapacitySummary{TotalNodes: 0},
 		}
 		findings := nodeCapacityRule(input)
@@ -289,7 +289,7 @@ func TestNodeCapacityRule(t *testing.T) {
 	})
 
 	t.Run("all nodes tainted", func(t *testing.T) {
-		input := BlockerInput{
+		input := Input{
 			NodeCapacity: &NodeCapacitySummary{TotalNodes: 3, TaintedNodes: 3},
 		}
 		findings := nodeCapacityRule(input)
@@ -302,7 +302,7 @@ func TestNodeCapacityRule(t *testing.T) {
 	})
 
 	t.Run("no node data", func(t *testing.T) {
-		input := BlockerInput{}
+		input := Input{}
 		findings := nodeCapacityRule(input)
 		if len(findings) != 0 {
 			t.Fatalf("expected 0 findings when no node data, got %d", len(findings))
@@ -312,7 +312,7 @@ func TestNodeCapacityRule(t *testing.T) {
 
 func TestMetricsHealthyInfoRule(t *testing.T) {
 	t.Run("scaling active", func(t *testing.T) {
-		input := BlockerInput{ScalingActive: true}
+		input := Input{ScalingActive: true}
 		findings := metricsHealthyInfoRule(input)
 		if len(findings) != 1 {
 			t.Fatalf("expected 1 finding, got %d", len(findings))
@@ -326,7 +326,7 @@ func TestMetricsHealthyInfoRule(t *testing.T) {
 	})
 
 	t.Run("scaling inactive", func(t *testing.T) {
-		input := BlockerInput{ScalingActive: false}
+		input := Input{ScalingActive: false}
 		findings := metricsHealthyInfoRule(input)
 		if len(findings) != 1 {
 			t.Fatalf("expected 1 finding, got %d", len(findings))

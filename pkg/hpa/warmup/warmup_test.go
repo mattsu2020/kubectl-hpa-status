@@ -1,4 +1,4 @@
-package hpa
+package warmup
 
 import (
 	"testing"
@@ -9,7 +9,7 @@ import (
 func TestAnalyzeWarmup(t *testing.T) {
 	tests := []struct {
 		name            string
-		input           WarmupInput
+		input           Input
 		wantNil         bool
 		wantSummary     string
 		wantBottlenecks int
@@ -20,7 +20,7 @@ func TestAnalyzeWarmup(t *testing.T) {
 	}{
 		{
 			name: "all pods ready returns nil",
-			input: WarmupInput{
+			input: Input{
 				DesiredReplicas: 5,
 				MinReplicas:     1,
 				ReadyPods:       5,
@@ -30,7 +30,7 @@ func TestAnalyzeWarmup(t *testing.T) {
 		},
 		{
 			name: "at minReplicas returns nil",
-			input: WarmupInput{
+			input: Input{
 				DesiredReplicas: 2,
 				MinReplicas:     2,
 				ReadyPods:       1,
@@ -40,7 +40,7 @@ func TestAnalyzeWarmup(t *testing.T) {
 		},
 		{
 			name: "zero total pods returns nil",
-			input: WarmupInput{
+			input: Input{
 				DesiredReplicas: 5,
 				MinReplicas:     1,
 				ReadyPods:       0,
@@ -50,7 +50,7 @@ func TestAnalyzeWarmup(t *testing.T) {
 		},
 		{
 			name: "readiness probe bottleneck",
-			input: WarmupInput{
+			input: Input{
 				DesiredReplicas:         10,
 				CurrentReplicas:         10,
 				MinReplicas:             1,
@@ -60,7 +60,7 @@ func TestAnalyzeWarmup(t *testing.T) {
 				TargetReadyReplicas:     4,
 				TargetAvailableReplicas: 3,
 				ReadinessProbePresent:   true,
-				PodDetails: []WarmupPodDetail{
+				PodDetails: []PodDetail{
 					{Name: "pod-1", AgeSeconds: 120, Ready: true, ContainerState: "running", TimeToReadySeconds: 142},
 					{Name: "pod-2", AgeSeconds: 120, Ready: true, ContainerState: "running", TimeToReadySeconds: 130},
 					{Name: "pod-3", AgeSeconds: 120, Ready: true, ContainerState: "running", TimeToReadySeconds: 150},
@@ -83,14 +83,14 @@ func TestAnalyzeWarmup(t *testing.T) {
 		},
 		{
 			name: "image pull bottleneck",
-			input: WarmupInput{
+			input: Input{
 				DesiredReplicas: 5,
 				CurrentReplicas: 5,
 				MinReplicas:     1,
 				ReadyPods:       3,
 				TotalPods:       5,
 				ScalingActive:   true,
-				PodDetails: []WarmupPodDetail{
+				PodDetails: []PodDetail{
 					{Name: "pod-1", Ready: true, ContainerState: "running"},
 					{Name: "pod-2", Ready: true, ContainerState: "running"},
 					{Name: "pod-3", Ready: true, ContainerState: "running"},
@@ -106,14 +106,14 @@ func TestAnalyzeWarmup(t *testing.T) {
 		},
 		{
 			name: "scheduling bottleneck",
-			input: WarmupInput{
+			input: Input{
 				DesiredReplicas: 5,
 				CurrentReplicas: 5,
 				MinReplicas:     1,
 				ReadyPods:       3,
 				TotalPods:       5,
 				ScalingActive:   true,
-				PodDetails: []WarmupPodDetail{
+				PodDetails: []PodDetail{
 					{Name: "pod-1", Ready: true, ContainerState: "running"},
 					{Name: "pod-2", Ready: true, ContainerState: "running"},
 					{Name: "pod-3", Ready: true, ContainerState: "running"},
@@ -129,14 +129,14 @@ func TestAnalyzeWarmup(t *testing.T) {
 		},
 		{
 			name: "container crash bottleneck",
-			input: WarmupInput{
+			input: Input{
 				DesiredReplicas: 5,
 				CurrentReplicas: 5,
 				MinReplicas:     1,
 				ReadyPods:       3,
 				TotalPods:       5,
 				ScalingActive:   true,
-				PodDetails: []WarmupPodDetail{
+				PodDetails: []PodDetail{
 					{Name: "pod-1", Ready: true, ContainerState: "running"},
 					{Name: "pod-2", Ready: true, ContainerState: "running"},
 					{Name: "pod-3", Ready: true, ContainerState: "running"},
@@ -152,7 +152,7 @@ func TestAnalyzeWarmup(t *testing.T) {
 		},
 		{
 			name: "multiple bottlenecks",
-			input: WarmupInput{
+			input: Input{
 				DesiredReplicas:         10,
 				CurrentReplicas:         10,
 				MinReplicas:             1,
@@ -161,7 +161,7 @@ func TestAnalyzeWarmup(t *testing.T) {
 				ScalingActive:           true,
 				ReadinessProbePresent:   true,
 				TargetAvailableReplicas: 3,
-				PodDetails: []WarmupPodDetail{
+				PodDetails: []PodDetail{
 					{Name: "pod-1", Ready: true, ContainerState: "running"},
 					{Name: "pod-2", Ready: true, ContainerState: "running"},
 					{Name: "pod-3", Ready: true, ContainerState: "running"},
@@ -182,7 +182,7 @@ func TestAnalyzeWarmup(t *testing.T) {
 		},
 		{
 			name: "no pods ready yet time to ready is zero",
-			input: WarmupInput{
+			input: Input{
 				DesiredReplicas:       5,
 				CurrentReplicas:       5,
 				MinReplicas:           1,
@@ -190,7 +190,7 @@ func TestAnalyzeWarmup(t *testing.T) {
 				TotalPods:             5,
 				ScalingActive:         true,
 				ReadinessProbePresent: true,
-				PodDetails: []WarmupPodDetail{
+				PodDetails: []PodDetail{
 					{Name: "pod-1", AgeSeconds: 30, Ready: false, ContainerState: "running"},
 					{Name: "pod-2", AgeSeconds: 30, Ready: false, ContainerState: "running"},
 					{Name: "pod-3", AgeSeconds: 30, Ready: false, ContainerState: "running"},
@@ -208,14 +208,14 @@ func TestAnalyzeWarmup(t *testing.T) {
 		},
 		{
 			name: "metrics inactive adds critical bottleneck",
-			input: WarmupInput{
+			input: Input{
 				DesiredReplicas: 5,
 				CurrentReplicas: 5,
 				MinReplicas:     1,
 				ReadyPods:       3,
 				TotalPods:       5,
 				ScalingActive:   false,
-				PodDetails: []WarmupPodDetail{
+				PodDetails: []PodDetail{
 					{Name: "pod-1", Ready: true, ContainerState: "running"},
 					{Name: "pod-2", Ready: true, ContainerState: "running"},
 					{Name: "pod-3", Ready: true, ContainerState: "running"},
@@ -231,7 +231,7 @@ func TestAnalyzeWarmup(t *testing.T) {
 		},
 		{
 			name: "startup probe bottleneck",
-			input: WarmupInput{
+			input: Input{
 				DesiredReplicas:             5,
 				CurrentReplicas:             5,
 				MinReplicas:                 1,
@@ -241,7 +241,7 @@ func TestAnalyzeWarmup(t *testing.T) {
 				ReadinessProbePresent:       true,
 				StartupProbePresent:         true,
 				StartupProbeMaxDelaySeconds: 180,
-				PodDetails: []WarmupPodDetail{
+				PodDetails: []PodDetail{
 					{Name: "pod-1", AgeSeconds: 300, Ready: true, ContainerState: "running"},
 					{Name: "pod-2", AgeSeconds: 300, Ready: true, ContainerState: "running"},
 					{Name: "pod-3", AgeSeconds: 300, Ready: true, ContainerState: "running"},
@@ -257,7 +257,7 @@ func TestAnalyzeWarmup(t *testing.T) {
 		},
 		{
 			name: "scaling limited adds action",
-			input: WarmupInput{
+			input: Input{
 				DesiredReplicas: 5,
 				CurrentReplicas: 5,
 				MinReplicas:     1,
@@ -266,7 +266,7 @@ func TestAnalyzeWarmup(t *testing.T) {
 				TotalPods:       5,
 				ScalingActive:   true,
 				ScalingLimited:  true,
-				PodDetails: []WarmupPodDetail{
+				PodDetails: []PodDetail{
 					{Name: "pod-1", Ready: true, ContainerState: "running"},
 					{Name: "pod-2", Ready: true, ContainerState: "running"},
 					{Name: "pod-3", Ready: true, ContainerState: "running"},
@@ -325,7 +325,7 @@ func TestAnalyzeWarmup(t *testing.T) {
 func TestComputeTimeToReady(t *testing.T) {
 	tests := []struct {
 		name    string
-		details []WarmupPodDetail
+		details []PodDetail
 		wantAvg int64
 		wantP95 int64
 		wantMax int64
@@ -339,7 +339,7 @@ func TestComputeTimeToReady(t *testing.T) {
 		},
 		{
 			name: "no ready pods",
-			details: []WarmupPodDetail{
+			details: []PodDetail{
 				{Name: "pod-1", Ready: false},
 				{Name: "pod-2", Ready: false},
 			},
@@ -349,7 +349,7 @@ func TestComputeTimeToReady(t *testing.T) {
 		},
 		{
 			name: "single ready pod",
-			details: []WarmupPodDetail{
+			details: []PodDetail{
 				{Name: "pod-1", Ready: true, TimeToReadySeconds: 100},
 			},
 			wantAvg: 100,
@@ -358,7 +358,7 @@ func TestComputeTimeToReady(t *testing.T) {
 		},
 		{
 			name: "multiple ready pods",
-			details: []WarmupPodDetail{
+			details: []PodDetail{
 				{Name: "pod-1", Ready: true, TimeToReadySeconds: 100},
 				{Name: "pod-2", Ready: true, TimeToReadySeconds: 200},
 				{Name: "pod-3", Ready: true, TimeToReadySeconds: 300},
@@ -370,7 +370,7 @@ func TestComputeTimeToReady(t *testing.T) {
 		},
 		{
 			name: "many pods for p95 calculation",
-			details: []WarmupPodDetail{
+			details: []PodDetail{
 				{Name: "pod-1", Ready: true, TimeToReadySeconds: 10},
 				{Name: "pod-2", Ready: true, TimeToReadySeconds: 20},
 				{Name: "pod-3", Ready: true, TimeToReadySeconds: 30},
