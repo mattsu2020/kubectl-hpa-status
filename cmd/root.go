@@ -114,6 +114,12 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newVersionCommand())
 	root.AddCommand(newCompletionCommand(root))
 
+	// alpha groups operational/experimental commands (policy, gitops, bundles,
+	// capacity planning, record analysis). The same commands remain reachable
+	// at their top-level path, marked Deprecated, until v2.0.
+	root.AddCommand(newAlphaCommand(opts))
+	markAlphaAliasesDeprecated(root)
+
 	_ = root.MarkPersistentFlagFilename("kubeconfig")
 	_ = root.MarkPersistentFlagFilename("config")
 

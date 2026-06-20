@@ -165,6 +165,19 @@ For RBAC permissions, see [docs/rbac.yaml](docs/rbac.yaml).
 
 `--no-enrich`/`--hpa-only` and `--deep` are also available as `--analysis-profile` values (`--analysis-profile deep`). The plain `status` run reads only the HPA object, so it no longer requires Pod/Deployment permissions.
 
+### Command surface
+
+Commands are grouped into four layers so the top-level surface stays focused on daily HPA work:
+
+| Layer | Commands | Notes |
+| --- | --- | --- |
+| Basic | `status`, `list`, `scan`, `doctor`, `watch`, `explain`, `tui` | Daily HPA inspection |
+| Investigation | `trace`, `timeline`, `metrics`, `recommend`, `path`, `blockers`, `rollout`, `compare` | Root-cause analysis |
+| Operational (`alpha`) | `alpha policy`, `alpha gitops`, `alpha bundle`, `alpha incident-bundle`, `alpha support-bundle` | Apply-time gating, GitOps, support data |
+| Experimental (`alpha`) | `alpha capacity`, `alpha capacity-gap`, `alpha autoscaler-map`, `alpha analyze-record`, `alpha flap` | Niche tools; may change between releases |
+
+The `alpha` commands are also reachable at their historical top-level path (e.g. `bundle`) for compatibility, but those aliases are deprecated and emit a redirect notice; they are scheduled for removal in v2.0. Prefer the `alpha` path.
+
 ## Representative Commands
 
 ```sh

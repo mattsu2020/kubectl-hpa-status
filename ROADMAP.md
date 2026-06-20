@@ -11,6 +11,7 @@ This roadmap tracks planned work that is visible to users and contributors. It i
   - `--recommend` → use `--suggest`
   - `--export-patch` → use `--export`
   Migration is mechanical (drop the alias, use the canonical flag). No behavioral change is involved.
+- **Remove deprecated top-level `alpha` aliases (v2.0):** Operational and experimental commands (`policy`, `gitops`, `bundle`, `incident-bundle`, `support-bundle`, `capacity`, `capacity-gap`, `autoscaler-map`, `analyze-record`, `flap`) now live under the `alpha` parent. The historical top-level paths still work but emit a Cobra deprecation redirect to the `alpha` path; they are scheduled for removal in v2.0. Migration is to switch scripts to the `alpha <cmd>` form.
 
 ## Medium Term
 
