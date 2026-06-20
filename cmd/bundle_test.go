@@ -167,7 +167,7 @@ func TestBundleZipOutput(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to read analysis.json: %v", err)
 			}
-			var parsed map[string]interface{}
+			var parsed map[string]any
 			if err := json.Unmarshal(data, &parsed); err != nil {
 				t.Errorf("analysis.json is not valid JSON: %v", err)
 			}

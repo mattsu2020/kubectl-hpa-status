@@ -26,8 +26,8 @@ func TestAnalyzeFlappingPrevention(t *testing.T) {
 	tests := []struct {
 		name   string
 		events []event.Event
-		hpa    func() *interface { /* placeholder; we build *autoscalingv2.HPA via testutil.BuildHPA */
-		}
+		hpa    func() *any /* placeholder; we build *autoscalingv2.HPA via testutil.BuildHPA */
+
 		wantNil    bool
 		checkExtra func(t *testing.T, got *PreventionReport)
 	}{

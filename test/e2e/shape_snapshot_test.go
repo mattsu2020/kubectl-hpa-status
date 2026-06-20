@@ -169,9 +169,9 @@ func assertStatusReportShape(t *testing.T, raw string, wantName string) {
 // decodeStatusReportJSON mirrors decodeStatusReport but returns the loose
 // map form for tests that need to probe raw keys not exposed on the typed
 // struct (e.g. additive fields added by enrichment flags).
-func decodeStatusReportJSON(t *testing.T, raw string) map[string]interface{} {
+func decodeStatusReportJSON(t *testing.T, raw string) map[string]any {
 	t.Helper()
-	var result map[string]interface{}
+	var result map[string]any
 	if err := json.Unmarshal([]byte(raw), &result); err != nil {
 		t.Fatalf("output is not valid JSON: %v\nraw:\n%s", err, raw)
 	}
@@ -179,9 +179,9 @@ func decodeStatusReportJSON(t *testing.T, raw string) map[string]interface{} {
 }
 
 // analysisMap extracts the nested "analysis" object from a decoded JSON map.
-func analysisMap(t *testing.T, result map[string]interface{}) map[string]interface{} {
+func analysisMap(t *testing.T, result map[string]any) map[string]any {
 	t.Helper()
-	a, ok := result["analysis"].(map[string]interface{})
+	a, ok := result["analysis"].(map[string]any)
 	if !ok {
 		t.Fatalf("JSON output missing top-level 'analysis' object; got keys: %v", keysOf(result))
 	}
@@ -189,7 +189,7 @@ func analysisMap(t *testing.T, result map[string]interface{}) map[string]interfa
 }
 
 // keysOf returns the keys of m in a stable form for diagnostic logging.
-func keysOf(m map[string]interface{}) []string {
+func keysOf(m map[string]any) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)
@@ -227,7 +227,7 @@ func TestE2E_JSONShapeSnapshot(t *testing.T) {
 	}
 
 	// --explain populates structuredInterpretation (additive field).
-	structInterp, ok := a["structuredInterpretation"].([]interface{})
+	structInterp, ok := a["structuredInterpretation"].([]any)
 	if !ok {
 		t.Error("analysis.structuredInterpretation missing or wrong type after --explain")
 	} else if len(structInterp) == 0 {
@@ -235,13 +235,13 @@ func TestE2E_JSONShapeSnapshot(t *testing.T) {
 	}
 
 	// suggestions is always an array (possibly empty).
-	if _, ok := a["suggestions"].([]interface{}); !ok {
+	if _, ok := a["suggestions"].([]any); !ok {
 		t.Errorf("analysis.suggestions missing or wrong type; got %T", a["suggestions"])
 	}
 
 	// events is optional (omitempty), but when present must be an array.
 	if ev, present := result["events"]; present {
-		if _, ok := ev.([]interface{}); !ok {
+		if _, ok := ev.([]any); !ok {
 			t.Errorf("top-level events present but wrong type; got %T", ev)
 		}
 	}

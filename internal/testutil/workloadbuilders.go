@@ -14,7 +14,7 @@ import (
 // HPAs, Events, ...). It is the generalised form of NewFakeClient /
 // NewFakeClientWithEvents for tests that need workload objects alongside HPAs.
 func NewFakeClientWithObjects(objects ...runtime.Object) *fake.Clientset {
-	return fake.NewSimpleClientset(objects...) //nolint:staticcheck // SA1019 deprecated, no replacement without applyconfig. Re-evaluate on client-go upgrade; tracked via ROADMAP.md.
+	return newSimpleFakeClient(objects...)
 }
 
 // ContainerSpec describes a container for the workload builders. Requests and

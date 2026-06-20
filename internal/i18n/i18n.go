@@ -83,7 +83,7 @@ func loadYAML(locPath string) map[string]string {
 		return map[string]string{}
 	}
 
-	var raw map[string]interface{}
+	var raw map[string]any
 	if err := yaml.Unmarshal(data, &raw); err != nil {
 		return map[string]string{}
 	}

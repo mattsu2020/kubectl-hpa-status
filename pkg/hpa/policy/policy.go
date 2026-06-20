@@ -51,7 +51,7 @@ func (r Rule) IsEnabled() bool {
 }
 
 // Params holds rule-specific parameters as a typed map.
-type Params map[string]interface{}
+type Params map[string]any
 
 // Int returns the parameter value as an int, or the default if missing or wrong type.
 func (p Params) Int(key string, defaultVal int) int {
@@ -455,11 +455,11 @@ func applySuggestionPatch(hpa *autoscalingv2.HorizontalPodAutoscaler, patch stri
 	if err != nil {
 		return nil, err
 	}
-	var baseMap map[string]interface{}
+	var baseMap map[string]any
 	if err := json.Unmarshal(base, &baseMap); err != nil {
 		return nil, err
 	}
-	var patchMap map[string]interface{}
+	var patchMap map[string]any
 	if err := json.Unmarshal([]byte(patch), &patchMap); err != nil {
 		return nil, err
 	}
@@ -477,14 +477,14 @@ func applySuggestionPatch(hpa *autoscalingv2.HorizontalPodAutoscaler, patch stri
 	return &patched, nil
 }
 
-func mergeJSONMap(dst, src map[string]interface{}) {
+func mergeJSONMap(dst, src map[string]any) {
 	for key, srcValue := range src {
 		if srcValue == nil {
 			delete(dst, key)
 			continue
 		}
-		srcMap, srcIsMap := srcValue.(map[string]interface{})
-		dstMap, dstIsMap := dst[key].(map[string]interface{})
+		srcMap, srcIsMap := srcValue.(map[string]any)
+		dstMap, dstIsMap := dst[key].(map[string]any)
 		if srcIsMap && dstIsMap {
 			mergeJSONMap(dstMap, srcMap)
 			continue

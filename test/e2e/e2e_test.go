@@ -274,12 +274,12 @@ func TestE2E_JSONOutput(t *testing.T) {
 	raw := buf.String()
 	t.Logf("JSON Output:\n%s", raw)
 
-	var result map[string]interface{}
+	var result map[string]any
 	if err := json.Unmarshal([]byte(raw), &result); err != nil {
 		t.Fatalf("output is not valid JSON: %v\nraw:\n%s", err, raw)
 	}
 
-	analysis, ok := result["analysis"].(map[string]interface{})
+	analysis, ok := result["analysis"].(map[string]any)
 	if !ok {
 		t.Fatal("JSON output missing top-level 'analysis' object")
 	}
@@ -290,7 +290,7 @@ func TestE2E_JSONOutput(t *testing.T) {
 	if _, exists := analysis["healthScore"]; !exists {
 		t.Error("JSON analysis missing 'healthScore' field")
 	}
-	metrics, ok := analysis["metrics"].([]interface{})
+	metrics, ok := analysis["metrics"].([]any)
 	if !ok {
 		t.Error("JSON analysis missing 'metrics' array")
 	} else if len(metrics) == 0 {
@@ -723,7 +723,7 @@ func TestE2E_KEDAManagedHPA(t *testing.T) {
 	assertStatusReportShape(t, kedaRaw, "keda-hpa-test")
 	kedaResult := decodeStatusReportJSON(t, kedaRaw)
 	kedaAnalysis := analysisMap(t, kedaResult)
-	if _, ok := kedaAnalysis["structuredInterpretation"].([]interface{}); !ok {
+	if _, ok := kedaAnalysis["structuredInterpretation"].([]any); !ok {
 		t.Error("expected analysis.structuredInterpretation array after --explain on KEDA HPA")
 	}
 }
@@ -1104,18 +1104,18 @@ func TestE2E_JSONStructuredOutput(t *testing.T) {
 	raw := buf.String()
 	t.Logf("JSON Structured Output:\n%s", raw)
 
-	var result map[string]interface{}
+	var result map[string]any
 	if err := json.Unmarshal([]byte(raw), &result); err != nil {
 		t.Fatalf("output is not valid JSON: %v\nraw:\n%s", err, raw)
 	}
 
-	analysis, ok := result["analysis"].(map[string]interface{})
+	analysis, ok := result["analysis"].(map[string]any)
 	if !ok {
 		t.Fatal("JSON output missing top-level 'analysis' object")
 	}
 
 	// Verify structuredInterpretation array is present.
-	structuredInterp, ok := analysis["structuredInterpretation"].([]interface{})
+	structuredInterp, ok := analysis["structuredInterpretation"].([]any)
 	if !ok {
 		t.Error("JSON analysis missing 'structuredInterpretation' array")
 	} else if len(structuredInterp) == 0 {
@@ -1123,7 +1123,7 @@ func TestE2E_JSONStructuredOutput(t *testing.T) {
 	}
 
 	// Verify suggestions array exists.
-	suggestions, ok := analysis["suggestions"].([]interface{})
+	suggestions, ok := analysis["suggestions"].([]any)
 	if !ok {
 		t.Error("JSON analysis missing 'suggestions' array")
 	} else {
@@ -1482,11 +1482,11 @@ func writeTempConfigFile(t *testing.T, content string) string {
 // parseHealthScore extracts the healthScore from JSON output for comparison.
 func parseHealthScore(t *testing.T, raw string) int {
 	t.Helper()
-	var result map[string]interface{}
+	var result map[string]any
 	if err := json.Unmarshal([]byte(raw), &result); err != nil {
 		t.Fatalf("output is not valid JSON: %v\nraw:\n%s", err, raw)
 	}
-	analysis, ok := result["analysis"].(map[string]interface{})
+	analysis, ok := result["analysis"].(map[string]any)
 	if !ok {
 		t.Fatal("JSON output missing top-level 'analysis' object")
 	}
@@ -1612,7 +1612,7 @@ func TestE2E_TooFewReplicas(t *testing.T) {
 // TestE2E_JSONTypedDecode verifies that status -o json output decodes into the
 // typed hpaanalysis.StatusReport / Analysis structs without error and that the
 // primary scalar and slice fields are populated with expected values. This is a
-// stronger contract check than the loose map[string]interface{} decode used by
+// stronger contract check than the loose map[string]any decode used by
 // TestE2E_JSONOutput / TestE2E_JSONStructuredOutput.
 func TestE2E_JSONTypedDecode(t *testing.T) {
 	t.Parallel()
