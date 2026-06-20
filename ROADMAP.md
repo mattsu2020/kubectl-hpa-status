@@ -31,11 +31,43 @@ user-visible behavior change.
   `capacitySelector`, `redactBytes`, `outputSelection`, `writeOutput`, ...) into
   a shared `cmd/internal` package first, then migrate callers and shrink the
   `cmd/converters.go` / `cmd/output.go` facades.
-- **Slim the `Analysis` god-struct:** `pkg/hpa.Analysis` has 50+ fields
-  accumulated feature-by-feature. Plan a JSON-schema v2 grouping (e.g.
-  `Analysis.Capacity.*`, `Analysis.Decision.*`) so related fields travel
-  together. This is a breaking JSON change and must ride a major version bump
-  with additive migration.
+- **Slim the `Analysis` god-struct:** `pkg/hpa.Analysis` has 65 fields
+  accumulated feature-by-feature. Plan a JSON-schema v2 grouping so related
+  fields travel together. This is a breaking JSON change and must ride a major
+  version bump with additive migration.
+
+  **Proposed v2 grouping (work-in-progress, subject to design review):**
+
+  | Group | Fields (current) | Notes |
+  |---|---|---|
+  | `Meta` | `Namespace`, `Name`, `Target`, `CreationTimestamp` | HPA identity; stable, top-level today |
+  | `Replicas` | `Current`, `Desired`, `Min`, `Max`, `TargetReplicas` | Core scaling envelope |
+  | `Decision` | `Health`, `HealthScore`, `HealthResult`, `DecisionTrace`, `MetricDecisionTrace`, `StructuredDecisionTrace`, `DecisionSignals`, `ImpactMetric`, `Summary`, `SummaryKey` | Why this replica count |
+  | `Metrics` | `Metrics`, `MetricsDiagnostics`, `MetricFreshnessEntries`, `MetricContract`, `MetricHints`, `AdapterDiagnostics` | Metric pipeline health |
+  | `Conditions` | `Conditions`, `Behavior`, `StabilizationWindowSeconds`, `StabilizationSource`, `StabilizationConfidence`, `StabilizationRemaining` | HPA controller conditions + behavior |
+  | `Capacity` | `CapacityContext`, `CapacityHeadroom`, `CapacityPlan`, `ResourceCheck`, `PodAnalysis`, `ScalePath`, `ReadinessImpact` | Scheduling/capacity picture |
+  | `ScaleToZero` | `ScaleToZero`, `WarmupAnalysis` | Scale-to-zero subsystem (shared cold-start theme) |
+  | `Stability` | `FlappingSimulation`, `FlappingPrevention`, `FlappingDiagnosis`, `ChurnAnalysis` | Flapping/churn diagnosis |
+  | `Advisory` | `VPAConflict`, `VPAAdvisory`, `ContainerAdvisor`, `BehaviorAdvisor` | VPA/container tuning advice |
+  | `Controllers` | `KEDAInfo`, `RolloutDiagnosis`, `ControllerProfile` | External controller integrations |
+  | `Blockers` | `BlockerReport`, `GitOpsConflict` | Apply-time gating |
+  | `Actions` | `Actions`, `Suggestions`, `StructuredActions`, `StructuredInterpretation`, `Interpretation`, `Assumptions`, `Warnings` | Recommendations + explainability |
+  | `Lifecycle` | `StaleStatus`, `HealthTrend`, `EnrichmentStatus`, `Debug`, `HiddenFactors` | Freshness/trend/telemetry |
+
+  **Migration strategy (additive):**
+  1. Introduce nested structs (`Analysis.Decision`, `Analysis.Capacity`, ...)
+     alongside the flat fields.
+  2. Add accessors (`a.DecisionHealth() string`) that read from the nested
+     struct when present, falling back to the flat field — keeps internal
+     callers working during migration.
+  3. Emit JSON with both flat (v1) and nested (v2) keys for one minor release,
+     behind `--output-schema v2`.
+  4. Flip the default and drop the flat keys at the v2.0 major bump.
+
+  Step 1+2 are safe to land incrementally (no behavior change); step 3+4 are
+  the breaking boundary. The grouping above mirrors the existing
+  `internal/hpa/{keda,vpa,blocker,warmup,flapping,churn,policy,lint,readiness}`
+  sub-package boundaries so each group maps to one owning sub-package.
 - **Re-evaluate testutil SA1019 suppressions:** `internal/testutil` uses
   `fake.NewSimpleClientset` (deprecated, no applyconfig replacement). Re-check
   on each client-go upgrade and remove the `//nolint:staticcheck` once an
