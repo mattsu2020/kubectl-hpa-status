@@ -19,12 +19,12 @@ import (
 // normalizes user input before comparison.
 var (
 	validColorValues  = []string{"auto", "always", "never"}
-	validOutputValues = []string{"table", "wide", "json", "yaml", "jsonpath", "template", "gotemplate"}
+	validOutputValues = []string{"table", "wide", "json", "jsonl", "yaml", "jsonpath", "template", "gotemplate"}
 	validLangValues   = []string{"en", "ja"}
 
 	// outputFlagDisplayValues mirrors validOutputValues but keeps the
 	// kubectl-conventional "go-template" spelling for the --help string.
-	outputFlagDisplayValues = []string{"table", "wide", "json", "yaml", "jsonpath", "go-template"}
+	outputFlagDisplayValues = []string{"table", "wide", "json", "jsonl", "yaml", "jsonpath", "go-template"}
 )
 
 // isAcceptedNormalized reports whether value (already normalized) is one of the

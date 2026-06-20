@@ -33,6 +33,8 @@ func Format(out io.Writer, format string, templateStr string, value any, writeTe
 		encoder := json.NewEncoder(out)
 		encoder.SetIndent("", "  ")
 		return encoder.Encode(value)
+	case "jsonl":
+		return JSONLines(out, value)
 	case "yaml":
 		data, err := yaml.Marshal(value)
 		if err != nil {
@@ -87,6 +89,30 @@ func ParsePrefixedFormat(format string) (expr string, kind string, ok bool) {
 		}
 	}
 	return "", "", false
+}
+
+// JSONLines writes value as newline-delimited JSON (JSON Lines / jsonl). For a
+// ListReport each item is emitted on its own line; for a StatusReport the
+// single report is one line. Other types produce one line for the whole value.
+// JSONL is the streaming-friendly counterpart of "json": a large list can be
+// produced and consumed one record at a time without buffering the whole array.
+func JSONLines(out io.Writer, value any) error {
+	encoder := json.NewEncoder(out)
+	encoder.SetEscapeHTML(false)
+	switch report := value.(type) {
+	case hpaanalysis.ListReport:
+		for i := range report.Items {
+			if err := encoder.Encode(report.Items[i]); err != nil {
+				return fmt.Errorf("jsonl: encode list item %d: %w", i, err)
+			}
+		}
+		return nil
+	default:
+		if err := encoder.Encode(value); err != nil {
+			return fmt.Errorf("jsonl: encode value: %w", err)
+		}
+		return nil
+	}
 }
 
 // JSONPath evaluates a jsonpath expression against value and writes the result.
