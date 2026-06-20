@@ -1,4 +1,4 @@
-package hpa
+package readiness
 
 import (
 	"strings"
@@ -8,16 +8,16 @@ import (
 func TestAnalyzeReadinessDoctor(t *testing.T) {
 	tests := []struct {
 		name  string
-		input ReadinessDoctorInput
-		check func(t *testing.T, report *ReadinessDoctorReport)
+		input DoctorInput
+		check func(t *testing.T, report *DoctorReport)
 	}{
 		{
 			name: "all pods healthy with probes",
-			input: ReadinessDoctorInput{
+			input: DoctorInput{
 				Namespace: "prod",
 				HPAName:   "web",
 				Target:    "Deployment/web",
-				PodDetails: []ReadinessDoctorPod{
+				PodDetails: []DoctorPod{
 					{Name: "web-1", Ready: true, AgeSeconds: 600},
 					{Name: "web-2", Ready: true, AgeSeconds: 600},
 				},
@@ -27,7 +27,7 @@ func TestAnalyzeReadinessDoctor(t *testing.T) {
 				CPUInitPeriodSeconds:  300,
 				InitialReadinessDelay: 30,
 			},
-			check: func(t *testing.T, report *ReadinessDoctorReport) {
+			check: func(t *testing.T, report *DoctorReport) {
 				if report.PodAgeDistribution.YoungPods != 0 {
 					t.Errorf("expected 0 young pods, got %d", report.PodAgeDistribution.YoungPods)
 				}
@@ -47,11 +47,11 @@ func TestAnalyzeReadinessDoctor(t *testing.T) {
 		},
 		{
 			name: "young pods present without startupProbe",
-			input: ReadinessDoctorInput{
+			input: DoctorInput{
 				Namespace: "prod",
 				HPAName:   "web",
 				Target:    "Deployment/web",
-				PodDetails: []ReadinessDoctorPod{
+				PodDetails: []DoctorPod{
 					{Name: "web-1", Ready: true, AgeSeconds: 60},
 					{Name: "web-2", Ready: false, AgeSeconds: 30},
 					{Name: "web-3", Ready: true, AgeSeconds: 600},
@@ -64,7 +64,7 @@ func TestAnalyzeReadinessDoctor(t *testing.T) {
 				CPUInitPeriodSeconds:  300,
 				InitialReadinessDelay: 30,
 			},
-			check: func(t *testing.T, report *ReadinessDoctorReport) {
+			check: func(t *testing.T, report *DoctorReport) {
 				if report.PodAgeDistribution.YoungPods != 4 {
 					t.Errorf("expected 4 young pods, got %d", report.PodAgeDistribution.YoungPods)
 				}
@@ -93,11 +93,11 @@ func TestAnalyzeReadinessDoctor(t *testing.T) {
 		},
 		{
 			name: "no probes configured with young pods",
-			input: ReadinessDoctorInput{
+			input: DoctorInput{
 				Namespace: "prod",
 				HPAName:   "web",
 				Target:    "Deployment/web",
-				PodDetails: []ReadinessDoctorPod{
+				PodDetails: []DoctorPod{
 					{Name: "web-1", Ready: false, AgeSeconds: 45},
 					{Name: "web-2", Ready: false, AgeSeconds: 90},
 					{Name: "web-3", Ready: true, AgeSeconds: 500},
@@ -107,7 +107,7 @@ func TestAnalyzeReadinessDoctor(t *testing.T) {
 				CPUInitPeriodSeconds:  300,
 				InitialReadinessDelay: 30,
 			},
-			check: func(t *testing.T, report *ReadinessDoctorReport) {
+			check: func(t *testing.T, report *DoctorReport) {
 				if report.ProbeAnalysis.HasReadinessProbe {
 					t.Error("expected readinessProbe to be absent")
 				}
@@ -122,11 +122,11 @@ func TestAnalyzeReadinessDoctor(t *testing.T) {
 		},
 		{
 			name: "high readiness initial delay",
-			input: ReadinessDoctorInput{
+			input: DoctorInput{
 				Namespace: "prod",
 				HPAName:   "web",
 				Target:    "Deployment/web",
-				PodDetails: []ReadinessDoctorPod{
+				PodDetails: []DoctorPod{
 					{Name: "web-1", Ready: true, AgeSeconds: 600},
 				},
 				HasStartupProbe:       true,
@@ -135,7 +135,7 @@ func TestAnalyzeReadinessDoctor(t *testing.T) {
 				CPUInitPeriodSeconds:  300,
 				InitialReadinessDelay: 30,
 			},
-			check: func(t *testing.T, report *ReadinessDoctorReport) {
+			check: func(t *testing.T, report *DoctorReport) {
 				warningText := strings.Join(report.ProbeAnalysis.Warnings, " ")
 				if !strings.Contains(warningText, "initialDelaySeconds") {
 					t.Errorf("expected warning about initialDelaySeconds, got: %v", report.ProbeAnalysis.Warnings)
@@ -148,7 +148,7 @@ func TestAnalyzeReadinessDoctor(t *testing.T) {
 		},
 		{
 			name: "empty pod list",
-			input: ReadinessDoctorInput{
+			input: DoctorInput{
 				Namespace:             "prod",
 				HPAName:               "web",
 				Target:                "Deployment/web",
@@ -158,7 +158,7 @@ func TestAnalyzeReadinessDoctor(t *testing.T) {
 				CPUInitPeriodSeconds:  300,
 				InitialReadinessDelay: 30,
 			},
-			check: func(t *testing.T, report *ReadinessDoctorReport) {
+			check: func(t *testing.T, report *DoctorReport) {
 				if report.PodAgeDistribution.TotalPods != 0 {
 					t.Errorf("expected 0 total pods, got %d", report.PodAgeDistribution.TotalPods)
 				}
@@ -169,11 +169,11 @@ func TestAnalyzeReadinessDoctor(t *testing.T) {
 		},
 		{
 			name: "missing metric pods counted",
-			input: ReadinessDoctorInput{
+			input: DoctorInput{
 				Namespace: "prod",
 				HPAName:   "web",
 				Target:    "Deployment/web",
-				PodDetails: []ReadinessDoctorPod{
+				PodDetails: []DoctorPod{
 					{Name: "web-1", Ready: true, AgeSeconds: 600},
 					{Name: "web-2", Ready: true, AgeSeconds: 600},
 					{Name: "web-3", Ready: true, AgeSeconds: 600},
@@ -184,7 +184,7 @@ func TestAnalyzeReadinessDoctor(t *testing.T) {
 				InitialReadinessDelay: 30,
 				MissingMetricPods:     2,
 			},
-			check: func(t *testing.T, report *ReadinessDoctorReport) {
+			check: func(t *testing.T, report *DoctorReport) {
 				if report.ExclusionEstimate.MissingMetricPods != 2 {
 					t.Errorf("expected 2 missing metric pods, got %d", report.ExclusionEstimate.MissingMetricPods)
 				}

@@ -4,6 +4,8 @@ package hpa
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/suggestion"
 )
 
 const limitation = "[observed] This plugin uses existing HPA status, conditions, metrics, and events. It does not expose internal controller calculations."
@@ -184,8 +186,8 @@ type Analysis struct {
 	// DecisionTrace holds the human-oriented step-by-step HPA decision trace.
 	// It is best-effort and uses only stable Kubernetes API fields.
 	DecisionTrace *DecisionTrace `json:"decisionTrace,omitempty" yaml:"decisionTrace,omitempty"`
-	// Simulation holds what-if analysis results from --simulate.
-	Simulation *SimulationResult `json:"simulation,omitempty" yaml:"simulation,omitempty"`
+	// FlappingSimulation holds what-if analysis results from --simulate.
+	FlappingSimulation *SimulationResult `json:"simulation,omitempty" yaml:"simulation,omitempty"`
 	// CapacityContext holds infrastructure capacity analysis for the scale target.
 	CapacityContext *CapacityContext `json:"capacityContext,omitempty" yaml:"capacityContext,omitempty"`
 	// CapacityHeadroom estimates whether the cluster can absorb additional pods
@@ -370,38 +372,18 @@ type BehaviorRule struct {
 	Text                       string   `json:"text" yaml:"text"`
 }
 
-// Suggestion holds a recommended HPA patch with safety metadata.
-type Suggestion struct {
-	Title         string   `json:"title" yaml:"title"`
-	Description   string   `json:"description" yaml:"description"`
-	Command       string   `json:"command,omitempty" yaml:"command,omitempty"`
-	Patch         string   `json:"patch,omitempty" yaml:"patch,omitempty"`
-	Risk          string   `json:"risk,omitempty" yaml:"risk,omitempty"`
-	Preconditions []string `json:"preconditions,omitempty" yaml:"preconditions,omitempty"`
-	Warnings      []string `json:"warnings,omitempty" yaml:"warnings,omitempty"`
-	Apply         bool     `json:"apply,omitempty" yaml:"apply,omitempty"`
-}
+// Suggestion is a type alias for suggestion.Suggestion (canonical definition
+// in pkg/hpa/internal/suggestion).
+type Suggestion = suggestion.Suggestion
 
-// GuardResult holds policy guard decisions for suggested patches.
-type GuardResult struct {
-	Allowed  []Suggestion   `json:"allowed,omitempty" yaml:"allowed,omitempty"`
-	Blocked  []GuardBlocked `json:"blocked,omitempty" yaml:"blocked,omitempty"`
-	Warnings []GuardWarning `json:"warnings,omitempty" yaml:"warnings,omitempty"`
-}
+// GuardResult is a type alias for suggestion.GuardResult.
+type GuardResult = suggestion.GuardResult
 
-// GuardBlocked describes a suggestion blocked by a policy rule.
-type GuardBlocked struct {
-	Suggestion Suggestion `json:"suggestion" yaml:"suggestion"`
-	Reason     string     `json:"reason" yaml:"reason"`
-	PolicyRule string     `json:"policyRule" yaml:"policyRule"`
-}
+// GuardBlocked is a type alias for suggestion.GuardBlocked.
+type GuardBlocked = suggestion.GuardBlocked
 
-// GuardWarning describes a suggestion allowed with a policy warning.
-type GuardWarning struct {
-	Suggestion Suggestion `json:"suggestion" yaml:"suggestion"`
-	Reason     string     `json:"reason" yaml:"reason"`
-	PolicyRule string     `json:"policyRule" yaml:"policyRule"`
-}
+// GuardWarning is a type alias for suggestion.GuardWarning.
+type GuardWarning = suggestion.GuardWarning
 
 // EnrichmentSource identifies which enrichment system produced a status entry.
 type EnrichmentSource string

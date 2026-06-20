@@ -209,18 +209,49 @@ Refactoring notes:
     `warmup.Analysis`, `warmup.Bottleneck`, `warmup.Input`). Re-exported as
     `hpaanalysis.AnalyzeWarmup`, `hpaanalysis.WarmupAnalysis`, etc. Types drop
     the `Warmup` prefix in the canonical package.
+  - `pkg/hpa/flapping` — scaling flapping detection and prevention analysis
+    (`flapping.DiagnoseFlapping`, `flapping.AnalyzeFlappingPrevention`,
+    `flapping.Diagnosis`, `flapping.PreventionReport`). Re-exported as
+    `hpaanalysis.DiagnoseFlapping`, `hpaanalysis.AnalyzeFlappingPrevention`,
+    `hpaanalysis.FlappingDiagnosis`, etc. Types drop the `Flapping` prefix in
+    the canonical package.
+  - `pkg/hpa/churn` — HPA scaling churn/thrashing detection
+    (`churn.AnalyzeChurnFromEvents`, `churn.AnalyzeFromRescales`,
+    `churn.ChurnAnalysis`, `churn.ChurnLevel`). Re-exported as
+    `hpaanalysis.AnalyzeChurnFromEvents`, `hpaanalysis.AnalyzeChurnFromSnapshots`,
+    etc. Types keep the `Churn` prefix (with `//nolint:revive`) because
+    `Analysis` alone collides with `pkg/hpa.Analysis`.
+  - `pkg/hpa/policy` — organizational policy guardrails for HPA configuration
+    (`policy.EvaluatePolicies`, `policy.LoadPolicyFile`, `policy.GuardFix`,
+    `policy.Rule`, `policy.Report`, `policy.Violation`). Re-exported as
+    `hpaanalysis.PolicyRule`, `hpaanalysis.PolicyReport`, etc. Types drop the
+    `Policy` prefix in the canonical package.
+  - `pkg/hpa/lint` — static-analysis checks against HPA manifests
+    (`lint.Run`, `lint.Result`, `lint.Finding`, `lint.Severity`). Re-exported
+    as `hpaanalysis.LintHPA`, `hpaanalysis.LintResult`, etc. Types drop the
+    `Lint` prefix in the canonical package.
+  - `pkg/hpa/readiness` — pod readiness impact analysis on HPA decisions
+    (`readiness.AnalyzeReadinessDoctor`, `readiness.DoctorReport`,
+    `readiness.Impact`, `readiness.DoctorInput`). Re-exported as
+    `hpaanalysis.AnalyzeReadinessDoctor`, `hpaanalysis.ReadinessDoctorReport`,
+    etc. Types drop the `Readiness` prefix in the canonical package.
   Domains that depend on the shared clock (`now()`), labels machinery, or
   `FormatMetricStatus` (capacity, retrospective, timeline, metrics, decision,
   simulate) remain in `pkg/hpa` until those shared helpers are extracted into a
   core sub-package; that extraction is deferred until a domain that needs them
   is moved.
-- Audit, blocker, warmup, keda, and vpa have been extracted into
-  self-contained sub-packages. The remaining mid-risk domains (pod-analysis,
-  events, flapping, churn, policy, lint, readiness) each depend on one or more
-  shared helpers that still span the analysis core (`FormatMetricStatus`, the
-  `labels` machinery). They are intentionally left in `pkg/hpa` as a single
-  cohesive analysis package; extracting those helpers into a shared core
-  sub-package is the prerequisite for the next batch of domain extractions.
+- Audit, blocker, warmup, flapping, churn, policy, lint, readiness, keda, and
+  vpa have been extracted into self-contained sub-packages. The remaining
+  domains (pod-analysis, events, capacity, simulate, decision, gitops, metrics,
+  health, retrospective, timeline, behavior, container-advisor, assumptions,
+  hidden-factors) each depend on one or more shared helpers that still span the
+  analysis core (`FormatMetricStatus`, the `labels` machinery,
+  `TimelineSnapshot`, `Analysis`). They are intentionally left in `pkg/hpa` as
+  a single cohesive analysis package; extracting those helpers into a shared
+  core sub-package is the prerequisite for the next batch of domain extractions.
+  Additionally, `pkg/hpa/internal/suggestion` holds the shared `Suggestion`,
+  `GuardResult`, `GuardBlocked`, and `GuardWarning` types used by policy and
+  the suggestion pipeline.
 - Shared helpers have been progressively extracted into `pkg/hpa/internal/`
   sub-packages so leaf domains can use them without reaching back into the
   analysis core:

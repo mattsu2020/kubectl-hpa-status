@@ -335,12 +335,12 @@ func appendPodAnalysisSection(out *[]byte, a *Analysis, labels labels) {
 
 // appendSimulationSection renders the --simulate output section.
 func appendSimulationSection(out *[]byte, a *Analysis, theme style.Theme, labels labels) {
-	if a.Simulation == nil {
+	if a.FlappingSimulation == nil {
 		return
 	}
 	*out = append(*out, '\n')
 	*out = fmt.Appendf(*out, "%s (--simulate):\n", labels.Simulation)
-	sim := a.Simulation
+	sim := a.FlappingSimulation
 	*out = fmt.Appendf(*out, "  Parameter: %s\n", sim.Parameter)
 	*out = fmt.Appendf(*out, "  Original: %s  Simulated: %s\n", sim.OriginalValue, sim.SimulatedValue)
 	*out = fmt.Appendf(*out, "  Before: desired=%d health=%s(%d)  After: desired=%d health=%s(%d)\n",

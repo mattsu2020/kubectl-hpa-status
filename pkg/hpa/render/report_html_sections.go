@@ -166,10 +166,10 @@ func writeHTMLPodAnalysis(out *strings.Builder, a hpa.Analysis) {
 }
 
 func writeHTMLSimulation(out *strings.Builder, a hpa.Analysis) {
-	if a.Simulation == nil {
+	if a.FlappingSimulation == nil {
 		return
 	}
-	sim := a.Simulation
+	sim := a.FlappingSimulation
 	out.WriteString("<h2>Simulation</h2>\n")
 	out.WriteString(fmt.Sprintf("<p><strong>Parameter:</strong> %s &mdash; Original: %s, Simulated: %s</p>\n", rendutil.HTMLEscape(sim.Parameter), rendutil.HTMLEscape(sim.OriginalValue), rendutil.HTMLEscape(sim.SimulatedValue)))
 	out.WriteString("<table class=\"overview\">\n")

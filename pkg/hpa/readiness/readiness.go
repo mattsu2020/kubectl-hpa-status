@@ -1,15 +1,110 @@
-package hpa
+// Package readiness analyzes pod readiness impact on HPA decisions:
+// not-yet-ready pods, missing PodMetrics, and initialization delays that
+// make the HPA controller's view differ from the visible status. It is a
+// self-contained leaf domain depending only on standard library types.
+package readiness
 
 import (
 	"fmt"
 	"strings"
 )
 
+// Impact summarizes visible pod readiness and metrics gaps that may
+// make HPA controller decisions differ from status.currentMetrics.
+type Impact struct {
+	LikelyAffected          bool     `json:"likelyAffected" yaml:"likelyAffected"`
+	TotalPods               int32    `json:"totalPods" yaml:"totalPods"`
+	NotYetReadyPods         int32    `json:"notYetReadyPods" yaml:"notYetReadyPods"`
+	MissingMetricPods       int32    `json:"missingMetricPods,omitempty" yaml:"missingMetricPods,omitempty"`
+	InitialReadinessDelay   string   `json:"initialReadinessDelay" yaml:"initialReadinessDelay"`
+	CPUInitializationPeriod string   `json:"cpuInitializationPeriod" yaml:"cpuInitializationPeriod"`
+	PossibleEffects         []string `json:"possibleEffects,omitempty" yaml:"possibleEffects,omitempty"`
+	Evidence                []string `json:"evidence,omitempty" yaml:"evidence,omitempty"`
+	NextChecks              []string `json:"nextChecks,omitempty" yaml:"nextChecks,omitempty"`
+}
+
+// ---------------------------------------------------------------------------
+// Readiness Doctor types (readiness doctor command)
+// ---------------------------------------------------------------------------
+
+// DoctorReport holds the focused readiness diagnostic for an HPA
+// scale target, covering pod age distribution, probe configuration, CPU
+// initialization window impact, and metric exclusion estimates.
+type DoctorReport struct {
+	Namespace            string             `json:"namespace" yaml:"namespace"`
+	Name                 string             `json:"name" yaml:"name"`
+	Target               string             `json:"target" yaml:"target"`
+	Summary              string             `json:"summary" yaml:"summary"`
+	PodAgeDistribution   PodAgeDistribution `json:"podAgeDistribution" yaml:"podAgeDistribution"`
+	ProbeAnalysis        ProbeAnalysis      `json:"probeAnalysis" yaml:"probeAnalysis"`
+	InitializationImpact InitImpact         `json:"initializationImpact" yaml:"initializationImpact"`
+	ExclusionEstimate    ExclusionEstimate  `json:"exclusionEstimate" yaml:"exclusionEstimate"`
+	Recommendations      []string           `json:"recommendations,omitempty" yaml:"recommendations,omitempty"`
+	NextChecks           []string           `json:"nextChecks,omitempty" yaml:"nextChecks,omitempty"`
+}
+
+// PodAgeDistribution summarizes pod age across the scale target.
+type PodAgeDistribution struct {
+	TotalPods         int32 `json:"totalPods" yaml:"totalPods"`
+	YoungPods         int32 `json:"youngPods" yaml:"youngPods"`
+	MaturePods        int32 `json:"maturePods" yaml:"maturePods"`
+	ReadyYoungPods    int32 `json:"readyYoungPods" yaml:"readyYoungPods"`
+	NotReadyYoungPods int32 `json:"notReadyYoungPods" yaml:"notReadyYoungPods"`
+}
+
+// ProbeAnalysis evaluates probe configuration on the pod template.
+type ProbeAnalysis struct {
+	HasStartupProbe          bool     `json:"hasStartupProbe" yaml:"hasStartupProbe"`
+	HasReadinessProbe        bool     `json:"hasReadinessProbe" yaml:"hasReadinessProbe"`
+	ReadinessInitialDelaySec int32    `json:"readinessInitialDelaySec" yaml:"readinessInitialDelaySec"`
+	StartupMaxDelaySec       int32    `json:"startupMaxDelaySec,omitempty" yaml:"startupMaxDelaySec,omitempty"`
+	Assessment               string   `json:"assessment" yaml:"assessment"`
+	Warnings                 []string `json:"warnings,omitempty" yaml:"warnings,omitempty"`
+}
+
+// InitImpact estimates how the CPU initialization window affects HPA.
+type InitImpact struct {
+	CPUInitPeriodSeconds  int32  `json:"cpuInitPeriodSeconds" yaml:"cpuInitPeriodSeconds"`
+	InitialReadinessDelay int32  `json:"initialReadinessDelaySeconds" yaml:"initialReadinessDelaySeconds"`
+	EstimatedExcludedPods int32  `json:"estimatedExcludedPods" yaml:"estimatedExcludedPods"`
+	ImpactDescription     string `json:"impactDescription" yaml:"impactDescription"`
+}
+
+// ExclusionEstimate estimates pods excluded from HPA metric calculation.
+type ExclusionEstimate struct {
+	NotReadyPods           int32  `json:"notReadyPods" yaml:"notReadyPods"`
+	MissingMetricPods      int32  `json:"missingMetricPods" yaml:"missingMetricPods"`
+	EstimatedExcludedCount int32  `json:"estimatedExcludedCount" yaml:"estimatedExcludedCount"`
+	Explanation            string `json:"explanation" yaml:"explanation"`
+}
+
+// DoctorInput is assembled by the cmd layer from Kubernetes API data.
+type DoctorInput struct {
+	Namespace             string
+	HPAName               string
+	Target                string
+	PodDetails            []DoctorPod
+	HasStartupProbe       bool
+	HasReadinessProbe     bool
+	ReadinessInitialDelay int32
+	StartupMaxDelay       int32
+	CPUInitPeriodSeconds  int32
+	InitialReadinessDelay int32
+	MissingMetricPods     int32
+}
+
+// DoctorPod describes a single pod for readiness analysis.
+type DoctorPod struct {
+	Name       string
+	Ready      bool
+	AgeSeconds int64
+}
+
 // AnalyzeReadinessDoctor produces a focused readiness diagnostic report
 // from the provided input. It analyzes pod age distribution, probe
 // configuration, CPU initialization window impact, and metric exclusion
 // estimates to surface issues that may cause HPA to behave unexpectedly.
-func AnalyzeReadinessDoctor(input ReadinessDoctorInput) *ReadinessDoctorReport {
+func AnalyzeReadinessDoctor(input DoctorInput) *DoctorReport {
 	if input.CPUInitPeriodSeconds == 0 {
 		input.CPUInitPeriodSeconds = 300 // default 5m
 	}
@@ -17,7 +112,7 @@ func AnalyzeReadinessDoctor(input ReadinessDoctorInput) *ReadinessDoctorReport {
 		input.InitialReadinessDelay = 30 // default 30s
 	}
 
-	report := &ReadinessDoctorReport{
+	report := &DoctorReport{
 		Namespace:            input.Namespace,
 		Name:                 input.HPAName,
 		Target:               input.Target,
@@ -36,8 +131,8 @@ func AnalyzeReadinessDoctor(input ReadinessDoctorInput) *ReadinessDoctorReport {
 
 // analyzePodAgeDistribution categorizes pods as young (age < cpuInitPeriod)
 // or mature, with readiness breakdown for young pods.
-func analyzePodAgeDistribution(input ReadinessDoctorInput) ReadinessPodAgeDistribution {
-	dist := ReadinessPodAgeDistribution{
+func analyzePodAgeDistribution(input DoctorInput) PodAgeDistribution {
+	dist := PodAgeDistribution{
 		TotalPods: int32(len(input.PodDetails)),
 	}
 
@@ -58,8 +153,8 @@ func analyzePodAgeDistribution(input ReadinessDoctorInput) ReadinessPodAgeDistri
 }
 
 // analyzeReadinessProbeConfig evaluates probe settings and produces warnings.
-func analyzeReadinessProbeConfig(input ReadinessDoctorInput) ReadinessProbeAnalysis {
-	analysis := ReadinessProbeAnalysis{
+func analyzeReadinessProbeConfig(input DoctorInput) ProbeAnalysis {
+	analysis := ProbeAnalysis{
 		HasStartupProbe:          input.HasStartupProbe,
 		HasReadinessProbe:        input.HasReadinessProbe,
 		ReadinessInitialDelaySec: input.ReadinessInitialDelay,
@@ -100,8 +195,8 @@ func analyzeReadinessProbeConfig(input ReadinessDoctorInput) ReadinessProbeAnaly
 
 // analyzeInitializationImpact estimates how many pods fall within the CPU
 // initialization window and are likely excluded from metric calculations.
-func analyzeInitializationImpact(input ReadinessDoctorInput) ReadinessInitImpact {
-	impact := ReadinessInitImpact{
+func analyzeInitializationImpact(input DoctorInput) InitImpact {
+	impact := InitImpact{
 		CPUInitPeriodSeconds:  input.CPUInitPeriodSeconds,
 		InitialReadinessDelay: input.InitialReadinessDelay,
 	}
@@ -128,8 +223,8 @@ func analyzeInitializationImpact(input ReadinessDoctorInput) ReadinessInitImpact
 
 // analyzeExclusionEstimate computes the total estimated excluded pods
 // from not-ready and missing-metrics pods.
-func analyzeExclusionEstimate(input ReadinessDoctorInput) ReadinessExclusionEstimate {
-	estimate := ReadinessExclusionEstimate{
+func analyzeExclusionEstimate(input DoctorInput) ExclusionEstimate {
+	estimate := ExclusionEstimate{
 		MissingMetricPods: input.MissingMetricPods,
 	}
 
@@ -160,7 +255,7 @@ func analyzeExclusionEstimate(input ReadinessDoctorInput) ReadinessExclusionEsti
 }
 
 // buildReadinessDoctorRecommendations generates actionable recommendations.
-func buildReadinessDoctorRecommendations(report *ReadinessDoctorReport, input ReadinessDoctorInput) []string {
+func buildReadinessDoctorRecommendations(report *DoctorReport, input DoctorInput) []string {
 	var recommendations []string
 
 	if !input.HasStartupProbe && report.PodAgeDistribution.YoungPods > 0 {
@@ -192,7 +287,7 @@ func buildReadinessDoctorRecommendations(report *ReadinessDoctorReport, input Re
 }
 
 // buildReadinessDoctorNextChecks generates kubectl commands for follow-up.
-func buildReadinessDoctorNextChecks(input ReadinessDoctorInput) []string {
+func buildReadinessDoctorNextChecks(input DoctorInput) []string {
 	return []string{
 		fmt.Sprintf("kubectl get pod -n %s -l <scale-target-selector> -o wide", input.Namespace),
 		fmt.Sprintf("kubectl top pod -n %s -l <scale-target-selector>", input.Namespace),
@@ -200,7 +295,7 @@ func buildReadinessDoctorNextChecks(input ReadinessDoctorInput) []string {
 }
 
 // buildReadinessDoctorSummary generates a one-line overall assessment.
-func buildReadinessDoctorSummary(report *ReadinessDoctorReport) string {
+func buildReadinessDoctorSummary(report *DoctorReport) string {
 	parts := []string{}
 
 	if report.PodAgeDistribution.YoungPods > 0 {

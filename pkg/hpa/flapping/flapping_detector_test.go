@@ -1,16 +1,17 @@
-package hpa
+package flapping
 
 import (
 	"testing"
 	"time"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/event"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestDiagnoseFlapping_TooFewEvents(t *testing.T) {
-	events := []Event{
+	events := []event.Event{
 		{Reason: "SuccessfulRescale", Message: "New size: 3", Timestamp: time.Now()},
 		{Reason: "SuccessfulRescale", Message: "New size: 5", Timestamp: time.Now().Add(time.Minute)},
 	}
@@ -23,7 +24,7 @@ func TestDiagnoseFlapping_TooFewEvents(t *testing.T) {
 
 func TestDiagnoseFlapping_NoFlapping(t *testing.T) {
 	base := time.Now()
-	events := []Event{
+	events := []event.Event{
 		{Reason: "SuccessfulRescale", Message: "New size: 3", Timestamp: base},
 		{Reason: "SuccessfulRescale", Message: "New size: 5", Timestamp: base.Add(10 * time.Minute)},
 		{Reason: "SuccessfulRescale", Message: "New size: 7", Timestamp: base.Add(20 * time.Minute)},
@@ -40,7 +41,7 @@ func TestDiagnoseFlapping_NoFlapping(t *testing.T) {
 
 func TestDiagnoseFlapping_HighSeverity(t *testing.T) {
 	base := time.Now()
-	events := []Event{
+	events := []event.Event{
 		{Reason: "SuccessfulRescale", Message: "New size: 3", Timestamp: base},
 		{Reason: "SuccessfulRescale", Message: "New size: 5", Timestamp: base.Add(1 * time.Minute)},
 		{Reason: "SuccessfulRescale", Message: "New size: 3", Timestamp: base.Add(2 * time.Minute)},
@@ -68,7 +69,7 @@ func TestDiagnoseFlapping_HighSeverity(t *testing.T) {
 
 func TestDiagnoseFlapping_MediumSeverity(t *testing.T) {
 	base := time.Now()
-	events := []Event{
+	events := []event.Event{
 		{Reason: "SuccessfulRescale", Message: "New size: 3", Timestamp: base},
 		{Reason: "SuccessfulRescale", Message: "New size: 5", Timestamp: base.Add(10 * time.Minute)},
 		{Reason: "SuccessfulRescale", Message: "New size: 3", Timestamp: base.Add(20 * time.Minute)},
@@ -89,7 +90,7 @@ func TestDiagnoseFlapping_MediumSeverity(t *testing.T) {
 
 func TestDiagnoseFlapping_ShortStabilizationWindowCause(t *testing.T) {
 	base := time.Now()
-	events := []Event{
+	events := []event.Event{
 		{Reason: "SuccessfulRescale", Message: "New size: 3", Timestamp: base},
 		{Reason: "SuccessfulRescale", Message: "New size: 5", Timestamp: base.Add(1 * time.Minute)},
 		{Reason: "SuccessfulRescale", Message: "New size: 3", Timestamp: base.Add(2 * time.Minute)},
@@ -120,7 +121,7 @@ func TestDiagnoseFlapping_ShortStabilizationWindowCause(t *testing.T) {
 
 func TestDiagnoseFlapping_MissingScaleDownPolicyCause(t *testing.T) {
 	base := time.Now()
-	events := []Event{
+	events := []event.Event{
 		{Reason: "SuccessfulRescale", Message: "New size: 3", Timestamp: base},
 		{Reason: "SuccessfulRescale", Message: "New size: 5", Timestamp: base.Add(1 * time.Minute)},
 		{Reason: "SuccessfulRescale", Message: "New size: 3", Timestamp: base.Add(2 * time.Minute)},
@@ -162,7 +163,7 @@ func TestDiagnoseFlapping_MissingScaleDownPolicyCause(t *testing.T) {
 
 func TestDiagnoseFlapping_TightTargetCause(t *testing.T) {
 	base := time.Now()
-	events := []Event{
+	events := []event.Event{
 		{Reason: "SuccessfulRescale", Message: "New size: 5", Timestamp: base},
 		{Reason: "SuccessfulRescale", Message: "New size: 6", Timestamp: base.Add(1 * time.Minute)},
 		{Reason: "SuccessfulRescale", Message: "New size: 5", Timestamp: base.Add(2 * time.Minute)},
@@ -187,7 +188,7 @@ func TestDiagnoseFlapping_TightTargetCause(t *testing.T) {
 }
 
 func TestDiagnoseFlapping_NilHPA(t *testing.T) {
-	events := []Event{
+	events := []event.Event{
 		{Reason: "SuccessfulRescale", Message: "New size: 3", Timestamp: time.Now()},
 	}
 	result := DiagnoseFlapping(events, nil)
@@ -206,7 +207,7 @@ func TestDiagnoseFlapping_EmptyEvents(t *testing.T) {
 
 func TestDiagnoseFlapping_NonRescaleEventsIgnored(t *testing.T) {
 	base := time.Now()
-	events := []Event{
+	events := []event.Event{
 		{Reason: "SuccessfulRescale", Message: "New size: 3", Timestamp: base},
 		{Reason: "FailedGetResourceMetric", Message: "some error", Timestamp: base.Add(time.Minute)},
 		{Reason: "SuccessfulRescale", Message: "New size: 5", Timestamp: base.Add(2 * time.Minute)},

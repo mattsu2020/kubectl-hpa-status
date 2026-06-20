@@ -1,23 +1,35 @@
-package hpa
+package flapping
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/event"
 )
+
+// rescaleEvent is a test helper that builds a SuccessfulRescale event with the
+// given replica count and timestamp.
+func rescaleEvent(newSize int32, ts time.Time) event.Event {
+	return event.Event{
+		Reason:    "SuccessfulRescale",
+		Message:   fmt.Sprintf("New size: %d", newSize),
+		Timestamp: ts,
+	}
+}
 
 func TestAnalyzeFlappingPrevention(t *testing.T) {
 	now := time.Now()
 
 	tests := []struct {
 		name   string
-		events []Event
+		events []event.Event
 		hpa    func() *interface { /* placeholder; we build *autoscalingv2.HPA via testutil.BuildHPA */
 		}
 		wantNil    bool
-		checkExtra func(t *testing.T, got *FlappingPreventionReport)
+		checkExtra func(t *testing.T, got *PreventionReport)
 	}{
 		{
 			name:    "nil events returns nil",
@@ -26,12 +38,12 @@ func TestAnalyzeFlappingPrevention(t *testing.T) {
 		},
 		{
 			name:    "empty events returns nil",
-			events:  []Event{},
+			events:  []event.Event{},
 			wantNil: true,
 		},
 		{
 			name: "fewer than 3 rescale events returns nil",
-			events: []Event{
+			events: []event.Event{
 				rescaleEvent(5, now.Add(-2*time.Minute)),
 				rescaleEvent(3, now.Add(-1*time.Minute)),
 			},
@@ -39,7 +51,7 @@ func TestAnalyzeFlappingPrevention(t *testing.T) {
 		},
 		{
 			name: "2 rescale events plus noise returns nil",
-			events: []Event{
+			events: []event.Event{
 				{Reason: "FailedGetResourceMetric", Message: "missing metrics", Timestamp: now.Add(-3 * time.Minute)},
 				rescaleEvent(5, now.Add(-2*time.Minute)),
 				rescaleEvent(3, now.Add(-1*time.Minute)),
@@ -48,7 +60,7 @@ func TestAnalyzeFlappingPrevention(t *testing.T) {
 		},
 		{
 			name: "alternating flapping pattern produces recommendations with larger windows",
-			events: []Event{
+			events: []event.Event{
 				rescaleEvent(3, now.Add(-8*time.Minute)),
 				rescaleEvent(5, now.Add(-7*time.Minute)),
 				rescaleEvent(3, now.Add(-6*time.Minute)),
@@ -56,7 +68,7 @@ func TestAnalyzeFlappingPrevention(t *testing.T) {
 				rescaleEvent(3, now.Add(-4*time.Minute)),
 				rescaleEvent(5, now.Add(-3*time.Minute)),
 			},
-			checkExtra: func(t *testing.T, got *FlappingPreventionReport) {
+			checkExtra: func(t *testing.T, got *PreventionReport) {
 				if got.CurrentDirectionFlips == 0 {
 					t.Fatal("expected direction flips for alternating pattern")
 				}
@@ -73,13 +85,13 @@ func TestAnalyzeFlappingPrevention(t *testing.T) {
 		},
 		{
 			name: "stable HPA with no direction flips has zero flips",
-			events: []Event{
+			events: []event.Event{
 				rescaleEvent(3, now.Add(-4*time.Minute)),
 				rescaleEvent(5, now.Add(-3*time.Minute)),
 				rescaleEvent(8, now.Add(-2*time.Minute)),
 				rescaleEvent(10, now.Add(-1*time.Minute)),
 			},
-			checkExtra: func(t *testing.T, got *FlappingPreventionReport) {
+			checkExtra: func(t *testing.T, got *PreventionReport) {
 				if got.CurrentDirectionFlips != 0 {
 					t.Fatalf("expected 0 flips for monotonic scaling, got %d", got.CurrentDirectionFlips)
 				}
@@ -87,14 +99,14 @@ func TestAnalyzeFlappingPrevention(t *testing.T) {
 		},
 		{
 			name: "estimated flap reduction is between 0 and 100",
-			events: []Event{
+			events: []event.Event{
 				rescaleEvent(3, now.Add(-8*time.Minute)),
 				rescaleEvent(5, now.Add(-7*time.Minute)),
 				rescaleEvent(3, now.Add(-6*time.Minute)),
 				rescaleEvent(5, now.Add(-5*time.Minute)),
 				rescaleEvent(3, now.Add(-4*time.Minute)),
 			},
-			checkExtra: func(t *testing.T, got *FlappingPreventionReport) {
+			checkExtra: func(t *testing.T, got *PreventionReport) {
 				for _, rec := range got.Recommendations {
 					if rec.EstimatedFlapReduction < 0 || rec.EstimatedFlapReduction > 100 {
 						t.Errorf("flap reduction %.1f out of range [0, 100] for window %ds",
@@ -105,14 +117,14 @@ func TestAnalyzeFlappingPrevention(t *testing.T) {
 		},
 		{
 			name: "patch format is valid JSON",
-			events: []Event{
+			events: []event.Event{
 				rescaleEvent(3, now.Add(-8*time.Minute)),
 				rescaleEvent(5, now.Add(-7*time.Minute)),
 				rescaleEvent(3, now.Add(-6*time.Minute)),
 				rescaleEvent(5, now.Add(-5*time.Minute)),
 				rescaleEvent(3, now.Add(-4*time.Minute)),
 			},
-			checkExtra: func(t *testing.T, got *FlappingPreventionReport) {
+			checkExtra: func(t *testing.T, got *PreventionReport) {
 				for _, rec := range got.Recommendations {
 					if rec.Patch == "" {
 						continue
@@ -125,7 +137,7 @@ func TestAnalyzeFlappingPrevention(t *testing.T) {
 		},
 		{
 			name: "recommendations sorted by estimated reduction descending",
-			events: []Event{
+			events: []event.Event{
 				rescaleEvent(3, now.Add(-8*time.Minute)),
 				rescaleEvent(5, now.Add(-7*time.Minute)),
 				rescaleEvent(3, now.Add(-6*time.Minute)),
@@ -133,7 +145,7 @@ func TestAnalyzeFlappingPrevention(t *testing.T) {
 				rescaleEvent(3, now.Add(-4*time.Minute)),
 				rescaleEvent(5, now.Add(-3*time.Minute)),
 			},
-			checkExtra: func(t *testing.T, got *FlappingPreventionReport) {
+			checkExtra: func(t *testing.T, got *PreventionReport) {
 				for i := 1; i < len(got.Recommendations); i++ {
 					if got.Recommendations[i].EstimatedFlapReduction > got.Recommendations[i-1].EstimatedFlapReduction {
 						t.Errorf("recommendations not sorted by reduction: [%d]=%.1f > [%d]=%.1f",
@@ -145,14 +157,14 @@ func TestAnalyzeFlappingPrevention(t *testing.T) {
 		},
 		{
 			name: "confidence is a string field with valid values",
-			events: []Event{
+			events: []event.Event{
 				rescaleEvent(3, now.Add(-8*time.Minute)),
 				rescaleEvent(5, now.Add(-7*time.Minute)),
 				rescaleEvent(3, now.Add(-6*time.Minute)),
 				rescaleEvent(5, now.Add(-5*time.Minute)),
 				rescaleEvent(3, now.Add(-4*time.Minute)),
 			},
-			checkExtra: func(t *testing.T, got *FlappingPreventionReport) {
+			checkExtra: func(t *testing.T, got *PreventionReport) {
 				validConfidences := map[string]bool{"high": true, "medium": true, "low": true}
 				for _, rec := range got.Recommendations {
 					if !validConfidences[rec.Confidence] {
@@ -163,7 +175,7 @@ func TestAnalyzeFlappingPrevention(t *testing.T) {
 		},
 		{
 			name: "non-rescale events are ignored",
-			events: []Event{
+			events: []event.Event{
 				{Reason: "FailedGetResourceMetric", Message: "missing metrics", Timestamp: now.Add(-3 * time.Minute)},
 				rescaleEvent(3, now.Add(-8*time.Minute)),
 				rescaleEvent(5, now.Add(-7*time.Minute)),
@@ -172,7 +184,7 @@ func TestAnalyzeFlappingPrevention(t *testing.T) {
 				rescaleEvent(5, now.Add(-5*time.Minute)),
 				rescaleEvent(3, now.Add(-4*time.Minute)),
 			},
-			checkExtra: func(t *testing.T, got *FlappingPreventionReport) {
+			checkExtra: func(t *testing.T, got *PreventionReport) {
 				if got.CurrentDirectionFlips < 3 {
 					t.Fatalf("expected at least 3 flips for alternating pattern, got %d", got.CurrentDirectionFlips)
 				}
@@ -180,12 +192,12 @@ func TestAnalyzeFlappingPrevention(t *testing.T) {
 		},
 		{
 			name: "report has observation window",
-			events: []Event{
+			events: []event.Event{
 				rescaleEvent(3, now.Add(-8*time.Minute)),
 				rescaleEvent(5, now.Add(-7*time.Minute)),
 				rescaleEvent(3, now.Add(-6*time.Minute)),
 			},
-			checkExtra: func(t *testing.T, got *FlappingPreventionReport) {
+			checkExtra: func(t *testing.T, got *PreventionReport) {
 				if got.ObservationWindow == "" {
 					t.Fatal("expected non-empty observation window")
 				}
@@ -193,12 +205,12 @@ func TestAnalyzeFlappingPrevention(t *testing.T) {
 		},
 		{
 			name: "report has summary",
-			events: []Event{
+			events: []event.Event{
 				rescaleEvent(3, now.Add(-8*time.Minute)),
 				rescaleEvent(5, now.Add(-7*time.Minute)),
 				rescaleEvent(3, now.Add(-6*time.Minute)),
 			},
-			checkExtra: func(t *testing.T, got *FlappingPreventionReport) {
+			checkExtra: func(t *testing.T, got *PreventionReport) {
 				if got.Summary == "" {
 					t.Fatal("expected non-empty summary")
 				}
@@ -206,14 +218,14 @@ func TestAnalyzeFlappingPrevention(t *testing.T) {
 		},
 		{
 			name: "custom stabilization window is reflected in report",
-			events: []Event{
+			events: []event.Event{
 				rescaleEvent(3, now.Add(-8*time.Minute)),
 				rescaleEvent(5, now.Add(-7*time.Minute)),
 				rescaleEvent(3, now.Add(-6*time.Minute)),
 				rescaleEvent(5, now.Add(-5*time.Minute)),
 				rescaleEvent(3, now.Add(-4*time.Minute)),
 			},
-			checkExtra: func(t *testing.T, got *FlappingPreventionReport) {
+			checkExtra: func(t *testing.T, got *PreventionReport) {
 				if got.CurrentWindow != 120 {
 					t.Fatalf("expected current window 120s, got %ds", got.CurrentWindow)
 				}
@@ -292,35 +304,35 @@ func TestCountDirectionFlips(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		rescales  []rescaleData
+		rescales  []event.RescaleData
 		wantFlips int
 	}{
 		{
 			name: "monotonic up has zero flips",
-			rescales: []rescaleData{
-				{timestamp: now.Add(-3 * time.Minute), newSize: 3},
-				{timestamp: now.Add(-2 * time.Minute), newSize: 5},
-				{timestamp: now.Add(-1 * time.Minute), newSize: 8},
+			rescales: []event.RescaleData{
+				{Timestamp: now.Add(-3 * time.Minute), NewSize: 3},
+				{Timestamp: now.Add(-2 * time.Minute), NewSize: 5},
+				{Timestamp: now.Add(-1 * time.Minute), NewSize: 8},
 			},
 			wantFlips: 0,
 		},
 		{
 			name: "one flip up-down",
-			rescales: []rescaleData{
-				{timestamp: now.Add(-3 * time.Minute), newSize: 3},
-				{timestamp: now.Add(-2 * time.Minute), newSize: 5},
-				{timestamp: now.Add(-1 * time.Minute), newSize: 3},
+			rescales: []event.RescaleData{
+				{Timestamp: now.Add(-3 * time.Minute), NewSize: 3},
+				{Timestamp: now.Add(-2 * time.Minute), NewSize: 5},
+				{Timestamp: now.Add(-1 * time.Minute), NewSize: 3},
 			},
 			wantFlips: 1,
 		},
 		{
 			name: "multiple flips",
-			rescales: []rescaleData{
-				{timestamp: now.Add(-5 * time.Minute), newSize: 3},
-				{timestamp: now.Add(-4 * time.Minute), newSize: 5},
-				{timestamp: now.Add(-3 * time.Minute), newSize: 3},
-				{timestamp: now.Add(-2 * time.Minute), newSize: 5},
-				{timestamp: now.Add(-1 * time.Minute), newSize: 3},
+			rescales: []event.RescaleData{
+				{Timestamp: now.Add(-5 * time.Minute), NewSize: 3},
+				{Timestamp: now.Add(-4 * time.Minute), NewSize: 5},
+				{Timestamp: now.Add(-3 * time.Minute), NewSize: 3},
+				{Timestamp: now.Add(-2 * time.Minute), NewSize: 5},
+				{Timestamp: now.Add(-1 * time.Minute), NewSize: 3},
 			},
 			wantFlips: 3,
 		},

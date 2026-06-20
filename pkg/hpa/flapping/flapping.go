@@ -7,20 +7,19 @@ package flapping
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"time"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/confidence"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/event"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
 )
 
-
-// FlappingPreventionReport holds the result of flapping prevention analysis
+// PreventionReport holds the result of flapping prevention analysis
 // with what-if simulations for different stabilization window values.
-type FlappingPreventionReport struct {
+type PreventionReport struct {
 	// CurrentWindow is the current stabilization window in seconds.
 	CurrentWindow int32 `json:"currentWindow" yaml:"currentWindow"`
 	// CurrentDirectionFlips is the number of direction changes observed.
@@ -28,14 +27,14 @@ type FlappingPreventionReport struct {
 	// ObservationWindow is the time range analyzed.
 	ObservationWindow string `json:"observationWindow" yaml:"observationWindow"`
 	// Recommendations holds the what-if simulation results for different window values.
-	Recommendations []FlappingSimulation `json:"recommendations,omitempty" yaml:"recommendations,omitempty"`
+	Recommendations []Simulation `json:"recommendations,omitempty" yaml:"recommendations,omitempty"`
 	// Summary is a human-readable summary of the analysis.
 	Summary string `json:"summary" yaml:"summary"`
 }
 
-// FlappingSimulation holds a single what-if simulation result for a specific
+// Simulation holds a single what-if simulation result for a specific
 // stabilization window value.
-type FlappingSimulation struct {
+type Simulation struct {
 	// WindowSeconds is the simulated stabilization window duration.
 	WindowSeconds int32 `json:"windowSeconds" yaml:"windowSeconds"`
 	// EstimatedFlapReduction is the estimated percentage reduction in flapping.
@@ -50,11 +49,11 @@ type FlappingSimulation struct {
 	Confidence string `json:"confidence" yaml:"confidence"`
 }
 
-// FlappingDiagnosis holds the result of event-based flapping detection with
-// root-cause analysis. Unlike FlappingPreventionReport which simulates window
-// changes, FlappingDiagnosis identifies *why* flapping occurs and produces
+// Diagnosis holds the result of event-based flapping detection with
+// root-cause analysis. Unlike PreventionReport which simulates window
+// changes, Diagnosis identifies *why* flapping occurs and produces
 // actionable recommendations with patches.
-type FlappingDiagnosis struct {
+type Diagnosis struct {
 	// Detected indicates whether flapping was observed.
 	Detected bool `json:"detected" yaml:"detected"`
 	// Severity classifies the flapping: "LOW", "MEDIUM", "HIGH", "CRITICAL".
@@ -66,15 +65,15 @@ type FlappingDiagnosis struct {
 	// WindowSeconds is the time span of the observed flapping.
 	WindowSeconds int `json:"windowSeconds" yaml:"windowSeconds"`
 	// EstimatedCauses lists the likely root causes of the flapping.
-	EstimatedCauses []FlappingCause `json:"estimatedCauses,omitempty" yaml:"estimatedCauses,omitempty"`
+	EstimatedCauses []Cause `json:"estimatedCauses,omitempty" yaml:"estimatedCauses,omitempty"`
 	// Recommendations lists actionable suggestions to stop flapping.
-	Recommendations []FlappingFix `json:"recommendations,omitempty" yaml:"recommendations,omitempty"`
+	Recommendations []Fix `json:"recommendations,omitempty" yaml:"recommendations,omitempty"`
 	// EventTTLLimitation warns about the Event TTL constraint.
 	EventTTLLimitation string `json:"eventTtlLimitation,omitempty" yaml:"eventTtlLimitation,omitempty"`
 }
 
-// FlappingCause describes a likely root cause of HPA replica flapping.
-type FlappingCause struct {
+// Cause describes a likely root cause of HPA replica flapping.
+type Cause struct {
 	// Type categorizes the cause: "tight-target", "short-stabilization-window",
 	// "missing-scaledown-policy".
 	Type string `json:"type" yaml:"type"`
@@ -84,8 +83,8 @@ type FlappingCause struct {
 	Confidence string `json:"confidence" yaml:"confidence"`
 }
 
-// FlappingFix describes an actionable recommendation to stop HPA flapping.
-type FlappingFix struct {
+// Fix describes an actionable recommendation to stop HPA flapping.
+type Fix struct {
 	// Action describes what to do.
 	Action string `json:"action" yaml:"action"`
 	// Patch is an optional JSON merge patch to apply the fix.
@@ -126,7 +125,6 @@ type AnomalyDetection struct {
 	Remediation string `json:"remediation,omitempty" yaml:"remediation,omitempty"`
 }
 
-
 const (
 	// eventTTLDefault is the default Kubernetes event TTL used in the
 	// limitation disclaimer.
@@ -137,7 +135,7 @@ const (
 // (alternating scale-up/scale-down in short windows) and produces a diagnosis
 // with root causes and recommendations. Returns nil if fewer than 3 rescale
 // events are available (insufficient data to establish a pattern).
-func DiagnoseFlapping(events []event.Event, hpa *autoscalingv2.HorizontalPodAutoscaler) *FlappingDiagnosis {
+func DiagnoseFlapping(events []event.Event, hpa *autoscalingv2.HorizontalPodAutoscaler) *Diagnosis {
 	if hpa == nil || len(events) == 0 {
 		return nil
 	}
@@ -153,7 +151,7 @@ func DiagnoseFlapping(events []event.Event, hpa *autoscalingv2.HorizontalPodAuto
 
 	flips := detectDirectionFlips(rescales)
 	if len(flips) == 0 {
-		return &FlappingDiagnosis{
+		return &Diagnosis{
 			Detected:  false,
 			Severity:  "LOW",
 			FlipCount: 0,
@@ -168,7 +166,7 @@ func DiagnoseFlapping(events []event.Event, hpa *autoscalingv2.HorizontalPodAuto
 	causes := diagnoseFlappingCauses(hpa, rescales)
 	recommendations := generateFlappingFixes(hpa, causes)
 
-	diagnosis := &FlappingDiagnosis{
+	diagnosis := &Diagnosis{
 		Detected:           true,
 		Severity:           severity,
 		Pattern:            pattern,
@@ -227,7 +225,7 @@ func windowFromFlips(flips []directionFlip) int {
 	if len(flips) < 2 {
 		return 0
 	}
-	return int(flips[len(flips)-1].Timestamp.Sub(flips[0].Timestamp).Seconds())
+	return int(flips[len(flips)-1].timestamp.Sub(flips[0].timestamp).Seconds())
 }
 
 // flappingSeverity classifies flapping severity based on flip count and time
@@ -268,13 +266,13 @@ func describeFlappingPattern(flips []directionFlip) string {
 
 // diagnoseFlappingCauses identifies likely root causes of the observed
 // flapping.
-func diagnoseFlappingCauses(hpa *autoscalingv2.HorizontalPodAutoscaler, rescales []event.RescaleData) []FlappingCause {
-	var causes []FlappingCause
+func diagnoseFlappingCauses(hpa *autoscalingv2.HorizontalPodAutoscaler, rescales []event.RescaleData) []Cause {
+	var causes []Cause
 
 	// Check for tight target: if rescales involve small replica deltas (1-2),
 	// the metric is likely hovering near the target threshold.
 	if isTightTarget(rescales) {
-		causes = append(causes, FlappingCause{
+		causes = append(causes, Cause{
 			Type:        "tight-target",
 			Description: "Metric values are oscillating around the target threshold, causing the HPA to repeatedly scale up and down by small amounts.",
 			Confidence:  "medium",
@@ -284,7 +282,7 @@ func diagnoseFlappingCauses(hpa *autoscalingv2.HorizontalPodAutoscaler, rescales
 	// Check for short stabilization window.
 	window := currentStabilizationWindowSeconds(hpa)
 	if window < 300 {
-		causes = append(causes, FlappingCause{
+		causes = append(causes, Cause{
 			Type:        "short-stabilization-window",
 			Description: fmt.Sprintf("The scaleDown stabilizationWindowSeconds is %ds (< 300s default). A short window allows the HPA to reverse scaling decisions before metrics stabilize.", window),
 			Confidence:  "high",
@@ -293,7 +291,7 @@ func diagnoseFlappingCauses(hpa *autoscalingv2.HorizontalPodAutoscaler, rescales
 
 	// Check for missing scaleDown policies.
 	if hpa.Spec.Behavior == nil || hpa.Spec.Behavior.ScaleDown == nil || len(hpa.Spec.Behavior.ScaleDown.Policies) == 0 {
-		causes = append(causes, FlappingCause{
+		causes = append(causes, Cause{
 			Type:        "missing-scaledown-policy",
 			Description: "No explicit scaleDown policies are configured. The controller uses default behavior which may allow rapid downscaling followed by immediate upscaling.",
 			Confidence:  "high",
@@ -327,17 +325,17 @@ func isTightTarget(rescales []event.RescaleData) bool {
 
 // generateFlappingFixes produces actionable recommendations based on the
 // diagnosed causes.
-func generateFlappingFixes(hpa *autoscalingv2.HorizontalPodAutoscaler, causes []FlappingCause) []FlappingFix {
+func generateFlappingFixes(hpa *autoscalingv2.HorizontalPodAutoscaler, causes []Cause) []Fix {
 	if len(causes) == 0 {
 		return nil
 	}
 
-	var fixes []FlappingFix
+	var fixes []Fix
 
 	for _, cause := range causes {
 		switch cause.Type {
 		case "tight-target":
-			fixes = append(fixes, FlappingFix{
+			fixes = append(fixes, Fix{
 				Action:    "Increase the scaleDown tolerance or widen the target range",
 				Rationale: "A wider tolerance band around the target prevents the HPA from reacting to small metric fluctuations near the threshold.",
 			})
@@ -357,7 +355,7 @@ func generateFlappingFixes(hpa *autoscalingv2.HorizontalPodAutoscaler, causes []
 					},
 				},
 			})
-			fixes = append(fixes, FlappingFix{
+			fixes = append(fixes, Fix{
 				Action:    fmt.Sprintf("Increase scaleDown stabilizationWindowSeconds from %ds to %ds", currentWindow, recommendedWindow),
 				Patch:     patch,
 				Rationale: "A longer stabilization window gives the HPA more time to observe sustained metric changes before reversing a scaling decision.",
@@ -378,7 +376,7 @@ func generateFlappingFixes(hpa *autoscalingv2.HorizontalPodAutoscaler, causes []
 					},
 				},
 			})
-			fixes = append(fixes, FlappingFix{
+			fixes = append(fixes, Fix{
 				Action:    "Add explicit scaleDown policy (50%/60s)",
 				Patch:     patch,
 				Rationale: "Explicit scaleDown policies bound the rate of replica removal, preventing rapid downscale followed by immediate upscale cycles.",
@@ -404,7 +402,7 @@ var fixedCandidateWindows = []int32{300, 600}
 // Returns nil if fewer than 3 rescale events are available (insufficient
 // data to establish a flapping pattern). The function is pure: it does not
 // modify the input slices or depend on external state.
-func AnalyzeFlappingPrevention(events []event.Event, hpa *autoscalingv2.HorizontalPodAutoscaler) *FlappingPreventionReport {
+func AnalyzeFlappingPrevention(events []event.Event, hpa *autoscalingv2.HorizontalPodAutoscaler) *PreventionReport {
 	rescales := extractRescaleEvents(events)
 	if len(rescales) < 3 {
 		return nil
@@ -427,7 +425,7 @@ func AnalyzeFlappingPrevention(events []event.Event, hpa *autoscalingv2.Horizont
 
 	summary := buildFlappingSummary(directionFlips, currentWindow, recommendations)
 
-	return &FlappingPreventionReport{
+	return &PreventionReport{
 		CurrentWindow:         currentWindow,
 		CurrentDirectionFlips: directionFlips,
 		ObservationWindow:     observationWindow,
@@ -441,17 +439,17 @@ func AnalyzeFlappingPrevention(events []event.Event, hpa *autoscalingv2.Horizont
 // replica counts are skipped.
 func extractRescaleEvents(events []event.Event) []event.RescaleData {
 	var rescales []event.RescaleData
-	for _, event := range events {
-		if event.Reason != "SuccessfulRescale" {
+	for _, ev := range events {
+		if ev.Reason != "SuccessfulRescale" {
 			continue
 		}
-		size := parseRescaleSize(event.Message)
+		size := parseRescaleSize(ev.Message)
 		if size == 0 {
 			continue
 		}
 		rescales = append(rescales, event.RescaleData{
-			timestamp: event.Timestamp,
-			newSize:   size,
+			Timestamp: ev.Timestamp,
+			NewSize:   size,
 		})
 	}
 	return rescales
@@ -516,8 +514,8 @@ func buildCandidateWindows(currentWindow int32) []int32 {
 
 // simulateCandidates runs the window simulation for each candidate and
 // returns the recommendations with estimated flap reduction.
-func simulateCandidates(rescales []event.RescaleData, currentFlips int, candidates []int32) []FlappingSimulation {
-	var recommendations []FlappingSimulation
+func simulateCandidates(rescales []event.RescaleData, currentFlips int, candidates []int32) []Simulation {
+	var recommendations []Simulation
 
 	for _, windowSec := range candidates {
 		remainingFlips := simulateWindow(rescales, windowSec)
@@ -538,7 +536,7 @@ func simulateCandidates(rescales []event.RescaleData, currentFlips int, candidat
 			},
 		})
 
-		recommendations = append(recommendations, FlappingSimulation{
+		recommendations = append(recommendations, Simulation{
 			WindowSeconds:           windowSec,
 			EstimatedFlapReduction:  reduction,
 			EstimatedDirectionFlips: remainingFlips,
@@ -642,7 +640,7 @@ func formatFlappingDuration(d time.Duration) string {
 }
 
 // buildFlappingSummary creates a one-line summary of the flapping analysis.
-func buildFlappingSummary(directionFlips int, currentWindow int32, recommendations []FlappingSimulation) string {
+func buildFlappingSummary(directionFlips int, currentWindow int32, recommendations []Simulation) string {
 	if directionFlips == 0 {
 		return fmt.Sprintf("No direction flips detected with current %ds stabilization window.", currentWindow)
 	}
@@ -684,4 +682,24 @@ func currentStabilizationWindowSeconds(hpa *autoscalingv2.HorizontalPodAutoscale
 		return 300
 	}
 	return *hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds
+}
+
+// newSizeRegex extracts the "new size: N" replica count from a
+// SuccessfulRescale event message. Local copy of pkg/hpa.newSizeRegex to
+// keep this leaf package self-contained; keep in sync with retrospective.go.
+var newSizeRegex = regexp.MustCompile(`(?i)new size:\s*(\d+)`)
+
+// parseRescaleSize extracts the new replica count from an HPA event message.
+// Returns 0 when the message does not contain a parseable size. Local copy of
+// pkg/hpa.parseRescaleSize; keep in sync with churn.go.
+func parseRescaleSize(message string) int32 {
+	match := newSizeRegex.FindStringSubmatch(message)
+	if len(match) < 2 {
+		return 0
+	}
+	var result int32
+	if _, err := fmt.Sscanf(match[1], "%d", &result); err != nil {
+		return 0
+	}
+	return result
 }

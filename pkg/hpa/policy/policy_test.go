@@ -1,4 +1,4 @@
-package hpa
+package policy
 
 import (
 	"testing"
@@ -7,13 +7,17 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+func int32PtrForPolicyTest(v int32) *int32 { return &v }
+
+func intPtr(v int) *int { return &v }
+
 func TestEvaluatePolicies_PolicySetShortForm(t *testing.T) {
-	policy := PolicyFile{
-		Policies: []PolicySet{
+	policy := File{
+		Policies: []Set{
 			{
 				Name:     "production-stabilization",
 				Selector: map[string]string{"environment": "production"},
-				Rules: []PolicyRule{
+				Rules: []Rule{
 					{Type: "stabilizationWindowSeconds", Min: intPtr(300), Severity: "warning"},
 					{Type: "maxReplicas", MaxMultiplierFromCurrent: intPtr(5), Severity: "critical"},
 				},
@@ -45,28 +49,4 @@ func TestEvaluatePolicies_PolicySetShortForm(t *testing.T) {
 	if report.Violations[1].RuleID != "max-replicas-from-current" {
 		t.Fatalf("expected max replicas from current rule, got %#v", report.Violations[1])
 	}
-}
-
-func TestDetectTimelineAnomalies_Thrashing(t *testing.T) {
-	trace := TimelineTrace{
-		Snapshots: []TimelineSnapshot{
-			{Desired: 2, Health: "OK"},
-			{Desired: 6, Health: "OK"},
-			{Desired: 2, Health: "OK"},
-			{Desired: 7, Health: "ERROR"},
-			{Desired: 3, Health: "OK"},
-		},
-	}
-	got := DetectTimelineAnomalies(trace)
-	if len(got) == 0 {
-		t.Fatal("expected timeline anomalies")
-	}
-}
-
-func intPtr(v int) *int {
-	return &v
-}
-
-func int32PtrForPolicyTest(v int32) *int32 {
-	return &v
 }

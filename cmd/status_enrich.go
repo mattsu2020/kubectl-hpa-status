@@ -142,7 +142,7 @@ func applySimulationOverrides(hpa *autoscalingv2.HorizontalPodAutoscaler, report
 			report.Analysis.Interpretation = append(report.Analysis.Interpretation,
 				fmt.Sprintf("simulation error: %v", simErr))
 		} else {
-			report.Analysis.Simulation = sim
+			report.Analysis.FlappingSimulation = sim
 		}
 	default:
 		sim, simErr := hpaanalysis.SimulateHPA(hpa, overrides, cfg.HealthWeights)
@@ -150,7 +150,7 @@ func applySimulationOverrides(hpa *autoscalingv2.HorizontalPodAutoscaler, report
 			report.Analysis.Interpretation = append(report.Analysis.Interpretation,
 				fmt.Sprintf("simulation error: %v", simErr))
 		} else {
-			report.Analysis.Simulation = sim
+			report.Analysis.FlappingSimulation = sim
 		}
 	}
 }
@@ -164,10 +164,10 @@ func applyMetricSimulation(hpa *autoscalingv2.HorizontalPodAutoscaler, report *h
 	if simErr != nil {
 		return fmt.Errorf("metric simulation: %w", simErr)
 	}
-	if report.Analysis.Simulation == nil {
-		report.Analysis.Simulation = sim
+	if report.Analysis.FlappingSimulation == nil {
+		report.Analysis.FlappingSimulation = sim
 	} else {
-		report.Analysis.Simulation.MetricSimulations = sim.MetricSimulations
+		report.Analysis.FlappingSimulation.MetricSimulations = sim.MetricSimulations
 	}
 	return nil
 }

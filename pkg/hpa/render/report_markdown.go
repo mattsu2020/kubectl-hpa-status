@@ -221,10 +221,10 @@ func appendMarkdownPodAnalysis(out *strings.Builder, a *hpa.Analysis) {
 
 func appendMarkdownSimulation(out *strings.Builder, a *hpa.Analysis) {
 	// Simulation
-	if a.Simulation == nil {
+	if a.FlappingSimulation == nil {
 		return
 	}
-	sim := a.Simulation
+	sim := a.FlappingSimulation
 	out.WriteString("## Simulation\n\n")
 	out.WriteString(fmt.Sprintf("- **Parameter:** %s\n", sim.Parameter))
 	out.WriteString(fmt.Sprintf("- **Original:** %s  **Simulated:** %s\n", sim.OriginalValue, sim.SimulatedValue))

@@ -998,17 +998,17 @@ func TestRunStatus_Simulate(t *testing.T) {
 		t.Fatalf("failed to parse JSON output: %v", err)
 	}
 
-	if report.Analysis.Simulation == nil {
+	if report.Analysis.FlappingSimulation == nil {
 		t.Fatal("expected Simulation to be populated")
 	}
-	if report.Analysis.Simulation.Parameter != "maxReplicas" {
-		t.Errorf("expected parameter=maxReplicas, got %q", report.Analysis.Simulation.Parameter)
+	if report.Analysis.FlappingSimulation.Parameter != "maxReplicas" {
+		t.Errorf("expected parameter=maxReplicas, got %q", report.Analysis.FlappingSimulation.Parameter)
 	}
-	if report.Analysis.Simulation.OriginalValue != "10" {
-		t.Errorf("expected originalValue=10, got %q", report.Analysis.Simulation.OriginalValue)
+	if report.Analysis.FlappingSimulation.OriginalValue != "10" {
+		t.Errorf("expected originalValue=10, got %q", report.Analysis.FlappingSimulation.OriginalValue)
 	}
-	if report.Analysis.Simulation.SimulatedValue != "20" {
-		t.Errorf("expected simulatedValue=20, got %q", report.Analysis.Simulation.SimulatedValue)
+	if report.Analysis.FlappingSimulation.SimulatedValue != "20" {
+		t.Errorf("expected simulatedValue=20, got %q", report.Analysis.FlappingSimulation.SimulatedValue)
 	}
 }
 

@@ -1,6 +1,7 @@
-package hpa
+package lint
 
 import (
+	"strings"
 	"testing"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -9,8 +10,15 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// containsString is a local test helper mirroring pkg/hpa.containsString.
+func containsString(s, substr string) bool {
+	return strings.Contains(s, substr)
+}
+
+func int32Ptr(v int32) *int32 { return &v }
+
 func TestLintHPA_NilHPA(t *testing.T) {
-	result := LintHPA(nil)
+	result := Run(nil)
 	if result.Pass {
 		t.Error("expected pass=false for nil HPA")
 	}
@@ -60,7 +68,7 @@ func TestLintHPA_ValidHPA(t *testing.T) {
 		},
 	}
 
-	result := LintHPA(hpa)
+	result := Run(hpa)
 	if !result.Pass {
 		t.Errorf("expected pass=true, got errors=%d", result.Errors)
 	}
@@ -79,13 +87,13 @@ func TestLintHPA_MinGreaterThanMax(t *testing.T) {
 		},
 	}
 
-	result := LintHPA(hpa)
+	result := Run(hpa)
 	if result.Pass {
 		t.Error("expected pass=false when minReplicas > maxReplicas")
 	}
 	found := false
 	for _, f := range result.Findings {
-		if f.Rule == "replica-range" && f.Severity == LintError {
+		if f.Rule == "replica-range" && f.Severity == Error {
 			found = true
 			break
 		}
@@ -106,7 +114,7 @@ func TestLintHPA_MaxReplicasZero(t *testing.T) {
 		},
 	}
 
-	result := LintHPA(hpa)
+	result := Run(hpa)
 	if result.Pass {
 		t.Error("expected pass=false when maxReplicas=0")
 	}
@@ -123,7 +131,7 @@ func TestLintHPA_NoScaleDownBehavior(t *testing.T) {
 		},
 	}
 
-	result := LintHPA(hpa)
+	result := Run(hpa)
 	found := false
 	for _, f := range result.Findings {
 		if f.Rule == "behavior-scaledown" {
@@ -159,10 +167,10 @@ func TestLintHPA_HighUtilizationTarget(t *testing.T) {
 		},
 	}
 
-	result := LintHPA(hpa)
+	result := Run(hpa)
 	found := false
 	for _, f := range result.Findings {
-		if f.Rule == "target-utilization" && f.Severity == LintWarning {
+		if f.Rule == "target-utilization" && f.Severity == Warning {
 			found = true
 			break
 		}
@@ -195,7 +203,7 @@ func TestLintHPA_SingleMetric(t *testing.T) {
 		},
 	}
 
-	result := LintHPA(hpa)
+	result := Run(hpa)
 	found := false
 	for _, f := range result.Findings {
 		if f.Rule == "metric-coverage" {
@@ -221,7 +229,7 @@ func TestLintHPA_ScaleToZero(t *testing.T) {
 		},
 	}
 
-	result := LintHPA(hpa)
+	result := Run(hpa)
 	found := false
 	for _, f := range result.Findings {
 		if f.Rule == "scale-to-zero" {
@@ -251,7 +259,7 @@ func TestLintHPA_TightTolerance(t *testing.T) {
 		},
 	}
 
-	result := LintHPA(hpa)
+	result := Run(hpa)
 	found := false
 	for _, f := range result.Findings {
 		if f.Rule == "tolerance" {
@@ -277,10 +285,10 @@ func TestLintHPA_WideReplicaRange(t *testing.T) {
 		},
 	}
 
-	result := LintHPA(hpa)
+	result := Run(hpa)
 	found := false
 	for _, f := range result.Findings {
-		if f.Rule == "replica-range" && f.Severity == LintWarning {
+		if f.Rule == "replica-range" && f.Severity == Warning {
 			found = true
 			break
 		}
@@ -291,15 +299,15 @@ func TestLintHPA_WideReplicaRange(t *testing.T) {
 }
 
 func TestFormatLintSARIF(t *testing.T) {
-	result := &LintResult{
-		Findings: []LintFinding{
+	result := &Result{
+		Findings: []Finding{
 			{
-				Severity: LintError,
+				Severity: Error,
 				Rule:     "replica-range",
 				Message:  "minReplicas > maxReplicas",
 			},
 			{
-				Severity: LintWarning,
+				Severity: Warning,
 				Rule:     "behavior-scaledown",
 				Message:  "No scaleDown behavior",
 			},
