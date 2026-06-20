@@ -36,12 +36,32 @@ func EstimateDecisionSignals(hpa *autoscalingv2.HorizontalPodAutoscaler) []Decis
 	conditionSigs := buildConditionDecisionSignals(hpa)
 	signals = append(signals, conditionSigs...)
 
-	// Set adapter version on all signals.
+	// Set adapter version and derive the user-facing Classification from each
+	// signal's Confidence so tooling can render a consistent [observed]/
+	// [estimated]/[assumed] evidence label without re-deriving the mapping.
 	for i := range signals {
 		signals[i].AdapterVersion = adapterVersionEstimation
+		signals[i].Classification = classifyConfidence(signals[i].Confidence)
 	}
 
 	return signals
+}
+
+// classifyConfidence maps a DecisionSignal's string Confidence (high/medium/low)
+// to its user-facing Classification. High → observed (read directly from HPA
+// status), medium → estimated (inferred from visible signals), anything else
+// (low, empty) → unknown (the HPA controller does not expose it). This mirrors
+// confidence.Confidence.Classify but operates on the string form stored in
+// DecisionSignal so callers do not need to re-parse the enum.
+func classifyConfidence(confidence string) string {
+	switch Confidence(confidence) {
+	case ConfidenceHigh:
+		return string(ClassificationObserved)
+	case ConfidenceMedium:
+		return string(ClassificationEstimated)
+	default:
+		return string(ClassificationUnknown)
+	}
 }
 
 // buildStabilizationDecisionSignal creates a signal when the scale-down

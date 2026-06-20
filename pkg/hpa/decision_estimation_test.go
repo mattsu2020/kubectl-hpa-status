@@ -6,6 +6,7 @@ import (
 	"time"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -243,6 +244,73 @@ func TestBuildConditionDecisionSignals(t *testing.T) {
 			t.Errorf("expected 0 signals, got %d", len(signals))
 		}
 	})
+}
+
+// TestEstimateDecisionSignalsSetsClassification verifies every signal
+// produced by EstimateDecisionSignals carries a Classification derived from
+// its Confidence, so structured output can render a consistent [observed]/
+// [estimated]/[unknown] evidence label. This is the C-9 guarantee: a user can
+// tell at a glance whether a decision signal is read from the API, inferred,
+// or assumed.
+func TestEstimateDecisionSignalsSetsClassification(t *testing.T) {
+	// Use an AbleToScale/DesiredWithinTolerance condition so the tolerance
+	// signal is produced (ConfidenceHigh -> Classification observed).
+	hpa := &autoscalingv2.HorizontalPodAutoscaler{
+		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "ns"},
+		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{Kind: "Deployment", Name: "test"},
+			MinReplicas:    ptrInt32Test(1),
+			MaxReplicas:    10,
+		},
+		Status: autoscalingv2.HorizontalPodAutoscalerStatus{
+			CurrentReplicas: 3,
+			DesiredReplicas: 3,
+			Conditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
+				{
+					Type:    autoscalingv2.AbleToScale,
+					Status:  corev1.ConditionTrue,
+					Reason:  "DesiredWithinTolerance",
+					Message: "desired within tolerance",
+				},
+			},
+		},
+	}
+	signals := EstimateDecisionSignals(hpa)
+	if len(signals) == 0 {
+		t.Fatal("expected at least one decision signal")
+	}
+	// classifyConfidence maps high→observed, medium→estimated, else→unknown.
+	// Every signal must have a non-empty Classification consistent with the
+	// confidence→classification map.
+	for _, sig := range signals {
+		if sig.Classification == "" {
+			t.Errorf("signal %q has empty Classification; it should be derived from Confidence %q", sig.Reason, sig.Confidence)
+		}
+		want := classifyConfidence(sig.Confidence)
+		if sig.Classification != want {
+			t.Errorf("signal %q Classification = %q, want %q (from Confidence %q)", sig.Reason, sig.Classification, want, sig.Confidence)
+		}
+	}
+}
+
+// TestClassifyConfidence verifies the confidence→classification mapping that
+// DecisionSignal.Classification is derived from.
+func TestClassifyConfidence(t *testing.T) {
+	cases := []struct {
+		confidence string
+		want       string
+	}{
+		{string(ConfidenceHigh), string(ClassificationObserved)},
+		{string(ConfidenceMedium), string(ClassificationEstimated)},
+		{string(ConfidenceLow), string(ClassificationUnknown)},
+		{"", string(ClassificationUnknown)},
+		{"garbage", string(ClassificationUnknown)},
+	}
+	for _, c := range cases {
+		if got := classifyConfidence(c.confidence); got != c.want {
+			t.Errorf("classifyConfidence(%q) = %q, want %q", c.confidence, got, c.want)
+		}
+	}
 }
 
 // Helper for tests.

@@ -27,7 +27,7 @@
 
 English README: [README.md](README.md)
 
-> **注記**: Krew 経由でインストールした場合は `kubectl hpa_status`（アンダースコア形式）を使用してください。本 README では `kubectl hpa status` を推奨形式として記載していますが、動作しない場合は `kubectl hpa_status` に置き換えてください。
+> **注記**: Krew 経由でインストールした場合、プラグインは `kubectl hpa_status`（アンダースコア形式）として検出されます。本 README の例はこの形式を標準の呼び出し方として使用しています。ネスト形式 `kubectl hpa status`（スペース形式）も、ネストプラグイン検出をサポートする kubectl では動作しますが、すべての環境で使えるとは限らないため、スクリプトや運用手順では `kubectl hpa_status` を推奨します。
 
 このツールは、HPA運用でよくある3つの疑問にすばやく答えます。
 
@@ -126,7 +126,7 @@ kubectl hpa_status list -A --wide
 kubectl hpa_status <hpa-name> --suggest
 ```
 
-Krew はプラグインを `hpa-status` として登録し、`kubectl hpa_status`（アンダースコア形式）で検出されます。本 README では対応環境で `kubectl hpa status` を推奨形式として記載しています。動作しない場合は `kubectl hpa_status status <hpa-name>` または `kubectl-hpa-status status <hpa-name>` を使用してください。
+Krew はプラグインを `hpa-status` として登録し、`kubectl hpa_status`（アンダースコア形式）で検出されます。これがスクリプトや運用手順で推奨される標準形式です。ネスト形式 `kubectl hpa status`（スペース形式）は、ネストプラグイン検出をサポートする kubectl では動作しますが、すべての環境で使えるとは限りません。動作しない場合は `kubectl hpa_status status <hpa-name>` または `kubectl-hpa-status status <hpa-name>` を使用してください。
 
 ### Homebrew
 

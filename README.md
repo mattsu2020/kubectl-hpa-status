@@ -27,7 +27,7 @@ A kubectl plugin for investigating HorizontalPodAutoscaler (HPA) status using ex
 
 Japanese README: [README.ja.md](README.ja.md)
 
-> **Note**: When installed via Krew, use `kubectl hpa_status` (underscore form). This README shows `kubectl hpa status` as the primary form; if it doesn't work, replace with `kubectl hpa_status`.
+> **Note**: When installed via Krew, the plugin is discovered as `kubectl hpa_status` (underscore form). The examples in this README use that form as the canonical invocation. The nested form `kubectl hpa status` (space form) also works on kubectl builds that support nested plugin discovery, but it is not universally available, so prefer `kubectl hpa_status` in scripts and runbooks.
 
 This tool quickly answers three common HPA operations questions:
 
