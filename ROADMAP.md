@@ -17,6 +17,30 @@ This roadmap tracks planned work that is visible to users and contributors. It i
 - **Informer-based watch:** Add an opt-in informer update path for large clusters alongside the current polling mode.
 - **KEP-6111 upstream adapter:** Replace the current visible-signal structured export with native upstream structured HPA decision fields when they become available.
 
+## Structural Refactors (Internal)
+
+These are internal-only changes tracked separately because they touch wide
+areas and require their own design step before landing. They have no
+user-visible behavior change.
+
+- **Split `cmd/` into sub-packages:** `cmd/` currently holds ~110 files in one
+  `package cmd`. Extract self-contained groups (`bundle_*`, `replay`, then
+  shallower commands like `alerts`/`completion`/`compat`/`version`) into
+  sub-packages. Prerequisite: lift the ~10 unexported helpers they share
+  (`newClientOrDefault`, `applyCommandPreset`, `fetchSnapshot*`,
+  `capacitySelector`, `redactBytes`, `outputSelection`, `writeOutput`, ...) into
+  a shared `cmd/internal` package first, then migrate callers and shrink the
+  `cmd/converters.go` / `cmd/output.go` facades.
+- **Slim the `Analysis` god-struct:** `pkg/hpa.Analysis` has 50+ fields
+  accumulated feature-by-feature. Plan a JSON-schema v2 grouping (e.g.
+  `Analysis.Capacity.*`, `Analysis.Decision.*`) so related fields travel
+  together. This is a breaking JSON change and must ride a major version bump
+  with additive migration.
+- **Re-evaluate testutil SA1019 suppressions:** `internal/testutil` uses
+  `fake.NewSimpleClientset` (deprecated, no applyconfig replacement). Re-check
+  on each client-go upgrade and remove the `//nolint:staticcheck` once an
+  alternative lands.
+
 ## Recently Added
 
 - **Durable decision recording:** `record` writes JSONL HPA snapshots and `timeline --from-record` replays them after Events expire.

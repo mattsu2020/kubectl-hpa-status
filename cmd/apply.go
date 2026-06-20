@@ -211,7 +211,7 @@ func executePatches(ctx context.Context, out io.Writer, client *kube.Client, nam
 	// non-atomic sequential apply. Without --allow-partial we return an error
 	// so a merge failure can never silently leave the HPA partially modified.
 	if !allowPartial {
-		return nil, fmt.Errorf("patches could not be merged into one atomic patch (%v); pass --allow-partial to apply them sequentially at the risk of a partial modification", mergeErr)
+		return nil, fmt.Errorf("patches could not be merged into one atomic patch (%w); pass --allow-partial to apply them sequentially at the risk of a partial modification", mergeErr)
 	}
 
 	_, _ = fmt.Fprintf(out, "WARNING: patches could not be merged (%v); falling back to sequential, non-atomic apply.\n", mergeErr)

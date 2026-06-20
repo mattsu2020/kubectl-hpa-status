@@ -159,66 +159,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 
 	case key.Matches(msg, m.keys.Up):
-		switch m.viewMode {
-		case listView:
-			m.cursor--
-			if m.cursor < 0 {
-				m.cursor = 0
-			}
-		case fixView:
-			if m.fixState != nil && m.fixState.selected > 0 {
-				m.fixState.selected--
-			}
-		case replayView:
-			if m.replayState != nil && m.replayState.scrollPos > 0 {
-				m.replayState.scrollPos--
-			}
-		case historyView:
-			if m.historyState != nil && m.historyState.scrollPos > 0 {
-				m.historyState.scrollPos--
-			}
-		case hintsView:
-			if m.hintsState != nil && m.hintsState.selected > 0 {
-				m.hintsState.selected--
-			}
-		}
-		return m, nil
+		return m.moveCursor(-1), nil
 
 	case key.Matches(msg, m.keys.Down):
-		switch m.viewMode {
-		case listView:
-			filtered := m.filteredItems()
-			m.cursor++
-			if m.cursor >= len(filtered) {
-				m.cursor = len(filtered) - 1
-			}
-			if m.cursor < 0 {
-				m.cursor = 0
-			}
-		case fixView:
-			if m.fixState != nil && m.fixState.selected < len(m.fixState.suggestions)-1 {
-				m.fixState.selected++
-			}
-		case replayView:
-			if m.replayState != nil && m.replayState.trace != nil {
-				maxScroll := len(m.replayState.trace.Snapshots) - 1
-				if m.replayState.scrollPos < maxScroll {
-					m.replayState.scrollPos++
-				}
-			}
-		case historyView:
-			if m.historyState != nil {
-				maxScroll := len(m.historyState.snapshots) - 1
-				if m.historyState.scrollPos < maxScroll {
-					m.historyState.scrollPos++
-				}
-			}
-		case hintsView:
-			if m.hintsState != nil && m.hintsState.selected < len(m.hintsState.flows)-1 {
-				m.hintsState.selected++
-			}
-		}
-		return m, nil
+		return m.moveCursor(+1), nil
 
 	case key.Matches(msg, m.keys.Enter):
 		return m.handleEnter()
@@ -427,6 +371,57 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+// moveCursor advances the active view's selection/scroll cursor by delta
+// (negative for up, positive for down), clamping at both ends. It centralizes
+// the per-view cursor math that previously inlined two near-identical nested
+// switches in handleKey. The lower bound is always 0; only the upper bound
+// (list length) varies per view.
+func (m Model) moveCursor(delta int) Model {
+	switch m.viewMode {
+	case listView:
+		filtered := m.filteredItems()
+		m.cursor = clampCursor(m.cursor+delta, len(filtered)-1)
+	case fixView:
+		if m.fixState != nil {
+			m.fixState.selected = clampCursor(m.fixState.selected+delta, len(m.fixState.suggestions)-1)
+		}
+	case replayView:
+		if m.replayState != nil && m.replayState.trace != nil {
+			m.replayState.scrollPos = clampCursor(m.replayState.scrollPos+delta, maxInt(0, len(m.replayState.trace.Snapshots)-1))
+		}
+	case historyView:
+		if m.historyState != nil {
+			m.historyState.scrollPos = clampCursor(m.historyState.scrollPos+delta, maxInt(0, len(m.historyState.snapshots)-1))
+		}
+	case hintsView:
+		if m.hintsState != nil {
+			m.hintsState.selected = clampCursor(m.hintsState.selected+delta, len(m.hintsState.flows)-1)
+		}
+	}
+	return m
+}
+
+// clampCursor clamps v into [0, hi]; when hi < 0 (empty list) it returns 0.
+func clampCursor(v, hi int) int {
+	if v < 0 {
+		return 0
+	}
+	if hi < 0 {
+		return 0
+	}
+	if v > hi {
+		return hi
+	}
+	return v
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 func (m Model) handleSimFieldInput(msg tea.KeyMsg) (tea.Model, bool) {

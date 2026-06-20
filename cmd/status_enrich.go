@@ -33,6 +33,44 @@ type SimulationConfig struct {
 	Debug           bool                      // opts.debug
 }
 
+// CapacityAnalysisConfig bundles the capacity-enricher flags so call sites stay
+// readable and positional-bool mistakes are avoided.
+type CapacityAnalysisConfig struct {
+	CapacityContext  bool // opts.capacityContext
+	CapacityHeadroom bool // opts.capacityHeadroom
+	ReadinessImpact  bool // opts.readinessImpact
+	ScalePath        bool // opts.scalePath
+}
+
+// RolloutAndBlockersConfig bundles the rollout/blockers-enricher flags.
+type RolloutAndBlockersConfig struct {
+	Rollout          bool // opts.rollout
+	RolloutImpact    bool // opts.rolloutImpact
+	CapacityDeep     bool // opts.capacityDeep
+	ScaleoutBlockers bool // opts.scaleoutBlockers
+}
+
+// MetricContractConfig bundles the metric-contract / adapter-diagnostics flags.
+type MetricContractConfig struct {
+	MetricContract     bool // opts.metricContract
+	AdapterDiagnostics bool // opts.adapterDiagnostics
+}
+
+// ChurnAndFlappingConfig bundles the churn/flapping-enricher flags plus the
+// health weights used to apply churn penalties.
+type ChurnAndFlappingConfig struct {
+	ChurnDetect     bool                      // opts.churnDetect
+	EventsEnabled   bool                      // opts.events.enabled
+	FlappingAdvisor bool                      // opts.flappingAdvisor
+	HealthWeights   hpaanalysis.HealthWeights // opts.healthWeights
+}
+
+// AdvisorsConfig bundles the container / behavior advisor flags.
+type AdvisorsConfig struct {
+	ContainerAdvisor bool // opts.containerAdvisor
+	BehaviorAdvisor  bool // opts.behaviorAdvisor
+}
+
 func enrichDecisionTraces(hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, decisionTrace bool, decisionTraceFormat string) {
 	if decisionTrace {
 		report.Analysis.DecisionTrace = hpaanalysis.BuildDecisionTrace(hpa, report.Analysis.Min)
@@ -172,26 +210,26 @@ func applyMetricSimulation(hpa *autoscalingv2.HorizontalPodAutoscaler, report *h
 	return nil
 }
 
-func enrichCapacityAnalysis(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, capacityContext, capacityHeadroom, readinessImpact, scalePath bool) {
-	if capacityContext {
+func enrichCapacityAnalysis(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, cfg CapacityAnalysisConfig) {
+	if cfg.CapacityContext {
 		report.Analysis.CapacityContext = buildCapacityContext(ctx, client, hpa)
 	}
-	if capacityHeadroom {
+	if cfg.CapacityHeadroom {
 		report.Analysis.CapacityHeadroom = buildCapacityHeadroom(ctx, client, hpa, report.Analysis.Target)
 	}
-	if readinessImpact {
+	if cfg.ReadinessImpact {
 		report.Analysis.ReadinessImpact = buildReadinessImpact(ctx, client, hpa)
 	}
-	if scalePath {
+	if cfg.ScalePath {
 		report.Analysis.ScalePath = buildScalePath(ctx, client, hpa)
 	}
 }
 
-func enrichRolloutAndBlockers(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, rollout, rolloutImpact, capacityDeep, scaleoutBlockers bool) {
-	if rollout || rolloutImpact {
+func enrichRolloutAndBlockers(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, cfg RolloutAndBlockersConfig) {
+	if cfg.Rollout || cfg.RolloutImpact {
 		report.Analysis.RolloutDiagnosis = buildRolloutDiagnosis(ctx, client, hpa)
 	}
-	if capacityDeep || scaleoutBlockers {
+	if cfg.CapacityDeep || cfg.ScaleoutBlockers {
 		report.Analysis.BlockerReport = buildBlockerReportForStatus(ctx, client, hpa, report.Analysis.Target)
 	}
 }
@@ -209,12 +247,12 @@ func enrichGitOpsConflict(ctx context.Context, client *kube.Client, hpa *autosca
 	}
 }
 
-func enrichMetricContractAndAdapter(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, metricContract, adapterDiagnostics bool) {
-	if metricContract {
+func enrichMetricContractAndAdapter(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, cfg MetricContractConfig) {
+	if cfg.MetricContract {
 		input := buildMetricContractInput(ctx, client, hpa)
 		report.Analysis.MetricContract = hpaanalysis.AnalyzeMetricContract(input)
 	}
-	if adapterDiagnostics {
+	if cfg.AdapterDiagnostics {
 		if len(report.Analysis.MetricFreshnessEntries) == 0 {
 			report.Analysis.MetricFreshnessEntries = hpaanalysis.AnalyzeMetricFreshness(hpa, report.Events)
 		}
@@ -223,14 +261,14 @@ func enrichMetricContractAndAdapter(ctx context.Context, client *kube.Client, hp
 	}
 }
 
-func enrichChurnAndFlapping(_ context.Context, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, churnDetect, eventsEnabled, flappingAdvisor bool, healthWeights hpaanalysis.HealthWeights) {
-	if churnDetect && eventsEnabled {
+func enrichChurnAndFlapping(_ context.Context, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, cfg ChurnAndFlappingConfig) {
+	if cfg.ChurnDetect && cfg.EventsEnabled {
 		report.Analysis.ChurnAnalysis = hpaanalysis.AnalyzeChurnFromEvents(report.Events, hpa)
 		if report.Analysis.ChurnAnalysis != nil {
-			hpaanalysis.ApplyChurnPenalty(&report.Analysis, healthWeights)
+			hpaanalysis.ApplyChurnPenalty(&report.Analysis, cfg.HealthWeights)
 		}
 	}
-	if flappingAdvisor {
+	if cfg.FlappingAdvisor {
 		report.Analysis.FlappingPrevention = hpaanalysis.AnalyzeFlappingPrevention(report.Events, hpa)
 	}
 }
@@ -249,11 +287,11 @@ func enrichMetricHints(hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaan
 	}
 }
 
-func enrichAdvisors(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, containerAdvisor, behaviorAdvisor bool) {
-	if containerAdvisor {
+func enrichAdvisors(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, cfg AdvisorsConfig) {
+	if cfg.ContainerAdvisor {
 		report.Analysis.ContainerAdvisor = buildContainerAdvisor(ctx, client, hpa)
 	}
-	if behaviorAdvisor {
+	if cfg.BehaviorAdvisor {
 		report.Analysis.BehaviorAdvisor = hpaanalysis.AnalyzeBehaviorAdvisor(hpa)
 	}
 }

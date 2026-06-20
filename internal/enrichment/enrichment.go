@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/kubeconv"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -423,29 +424,11 @@ func BatchVPA(ctx context.Context, ec *Context, hpas []autoscalingv2.HorizontalP
 
 // convertVPAInfo translates the kube-layer VPAInfo DTO into the analysis
 // model shape consumed by pkg/hpa analyzers. The internal/kube package must
-// not depend on pkg/hpa, so this conversion lives here at the boundary.
+// not depend on pkg/hpa, so this conversion is centralized in internal/kubeconv
+// (kubeconv.VPAInfo); this wrapper keeps the enrichment-internal call sites
+// stable while sharing the single canonical mapping.
 func convertVPAInfo(vpa *kube.VPAInfo) *hpaanalysis.VPAInfo {
-	if vpa == nil {
-		return nil
-	}
-	out := &hpaanalysis.VPAInfo{
-		Name:                vpa.Name,
-		TargetRef:           vpa.TargetRef,
-		TargetKind:          vpa.TargetKind,
-		TargetName:          vpa.TargetName,
-		UpdateMode:          vpa.UpdateMode,
-		ControlledResources: append([]string(nil), vpa.ControlledResources...),
-	}
-	for _, r := range vpa.Recommendations {
-		out.Recommendations = append(out.Recommendations, hpaanalysis.VPARecommendationInfo{
-			Container: r.Container,
-			Resource:  r.Resource,
-			Target:    r.Target,
-			Lower:     r.Lower,
-			Upper:     r.Upper,
-		})
-	}
-	return out
+	return kubeconv.VPAInfo(vpa)
 }
 
 // scaledObjectMatchesHPA checks if a ScaledObject's scaleTargetRef

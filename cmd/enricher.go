@@ -296,7 +296,12 @@ func newCapacityAnalysisEnricher(opts *options) Enricher {
 func (*capacityAnalysisEnricher) Name() string    { return "capacity-analysis" }
 func (e *capacityAnalysisEnricher) Enabled() bool { return e.enabled() }
 func (e *capacityAnalysisEnricher) Run(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
-	enrichCapacityAnalysis(ctx, p.Client, hpa, report, e.capacityContext, e.capacityHeadroom, e.readinessImpact, e.scalePath)
+	enrichCapacityAnalysis(ctx, p.Client, hpa, report, CapacityAnalysisConfig{
+		CapacityContext:  e.capacityContext,
+		CapacityHeadroom: e.capacityHeadroom,
+		ReadinessImpact:  e.readinessImpact,
+		ScalePath:        e.scalePath,
+	})
 	return nil
 }
 
@@ -323,7 +328,12 @@ func newRolloutAndBlockersEnricher(opts *options) Enricher {
 func (*rolloutAndBlockersEnricher) Name() string    { return "rollout-and-blockers" }
 func (e *rolloutAndBlockersEnricher) Enabled() bool { return e.enabled() }
 func (e *rolloutAndBlockersEnricher) Run(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
-	enrichRolloutAndBlockers(ctx, p.Client, hpa, report, e.rollout, e.rolloutImpact, e.capacityDeep, e.scaleoutBlockers)
+	enrichRolloutAndBlockers(ctx, p.Client, hpa, report, RolloutAndBlockersConfig{
+		Rollout:          e.rollout,
+		RolloutImpact:    e.rolloutImpact,
+		CapacityDeep:     e.capacityDeep,
+		ScaleoutBlockers: e.scaleoutBlockers,
+	})
 	return nil
 }
 
@@ -405,7 +415,10 @@ func newMetricContractAndAdapterEnricher(opts *options) Enricher {
 func (*metricContractAndAdapterEnricher) Name() string    { return "metric-contract-and-adapter" }
 func (e *metricContractAndAdapterEnricher) Enabled() bool { return e.enabled() }
 func (e *metricContractAndAdapterEnricher) Run(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
-	enrichMetricContractAndAdapter(ctx, p.Client, hpa, report, e.metricContract, e.adapterDiagnostics)
+	enrichMetricContractAndAdapter(ctx, p.Client, hpa, report, MetricContractConfig{
+		MetricContract:     e.metricContract,
+		AdapterDiagnostics: e.adapterDiagnostics,
+	})
 	return nil
 }
 
@@ -430,7 +443,12 @@ func newChurnAndFlappingEnricher(opts *options) Enricher {
 func (*churnAndFlappingEnricher) Name() string    { return "churn-and-flapping" }
 func (e *churnAndFlappingEnricher) Enabled() bool { return e.enabled() }
 func (e *churnAndFlappingEnricher) Run(ctx context.Context, _ *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
-	enrichChurnAndFlapping(ctx, hpa, report, e.churnDetect, e.eventsEnabled, e.flappingAdvisor, e.healthWeights)
+	enrichChurnAndFlapping(ctx, hpa, report, ChurnAndFlappingConfig{
+		ChurnDetect:     e.churnDetect,
+		EventsEnabled:   e.eventsEnabled,
+		FlappingAdvisor: e.flappingAdvisor,
+		HealthWeights:   e.healthWeights,
+	})
 	return nil
 }
 
@@ -479,6 +497,9 @@ func newAdvisorsEnricher(opts *options) Enricher {
 func (*advisorsEnricher) Name() string    { return "advisors" }
 func (e *advisorsEnricher) Enabled() bool { return e.enabled() }
 func (e *advisorsEnricher) Run(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
-	enrichAdvisors(ctx, p.Client, hpa, report, e.containerAdvisor, e.behaviorAdvisor)
+	enrichAdvisors(ctx, p.Client, hpa, report, AdvisorsConfig{
+		ContainerAdvisor: e.containerAdvisor,
+		BehaviorAdvisor:  e.behaviorAdvisor,
+	})
 	return nil
 }

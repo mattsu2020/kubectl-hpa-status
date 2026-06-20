@@ -162,3 +162,35 @@ func PDBDisruptionMessage(p kube.PDBInfo) string {
 		return "PDB present but no availability constraint specified"
 	}
 }
+
+// VPAInfo translates the kube-layer VPAInfo DTO into the analysis model shape
+// consumed by pkg/hpa analyzers. The internal/kube package must not depend on
+// pkg/hpa, so this conversion lives at the boundary. Returns nil for a nil
+// input so optional analysis fields stay unset.
+//
+// This is the canonical converter: internal/enrichment delegates here instead
+// of keeping a private copy, so the kube -> hpa VPA mapping has exactly one
+// definition.
+func VPAInfo(vpa *kube.VPAInfo) *hpaanalysis.VPAInfo {
+	if vpa == nil {
+		return nil
+	}
+	out := &hpaanalysis.VPAInfo{
+		Name:                vpa.Name,
+		TargetRef:           vpa.TargetRef,
+		TargetKind:          vpa.TargetKind,
+		TargetName:          vpa.TargetName,
+		UpdateMode:          vpa.UpdateMode,
+		ControlledResources: append([]string(nil), vpa.ControlledResources...),
+	}
+	for _, r := range vpa.Recommendations {
+		out.Recommendations = append(out.Recommendations, hpaanalysis.VPARecommendationInfo{
+			Container: r.Container,
+			Resource:  r.Resource,
+			Target:    r.Target,
+			Lower:     r.Lower,
+			Upper:     r.Upper,
+		})
+	}
+	return out
+}
