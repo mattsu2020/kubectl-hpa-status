@@ -402,9 +402,9 @@ func TestBatchVPA_VPADisabled(t *testing.T) {
 
 func TestScaledObjectMatchesHPA_Match(t *testing.T) {
 	so := &unstructured.Unstructured{
-		Object: map[string]interface{}{
-			"spec": map[string]interface{}{
-				"scaleTargetRef": map[string]interface{}{
+		Object: map[string]any{
+			"spec": map[string]any{
+				"scaleTargetRef": map[string]any{
 					"kind": "Deployment",
 					"name": "my-app",
 				},
@@ -423,9 +423,9 @@ func TestScaledObjectMatchesHPA_Match(t *testing.T) {
 
 func TestScaledObjectMatchesHPA_NoMatch(t *testing.T) {
 	so := &unstructured.Unstructured{
-		Object: map[string]interface{}{
-			"spec": map[string]interface{}{
-				"scaleTargetRef": map[string]interface{}{
+		Object: map[string]any{
+			"spec": map[string]any{
+				"scaleTargetRef": map[string]any{
 					"kind": "Deployment",
 					"name": "other-app",
 				},
@@ -444,8 +444,8 @@ func TestScaledObjectMatchesHPA_NoMatch(t *testing.T) {
 
 func TestScaledObjectMatchesHPA_EmptyRef(t *testing.T) {
 	so := &unstructured.Unstructured{
-		Object: map[string]interface{}{
-			"spec": map[string]interface{}{},
+		Object: map[string]any{
+			"spec": map[string]any{},
 		},
 	}
 	hpa := &autoscalingv2.HorizontalPodAutoscaler{
@@ -460,9 +460,9 @@ func TestScaledObjectMatchesHPA_EmptyRef(t *testing.T) {
 
 func TestScaledObjectMatchesHPA_EmptyKindName(t *testing.T) {
 	so := &unstructured.Unstructured{
-		Object: map[string]interface{}{
-			"spec": map[string]interface{}{
-				"scaleTargetRef": map[string]interface{}{
+		Object: map[string]any{
+			"spec": map[string]any{
+				"scaleTargetRef": map[string]any{
 					"kind": "",
 					"name": "",
 				},

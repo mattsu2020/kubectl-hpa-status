@@ -13,13 +13,22 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 )
 
+// newSimpleFakeClient is the single chokepoint for the deprecated
+// fake.NewSimpleClientset constructor. client-go does not yet ship an
+// applyconfig-based replacement (tracked via ROADMAP.md), so all test helpers
+// funnel through here and carry the SA1019 suppression in one place.
+// Re-evaluate on each client-go upgrade.
+func newSimpleFakeClient(objects ...runtime.Object) *fake.Clientset {
+	return fake.NewSimpleClientset(objects...) //nolint:staticcheck // SA1019 deprecated, no replacement without applyconfig. Re-evaluate on client-go upgrade; tracked via ROADMAP.md.
+}
+
 // NewFakeClient creates a fake Kubernetes clientset pre-loaded with HPA objects.
 func NewFakeClient(hpas ...*autoscalingv2.HorizontalPodAutoscaler) *fake.Clientset {
 	objects := make([]runtime.Object, 0, len(hpas))
 	for _, hpa := range hpas {
 		objects = append(objects, hpa)
 	}
-	return fake.NewSimpleClientset(objects...) //nolint:staticcheck // SA1019 deprecated, no replacement without applyconfig. Re-evaluate on client-go upgrade; tracked via ROADMAP.md.
+	return newSimpleFakeClient(objects...)
 }
 
 // NewFakeClientWithEvents creates a fake Kubernetes clientset pre-loaded with
@@ -32,7 +41,7 @@ func NewFakeClientWithEvents(hpas []*autoscalingv2.HorizontalPodAutoscaler, even
 	for _, event := range events {
 		objects = append(objects, event)
 	}
-	return fake.NewSimpleClientset(objects...) //nolint:staticcheck // SA1019 deprecated, no replacement without applyconfig. Re-evaluate on client-go upgrade; tracked via ROADMAP.md.
+	return newSimpleFakeClient(objects...)
 }
 
 // BuildHPA creates a HorizontalPodAutoscaler with sensible defaults for testing.

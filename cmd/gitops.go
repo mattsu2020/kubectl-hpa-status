@@ -149,7 +149,7 @@ func parseFileForReplicas(filePath, targetKind, targetName string) (*int32, bool
 	}
 
 	// Try multi-document YAML
-	var multi []map[string]interface{}
+	var multi []map[string]any
 	if err := yaml.Unmarshal(data, &multi); err == nil {
 		for _, doc := range multi {
 			u := &unstructured.Unstructured{Object: doc}

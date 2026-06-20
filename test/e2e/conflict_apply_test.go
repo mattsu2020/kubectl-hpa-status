@@ -78,20 +78,20 @@ func createVPA(t *testing.T, dyn dynamic.Interface, nsName, vpaName, targetName 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	vpa := &unstructured.Unstructured{Object: map[string]interface{}{
+	vpa := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "autoscaling.k8s.io/v1",
 		"kind":       "VerticalPodAutoscaler",
-		"metadata": map[string]interface{}{
+		"metadata": map[string]any{
 			"name":      vpaName,
 			"namespace": nsName,
 		},
-		"spec": map[string]interface{}{
-			"targetRef": map[string]interface{}{
+		"spec": map[string]any{
+			"targetRef": map[string]any{
 				"apiVersion": "v1",
 				"kind":       "ReplicationController",
 				"name":       targetName,
 			},
-			"updatePolicy": map[string]interface{}{
+			"updatePolicy": map[string]any{
 				"updateMode": "Auto",
 			},
 		},
@@ -281,25 +281,25 @@ func TestE2E_KEDACRDPresent(t *testing.T) {
 
 	// Minimal ScaledObject referencing the RC with a cron trigger.
 	soGVR := schema.GroupVersionResource{Group: "keda.sh", Version: "v1alpha1", Resource: "scaledobjects"}
-	so := &unstructured.Unstructured{Object: map[string]interface{}{
+	so := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "keda.sh/v1alpha1",
 		"kind":       "ScaledObject",
-		"metadata": map[string]interface{}{
+		"metadata": map[string]any{
 			"name":      soName,
 			"namespace": nsName,
 		},
-		"spec": map[string]interface{}{
-			"scaleTargetRef": map[string]interface{}{
+		"spec": map[string]any{
+			"scaleTargetRef": map[string]any{
 				"apiVersion": "v1",
 				"kind":       "ReplicationController",
 				"name":       rcName,
 			},
 			"minReplicaCount": int64(2),
 			"maxReplicaCount": int64(10),
-			"triggers": []interface{}{
-				map[string]interface{}{
+			"triggers": []any{
+				map[string]any{
 					"type": "cron",
-					"metadata": map[string]interface{}{
+					"metadata": map[string]any{
 						"timezone": "UTC",
 						"start":    "0 * * * *",
 						"end":      "1 * * * *",
@@ -378,7 +378,7 @@ func TestE2E_KEDACRDPresent(t *testing.T) {
 	// reconciliation, so we only assert the ScaledObject name is attached.
 	result := decodeStatusReportJSON(t, raw)
 	a := analysisMap(t, result)
-	keda, ok := a["keda"].(map[string]interface{})
+	keda, ok := a["keda"].(map[string]any)
 	if !ok {
 		t.Fatalf("analysis.keda missing or wrong type with --keda=on and CRD present; got %T", a["keda"])
 	}
