@@ -293,9 +293,16 @@ func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, 
 	// only step whose error aborts the whole report (see
 	// abortOnErrorEnrichers). Skipped steps are silently ignored to avoid
 	// noise; failed steps record a message in report.Analysis.Warnings.
+	//
+	// --no-enrich / --hpa-only skips the pipeline entirely so status shows
+	// only the HPA object. This is the RBAC-light path: no Pod, Deployment,
+	// ReplicaSet, Event, KEDA, or VPA reads, making status usable in audited
+	// or restricted-permission environments where those reads are denied.
 	pipeline := &PipelineContext{Client: client, EC: ec}
-	if err := runEnrichers(ctx, buildStatusEnrichers(opts), pipeline, hpa, &report); err != nil {
-		return hpaanalysis.StatusReport{}, err
+	if !opts.NoEnrich {
+		if err := runEnrichers(ctx, buildStatusEnrichers(opts), pipeline, hpa, &report); err != nil {
+			return hpaanalysis.StatusReport{}, err
+		}
 	}
 
 	// Finalize post-enrichment derivations (e.g. stabilization/churn

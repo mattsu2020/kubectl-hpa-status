@@ -151,6 +151,20 @@ For RBAC permissions, see [docs/rbac.yaml](docs/rbac.yaml).
 - kubectl configured with a kubeconfig
 - metrics-server (for CPU/memory metrics) or a custom/external metrics adapter
 
+### Status depth tiers
+
+`status` is layered so a plain run stays fast and works under restricted RBAC. Each tier adds API reads, so pick the shallowest one that answers your question:
+
+| Command | Reads | Use when |
+| --- | --- | --- |
+| `status <hpa>` | HPA only | Quick health check; RBAC-light / audited environments |
+| `status <hpa> --explain` | + conditions, events, scale-target pods | "Why is it behaving this way?" |
+| `status <hpa> --explain-pods` | + per-pod readiness and resource requests | Pod-level diagnosis |
+| `status <hpa> --deep` | + capacity, rollout, adapter diagnostics | Full scale-out investigation |
+| `status <hpa> --no-enrich` | HPA only (explicit) | Force HPA-only even if other flags are set; alias `--hpa-only` |
+
+`--no-enrich`/`--hpa-only` and `--deep` are also available as `--analysis-profile` values (`--analysis-profile deep`). The plain `status` run reads only the HPA object, so it no longer requires Pod/Deployment permissions.
+
 ## Representative Commands
 
 ```sh

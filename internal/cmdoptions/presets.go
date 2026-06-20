@@ -20,6 +20,7 @@ const (
 	ProfileMetrics   AnalysisProfile = "metrics"
 	ProfileCapacity  AnalysisProfile = "capacity"
 	ProfileReadiness AnalysisProfile = "readiness"
+	ProfileDeep      AnalysisProfile = "deep"
 )
 
 // ValidAnalysisProfiles returns supported --analysis-profile values.
@@ -32,6 +33,7 @@ func ValidAnalysisProfiles() []string {
 		string(ProfileMetrics),
 		string(ProfileCapacity),
 		string(ProfileReadiness),
+		string(ProfileDeep),
 	}
 }
 
@@ -86,7 +88,28 @@ func ApplyAnalysisProfile(f *Features, profile AnalysisProfile) {
 		applyCapacityGapFeatures(f)
 	case ProfileReadiness:
 		applyReadinessFeatures(f)
+	case ProfileDeep:
+		// The deep tier bundles the capacity/rollout/readiness/adapter
+		// diagnostics that the one-flag --deep switch enables. It mirrors
+		// normalizeCapacityFlags' --deep expansion so --analysis-profile deep
+		// and --deep are equivalent entry points.
+		f.Deep = true
+		applyDeepFeatures(f)
 	}
+}
+
+// applyDeepFeatures enables the deep-tier enricher group. Shared by the --deep
+// flag (normalizeCapacityFlags) and --analysis-profile deep so the two entry
+// points cannot drift.
+func applyDeepFeatures(f *Features) {
+	f.CapacityContext = true
+	f.CapacityHeadroom = true
+	f.CapacityDeep = true
+	f.ScalePath = true
+	f.RolloutImpact = true
+	f.ReadinessImpact = true
+	f.AdapterDiagnostics = true
+	f.ExplainPods = true
 }
 
 func applyDoctorFeatures(f *Features) {
