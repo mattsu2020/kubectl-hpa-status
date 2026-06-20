@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -65,7 +66,68 @@ func TestWarningExitCode_Limited(t *testing.T) {
 	}
 }
 
-// --- shouldColorize tests ---
+// --- classifyError / ExitCodeForMain tests ---
+
+func TestClassifyError_NilIsSuccess(t *testing.T) {
+	if code, ok := classifyError(nil); code != ExitSuccess || !ok {
+		t.Errorf("nil -> (Success, true), got (%d, %v)", code, ok)
+	}
+}
+
+func TestClassifyError_ExitCodeErrorPreserved(t *testing.T) {
+	wrapped := &ExitCodeError{Code: ExitWarning, Err: fmt.Errorf("limited")}
+	if code, ok := classifyError(wrapped); code != ExitWarning || !ok {
+		t.Errorf("ExitCodeError(Warning) -> (Warning, true), got (%d, %v)", code, ok)
+	}
+}
+
+func TestClassifyError_WrappedExitCodeErrorResolvedViaErrorsAs(t *testing.T) {
+	// Double-wrap to confirm errors.As traversal works.
+	inner := &ExitCodeError{Code: ExitWarning, Err: fmt.Errorf("limited")}
+	outer := fmt.Errorf("status failed: %w", inner)
+	if code, ok := classifyError(outer); code != ExitWarning || !ok {
+		t.Errorf("wrapped ExitCodeError -> (Warning, true), got (%d, %v)", code, ok)
+	}
+}
+
+func TestClassifyError_ErrHPANotFoundFallsBackToExitError(t *testing.T) {
+	// not-found currently maps to ExitError for backwards compatibility;
+	// the sentinel is still recognised so the future ExitNotFound switch is
+	// a single-line change in classifyError.
+	err := fmt.Errorf("get hpa: %w", ErrHPANotFound)
+	if code, ok := classifyError(err); code != ExitError || !ok {
+		t.Errorf("ErrHPANotFound -> (ExitError, true), got (%d, %v)", code, ok)
+	}
+}
+
+func TestClassifyError_GenericErrorIsExitError(t *testing.T) {
+	code, ok := classifyError(fmt.Errorf("boom"))
+	if code != ExitError || ok {
+		t.Errorf("generic error -> (ExitError, false), got (%d, %v)", code, ok)
+	}
+}
+
+func TestExitCodeForMain(t *testing.T) {
+	if code := ExitCodeForMain(nil); code != ExitSuccess {
+		t.Errorf("nil -> Success, got %d", code)
+	}
+	if code := ExitCodeForMain(fmt.Errorf("boom")); code != ExitError {
+		t.Errorf("generic -> ExitError, got %d", code)
+	}
+	if code := ExitCodeForMain(&ExitCodeError{Code: ExitWarning, Err: fmt.Errorf("limited")}); code != ExitWarning {
+		t.Errorf("warning -> ExitWarning, got %d", code)
+	}
+}
+
+// Regression guard: ExitCodeError.Unwrap exposes the cause so errors.Is can
+// match sentinels through it.
+func TestExitCodeError_UnwrapExposesCause(t *testing.T) {
+	wrapped := &ExitCodeError{Code: ExitError, Err: fmt.Errorf("get hpa: %w", ErrHPANotFound)}
+	if !errors.Is(wrapped, ErrHPANotFound) {
+		t.Error("errors.Is(ErrHPANotFound) should resolve through ExitCodeError")
+	}
+}
+
 
 func TestShouldColorize(t *testing.T) {
 	tests := []struct {
