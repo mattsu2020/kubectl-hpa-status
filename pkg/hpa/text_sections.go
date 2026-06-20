@@ -127,8 +127,6 @@ func appendSuggestionsSection(out *[]byte, a *Analysis, opts StatusTextOptions, 
 }
 
 // appendKEDASection renders the KEDA ScaledObject section.
-//
-//nolint:gocyclo // Flat, sequential rendering of independent KEDA fields; splitting would obscure the output shape.
 func appendKEDASection(out *[]byte, a *Analysis, theme style.Theme, labels labels) {
 	if a.KEDAInfo == nil {
 		return
@@ -138,39 +136,15 @@ func appendKEDASection(out *[]byte, a *Analysis, theme style.Theme, labels label
 	*out = fmt.Appendf(*out, "  ScaledObject: %s\n", a.KEDAInfo.ScaledObjectName)
 	if len(a.KEDAInfo.Triggers) > 0 {
 		*out = fmt.Appendf(*out, "  Triggers:\n")
-		for _, t := range a.KEDAInfo.Triggers {
-			label := t.Type
-			if t.Name != "" {
-				label = fmt.Sprintf("%s (%s)", t.Type, t.Name)
-			}
-			if t.Status != "" {
-				badge := triggerStatusBadge(t.Status, theme)
-				label = fmt.Sprintf("%s: %s", label, badge)
-			}
-			*out = fmt.Appendf(*out, "    - %s\n", label)
-			if t.MetricName != "" || t.Threshold != "" || t.CurrentValue != "" {
-				detail := ""
-				if t.MetricName != "" {
-					detail = fmt.Sprintf("metric=%s", t.MetricName)
+			for _, t := range a.KEDAInfo.Triggers {
+				*out = fmt.Appendf(*out, "    - %s\n", kedaTriggerLabel(t, theme))
+				if detail := kedaTriggerDetail(t); detail != "" {
+					*out = fmt.Appendf(*out, "      %s\n", detail)
 				}
-				if t.Threshold != "" {
-					if detail != "" {
-						detail += " "
-					}
-					detail += fmt.Sprintf("threshold=%s", t.Threshold)
+				if t.AuthRef != "" {
+					*out = fmt.Appendf(*out, "      authRef=%s\n", t.AuthRef)
 				}
-				if t.CurrentValue != "" {
-					if detail != "" {
-						detail += " "
-					}
-					detail += fmt.Sprintf("current=%s", t.CurrentValue)
-				}
-				*out = fmt.Appendf(*out, "      %s\n", detail)
 			}
-			if t.AuthRef != "" {
-				*out = fmt.Appendf(*out, "      authRef=%s\n", t.AuthRef)
-			}
-		}
 	}
 	if a.KEDAInfo.Fallback != nil {
 		*out = fmt.Appendf(*out, "  Fallback: failureThreshold=%d, replicas=%d\n", a.KEDAInfo.Fallback.FailureThreshold, a.KEDAInfo.Fallback.Replicas)
@@ -190,6 +164,39 @@ func appendKEDASection(out *[]byte, a *Analysis, theme style.Theme, labels label
 	for _, line := range a.KEDAInfo.Lines {
 		*out = fmt.Appendf(*out, "  - %s\n", theme.InterpretationLine(line))
 	}
+}
+
+// kedaTriggerLabel renders the trigger header line: type, optional name, and
+// optional status badge. Extracted from appendKEDASection to keep its
+// cyclomatic complexity under the linter threshold.
+func kedaTriggerLabel(t KEDATriggerSummary, theme style.Theme) string {
+	label := t.Type
+	if t.Name != "" {
+		label = fmt.Sprintf("%s (%s)", t.Type, t.Name)
+	}
+	if t.Status != "" {
+		label = fmt.Sprintf("%s: %s", label, triggerStatusBadge(t.Status, theme))
+	}
+	return label
+}
+
+// kedaTriggerDetail renders the optional metric/threshold/current detail line
+// for a trigger, or "" when none of those fields are set.
+func kedaTriggerDetail(t KEDATriggerSummary) string {
+	if t.MetricName == "" && t.Threshold == "" && t.CurrentValue == "" {
+		return ""
+	}
+	parts := make([]string, 0, 3)
+	if t.MetricName != "" {
+		parts = append(parts, "metric="+t.MetricName)
+	}
+	if t.Threshold != "" {
+		parts = append(parts, "threshold="+t.Threshold)
+	}
+	if t.CurrentValue != "" {
+		parts = append(parts, "current="+t.CurrentValue)
+	}
+	return strings.Join(parts, " ")
 }
 
 // appendVPASection renders the VPA conflict section.
@@ -240,8 +247,6 @@ func appendMetricsDiagnosticsSection(out *[]byte, a *Analysis, theme style.Theme
 }
 
 // appendMetricFreshnessSection renders the metric freshness section.
-//
-//nolint:gocyclo // Flat, sequential rendering of independent freshness fields; splitting would obscure the output shape.
 func appendMetricFreshnessSection(out *[]byte, a *Analysis, theme style.Theme, labels labels) {
 	if len(a.MetricFreshnessEntries) == 0 {
 		return
@@ -249,50 +254,57 @@ func appendMetricFreshnessSection(out *[]byte, a *Analysis, theme style.Theme, l
 	*out = append(*out, '\n')
 	*out = fmt.Appendf(*out, "%s:\n", labels.MetricFreshness)
 	for _, mf := range a.MetricFreshnessEntries {
-		indicator := metricFreshnessIndicator(mf.Status, theme)
-		*out = fmt.Appendf(*out, "  %s %s/%s:\n", indicator, mf.Name, strings.ToLower(mf.Type))
-		*out = fmt.Appendf(*out, "    status: %s\n", metricFreshnessStatusDisplay(mf.Status, theme))
-		if mf.LastSeen != nil {
-			*out = fmt.Appendf(*out, "    last sample: %s ago\n", formatFreshnessDuration(mf.Age))
+		appendMetricFreshnessEntry(out, mf, theme)
+	}
+}
+
+// appendMetricFreshnessEntry renders a single metric-freshness entry. Extracted
+// from appendMetricFreshnessSection so the section orchestrator's cyclomatic
+// complexity stays under the linter threshold.
+func appendMetricFreshnessEntry(out *[]byte, mf MetricFreshness, theme style.Theme) {
+	indicator := metricFreshnessIndicator(mf.Status, theme)
+	*out = fmt.Appendf(*out, "  %s %s/%s:\n", indicator, mf.Name, strings.ToLower(mf.Type))
+	*out = fmt.Appendf(*out, "    status: %s\n", metricFreshnessStatusDisplay(mf.Status, theme))
+	if mf.LastSeen != nil {
+		*out = fmt.Appendf(*out, "    last sample: %s ago\n", formatFreshnessDuration(mf.Age))
+	}
+	if mf.Source != "" {
+		*out = fmt.Appendf(*out, "    source: %s\n", mf.Source)
+	}
+	if mf.APIServiceAvailable != nil {
+		status := "unavailable"
+		if *mf.APIServiceAvailable {
+			status = "available"
 		}
-		if mf.Source != "" {
-			*out = fmt.Appendf(*out, "    source: %s\n", mf.Source)
+		*out = fmt.Appendf(*out, "    apiservice: %s", status)
+		if mf.APIServiceMessage != "" {
+			*out = fmt.Appendf(*out, " (%s)", mf.APIServiceMessage)
 		}
-		if mf.APIServiceAvailable != nil {
-			status := "unavailable"
-			if *mf.APIServiceAvailable {
-				status = "available"
-			}
-			*out = fmt.Appendf(*out, "    apiservice: %s", status)
-			if mf.APIServiceMessage != "" {
-				*out = fmt.Appendf(*out, " (%s)", mf.APIServiceMessage)
-			}
-			*out = append(*out, '\n')
+		*out = append(*out, '\n')
+	}
+	if mf.Window != "" {
+		*out = fmt.Appendf(*out, "    window: %s\n", mf.Window)
+	}
+	if mf.LastEvent != nil {
+		*out = fmt.Appendf(*out, "    last HPA event: %s", mf.LastEvent.Reason)
+		if !mf.LastEvent.Timestamp.IsZero() {
+			*out = fmt.Appendf(*out, " %s ago", formatFreshnessDuration(now().Sub(mf.LastEvent.Timestamp)))
 		}
-		if mf.Window != "" {
-			*out = fmt.Appendf(*out, "    window: %s\n", mf.Window)
+		*out = append(*out, '\n')
+	}
+	if mf.Risk != "" {
+		*out = fmt.Appendf(*out, "    likely cause: %s\n", theme.ActionLine(mf.Risk))
+	}
+	if len(mf.Evidence) > 0 {
+		*out = append(*out, "    evidence:\n"...)
+		for _, e := range mf.Evidence {
+			*out = fmt.Appendf(*out, "      - %s\n", e)
 		}
-		if mf.LastEvent != nil {
-			*out = fmt.Appendf(*out, "    last HPA event: %s", mf.LastEvent.Reason)
-			if !mf.LastEvent.Timestamp.IsZero() {
-				*out = fmt.Appendf(*out, " %s ago", formatFreshnessDuration(now().Sub(mf.LastEvent.Timestamp)))
-			}
-			*out = append(*out, '\n')
-		}
-		if mf.Risk != "" {
-			*out = fmt.Appendf(*out, "    likely cause: %s\n", theme.ActionLine(mf.Risk))
-		}
-		if len(mf.Evidence) > 0 {
-			*out = append(*out, "    evidence:\n"...)
-			for _, e := range mf.Evidence {
-				*out = fmt.Appendf(*out, "      - %s\n", e)
-			}
-		}
-		if len(mf.NextSteps) > 0 {
-			*out = append(*out, "    next checks:\n"...)
-			for _, ns := range mf.NextSteps {
-				*out = fmt.Appendf(*out, "      %s\n", theme.ActionLine(ns))
-			}
+	}
+	if len(mf.NextSteps) > 0 {
+		*out = append(*out, "    next checks:\n"...)
+		for _, ns := range mf.NextSteps {
+			*out = fmt.Appendf(*out, "      %s\n", theme.ActionLine(ns))
 		}
 	}
 }
@@ -362,8 +374,6 @@ func appendSimulationSection(out *[]byte, a *Analysis, theme style.Theme, labels
 }
 
 // appendCapacityContextSection renders the capacity-context section.
-//
-//nolint:gocyclo // Flat, sequential rendering of independent capacity fields; splitting would obscure the output shape.
 func appendCapacityContextSection(out *[]byte, a *Analysis, theme style.Theme, labels labels) {
 	if a.CapacityContext == nil {
 		return
@@ -374,19 +384,7 @@ func appendCapacityContextSection(out *[]byte, a *Analysis, theme style.Theme, l
 	}
 	*out = append(*out, '\n')
 	*out = fmt.Appendf(*out, "%s:\n", labels.CapacityContext)
-	if len(cc.PendingPods) > 0 {
-		*out = fmt.Appendf(*out, "  Pending Pods: %d\n", len(cc.PendingPods))
-		for _, p := range cc.PendingPods {
-			suffix := ""
-			if p.Unschedulable {
-				suffix = " (unschedulable)"
-			}
-			*out = fmt.Appendf(*out, "    - %s%s\n", p.Name, suffix)
-			for _, reason := range p.Reasons {
-				*out = fmt.Appendf(*out, "      %s\n", reason)
-			}
-		}
-	}
+	appendPendingPods(out, cc.PendingPods)
 	if len(cc.QuotaConstraints) > 0 {
 		*out = append(*out, "  ResourceQuotas:\n"...)
 		for _, q := range cc.QuotaConstraints {
@@ -403,6 +401,26 @@ func appendCapacityContextSection(out *[]byte, a *Analysis, theme style.Theme, l
 		*out = append(*out, "  Hints:\n"...)
 		for _, hint := range cc.NodeHints {
 			*out = fmt.Appendf(*out, "    - %s\n", theme.InterpretationLine(hint))
+		}
+	}
+}
+
+// appendPendingPods renders the pending-pods sub-block, extracted from
+// appendCapacityContextSection so the orchestrator's cyclomatic complexity
+// stays under the linter threshold.
+func appendPendingPods(out *[]byte, pods []PendingPodInfo) {
+	if len(pods) == 0 {
+		return
+	}
+	*out = fmt.Appendf(*out, "  Pending Pods: %d\n", len(pods))
+	for _, p := range pods {
+		suffix := ""
+		if p.Unschedulable {
+			suffix = " (unschedulable)"
+		}
+		*out = fmt.Appendf(*out, "    - %s%s\n", p.Name, suffix)
+		for _, reason := range p.Reasons {
+			*out = fmt.Appendf(*out, "      %s\n", reason)
 		}
 	}
 }
