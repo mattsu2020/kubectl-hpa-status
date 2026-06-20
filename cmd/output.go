@@ -108,6 +108,13 @@ func normalizeSelector(value string) string {
 	return value
 }
 
+// normalizeOutputFormat lowercases and trims an output-format value without
+// collapsing separators (unlike normalizeSelector). It is used to classify a
+// raw --output value into one of the canonical streaming-eligible formats.
+func normalizeOutputFormat(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
+}
+
 // --- render facade ---
 // The pure format-routing/serialization functions now live in internal/render.
 // These unexported wrappers keep the historical cmd/ call sites compiling; they

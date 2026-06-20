@@ -97,17 +97,18 @@ func buildCompatReport(_ context.Context, disco discovery.DiscoveryInterface) co
 		report.Checks = append(report.Checks, compatCheck("WARN", "HPA API discovery", fmt.Sprintf("autoscaling/v2 lookup failed: %v", err)))
 	}
 	minor := parseKubeMinor(report.ClusterVersion)
+	vers := kube.KubernetesVersions()
 	report.Checks = append(report.Checks,
 		compatCheck("OK", "multiple metrics", "supported by autoscaling/v2"),
-		compatCheck("OK", "containerResource metrics", "stable in Kubernetes v1.30+"),
+		compatCheck("OK", "containerResource metrics", "stable in Kubernetes v"+vers.ContainerResourceVer+"+"),
 	)
 	switch {
-	case minor >= 35:
-		report.Checks = append(report.Checks, compatCheck("OK", "behavior scaleUp/scaleDown tolerance", "available as Kubernetes v1.35+ beta field when feature gate is enabled"))
+	case minor >= vers.ToleranceFeatureMinor:
+		report.Checks = append(report.Checks, compatCheck("OK", "behavior scaleUp/scaleDown tolerance", "available as Kubernetes v"+vers.ToleranceFeatureVer+"+ beta field when feature gate is enabled"))
 	case minor > 0:
-		report.Checks = append(report.Checks, compatCheck("WARN", "behavior scaleUp/scaleDown tolerance", "requires Kubernetes v1.35+ and HPAConfigurableTolerance"))
+		report.Checks = append(report.Checks, compatCheck("WARN", "behavior scaleUp/scaleDown tolerance", "requires Kubernetes v"+vers.ToleranceFeatureVer+"+ and HPAConfigurableTolerance"))
 	default:
-		report.Checks = append(report.Checks, compatCheck("WARN", "behavior scaleUp/scaleDown tolerance", "cluster version unknown; requires Kubernetes v1.35+"))
+		report.Checks = append(report.Checks, compatCheck("WARN", "behavior scaleUp/scaleDown tolerance", "cluster version unknown; requires Kubernetes v"+vers.ToleranceFeatureVer+"+"))
 	}
 	if report.HPAAPI != "autoscaling/v2" {
 		report.Checks = append(report.Checks, compatCheck("ERROR", "HPA API", "autoscaling/v2 was not discovered"))

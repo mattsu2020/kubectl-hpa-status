@@ -229,14 +229,36 @@ func (e *resourceCheckEnricher) Run(ctx context.Context, p *PipelineContext, hpa
 	return nil
 }
 
-type targetReplicaObservationsEnricher struct { defaultAbort }
+type targetReplicaObservationsEnricher struct {
+	defaultAbort
+	enabled func() bool
+}
 
-func newTargetReplicaObservationsEnricher(*options) Enricher {
-	return &targetReplicaObservationsEnricher{}
+// newTargetReplicaObservationsEnricher gates the scale-target pod read behind
+// the depth-tier flags that actually need it. A plain `status` no longer reads
+// Pods/Deployments, which keeps status fast and usable under restricted RBAC
+// where those reads may be denied. The enricher is enabled when any of its
+// consumers is on:
+//   - --explain / --interpret / --suggest: the explanation references
+//     not-ready / pending target pods;
+//   - --explain-pods / --check-resources: workload-level inspection;
+//   - --scale-path / --capacity-* / --rollout* / --readiness-impact: the
+//     capacity and rollout enrichers read report.Analysis.TargetReplicas;
+//   - --deep: the one-flag depth tier pulls in all of the above.
+func newTargetReplicaObservationsEnricher(opts *options) Enricher {
+	return &targetReplicaObservationsEnricher{
+		enabled: func() bool {
+			return opts.Explain || opts.Interpret || opts.Suggest ||
+				opts.ExplainPods || opts.CheckResources ||
+				opts.ScalePath || opts.CapacityContext || opts.CapacityHeadroom ||
+				opts.CapacityDeep || opts.Rollout || opts.RolloutImpact ||
+				opts.ReadinessImpact || opts.Deep
+		},
+	}
 }
 
 func (*targetReplicaObservationsEnricher) Name() string  { return "target-replica-observations" }
-func (*targetReplicaObservationsEnricher) Enabled() bool { return true }
+func (e *targetReplicaObservationsEnricher) Enabled() bool { return e.enabled() }
 func (*targetReplicaObservationsEnricher) Run(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
 	enrichTargetReplicaObservations(ctx, p.Client, hpa, report)
 	return nil

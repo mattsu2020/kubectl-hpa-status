@@ -2,13 +2,17 @@
 # All fields are optional. Explicit flags always win over config values.
 # Place this file at ~/.kube/hpa-status.yaml or specify with --config.
 
+# Config schema version. Currently only "v1" is supported. Omit for backward
+# compatibility with config files written before versioning existed.
+# configVersion: v1
+
 # Default namespace (equivalent to -n)
 # namespace: production
 
 # List across all namespaces (equivalent to -A)
 # allNamespaces: true
 
-# Default output format: table, wide, json, yaml
+# Default output format: table, wide, json, jsonl, yaml
 # output: json
 
 # Show extra columns in list output
@@ -26,6 +30,7 @@
 # Score range filtering (show only HPAs in this range)
 # minScore: 60
 # maxScore: 90
+# healthScore: 90   # alias for maxScore (show only HPAs at or below this score)
 
 # Color output: auto, always, never
 color: auto
@@ -59,6 +64,22 @@ events: 5
 #     type: jsonpath
 #     template: '{.analysis.summary}'
 
+# KEDA ScaledObject enrichment: auto (enable when CRD present), on (force), off (disable)
+# keda: auto
+
+# VPA conflict detection: auto (enable when CRD present), on (force), off (disable)
+# vpa: auto
+
+# Analyze scale target pods for readiness, resource requests, and metric coverage
+# explainPods: true
+
+# Simulate HPA spec changes (e.g. maxReplicas=20); repeatable
+# simulate:
+#   - maxReplicas=20
+
+# Check infrastructure capacity constraints affecting HPA scaling
+# capacityContext: true
+
 # Custom health score penalty weights.
 # Each weight is a penalty deducted from the starting score of 100 when the
 # corresponding condition is detected. A higher value means a harsher penalty.
@@ -74,3 +95,6 @@ healthWeights:
   implicitMaxReplicas: 20 # Deducted when current == desired == maxReplicas. Default: 20
   scaleDownStabilized: 10 # Deducted during scale-down stabilization window. Default: 10
   atMinimumReplicas: 5    # Deducted when desired == minReplicas. Default: 5
+  # kedaInactiveTrigger: 15 # Deducted when a KEDA ScaledObject trigger is paused/inactive. Default: 15
+  # vpaConflict: 20         # Deducted when VPA and HPA both manage CPU/memory. Default: 20
+

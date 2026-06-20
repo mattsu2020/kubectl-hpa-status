@@ -293,9 +293,16 @@ func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, 
 	// only step whose error aborts the whole report (see
 	// abortOnErrorEnrichers). Skipped steps are silently ignored to avoid
 	// noise; failed steps record a message in report.Analysis.Warnings.
+	//
+	// --no-enrich / --hpa-only skips the pipeline entirely so status shows
+	// only the HPA object. This is the RBAC-light path: no Pod, Deployment,
+	// ReplicaSet, Event, KEDA, or VPA reads, making status usable in audited
+	// or restricted-permission environments where those reads are denied.
 	pipeline := &PipelineContext{Client: client, EC: ec}
-	if err := runEnrichers(ctx, buildStatusEnrichers(opts), pipeline, hpa, &report); err != nil {
-		return hpaanalysis.StatusReport{}, err
+	if !opts.NoEnrich {
+		if err := runEnrichers(ctx, buildStatusEnrichers(opts), pipeline, hpa, &report); err != nil {
+			return hpaanalysis.StatusReport{}, err
+		}
 	}
 
 	// Finalize post-enrichment derivations (e.g. stabilization/churn
@@ -318,16 +325,18 @@ func fetchHPA(ctx context.Context, client *kube.Client, name string) (*autoscali
 
 // hpaFetchError maps known Kubernetes API errors to user-facing guidance, preserving the wrapped cause.
 func hpaFetchError(err error, name, namespace string) error {
+	vers := kube.KubernetesVersions()
 	if apierrors.IsNotFound(err) {
 		return fmt.Errorf("HPA %q was not found in namespace %q. "+
-			"If the cluster is running Kubernetes older than 1.23, the autoscaling/v2 API may not be available. "+
+			"If the cluster is running Kubernetes older than %s, the autoscaling/v2 API may not be available. "+
 			"Check with: kubectl api-resources | grep autoscaling. Original error: %w",
-			name, namespace, errors.Join(ErrHPANotFound, err))
+			name, namespace, vers.MinAPIVersion, errors.Join(ErrHPANotFound, err))
 	}
 	if apierrors.IsMethodNotSupported(err) {
 		return fmt.Errorf("the Kubernetes API server does not support the autoscaling/v2 API. "+
-			"This plugin requires Kubernetes 1.23+ (stable from 1.26). "+
-			"Check with: kubectl api-resources | grep autoscaling. Original error: %w", err)
+			"This plugin officially supports Kubernetes %s+ (the API exists from %s+). "+
+			"Check with: kubectl api-resources | grep autoscaling. Original error: %w",
+			vers.StableSinceVersion, vers.MinAPIVersion, err)
 	}
 	return fmt.Errorf("failed to get HPA %s/%s from the Kubernetes API server: %w", namespace, name, err)
 }

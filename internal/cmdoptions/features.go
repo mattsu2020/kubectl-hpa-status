@@ -22,6 +22,15 @@ type Features struct {
 	HiddenFactors bool
 	ContextForAI  bool
 
+	// --- Status depth tiers: coarse switches that enable groups of enrichers
+	// at once, so users do not need to know every individual flag.
+	//   --deep    turns on capacity/rollout/adapter-diagnostics analysis;
+	//   --no-enrich disables all enrichment (HPA-only, RBAC-light output).
+	// Both are convenience aggregators; the individual flags remain available.
+	Deep    bool
+	NoEnrich bool
+	HPAOnly  bool
+
 	// --- Metrics diagnostics: inspect the metrics pipeline health. ---
 	DiagnoseMetrics    bool
 	MetricsFreshness   bool
@@ -75,6 +84,9 @@ var featureSetters = map[string]func(*Features, bool){
 	"recommend":          func(f *Features, v bool) { f.Recommend = v },
 	"hiddenFactors":      func(f *Features, v bool) { f.HiddenFactors = v },
 	"contextForAI":       func(f *Features, v bool) { f.ContextForAI = v },
+	"deep":               func(f *Features, v bool) { f.Deep = v },
+	"noEnrich":           func(f *Features, v bool) { f.NoEnrich = v },
+	"hpaOnly":            func(f *Features, v bool) { f.HPAOnly = v },
 	"diagnoseMetrics":    func(f *Features, v bool) { f.DiagnoseMetrics = v },
 	"metricsFreshness":   func(f *Features, v bool) { f.MetricsFreshness = v },
 	"metricContract":     func(f *Features, v bool) { f.MetricContract = v },

@@ -61,7 +61,7 @@ kubectl-hpa-status completion zsh
 | `--config` | all commands | Read defaults from a YAML/JSON config file. Defaults to `~/.kube/hpa-status.yaml` when present. |
 | `--chunk-size` | `list`, `scan`, `tui` | Kubernetes list page size. Defaults to 500; set 0 to disable pagination. |
 | `--health-weight name=value` | all analysis commands | Override one health score penalty from the CLI. Repeatable; names include `scalingInactive`, `unableToScale`, `scalingLimited`, `implicitMaxReplicas`, `scaleDownStabilized`, and `atMinimumReplicas`. |
-| `-o table\|wide\|json\|yaml\|jsonpath=...\|template=...\|prometheus\|junit\|sarif` | status, doctor, analyze, list, scan | Output format. YAML is supported for both single and multiple HPA output. `junit` and `sarif` are intended for `list`/`scan`. For the JSON schema, see [output-schema.json](output-schema.json). |
+| `-o table\|wide\|json\|jsonl\|yaml\|jsonpath=...\|template=...\|prometheus\|junit\|sarif` | status, doctor, analyze, list, scan | Output format. YAML is supported for both single and multiple HPA output. `junit` and `sarif` are intended for `list`/`scan`. `jsonl` streams one JSON object per line for `list`/`scan` and keeps memory flat on large clusters (requires no `--sort-by`/`--apply`/KEDA/VPA). For the JSON schema, see [output-schema.json](output-schema.json). |
 | `--wide` | table output | Show target, min, max, and replica delta columns where applicable. |
 | `--sort-by namespace\|name\|current\|desired\|diff\|health-score\|issue\|problem` | `list`, `scan` | Sort list output. `problem` puts the lowest health score and largest replica delta first. |
 | `--filter all\|ok\|error\|limited\|scaling-limited\|issue` | `list`, `scan` | Filter by health or issue text. |
@@ -219,6 +219,13 @@ kubectl hpa status <hpa> -o jsonpath='{range .analysis.structuredInterpretation[
 
 # Output per-HPA summary as JSON for automation
 kubectl hpa status list -A -o json | jq '.items[] | {name, namespace, healthScore, issue}'
+
+# Stream HPAs one-per-line as JSON Lines for large clusters / pipelines.
+# Unlike -o json, jsonl emits each HPA as it is read and never buffers the
+# whole cluster, so scan -A stays flat in memory on clusters with thousands
+# of HPAs. Disable KEDA/VPA enrichment (--keda=off --vpa=off) to keep streaming.
+kubectl hpa status list -A -o jsonl --keda=off --vpa=off
+kubectl hpa status scan -o jsonl --keda=off --vpa=off
 ```
 
 For the full JSON schema, see [output-schema.json](output-schema.json).

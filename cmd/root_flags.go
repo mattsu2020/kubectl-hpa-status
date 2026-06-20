@@ -51,7 +51,7 @@ func registerCommonFlags(cmd *cobra.Command, opts *options) {
 
 // registerStatusFlags registers flags specific to the status / analyze command.
 func registerStatusFlags(cmd *cobra.Command, opts *options) {
-	cmd.Flags().Var(&opts.AnalysisProfile, "analysis-profile", "diagnostic preset: quick, standard, incident, doctor, metrics, capacity, readiness")
+	cmd.Flags().Var(&opts.AnalysisProfile, "analysis-profile", "diagnostic preset: quick, standard, incident, doctor, metrics, capacity, readiness, deep")
 	cmd.Flags().BoolVar(&opts.Interpret, "interpret", false, "include interpretation in status output")
 	cmd.Flags().BoolVar(&opts.Explain, "explain", false, "include detailed interpretation and recommended actions")
 	cmd.Flags().BoolVar(&opts.Suggest, "suggest", false, "include concrete suggestions for configuration changes")
@@ -83,6 +83,9 @@ func registerStatusFlags(cmd *cobra.Command, opts *options) {
 	cmd.Flags().StringVar(&opts.ControllerProfileFile, "controller-profile-file", "", "path to an HPA controller profile YAML file")
 	cmd.Flags().StringVar(&opts.Format, "format", "", "status output profile: structured")
 	cmd.Flags().BoolVar(&opts.HiddenFactors, "hidden-factors", false, "show missing metrics, not-yet-ready pod, tolerance, and stabilization factors that are only partially visible")
+	cmd.Flags().BoolVar(&opts.Deep, "deep", false, "enable capacity, rollout, readiness, and adapter diagnostics together (one-flag depth tier)")
+	cmd.Flags().BoolVar(&opts.NoEnrich, "no-enrich", false, "disable all enrichment and show HPA-only status (RBAC-light; alias: --hpa-only)")
+	cmd.Flags().BoolVar(&opts.HPAOnly, "hpa-only", false, "alias for --no-enrich; disable all enrichment and show HPA-only status")
 	cmd.Flags().BoolVar(&opts.NodeAutoscaler, "node-autoscaler", false, "include Cluster Autoscaler scale-out context in status/doctor analysis")
 	cmd.Flags().BoolVar(&opts.Karpenter, "karpenter", false, "include Karpenter-style node provisioning context in status/doctor analysis")
 	cmd.Flags().BoolVar(&opts.ContextForAI, "context-for-ai", false, "emit a compact local-AI context pack instead of normal status text")

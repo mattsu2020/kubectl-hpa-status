@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/history"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 	"github.com/spf13/cobra"
@@ -84,6 +85,18 @@ func runList(ctx context.Context, out io.Writer, opts *options) error {
 		filter = "issue"
 	}
 
+	// Page-by-page streaming path: when the output does not require the full
+	// accumulated set (no sort, no apply, no export-directory, no conflicts),
+	// process each Kubernetes list page and emit it immediately instead of
+	// buffering every HPA. This keeps memory flat on clusters with thousands
+	// of HPAs. KEDA/VPA enrichment is batched per-namespace, so it cannot
+	// stream safely — when either is enabled we fall back to the accumulated
+	// path below. Health-trend recording (opts.Trend) also needs the full set
+	// for stable cross-HPA history, so it opts out too.
+	if canStreamList(opts) {
+		return runListStreaming(ctx, out, opts, client, namespace, filter)
+	}
+
 	hpas, err := client.ListHPAs(ctx, namespace, metav1.ListOptions{LabelSelector: opts.Selector}, opts.ChunkSize)
 	if err != nil {
 		return reportListError(out, opts.Output, fmt.Errorf("failed to list HPAs: %w", err))
@@ -113,6 +126,76 @@ func runList(ctx context.Context, out io.Writer, opts *options) error {
 	}
 
 	return writeListResult(out, opts, report)
+}
+
+// canStreamList reports whether runList may use the page-by-page streaming
+// path. It requires all of:
+//   - no --sort-by (sorting needs the complete set);
+//   - no --apply / --export directory (they iterate over every HPA and need a
+//     final count);
+//   - no --gitops-drift (built from the accumulated slice);
+//   - no KEDA/VPA enrichment (BatchKEDA/BatchVPA list per-namespace and would
+//     re-issue those lists once per page that touches the namespace);
+//   - no --trend (health-trend recording is a cross-HPA side effect);
+//   - a streaming-friendly output format (jsonl, or the default table form
+//     which has no enclosing array/separator).
+//
+// Any feature outside this set keeps the historical accumulated path, so the
+// streaming path is purely additive and never changes existing output.
+func canStreamList(opts *options) bool {
+	if opts.SortBy != "" || opts.Apply || opts.Export == "directory" || opts.GitOpsDrift || opts.Trend {
+		return false
+	}
+	if enrichmentRequested(opts.KEDA) || enrichmentRequested(opts.VPA) {
+		return false
+	}
+	// --report pins a format (markdown/html/junit/sarif) that needs the whole
+	// report; the streaming path only handles raw table and jsonl.
+	if opts.Report != "" {
+		return false
+	}
+	switch normalizeOutputFormat(opts.Output) {
+	case "", "table", "wide", "jsonl":
+		return true
+	default:
+		return false
+	}
+}
+
+// enrichmentRequested reports whether a KEDA/VPA mode asks for enrichment at
+// all (on or auto), as opposed to off. Mirrors internal/enrichment.requested
+// but lives in cmd so canStreamList does not depend on the enrichment package.
+func enrichmentRequested(mode string) bool {
+	switch mode {
+	case "on", "auto", "true", "1":
+		return true
+	default:
+		return false
+	}
+}
+
+// runListStreaming lists HPAs page by page and emits each page's items as soon
+// as they are analyzed, without buffering the whole cluster. The table form
+// streams a continuous table; jsonl streams one JSON object per line. Only the
+// canStreamList() subset of options reaches this path, so there is no sort,
+// apply, export, GitOps-drift, or KEDA/VPA handling here.
+func runListStreaming(ctx context.Context, out io.Writer, opts *options, client *kube.Client, namespace, filter string) error {
+	streamer := newListStreamer(out, opts)
+	if err := streamer.begin(); err != nil {
+		return err
+	}
+	listOpts := metav1.ListOptions{LabelSelector: opts.Selector}
+	err := kube.ListHPAsEachPage(ctx, client.Interface, namespace, listOpts, opts.ChunkSize, func(page *autoscalingv2.HorizontalPodAutoscalerList) error {
+		items := buildListItems(ctx, opts, page.Items, filter)
+		return streamer.writePage(items)
+	})
+	if werr := streamer.end(); werr != nil {
+		return werr
+	}
+	if err != nil {
+		return reportListError(out, opts.Output, fmt.Errorf("failed to list HPAs: %w", err))
+	}
+	return nil
 }
 
 // reportListError writes the error in the requested output format when applicable.

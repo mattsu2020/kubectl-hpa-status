@@ -327,6 +327,13 @@ type DecisionSignal struct {
 	MetricName string `json:"metricName,omitempty" yaml:"metricName,omitempty"`
 	Source     string `json:"source,omitempty" yaml:"source,omitempty"`
 	Confidence string `json:"confidence,omitempty" yaml:"confidence,omitempty"`
+	// Classification is the user-facing evidence tier derived from Confidence:
+	// "observed" (high — read directly from HPA status), "estimated" (medium —
+	// inferred from visible signals), or "unknown" (low — not exposed by the
+	// HPA controller). Surfacing it alongside Confidence lets tooling render a
+	// consistent [observed]/[estimated]/[assumed] label without re-deriving the
+	// mapping. See pkg/hpa/internal/confidence.
+	Classification string `json:"classification,omitempty" yaml:"classification,omitempty"`
 	// AdapterVersion identifies which adapter produced this signal.
 	// "estimation-v1" for the current inference-based adapter.
 	// "kep6111-v1" for the future structured output adapter.

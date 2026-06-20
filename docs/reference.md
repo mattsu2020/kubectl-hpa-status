@@ -479,13 +479,21 @@ For the full health score deduction table and health state definitions, see [Usa
 
 ## Compatibility Matrix
 
-Kubernetes v1.26 through v1.36 is the verified support range. This plugin uses `autoscaling/v2`, which went GA in Kubernetes 1.23 and has been a stable API since 1.26. It is expected to work on future Kubernetes versions as long as `autoscaling/v2` is available.
+This plugin uses `autoscaling/v2`. Support is split into four layers so the requirement, the tested range, the CI matrix, and the client-go dependency are each unambiguous:
+
+| Layer | Version | Meaning |
+| --- | --- | --- |
+| API availability | Kubernetes 1.23+ | `autoscaling/v2` exists (GA in 1.23). The plugin *may* load an HPA here, but these versions are below the officially supported range. |
+| Official support | Kubernetes 1.26+ | The stable API line this project documents as the requirement and exercises in CI. |
+| CI matrix | 1.26, 1.28, 1.30, 1.35 | kind E2E matrix in `.github/workflows/ci.yml`. 1.36 is omitted only because a `kindest/node` image is not yet published. |
+| client-go | see `go.mod` (`k8s.io/client-go`) | The client library version the plugin is built against; tracked separately from the server range. |
+
+It is expected to work on future Kubernetes versions as long as `autoscaling/v2` is available.
 
 | Environment | Status |
 | --- | --- |
 | HPA API `autoscaling/v2` | Required |
-| Kubernetes v1.26 - v1.36 | Verified and supported |
-| metrics-server v0.8.1 on kind | Verified |
+| metrics-server (pinned in CI) | Verified on kind |
 | custom/external metrics adapters | Supported within what HPA status exposes. Ratio and selector interpretation is best-effort; adapter internal state is not directly inspected. |
 | KEDA 2.0+ (`keda.sh/v1alpha1`) | Auto-detects KEDA-managed HPAs. With `--keda`, references ScaledObject showing trigger type, metric name, threshold, current value, auth ref, polling interval, cooldown, and fallback config. |
 | VPA 0.9+ (`autoscaling.k8s.io/v1`) | With `--vpa`, detects CPU/Memory dual management on the same target and shows visible recommendations when VPA CRD is present. |
@@ -591,7 +599,7 @@ Interpretation lines include confidence levels to distinguish directly observabl
 | [release.yml](../.github/workflows/release.yml) | GoReleaser for binaries, SBOM, Homebrew Cask Tap updates, and Krew release bot |
 
 CI uploads coverage to Codecov. Release Homebrew updates use the dedicated Tap [mattsu2020/homebrew-kubectl-hpa-status](https://github.com/mattsu2020/homebrew-kubectl-hpa-status).
-E2E runs on a matrix of Kubernetes 1.26 / 1.28 / 1.30 / latest-tracking kind image to continuously verify `autoscaling/v2` compatibility across the supported range.
+E2E runs on a matrix of Kubernetes 1.26 / 1.28 / 1.30 / 1.35 kind images to continuously verify `autoscaling/v2` compatibility across the supported range. (1.36 is omitted only because a `kindest/node` image is not yet published; see the workflow file.) The metrics-server, KEDA CRD, and VPA CRD installed during E2E are pinned to explicit release tags for reproducibility.
 
 ## Deprecated and Legacy Features
 

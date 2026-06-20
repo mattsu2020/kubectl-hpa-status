@@ -64,6 +64,48 @@ func TestFormat_JSON(t *testing.T) {
 	}
 }
 
+// TestFormat_JSONL_ListReport verifies that jsonl output is one compact JSON
+// object per list item, newline-delimited, and NOT wrapped in a JSON array.
+func TestFormat_JSONL_ListReport(t *testing.T) {
+	var buf bytes.Buffer
+	if err := Format(&buf, "jsonl", "", sampleListReport(), func() error { return nil }); err != nil {
+		t.Fatalf("Format(jsonl): %v", err)
+	}
+	output := buf.String()
+	// Two items => two lines.
+	lines := strings.Split(strings.TrimRight(output, "\n"), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 jsonl lines, got %d:\n%s", len(lines), output)
+	}
+	// Must not be a JSON array (the json format contract).
+	if strings.HasPrefix(strings.TrimSpace(output), "[") {
+		t.Fatalf("jsonl output is a JSON array, expected newline-delimited objects:\n%s", output)
+	}
+	// Each line must contain one item name.
+	for _, want := range []string{"hpa-a", "hpa-b"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("jsonl output missing item %q:\n%s", want, output)
+		}
+	}
+}
+
+// TestFormat_JSONL_StatusReport verifies a single StatusReport is emitted as
+// one jsonl line.
+func TestFormat_JSONL_StatusReport(t *testing.T) {
+	var buf bytes.Buffer
+	if err := Format(&buf, "jsonl", "", sampleStatusReport(), func() error { return nil }); err != nil {
+		t.Fatalf("Format(jsonl): %v", err)
+	}
+	output := buf.String()
+	lines := strings.Split(strings.TrimRight(output, "\n"), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 jsonl line for a single StatusReport, got %d:\n%s", len(lines), output)
+	}
+	if !strings.Contains(output, "my-hpa") {
+		t.Fatalf("jsonl output missing HPA name:\n%s", output)
+	}
+}
+
 func TestFormat_YAML(t *testing.T) {
 	var buf bytes.Buffer
 	if err := Format(&buf, "yaml", "", sampleStatusReport(), func() error { return nil }); err != nil {

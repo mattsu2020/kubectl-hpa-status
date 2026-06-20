@@ -27,7 +27,7 @@ A kubectl plugin for investigating HorizontalPodAutoscaler (HPA) status using ex
 
 Japanese README: [README.ja.md](README.ja.md)
 
-> **Note**: When installed via Krew, use `kubectl hpa_status` (underscore form). This README shows `kubectl hpa status` as the primary form; if it doesn't work, replace with `kubectl hpa_status`.
+> **Note**: When installed via Krew, the plugin is discovered as `kubectl hpa_status` (underscore form). The examples in this README use that form as the canonical invocation. The nested form `kubectl hpa status` (space form) also works on kubectl builds that support nested plugin discovery, but it is not universally available, so prefer `kubectl hpa_status` in scripts and runbooks.
 
 This tool quickly answers three common HPA operations questions:
 
@@ -147,9 +147,36 @@ For RBAC permissions, see [docs/rbac.yaml](docs/rbac.yaml).
 
 ### Requirements
 
-- **Kubernetes 1.26+** (`autoscaling/v2` stable API)
+- **Kubernetes 1.26+** (`autoscaling/v2` stable API) — officially supported and E2E-tested range. The API exists from 1.23+ and the plugin may run there, but those older versions are not part of the CI matrix. See [docs/reference.md](docs/reference.md) for the full compatibility matrix.
 - kubectl configured with a kubeconfig
 - metrics-server (for CPU/memory metrics) or a custom/external metrics adapter
+
+### Status depth tiers
+
+`status` is layered so a plain run stays fast and works under restricted RBAC. Each tier adds API reads, so pick the shallowest one that answers your question:
+
+| Command | Reads | Use when |
+| --- | --- | --- |
+| `status <hpa>` | HPA only | Quick health check; RBAC-light / audited environments |
+| `status <hpa> --explain` | + conditions, events, scale-target pods | "Why is it behaving this way?" |
+| `status <hpa> --explain-pods` | + per-pod readiness and resource requests | Pod-level diagnosis |
+| `status <hpa> --deep` | + capacity, rollout, adapter diagnostics | Full scale-out investigation |
+| `status <hpa> --no-enrich` | HPA only (explicit) | Force HPA-only even if other flags are set; alias `--hpa-only` |
+
+`--no-enrich`/`--hpa-only` and `--deep` are also available as `--analysis-profile` values (`--analysis-profile deep`). The plain `status` run reads only the HPA object, so it no longer requires Pod/Deployment permissions.
+
+### Command surface
+
+Commands are grouped into four layers so the top-level surface stays focused on daily HPA work:
+
+| Layer | Commands | Notes |
+| --- | --- | --- |
+| Basic | `status`, `list`, `scan`, `doctor`, `watch`, `explain`, `tui` | Daily HPA inspection |
+| Investigation | `trace`, `timeline`, `metrics`, `recommend`, `path`, `blockers`, `rollout`, `compare` | Root-cause analysis |
+| Operational (`alpha`) | `alpha policy`, `alpha gitops`, `alpha bundle`, `alpha incident-bundle`, `alpha support-bundle` | Apply-time gating, GitOps, support data |
+| Experimental (`alpha`) | `alpha capacity`, `alpha capacity-gap`, `alpha autoscaler-map`, `alpha analyze-record`, `alpha flap` | Niche tools; may change between releases |
+
+The `alpha` commands are also reachable at their historical top-level path (e.g. `bundle`) for compatibility, but those aliases are deprecated and emit a redirect notice; they are scheduled for removal in v2.0. Prefer the `alpha` path.
 
 ## Representative Commands
 
