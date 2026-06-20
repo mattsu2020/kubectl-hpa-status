@@ -32,9 +32,10 @@ func newBlockersCommand(opts *options) *cobra.Command {
 }
 
 func runBlockers(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	// Enable the data sources needed for blocker analysis. Take a shallow copy
-	// so the shared process-wide opts is not mutated (reference fields like
-	// clientOverride and outputTemplates are intentionally shared by value).
+	// Enable the data sources needed for blocker analysis. Take a copy so the
+	// shared process-wide opts is not mutated. copyOptions deep-copies data
+	// fields (slices, maps, HealthWeights); only the input-port fields
+	// (ClientOverride, In) are shared, which is what we want here.
 	local := copyOptions(opts)
 	local.CapacityContext = true
 	local.ExplainPods = true

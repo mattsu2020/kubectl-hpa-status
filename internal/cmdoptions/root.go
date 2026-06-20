@@ -35,9 +35,50 @@ func DefaultRoot() Root {
 	}
 }
 
-// Copy returns a shallow copy suitable for per-command mutation.
-// Reference-typed fields (ClientOverride, OutputTemplates, slices) are
-// shared by value; deep-copy them explicitly when divergence is required.
+// Copy returns a copy suitable for per-command mutation.
+//
+// Data fields that callers commonly mutate per command — slices
+// (HealthWeightOverrides, Simulate, SimulateMetric), maps
+// (OutputTemplates), and the HealthWeights struct (which holds *int
+// pointers) — are deep-copied so mutating the returned Root never leaks
+// back into the original.
+//
+// The two input-port fields, ClientOverride (a kubernetes.Interface) and
+// In (an io.Reader), are intentionally shared: they describe a live
+// client/stdin the copy should keep using, not data to fork. If a caller
+// needs to swap the client or input, set the field explicitly after Copy.
 func (r Root) Copy() Root {
-	return r
+	clone := r // value copy: all scalar/struct fields are now independent
+
+	// Deep-copy slices so append/reassignment on the copy does not resize
+	// or alias the original's backing array.
+	clone.HealthWeightOverrides = cloneStrings(r.HealthWeightOverrides)
+	clone.Simulate = cloneStrings(r.Simulate)
+	clone.SimulateMetric = cloneStrings(r.SimulateMetric)
+
+	// Deep-copy the output-templates map.
+	if r.OutputTemplates != nil {
+		clone.OutputTemplates = make(map[string]OutputTemplateConfig, len(r.OutputTemplates))
+		for k, v := range r.OutputTemplates {
+			clone.OutputTemplates[k] = v
+		}
+	}
+
+	// Deep-copy HealthWeights so flipping a *int penalty on the copy does
+	// not mutate the shared original.
+	clone.HealthWeights = r.HealthWeights.Clone()
+
+	// ClientOverride and In are intentionally shared (see doc comment).
+	return clone
+}
+
+// cloneStrings returns a fresh copy of s (or nil when s is nil/empty) so the
+// caller can append or reassign without aliasing the source backing array.
+func cloneStrings(s []string) []string {
+	if len(s) == 0 {
+		return nil
+	}
+	out := make([]string, len(s))
+	copy(out, s)
+	return out
 }
