@@ -33,6 +33,9 @@ func TestValidateConfig(t *testing.T) {
 		{name: "valid lang en accepted", cfg: configFile{Lang: "en"}},
 		{name: "valid lang ja accepted", cfg: configFile{Lang: "ja"}},
 		{name: "bool field accepted", cfg: configFile{Wide: boolPtr(true)}},
+		{name: "configVersion v1 accepted", cfg: configFile{ConfigVersion: "v1"}},
+		{name: "empty configVersion accepted (backward compat)", cfg: configFile{ConfigVersion: ""}},
+		{name: "unknown configVersion rejected", cfg: configFile{ConfigVersion: "v2"}, wantErr: "configVersion"},
 	}
 
 	for _, tc := range tests {

@@ -41,8 +41,20 @@ func isAcceptedNormalized(value string, accepted []string) bool {
 	return false
 }
 
+// configVersionCurrent is the config-file schema version this build
+// understands. Today only "v1" is accepted. Bump (and add a migration) when
+// the config shape changes incompatibly; unknown future versions are rejected
+// so a v2-unaware binary fails loudly rather than silently misreading a v2
+// file. Mirrors the apiVersion gate used by pkg/hpa/policy.
+const configVersionCurrent = "v1"
+
 // configFile mirrors the YAML structure accepted by --config.
 type configFile struct {
+	// ConfigVersion optionally pins the config schema version. When omitted the
+	// file is treated as configVersionCurrent for backward compatibility; when
+	// present it must equal configVersionCurrent or the file is rejected.
+	ConfigVersion string `json:"configVersion" yaml:"configVersion"`
+
 	Namespace       string                          `json:"namespace" yaml:"namespace"`
 	AllNamespaces   *bool                           `json:"allNamespaces" yaml:"allNamespaces"`
 	Output          string                          `json:"output" yaml:"output"`
@@ -72,6 +84,13 @@ type configFile struct {
 // validateConfig checks config file values for correctness and returns an
 // error describing the first invalid field encountered.
 func validateConfig(cfg configFile) error {
+	// A present configVersion must match the version this build supports. An
+	// absent version is accepted as the current version for backward
+	// compatibility with config files written before versioning existed.
+	if cfg.ConfigVersion != "" && cfg.ConfigVersion != configVersionCurrent {
+		return fmt.Errorf("config configVersion must be %q (or omitted for backward compatibility); got %q", configVersionCurrent, cfg.ConfigVersion)
+	}
+
 	if cfg.ChunkSize != nil && *cfg.ChunkSize < 0 {
 		return fmt.Errorf("config chunkSize must be >= 0, got %d", *cfg.ChunkSize)
 	}
