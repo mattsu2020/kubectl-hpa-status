@@ -147,7 +147,7 @@ For RBAC permissions, see [docs/rbac.yaml](docs/rbac.yaml).
 
 ### Requirements
 
-- **Kubernetes 1.26+** (`autoscaling/v2` stable API)
+- **Kubernetes 1.26+** (`autoscaling/v2` stable API) — officially supported and E2E-tested range. The API exists from 1.23+ and the plugin may run there, but those older versions are not part of the CI matrix. See [docs/reference.md](docs/reference.md) for the full compatibility matrix.
 - kubectl configured with a kubeconfig
 - metrics-server (for CPU/memory metrics) or a custom/external metrics adapter
 
