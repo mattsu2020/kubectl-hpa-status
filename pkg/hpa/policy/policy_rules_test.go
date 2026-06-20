@@ -16,12 +16,12 @@ import (
 // --- Test HPA builders -------------------------------------------------------
 
 func policyTestHPA(opts ...func(*autoscalingv2.HorizontalPodAutoscaler)) *autoscalingv2.HorizontalPodAutoscaler {
-	min := int32(1)
+	minReplicas := int32(1)
 	hpa := &autoscalingv2.HorizontalPodAutoscaler{
 		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "web"},
 		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
 			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{Kind: "Deployment", Name: "web"},
-			MinReplicas:    &min,
+			MinReplicas:    &minReplicas,
 			MaxReplicas:    10,
 		},
 		Status: autoscalingv2.HorizontalPodAutoscalerStatus{CurrentReplicas: 2},
