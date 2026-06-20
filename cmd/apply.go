@@ -190,7 +190,7 @@ func executePatches(ctx context.Context, out io.Writer, client *kube.Client, nam
 		// so an invalid merge is rejected without touching the HPA.
 		if _, err := client.Interface.AutoscalingV2().
 			HorizontalPodAutoscalers(namespace).
-			Patch(ctx, name, types.MergePatchType, []byte(merged), metav1.PatchOptions{DryRun: []string{"All"}}); err != nil {
+			Patch(ctx, name, types.MergePatchType, []byte(merged), metav1.PatchOptions{DryRun: []string{metav1.DryRunAll}}); err != nil {
 			return nil, fmt.Errorf("merged patch failed server-side dry-run validation: %w", err)
 		}
 		// Single merged patch — atomic application.
