@@ -34,12 +34,23 @@ type Enricher interface {
 	// Enabled reports whether this step should run. The predicate is captured
 	// from options at construction; callers pass nothing here.
 	Enabled() bool
+	// AbortOnError reports whether a non-nil error from Run should abort the
+	// whole pipeline (returning the error to the caller) instead of being
+	// recorded as a warning. Most enrichers return false; enrichSimulations
+	// returns true to preserve its historical short-circuit behavior.
+	AbortOnError() bool
 	// Run executes the enrichment step. A non-nil error is recorded into
-	// report.Analysis.Warnings by the pipeline runner. enrichSimulations is the
-	// only step whose error aborts the whole pipeline (to preserve prior
-	// behavior); see abortOnErrorEnrichers.
+	// report.Analysis.Warnings by the pipeline runner unless AbortOnError
+	// returns true, in which case the error is propagated immediately.
 	Run(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error
 }
+
+// defaultAbort is embedded by enricher adapters whose errors should be
+// recorded as warnings rather than aborting the whole pipeline. Only adapters
+// that need to short-circuit (simulations) override AbortOnError.
+type defaultAbort struct{}
+
+func (defaultAbort) AbortOnError() bool { return false }
 
 // buildStatusEnrichers constructs the ordered list of enrichment steps for the
 // given options. Each adapter captures the options fields it needs for both its
@@ -78,16 +89,9 @@ func buildStatusEnrichers(opts *options) []Enricher {
 	}
 }
 
-// abortOnErrorEnrichers is the set of enricher Names whose error aborts the
-// entire buildStatusReport (returning the error to the caller), preserving the
-// pre-refactor behavior where enrichSimulations' error short-circuited.
-var abortOnErrorEnrichers = map[string]struct{}{
-	"simulations": {},
-}
-
 // runEnrichers executes each enabled enricher in order. When an enricher
 // returns an error, the error is recorded into report.Analysis.Warnings. If
-// the enricher's name is in abortOnErrorEnrichers, the error is also returned
+// the enricher's AbortOnError reports true, the error is also returned
 // immediately so the caller can abort (matching the historical behavior for
 // enrichSimulations).
 func runEnrichers(ctx context.Context, enrichers []Enricher, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
@@ -98,7 +102,7 @@ func runEnrichers(ctx context.Context, enrichers []Enricher, p *PipelineContext,
 		if err := e.Run(ctx, p, hpa, report); err != nil {
 			report.Analysis.Warnings = append(report.Analysis.Warnings,
 				fmt.Sprintf("enrichment %q failed: %v", e.Name(), err))
-			if _, abort := abortOnErrorEnrichers[e.Name()]; abort {
+			if e.AbortOnError() {
 				return err
 			}
 		}
@@ -114,6 +118,7 @@ func runEnrichers(ctx context.Context, enrichers []Enricher, p *PipelineContext,
 // function. No adapter touches *options after construction.
 
 type decisionTracesEnricher struct {
+	defaultAbort
 	enabled             func() bool
 	decisionTrace       bool
 	decisionTraceFormat string
@@ -135,6 +140,7 @@ func (e *decisionTracesEnricher) Run(_ context.Context, _ *PipelineContext, hpa 
 }
 
 type eventsEnricher struct {
+	defaultAbort
 	enabled    func() bool
 	eventLimit int
 }
@@ -154,6 +160,7 @@ func (e *eventsEnricher) Run(ctx context.Context, p *PipelineContext, hpa *autos
 }
 
 type reportEnricher struct {
+	defaultAbort
 	healthWeights hpaanalysis.HealthWeights
 }
 
@@ -169,6 +176,7 @@ func (e *reportEnricher) Run(ctx context.Context, p *PipelineContext, hpa *autos
 }
 
 type metricsDiagnosticsEnricher struct {
+	defaultAbort
 	enabled func() bool
 }
 
@@ -186,6 +194,7 @@ func (*metricsDiagnosticsEnricher) Run(_ context.Context, _ *PipelineContext, hp
 }
 
 type metricFreshnessEnricher struct {
+	defaultAbort
 	enabled func() bool
 }
 
@@ -203,6 +212,7 @@ func (e *metricFreshnessEnricher) Run(ctx context.Context, p *PipelineContext, h
 }
 
 type resourceCheckEnricher struct {
+	defaultAbort
 	enabled func() bool
 }
 
@@ -219,7 +229,7 @@ func (e *resourceCheckEnricher) Run(ctx context.Context, p *PipelineContext, hpa
 	return nil
 }
 
-type targetReplicaObservationsEnricher struct{}
+type targetReplicaObservationsEnricher struct { defaultAbort }
 
 func newTargetReplicaObservationsEnricher(*options) Enricher {
 	return &targetReplicaObservationsEnricher{}
@@ -233,6 +243,7 @@ func (*targetReplicaObservationsEnricher) Run(ctx context.Context, p *PipelineCo
 }
 
 type podAnalysisEnricher struct {
+	defaultAbort
 	enabled func() bool
 }
 
@@ -269,11 +280,16 @@ func newSimulationsEnricher(opts *options) Enricher {
 
 func (*simulationsEnricher) Name() string    { return "simulations" }
 func (e *simulationsEnricher) Enabled() bool { return e.enabled() }
+// AbortOnError preserves the historical short-circuit behavior where a
+// simulation error aborts the whole status report instead of being recorded
+// as a best-effort warning.
+func (*simulationsEnricher) AbortOnError() bool { return true }
 func (e *simulationsEnricher) Run(ctx context.Context, _ *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
 	return enrichSimulations(ctx, hpa, report, e.cfg)
 }
 
 type capacityAnalysisEnricher struct {
+	defaultAbort
 	enabled          func() bool
 	capacityContext  bool
 	capacityHeadroom bool
@@ -306,6 +322,7 @@ func (e *capacityAnalysisEnricher) Run(ctx context.Context, p *PipelineContext, 
 }
 
 type rolloutAndBlockersEnricher struct {
+	defaultAbort
 	enabled          func() bool
 	rollout          bool
 	rolloutImpact    bool
@@ -338,6 +355,7 @@ func (e *rolloutAndBlockersEnricher) Run(ctx context.Context, p *PipelineContext
 }
 
 type controllerProfileEnricher struct {
+	defaultAbort
 	enabled       func() bool
 	assumeProfile string
 	profileFile   string
@@ -361,6 +379,7 @@ func (e *controllerProfileEnricher) Run(ctx context.Context, p *PipelineContext,
 }
 
 type capacityPlanEnricher struct {
+	defaultAbort
 	enabled   func() bool
 	targetMax int32
 }
@@ -380,6 +399,7 @@ func (e *capacityPlanEnricher) Run(ctx context.Context, p *PipelineContext, hpa 
 }
 
 type gitOpsConflictEnricher struct {
+	defaultAbort
 	enabled      func() bool
 	manifestPath string
 }
@@ -399,6 +419,7 @@ func (e *gitOpsConflictEnricher) Run(ctx context.Context, p *PipelineContext, hp
 }
 
 type metricContractAndAdapterEnricher struct {
+	defaultAbort
 	enabled            func() bool
 	metricContract     bool
 	adapterDiagnostics bool
@@ -423,6 +444,7 @@ func (e *metricContractAndAdapterEnricher) Run(ctx context.Context, p *PipelineC
 }
 
 type churnAndFlappingEnricher struct {
+	defaultAbort
 	enabled         func() bool
 	churnDetect     bool
 	eventsEnabled   bool
@@ -452,7 +474,7 @@ func (e *churnAndFlappingEnricher) Run(ctx context.Context, _ *PipelineContext, 
 	return nil
 }
 
-type vpaAdvisoryEnricher struct{}
+type vpaAdvisoryEnricher struct { defaultAbort }
 
 func newVPAAdvisoryEnricher(*options) Enricher { return &vpaAdvisoryEnricher{} }
 
@@ -464,6 +486,7 @@ func (*vpaAdvisoryEnricher) Run(_ context.Context, _ *PipelineContext, hpa *auto
 }
 
 type metricHintsEnricher struct {
+	defaultAbort
 	enabled func() bool
 }
 
@@ -481,6 +504,7 @@ func (e *metricHintsEnricher) Run(_ context.Context, _ *PipelineContext, hpa *au
 }
 
 type advisorsEnricher struct {
+	defaultAbort
 	enabled          func() bool
 	containerAdvisor bool
 	behaviorAdvisor  bool
