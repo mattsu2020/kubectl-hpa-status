@@ -93,7 +93,7 @@ func clearWatchScreen(out io.Writer, theme style.Theme) error {
 
 // writeWatchReport renders the current report via the selected format, choosing dashboard/diff/text rendering inside the fallback.
 func writeWatchReport(out io.Writer, opts *options, theme style.Theme, report hpaanalysis.StatusReport, previous *hpaanalysis.Analysis) error {
-	format, templateStr := outputSelection(outputConfig{report: opts.Report, output: opts.Output, template: opts.Template, outputTemplates: opts.OutputTemplates})
+	format, templateStr := selectOutputFromOptions(opts)
 	return writeOutput(out, format, templateStr, report, func() error {
 		if opts.Dashboard {
 			return hpaanalysis.WriteStatusDashboard(out, report, theme)

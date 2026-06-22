@@ -39,9 +39,7 @@ func runWhyNotScale(ctx context.Context, out io.Writer, opts *options, names []s
 	for _, name := range names {
 		statusReport, err := buildStatusReportWithClient(ctx, &local, name, true, nil)
 		if err != nil {
-			if local.Output == "json" || local.Output == "yaml" {
-				writeError(out, local.Output, err)
-			}
+			writeErrorIfStructured(out, local.Output, err)
 			return err
 		}
 		reports = append(reports, buildWhyNotScaleReport(statusReport.Analysis))

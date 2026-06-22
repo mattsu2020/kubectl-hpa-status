@@ -11,10 +11,13 @@ import (
 // All write failures are wrapped with a "write ai context" prefix to match the
 // project's convention (see cmd/list_apply.go) and aid debugging.
 func writeAIContext(out io.Writer, report hpaanalysis.StatusReport, question string) error {
-	return writeAIContextMany(out, []hpaanalysis.StatusReport{report}, question)
+	return writeAIContextMany(out, []reportResult{{name: report.Analysis.Name, namespace: report.Analysis.Namespace, report: report, hasReport: true}}, question)
 }
 
-func writeAIContextMany(out io.Writer, reports []hpaanalysis.StatusReport, question string) error {
+// writeAIContextMany renders the AI context for a multi-HPA run. Per the
+// partial-result contract, failed items get their own "## <ns>/<name>" section
+// containing an "Error:" line instead of a normal analysis block.
+func writeAIContextMany(out io.Writer, results []reportResult, question string) error {
 	if _, err := fmt.Fprintln(out, "# HPA AI Context"); err != nil {
 		return fmt.Errorf("write ai context header: %w", err)
 	}
@@ -26,10 +29,24 @@ func writeAIContextMany(out io.Writer, reports []hpaanalysis.StatusReport, quest
 	if _, err := fmt.Fprintln(out, "\nUse this as local LLM context. Do not assume hidden HPA controller internals beyond the evidence listed here."); err != nil {
 		return fmt.Errorf("write ai context preamble: %w", err)
 	}
-	for _, report := range reports {
-		if err := writeAIContextReport(out, report.Analysis); err != nil {
+	for i := range results {
+		r := results[i]
+		if !r.hasReport {
+			if err := writeAIContextError(out, r.namespace, r.name, r.err); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := writeAIContextReport(out, r.report.Analysis); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func writeAIContextError(out io.Writer, namespace, name string, err error) error {
+	if _, err := fmt.Fprintf(out, "\n## %s/%s\n- error: %v\n", namespace, name, err); err != nil {
+		return fmt.Errorf("write ai context error: %w", err)
 	}
 	return nil
 }

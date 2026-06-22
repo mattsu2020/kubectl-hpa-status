@@ -207,6 +207,32 @@ kubectl hpa status web-multi -n hpa-status-examples --explain --suggest
 kubectl hpa status list -n hpa-status-examples --wide
 ```
 
+## 複数 HPA の出力と partial result
+
+`status NAME1 NAME2 ...` を実行すると、指定したすべての HPA をまとめて報告します。すべての HPA に到達できる場合は入力順に各アイテムの結果を出力します。一部の HPA の取得に失敗した場合（名前違い・namespace 違い・RBAC 拒否など）でも全体を中断せず、**partial result** として成功したアイテムを出力します。これにより list/fleet 的な用途でも健全なアイテムを取りこぼしません。
+
+exit code は最も深刻なアイテムの結果を採用します:
+
+| アイテム状態 | exit code |
+| --- | --- |
+| すべて OK | `0` |
+| warning アイテムあり（health が `ERROR` / `LIMITED`）、ビルドエラーなし | `2` |
+| ビルドエラーアイテムあり（取得/ビルド失敗） | `1` |
+
+`-o json` / `-o yaml` では、複数 HPA の出力は `StatusBatch` エンベロープで包まれます。各アイテムは `status` として `ok` / `warning` / `error` を持ちます。失敗アイテムは `status: "error"`、`error` メッセージ、`report` フィールドなしになります:
+
+```json
+{
+  "apiVersion": "hpa-status/v1",
+  "items": [
+    {"namespace": "default", "name": "web", "status": "ok", "report": { "apiVersion": "hpa-status/v1", "analysis": { "name": "web", "health": "OK", "...": "..." } } },
+    {"namespace": "default", "name": "missing", "status": "error", "error": "HPA \"missing\" was not found in namespace \"default\""}
+  ]
+}
+```
+
+単一 HPA の `status NAME -o json` は従来通り bare `StatusReport` のままです（エンベロープなし）。テキスト出力では成功アイテムを通常どおり描画し、失敗アイテムごとに `Error: <メッセージ>` 行を1行ずつ出力します。
+
 ## ドキュメント
 
 | ドキュメント | 内容 |

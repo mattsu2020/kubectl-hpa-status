@@ -127,7 +127,6 @@ func TestAnalyzeScaleDownStabilized(t *testing.T) {
 	}
 }
 
-
 func TestAnalyzeFormatsNonResourceMetrics(t *testing.T) {
 	hpa := baseHPA()
 	target := resource.MustParse("10")

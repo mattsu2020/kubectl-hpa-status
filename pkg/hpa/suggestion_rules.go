@@ -19,6 +19,11 @@ import (
 // suggestion rules do not participate in early termination.
 type SuggestionRule func(ctx SuggestionContext) []Suggestion
 
+// defaultToleranceQty is the suggested scale-up tolerance for the
+// toleranceRule. It is a compile-time constant (not user input), so parsing it
+// once at package initialization is safe.
+var defaultToleranceQty = resource.MustParse("0.05")
+
 // coreSuggestionRules returns the ordered list of rules that replace the
 // monolithic BuildSuggestions function. Rule order matters: rules that
 // check fundamental conditions (ScalingActive, ScalingLimited) run first.
@@ -255,7 +260,7 @@ func toleranceRule(ctx SuggestionContext) []Suggestion {
 		return nil
 	}
 
-	tolerance := resource.MustParse("0.05")
+	tolerance := defaultToleranceQty
 	patch := marshalJSON(map[string]any{
 		"spec": map[string]any{
 			"behavior": map[string]any{

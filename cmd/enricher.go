@@ -302,6 +302,7 @@ func newSimulationsEnricher(opts *options) Enricher {
 
 func (*simulationsEnricher) Name() string    { return "simulations" }
 func (e *simulationsEnricher) Enabled() bool { return e.enabled() }
+
 // AbortOnError preserves the historical short-circuit behavior where a
 // simulation error aborts the whole status report instead of being recorded
 // as a best-effort warning.
@@ -496,7 +497,7 @@ func (e *churnAndFlappingEnricher) Run(ctx context.Context, _ *PipelineContext, 
 	return nil
 }
 
-type vpaAdvisoryEnricher struct { defaultAbort }
+type vpaAdvisoryEnricher struct{ defaultAbort }
 
 func newVPAAdvisoryEnricher(*options) Enricher { return &vpaAdvisoryEnricher{} }
 

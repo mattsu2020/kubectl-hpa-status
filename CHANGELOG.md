@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Multi-HPA `status NAME1 NAME2 ...` now produces **partial results**: a per-item fetch/build failure no longer aborts the whole batch. Successful items are rendered normally, and the failed item is surfaced as an error entry in the output.
+- Exit code for multi-HPA runs now reflects the most severe per-item outcome: any build failure → exit `1` (`error`), otherwise any warning-health item → exit `2` (`warning`), otherwise exit `0`. Previously the first failing HPA aborted the whole run with no output.
+
+### Changed (breaking)
+- `status NAME1 NAME2 -o json` and `-o yaml` now emit a `StatusBatch` envelope instead of a bare `[]StatusReport` array. New shape:
+  ```json
+  {
+    "apiVersion": "hpa-status/v1",
+    "items": [
+      {"namespace": "default", "name": "web", "status": "ok", "report": { ... }},
+      {"namespace": "default", "name": "missing", "status": "error", "error": "HPA \"missing\" was not found ..."}
+    ]
+  }
+  ```
+  Single-HPA `status NAME -o json` is unchanged (still a bare `StatusReport`). Failed items have `status: "error"`, a non-empty `error` string, and no `report` field.
+
 ## [0.10.0] - 2026-06-13
 
 ### Added

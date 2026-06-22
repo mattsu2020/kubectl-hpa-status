@@ -73,79 +73,117 @@ func applyMetricOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, name, value
 
 	switch spec.Type {
 	case autoscalingv2.ResourceMetricSourceType:
-		resName := spec.Resource.Name
-		switch {
-		case strings.HasSuffix(value, "%"):
-			parsed, err := strconv.ParseInt(strings.TrimSuffix(value, "%"), 10, 32)
-			if err != nil {
-				return fmt.Errorf("invalid utilization value %q: %w", value, err)
-			}
-			util := int32(parsed)
-			hpa.Status.CurrentMetrics[idx].Resource = &autoscalingv2.ResourceMetricStatus{
-				Name: resName,
-				Current: autoscalingv2.MetricValueStatus{
-					AverageUtilization: &util,
-				},
-			}
-		case isResourceQuantity(value):
-			q := resource.MustParse(value)
-			hpa.Status.CurrentMetrics[idx].Resource = &autoscalingv2.ResourceMetricStatus{
-				Name: resName,
-				Current: autoscalingv2.MetricValueStatus{
-					AverageValue: &q,
-				},
-			}
-		default:
-			parsed, err := strconv.ParseInt(value, 10, 32)
-			if err != nil {
-				return fmt.Errorf("invalid resource metric value %q: expected utilization%%, quantity, or integer", value)
-			}
-			util := int32(parsed)
-			hpa.Status.CurrentMetrics[idx].Resource = &autoscalingv2.ResourceMetricStatus{
-				Name: resName,
-				Current: autoscalingv2.MetricValueStatus{
-					AverageUtilization: &util,
-				},
-			}
-		}
+		return applyResourceMetricOverride(hpa, spec, idx, value)
 	case autoscalingv2.ExternalMetricSourceType:
-		q := resource.MustParse(value)
-		if spec.External.Metric.Selector.MatchLabels == nil &&
-			hpa.Status.CurrentMetrics[idx].External != nil &&
-			hpa.Status.CurrentMetrics[idx].External.Current.AverageValue != nil {
-			hpa.Status.CurrentMetrics[idx].External = &autoscalingv2.ExternalMetricStatus{
-				Metric: autoscalingv2.MetricIdentifier{
-					Name:     spec.External.Metric.Name,
-					Selector: spec.External.Metric.Selector,
-				},
-				Current: autoscalingv2.MetricValueStatus{
-					AverageValue: &q,
-				},
-			}
-		} else {
-			hpa.Status.CurrentMetrics[idx].External = &autoscalingv2.ExternalMetricStatus{
-				Metric: autoscalingv2.MetricIdentifier{
-					Name:     spec.External.Metric.Name,
-					Selector: spec.External.Metric.Selector,
-				},
-				Current: autoscalingv2.MetricValueStatus{
-					Value: &q,
-				},
-			}
-		}
+		return applyExternalMetricOverride(hpa, spec, idx, value)
 	case autoscalingv2.PodsMetricSourceType:
-		q := resource.MustParse(value)
-		hpa.Status.CurrentMetrics[idx].Pods = &autoscalingv2.PodsMetricStatus{
-			Metric: autoscalingv2.MetricIdentifier{
-				Name:     spec.Pods.Metric.Name,
-				Selector: spec.Pods.Metric.Selector,
+		return applyPodsMetricOverride(hpa, spec, idx, value)
+	default:
+		return fmt.Errorf("unsupported metric type %q for metric %q", spec.Type, name)
+	}
+}
+
+// parseMetricQuantity parses a value string into a resource.Quantity, wrapping
+// the parse error with metricType/name context.
+func parseMetricQuantity(value, metricType string) (resource.Quantity, error) {
+	q, err := resource.ParseQuantity(value)
+	if err != nil {
+		return resource.Quantity{}, fmt.Errorf("invalid %s metric quantity %q: %w", metricType, value, err)
+	}
+	return q, nil
+}
+
+// applyResourceMetricOverride sets the current value of a Resource metric from
+// a utilization%, quantity, or integer value string.
+func applyResourceMetricOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, spec autoscalingv2.MetricSpec, idx int, value string) error {
+	resName := spec.Resource.Name
+	switch {
+	case strings.HasSuffix(value, "%"):
+		parsed, err := strconv.ParseInt(strings.TrimSuffix(value, "%"), 10, 32)
+		if err != nil {
+			return fmt.Errorf("invalid utilization value %q: %w", value, err)
+		}
+		util := int32(parsed)
+		hpa.Status.CurrentMetrics[idx].Resource = &autoscalingv2.ResourceMetricStatus{
+			Name: resName,
+			Current: autoscalingv2.MetricValueStatus{
+				AverageUtilization: &util,
 			},
+		}
+	case isResourceQuantity(value):
+		q, err := parseMetricQuantity(value, "resource")
+		if err != nil {
+			return err
+		}
+		hpa.Status.CurrentMetrics[idx].Resource = &autoscalingv2.ResourceMetricStatus{
+			Name: resName,
 			Current: autoscalingv2.MetricValueStatus{
 				AverageValue: &q,
 			},
 		}
 	default:
-		return fmt.Errorf("unsupported metric type %q for metric %q", spec.Type, name)
+		parsed, err := strconv.ParseInt(value, 10, 32)
+		if err != nil {
+			return fmt.Errorf("invalid resource metric value %q: expected utilization%%, quantity, or integer", value)
+		}
+		util := int32(parsed)
+		hpa.Status.CurrentMetrics[idx].Resource = &autoscalingv2.ResourceMetricStatus{
+			Name: resName,
+			Current: autoscalingv2.MetricValueStatus{
+				AverageUtilization: &util,
+			},
+		}
+	}
+	return nil
+}
+
+// applyExternalMetricOverride sets the current value of an External metric,
+// choosing AverageValue vs Value based on the existing status shape.
+func applyExternalMetricOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, spec autoscalingv2.MetricSpec, idx int, value string) error {
+	q, err := parseMetricQuantity(value, "external")
+	if err != nil {
+		return err
+	}
+	if spec.External.Metric.Selector.MatchLabels == nil &&
+		hpa.Status.CurrentMetrics[idx].External != nil &&
+		hpa.Status.CurrentMetrics[idx].External.Current.AverageValue != nil {
+		hpa.Status.CurrentMetrics[idx].External = &autoscalingv2.ExternalMetricStatus{
+			Metric: autoscalingv2.MetricIdentifier{
+				Name:     spec.External.Metric.Name,
+				Selector: spec.External.Metric.Selector,
+			},
+			Current: autoscalingv2.MetricValueStatus{
+				AverageValue: &q,
+			},
+		}
+	} else {
+		hpa.Status.CurrentMetrics[idx].External = &autoscalingv2.ExternalMetricStatus{
+			Metric: autoscalingv2.MetricIdentifier{
+				Name:     spec.External.Metric.Name,
+				Selector: spec.External.Metric.Selector,
+			},
+			Current: autoscalingv2.MetricValueStatus{
+				Value: &q,
+			},
+		}
+	}
+	return nil
+}
+
+// applyPodsMetricOverride sets the current AverageValue of a Pods metric.
+func applyPodsMetricOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, spec autoscalingv2.MetricSpec, idx int, value string) error {
+	q, err := parseMetricQuantity(value, "pods")
+	if err != nil {
+		return err
+	}
+	hpa.Status.CurrentMetrics[idx].Pods = &autoscalingv2.PodsMetricStatus{
+		Metric: autoscalingv2.MetricIdentifier{
+			Name:     spec.Pods.Metric.Name,
+			Selector: spec.Pods.Metric.Selector,
+		},
+		Current: autoscalingv2.MetricValueStatus{
+			AverageValue: &q,
+		},
 	}
 	return nil
 }

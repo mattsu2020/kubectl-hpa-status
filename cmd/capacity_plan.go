@@ -43,9 +43,7 @@ func runCapacityPlan(ctx context.Context, out io.Writer, opts *options, names []
 	for _, name := range names {
 		report, err := buildStatusReportWithClient(ctx, opts, name, false, nil)
 		if err != nil {
-			if local.Output == "json" || local.Output == "yaml" {
-				writeError(out, local.Output, err)
-			}
+			writeErrorIfStructured(out, local.Output, err)
 			return err
 		}
 

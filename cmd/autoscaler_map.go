@@ -40,17 +40,13 @@ func runAutoscalerMap(ctx context.Context, out io.Writer, opts *options, names [
 		// English prefix that breaks the structured output contract.
 		client, err := opts.NewClient()
 		if err != nil {
-			if opts.Output == "json" || opts.Output == "yaml" {
-				writeError(out, opts.Output, err)
-			}
+			writeErrorIfStructured(out, opts.Output, err)
 			return err
 		}
 
 		hpa, err := kube.GetHPAFromClient(ctx, client, name)
 		if err != nil {
-			if opts.Output == "json" || opts.Output == "yaml" {
-				writeError(out, opts.Output, err)
-			}
+			writeErrorIfStructured(out, opts.Output, err)
 			return err
 		}
 

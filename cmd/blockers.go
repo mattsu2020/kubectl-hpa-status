@@ -45,9 +45,7 @@ func runBlockers(ctx context.Context, out io.Writer, opts *options, names []stri
 	for _, name := range names {
 		report, err := buildStatusReportWithClient(ctx, &local, name, false, nil)
 		if err != nil {
-			if local.Output == "json" || local.Output == "yaml" {
-				writeError(out, local.Output, err)
-			}
+			writeErrorIfStructured(out, local.Output, err)
 			return err
 		}
 

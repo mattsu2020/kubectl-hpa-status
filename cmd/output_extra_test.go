@@ -128,7 +128,6 @@ func TestExitCodeError_UnwrapExposesCause(t *testing.T) {
 	}
 }
 
-
 func TestShouldColorize(t *testing.T) {
 	tests := []struct {
 		mode string

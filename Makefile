@@ -18,13 +18,26 @@ test-race:
 	$(GO) test -race ./...
 
 .PHONY: ci
-ci: build vet lint test test-race docs-check
+ci: build vet lint fmt-check test test-race docs-check
 	@echo "local CI checks passed"
 
 .PHONY: tidy
 tidy:
 	$(GO) mod tidy
 	@git diff --exit-code go.mod go.sum || (echo "go.mod/go.sum not tidy; run 'go mod tidy' and commit" && exit 1)
+
+.PHONY: fmt
+fmt:
+	gofmt -w cmd/ pkg/ internal/
+
+.PHONY: fmt-check
+fmt-check:
+	@out=$$(gofmt -l cmd/ pkg/ internal/); \
+	if [ -n "$$out" ]; then \
+		echo "gofmt would modify the following files; run 'make fmt' and commit:"; \
+		echo "$$out"; \
+		exit 1; \
+	fi
 
 .PHONY: coverage
 coverage:
