@@ -5,7 +5,6 @@ import (
 	"strconv"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
-	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 // ContainerResources holds the resource requests and limits for a single
@@ -177,8 +176,8 @@ func isTinyRequest(resourceName, requestValue string) bool {
 	if threshold == "" {
 		return false
 	}
-	thresholdQty := resource.MustParse(threshold)
-	requestQty := resource.MustParse(requestValue)
+	thresholdQty := parseQuantityOrZero(threshold)
+	requestQty := parseQuantityOrZero(requestValue)
 	return requestQty.Cmp(thresholdQty) < 0
 }
 
@@ -210,7 +209,7 @@ func checkSidecarDistortion(containerMap map[string]ContainerResources, resource
 		if !ok || isZeroQuantity(requestStr) {
 			continue
 		}
-		q := resource.MustParse(requestStr)
+		q := parseQuantityOrZero(requestStr)
 		val := q.AsApproximateFloat64()
 		if first {
 			minVal, maxVal = val, val
@@ -244,8 +243,8 @@ func checkSidecarDistortion(containerMap map[string]ContainerResources, resource
 		Details: fmt.Sprintf("containers have a %.1fx difference in %s requests (%s=%v, %s=%v); "+
 			"Resource metric averages across all containers, so the smaller container distorts utilization. "+
 			"Consider switching to ContainerResource metric type to target specific containers.",
-			ratio, resourceName, minName, resource.MustParse(containerMap[minName].Requests[resourceName]),
-			maxName, resource.MustParse(containerMap[maxName].Requests[resourceName])),
+			ratio, resourceName, minName, parseQuantityOrZero(containerMap[minName].Requests[resourceName]),
+			maxName, parseQuantityOrZero(containerMap[maxName].Requests[resourceName])),
 		Severity: "warning",
 	}}
 }

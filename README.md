@@ -207,6 +207,32 @@ kubectl hpa status web-multi -n hpa-status-examples --explain --suggest
 kubectl hpa status list -n hpa-status-examples --wide
 ```
 
+## Multi-HPA output and partial results
+
+`status NAME1 NAME2 ...` runs report all named HPAs together. When every HPA is reachable, the output is the per-item result in input order. When one or more HPAs fail to fetch (e.g. wrong name, wrong namespace, RBAC denial), the run no longer aborts: it emits a **partial result** so the fleet/list use case still gets the healthy items.
+
+Exit code reflects the most severe per-item outcome:
+
+| Per-item state | Exit code |
+| --- | --- |
+| All items OK | `0` |
+| Any item warning (`ERROR` / `LIMITED` health), no build errors | `2` |
+| Any item failed to build (fetch/build error) | `1` |
+
+For `-o json` / `-o yaml`, multi-HPA output is wrapped in a `StatusBatch` envelope. Each item carries a `status` of `ok`, `warning`, or `error`; failed items have `status: "error"`, an `error` message, and no `report` field:
+
+```json
+{
+  "apiVersion": "hpa-status/v1",
+  "items": [
+    {"namespace": "default", "name": "web", "status": "ok", "report": { "apiVersion": "hpa-status/v1", "analysis": { "name": "web", "health": "OK", "...": "..." } } },
+    {"namespace": "default", "name": "missing", "status": "error", "error": "HPA \"missing\" was not found in namespace \"default\""}
+  ]
+}
+```
+
+Single-HPA `status NAME -o json` keeps the historical bare `StatusReport` shape (no envelope). Text output renders successful items normally and a single `Error: <message>` row per failed item.
+
 ## Documentation
 
 | Document | Content |

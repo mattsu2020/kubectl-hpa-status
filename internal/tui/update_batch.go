@@ -182,9 +182,9 @@ func buildBatchAuditEntries(reports map[string]*hpaanalysis.AuditReport) []batch
 		warnings := 0
 		for _, f := range report.Findings {
 			switch f.Severity {
-			case hpaanalysis.AuditCritical:
+			case hpaanalysis.AuditSeverityCritical:
 				critical++
-			case hpaanalysis.AuditWarning:
+			case hpaanalysis.AuditSeverityWarning:
 				warnings++
 			}
 		}

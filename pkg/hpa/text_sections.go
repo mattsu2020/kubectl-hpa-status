@@ -136,15 +136,15 @@ func appendKEDASection(out *[]byte, a *Analysis, theme style.Theme, labels label
 	*out = fmt.Appendf(*out, "  ScaledObject: %s\n", a.KEDAInfo.ScaledObjectName)
 	if len(a.KEDAInfo.Triggers) > 0 {
 		*out = fmt.Appendf(*out, "  Triggers:\n")
-			for _, t := range a.KEDAInfo.Triggers {
-				*out = fmt.Appendf(*out, "    - %s\n", kedaTriggerLabel(t, theme))
-				if detail := kedaTriggerDetail(t); detail != "" {
-					*out = fmt.Appendf(*out, "      %s\n", detail)
-				}
-				if t.AuthRef != "" {
-					*out = fmt.Appendf(*out, "      authRef=%s\n", t.AuthRef)
-				}
+		for _, t := range a.KEDAInfo.Triggers {
+			*out = fmt.Appendf(*out, "    - %s\n", kedaTriggerLabel(t, theme))
+			if detail := kedaTriggerDetail(t); detail != "" {
+				*out = fmt.Appendf(*out, "      %s\n", detail)
 			}
+			if t.AuthRef != "" {
+				*out = fmt.Appendf(*out, "      authRef=%s\n", t.AuthRef)
+			}
+		}
 	}
 	if a.KEDAInfo.Fallback != nil {
 		*out = fmt.Appendf(*out, "  Fallback: failureThreshold=%d, replicas=%d\n", a.KEDAInfo.Fallback.FailureThreshold, a.KEDAInfo.Fallback.Replicas)

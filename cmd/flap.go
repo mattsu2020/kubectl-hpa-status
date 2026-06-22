@@ -112,7 +112,7 @@ func runFlapFromRecord(out io.Writer, opts *options, name, path string) error {
 }
 
 func writeFlapReport(out io.Writer, opts *options, report flapReport) error {
-	format, _ := outputSelection(outputConfig{report: opts.Report, output: opts.Output, template: opts.Template, outputTemplates: opts.OutputTemplates})
+	format, _ := selectOutputFromOptions(opts)
 	switch format {
 	case "json":
 		encoder := json.NewEncoder(out)

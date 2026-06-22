@@ -317,12 +317,224 @@ func TestRunStatusMany_JSONOutput(t *testing.T) {
 		t.Fatalf("runStatusMany returned error: %v", err)
 	}
 
-	var reports []hpaanalysis.StatusReport
-	if err := json.Unmarshal(buf.Bytes(), &reports); err != nil {
+	// Multi-HPA output uses the StatusBatch envelope: {"apiVersion":..., "items":[...]}.
+	var batch hpaanalysis.StatusBatch
+	if err := json.Unmarshal(buf.Bytes(), &batch); err != nil {
 		t.Fatalf("failed to parse JSON output: %v\noutput:\n%s", err, buf.String())
 	}
-	if len(reports) != 2 || reports[0].Analysis.Name != "web" || reports[1].Analysis.Name != "api" {
-		t.Fatalf("unexpected reports: %#v", reports)
+	if batch.APIVersion != hpaanalysis.SchemaVersion {
+		t.Fatalf("unexpected apiVersion %q", batch.APIVersion)
+	}
+	if len(batch.Items) != 2 {
+		t.Fatalf("expected 2 items, got %d: %#v", len(batch.Items), batch.Items)
+	}
+	for i, want := range []struct{ name, status string }{{"web", "ok"}, {"api", "ok"}} {
+		item := batch.Items[i]
+		if item.Name != want.name || string(item.Status) != want.status || item.Report == nil {
+			t.Fatalf("item %d: want name=%s status=%s report!=nil, got %#v", i, want.name, want.status, item)
+		}
+	}
+}
+
+// --------------------------------------------------------------------------
+// Multi-HPA partial-result tests
+//
+// These cover the partial-result contract: a per-item fetch/build failure
+// does not abort the whole batch. The failed item is surfaced in the output
+// envelope / text, and the exit code reflects the most severe per-item
+// outcome (error > warning > ok).
+// --------------------------------------------------------------------------
+
+func TestRunStatusMany_PartialFailure_TextOutput(t *testing.T) {
+	webHPA := testutil.BuildHPA("default", "web", testutil.WithReplicas(3, 5))
+	fakeClient := testutil.NewFakeClient(webHPA) // "missing" is absent
+
+	var buf bytes.Buffer
+	opts := &options{
+		Common: commonOptions{
+			ClientOverride: fakeClient,
+		},
+		Status: statusOptions{
+			Events: EventOption{Enabled: false},
+		},
+	}
+	err := runStatusMany(context.Background(), &buf, opts, []string{"web", "missing"}, false)
+
+	// Exit code is ExitError (1) because one item failed to build.
+	exitErr, ok := err.(*ExitCodeError)
+	if !ok || exitErr.Code != ExitError {
+		t.Fatalf("expected *ExitCodeError with ExitError, got %T: %v", err, err)
+	}
+	output := buf.String()
+	if !strings.Contains(output, "HPA default/web") {
+		t.Errorf("expected successful item 'web' in text output, got:\n%s", output)
+	}
+	if !strings.Contains(output, "Error:") || !strings.Contains(output, "missing") {
+		t.Errorf("expected an Error: line naming 'missing' in text output, got:\n%s", output)
+	}
+}
+
+func TestRunStatusMany_PartialFailure_JSONOutput(t *testing.T) {
+	webHPA := testutil.BuildHPA("default", "web", testutil.WithReplicas(3, 5))
+	fakeClient := testutil.NewFakeClient(webHPA)
+
+	var buf bytes.Buffer
+	opts := &options{
+		Common: commonOptions{
+			Output:         "json",
+			ClientOverride: fakeClient,
+		},
+		Status: statusOptions{
+			Events: EventOption{Enabled: false},
+		},
+	}
+	err := runStatusMany(context.Background(), &buf, opts, []string{"web", "missing"}, false)
+	exitErr, ok := err.(*ExitCodeError)
+	if !ok || exitErr.Code != ExitError {
+		t.Fatalf("expected *ExitCodeError with ExitError, got %T: %v", err, err)
+	}
+
+	var batch hpaanalysis.StatusBatch
+	if err := json.Unmarshal(buf.Bytes(), &batch); err != nil {
+		t.Fatalf("failed to parse JSON output: %v\noutput:\n%s", err, buf.String())
+	}
+	if len(batch.Items) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(batch.Items))
+	}
+	if batch.Items[0].Name != "web" || string(batch.Items[0].Status) != "ok" || batch.Items[0].Report == nil {
+		t.Errorf("item 0: expected web/ok/report, got %#v", batch.Items[0])
+	}
+	if batch.Items[1].Name != "missing" || string(batch.Items[1].Status) != "error" || batch.Items[1].Report != nil || batch.Items[1].Error == "" {
+		t.Errorf("item 1: expected missing/error/no-report, got %#v", batch.Items[1])
+	}
+}
+
+func TestRunStatusMany_PartialFailure_YAMLOutput(t *testing.T) {
+	webHPA := testutil.BuildHPA("default", "web", testutil.WithReplicas(3, 5))
+	fakeClient := testutil.NewFakeClient(webHPA)
+
+	var buf bytes.Buffer
+	opts := &options{
+		Common: commonOptions{
+			Output:         "yaml",
+			ClientOverride: fakeClient,
+		},
+		Status: statusOptions{
+			Events: EventOption{Enabled: false},
+		},
+	}
+	err := runStatusMany(context.Background(), &buf, opts, []string{"web", "missing"}, false)
+	exitErr, ok := err.(*ExitCodeError)
+	if !ok || exitErr.Code != ExitError {
+		t.Fatalf("expected *ExitCodeError with ExitError, got %T: %v", err, err)
+	}
+	output := buf.String()
+	if !strings.Contains(output, "name: web") || !strings.Contains(output, "status: ok") {
+		t.Errorf("expected web/ok item in YAML, got:\n%s", output)
+	}
+	if !strings.Contains(output, "name: missing") || !strings.Contains(output, "status: error") {
+		t.Errorf("expected missing/error item in YAML, got:\n%s", output)
+	}
+}
+
+func TestRunStatusMany_PartialFailure_AllFail(t *testing.T) {
+	fakeClient := testutil.NewFakeClient() // both names absent
+
+	var buf bytes.Buffer
+	opts := &options{
+		Common: commonOptions{
+			Output:         "json",
+			ClientOverride: fakeClient,
+		},
+		Status: statusOptions{
+			Events: EventOption{Enabled: false},
+		},
+	}
+	err := runStatusMany(context.Background(), &buf, opts, []string{"a", "b"}, false)
+	exitErr, ok := err.(*ExitCodeError)
+	if !ok || exitErr.Code != ExitError {
+		t.Fatalf("expected *ExitCodeError with ExitError, got %T: %v", err, err)
+	}
+
+	var batch hpaanalysis.StatusBatch
+	if err := json.Unmarshal(buf.Bytes(), &batch); err != nil {
+		t.Fatalf("failed to parse JSON output: %v\noutput:\n%s", err, buf.String())
+	}
+	if len(batch.Items) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(batch.Items))
+	}
+	for i, item := range batch.Items {
+		if string(item.Status) != "error" || item.Report != nil || item.Error == "" {
+			t.Errorf("item %d: expected error/no-report, got %#v", i, item)
+		}
+	}
+}
+
+func TestRunStatusMany_PartialFailure_WarningAggregation(t *testing.T) {
+	// web: healthy, scaling up.
+	webHPA := testutil.BuildHPA("default", "web", testutil.WithReplicas(3, 5))
+	// api: at maxReplicas with ScalingLimited -> health LIMITED.
+	apiHPA := testutil.BuildHPA("default", "api",
+		testutil.WithReplicas(10, 10),
+		testutil.WithMinMax(2, 10),
+		testutil.WithScalingLimitedTrue("TooManyReplicas"),
+	)
+	fakeClient := testutil.NewFakeClient(webHPA, apiHPA)
+
+	var buf bytes.Buffer
+	opts := &options{
+		Common: commonOptions{
+			ClientOverride: fakeClient,
+		},
+		Status: statusOptions{
+			Events: EventOption{Enabled: false},
+		},
+	}
+	err := runStatusMany(context.Background(), &buf, opts, []string{"web", "api"}, false)
+	if !isExitCodeWarning(err) {
+		t.Fatalf("expected ExitCodeError with ExitWarning (most severe is LIMITED), got: %v", err)
+	}
+}
+
+func TestAggregateBatchExitCode_AllOK(t *testing.T) {
+	results := []reportResult{
+		{name: "a", hasReport: true, report: hpaanalysis.StatusReport{Analysis: hpaanalysis.Analysis{Health: string(hpaanalysis.HealthOK)}}},
+		{name: "b", hasReport: true, report: hpaanalysis.StatusReport{Analysis: hpaanalysis.Analysis{Health: string(hpaanalysis.HealthStabilized)}}},
+	}
+	if err := aggregateBatchExitCode(results, false); err != nil {
+		t.Fatalf("expected nil, got %v", err)
+	}
+}
+
+func TestAggregateBatchExitCode_HasWarning(t *testing.T) {
+	results := []reportResult{
+		{name: "a", hasReport: true, report: hpaanalysis.StatusReport{Analysis: hpaanalysis.Analysis{Health: string(hpaanalysis.HealthOK)}}},
+		{name: "b", hasReport: true, report: hpaanalysis.StatusReport{Analysis: hpaanalysis.Analysis{Health: string(hpaanalysis.HealthLimited)}}},
+	}
+	err := aggregateBatchExitCode(results, false)
+	if !isExitCodeWarning(err) {
+		t.Fatalf("expected ExitWarning, got %v", err)
+	}
+}
+
+func TestAggregateBatchExitCode_HasError(t *testing.T) {
+	results := []reportResult{
+		{name: "a", hasReport: true, report: hpaanalysis.StatusReport{Analysis: hpaanalysis.Analysis{Health: string(hpaanalysis.HealthLimited)}}},
+		{name: "b", hasReport: false, err: errors.New("not found")},
+	}
+	err := aggregateBatchExitCode(results, false)
+	exitErr, ok := err.(*ExitCodeError)
+	if !ok || exitErr.Code != ExitError {
+		t.Fatalf("expected ExitError (error dominates warning), got %T: %v", err, err)
+	}
+}
+
+func TestAggregateBatchExitCode_WatchModeSuppressesWarning(t *testing.T) {
+	results := []reportResult{
+		{name: "a", hasReport: true, report: hpaanalysis.StatusReport{Analysis: hpaanalysis.Analysis{Health: string(hpaanalysis.HealthLimited)}}},
+	}
+	if err := aggregateBatchExitCode(results, true); err != nil {
+		t.Fatalf("watch mode should suppress warning, got %v", err)
 	}
 }
 

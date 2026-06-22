@@ -21,9 +21,9 @@ type fakeEnricher struct {
 	recordValue string // if non-empty, appended to report.Analysis.Warnings by Run
 }
 
-func (f *fakeEnricher) Name() string        { return f.name }
-func (f *fakeEnricher) Enabled() bool       { return f.enabled }
-func (f *fakeEnricher) AbortOnError() bool  { return f.abortOnErr }
+func (f *fakeEnricher) Name() string       { return f.name }
+func (f *fakeEnricher) Enabled() bool      { return f.enabled }
+func (f *fakeEnricher) AbortOnError() bool { return f.abortOnErr }
 func (f *fakeEnricher) Run(_ context.Context, _ *PipelineContext, _ *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
 	f.ran = true
 	if f.recordValue != "" {

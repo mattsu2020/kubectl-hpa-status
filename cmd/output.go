@@ -141,6 +141,15 @@ func writeError(out io.Writer, format string, err error) {
 	render.Error(out, format, err)
 }
 
+// writeErrorIfStructured emits an error in the requested structured format
+// (json/yaml) and is a no-op for text output. It collapses the repeated
+// `if output == "json" || output == "yaml" { writeError(...) }` idiom.
+func writeErrorIfStructured(out io.Writer, output string, err error) {
+	if output == "json" || output == "yaml" {
+		writeError(out, output, err)
+	}
+}
+
 // outputConfig holds the output-related fields needed by outputSelection,
 // decoupled from the full options struct.
 type outputConfig struct {
@@ -148,6 +157,19 @@ type outputConfig struct {
 	output          string
 	template        string
 	outputTemplates map[string]outputTemplateConfig
+}
+
+// selectOutputFromOptions is the common path through outputSelection: it reads
+// the four output-related fields straight off an options value. Callers that
+// operate on a mutated copy of options (e.g. after copyOptions) or only need a
+// subset of the fields can still build an outputConfig literal directly.
+func selectOutputFromOptions(opts *options) (string, string) {
+	return outputSelection(outputConfig{
+		report:          opts.Report,
+		output:          opts.Output,
+		template:        opts.Template,
+		outputTemplates: opts.OutputTemplates,
+	})
 }
 
 func outputSelection(cfg outputConfig) (string, string) {

@@ -6,6 +6,12 @@ on:
     branches:
       - main
 
+# Cancel superseded runs on the same ref so a rapid succession of pushes
+# (common during PR iteration) does not queue multiple expensive e2e matrices.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -22,6 +28,25 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+
+      - name: Check go.mod/go.sum tidy
+        # Fails if go.mod or go.sum are out of sync with the imports actually
+        # used, preventing an un-tidy module from merging. Mirrors the local
+        # `make tidy` gate so contributors hit this before pushing.
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
+      - name: Check gofmt
+        # Reject un-gofmt'd Go so the lint job does not have to surface basic
+        # formatting errors. Mirrors the local `make fmt-check` target.
+        run: |
+          out=$(gofmt -l cmd/ pkg/ internal/)
+          if [ -n "$out" ]; then
+            echo "::error::gofmt would modify the following files; run 'gofmt -w' and commit:"
+            echo "$out"
+            exit 1
+          fi
 
       - name: Test
         run: go test -v ./...

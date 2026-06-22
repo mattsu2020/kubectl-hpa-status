@@ -70,8 +70,7 @@ func classifyError(err error) (int, bool) {
 	if errors.As(err, &exitErr) {
 		return exitErr.Code, true
 	}
-	switch {
-	case errors.Is(err, ErrHPANotFound):
+	if errors.Is(err, ErrHPANotFound) {
 		// Kept at ExitError for backwards compatibility; flip to ExitNotFound
 		// at the v2.0 boundary tracked in ROADMAP.md.
 		return ExitError, true

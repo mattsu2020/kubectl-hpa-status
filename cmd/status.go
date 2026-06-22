@@ -13,9 +13,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
-	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func newStatusCommand(opts *options) *cobra.Command {
@@ -96,9 +94,7 @@ func runStatusSingle(ctx context.Context, out io.Writer, opts *options, name str
 	ec := newEnrichmentContext(ctx, opts)
 	report, err := buildStatusReportWithClient(ctx, opts, name, includeInterpretation, ec)
 	if err != nil {
-		if opts.Output == "json" || opts.Output == "yaml" {
-			writeError(out, opts.Output, err)
-		}
+		writeErrorIfStructured(out, opts.Output, err)
 		return err
 	}
 	if opts.Format == "structured" {
@@ -130,7 +126,11 @@ func runStatusSingle(ctx context.Context, out io.Writer, opts *options, name str
 	return warningExitCode(report.Analysis.Health, report.Analysis.Name, report.Analysis.Namespace, watchMode)
 }
 
-// runStatusMultiple handles the multi-HPA status path with concurrent report building and multi-report output.
+// runStatusMultiple handles the multi-HPA status path. Unlike the single-HPA
+// path, a per-item failure (e.g. one HPA is missing) does NOT abort the whole
+// run: successful items are rendered and the failed item is surfaced in the
+// output envelope / text as an error entry. The exit code reflects the most
+// severe per-item outcome (error > warning > ok).
 func runStatusMultiple(ctx context.Context, out io.Writer, opts *options, names []string, includeInterpretation bool) error {
 	watchMode := opts.Watch.Watch
 	ec := newEnrichmentContext(ctx, opts)
@@ -140,38 +140,163 @@ func runStatusMultiple(ctx context.Context, out io.Writer, opts *options, names 
 		return err
 	}
 
-	reports, err := buildReportsConcurrently(ctx, out, opts, client, names, includeInterpretation, ec)
-	if err != nil {
-		return err
+	results := buildReportsConcurrently(ctx, opts, client, names, includeInterpretation, ec)
+
+	// emitPerItemErrors writes failed items to stderr so stdout stays clean for
+	// machine-readable consumers. Output modes that carry per-item errors in
+	// their own schema (json/yaml/text/ai-context) skip this for those items.
+	if !batchOutputCarriesErrors(opts) {
+		emitPerItemErrors(out, results)
 	}
 
 	if opts.Export != "" {
-		return writeReportsGitOpsExport(out, opts.Export, reports)
+		return joinExportAndExit(writeReportsGitOpsExport(out, opts.Export, successReports(results)), aggregateBatchExitCode(results, watchMode))
 	}
 	if opts.Format == "structured" {
-		traces := make([]*hpaanalysis.StructuredDecisionTrace, 0, len(reports))
-		for i := range reports {
-			traces = append(traces, reports[i].Analysis.StructuredDecisionTrace)
+		traces := make([]*hpaanalysis.StructuredDecisionTrace, 0, len(results))
+		for i := range results {
+			if !results[i].hasReport {
+				continue
+			}
+			tr := results[i].report.Analysis.StructuredDecisionTrace
+			if tr == nil {
+				tr = hpaanalysis.ExportStructuredDecisionTrace(nil, results[i].report.Analysis)
+			}
+			traces = append(traces, tr)
 		}
-		return writeOutput(out, "json", "", traces, nil)
+		if err := writeOutput(out, "json", "", traces, nil); err != nil {
+			return err
+		}
+		return aggregateBatchExitCode(results, watchMode)
 	}
 	if opts.ContextForAI || opts.Ask != "" {
-		return writeAIContextMany(out, reports, opts.Ask)
+		if err := writeAIContextMany(out, results, opts.Ask); err != nil {
+			return err
+		}
+		return aggregateBatchExitCode(results, watchMode)
 	}
 
 	format, templateStr := selectStatusOutput(opts)
-	if err := writeOutput(out, format, templateStr, reports, func() error {
-		return writeReportsStatusText(out, opts, reports)
+	reports := successReports(results)
+	if err := writeOutput(out, format, templateStr, batchValue(opts, results, reports), func() error {
+		return writeReportsStatusText(out, opts, results)
 	}); err != nil {
 		return err
 	}
 
-	return checkReportsWarningExitCodes(reports, watchMode)
+	return aggregateBatchExitCode(results, watchMode)
 }
 
-// buildReportsConcurrently builds status reports for all named HPAs concurrently, applying suggestions when requested.
-func buildReportsConcurrently(ctx context.Context, out io.Writer, opts *options, client *kube.Client, names []string, includeInterpretation bool, ec *enrichmentContext) ([]hpaanalysis.StatusReport, error) {
-	reports := make([]hpaanalysis.StatusReport, len(names))
+// batchOutputCarriesErrors reports whether the active output mode embeds
+// per-item errors in its own schema (so failed items do not need to be
+// re-emitted on stderr). Markdown/HTML/incident/export/structured only render
+// successful items, so for those modes stderr is the only place a failure
+// surfaces.
+func batchOutputCarriesErrors(opts *options) bool {
+	if opts.Export != "" || opts.Format == "structured" {
+		return false
+	}
+	if opts.ContextForAI || opts.Ask != "" {
+		return true // AI context renders an "Error:" block per failed item.
+	}
+	switch opts.Output {
+	case "json", "yaml":
+		return true // StatusBatch envelope carries per-item errors.
+	case "", "table", "wide", "ja":
+		return true // text path renders an "Error:" row per failed item.
+	default:
+		// jsonpath / go-template / prometheus / markdown / html / incident:
+		// only successful items are rendered; failures must go to stderr.
+		return false
+	}
+}
+
+// batchValue picks the value passed to render.Format for the multi-HPA path.
+// json/yaml carry the StatusBatch envelope so failed items are visible; all
+// other formats render only the successful []StatusReport slice (their
+// renderers have no per-item error slot).
+func batchValue(opts *options, results []reportResult, reports []hpaanalysis.StatusReport) any {
+	switch opts.Output {
+	case "json", "yaml":
+		return buildStatusBatch(results)
+	default:
+		return reports
+	}
+}
+
+// buildStatusBatch assembles the StatusBatch envelope from per-item results,
+// preserving input order.
+func buildStatusBatch(results []reportResult) hpaanalysis.StatusBatch {
+	items := make([]hpaanalysis.StatusBatchItem, 0, len(results))
+	for i := range results {
+		r := results[i]
+		item := hpaanalysis.StatusBatchItem{
+			Namespace: r.namespace,
+			Name:      r.name,
+			Status:    r.batchStatus(),
+		}
+		if r.hasReport {
+			rep := r.report
+			item.Report = &rep
+		} else {
+			item.Error = r.err.Error()
+		}
+		items = append(items, item)
+	}
+	return hpaanalysis.StatusBatch{APIVersion: hpaanalysis.SchemaVersion, Items: items}
+}
+
+// successReports returns the subset of reports that built successfully, in
+// input order. Used by renderers that have no per-item error slot (export,
+// markdown, html, incident).
+func successReports(results []reportResult) []hpaanalysis.StatusReport {
+	reports := make([]hpaanalysis.StatusReport, 0, len(results))
+	for i := range results {
+		if results[i].hasReport {
+			reports = append(reports, results[i].report)
+		}
+	}
+	return reports
+}
+
+// emitPerItemErrors writes one render.Error-shaped line per failed item to
+// stderr (or out when stderr is unavailable, matching existing conventions).
+// It is used only by output modes that cannot carry per-item errors in their
+// own schema.
+func emitPerItemErrors(out io.Writer, results []reportResult) {
+	for i := range results {
+		if results[i].hasReport {
+			continue
+		}
+		_, _ = fmt.Fprintf(out, "HPA %q in namespace %q: %v\n", results[i].name, results[i].namespace, results[i].err)
+	}
+}
+
+// joinExportAndExit returns the export error if non-nil, otherwise the
+// aggregated exit-code error. An export write failure is treated as more
+// severe than a per-item warning.
+func joinExportAndExit(exportErr, exitErr error) error {
+	if exportErr != nil {
+		return exportErr
+	}
+	return exitErr
+}
+
+// buildReportsConcurrently builds status reports for all named HPAs
+// concurrently. Unlike the historical errgroup variant, a per-item failure
+// does NOT abort the whole batch: the error is captured in the corresponding
+// reportResult and the run continues so partial results can be emitted. The
+// parent context is still honored (Ctrl+C cancels in-flight work).
+//
+// apply is intentionally not handled here: runStatusMany rejects --apply with
+// multiple names up front (cmd/status.go), so this path is never reached with
+// opts.Apply set.
+func buildReportsConcurrently(ctx context.Context, opts *options, client *kube.Client, names []string, includeInterpretation bool, ec *enrichmentContext) []reportResult {
+	results := make([]reportResult, len(names))
+	for i, name := range names {
+		results[i] = reportResult{name: name, namespace: opts.Namespace, err: errPending}
+	}
+
 	g, gctx := errgroup.WithContext(ctx)
 	limit := opts.Concurrency
 	if limit < 1 {
@@ -180,32 +305,107 @@ func buildReportsConcurrently(ctx context.Context, out io.Writer, opts *options,
 	g.SetLimit(limit)
 
 	for i, name := range names {
+		i, name := i, name
 		g.Go(func() error {
 			if gctx.Err() != nil {
-				return gctx.Err()
+				results[i].err = gctx.Err()
+				return nil // do not cancel the group; record and move on
 			}
 			report, err := buildStatusReport(gctx, opts, client, name, includeInterpretation, ec)
 			if err != nil {
-				if opts.Output == "json" || opts.Output == "yaml" {
-					writeError(out, opts.Output, err)
-				}
-				return err
+				results[i].err = err
+				return nil // partial-result: do not cancel the group
 			}
-			if opts.Apply {
-				applied, err := applySuggestions(gctx, out, opts, name, report.Analysis.Suggestions)
-				if err != nil {
-					return err
-				}
-				report.Analysis.Actions = append(report.Analysis.Actions, applied...)
-			}
-			reports[i] = report
+			results[i].report = report
+			results[i].hasReport = true
+			results[i].err = nil
 			return nil
 		})
 	}
-	if err := g.Wait(); err != nil {
-		return nil, err
+	_ = g.Wait()
+	return results
+}
+
+// reportResult is the per-HPA outcome of a multi-HPA run. It captures either a
+// successfully built report or the error that prevented one, preserving the
+// input order via the results slice index.
+type reportResult struct {
+	name      string
+	namespace string
+	report    hpaanalysis.StatusReport
+	hasReport bool
+	err       error
+}
+
+// errPending is a placeholder for results whose goroutine has not yet filled
+// in a real value; it is overwritten before results are consumed.
+var errPending = errors.New("report build did not complete")
+
+// batchStatus maps a reportResult to its StatusBatchItem.Status.
+func (r reportResult) batchStatus() hpaanalysis.StatusBatchStatus {
+	if !r.hasReport {
+		return hpaanalysis.BatchStatusError
 	}
-	return reports, nil
+	switch hpaanalysis.HealthState(r.report.Analysis.Health) {
+	case hpaanalysis.HealthError, hpaanalysis.HealthLimited:
+		return hpaanalysis.BatchStatusWarning
+	case "WARNING": // Analysis.Health is a string; some paths emit "WARNING".
+		return hpaanalysis.BatchStatusWarning
+	default:
+		return hpaanalysis.BatchStatusOK
+	}
+}
+
+// healthIsWarning reports whether a health string should raise the exit code
+// to warning (ERROR / LIMITED / WARNING).
+func healthIsWarning(health string) bool {
+	switch hpaanalysis.HealthState(health) {
+	case hpaanalysis.HealthError, hpaanalysis.HealthLimited:
+		return true
+	default:
+		return health == "WARNING"
+	}
+}
+
+// aggregateBatchExitCode returns the most severe per-item outcome as an
+// ExitCodeError: any build error dominates (ExitError, 1), otherwise any
+// warning-health item (ExitWarning, 2), otherwise nil. watchMode suppresses
+// warning aggregation exactly like the single-HPA path.
+func aggregateBatchExitCode(results []reportResult, watchMode bool) error {
+	hasError := false
+	hasWarning := false
+	for i := range results {
+		if !results[i].hasReport {
+			hasError = true
+			break
+		}
+		if healthIsWarning(results[i].report.Analysis.Health) {
+			hasWarning = true
+		}
+	}
+	if hasError {
+		return &ExitCodeError{Code: ExitError, Err: fmt.Errorf("%d of %d HPA(s) could not be reported; see output for details", countFailed(results), len(results))}
+	}
+	if hasWarning && !watchMode {
+		// Reuse the single-HPA helper to format a representative message.
+		for i := range results {
+			if err := warningExitCode(results[i].report.Analysis.Health, results[i].report.Analysis.Name, results[i].report.Analysis.Namespace, watchMode); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// countFailed returns the number of results that did not produce a report.
+func countFailed(results []reportResult) int {
+	n := 0
+	for i := range results {
+		if !results[i].hasReport {
+			n++
+		}
+	}
+	return n
 }
 
 // writeReportsGitOpsExport writes each report as a GitOps export, separated by blank lines.
@@ -223,25 +423,25 @@ func writeReportsGitOpsExport(out io.Writer, exportFormat string, reports []hpaa
 	return nil
 }
 
-// writeReportsStatusText writes each report's status text to out, separating reports with blank lines.
-func writeReportsStatusText(out io.Writer, opts *options, reports []hpaanalysis.StatusReport) error {
-	for i, report := range reports {
+// writeReportsStatusText writes each report's status text to out, separating
+// reports with blank lines. In the partial-result path, failed items are
+// passed in as zero-value StatusReports with Analysis.Health="ERROR" and a
+// message in Analysis.Summary; for clarity we render those inline so the text
+// output reflects the same per-item outcome as the JSON envelope.
+func writeReportsStatusText(out io.Writer, opts *options, results []reportResult) error {
+	for i, r := range results {
 		if i > 0 {
 			if _, err := fmt.Fprintln(out); err != nil {
 				return err
 			}
 		}
-		if err := hpaanalysis.WriteStatusTextWithOptions(out, report, statusTextOptions(opts, out)); err != nil {
-			return err
+		if !r.hasReport {
+			if _, err := fmt.Fprintf(out, "HPA %s/%s\nError: %v\n", r.namespace, r.name, r.err); err != nil {
+				return err
+			}
+			continue
 		}
-	}
-	return nil
-}
-
-// checkReportsWarningExitCodes returns the first warning exit code (if any) among the reports.
-func checkReportsWarningExitCodes(reports []hpaanalysis.StatusReport, watchMode bool) error {
-	for _, r := range reports {
-		if err := warningExitCode(r.Analysis.Health, r.Analysis.Name, r.Analysis.Namespace, watchMode); err != nil {
+		if err := hpaanalysis.WriteStatusTextWithOptions(out, r.report, statusTextOptions(opts, out)); err != nil {
 			return err
 		}
 	}
@@ -339,172 +539,4 @@ func hpaFetchError(err error, name, namespace string) error {
 			vers.StableSinceVersion, vers.MinAPIVersion, err)
 	}
 	return fmt.Errorf("failed to get HPA %s/%s from the Kubernetes API server: %w", namespace, name, err)
-}
-
-// enrich* helpers have moved to status_enrich.go; see the package-level
-// comment there for the rationale (keeping command wiring separate from
-// per-feature enrichment functions).
-
-func buildScalePath(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpaanalysis.ScalePath {
-	input := hpaanalysis.ScalePathInput{}
-	info, err := kube.FetchScaleTargetInfo(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef)
-	if err == nil && info != nil {
-		input.Target = &hpaanalysis.ScalePathTarget{
-			Kind:            info.Kind,
-			Name:            info.Name,
-			DesiredReplicas: info.DesiredReplicas,
-			CurrentReplicas: info.Replicas,
-			ReadyReplicas:   info.ReadyReplicas,
-		}
-		if pods, podErr := kube.FetchPodInfosForSelector(ctx, client.Interface, hpa.Namespace, info.SelectorStr); podErr == nil {
-			input.Pods = convertScalePathPods(pods)
-		}
-		if replicaSets, rsErr := kube.FetchReplicaSetsForScaleTarget(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef, info.SelectorStr); rsErr == nil {
-			input.ReplicaSets = convertScalePathReplicaSets(replicaSets)
-		}
-		objectNames := scalePathEventObjectNames(hpa, input.Pods, input.ReplicaSets)
-		input.Events = convertScalePathEvents(kube.FetchRecentEventsForObjects(ctx, client.Interface, hpa.Namespace, objectNames, 10))
-	}
-	return hpaanalysis.AnalyzeScalePath(hpa, input)
-}
-
-func convertScalePathPods(pods []kube.PodInfo) []hpaanalysis.ScalePathPod {
-	if len(pods) == 0 {
-		return nil
-	}
-	result := make([]hpaanalysis.ScalePathPod, 0, len(pods))
-	for _, pod := range pods {
-		result = append(result, hpaanalysis.ScalePathPod{
-			Name:          pod.Name,
-			Phase:         pod.Phase,
-			Ready:         pod.Ready,
-			Unschedulable: pod.Unschedulable,
-			Reasons:       pod.Reasons,
-		})
-	}
-	return result
-}
-
-func convertScalePathReplicaSets(replicaSets []kube.ReplicaSetInfo) []hpaanalysis.ScalePathReplicaSet {
-	if len(replicaSets) == 0 {
-		return nil
-	}
-	result := make([]hpaanalysis.ScalePathReplicaSet, 0, len(replicaSets))
-	for _, rs := range replicaSets {
-		result = append(result, hpaanalysis.ScalePathReplicaSet{
-			Name:            rs.Name,
-			DesiredReplicas: rs.DesiredReplicas,
-			CurrentReplicas: rs.CurrentReplicas,
-			ReadyReplicas:   rs.ReadyReplicas,
-		})
-	}
-	return result
-}
-
-func convertScalePathEvents(events []kube.EventInfo) []hpaanalysis.Event {
-	if len(events) == 0 {
-		return nil
-	}
-	result := make([]hpaanalysis.Event, 0, len(events))
-	for _, event := range events {
-		result = append(result, hpaanalysis.Event{
-			Reason:    event.Reason,
-			Message:   event.Message,
-			Timestamp: event.Timestamp,
-		})
-	}
-	return result
-}
-
-func scalePathEventObjectNames(hpa *autoscalingv2.HorizontalPodAutoscaler, pods []hpaanalysis.ScalePathPod, replicaSets []hpaanalysis.ScalePathReplicaSet) []string {
-	names := []string{hpa.Name, hpa.Spec.ScaleTargetRef.Name}
-	for _, pod := range pods {
-		names = append(names, pod.Name)
-	}
-	for _, rs := range replicaSets {
-		names = append(names, rs.Name)
-	}
-	return names
-}
-
-func fetchTargetReplicaInfo(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpaanalysis.TargetReplicaInfo {
-	info, err := kube.FetchScaleTargetInfo(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef)
-	if err != nil || info == nil {
-		return nil
-	}
-
-	notReady := info.Replicas - info.ReadyReplicas
-	result := &hpaanalysis.TargetReplicaInfo{
-		TotalReplicas: info.Replicas,
-		ReadyReplicas: info.ReadyReplicas,
-		NotReady:      notReady,
-	}
-	enrichPendingPods(ctx, client, hpa.Namespace, info.SelectorStr, result)
-	if result.NotReady <= 0 && result.Pending <= 0 && result.Unschedulable <= 0 {
-		return nil
-	}
-	return result
-}
-
-func enrichPendingPods(ctx context.Context, client *kube.Client, namespace string, selector string, info *hpaanalysis.TargetReplicaInfo) {
-	if selector == "" || info == nil {
-		return
-	}
-	pods, err := client.Interface.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: selector})
-	if err != nil {
-		return
-	}
-	for _, pod := range pods.Items {
-		if pod.Status.Phase == corev1.PodPending {
-			info.Pending++
-			if podUnschedulable(pod) {
-				info.Unschedulable++
-			}
-		}
-	}
-}
-
-func podUnschedulable(pod corev1.Pod) bool {
-	for _, condition := range pod.Status.Conditions {
-		if condition.Type == corev1.PodScheduled &&
-			condition.Status == corev1.ConditionFalse &&
-			condition.Reason == corev1.PodReasonUnschedulable {
-			return true
-		}
-	}
-	return false
-}
-
-// buildContainerAdvisor builds the ContainerResource advisor result.
-func buildContainerAdvisor(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpaanalysis.ContainerAdvisorResult {
-	resources, err := kube.FetchScaleTargetResources(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef.Kind, hpa.Spec.ScaleTargetRef.Name)
-	if err != nil || resources == nil {
-		return nil
-	}
-
-	containerCount := len(resources.Containers)
-	var containerNames []string
-	for _, c := range resources.Containers {
-		containerNames = append(containerNames, c.Name)
-	}
-
-	usesResource := false
-	usesContainerResource := false
-	for _, spec := range hpa.Spec.Metrics {
-		switch spec.Type {
-		case autoscalingv2.ResourceMetricSourceType:
-			usesResource = true
-		case autoscalingv2.ContainerResourceMetricSourceType:
-			usesContainerResource = true
-		}
-	}
-
-	input := hpaanalysis.ContainerAdvisorInput{
-		ContainerCount:              containerCount,
-		ContainerNames:              containerNames,
-		UsesResourceMetric:          usesResource,
-		UsesContainerResourceMetric: usesContainerResource,
-	}
-
-	return hpaanalysis.AnalyzeContainerAdvisor(hpa, input)
 }
