@@ -57,7 +57,7 @@ func runFlapLive(ctx context.Context, out io.Writer, opts *options, name string,
 	}
 	hpa, err := kube.GetHPAFromClient(ctx, client, name)
 	if err != nil {
-		return fmt.Errorf("failed to get HPA %s/%s: %w", client.Namespace, name, err)
+		return wrapHPALookupError(client.Namespace, name, err)
 	}
 	if since <= 0 {
 		since = 6 * time.Hour

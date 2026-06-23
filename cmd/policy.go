@@ -162,7 +162,7 @@ func runPolicy(ctx context.Context, out io.Writer, opts *options, policyOpts *po
 	if name != "" {
 		hpa, err := client.Interface.AutoscalingV2().HorizontalPodAutoscalers(client.Namespace).Get(ctx, name, metav1.GetOptions{})
 		if err != nil {
-			return fmt.Errorf("failed to get HPA %s/%s: %w", client.Namespace, name, err)
+			return wrapHPALookupError(client.Namespace, name, err)
 		}
 		reports = append(reports, *hpaanalysis.EvaluatePolicies(hpa, policyFile))
 	} else {

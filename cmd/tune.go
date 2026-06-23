@@ -42,7 +42,7 @@ func runTune(ctx context.Context, out io.Writer, opts *options, name, goal strin
 	}
 	hpa, err := kube.GetHPAFromClient(ctx, client, name)
 	if err != nil {
-		return fmt.Errorf("failed to get HPA %s/%s: %w", client.Namespace, name, err)
+		return wrapHPALookupError(client.Namespace, name, err)
 	}
 	report := tuneReport{
 		Namespace: hpa.Namespace,

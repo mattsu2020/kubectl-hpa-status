@@ -36,7 +36,7 @@ func TestCanStreamList(t *testing.T) {
 		mutate func(*options)
 		want   bool
 	}{
-		{"default table, no enrichment", func(o *options) {}, true},
+		{"default table, no enrichment", func(*options) {}, true},
 		{"wide", func(o *options) { o.Wide = true }, true},
 		{"jsonl", func(o *options) { o.Output = "jsonl" }, true},
 		{"sort-by disables streaming", func(o *options) { o.SortBy = "name" }, false},

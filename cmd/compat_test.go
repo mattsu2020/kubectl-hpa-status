@@ -75,7 +75,7 @@ func TestCompatCheckStringsReferenceVersionConstants(t *testing.T) {
 	}
 
 	// tolerance WARN for an old/unknown cluster must reference the feature version constant.
-	warn := compatCheck("WARN", "tolerance", "requires Kubernetes v" + v.ToleranceFeatureVer + "+")
+	warn := compatCheck("WARN", "tolerance", "requires Kubernetes v"+v.ToleranceFeatureVer+"+")
 	if !strings.Contains(warn.Message, v.ToleranceFeatureVer) {
 		t.Fatalf("tolerance WARN does not reference version constant %s: %s", v.ToleranceFeatureVer, warn.Message)
 	}

@@ -4,7 +4,11 @@ import (
 	"fmt"
 	"strings"
 
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
 )
 
 const capacityMaxReplicasCap int32 = 200
@@ -194,7 +198,9 @@ func hasNodeCapacityShortfall(checks []CapacityCheckResult) bool {
 // buildDryRunCommand suggests a kubectl patch command for dry-run testing of
 // the maxReplicas change.
 func buildDryRunCommand(namespace, hpaName string, targetMax int32) string {
-	return fmt.Sprintf("kubectl patch hpa %s -n %s --type merge -p '{\"spec\":{\"maxReplicas\":%d}}' --dry-run=client", hpaName, namespace, targetMax)
+	patch := fmt.Sprintf(`{"spec":{"maxReplicas":%d}}`, targetMax)
+	hpa := &autoscalingv2.HorizontalPodAutoscaler{ObjectMeta: metav1.ObjectMeta{Name: hpaName, Namespace: namespace}}
+	return kubectlPatchCommandWithDryRun(hpa, patch, util.DryRunClient)
 }
 
 // ---------------------------------------------------------------------------

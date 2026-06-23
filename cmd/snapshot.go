@@ -91,7 +91,7 @@ func collectSnapshotData(ctx context.Context, client *kube.Client, opts *options
 	// 1. Fetch HPA
 	hpa, err := kube.GetHPAFromClient(ctx, client, name)
 	if err != nil {
-		return nil, fmt.Errorf("getting HPA %s: %w", name, err)
+		return nil, wrapHPALookupError(client.Namespace, name, err)
 	}
 	data.HPA, _ = yaml.Marshal(hpa)
 

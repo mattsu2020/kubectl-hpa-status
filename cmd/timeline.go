@@ -66,7 +66,7 @@ func runRetrospectiveTimeline(ctx context.Context, out io.Writer, opts *options,
 	// 1. Fetch the HPA object (needed for behavior, conditions, metrics).
 	hpa, err := kube.GetHPAFromClient(ctx, client, name)
 	if err != nil {
-		return fmt.Errorf("failed to get HPA %s/%s: %w", client.Namespace, name, err)
+		return wrapHPALookupError(client.Namespace, name, err)
 	}
 
 	// 2. Fetch events since the cutoff time.

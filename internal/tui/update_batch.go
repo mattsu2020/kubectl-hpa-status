@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -139,15 +140,19 @@ func batchApplyPreviewLines(patches []batchApplyPatchEntry) []string {
 }
 
 // executeBatchApply applies each patch via applyFn and aggregates per-HPA failures into a single applyResultMsg.
+//
+// Per-HPA failures are wrapped with their namespace/name context and joined via
+// errors.Join so callers can still reach each underlying error with errors.As
+// instead of the underlying causes being flattened into an opaque string.
 func executeBatchApply(ctx context.Context, applyFn ApplyFunc, patches []batchApplyPatchEntry) tea.Msg {
-	var errs []string
+	var errs []error
 	for _, p := range patches {
 		if err := applyFn(ctx, p.namespace, p.name, p.patch); err != nil {
-			errs = append(errs, fmt.Sprintf("%s/%s: %v", p.namespace, p.name, err))
+			errs = append(errs, fmt.Errorf("%s/%s: %w", p.namespace, p.name, err))
 		}
 	}
 	if len(errs) > 0 {
-		return applyResultMsg{title: fmt.Sprintf("batch: %d/%d failed", len(errs), len(patches)), err: fmt.Errorf("%s", joinStrings(errs, "; "))}
+		return applyResultMsg{title: fmt.Sprintf("batch: %d/%d failed", len(errs), len(patches)), err: errors.Join(errs...)}
 	}
 	return applyResultMsg{title: fmt.Sprintf("batch: %d patches applied", len(patches)), err: nil}
 }
@@ -199,16 +204,4 @@ func buildBatchAuditEntries(reports map[string]*hpaanalysis.AuditReport) []batch
 		})
 	}
 	return entries
-}
-
-// joinStrings concatenates strings with a separator.
-func joinStrings(ss []string, sep string) string {
-	if len(ss) == 0 {
-		return ""
-	}
-	result := ss[0]
-	for _, s := range ss[1:] {
-		result += sep + s
-	}
-	return result
 }

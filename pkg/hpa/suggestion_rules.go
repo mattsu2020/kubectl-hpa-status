@@ -434,6 +434,13 @@ func kubectlPatchCommand(hpa *autoscalingv2.HorizontalPodAutoscaler, patch strin
 	return util.KubectlPatchCommand(hpa, patch)
 }
 
+// kubectlPatchCommandWithDryRun is the mode-selectable variant for callers
+// (e.g. capacity_plan, lint) that need --dry-run=client or no dry-run flag at
+// all. Delegates to util.KubectlPatchCommandWithDryRun.
+func kubectlPatchCommandWithDryRun(hpa *autoscalingv2.HorizontalPodAutoscaler, patch string, mode util.DryRunMode) string {
+	return util.KubectlPatchCommandWithDryRun(hpa, patch, mode)
+}
+
 // marshalJSON delegates to util.MarshalJSON.
 func marshalJSON(value any) string {
 	return util.MarshalJSON(value)

@@ -94,7 +94,7 @@ func runAssumptions(ctx context.Context, out io.Writer, opts *options, names []s
 	for _, name := range names {
 		hpa, err := kube.GetHPAFromClient(ctx, client, name)
 		if err != nil {
-			return fmt.Errorf("failed to get HPA %s: %w", name, err)
+			return wrapHPALookupError(client.Namespace, name, err)
 		}
 
 		assumptions := hpaanalysis.DetectControllerAssumptionsWithOverrides(hpa, overrides, observed)

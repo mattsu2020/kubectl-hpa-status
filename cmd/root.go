@@ -60,59 +60,7 @@ func NewRootCommand() *cobra.Command {
 	registerWatchFlags(root, opts)
 	registerFlagCompletions(root, opts)
 
-	root.AddCommand(newStatusCommand(opts))
-	root.AddCommand(newExplainCommand(opts))
-	root.AddCommand(newDoctorCommand(opts))
-	root.AddCommand(newReadinessDoctorCommand(opts))
-	root.AddCommand(newWhyNotScaleCommand(opts))
-	root.AddCommand(newReadinessCommand(opts))
-	root.AddCommand(newAnalyzeCommand(opts))
-	root.AddCommand(newAssumptionsCommand(opts))
-	root.AddCommand(newListCommand(opts))
-	root.AddCommand(newScanCommand(opts))
-	root.AddCommand(newFleetCommand(opts))
-	root.AddCommand(newWatchCommand(opts))
-	root.AddCommand(newTUICommand(opts))
-	root.AddCommand(newTimelineCommand(opts))
-	root.AddCommand(newTraceCommand(opts))
-	root.AddCommand(newCompareCommand(opts))
-	root.AddCommand(newProfileCommand(opts))
-	root.AddCommand(newPathCommand(opts))
-	root.AddCommand(newBlockersCommand(opts))
-	root.AddCommand(newAdvisorCommand(opts))
-	root.AddCommand(newContainerAdvisorCommand(opts))
-	root.AddCommand(newNodeContextCommand(opts))
-	root.AddCommand(newRolloutCommand(opts))
-	root.AddCommand(newRolloutContextCommand(opts))
-	root.AddCommand(newCapacityGapCommand(opts))
-	root.AddCommand(newCapacityPlanCommand(opts))
-	root.AddCommand(newPreflightCommand(opts))
-	root.AddCommand(newRecordCommand(opts))
-	root.AddCommand(newReplayCommand(opts))
-	root.AddCommand(newMetricsCommand(opts))
-	root.AddCommand(newHistoryCommand(opts))
-	root.AddCommand(newBehaviorCommand(opts))
-	root.AddCommand(newTuneCommand(opts))
-	root.AddCommand(newEstimateCommand(opts))
-	root.AddCommand(newSLOCommand(opts))
-	root.AddCommand(newExportCommand(opts))
-	root.AddCommand(newRecommendCommand(opts))
-	root.AddCommand(newPolicyCommand(opts))
-	root.AddCommand(newSnapshotCommand(opts))
-	root.AddCommand(newBundleCommand(opts))
-	root.AddCommand(newIncidentBundleCommand(opts))
-	root.AddCommand(newSupportBundleCommand(opts))
-	root.AddCommand(newAutoscalerMapCommand(opts))
-	root.AddCommand(newLintCommand(opts))
-	root.AddCommand(newGitOpsCommand(opts))
-	root.AddCommand(newOwnershipCommand(opts))
-	root.AddCommand(newAlertsCommand())
-	root.AddCommand(newFlapCommand(opts))
-	root.AddCommand(newSimulateCommand(opts))
-	root.AddCommand(newAnalyzeRecordCommand(opts))
-	root.AddCommand(newCompatCommand(opts))
-	root.AddCommand(newVersionCommand())
-	root.AddCommand(newCompletionCommand(root))
+	registerCommands(root, opts)
 
 	// alpha groups operational/experimental commands (policy, gitops, bundles,
 	// capacity planning, record analysis). The same commands remain reachable
@@ -124,6 +72,74 @@ func NewRootCommand() *cobra.Command {
 	_ = root.MarkPersistentFlagFilename("config")
 
 	return root
+}
+
+// commandBuilders is the registry of subcommands attached to the root command.
+// Add a new subcommand by appending its constructor here. Most constructors
+// share the (opts) signature; the few that need the root command (completion)
+// or no options (alerts, version) use a thin adapter below.
+var commandBuilders = []func(opts *options) *cobra.Command{
+	newStatusCommand,
+	newExplainCommand,
+	newDoctorCommand,
+	newReadinessDoctorCommand,
+	newWhyNotScaleCommand,
+	newReadinessCommand,
+	newAnalyzeCommand,
+	newAssumptionsCommand,
+	newListCommand,
+	newScanCommand,
+	newFleetCommand,
+	newWatchCommand,
+	newTUICommand,
+	newTimelineCommand,
+	newTraceCommand,
+	newCompareCommand,
+	newProfileCommand,
+	newPathCommand,
+	newBlockersCommand,
+	newAdvisorCommand,
+	newContainerAdvisorCommand,
+	newNodeContextCommand,
+	newRolloutCommand,
+	newRolloutContextCommand,
+	newCapacityGapCommand,
+	newCapacityPlanCommand,
+	newPreflightCommand,
+	newRecordCommand,
+	newReplayCommand,
+	newMetricsCommand,
+	newHistoryCommand,
+	newBehaviorCommand,
+	newTuneCommand,
+	newEstimateCommand,
+	newSLOCommand,
+	newExportCommand,
+	newRecommendCommand,
+	newPolicyCommand,
+	newSnapshotCommand,
+	newBundleCommand,
+	newIncidentBundleCommand,
+	newSupportBundleCommand,
+	newAutoscalerMapCommand,
+	newLintCommand,
+	newGitOpsCommand,
+	newOwnershipCommand,
+	func(*options) *cobra.Command { return newAlertsCommand() },
+	newFlapCommand,
+	newSimulateCommand,
+	newAnalyzeRecordCommand,
+	newCompatCommand,
+	func(*options) *cobra.Command { return newVersionCommand() },
+}
+
+// registerCommands attaches the registered subcommands to root. The completion
+// command needs the root itself, so it is wired separately after the loop.
+func registerCommands(root *cobra.Command, opts *options) {
+	for _, build := range commandBuilders {
+		root.AddCommand(build(opts))
+	}
+	root.AddCommand(newCompletionCommand(root))
 }
 
 func buildVersion() string {

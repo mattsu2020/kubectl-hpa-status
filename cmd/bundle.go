@@ -155,7 +155,7 @@ func collectBundleData(ctx context.Context, client *kube.Client, opts *options, 
 	// 1. Fetch HPA YAML.
 	hpa, err := kube.GetHPAFromClient(ctx, client, name)
 	if err != nil {
-		return nil, fmt.Errorf("getting HPA %s: %w", name, err)
+		return nil, wrapHPALookupError(client.Namespace, name, err)
 	}
 	if marshaled, err := yaml.Marshal(hpa); err != nil {
 		// Propagate rather than silently producing an empty HPA section in the bundle.

@@ -322,6 +322,11 @@ func buildReportsConcurrently(ctx context.Context, opts *options, client *kube.C
 			return nil
 		})
 	}
+	// g.Wait() is intentionally discarded: every goroutine above returns nil
+	// (per-HPA errors are captured into results[i].err instead of cancelling
+	// the group), so by construction Wait() returns nil here. If a future
+	// change makes a goroutine return a non-nil error, this discard would hide
+	// it — keep the goroutines returning nil, or revisit this call site.
 	_ = g.Wait()
 	return results
 }
@@ -538,5 +543,5 @@ func hpaFetchError(err error, name, namespace string) error {
 			"Check with: kubectl api-resources | grep autoscaling. Original error: %w",
 			vers.StableSinceVersion, vers.MinAPIVersion, err)
 	}
-	return fmt.Errorf("failed to get HPA %s/%s from the Kubernetes API server: %w", namespace, name, err)
+	return fmt.Errorf("failed to get HPA %s/%s from the Kubernetes API server: %w", namespace, name, errors.Join(ErrHPANotFound, err))
 }

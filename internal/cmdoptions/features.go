@@ -27,7 +27,7 @@ type Features struct {
 	//   --deep    turns on capacity/rollout/adapter-diagnostics analysis;
 	//   --no-enrich disables all enrichment (HPA-only, RBAC-light output).
 	// Both are convenience aggregators; the individual flags remain available.
-	Deep    bool
+	Deep     bool
 	NoEnrich bool
 	HPAOnly  bool
 

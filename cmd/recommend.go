@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	"io"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
@@ -39,7 +38,7 @@ func runRecommend(ctx context.Context, out io.Writer, opts *options, args []stri
 	for _, hpaName := range args {
 		hpa, err := kube.GetHPAFromClient(ctx, client, hpaName)
 		if err != nil {
-			return fmt.Errorf("getting HPA %s: %w", hpaName, err)
+			return wrapHPALookupError(client.Namespace, hpaName, err)
 		}
 
 		minReplicas := hpaanalysis.DefaultMinReplicas

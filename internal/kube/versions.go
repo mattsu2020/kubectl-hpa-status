@@ -46,7 +46,7 @@ type KubernetesVersionInfo struct {
 	ToleranceFeatureVer  string
 	// StableSinceMinor is the integer minor of StableSinceVersion, for
 	// numeric comparisons (e.g. the compat command's version switch).
-	StableSinceMinor      int
+	StableSinceMinor       int
 	ContainerResourceMinor int
 	ToleranceFeatureMinor  int
 }
@@ -56,11 +56,11 @@ type KubernetesVersionInfo struct {
 // values rather than re-hardcoding "1.23"/"1.26"/etc.
 func KubernetesVersions() KubernetesVersionInfo {
 	return KubernetesVersionInfo{
-		MinAPIVersion:         k8sMinAPIVersion,
-		StableSinceVersion:    k8sStableSinceVersion,
-		ContainerResourceVer:  k8sContainerResourceStableVersion,
-		ToleranceFeatureVer:   k8sToleranceFeatureVersion,
-		StableSinceMinor:      26,
+		MinAPIVersion:          k8sMinAPIVersion,
+		StableSinceVersion:     k8sStableSinceVersion,
+		ContainerResourceVer:   k8sContainerResourceStableVersion,
+		ToleranceFeatureVer:    k8sToleranceFeatureVersion,
+		StableSinceMinor:       26,
 		ContainerResourceMinor: 30,
 		ToleranceFeatureMinor:  35,
 	}
