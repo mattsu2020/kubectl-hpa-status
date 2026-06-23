@@ -39,7 +39,7 @@ func runMetricsContract(ctx context.Context, out io.Writer, opts *options, name 
 
 	hpa, err := kube.GetHPAFromClient(ctx, client, name)
 	if err != nil {
-		return fmt.Errorf("failed to get HPA %s: %w", name, err)
+		return wrapHPALookupError(client.Namespace, name, err)
 	}
 
 	input := buildMetricContractInput(ctx, client, hpa)

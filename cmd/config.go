@@ -95,14 +95,14 @@ func validateConfig(cfg configFile) error {
 		return fmt.Errorf("config chunkSize must be >= 0, got %d", *cfg.ChunkSize)
 	}
 
-	if cfg.MinScore != nil && (*cfg.MinScore < 0 || *cfg.MinScore > 100) {
-		return fmt.Errorf("config minScore must be in [0, 100], got %d", *cfg.MinScore)
+	if err := validateScoreField("minScore", cfg.MinScore); err != nil {
+		return err
 	}
-	if cfg.MaxScore != nil && (*cfg.MaxScore < 0 || *cfg.MaxScore > 100) {
-		return fmt.Errorf("config maxScore must be in [0, 100], got %d", *cfg.MaxScore)
+	if err := validateScoreField("maxScore", cfg.MaxScore); err != nil {
+		return err
 	}
-	if cfg.HealthScore != nil && (*cfg.HealthScore < 0 || *cfg.HealthScore > 100) {
-		return fmt.Errorf("config healthScore must be in [0, 100], got %d", *cfg.HealthScore)
+	if err := validateScoreField("healthScore", cfg.HealthScore); err != nil {
+		return err
 	}
 
 	if !isAcceptedNormalized(strings.ToLower(cfg.Color), validColorValues) {
@@ -119,6 +119,18 @@ func validateConfig(cfg configFile) error {
 		return fmt.Errorf("config lang must be one of %s; got %q", strings.Join(validLangValues, ", "), cfg.Lang)
 	}
 
+	return nil
+}
+
+// validateScoreField validates an optional [0, 100] score field. A nil pointer
+// means the field was absent in the config file and is accepted as-is.
+func validateScoreField(name string, v *int) error {
+	if v == nil {
+		return nil
+	}
+	if *v < 0 || *v > 100 {
+		return fmt.Errorf("config %s must be in [0, 100], got %d", name, *v)
+	}
 	return nil
 }
 
@@ -163,6 +175,21 @@ func applyConfigDefaults(cmd *cobra.Command, opts *options) error {
 
 // applyHealthWeightOverrides parses --health-weight name=value flags and
 // applies the overrides to the options healthWeights struct.
+// healthWeightSetters maps the normalized --health-weight key name to the
+// HealthWeights field it targets. Keeping the mapping in one table (instead of
+// a switch with an identical arm per field) makes adding a new weight a
+// one-line change and keeps the key spelling authoritative here.
+var healthWeightSetters = map[string]func(*hpaanalysis.HealthWeights, int){
+	"scalinginactive":     func(w *hpaanalysis.HealthWeights, v int) { w.ScalingInactive = hpaanalysis.IntWeight(v) },
+	"unabletoscale":       func(w *hpaanalysis.HealthWeights, v int) { w.UnableToScale = hpaanalysis.IntWeight(v) },
+	"scalinglimited":      func(w *hpaanalysis.HealthWeights, v int) { w.ScalingLimited = hpaanalysis.IntWeight(v) },
+	"implicitmaxreplicas": func(w *hpaanalysis.HealthWeights, v int) { w.ImplicitMaxReplicas = hpaanalysis.IntWeight(v) },
+	"scaledownstabilized": func(w *hpaanalysis.HealthWeights, v int) { w.ScaleDownStabilized = hpaanalysis.IntWeight(v) },
+	"atminimumreplicas":   func(w *hpaanalysis.HealthWeights, v int) { w.AtMinimumReplicas = hpaanalysis.IntWeight(v) },
+	"kedainactivetrigger": func(w *hpaanalysis.HealthWeights, v int) { w.KEDAInactiveTrigger = hpaanalysis.IntWeight(v) },
+	"vpaconflict":         func(w *hpaanalysis.HealthWeights, v int) { w.VPAConflict = hpaanalysis.IntWeight(v) },
+}
+
 func applyHealthWeightOverrides(opts *options) error {
 	for _, override := range opts.HealthWeightOverrides {
 		key, value, ok := strings.Cut(override, "=")
@@ -173,26 +200,11 @@ func applyHealthWeightOverrides(opts *options) error {
 		if err != nil || parsed < 0 {
 			return fmt.Errorf("invalid --health-weight %q; value must be a non-negative integer", override)
 		}
-		switch normalizeSelector(key) {
-		case "scalinginactive":
-			opts.HealthWeights.ScalingInactive = hpaanalysis.IntWeight(parsed)
-		case "unabletoscale":
-			opts.HealthWeights.UnableToScale = hpaanalysis.IntWeight(parsed)
-		case "scalinglimited":
-			opts.HealthWeights.ScalingLimited = hpaanalysis.IntWeight(parsed)
-		case "implicitmaxreplicas":
-			opts.HealthWeights.ImplicitMaxReplicas = hpaanalysis.IntWeight(parsed)
-		case "scaledownstabilized":
-			opts.HealthWeights.ScaleDownStabilized = hpaanalysis.IntWeight(parsed)
-		case "atminimumreplicas":
-			opts.HealthWeights.AtMinimumReplicas = hpaanalysis.IntWeight(parsed)
-		case "kedainactivetrigger":
-			opts.HealthWeights.KEDAInactiveTrigger = hpaanalysis.IntWeight(parsed)
-		case "vpaconflict":
-			opts.HealthWeights.VPAConflict = hpaanalysis.IntWeight(parsed)
-		default:
+		setter, ok := healthWeightSetters[normalizeSelector(key)]
+		if !ok {
 			return fmt.Errorf("unknown health weight %q", key)
 		}
+		setter(&opts.HealthWeights, parsed)
 	}
 	return nil
 }

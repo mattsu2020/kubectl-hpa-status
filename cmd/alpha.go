@@ -20,9 +20,9 @@ import (
 // command name it deprecates, so the deprecation notice can point users at the
 // new canonical path.
 type alphaCommandSpec struct {
-	constructor func(*options) *cobra.Command
+	constructor  func(*options) *cobra.Command
 	topLevelName string // the root-level command being deprecated
-	category    string  // "operational" or "experimental", for the alpha --help grouping
+	category     string // "operational" or "experimental", for the alpha --help grouping
 }
 
 // alphaCommandSpecs is the registry of commands moved under `alpha`. Add new

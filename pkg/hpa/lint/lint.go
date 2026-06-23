@@ -504,23 +504,7 @@ func fixMissingScaleDownBehavior(hpa *autoscalingv2.HorizontalPodAutoscaler) *Au
 			},
 		},
 	}
-
-	patchJSON, err := json.Marshal(patch)
-	if err != nil {
-		return nil
-	}
-
-	name := hpa.Name
-	ns := hpa.Namespace
-	cmd := fmt.Sprintf("kubectl patch hpa %s -n %s --type merge -p '%s'", name, ns, string(patchJSON))
-
-	return &AutoFix{
-		Patch:   string(patchJSON),
-		Command: cmd,
-		Before:  "No scaleDown behavior configured",
-		After:   "scaleDown with 300s stabilization + 50%/60s policy",
-		Risk:    "Low — adds guardrails to prevent aggressive downscaling",
-	}
+	return buildAutoFix(hpa, patch, "No scaleDown behavior configured", "scaleDown with 300s stabilization + 50%/60s policy", "Low — adds guardrails to prevent aggressive downscaling")
 }
 
 // fixHighUtilizationTarget generates a patch lowering the utilization target to 80%.
@@ -555,22 +539,7 @@ func fixHighUtilizationTarget(hpa *autoscalingv2.HorizontalPodAutoscaler) *AutoF
 		},
 	}
 
-	patchJSON, err := json.Marshal(patch)
-	if err != nil {
-		return nil
-	}
-
-	name := hpa.Name
-	ns := hpa.Namespace
-	cmd := fmt.Sprintf("kubectl patch hpa %s -n %s --type merge -p '%s'", name, ns, string(patchJSON))
-
-	return &AutoFix{
-		Patch:   string(patchJSON),
-		Command: cmd,
-		Before:  fmt.Sprintf("%d%%", currentUtil),
-		After:   "80%",
-		Risk:    "Medium — changes scaling trigger point",
-	}
+	return buildAutoFix(hpa, patch, fmt.Sprintf("%d%%", currentUtil), "80%", "Medium — changes scaling trigger point")
 }
 
 // fixTightTolerance generates a patch setting tolerance to 0.1 (10%).
@@ -602,22 +571,7 @@ func fixTightTolerance(hpa *autoscalingv2.HorizontalPodAutoscaler) *AutoFix {
 		return nil
 	}
 
-	patchJSON, err := json.Marshal(patch)
-	if err != nil {
-		return nil
-	}
-
-	name := hpa.Name
-	ns := hpa.Namespace
-	cmd := fmt.Sprintf("kubectl patch hpa %s -n %s --type merge -p '%s'", name, ns, string(patchJSON))
-
-	return &AutoFix{
-		Patch:   string(patchJSON),
-		Command: cmd,
-		Before:  fmt.Sprintf("%s tolerance: %s", direction, currentVal),
-		After:   fmt.Sprintf("%s tolerance: 0.1 (10%%)", direction),
-		Risk:    "Medium — widens the no-scale band",
-	}
+	return buildAutoFix(hpa, patch, fmt.Sprintf("%s tolerance: %s", direction, currentVal), fmt.Sprintf("%s tolerance: 0.1 (10%%)", direction), "Medium — widens the no-scale band")
 }
 
 // fixLongStabilizationWindow generates a patch reducing the window to 300s (5m).
@@ -641,20 +595,23 @@ func fixLongStabilizationWindow(hpa *autoscalingv2.HorizontalPodAutoscaler) *Aut
 		},
 	}
 
+	return buildAutoFix(hpa, patch, fmt.Sprintf("%ds", *window), "300s (5m)", "Low — reduces cooldown delay")
+}
+
+// buildAutoFix marshals the patch and assembles an AutoFix whose Command is a
+// kubectl patch suggestion (no dry-run flag, matching the historical lint
+// output). Returns nil when the patch cannot be marshaled, which lets each
+// caller's early-return path treat a bad patch like "no autofix available".
+func buildAutoFix(hpa *autoscalingv2.HorizontalPodAutoscaler, patch map[string]any, before, after, risk string) *AutoFix {
 	patchJSON, err := json.Marshal(patch)
 	if err != nil {
 		return nil
 	}
-
-	name := hpa.Name
-	ns := hpa.Namespace
-	cmd := fmt.Sprintf("kubectl patch hpa %s -n %s --type merge -p '%s'", name, ns, string(patchJSON))
-
 	return &AutoFix{
 		Patch:   string(patchJSON),
-		Command: cmd,
-		Before:  fmt.Sprintf("%ds", *window),
-		After:   "300s (5m)",
-		Risk:    "Low — reduces cooldown delay",
+		Command: util.KubectlPatchCommandWithDryRun(hpa, string(patchJSON), util.DryRunNone),
+		Before:  before,
+		After:   after,
+		Risk:    risk,
 	}
 }

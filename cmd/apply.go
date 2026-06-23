@@ -42,7 +42,7 @@ func applySuggestionsInNamespace(ctx context.Context, out io.Writer, opts *optio
 		HorizontalPodAutoscalers(namespace).
 		Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get HPA %s/%s: %w", namespace, name, err)
+		return nil, wrapHPALookupError(namespace, name, err)
 	}
 
 	guardedPatches, err := guardPatches(out, opts, current, patches)

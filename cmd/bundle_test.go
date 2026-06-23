@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -381,8 +382,8 @@ func TestBundleHPANotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing HPA")
 	}
-	if !strings.Contains(err.Error(), "getting HPA") {
-		t.Fatalf("unexpected error: %v", err)
+	if !errors.Is(err, ErrHPANotFound) {
+		t.Fatalf("expected ErrHPANotFound, got: %v", err)
 	}
 }
 

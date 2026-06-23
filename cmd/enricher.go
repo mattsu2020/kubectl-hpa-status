@@ -257,7 +257,7 @@ func newTargetReplicaObservationsEnricher(opts *options) Enricher {
 	}
 }
 
-func (*targetReplicaObservationsEnricher) Name() string  { return "target-replica-observations" }
+func (*targetReplicaObservationsEnricher) Name() string    { return "target-replica-observations" }
 func (e *targetReplicaObservationsEnricher) Enabled() bool { return e.enabled() }
 func (*targetReplicaObservationsEnricher) Run(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
 	enrichTargetReplicaObservations(ctx, p.Client, hpa, report)
