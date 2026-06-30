@@ -191,7 +191,7 @@ func runPolicy(ctx context.Context, out io.Writer, opts *options, policyOpts *po
 
 	for _, item := range reports {
 		if len(item.Violations) > 0 {
-			return &ExitCodeError{Code: ExitWarning, Err: fmt.Errorf("policy violations found")}
+			return &ExitCodeError{Code: ExitWarning, Err: fmt.Errorf("policy violations found: %w", ErrPolicyViolations)}
 		}
 	}
 	return nil

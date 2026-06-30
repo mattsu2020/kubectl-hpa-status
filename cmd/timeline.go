@@ -400,7 +400,7 @@ func loadRecordedTrace(path, namespace, name string) (*hpaanalysis.TimelineTrace
 		if lineNo == 0 {
 			return loadRecordedJSONTrace(path, namespace, name)
 		}
-		return nil, fmt.Errorf("record file has no snapshots for %s/%s", namespace, name)
+		return nil, noSnapshotsError(namespace, name)
 	}
 	return &combined, nil
 }
@@ -415,7 +415,7 @@ func loadRecordedJSONTrace(path, namespace, name string) (*hpaanalysis.TimelineT
 		return nil, fmt.Errorf("failed to parse record file as JSONL or JSON trace: %w", err)
 	}
 	if trace.HPAName != name || (namespace != "" && trace.Namespace != namespace) {
-		return nil, fmt.Errorf("record file has no snapshots for %s/%s", namespace, name)
+		return nil, noSnapshotsError(namespace, name)
 	}
 	return &trace, nil
 }

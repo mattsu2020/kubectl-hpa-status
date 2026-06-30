@@ -46,7 +46,10 @@ func buildGitOpsConflict(ctx context.Context, client *kube.Client, hpa *autoscal
 	case "Deployment":
 		deploy, err := client.Interface.AppsV1().Deployments(hpa.Namespace).Get(ctx, targetName, metav1.GetOptions{})
 		if err == nil {
-			liveReplicas = *deploy.Spec.Replicas
+			// Spec.Replicas is a *int32 and may be nil when the workload omits
+			// an explicit replica count; fall back to the Kubernetes default (1)
+			// rather than dereferencing a nil pointer.
+			liveReplicas = replicasOrDefault(deploy.Spec.Replicas)
 			extractGitOpsAnnotations(deploy.Annotations, argoCDAnnotations, fluxAnnotations)
 			if deploy.Labels != nil {
 				if deploy.Labels["app.kubernetes.io/managed-by"] == "keda-operator" ||
@@ -62,7 +65,8 @@ func buildGitOpsConflict(ctx context.Context, client *kube.Client, hpa *autoscal
 	case "StatefulSet":
 		sts, err := client.Interface.AppsV1().StatefulSets(hpa.Namespace).Get(ctx, targetName, metav1.GetOptions{})
 		if err == nil {
-			liveReplicas = *sts.Spec.Replicas
+			// Spec.Replicas is a *int32 and may be nil (see Deployment branch).
+			liveReplicas = replicasOrDefault(sts.Spec.Replicas)
 			extractGitOpsAnnotations(sts.Annotations, argoCDAnnotations, fluxAnnotations)
 			if sts.Labels != nil {
 				if sts.Labels["app.kubernetes.io/managed-by"] == "keda-operator" ||

@@ -99,7 +99,7 @@ func guardPatches(out io.Writer, opts *options, current *autoscalingv2.Horizonta
 	switch opts.PolicyGuardMode {
 	case "", "block":
 		if len(result.Blocked) > 0 {
-			return nil, fmt.Errorf("policy guard blocked %d patch(es)", len(result.Blocked))
+			return nil, fmt.Errorf("policy guard blocked %d patch(es): %w", len(result.Blocked), ErrPolicyGuardBlocked)
 		}
 	case "warn":
 	default:
