@@ -38,7 +38,6 @@ type Common struct {
 	Yes                   bool
 	AllowPartial          bool
 	Export                string
-	ExportPatch           string
 	Trend                 bool
 	TrendSince            time.Duration
 	TrendRetain           time.Duration

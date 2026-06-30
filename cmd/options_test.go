@@ -3,15 +3,6 @@ package cmd
 import "testing"
 
 func TestNormalize_FlagImplications(t *testing.T) {
-	t.Run("recommend implies suggest", func(t *testing.T) {
-		o := &options{}
-		o.Recommend = true
-		o.Normalize()
-		if !o.Suggest {
-			t.Fatal("recommend should imply suggest")
-		}
-	})
-
 	t.Run("fix implies suggest and explain", func(t *testing.T) {
 		o := &options{}
 		o.Fix = true
@@ -45,18 +36,6 @@ func TestNormalize_FlagImplications(t *testing.T) {
 		o.Normalize()
 		if !o.Suggest {
 			t.Fatal("export should imply suggest")
-		}
-	})
-
-	t.Run("exportPatch promotes to export and implies suggest", func(t *testing.T) {
-		o := &options{}
-		o.ExportPatch = "kustomize"
-		o.Normalize()
-		if o.Export != "kustomize" {
-			t.Fatalf("exportPatch should set export to same value, got %q", o.Export)
-		}
-		if !o.Suggest {
-			t.Fatal("exportPatch should imply suggest")
 		}
 	})
 

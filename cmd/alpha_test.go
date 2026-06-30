@@ -2,16 +2,42 @@ package cmd
 
 import (
 	"bytes"
-	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
+
+// commandFirstName extracts the first whitespace-delimited token from a
+// command's Use string (e.g. "bundle NAME" -> "bundle"). Production callers
+// were removed with the top-level alpha aliases in v2.0, but tests still use
+// it, so it lives here as a shared test helper.
+func commandFirstName(use string) string {
+	for i, r := range use {
+		if r == ' ' || r == '\t' {
+			return use[:i]
+		}
+	}
+	return use
+}
+
+// findSubCommandForTest returns the direct child of root with the given first
+// Use word, or nil. Test-only helper kept here after the production version
+// was removed alongside the top-level alpha aliases in v2.0.
+func findSubCommandForTest(root *cobra.Command, name string) *cobra.Command {
+	for _, c := range root.Commands() {
+		if commandFirstName(c.Use) == name {
+			return c
+		}
+	}
+	return nil
+}
 
 // TestAlphaCommandGroupsAllAlphaSpecs verifies that every command listed in
 // alphaCommandSpecs is registered under `alpha`, so the alpha tree and the
 // spec registry cannot drift.
 func TestAlphaCommandGroupsAllAlphaSpecs(t *testing.T) {
 	root := NewRootCommand()
-	alpha := findSubCommand(root, "alpha")
+	alpha := findSubCommandForTest(root, "alpha")
 	if alpha == nil {
 		t.Fatal("expected an `alpha` subcommand on the root")
 	}
@@ -19,10 +45,13 @@ func TestAlphaCommandGroupsAllAlphaSpecs(t *testing.T) {
 	for _, c := range alpha.Commands() {
 		alphaChildren[commandFirstName(c.Use)] = true
 	}
+	// Each spec's constructor produces a command whose first Use word is the
+	// canonical name; check it appears under alpha.
 	for _, spec := range alphaCommandSpecs {
-		name := commandFirstName(spec.topLevelName)
+		c := spec.constructor(&options{})
+		name := commandFirstName(c.Use)
 		if !alphaChildren[name] {
-			t.Errorf("alpha subcommand %q (from spec %q) is not registered under alpha", name, spec.topLevelName)
+			t.Errorf("alpha subcommand %q is not registered under alpha", name)
 		}
 	}
 }
@@ -33,35 +62,31 @@ func TestAlphaSpecsCoverTestCategory(t *testing.T) {
 	valid := map[string]bool{"operational": true, "experimental": true}
 	for _, spec := range alphaCommandSpecs {
 		if !valid[spec.category] {
-			t.Errorf("alpha command %q has unknown category %q", spec.topLevelName, spec.category)
+			t.Errorf("alpha command spec has unknown category %q", spec.category)
 		}
 	}
 }
 
-// TestTopLevelAlphaAliasesAreDeprecated verifies the historical top-level
-// commands are marked Deprecated so users are redirected to the alpha path,
-// while still being runnable (not removed).
-func TestTopLevelAlphaAliasesAreDeprecated(t *testing.T) {
+// TestTopLevelAlphaAliasesRemoved verifies that the historical top-level
+// aliases (policy, gitops, bundle, etc.) are NOT registered at the root in
+// v2.0 — they live exclusively under `alpha`.
+func TestTopLevelAlphaAliasesRemoved(t *testing.T) {
 	root := NewRootCommand()
+	rootChildren := map[string]bool{}
+	for _, c := range root.Commands() {
+		rootChildren[commandFirstName(c.Use)] = true
+	}
 	for _, spec := range alphaCommandSpecs {
-		name := commandFirstName(spec.topLevelName)
-		cmd := findSubCommand(root, name)
-		if cmd == nil {
-			t.Errorf("top-level alias %q was removed; it should remain runnable but deprecated", name)
-			continue
-		}
-		if cmd.Deprecated == "" {
-			t.Errorf("top-level alias %q is not marked Deprecated; it should redirect to alpha %s", name, name)
-		}
-		if !strings.Contains(cmd.Deprecated, "alpha "+name) {
-			t.Errorf("top-level alias %q deprecation %q does not mention the alpha replacement", name, cmd.Deprecated)
+		c := spec.constructor(&options{})
+		name := commandFirstName(c.Use)
+		if rootChildren[name] {
+			t.Errorf("top-level alias %q should have been removed in v2.0 (it must live only under alpha)", name)
 		}
 	}
 }
 
 // TestAlphaCommandReachable verifies an alpha subcommand actually executes
-// (not just registered), by checking alpha bundle --help renders without the
-// deprecation notice that the top-level alias carries.
+// (not just registered), by checking alpha bundle --help renders.
 func TestAlphaCommandReachable(t *testing.T) {
 	root := NewRootCommand()
 	var out bytes.Buffer
@@ -70,25 +95,5 @@ func TestAlphaCommandReachable(t *testing.T) {
 	root.SetArgs([]string{"alpha", "bundle", "--help"})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("alpha bundle --help: %v", err)
-	}
-	output := out.String()
-	if strings.Contains(output, "is deprecated") {
-		t.Fatalf("alpha path should not carry the top-level deprecation notice:\n%s", output)
-	}
-}
-
-// TestTopLevelAliasShowsDeprecationNotice verifies the deprecated top-level
-// alias surfaces the Cobra deprecation message on invocation.
-func TestTopLevelAliasShowsDeprecationNotice(t *testing.T) {
-	root := NewRootCommand()
-	var out bytes.Buffer
-	root.SetOut(&out)
-	root.SetErr(&out)
-	root.SetArgs([]string{"flap", "--help"})
-	if err := root.Execute(); err != nil {
-		t.Fatalf("flap --help: %v", err)
-	}
-	if !strings.Contains(out.String(), "deprecated") {
-		t.Fatalf("top-level flap alias should show a deprecation notice:\n%s", out.String())
 	}
 }

@@ -14,16 +14,6 @@ func TestNormalize(t *testing.T) {
 	}{
 		// --- normalizeSuggestFlags ---
 		{
-			name:  "Recommend implies Suggest",
-			setup: func(r *Root) { r.Recommend = true },
-			assertions: func(r *Root) string {
-				if !r.Suggest {
-					return "Suggest should be true when Recommend is set"
-				}
-				return ""
-			},
-		},
-		{
 			name:  "Fix implies Suggest and Explain",
 			setup: func(r *Root) { r.Fix = true },
 			assertions: func(r *Root) string {
@@ -57,14 +47,11 @@ func TestNormalize(t *testing.T) {
 			},
 		},
 		{
-			name:  "ExportPatch copies to Export and implies Suggest",
-			setup: func(r *Root) { r.ExportPatch = "dir" },
+			name:  "Export implies Suggest",
+			setup: func(r *Root) { r.Export = "patches" },
 			assertions: func(r *Root) string {
-				if r.Export != "dir" {
-					return "Export should equal ExportPatch ('dir')"
-				}
 				if !r.Suggest {
-					return "Suggest should be true when ExportPatch is set"
+					return "Suggest should be true when Export is set"
 				}
 				return ""
 			},

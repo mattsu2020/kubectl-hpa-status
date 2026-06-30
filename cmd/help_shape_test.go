@@ -67,7 +67,8 @@ func TestAlphaHelpListsGroupedCommands(t *testing.T) {
 	}
 	help := out.String()
 	for _, spec := range alphaCommandSpecs {
-		name := commandFirstName(spec.topLevelName)
+		c := spec.constructor(&options{})
+		name := commandFirstName(c.Use)
 		if !strings.Contains(help, name) {
 			t.Errorf("alpha --help does not list grouped command %q", name)
 		}

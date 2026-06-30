@@ -63,10 +63,9 @@ func NewRootCommand() *cobra.Command {
 	registerCommands(root, opts)
 
 	// alpha groups operational/experimental commands (policy, gitops, bundles,
-	// capacity planning, record analysis). The same commands remain reachable
-	// at their top-level path, marked Deprecated, until v2.0.
+	// capacity planning, record analysis). As of v2.0 these live exclusively
+	// under the alpha path; the historical top-level aliases have been removed.
 	root.AddCommand(newAlphaCommand(opts))
-	markAlphaAliasesDeprecated(root)
 
 	_ = root.MarkPersistentFlagFilename("kubeconfig")
 	_ = root.MarkPersistentFlagFilename("config")
@@ -85,7 +84,6 @@ var commandBuilders = []func(opts *options) *cobra.Command{
 	newReadinessDoctorCommand,
 	newWhyNotScaleCommand,
 	newReadinessCommand,
-	newAnalyzeCommand,
 	newAssumptionsCommand,
 	newListCommand,
 	newScanCommand,
@@ -103,8 +101,6 @@ var commandBuilders = []func(opts *options) *cobra.Command{
 	newNodeContextCommand,
 	newRolloutCommand,
 	newRolloutContextCommand,
-	newCapacityGapCommand,
-	newCapacityPlanCommand,
 	newPreflightCommand,
 	newRecordCommand,
 	newReplayCommand,
@@ -116,19 +112,11 @@ var commandBuilders = []func(opts *options) *cobra.Command{
 	newSLOCommand,
 	newExportCommand,
 	newRecommendCommand,
-	newPolicyCommand,
 	newSnapshotCommand,
-	newBundleCommand,
-	newIncidentBundleCommand,
-	newSupportBundleCommand,
-	newAutoscalerMapCommand,
 	newLintCommand,
-	newGitOpsCommand,
 	newOwnershipCommand,
 	func(*options) *cobra.Command { return newAlertsCommand() },
-	newFlapCommand,
 	newSimulateCommand,
-	newAnalyzeRecordCommand,
 	newCompatCommand,
 	func(*options) *cobra.Command { return newVersionCommand() },
 }
