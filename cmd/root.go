@@ -8,7 +8,9 @@ import (
 )
 
 var (
-	version = "dev"
+	// version is the plugin version. Overridden via -ldflags at release time
+	// (see .goreleaser.yml). The default reflects the v2.0 development line.
+	version = "v2.0.0-dev"
 	commit  = "unknown"
 	date    = "unknown"
 )

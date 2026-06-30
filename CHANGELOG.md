@@ -7,9 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-06-30
+
+This release removes deprecated command/flag aliases and lands the first
+structural refactors of the `cmd/` package and the `Analysis` model. See the
+migration notes below; most users only need to update scripts that used the
+removed aliases.
+
+### Removed (breaking)
+- Removed the `analyze` subcommand (alias `diagnose`). Use `status NAME --explain` instead.
+- Removed the historical top-level aliases for alpha-grouped commands: `policy`, `gitops`, `bundle`, `incident-bundle`, `support-bundle`, `capacity`, `capacity-gap`, `autoscaler-map`, `analyze-record`, `flap`. Use the `alpha <cmd>` form (e.g. `alpha policy`, `alpha bundle`).
+- Removed the `--recommend` flag. Use `--suggest`.
+- Removed the `--export-patch` flag. Use `--export`.
+- Removed the `--max-score` list flag. Use `--health-score`.
+
 ### Changed
 - Multi-HPA `status NAME1 NAME2 ...` now produces **partial results**: a per-item fetch/build failure no longer aborts the whole batch. Successful items are rendered normally, and the failed item is surfaced as an error entry in the output.
 - Exit code for multi-HPA runs now reflects the most severe per-item outcome: any build failure → exit `1` (`error`), otherwise any warning-health item → exit `2` (`warning`), otherwise exit `0`. Previously the first failing HPA aborted the whole run with no output.
+- Guarded `*deploy.Spec.Replicas` / `*sts.Spec.Replicas` dereferences in the GitOps conflict path against nil (defaults to 1, matching the Kubernetes default).
+- Deduplicated the "record file has no snapshots" error across the timeline/replay loaders and wrapped it in a new `ErrNoRecordedSnapshots` sentinel so callers can match via `errors.Is`. Added `ErrPolicyViolations`, `ErrPolicyGuardBlocked`, and `ErrInvalidCandidateSpec` sentinels for the corresponding exit paths.
+
+### Changed (breaking)
+- `status NAME1 NAME2 -o json` and `-o yaml` now emit a `StatusBatch` envelope instead of a bare `[]StatusReport` array. New shape:
+  ```json
+  {
+    "apiVersion": "hpa-status/v1",
+    "items": [
+      {"namespace": "default", "name": "web", "status": "ok", "report": { ... }},
+      {"namespace": "default", "name": "missing", "status": "error", "error": "HPA \"missing\" was not found ..."}
+    ]
+  }
+  ```
+  Single-HPA `status NAME -o json` is unchanged (still a bare `StatusReport`). Failed items have `status: "error"`, a non-empty `error` string, and no `report` field.
+
+### Added
+- `Analysis` group-view methods (`Meta`, `Replicas`, `Decision`, `MetricsGroup`, `ConditionsGroup`, `ActionsGroup`, `Lifecycle`) as the first step of the additive grouping migration. The flat fields and their JSON shape are unchanged; new code can reach related fields through these read-only views.
+- New `cmd/internal/{errs,client,output}` and `cmd/bundle` sub-packages as the first extractions from the monolithic `cmd/` package, following the facade-then-migrate pattern.
+- Test coverage lifted across `cmd/` (12 previously-untested files), `internal/cmdoptions` (34.9% → 61.2%), `pkg/hpa/keda` (45.8% → 96.6%), and other low-coverage packages.
+- Split the 1934-line `test/e2e/e2e_test.go` into per-area files (`e2e_status_test.go`, `e2e_list_scan_test.go`, `e2e_config_test.go`, `e2e_keda_test.go`, `e2e_watch_tui_test.go`, plus shared `e2e_helpers_test.go`).
+
 
 ### Changed (breaking)
 - `status NAME1 NAME2 -o json` and `-o yaml` now emit a `StatusBatch` envelope instead of a bare `[]StatusReport` array. New shape:

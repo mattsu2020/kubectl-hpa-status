@@ -80,18 +80,20 @@ Refactoring notes:
   `diff_text_sections.go`, `report_html_sections.go`) so no `//nolint:gocyclo`
   exemption is needed on the orchestrator body.
 - The `options` struct in `root.go` is shared across all commands. Per-command
-  option splits and `cmd/` sub-packages are deferred: shared types/helpers
-  create import-cycle risk, so prefer adding fields over splitting until a
-  dedicated interface boundary is designed. When that boundary lands, extract
-  one sub-package at a time (start with the most self-contained group, e.g.
-  `bundle_*`) and re-export the shared symbols through a thin facade to keep
-  the rest of `cmd/` compiling.
-- Two cobra-free layers have already been extracted out of `cmd/`:
+  option splits are partial: the option model lives in `internal/cmdoptions`
+  (re-exported through `cmd/options_bridge.go`), while command wiring stays in
+  `cmd/`. The `cmd/` sub-package split is in progress (v2.0 phase 1 landed):
+  shared helpers were lifted into `cmd/internal/{errs,client,output}` and the
+  bundle renderer layer moved to `cmd/bundle`, both following the
+  facade-then-migrate pattern. Further groups (`replay`,
+  `alerts`/`completion`/`compat`/`version`) remain in `cmd/`.
+- Several cobra-free layers have been extracted out of `cmd/`:
   `internal/kubeconv` (kube.* -> pkg/hpa DTO conversion, with `cmd/converters.go`
-  as a thin facade) and `internal/render` (output format routing and
-  serialization, with `cmd/output.go` as a thin facade). When the `cmd/` split
-  lands, callers migrate to `kubeconv.*` / `render.*` directly and the facades
-  shrink.
+  as a thin facade), `internal/render` (output format routing and
+  serialization, with `cmd/output.go` as a thin facade), and the v2.0
+  `cmd/internal/{errs,client,output}` + `cmd/bundle` extractions. When the
+  remaining `cmd/` split lands, callers migrate to these packages directly and
+  the facades shrink.
 - `pkg/hpa/render` extraction of the report renderers is complete: the
   Markdown/HTML/list/incident report files (`report_markdown.go`,
   `report_html.go`, `report_html_sections.go`, `report_list.go`,

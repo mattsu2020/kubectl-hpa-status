@@ -6,12 +6,17 @@ This roadmap tracks planned work that is visible to users and contributors. It i
 
 - **E2E scenario coverage:** Expand kind E2E coverage for multi-metric HPAs, behavior policies, KEDA-style external metrics, VPA conflict detection, and stabilization boundary cases.
 - **README sync quality gate:** Keep `README.md` and `README.ja.md` structurally aligned through `make docs-check` and CI.
-- **Remove deprecated `analyze` command:** The `analyze` (alias `diagnose`) subcommand is hidden from `--help` and scheduled for removal in v2.0. Users should migrate to `status NAME --explain`.
-- **Remove deprecated flag aliases (v2.0):** The following aliases are marked `[deprecated]` in `--help` and emit a one-time stderr notice when used; all are scheduled for removal in v2.0:
-  - `--recommend` → use `--suggest`
-  - `--export-patch` → use `--export`
-  Migration is mechanical (drop the alias, use the canonical flag). No behavioral change is involved.
-- **Remove deprecated top-level `alpha` aliases (v2.0):** Operational and experimental commands (`policy`, `gitops`, `bundle`, `incident-bundle`, `support-bundle`, `capacity`, `capacity-gap`, `autoscaler-map`, `analyze-record`, `flap`) now live under the `alpha` parent. The historical top-level paths still work but emit a Cobra deprecation redirect to the `alpha` path; they are scheduled for removal in v2.0. Migration is to switch scripts to the `alpha <cmd>` form.
+
+## Done in 2.0
+
+- **Removed deprecated `analyze` command:** The `analyze` (alias `diagnose`) subcommand was removed. Use `status NAME --explain`.
+- **Removed deprecated flag aliases:** `--recommend` (use `--suggest`), `--export-patch` (use `--export`), and the list flag `--max-score` (use `--health-score`) were removed.
+- **Removed deprecated top-level `alpha` aliases:** Operational and experimental commands (`policy`, `gitops`, `bundle`, `incident-bundle`, `support-bundle`, `capacity`, `capacity-gap`, `autoscaler-map`, `analyze-record`, `flap`) now live exclusively under the `alpha` parent; the historical top-level paths were removed. Use `alpha <cmd>`.
+- **`Analysis` additive grouping:** Added read-only group-view methods (`Meta`, `Replicas`, `Decision`, `MetricsGroup`, `ConditionsGroup`, `ActionsGroup`, `Lifecycle`) as the first step of the v2 grouping. The flat fields and JSON shape are unchanged; a future major version will retire the flat fields.
+- **`cmd/` sub-package extraction (phase 1):** Lifted shared helpers into `cmd/internal/{errs,client,output}` and extracted the bundle renderer layer into `cmd/bundle`, following the facade-then-migrate pattern. Further groups (`replay`, `alerts`/`completion`/`compat`/`version`) remain in `cmd/`.
+- **Error sentinel hygiene:** Added `ErrNoRecordedSnapshots`, `ErrPolicyViolations`, `ErrPolicyGuardBlocked`, and `ErrInvalidCandidateSpec` so exit paths are matchable via `errors.Is`.
+- **Nil-safety:** Guarded `*deploy.Spec.Replicas` / `*sts.Spec.Replicas` dereferences in the GitOps conflict path.
+- **Test coverage:** Lifted coverage across `cmd/` (12 previously-untested files), `internal/cmdoptions` (34.9% → 61.2%), `pkg/hpa/keda` (45.8% → 96.6%), and split the 1934-line `test/e2e/e2e_test.go` into per-area files.
 
 ## Medium Term
 
