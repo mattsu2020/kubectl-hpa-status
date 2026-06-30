@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mattsu2020/kubectl-hpa-status/cmd/bundle"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
-	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/spf13/cobra"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"sigs.k8s.io/yaml"
@@ -67,40 +67,6 @@ func defaultBundleOutputPath(outputPath, name, format, prefix string) string {
 	return fmt.Sprintf("%s-%s-%s%s", prefix, name, ts, ext)
 }
 
-// bundleData holds all collected diagnostic data for a single HPA.
-type bundleData struct {
-	HPA         []byte
-	ScaleTarget []byte
-	ReplicaSets []byte
-	Pods        []byte
-	Events      []byte
-	MetricsAPI  []byte
-
-	// Container statuses (restart/waiting).
-	ContainerStatuses []kube.ContainerStatusDetail
-
-	// Infrastructure context.
-	ResourceQuotas []kube.QuotaInfo
-	LimitRanges    []kube.LimitRangeInfo
-	PDBs           []kube.PDBInfo
-	NodeCapacity   *kube.NodeCapacityInfo
-
-	// Full doctor-level analysis.
-	StatusReport hpaanalysis.StatusReport
-
-	// Raw pod info for table rendering.
-	PodInfos []kube.PodInfo
-
-	// Warnings records non-fatal collection errors (RBAC denials, API server
-	// timeouts) so the bundle consumer can see why a section is empty rather
-	// than guessing. Best-effort collection never fails the whole bundle.
-	Warnings []string
-
-	Namespace string
-	HPAName   string
-	Timestamp time.Time
-}
-
 // runBundle orchestrates data collection and output for the bundle command.
 func runBundle(ctx context.Context, out io.Writer, opts *options, name, format, outputPath string, redact bool) error {
 	client, err := newClientOrDefault(opts)
@@ -125,7 +91,7 @@ func runBundle(ctx context.Context, out io.Writer, opts *options, name, format, 
 			return fmt.Errorf("writing markdown bundle: %w", err)
 		}
 	case "zip":
-		if err := writeBundleZip(data, outputPath); err != nil {
+		if err := bundle.WriteZip(data, outputPath); err != nil {
 			return fmt.Errorf("writing zip bundle: %w", err)
 		}
 	default:
@@ -142,11 +108,11 @@ func runBundle(ctx context.Context, out io.Writer, opts *options, name, format, 
 // It creates a shallow copy of opts with all doctor flags enabled so the
 // original opts is not mutated. Pointer fields (clientOverride, outputTemplates)
 // are shared but bundle code never writes through them.
-func collectBundleData(ctx context.Context, client *kube.Client, opts *options, name string) (*bundleData, error) {
+func collectBundleData(ctx context.Context, client *kube.Client, opts *options, name string) (*bundle.Data, error) {
 	// Enable all doctor-level flags on a shallow copy of opts.
 	bundleOpts := applyCommandPreset(opts, presetBundle)
 
-	data := &bundleData{
+	data := &bundle.Data{
 		Namespace: client.Namespace,
 		HPAName:   name,
 		Timestamp: time.Now(),
@@ -279,13 +245,13 @@ func formatBundleEvents(events []kube.EventInfo) []byte {
 // redactBundleData applies redaction to all byte-slice fields and redacts
 // sensitive fields in PodInfos. The StatusReport is redacted at render time
 // when the full markdown is assembled and passed through redactBytes.
-func redactBundleData(data *bundleData) {
-	data.HPA = redactBytes(data.HPA)
-	data.ScaleTarget = redactBytes(data.ScaleTarget)
-	data.ReplicaSets = redactBytes(data.ReplicaSets)
-	data.Pods = redactBytes(data.Pods)
-	data.Events = redactBytes(data.Events)
-	data.MetricsAPI = redactBytes(data.MetricsAPI)
+func redactBundleData(data *bundle.Data) {
+	data.HPA = bundle.RedactBytes(data.HPA)
+	data.ScaleTarget = bundle.RedactBytes(data.ScaleTarget)
+	data.ReplicaSets = bundle.RedactBytes(data.ReplicaSets)
+	data.Pods = bundle.RedactBytes(data.Pods)
+	data.Events = bundle.RedactBytes(data.Events)
+	data.MetricsAPI = bundle.RedactBytes(data.MetricsAPI)
 
 	// Redact node names from PodInfos so the markdown table is safe.
 	for i := range data.PodInfos {
@@ -295,33 +261,23 @@ func redactBundleData(data *bundleData) {
 	}
 	// Redact node names from ContainerStatuses.
 	for i := range data.ContainerStatuses {
-		data.ContainerStatuses[i].Pod = redactString(data.ContainerStatuses[i].Pod)
+		data.ContainerStatuses[i].Pod = bundle.RedactString(data.ContainerStatuses[i].Pod)
 	}
 }
 
 // writeBundleMarkdownFile renders the bundle as a single Markdown file.
 // When redact is true, the final assembled markdown bytes are passed through
-// redactBytes to catch any remaining sensitive data from the StatusReport.
-func writeBundleMarkdownFile(data *bundleData, outputPath string, redact bool) error {
+// redaction to catch any remaining sensitive data from the StatusReport.
+func writeBundleMarkdownFile(data *bundle.Data, outputPath string, redact bool) error {
 	var buf bytes.Buffer
-	if err := writeBundleMarkdown(&buf, data); err != nil {
+	if err := bundle.RenderMarkdown(&buf, data); err != nil {
 		return fmt.Errorf("rendering bundle markdown: %w", err)
 	}
 
 	content := buf.Bytes()
 	if redact {
-		content = redactBytes(content)
+		content = bundle.RedactBytes(content)
 	}
 
 	return os.WriteFile(outputPath, content, 0o644)
-}
-
-// mdEscape escapes the pipe character for safe use inside markdown tables.
-func mdEscape(s string) string {
-	return strings.ReplaceAll(s, "|", "\\|")
-}
-
-// redactString applies common redaction patterns to a single string.
-func redactString(s string) string {
-	return string(redactBytes([]byte(s)))
 }

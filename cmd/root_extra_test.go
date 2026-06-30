@@ -266,17 +266,6 @@ func TestStatusOptions_Normalize(t *testing.T) {
 		wantInterpret bool
 	}{
 		{
-			name: "recommend implies suggest",
-			opts: options{
-				Status: statusOptions{
-					Features: featuresOptions{
-						Recommend: true,
-					},
-				},
-			},
-			wantSuggest: true,
-		},
-		{
 			name: "fix implies suggest and explain",
 			opts: options{
 				Status: statusOptions{

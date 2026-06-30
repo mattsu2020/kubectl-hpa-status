@@ -2,50 +2,30 @@ package cmd
 
 import (
 	"io"
-	"os"
 	"strings"
 
+	outpkg "github.com/mattsu2020/kubectl-hpa-status/cmd/internal/output"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/i18n"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
-	"golang.org/x/term"
 )
 
-// shouldColorize returns true when the caller wants color and the writer is
-// connected to a terminal.
+// shouldColorize re-exports cmd/internal/output.ShouldColorize under the
+// unexported name the rest of cmd/ already uses. When the cmd/ sub-package
+// split lands, callers should migrate to outpkg.ShouldColorize directly and
+// this wrapper can be deleted.
 func shouldColorize(mode string, out io.Writer) bool {
-	switch strings.ToLower(mode) {
-	case "always", "true", "yes":
-		return true
-	case "never", "false", "no":
-		return false
-	case "", "auto":
-		file, ok := out.(*os.File)
-		return ok && term.IsTerminal(int(file.Fd()))
-	default:
-		return false
-	}
+	return outpkg.ShouldColorize(mode, out)
 }
 
+// outputLang re-exports cmd/internal/output.Lang (see shouldColorize).
 func outputLang(lang, output string) string {
-	if lang != "" {
-		return strings.ToLower(lang)
-	}
-	if strings.EqualFold(output, "ja") {
-		return "ja"
-	}
-	return ""
+	return outpkg.Lang(lang, output)
 }
 
+// stdinIsTerminal re-exports cmd/internal/output.StdinIsTerminal.
 func stdinIsTerminal(in io.Reader) bool {
-	if in == nil {
-		return false
-	}
-	file, ok := in.(*os.File)
-	if !ok {
-		return false
-	}
-	return term.IsTerminal(int(file.Fd()))
+	return outpkg.StdinIsTerminal(in)
 }
 
 // i18nLabels is a LabelProvider backed by the internal/i18n locale system.

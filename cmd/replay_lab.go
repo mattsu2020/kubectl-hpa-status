@@ -203,7 +203,7 @@ func inferRecordedJSONTraceName(path, namespace string) (string, error) {
 		return "", fmt.Errorf("failed to parse record file as JSONL or JSON trace: %w", err)
 	}
 	if namespace != "" && trace.Namespace != namespace {
-		return "", fmt.Errorf("record file has no snapshots for namespace %s", namespace)
+		return "", noSnapshotsError(namespace, "")
 	}
 	if trace.HPAName == "" {
 		return "", fmt.Errorf("record file does not include an HPA name; pass --hpa")
@@ -221,7 +221,7 @@ func loadCandidateHPA(path string) (*autoscalingv2.HorizontalPodAutoscaler, erro
 		return nil, fmt.Errorf("failed to parse candidate HPA %s: %w", path, err)
 	}
 	if hpa.Spec.MaxReplicas <= 0 {
-		return nil, fmt.Errorf("candidate HPA %s has invalid spec.maxReplicas", path)
+		return nil, fmt.Errorf("candidate HPA %s has invalid spec.maxReplicas: %w", path, ErrInvalidCandidateSpec)
 	}
 	return &hpa, nil
 }

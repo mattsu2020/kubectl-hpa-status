@@ -25,12 +25,6 @@ func newListCommand(opts *options) *cobra.Command {
 		Short:   "List HPAs and highlight visible issues",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			// --max-score is a deprecated alias for --health-score. If the user
-			// set the legacy flag but not the canonical one, adopt its value so
-			// existing scripts keep working until the alias is removed in v2.0.
-			if cmd.Flags().Changed("max-score") && !cmd.Flags().Changed("health-score") {
-				opts.HealthScoreMax = legacyMaxScore
-			}
 			if opts.Watch.Watch {
 				return runWatchList(cmd.Context(), cmd.OutOrStdout(), opts)
 			}
@@ -40,21 +34,11 @@ func newListCommand(opts *options) *cobra.Command {
 	cmd.Flags().StringVar(&opts.SortBy, "sort-by", "", "sort list by namespace, name, current, desired, diff, health-score, or issue")
 	cmd.Flags().StringVar(&opts.Filter, "filter", "", "filter list by all, ok, error, limited, scaling-limited, or issue")
 	cmd.Flags().IntVar(&opts.HealthScoreMax, "health-score", -1, "show only HPAs with health score at or below this threshold")
-	// --max-score is kept as a hidden deprecated alias for --health-score,
-	// scheduled for removal in v2.0 (see ROADMAP.md). It binds a separate
-	// variable so the two flags no longer alias the same storage with
-	// last-wins semantics; the RunE above reconciles them.
-	cmd.Flags().IntVar(&legacyMaxScore, "max-score", -1, "[deprecated] alias for --health-score; scheduled for removal in v2.0")
-	markFlagDeprecated(cmd.Flags(), "max-score", "use --health-score instead")
 	cmd.Flags().IntVar(&opts.HealthScoreMin, "min-score", -1, "show only HPAs with health score at or above this threshold")
 	cmd.Flags().BoolVar(&opts.Problem, "problem", false, "show only HPAs with visible problems")
 	cmd.Flags().BoolVar(&opts.GitOpsDrift, "gitops-drift", false, "detect Argo CD/Flux-managed HPAs that should be checked for live-vs-Git drift")
 	return cmd
 }
-
-// legacyMaxScore receives the deprecated --max-score flag value so it can be
-// reconciled with --health-score in newListCommand's RunE.
-var legacyMaxScore int
 
 func newScanCommand(opts *options) *cobra.Command {
 	cmd := &cobra.Command{

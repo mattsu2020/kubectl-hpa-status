@@ -46,27 +46,6 @@ func newStatusCommand(opts *options) *cobra.Command {
 	return cmd
 }
 
-func newAnalyzeCommand(opts *options) *cobra.Command {
-	return &cobra.Command{
-		Use:               "analyze NAME [NAME...]",
-		Aliases:           []string{"diagnose"},
-		Short:             "Analyze one or more HPAs using visible Kubernetes API signals",
-		Deprecated:        "Use 'status NAME --explain' instead. Example: kubectl-hpa-status status my-hpa --explain. The analyze subcommand is scheduled for removal in v2.0.",
-		Hidden:            true,
-		Args:              cobra.MinimumNArgs(1),
-		ValidArgsFunction: hpaNameCompletion(opts),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if opts.Watch.Watch {
-				if len(args) != 1 {
-					return fmt.Errorf("--watch supports exactly one HPA name")
-				}
-				return runWatch(cmd.Context(), cmd.OutOrStdout(), opts, args[0], !opts.NoInterpret)
-			}
-			return runStatusMany(cmd.Context(), cmd.OutOrStdout(), opts, args, !opts.NoInterpret)
-		},
-	}
-}
-
 func runStatus(ctx context.Context, out io.Writer, opts *options, name string, includeInterpretation bool) error {
 	return runStatusMany(ctx, out, opts, []string{name}, includeInterpretation)
 }

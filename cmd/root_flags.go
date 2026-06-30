@@ -36,11 +36,6 @@ func registerCommonFlags(cmd *cobra.Command, opts *options) {
 	cmd.PersistentFlags().BoolVar(&opts.AllowPartial, "allow-partial", false, "allow sequential (non-atomic) apply when patches cannot be merged; may leave the HPA partially modified")
 
 	cmd.PersistentFlags().StringVar(&opts.Export, "export", "", "export suggestions for GitOps: yaml, kustomize, or helm-values")
-	cmd.PersistentFlags().StringVar(&opts.ExportPatch, "export-patch", "", "alias for --export; formats: yaml, kustomize, helm-values")
-	// --export-patch is a deprecated alias for --export, scheduled for removal in v2.0.
-	// Cobra/pflag have no first-class Deprecated field on Flag, so we annotate the
-	// usage string and rely on the CHANGELOG/ROADMAP for the removal schedule.
-	markFlagDeprecated(cmd.PersistentFlags(), "export-patch", "use --export instead; --export-patch is a deprecated alias scheduled for removal in v2.0")
 
 	cmd.PersistentFlags().BoolVar(&opts.Trend, "trend", false, "show health score trend with flapping detection")
 	cmd.PersistentFlags().DurationVar(&opts.TrendSince, "trend-since", 24*time.Hour, "lookback window for health trend (default: 24h)")
@@ -56,9 +51,6 @@ func registerStatusFlags(cmd *cobra.Command, opts *options) {
 	cmd.Flags().BoolVar(&opts.Explain, "explain", false, "include detailed interpretation and recommended actions")
 	cmd.Flags().BoolVar(&opts.Suggest, "suggest", false, "include concrete suggestions for configuration changes")
 	cmd.Flags().BoolVar(&opts.Fix, "fix", false, "show stronger fix plan with patch commands")
-	cmd.Flags().BoolVar(&opts.Recommend, "recommend", false, "alias for --suggest")
-	// --recommend is a deprecated alias for --suggest, scheduled for removal in v2.0.
-	markFlagDeprecated(cmd.Flags(), "recommend", "use --suggest instead; --recommend is a deprecated alias scheduled for removal in v2.0")
 	cmd.Flags().BoolVar(&opts.NoInterpret, "no-interpret", false, "omit interpretation and show raw status-derived data")
 	cmd.Flags().Var(&opts.Events, "events", "show recent HPA events: true, false, or a number")
 	cmd.Flags().StringVar(&opts.KEDA, "keda", "auto", "KEDA ScaledObject enrichment: auto (enable when CRD present), on (force), off (disable)")

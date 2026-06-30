@@ -59,4 +59,3 @@ func TestE2E_ScalingLimitedMaxReplicas(t *testing.T) {
 		t.Errorf("expected limited-hpa in --problem output, got:\n%s", problemOut)
 	}
 }
-
