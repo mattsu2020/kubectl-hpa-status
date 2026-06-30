@@ -132,7 +132,7 @@ func TestEstimateBehaviorPath(t *testing.T) {
 	t.Run("scale up reaches desired in steps", func(t *testing.T) {
 		scaleUp := behaviorDirection{
 			SelectPolicy: "",
-			Policies: []behaviorPolicyOutput{{Type: string(autoscalingv2.PodsScalingPolicy), Value: 3, PeriodSeconds: 60}},
+			Policies:     []behaviorPolicyOutput{{Type: string(autoscalingv2.PodsScalingPolicy), Value: 3, PeriodSeconds: 60}},
 		}
 		path := estimateBehaviorPath(2, 10, scaleUp, behaviorDirection{})
 		if len(path) == 0 {
@@ -158,7 +158,7 @@ func TestEstimateBehaviorPath(t *testing.T) {
 	t.Run("scale down uses scaleDown direction", func(t *testing.T) {
 		scaleDown := behaviorDirection{
 			SelectPolicy: "",
-			Policies: []behaviorPolicyOutput{{Type: string(autoscalingv2.PodsScalingPolicy), Value: 2, PeriodSeconds: 60}},
+			Policies:     []behaviorPolicyOutput{{Type: string(autoscalingv2.PodsScalingPolicy), Value: 2, PeriodSeconds: 60}},
 		}
 		path := estimateBehaviorPath(10, 4, behaviorDirection{}, scaleDown)
 		if len(path) == 0 {

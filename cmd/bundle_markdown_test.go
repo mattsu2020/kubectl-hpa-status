@@ -122,7 +122,7 @@ func firstNLocal(s string, n int) string {
 // failingWriter is an io.Writer that always returns an error.
 type failingWriter struct{}
 
-func (failingWriter) Write(p []byte) (int, error) {
+func (failingWriter) Write(_ []byte) (int, error) {
 	return 0, errFailingWriterStub
 }
 

@@ -9,7 +9,7 @@ import (
 
 func TestClampCursor(t *testing.T) {
 	tests := []struct {
-		name string
+		name  string
 		v, hi int
 		want  int
 	}{

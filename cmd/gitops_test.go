@@ -118,13 +118,12 @@ func TestExtractReplicasFromUnstructured(t *testing.T) {
 			if found != tt.wantFound {
 				t.Fatalf("found = %v, want %v", found, tt.wantFound)
 			}
-			if tt.want == nil {
-				if got != nil {
-					t.Fatalf("got = %v, want nil", *got)
-				}
-			} else if got == nil {
+			switch {
+			case tt.want == nil && got != nil:
+				t.Fatalf("got = %v, want nil", *got)
+			case tt.want != nil && got == nil:
 				t.Fatalf("got = nil, want %d", *tt.want)
-			} else if *got != *tt.want {
+			case tt.want != nil && got != nil && *got != *tt.want:
 				t.Fatalf("got = %d, want %d", *got, *tt.want)
 			}
 		})

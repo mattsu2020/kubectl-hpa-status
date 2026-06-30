@@ -1,47 +1,39 @@
 package cmd
 
 import (
-	"errors"
-	"fmt"
+	"github.com/mattsu2020/kubectl-hpa-status/cmd/internal/errs"
 )
+
+// This file re-exports the sentinel errors from cmd/internal/errs under the
+// unexported names the rest of cmd/ already uses. When the cmd/ sub-package
+// split lands, callers should migrate to errs.ErrHPANotFound etc. directly
+// and this file can be deleted. The canonical definitions and constructors
+// (noSnapshotsError) live in cmd/internal/errs so extracted sub-packages can
+// reach them without importing cmd.
 
 // ErrHPANotFound is returned (wrapped) by the status path when the HPA cannot
 // be found in the cluster, so callers can match on errors.Is instead of the
-// English message text. Defined here rather than in pkg/hpa because the
-// not-found case originates from the Kubernetes API client, not the analysis
-// model.
-var ErrHPANotFound = errors.New("hpa not found")
+// English message text.
+var ErrHPANotFound = errs.ErrHPANotFound
 
 // ErrNoRecordedSnapshots is returned (wrapped) when a record file contains no
-// snapshots for the requested HPA. Both the JSONL and JSON trace loaders wrap
-// this sentinel so callers can distinguish "no data" from a parse/IO failure
-// via errors.Is rather than substring inspection.
-var ErrNoRecordedSnapshots = errors.New("record file has no snapshots for the requested HPA")
+// snapshots for the requested HPA.
+var ErrNoRecordedSnapshots = errs.ErrNoRecordedSnapshots
 
 // ErrPolicyViolations signals that one or more HPA policy violations were
-// detected. Wrapped by the policy lint path so callers can detect the
-// "violations found" outcome via errors.Is without matching message text.
-var ErrPolicyViolations = errors.New("policy violations found")
+// detected.
+var ErrPolicyViolations = errs.ErrPolicyViolations
 
 // ErrPolicyGuardBlocked signals that the policy guard blocked at least one
-// patch in block mode. Wrapped by the apply path so callers can distinguish a
-// guard-triggered failure from a generic apply error via errors.Is.
-var ErrPolicyGuardBlocked = errors.New("policy guard blocked one or more patches")
+// patch in block mode.
+var ErrPolicyGuardBlocked = errs.ErrPolicyGuardBlocked
 
 // ErrInvalidCandidateSpec signals that a replay/candidate HPA manifest failed
-// validation (e.g. non-positive maxReplicas). Wrapped by the candidate loader
-// so callers can tell a malformed candidate from an IO/parse failure.
-var ErrInvalidCandidateSpec = errors.New("candidate HPA has an invalid spec")
+// validation (e.g. non-positive maxReplicas).
+var ErrInvalidCandidateSpec = errs.ErrInvalidCandidateSpec
 
-// noSnapshotsError builds the canonical "record file has no snapshots" error
-// for the requested namespace/name. Both record loaders route through here so
-// the message stays consistent and wraps ErrNoRecordedSnapshots for sentinel
-// matching.
+// noSnapshotsError is the facade for errs.NoSnapshotsError, preserving the
+// name call sites already use.
 func noSnapshotsError(namespace, name string) error {
-	if namespace == "" {
-		// Match the historical phrasing used by replay_lab when no namespace
-		// filter is in play, so existing log/script output is unchanged.
-		return fmt.Errorf("record file has no snapshots for namespace %s: %w", namespace, ErrNoRecordedSnapshots)
-	}
-	return fmt.Errorf("record file has no snapshots for %s/%s: %w", namespace, name, ErrNoRecordedSnapshots)
+	return errs.NoSnapshotsError(namespace, name)
 }

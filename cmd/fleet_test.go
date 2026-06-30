@@ -12,13 +12,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// makeFleetHPA builds a minimal HPA with explicit current/desired/max counts
-// for fleet aggregation testing. The scale target kind defaults to Deployment.
-func makeFleetHPA(namespace, name string, current, desired, max int32) autoscalingv2.HorizontalPodAutoscaler {
+// makeFleetHPA builds a minimal HPA with explicit current/desired/maxReplicas
+// counts for fleet aggregation testing. The scale target kind defaults to Deployment.
+func makeFleetHPA(namespace, name string, current, desired, maxReplicas int32) autoscalingv2.HorizontalPodAutoscaler {
 	return autoscalingv2.HorizontalPodAutoscaler{
 		ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: name},
 		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-			MaxReplicas: max,
+			MaxReplicas: maxReplicas,
 			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
 				Kind: "Deployment",
 				Name: name,
