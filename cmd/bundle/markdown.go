@@ -1,4 +1,4 @@
-package cmd
+package bundle
 
 import (
 	"encoding/json"
@@ -9,11 +9,11 @@ import (
 	hparender "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/render"
 )
 
-// writeBundleMarkdown renders all bundle sections to an io.Writer. The first
+// RenderMarkdown renders all bundle sections to an io.Writer. The first
 // write error encountered is returned; rendering otherwise proceeds in order so
 // that a partial sink still receives as much of the report as possible.
-func writeBundleMarkdown(w io.Writer, data *bundleData) error {
-	b := &bundleWriter{w: w}
+func RenderMarkdown(w io.Writer, data *Data) error {
+	b := &Writer{w: w}
 	b.Printf("# HPA Investigation Bundle: %s/%s\n\n", data.Namespace, data.HPAName)
 	b.Printf("**Generated:** %s  \n", data.Timestamp.Format(time.RFC3339))
 	b.Printf("**Plugin:** kubectl-hpa-status bundle\n\n")
@@ -47,7 +47,7 @@ func writeBundleMarkdown(w io.Writer, data *bundleData) error {
 	return b.err
 }
 
-func writeBundleTOC(b *bundleWriter) {
+func writeBundleTOC(b *Writer) {
 	b.Print("## Table of Contents\n\n")
 	sections := []string{
 		"HPA Status Summary",
@@ -80,7 +80,7 @@ func writeBundleTOC(b *bundleWriter) {
 	b.Println()
 }
 
-func writeBundleStatusSummary(b *bundleWriter, data *bundleData) {
+func writeBundleStatusSummary(b *Writer, data *Data) {
 	b.Print("## HPA Status Summary\n\n")
 	if err := hparender.WriteMarkdownReport(b.w, data.StatusReport); err != nil {
 		b.Printf("_Error rendering status summary: %v_\n", err)
@@ -88,21 +88,21 @@ func writeBundleStatusSummary(b *bundleWriter, data *bundleData) {
 	b.Print("\n---\n\n")
 }
 
-func writeBundleHPAYAML(b *bundleWriter, data *bundleData) {
+func writeBundleHPAYAML(b *Writer, data *Data) {
 	b.Print("## HPA Resource (YAML)\n\n")
 	b.Print("```yaml\n")
 	b.Write(data.HPA)
 	b.Print("```\n\n---\n\n")
 }
 
-func writeBundleScaleTarget(b *bundleWriter, data *bundleData) {
+func writeBundleScaleTarget(b *Writer, data *Data) {
 	b.Print("## Scale Target Resource\n\n")
 	b.Print("```yaml\n")
 	b.Write(data.ScaleTarget)
 	b.Print("```\n\n---\n\n")
 }
 
-func writeBundlePodStatusTable(b *bundleWriter, data *bundleData) {
+func writeBundlePodStatusTable(b *Writer, data *Data) {
 	b.Print("## Pod Status\n\n")
 	if len(data.PodInfos) == 0 {
 		b.Print("_No pod information available._\n\n---\n\n")
@@ -134,7 +134,7 @@ func writeBundlePodStatusTable(b *bundleWriter, data *bundleData) {
 	b.Print("\n---\n\n")
 }
 
-func writeBundleContainerStatusTable(b *bundleWriter, data *bundleData) {
+func writeBundleContainerStatusTable(b *Writer, data *Data) {
 	b.Print("## Container Status\n\n")
 	if len(data.ContainerStatuses) == 0 {
 		b.Print("_No container status data available._\n\n---\n\n")
@@ -158,7 +158,7 @@ func writeBundleContainerStatusTable(b *bundleWriter, data *bundleData) {
 	b.Print("\n---\n\n")
 }
 
-func writeBundleResourceRequests(b *bundleWriter, data *bundleData) {
+func writeBundleResourceRequests(b *Writer, data *Data) {
 	b.Print("## Resource Requests/Limits\n\n")
 	rc := data.StatusReport.Analysis.ResourceCheck
 	if rc == nil || len(rc.Warnings) == 0 {
@@ -176,7 +176,7 @@ func writeBundleResourceRequests(b *bundleWriter, data *bundleData) {
 	b.Print("\n---\n\n")
 }
 
-func writeBundleCapacityContextSection(b *bundleWriter, data *bundleData) {
+func writeBundleCapacityContextSection(b *Writer, data *Data) {
 	b.Print("## Capacity Context\n\n")
 	cc := data.StatusReport.Analysis.CapacityContext
 	if cc == nil {
@@ -237,7 +237,7 @@ func writeBundleCapacityContextSection(b *bundleWriter, data *bundleData) {
 	b.Print("\n---\n\n")
 }
 
-func writeBundleScalePathSection(b *bundleWriter, data *bundleData) {
+func writeBundleScalePathSection(b *Writer, data *Data) {
 	b.Print("## Scale Path\n\n")
 	sp := data.StatusReport.Analysis.ScalePath
 	if sp == nil {
@@ -278,7 +278,7 @@ func writeBundleScalePathSection(b *bundleWriter, data *bundleData) {
 	b.Print("\n---\n\n")
 }
 
-func writeBundleBlockerSection(b *bundleWriter, data *bundleData) {
+func writeBundleBlockerSection(b *Writer, data *Data) {
 	b.Print("## Blocker Analysis\n\n")
 	br := data.StatusReport.Analysis.BlockerReport
 	if br == nil {
@@ -316,7 +316,7 @@ func writeBundleBlockerSection(b *bundleWriter, data *bundleData) {
 	b.Print("\n---\n\n")
 }
 
-func writeBundleKEDASection(b *bundleWriter, data *bundleData) {
+func writeBundleKEDASection(b *Writer, data *Data) {
 	ki := data.StatusReport.Analysis.KEDAInfo
 	if ki == nil {
 		return // Omit entire section when KEDA is not detected.
@@ -370,7 +370,7 @@ func writeBundleKEDASection(b *bundleWriter, data *bundleData) {
 	b.Print("\n---\n\n")
 }
 
-func writeBundleQuotasSection(b *bundleWriter, data *bundleData) {
+func writeBundleQuotasSection(b *Writer, data *Data) {
 	b.Print("## ResourceQuotas\n\n")
 	if len(data.ResourceQuotas) == 0 {
 		b.Print("_No ResourceQuotas found in namespace._\n\n---\n\n")
@@ -387,7 +387,7 @@ func writeBundleQuotasSection(b *bundleWriter, data *bundleData) {
 	b.Print("\n---\n\n")
 }
 
-func writeBundleLimitRangesSection(b *bundleWriter, data *bundleData) {
+func writeBundleLimitRangesSection(b *Writer, data *Data) {
 	b.Print("## LimitRanges\n\n")
 	if len(data.LimitRanges) == 0 {
 		b.Print("_No LimitRanges found in namespace._\n\n---\n\n")
@@ -412,7 +412,7 @@ func writeBundleLimitRangesSection(b *bundleWriter, data *bundleData) {
 	b.Print("\n---\n\n")
 }
 
-func writeBundlePDBsSection(b *bundleWriter, data *bundleData) {
+func writeBundlePDBsSection(b *Writer, data *Data) {
 	b.Print("## PodDisruptionBudgets\n\n")
 	if len(data.PDBs) == 0 {
 		b.Print("_No PodDisruptionBudgets found in namespace._\n\n---\n\n")
@@ -436,7 +436,7 @@ func writeBundlePDBsSection(b *bundleWriter, data *bundleData) {
 	b.Print("\n---\n\n")
 }
 
-func writeBundleNodeCapacitySection(b *bundleWriter, data *bundleData) {
+func writeBundleNodeCapacitySection(b *Writer, data *Data) {
 	b.Print("## Node Capacity\n\n")
 	if data.NodeCapacity == nil {
 		b.Print("_Node capacity information unavailable._\n\n---\n\n")
@@ -453,7 +453,7 @@ func writeBundleNodeCapacitySection(b *bundleWriter, data *bundleData) {
 	b.Print("\n---\n\n")
 }
 
-func writeBundleRecommendations(b *bundleWriter, data *bundleData) {
+func writeBundleRecommendations(b *Writer, data *Data) {
 	b.Print("## Recommendations\n\n")
 	a := data.StatusReport.Analysis
 
@@ -488,7 +488,7 @@ func writeBundleRecommendations(b *bundleWriter, data *bundleData) {
 	b.Print("\n---\n\n")
 }
 
-func writeBundleFullAnalysis(b *bundleWriter, data *bundleData) {
+func writeBundleFullAnalysis(b *Writer, data *Data) {
 	b.Print("## Full Analysis Report\n\n")
 	b.Print("<details><summary>Raw JSON Analysis</summary>\n\n")
 	b.Print("```json\n")
@@ -507,7 +507,7 @@ func writeBundleFullAnalysis(b *bundleWriter, data *bundleData) {
 // records a non-fatal fetch failure (RBAC denial, API timeout, etc.) so the
 // bundle consumer can see why a section is empty rather than guessing. When
 // there are no warnings the section is omitted entirely.
-func writeBundleWarnings(b *bundleWriter, data *bundleData) {
+func writeBundleWarnings(b *Writer, data *Data) {
 	if len(data.Warnings) == 0 {
 		return
 	}
@@ -517,4 +517,9 @@ func writeBundleWarnings(b *bundleWriter, data *bundleData) {
 		b.Printf("- %s\n", w)
 	}
 	b.Print("\n---\n\n")
+}
+
+// mdEscape escapes the pipe character for safe use inside markdown tables.
+func mdEscape(s string) string {
+	return strings.ReplaceAll(s, "|", "\\|")
 }

@@ -1,4 +1,4 @@
-package cmd
+package bundle
 
 import (
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
@@ -10,7 +10,7 @@ import (
 // stays a short ordered list of section calls and each metrics sub-table can
 // be edited in isolation.
 
-func writeBundleEventsSection(b *bundleWriter, data *bundleData) {
+func writeBundleEventsSection(b *Writer, data *Data) {
 	b.Print("## Events\n\n")
 	if len(data.Events) == 0 {
 		b.Print("_No events collected._\n\n---\n\n")
@@ -20,13 +20,13 @@ func writeBundleEventsSection(b *bundleWriter, data *bundleData) {
 	b.Print("\n---\n\n")
 }
 
-func writeBundleMetricsAPI(b *bundleWriter, data *bundleData) {
+func writeBundleMetricsAPI(b *Writer, data *Data) {
 	b.Print("## Metrics API Status\n\n")
 	b.Write(data.MetricsAPI)
 	b.Print("\n\n---\n\n")
 }
 
-func writeBundleMetricsDiagnostics(b *bundleWriter, data *bundleData) {
+func writeBundleMetricsDiagnostics(b *Writer, data *Data) {
 	b.Print("## Metrics Diagnostics\n\n")
 	a := data.StatusReport.Analysis
 
@@ -51,7 +51,7 @@ func writeBundleMetricsDiagnostics(b *bundleWriter, data *bundleData) {
 	b.Print("\n---\n\n")
 }
 
-func writeBundleMetricsDiagnosticsSection(b *bundleWriter, md *hpaanalysis.MetricsPipelineDiagnostics) {
+func writeBundleMetricsDiagnosticsSection(b *Writer, md *hpaanalysis.MetricsPipelineDiagnostics) {
 	b.Printf("**Overall Status:** %s\n\n", mdEscape(md.OverallStatus))
 
 	if len(md.PerMetricChecks) > 0 {
@@ -74,7 +74,7 @@ func writeBundleMetricsDiagnosticsSection(b *bundleWriter, md *hpaanalysis.Metri
 	}
 }
 
-func writeBundleMetricFreshness(b *bundleWriter, entries []hpaanalysis.MetricFreshness) {
+func writeBundleMetricFreshness(b *Writer, entries []hpaanalysis.MetricFreshness) {
 	b.Print("### Metric Freshness\n\n")
 	b.Print("| Metric | Type | Status | Age | Source |\n")
 	b.Print("|--------|------|--------|-----|--------|\n")
@@ -94,7 +94,7 @@ func writeBundleMetricFreshness(b *bundleWriter, entries []hpaanalysis.MetricFre
 	b.Println()
 }
 
-func writeBundleMetricContract(b *bundleWriter, contract *hpaanalysis.MetricContractReport) {
+func writeBundleMetricContract(b *Writer, contract *hpaanalysis.MetricContractReport) {
 	b.Print("### Metric Contract\n\n")
 	b.Printf("**Status:** %s\n\n", mdEscape(contract.OverallStatus))
 	if len(contract.Checks) == 0 {

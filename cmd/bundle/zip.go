@@ -1,4 +1,4 @@
-package cmd
+package bundle
 
 import (
 	"archive/zip"
@@ -15,8 +15,8 @@ type bundleZipEntry struct {
 	Content []byte
 }
 
-// writeBundleZip writes all collected data into a zip archive.
-func writeBundleZip(data *bundleData, outputPath string) error {
+// WriteZip writes all collected data into a zip archive.
+func WriteZip(data *Data, outputPath string) error {
 	file, err := os.Create(outputPath)
 	if err != nil {
 		return err
@@ -47,10 +47,10 @@ func writeBundleZip(data *bundleData, outputPath string) error {
 	return nil
 }
 
-func buildBundleZipEntries(data *bundleData) ([]bundleZipEntry, error) {
+func buildBundleZipEntries(data *Data) ([]bundleZipEntry, error) {
 	// Build the markdown report for inclusion in the zip.
 	var mdBuf bytes.Buffer
-	if err := writeBundleMarkdown(&mdBuf, data); err != nil {
+	if err := RenderMarkdown(&mdBuf, data); err != nil {
 		return nil, fmt.Errorf("rendering bundle markdown: %w", err)
 	}
 

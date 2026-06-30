@@ -1,4 +1,4 @@
-package cmd
+package bundle
 
 import (
 	"bytes"
@@ -14,7 +14,7 @@ import (
 // bundleData fixture, asserting that each section header appears in the output.
 // This is the highest-ROI test for this file: one call exercises ~20 renderers.
 func TestWriteBundleMarkdown_RenderAllSections(t *testing.T) {
-	data := &bundleData{
+	data := &Data{
 		Namespace:    "production",
 		HPAName:      "web",
 		Timestamp:    time.Date(2025, 1, 2, 3, 4, 5, 0, time.UTC),
@@ -29,7 +29,7 @@ func TestWriteBundleMarkdown_RenderAllSections(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := writeBundleMarkdown(&buf, data); err != nil {
+	if err := RenderMarkdown(&buf, data); err != nil {
 		t.Fatalf("writeBundleMarkdown: %v", err)
 	}
 	out := buf.String()
@@ -83,13 +83,13 @@ func TestWriteBundleMarkdown_RenderAllSections(t *testing.T) {
 // be no-op-safe when its input is absent, since bundle collection is
 // best-effort and individual sections frequently have no data.
 func TestWriteBundleMarkdown_MinimalDataNoPanic(t *testing.T) {
-	data := &bundleData{
+	data := &Data{
 		Namespace: "default",
 		HPAName:   "missing-sections",
 		Timestamp: time.Time{},
 	}
 	var buf bytes.Buffer
-	if err := writeBundleMarkdown(&buf, data); err != nil {
+	if err := RenderMarkdown(&buf, data); err != nil {
 		t.Fatalf("writeBundleMarkdown on minimal data: %v", err)
 	}
 	if !strings.Contains(buf.String(), "# HPA Investigation Bundle: default/missing-sections") {
@@ -100,12 +100,12 @@ func TestWriteBundleMarkdown_MinimalDataNoPanic(t *testing.T) {
 // TestWriteBundleMarkdown_PropagatesWriteError verifies that a failing writer
 // surfaces the first error rather than being swallowed by the renderer.
 func TestWriteBundleMarkdown_PropagatesWriteError(t *testing.T) {
-	data := &bundleData{
+	data := &Data{
 		Namespace: "ns",
 		HPAName:   "hpa",
 		Timestamp: time.Now(),
 	}
-	err := writeBundleMarkdown(&failingWriter{}, data)
+	err := RenderMarkdown(&failingWriter{}, data)
 	if err == nil {
 		t.Fatal("expected error from failing writer, got nil")
 	}
