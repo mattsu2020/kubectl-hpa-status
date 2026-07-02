@@ -24,14 +24,15 @@ type (
 	LintAutoFix = lint.AutoFix
 )
 
-// Lint severity constants.
+// Lint severity constants. The prefixed form (LintErrorSeverity) is canonical;
+// the short LintError/LintWarning forms are retained because cmd/ references
+// them. LintInfo was an unused duplicate and has been removed.
 const (
 	LintErrorSeverity   = lint.Error
 	LintWarningSeverity = lint.Warning
 	LintInfoSeverity    = lint.Info
 	LintError           = lint.Error
 	LintWarning         = lint.Warning
-	LintInfo            = lint.Info
 )
 
 // LintHPA runs all lint rules against the HPA. Delegates to lint.Run.

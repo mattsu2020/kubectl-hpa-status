@@ -28,18 +28,21 @@ type (
 	AuditReport = audit.Report
 )
 
-// Audit severity constants. Both the prefixed form (AuditSeverityCritical)
-// and the short form (AuditCritical) are aliased for backwards compatibility.
+// Audit severity constants. The prefixed form (AuditSeverityCritical) is the
+// canonical API; the short AuditWarning form is retained because the audit
+// renderer tests reference it. The other short forms (AuditCritical, AuditInfo)
+// were unused duplicates and have been removed.
 const (
 	AuditSeverityCritical = audit.AuditCritical
 	AuditSeverityWarning  = audit.AuditWarning
 	AuditSeverityInfo     = audit.AuditInfo
-	AuditCritical         = audit.AuditCritical
 	AuditWarning          = audit.AuditWarning
-	AuditInfo             = audit.AuditInfo
 )
 
-// Audit profile constants. Both forms are aliased for backwards compatibility.
+// Audit profile constants. The prefixed form (AuditProfileLatency) is canonical;
+// the short ProfileLatency/ProfileCritical forms are retained because
+// recommend_test.go references them. The other short forms were unused
+// duplicates and have been removed.
 const (
 	AuditProfileLatency  = audit.ProfileLatency
 	AuditProfileCost     = audit.ProfileCost
@@ -47,9 +50,6 @@ const (
 	AuditProfileKEDA     = audit.ProfileKEDA
 	AuditProfileCritical = audit.ProfileCritical
 	ProfileLatency       = audit.ProfileLatency
-	ProfileCost          = audit.ProfileCost
-	ProfileBatch         = audit.ProfileBatch
-	ProfileKEDA          = audit.ProfileKEDA
 	ProfileCritical      = audit.ProfileCritical
 )
 
