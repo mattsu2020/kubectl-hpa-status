@@ -432,12 +432,6 @@ func writeReportsStatusText(out io.Writer, opts *options, results []reportResult
 	return nil
 }
 
-// selectStatusOutput resolves the output format and template string from the user's report/output/template selection.
-// Deprecated: use the package-level selectOutputFromOptions, which is identical.
-func selectStatusOutput(opts *options) (string, string) {
-	return selectOutputFromOptions(opts)
-}
-
 // statusTextOptions builds the StatusTextOptions used to render report text, including theme/lang/fix/diff settings.
 func statusTextOptions(opts *options, out io.Writer) hpaanalysis.StatusTextOptions {
 	return hpaanalysis.StatusTextOptions{

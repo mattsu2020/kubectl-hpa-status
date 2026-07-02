@@ -24,6 +24,16 @@ linters:
     - wastedassign
     - dupl
     - nilnil
+    # errorlint catches error-handling footguns: %w vs %v verb mismatches in
+    # fmt.Errorf, errors.Is/As opportunities missed by direct == comparison,
+    # and non-wrapped error chains. This is the safety net behind A6's manual
+    # error-wrapping review.
+    - errorlint
+    # depguard enforces import boundaries. The rules below keep pkg/hpa from
+    # importing internal/ or cmd/, keep internal/kube free of pkg/hpa (the
+    # boundary that kubeconv exists to mediate), and keep cmd/ importing the
+    # cmdoptions model only through the bridge in cmd/options_bridge.go.
+    - depguard
 
   settings:
     gocyclo:
@@ -37,6 +47,27 @@ linters:
       # copy-paste blocks fire. Small idiomatic repetition (e.g. struct tag
       # lines, short flag reads) should not trip the linter.
       threshold: 200
+    errorlint:
+      # Allow %v for errors in formatting contexts where wrapping is not
+      # intended (e.g. user-facing messages). The most valuable checks are
+      # errorf-vs-errors.New consistency and direct == comparisons.
+      errorf: true
+      asserts: true
+      comparison: true
+    depguard:
+      rules:
+        # pkg/hpa is the public analysis model. It must not depend on the
+        # CLI layer (cmd) or on this repo's internal/ packages; doing so
+        # would make it un-importable by external tools.
+        hpa-no-internal:
+          files:
+            - '!**/pkg/hpa/internal/**'
+            - '**/pkg/hpa/*.go'
+          deny:
+            - pkg: github.com/mattsu2020/kubectl-hpa-status/cmd
+              desc: pkg/hpa must not import cmd (CLI layer); this would reverse the dependency direction
+            - pkg: github.com/mattsu2020/kubectl-hpa-status/internal
+              desc: pkg/hpa must not import internal/ packages; pkg/hpa is a public library
 
   exclusions:
     rules:
@@ -48,11 +79,18 @@ linters:
       # unparam is excluded from tests: builder helpers intentionally accept
       # parameters they don't always read so individual cases can vary inputs
       # without changing the helper signature.
+      # depguard is excluded from tests: tests in pkg/hpa legitimately import
+      # internal/testutil for fixtures, which would otherwise violate the
+      # "pkg/hpa must not import internal/" production rule.
+      # errorlint is excluded from tests: tests routinely do direct error type
+      # assertions (exit-code checks) where wrapping is not a concern.
       - path: _test\.go
         linters:
           - gocyclo
           - dupl
           - unparam
+          - depguard
+          - errorlint
 
 formatters:
   enable:
