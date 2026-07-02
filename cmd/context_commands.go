@@ -20,10 +20,9 @@ func newNodeContextCommand(opts *options) *cobra.Command {
 }
 
 func runNodeContext(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	local := applyCommandPreset(opts, presetNodeContext, commandPresetOptions{
+	return runStatusWithPreset(ctx, out, opts, presetNodeContext, names, commandPresetOptions{
 		Events: &EventOption{Enabled: true, Limit: 10},
 	})
-	return runStatusMany(ctx, out, &local, names, !local.NoInterpret)
 }
 
 func newRolloutContextCommand(opts *options) *cobra.Command {
@@ -39,8 +38,7 @@ func newRolloutContextCommand(opts *options) *cobra.Command {
 }
 
 func runRolloutContext(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	local := applyCommandPreset(opts, presetRolloutContext, commandPresetOptions{
+	return runStatusWithPreset(ctx, out, opts, presetRolloutContext, names, commandPresetOptions{
 		Events: &EventOption{Enabled: true, Limit: 10},
 	})
-	return runStatusMany(ctx, out, &local, names, !local.NoInterpret)
 }

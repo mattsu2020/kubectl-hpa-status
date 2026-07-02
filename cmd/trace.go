@@ -20,6 +20,5 @@ func newTraceCommand(opts *options) *cobra.Command {
 }
 
 func runTrace(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	local := applyCommandPreset(opts, presetTrace)
-	return runStatusMany(ctx, out, &local, names, !local.NoInterpret)
+	return runStatusWithPreset(ctx, out, opts, presetTrace, names)
 }

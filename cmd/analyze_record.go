@@ -64,7 +64,7 @@ func runAnalyzeRecord(out io.Writer, opts *options, path, detect string) error {
 		return result.Items[i].DesiredChanges > result.Items[j].DesiredChanges
 	})
 
-	format, templateStr := outputSelection(outputConfig{output: opts.Output, template: opts.Template, outputTemplates: opts.OutputTemplates})
+	format, templateStr := selectOutputFromOptions(opts)
 	return writeOutput(out, format, templateStr, result, func() error {
 		if len(result.Items) == 0 {
 			_, err := fmt.Fprintln(out, "No HPA flapping detected.")

@@ -294,9 +294,7 @@ func attachHealthTrend(store *history.HealthStore, analysis *hpaanalysis.Analysi
 // writeListResult renders the list report in the selected output format.
 func writeListResult(out io.Writer, opts *options, report hpaanalysis.ListReport) error {
 	wide := opts.Wide || opts.Output == "wide"
-	format, templateStr := outputSelection(outputConfig{
-		report: opts.Report, output: opts.Output, template: opts.Template, outputTemplates: opts.OutputTemplates,
-	})
+	format, templateStr := selectOutputFromOptions(opts)
 	if opts.Summary && (format == "markdown" || format == "md") {
 		return writeClusterSummaryMarkdown(out, report)
 	}

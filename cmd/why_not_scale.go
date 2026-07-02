@@ -50,9 +50,7 @@ func runWhyNotScale(ctx context.Context, out io.Writer, opts *options, names []s
 		value = reports[0]
 	}
 
-	format, templateStr := outputSelection(outputConfig{
-		output: local.Output, template: local.Template, outputTemplates: local.OutputTemplates,
-	})
+	format, templateStr := selectOutputFromOptions(&local)
 
 	return writeOutput(out, format, templateStr, value, func() error {
 		for i, report := range reports {

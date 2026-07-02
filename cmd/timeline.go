@@ -87,10 +87,7 @@ func runRetrospectiveTimeline(ctx context.Context, out io.Writer, opts *options,
 	}
 
 	// 5. Render based on output format.
-	format, _ := outputSelection(outputConfig{
-		report: opts.Report, output: opts.Output, template: opts.Template,
-		outputTemplates: opts.OutputTemplates,
-	})
+	format, _ := selectOutputFromOptions(opts)
 
 	// Replay mode rendering.
 	if replay && replayAnalysis != nil {

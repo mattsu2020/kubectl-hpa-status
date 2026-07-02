@@ -53,9 +53,7 @@ func runGitOpsReview(_ context.Context, out io.Writer, opts *options, filePath s
 
 	review := hpaanalysis.AnalyzeGitOpsReview(inputs)
 
-	format, templateStr := outputSelection(outputConfig{
-		output: opts.Output, template: opts.Template, outputTemplates: opts.OutputTemplates,
-	})
+	format, templateStr := selectOutputFromOptions(opts)
 
 	return writeOutput(out, format, templateStr, review, func() error {
 		theme := style.NewTheme(shouldColorize(opts.Color, out))

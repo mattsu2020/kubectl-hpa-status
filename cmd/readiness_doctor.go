@@ -115,9 +115,7 @@ func runReadinessDoctor(ctx context.Context, out io.Writer, opts *options, name 
 
 	report := hpaanalysis.AnalyzeReadinessDoctor(input)
 
-	format, templateStr := outputSelection(outputConfig{
-		output: opts.Output, template: opts.Template, outputTemplates: opts.OutputTemplates,
-	})
+	format, templateStr := selectOutputFromOptions(opts)
 
 	return writeOutput(out, format, templateStr, report, func() error {
 		return hpaanalysis.WriteReadinessDoctorText(out, report,

@@ -68,7 +68,7 @@ func runHistory(ctx context.Context, out io.Writer, opts *options, name string, 
 	if prometheusURL != "" {
 		result.Queries = buildPrometheusHistoryQueries(prometheusURL, report.Analysis, since)
 	}
-	format, templateStr := outputSelection(outputConfig{output: opts.Output, template: opts.Template, outputTemplates: opts.OutputTemplates})
+	format, templateStr := selectOutputFromOptions(opts)
 	return writeOutput(out, format, templateStr, result, func() error {
 		_, _ = fmt.Fprintf(out, "HPA history: %s/%s since=%s\n", result.Namespace, result.Name, result.Since)
 		_, _ = fmt.Fprintf(out, "Health: %s (%d/100)\n", result.Health, result.HealthScore)

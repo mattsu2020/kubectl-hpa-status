@@ -21,6 +21,5 @@ func newContainerAdvisorCommand(opts *options) *cobra.Command {
 }
 
 func runContainerAdvisor(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	local := applyCommandPreset(opts, presetContainerAdvisor)
-	return runStatusMany(ctx, out, &local, names, !local.NoInterpret)
+	return runStatusWithPreset(ctx, out, opts, presetContainerAdvisor, names)
 }

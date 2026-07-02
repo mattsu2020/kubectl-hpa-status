@@ -105,9 +105,7 @@ func runAssumptions(ctx context.Context, out io.Writer, opts *options, names []s
 		})
 	}
 
-	format, templateStr := outputSelection(outputConfig{
-		output: opts.Output, template: opts.Template, outputTemplates: opts.OutputTemplates,
-	})
+	format, templateStr := selectOutputFromOptions(opts)
 
 	for i, report := range reports {
 		if i > 0 {
