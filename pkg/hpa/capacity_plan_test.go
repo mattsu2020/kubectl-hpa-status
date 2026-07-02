@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
@@ -227,7 +228,7 @@ func TestAnalyzeCapacityPlan_NodeCapacityInsufficient(t *testing.T) {
 		ContainerResources: []CapacityContainerResources{
 			{Name: "app", CPU: "500m", Memory: "1Gi"},
 		},
-		NodeCapacity: &NodeCapacitySummary{
+		NodeCapacity: &blocker.NodeCapacitySummary{
 			TotalNodes:  3,
 			AllocCPU:    "2",
 			AllocMemory: "4Gi",
@@ -262,7 +263,7 @@ func TestAnalyzeCapacityPlan_ClusterAutoscalerDetected(t *testing.T) {
 		ContainerResources: []CapacityContainerResources{
 			{Name: "app", CPU: "500m", Memory: "1Gi"},
 		},
-		NodeCapacity: &NodeCapacitySummary{
+		NodeCapacity: &blocker.NodeCapacitySummary{
 			TotalNodes:  3,
 			AllocCPU:    "2",
 			AllocMemory: "4Gi",

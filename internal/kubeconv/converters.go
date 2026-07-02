@@ -10,6 +10,7 @@ import (
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
 )
 
 // PendingPodDetail maps one kube.PendingPodDetail to a pending-pod destination
@@ -44,9 +45,9 @@ func PendingPodInfos(details []kube.PendingPodDetail) []hpaanalysis.PendingPodIn
 
 // ToBlockerPodInfos translates into the blocker-analysis destination type
 // (same four fields, different package-local struct).
-func ToBlockerPodInfos(details []kube.PendingPodDetail) []hpaanalysis.BlockerPodInfo {
-	return PendingPodDetail(details, func(d kube.PendingPodDetail) hpaanalysis.BlockerPodInfo {
-		return hpaanalysis.BlockerPodInfo{
+func ToBlockerPodInfos(details []kube.PendingPodDetail) []blocker.PodInfo {
+	return PendingPodDetail(details, func(d kube.PendingPodDetail) blocker.PodInfo {
+		return blocker.PodInfo{
 			Name:          d.Name,
 			Phase:         "Pending",
 			Unschedulable: d.Unschedulable,

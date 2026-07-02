@@ -5,11 +5,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
 func TestWriteBlockerText(t *testing.T) {
-	report := &BlockerReport{
+	report := &blocker.Report{
 		Namespace:       "default",
 		Name:            "web",
 		Target:          "Deployment/web",
@@ -17,11 +18,11 @@ func TestWriteBlockerText(t *testing.T) {
 		DesiredReplicas: 12,
 		ReadyReplicas:   8,
 		Summary:         "HPA wants 12 replicas, but only 8 pods are Ready.",
-		Blockers: []BlockerFinding{
-			{ID: "pending-pods", Severity: BlockerHigh, Category: "scheduling", Message: "4 pods are Pending"},
-			{ID: "failed-scheduling", Severity: BlockerHigh, Category: "scheduling", Message: "FailedScheduling: 3 pods cannot fit due to Insufficient cpu"},
-			{ID: "quota-near-limit", Severity: BlockerMedium, Category: "quota", Message: `ResourceQuota "compute" requests.cpu is 95% used`},
-			{ID: "metrics-healthy", Severity: BlockerInfo, Category: "info", Message: "No recent metrics retrieval errors found"},
+		Blockers: []blocker.Finding{
+			{ID: "pending-pods", Severity: blocker.BlockerHigh, Category: "scheduling", Message: "4 pods are Pending"},
+			{ID: "failed-scheduling", Severity: blocker.BlockerHigh, Category: "scheduling", Message: "FailedScheduling: 3 pods cannot fit due to Insufficient cpu"},
+			{ID: "quota-near-limit", Severity: blocker.BlockerMedium, Category: "quota", Message: `ResourceQuota "compute" requests.cpu is 95% used`},
+			{ID: "metrics-healthy", Severity: blocker.BlockerInfo, Category: "info", Message: "No recent metrics retrieval errors found"},
 		},
 		Interpretation: "HPA appears to be working. The scale-out is blocked after the HPA decision, likely by cluster capacity or namespace quota.",
 		NextCommands: []string{
@@ -97,7 +98,7 @@ func TestWriteBlockerText(t *testing.T) {
 }
 
 func TestAppendBlockerText_NoBlockers(t *testing.T) {
-	report := &BlockerReport{
+	report := &blocker.Report{
 		Namespace:       "default",
 		Name:            "web",
 		Summary:         "HPA has 5 replicas and is not requesting scale-out. No blockers detected.",

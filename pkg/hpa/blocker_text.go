@@ -5,13 +5,14 @@ import (
 	"io"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
 // AppendBlockerText writes the blocker analysis section to out. It renders the
 // summary, blocker findings with severity badges, interpretation, and suggested
 // next commands.
-func AppendBlockerText(out *[]byte, report *BlockerReport, theme style.Theme, lbls labels) {
+func AppendBlockerText(out *[]byte, report *blocker.Report, theme style.Theme, lbls labels) {
 	if report == nil {
 		return
 	}
@@ -61,7 +62,7 @@ func AppendBlockerText(out *[]byte, report *BlockerReport, theme style.Theme, lb
 
 // WriteBlockerText writes a standalone blocker report (used by the blockers
 // subcommand) with an HPA header line.
-func WriteBlockerText(w io.Writer, report *BlockerReport, theme style.Theme) error {
+func WriteBlockerText(w io.Writer, report *blocker.Report, theme style.Theme) error {
 	if report == nil {
 		return nil
 	}
@@ -80,14 +81,14 @@ func WriteBlockerText(w io.Writer, report *BlockerReport, theme style.Theme) err
 }
 
 // severityBadge returns a styled severity label like [HIGH] or [INFO].
-func severityBadge(severity BlockerSeverity, theme style.Theme) string {
+func severityBadge(severity blocker.Severity, theme style.Theme) string {
 	var style lipgloss.Style
 	switch severity {
-	case BlockerHigh:
+	case blocker.BlockerHigh:
 		style = theme.Error
-	case BlockerMedium:
+	case blocker.BlockerMedium:
 		style = theme.Warning
-	case BlockerInfo:
+	case blocker.BlockerInfo:
 		style = theme.Dim
 	}
 	return style.Render(fmt.Sprintf("[%s]", string(severity)))

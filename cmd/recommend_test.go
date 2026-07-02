@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
-	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/audit"
 )
 
 func TestRunRecommend_WellConfiguredHPA(t *testing.T) {
@@ -283,7 +283,7 @@ func TestRunRecommend_WithProfile(t *testing.T) {
 			ClientOverride: fakeClient,
 		},
 	}
-	err := runRecommend(context.Background(), &buf, opts, []string{"web"}, hpaanalysis.ProfileCritical)
+	err := runRecommend(context.Background(), &buf, opts, []string{"web"}, audit.ProfileCritical)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -306,7 +306,7 @@ func TestRunRecommend_WithProfileLatency(t *testing.T) {
 			ClientOverride: fakeClient,
 		},
 	}
-	err := runRecommend(context.Background(), &buf, opts, []string{"web"}, hpaanalysis.ProfileLatency)
+	err := runRecommend(context.Background(), &buf, opts, []string{"web"}, audit.ProfileLatency)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

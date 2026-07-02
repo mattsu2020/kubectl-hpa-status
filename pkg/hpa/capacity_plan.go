@@ -8,6 +8,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
 )
 
@@ -142,7 +143,7 @@ func multiplyQuantity(q resource.Quantity, multiplier int64) resource.Quantity {
 // pods (ReadyPods * per-pod resources) from total allocatable, then divides
 // the remainder by per-pod resources. Returns 0 if node capacity is unavailable
 // or per-pod resources cannot be determined.
-func computeSchedulableNow(nc *NodeCapacitySummary, perPodCPU, perPodMemory resource.Quantity, readyPods int32, containers []CapacityContainerResources) int32 {
+func computeSchedulableNow(nc *blocker.NodeCapacitySummary, perPodCPU, perPodMemory resource.Quantity, readyPods int32, containers []CapacityContainerResources) int32 {
 	if nc == nil || nc.TotalNodes == 0 || len(containers) == 0 {
 		return 0
 	}
@@ -371,7 +372,7 @@ func limitRangeBoundsViolations(req resource.Quantity, containerName, value, dis
 	return violations
 }
 
-func checkNodeCapacity(nc *NodeCapacitySummary, requiredCPU, requiredMemory resource.Quantity, hasCA bool) []CapacityCheckResult {
+func checkNodeCapacity(nc *blocker.NodeCapacitySummary, requiredCPU, requiredMemory resource.Quantity, hasCA bool) []CapacityCheckResult {
 	if nc == nil {
 		return []CapacityCheckResult{
 			{Pass: true, Message: "node capacity not checked (use --capacity-deep for full analysis)"},

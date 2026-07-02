@@ -5,11 +5,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/warmup"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
 func TestAppendWarmupText(t *testing.T) {
-	analysis := &WarmupAnalysis{
+	analysis := &warmup.Analysis{
 		Summary:                "capacity_warming_up",
 		EffectiveCapacityRatio: 0.4,
 		DesiredReplicas:        10,
@@ -18,7 +19,7 @@ func TestAppendWarmupText(t *testing.T) {
 		AvailablePods:          3,
 		AvgTimeToReadySeconds:  142,
 		P95TimeToReadySeconds:  210,
-		Bottlenecks: []WarmupBottleneck{
+		Bottlenecks: []warmup.Bottleneck{
 			{Type: "readiness_probe", Severity: SeverityWarning, Confidence: ConfidenceHigh, Count: 4, Message: "4 pods are Running but not Ready"},
 			{Type: "image_pull", Severity: SeverityError, Confidence: ConfidenceHigh, Count: 1, Message: "1 pod has image pull issues"},
 		},
@@ -73,7 +74,7 @@ func TestAppendWarmupTextNil(t *testing.T) {
 }
 
 func TestWriteWarmupText(t *testing.T) {
-	analysis := &WarmupAnalysis{
+	analysis := &warmup.Analysis{
 		Summary:                "capacity_warming_up",
 		EffectiveCapacityRatio: 0.5,
 		DesiredReplicas:        4,
@@ -96,14 +97,14 @@ func TestWriteWarmupText(t *testing.T) {
 }
 
 func TestWriteWarmupMarkdown(t *testing.T) {
-	analysis := &WarmupAnalysis{
+	analysis := &warmup.Analysis{
 		Summary:                "capacity_warming_up",
 		EffectiveCapacityRatio: 0.4,
 		DesiredReplicas:        10,
 		ReadyPods:              4,
 		AvgTimeToReadySeconds:  142,
 		P95TimeToReadySeconds:  210,
-		Bottlenecks: []WarmupBottleneck{
+		Bottlenecks: []warmup.Bottleneck{
 			{Type: "readiness_probe", Severity: SeverityWarning, Confidence: ConfidenceHigh, Message: "4 pods not ready"},
 		},
 		RecommendedActions: []string{"Check readinessProbe"},
@@ -131,12 +132,12 @@ func TestWriteWarmupMarkdown(t *testing.T) {
 }
 
 func TestWriteWarmupHTML(t *testing.T) {
-	analysis := &WarmupAnalysis{
+	analysis := &warmup.Analysis{
 		Summary:                "capacity_warming_up",
 		EffectiveCapacityRatio: 0.4,
 		DesiredReplicas:        10,
 		ReadyPods:              4,
-		Bottlenecks: []WarmupBottleneck{
+		Bottlenecks: []warmup.Bottleneck{
 			{Type: "image_pull", Severity: SeverityError, Confidence: ConfidenceHigh, Message: "1 pod has image issues"},
 		},
 	}

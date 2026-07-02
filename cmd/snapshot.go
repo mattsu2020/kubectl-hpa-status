@@ -13,6 +13,7 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/cmd/bundle"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/audit"
 	hparender "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/render"
 	"github.com/spf13/cobra"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -268,7 +269,7 @@ func buildSnapshotAnalysis(hpa *autoscalingv2.HorizontalPodAutoscaler, _ *option
 		minReplicas = *hpa.Spec.MinReplicas
 	}
 
-	report := hpaanalysis.AuditHPA(hpa, minReplicas)
+	report := audit.Run(hpa, minReplicas)
 	content, err := json.MarshalIndent(report, "", "  ")
 	if err != nil {
 		return []byte(fmt.Sprintf("# Error serializing analysis: %v\n", err))

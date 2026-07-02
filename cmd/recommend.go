@@ -6,6 +6,7 @@ import (
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/audit"
 	"github.com/spf13/cobra"
 )
 
@@ -21,7 +22,7 @@ func newRecommendCommand(opts *options) *cobra.Command {
 			if policyFile != "" {
 				return runPolicy(cmd.Context(), cmd.OutOrStdout(), opts, &policyCommandOptions{file: policyFile}, args[0])
 			}
-			return runRecommend(cmd.Context(), cmd.OutOrStdout(), opts, args, hpaanalysis.AuditProfile(profile))
+			return runRecommend(cmd.Context(), cmd.OutOrStdout(), opts, args, audit.Profile(profile))
 		},
 	}
 	cmd.Flags().String("profile", "", "workload profile for threshold adjustments: latency, cost, batch, keda, critical")
@@ -29,7 +30,7 @@ func newRecommendCommand(opts *options) *cobra.Command {
 	return cmd
 }
 
-func runRecommend(ctx context.Context, out io.Writer, opts *options, args []string, profile hpaanalysis.AuditProfile) error {
+func runRecommend(ctx context.Context, out io.Writer, opts *options, args []string, profile audit.Profile) error {
 	client, err := newClientOrDefault(opts)
 	if err != nil {
 		return err
@@ -46,11 +47,11 @@ func runRecommend(ctx context.Context, out io.Writer, opts *options, args []stri
 			minReplicas = *hpa.Spec.MinReplicas
 		}
 
-		var report *hpaanalysis.AuditReport
+		var report *audit.Report
 		if profile != "" {
-			report = hpaanalysis.AuditHPAWithProfile(hpa, minReplicas, profile)
+			report = audit.RunWithProfile(hpa, minReplicas, profile)
 		} else {
-			report = hpaanalysis.AuditHPA(hpa, minReplicas)
+			report = audit.Run(hpa, minReplicas)
 		}
 
 		format, templateStr := selectOutputFromOptions(opts)

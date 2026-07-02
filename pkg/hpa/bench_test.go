@@ -3,6 +3,8 @@ package hpa
 import (
 	"testing"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/audit"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/lint"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -104,7 +106,7 @@ func BenchmarkLintHPA(b *testing.B) {
 	hpa := benchHPA()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = LintHPA(hpa)
+		_ = lint.Run(hpa)
 	}
 }
 
@@ -113,6 +115,6 @@ func BenchmarkAuditHPA(b *testing.B) {
 	hpa := benchHPA()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = AuditHPA(hpa, 2)
+		_ = audit.Run(hpa, 2)
 	}
 }
