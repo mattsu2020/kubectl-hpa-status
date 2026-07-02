@@ -2,6 +2,10 @@ version: 2
 
 project_name: kubectl-hpa-status
 
+# snapshot governs local `goreleaser snapshot` builds (e.g. `make krew`).
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
 before:
   hooks:
     - go mod tidy
@@ -37,6 +41,22 @@ checksum:
 
 sboms:
   - artifacts: archive
+
+# Sigstore (cosign) signing of archives and checksums. Keys/secrets are
+# provisioned via CI secrets; the block is a no-op for local snapshot builds
+# where the env vars are unset. See SECURITY.md for the verification flow.
+signs:
+  - id: cosign
+    cmd: cosign
+    signature: "${artifact}.sig"
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - "--output-signature=${signature}"
+      - "--output-certificate=${certificate}"
+      - "--yes"
+      - "${artifact}"
+    artifacts: all
 
 release:
   github:
