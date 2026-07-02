@@ -75,9 +75,7 @@ func runMetricsContract(ctx context.Context, out io.Writer, opts *options, name 
 		return nil
 	default:
 		// Standard output (text, JSON, YAML via --output flag)
-		format, templateStr := outputSelection(outputConfig{
-			output: opts.Output, template: opts.Template, outputTemplates: opts.OutputTemplates,
-		})
+		format, templateStr := selectOutputFromOptions(opts)
 
 		output := metricsContractOutput{
 			Namespace: report.Namespace,

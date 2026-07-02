@@ -113,6 +113,58 @@ The Krew plugin name is intentionally `hpa-status`. Keep `.krew.yaml`,
 GoReleaser archive names, and README install commands aligned when release
 metadata changes.
 
+## Code style & lint
+
+- Run `make fmt` before committing; `make fmt-check` runs the same gate as CI.
+- `make lint` runs `golangci-lint` with the rules in [`.golangci.yml`](.golangci.yml).
+  Notable enabled linters: `errcheck`, `gocyclo` (threshold 15 on production
+  code), `revive`, `staticcheck`, `unused`, `unparam`, `errorlint`, and
+  `depguard`. The `depguard` rules enforce the import boundaries documented in
+  [ARCHITECTURE.md](ARCHITECTURE.md): `pkg/hpa` must not import `cmd/` or
+  `internal/` (it is a public library). Tests are exempt from `depguard` and
+  `errorlint` because they legitimately use `internal/testutil` fixtures and
+  direct error type assertions.
+- Go files use tabs (gofmt). YAML, JSON, and Markdown use two-space indent
+  (see [`.editorconfig`](.editorconfig)). `make fmt` only formats Go; apply
+  the `.editorconfig` settings in your editor for the rest.
+- Keep functions under ~80 lines where practical. `gocyclo` catches the worst
+  offenders; long dispatch tables (e.g. the TUI key handler) carry a
+  `//nolint:gocyclo` with a justification.
+
+## Documentation sync (`make docs-check`)
+
+`make docs-check` runs `scripts/check-readme-sync.sh`, which verifies that
+`README.md` and `README.ja.md` stay structurally aligned:
+
+- the same number and order of `## ` sections, and
+- the same command/flag examples in each paired section.
+
+When you add a flag, command, or install path to one README, update the other
+in the same PR. Run `make docs-check` locally before pushing — CI runs it on
+every PR and a mismatch blocks merge. User-facing output that is not in the
+README should still land in [docs/](docs/) (see the Documentation table in
+`README.md`).
+
+## Releases
+
+Releases are tag-driven (`git tag v1.2.3`):
+
+1. Update [CHANGELOG.md](CHANGELOG.md) with the user-visible changes.
+2. Tag the release commit: `git tag -a v1.2.3 -m "v1.2.3"`.
+3. Push the tag. The [`release`](.github/workflows/release.yml) workflow:
+   - runs `go test ./...`
+   - builds archives for linux/darwin/windows (amd64/arm64) via GoReleaser
+     (`.goreleaser.yml`)
+   - signs archives and checksums with cosign (sigstore, keyless)
+   - generates SLSA build-provenance attestations
+   - publishes the Homebrew tap and updates the Krew index
+4. `make release-check` validates the GoReleaser config and README sync
+   locally; run it before tagging.
+5. After the release, verify `kubectl krew install hpa-status` and
+   `brew install mattsu2020/kubectl-hpa-status/kubectl-hpa-status` pick up the
+   new version. See [SECURITY.md](SECURITY.md) for how users verify a signed
+   release artifact.
+
 ## Commit style
 
 Use Conventional Commits where practical:

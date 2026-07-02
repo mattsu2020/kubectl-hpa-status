@@ -11,6 +11,7 @@ import (
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth" // for cloud provider auth
+	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 )
@@ -63,21 +64,7 @@ func NewClient(opts Options, extra ...ClientOption) (*Client, error) {
 		return c, nil
 	}
 
-	loadingRules := newLoadingRules(opts)
-	overrides := newOverrides(opts)
-
-	clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, overrides)
-
-	namespace := opts.Namespace
-	if namespace == "" {
-		var err error
-		namespace, _, err = clientConfig.Namespace()
-		if err != nil {
-			return nil, fmt.Errorf("failed to create Kubernetes client from kubeconfig/context flags: %w", err)
-		}
-	}
-
-	restConfig, err := clientConfig.ClientConfig()
+	namespace, restConfig, err := resolveNamespaceAndRestConfig(opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Kubernetes client from kubeconfig/context flags: %w", err)
 	}
@@ -178,6 +165,43 @@ func newOverrides(opts Options) *clientcmd.ConfigOverrides {
 	return overrides
 }
 
+// deferredClientConfig builds the standard clientcmd.ClientConfig from the same
+// Options used by NewClient, NewDiscoveryClient, and NewDynamicClient. It is the
+// shared step that previously was inlined in each constructor.
+func deferredClientConfig(opts Options) clientcmd.ClientConfig {
+	loadingRules := newLoadingRules(opts)
+	overrides := newOverrides(opts)
+	return clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, overrides)
+}
+
+// restConfigFromOptions resolves a *restclient.Config from Options without
+// resolving the namespace. Used by constructors that do not need a namespace
+// (e.g. NewDiscoveryClient).
+func restConfigFromOptions(opts Options) (*restclient.Config, error) {
+	return deferredClientConfig(opts).ClientConfig()
+}
+
+// resolveNamespaceAndRestConfig resolves both the effective namespace and the
+// *restclient.Config from Options. When opts.Namespace is empty the namespace
+// is resolved from the kubeconfig current context. Used by NewClient and
+// NewDynamicClient, which both need a namespace.
+func resolveNamespaceAndRestConfig(opts Options) (string, *restclient.Config, error) {
+	clientConfig := deferredClientConfig(opts)
+	namespace := opts.Namespace
+	if namespace == "" {
+		var err error
+		namespace, _, err = clientConfig.Namespace()
+		if err != nil {
+			return "", nil, err
+		}
+	}
+	restConfig, err := clientConfig.ClientConfig()
+	if err != nil {
+		return "", nil, err
+	}
+	return namespace, restConfig, nil
+}
+
 // CRDAvailability holds the results of a one-time CRD availability check.
 // KEDError / VPAError carry the discovery error (if any) for each source so
 // callers can distinguish "CRD is simply absent" (nil error) from "discovery
@@ -194,11 +218,7 @@ type CRDAvailability struct {
 // NewDiscoveryClient creates a discovery client from the same Options used for
 // the typed and dynamic clients.
 func NewDiscoveryClient(opts Options) (discovery.DiscoveryInterface, error) {
-	loadingRules := newLoadingRules(opts)
-	overrides := newOverrides(opts)
-
-	clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, overrides)
-	restConfig, err := clientConfig.ClientConfig()
+	restConfig, err := restConfigFromOptions(opts)
 	if err != nil {
 		return nil, err
 	}

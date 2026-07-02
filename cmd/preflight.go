@@ -20,6 +20,5 @@ func newPreflightCommand(opts *options) *cobra.Command {
 }
 
 func runPreflight(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	local := applyCommandPreset(opts, presetPreflight)
-	return runStatusMany(ctx, out, &local, names, !local.NoInterpret)
+	return runStatusWithPreset(ctx, out, opts, presetPreflight, names)
 }

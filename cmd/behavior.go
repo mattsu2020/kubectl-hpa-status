@@ -63,7 +63,7 @@ func runBehavior(ctx context.Context, out io.Writer, opts *options, name string)
 	}
 
 	result := buildBehaviorOutput(hpa)
-	format, templateStr := outputSelection(outputConfig{output: opts.Output, template: opts.Template, outputTemplates: opts.OutputTemplates})
+	format, templateStr := selectOutputFromOptions(opts)
 	return writeOutput(out, format, templateStr, result, func() error {
 		return writeBehaviorText(out, result)
 	})

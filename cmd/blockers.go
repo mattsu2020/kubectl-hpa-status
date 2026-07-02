@@ -66,9 +66,7 @@ func runBlockers(ctx context.Context, out io.Writer, opts *options, names []stri
 		value = outputs[0]
 	}
 
-	format, templateStr := outputSelection(outputConfig{
-		output: local.Output, template: local.Template, outputTemplates: local.OutputTemplates,
-	})
+	format, templateStr := selectOutputFromOptions(&local)
 
 	return writeOutput(out, format, templateStr, value, func() error {
 		theme := style.NewTheme(shouldColorize(local.Color, out))

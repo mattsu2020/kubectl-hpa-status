@@ -96,7 +96,7 @@ func runStatusSingle(ctx context.Context, out io.Writer, opts *options, name str
 		return writeGitOpsExport(out, opts.Export, report)
 	}
 
-	format, templateStr := selectStatusOutput(opts)
+	format, templateStr := selectOutputFromOptions(opts)
 	if err := writeOutput(out, format, templateStr, report, func() error {
 		return hpaanalysis.WriteStatusTextWithOptions(out, report, statusTextOptions(opts, out))
 	}); err != nil {
@@ -155,7 +155,7 @@ func runStatusMultiple(ctx context.Context, out io.Writer, opts *options, names 
 		return aggregateBatchExitCode(results, watchMode)
 	}
 
-	format, templateStr := selectStatusOutput(opts)
+	format, templateStr := selectOutputFromOptions(opts)
 	reports := successReports(results)
 	if err := writeOutput(out, format, templateStr, batchValue(opts, results, reports), func() error {
 		return writeReportsStatusText(out, opts, results)
@@ -430,13 +430,6 @@ func writeReportsStatusText(out io.Writer, opts *options, results []reportResult
 		}
 	}
 	return nil
-}
-
-// selectStatusOutput resolves the output format and template string from the user's report/output/template selection.
-func selectStatusOutput(opts *options) (string, string) {
-	return outputSelection(outputConfig{
-		report: opts.Report, output: opts.Output, template: opts.Template, outputTemplates: opts.OutputTemplates,
-	})
 }
 
 // statusTextOptions builds the StatusTextOptions used to render report text, including theme/lang/fix/diff settings.

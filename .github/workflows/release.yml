@@ -7,6 +7,11 @@ on:
 
 permissions:
   contents: write
+  # id-token: write is required for cosign keyless signing (OIDC) and for the
+  # SLSA provenance generator to attest the build.
+  id-token: write
+  # attestions: write lets the SLSA generator attach provenance to the release.
+  attestations: write
 
 jobs:
   goreleaser:
@@ -26,6 +31,14 @@ jobs:
       - name: Test
         run: go test ./...
 
+      # Install cosign for keyless sigstore signing of release artifacts.
+      # COSIGN_EXPERIMENTAL=1 enables keyless (certificate-based) signing that
+      # does not require a persisted private key.
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: 'v2.4.1'
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7
         with:
@@ -34,6 +47,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+          COSIGN_EXPERIMENTAL: '1'
+
+      # Generate SLSA Build Level 3 provenance attestation for the release
+      # artifacts so downstream users can verify the build origin.
+      - name: Generate artifact provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/checksums.txt
 
       - name: Update krew-index
         uses: rajatjindal/krew-release-bot@v0.0.51

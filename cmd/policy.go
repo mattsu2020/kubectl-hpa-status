@@ -180,9 +180,7 @@ func runPolicy(ctx context.Context, out io.Writer, opts *options, policyOpts *po
 	}
 
 	report := policyListReport{Items: reports}
-	format, templateStr := outputSelection(outputConfig{
-		report: opts.Report, output: opts.Output, template: opts.Template, outputTemplates: opts.OutputTemplates,
-	})
+	format, templateStr := selectOutputFromOptions(opts)
 	if err := writeOutput(out, format, templateStr, report, func() error {
 		return writePolicyText(out, report, style.NewTheme(shouldColorize(opts.Color, out)))
 	}); err != nil {

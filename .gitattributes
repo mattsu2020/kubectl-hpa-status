@@ -1,0 +1,35 @@
+# Default to LF line endings and treat files as text unless matched below.
+* text=auto eol=lf
+
+# Source and documentation are always text and normalized to LF.
+*.go      text eol=lf
+*.yml     text eol=lf
+*.yaml    text eol=lf
+*.json    text eol=lf
+*.md      text eol=lf
+*.sh      text eol=lf
+*.mod     text eol=lf
+*.sum     text eol=lf
+
+# Binary files: never normalize, never merge, no diff noise. These are
+# committed assets (demo images, asciinema recordings, built binaries).
+*.png     binary
+*.jpg     binary
+*.jpeg    binary
+*.gif     binary
+*.svg     text eol=lf
+*.cast    binary
+*.ico     binary
+
+# Generated export artifacts in scripts/ or dist/ may be treated as binary.
+dist/**   -text
+
+# Linguist hints so GitHub's language bar reflects the actual Go project,
+# not the large demo/markdown content.
+docs/**           linguist-documentation
+*.cast            linguist-generated
+images/**         linguist-generated
+CHANGELOG.md      linguist-generated=true
+
+# Make sure GitHub diffs show these as renamed rather than fully rewritten.
+*.go -diff=astextplain

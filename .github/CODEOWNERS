@@ -1,0 +1,13 @@
+# These owners are requested automatically as reviewers on PRs that touch the
+# given paths. Add yourself below if you are a maintainer.
+#
+# Default owners for the entire repository. Keep this in sync with the
+# GitHub user(s) actively maintaining the project.
+*                        @mattsu2020
+
+# High-trust paths: changes here affect releases, supply chain, or security.
+/.github/workflows/      @mattsu2020
+/.goreleaser.yml         @mattsu2020
+/.krew.yaml              @mattsu2020
+/SECURITY.md             @mattsu2020
+/renovate.json           @mattsu2020

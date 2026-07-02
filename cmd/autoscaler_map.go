@@ -66,9 +66,7 @@ func runAutoscalerMap(ctx context.Context, out io.Writer, opts *options, names [
 		value = outputs[0]
 	}
 
-	format, templateStr := outputSelection(outputConfig{
-		output: opts.Output, template: opts.Template, outputTemplates: opts.OutputTemplates,
-	})
+	format, templateStr := selectOutputFromOptions(opts)
 
 	return writeOutput(out, format, templateStr, value, func() error {
 		theme := style.NewTheme(shouldColorize(opts.Color, out))

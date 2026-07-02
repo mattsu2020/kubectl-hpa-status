@@ -30,6 +30,5 @@ func newMetricsProbeCommand(opts *options) *cobra.Command {
 }
 
 func runMetricsProbe(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	local := applyCommandPreset(opts, presetMetricsProbe)
-	return runStatusMany(ctx, out, &local, names, !local.NoInterpret)
+	return runStatusWithPreset(ctx, out, opts, presetMetricsProbe, names)
 }

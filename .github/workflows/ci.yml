@@ -17,7 +17,17 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      # Cross-platform matrix: the plugin is cross-compiled for linux/darwin/
+      # windows on amd64/arm64, but unit tests previously only ran on Linux.
+      # macOS coverage catches filesystem and path-handling regressions
+      # (history store, kubeconfig resolution) that Linux does not surface.
+      # Windows is excluded for now because the TUI and shell-completion paths
+      # depend on Unix-only behavior; adding it is tracked in ROADMAP.md.
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -33,6 +43,9 @@ jobs:
         # Fails if go.mod or go.sum are out of sync with the imports actually
         # used, preventing an un-tidy module from merging. Mirrors the local
         # `make tidy` gate so contributors hit this before pushing.
+        # Run on Linux only; module state is OS-independent and macOS minutes
+        # are billed at a higher rate on private repos.
+        if: matrix.os == 'ubuntu-latest'
         run: |
           go mod tidy
           git diff --exit-code go.mod go.sum
@@ -40,6 +53,7 @@ jobs:
       - name: Check gofmt
         # Reject un-gofmt'd Go so the lint job does not have to surface basic
         # formatting errors. Mirrors the local `make fmt-check` target.
+        if: matrix.os == 'ubuntu-latest'
         run: |
           out=$(gofmt -l cmd/ pkg/ internal/)
           if [ -n "$out" ]; then
@@ -54,9 +68,13 @@ jobs:
       - name: Race detector
         # Run the race detector on the pure-logic packages where concurrency
         # matters most (pkg/hpa atomic clock, cmd concurrent report building).
+        # Linux-only: macOS/Windows runners are slower and the race detector
+        # behavior we care about is OS-independent.
+        if: matrix.os == 'ubuntu-latest'
         run: go test -race ./pkg/... ./cmd/... ./internal/...
 
       - name: Coverage
+        if: matrix.os == 'ubuntu-latest'
         run: |
           go test -coverprofile=coverage.out ./...
           go tool cover -func=coverage.out
@@ -64,6 +82,7 @@ jobs:
           go tool cover -func=coverage.out | grep total | awk '{print "Total coverage: "$3}'
 
       - name: Check coverage threshold
+        if: matrix.os == 'ubuntu-latest'
         run: |
           # Tiered regression gates: the core analysis package (pkg/hpa) is held
           # to a higher bar than cmd/ (which has thinner integration coverage).
@@ -83,27 +102,32 @@ jobs:
           check "cmd" "$(func_avg '/cmd/')" 45
 
       - name: Check README sync
+        if: matrix.os == 'ubuntu-latest'
         run: bash scripts/check-readme-sync.sh
 
       - name: Upload coverage artifact
+        if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v7
         with:
           name: coverage
           path: coverage.out
 
       - name: Upload coverage to Codecov
+        if: matrix.os == 'ubuntu-latest'
         uses: codecov/codecov-action@v7
         with:
           files: coverage.out
           fail_ci_if_error: false
 
       - name: govulncheck
+        if: matrix.os == 'ubuntu-latest'
         uses: golang/govulncheck-action@v1
         with:
           go-version-file: go.mod
           go-package: ./...
 
       - name: gosec
+        if: matrix.os == 'ubuntu-latest'
         uses: securego/gosec@v2.27.1
         with:
           # -exclude disables rules that are intentional for this codebase:
@@ -136,6 +160,38 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12.2
+
+  # Forward-compatibility gate: build and test against the next Go release in
+  # addition to the version pinned in go.mod. Catches upstream API removals and
+  # stdlib behavior changes before they land in the supported toolchain. Allowed
+  # to fail (continue-on-error) so a beta-toolchain hiccup does not block a PR,
+  # but surfaces regressions on the dashboard.
+  forward-compat:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: ['1.27', 'rc']
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Go ${{ matrix.go-version }}
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ matrix.go-version }}
+          # Do not use the cache keyed on go.mod; this job intentionally uses
+          # a different toolchain.
+          cache: false
+
+      - name: Build
+        run: go build ./...
+
+      - name: Test
+        run: go test ./...
 
   e2e:
     runs-on: ubuntu-latest

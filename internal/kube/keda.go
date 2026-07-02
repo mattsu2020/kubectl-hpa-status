@@ -12,7 +12,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
 )
 
 var scaledObjectGVR = schema.GroupVersionResource{
@@ -208,21 +207,7 @@ func ExtractKEDAInfo(u *unstructured.Unstructured) KEDAInfo {
 
 // NewDynamicClient creates a dynamic client from the same Options used for the typed client.
 func NewDynamicClient(opts Options) (dynamic.Interface, string, error) {
-	loadingRules := newLoadingRules(opts)
-	overrides := newOverrides(opts)
-
-	clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, overrides)
-
-	namespace := opts.Namespace
-	if namespace == "" {
-		var err error
-		namespace, _, err = clientConfig.Namespace()
-		if err != nil {
-			return nil, "", err
-		}
-	}
-
-	restConfig, err := clientConfig.ClientConfig()
+	namespace, restConfig, err := resolveNamespaceAndRestConfig(opts)
 	if err != nil {
 		return nil, "", err
 	}

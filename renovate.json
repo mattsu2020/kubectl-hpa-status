@@ -1,23 +1,66 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended"
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits"
   ],
   "labels": [
     "dependencies"
   ],
+  "schedule": [
+    "before 6am on Monday"
+  ],
+  "enabledManagers": [
+    "gomod",
+    "github-actions"
+  ],
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": [
+      "security"
+    ]
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": [
+      "before 6am on Monday"
+    ]
+  },
   "packageRules": [
     {
+      "description": "Group Kubernetes client libraries so they move together and stay API-compatible.",
       "matchPackageNames": [
         "/^k8s\\.io\\//"
       ],
       "groupName": "kubernetes client libraries"
     },
     {
+      "description": "Group golang.org/x libraries.",
       "matchPackageNames": [
         "/^golang\\.org\\/x\\//"
       ],
       "groupName": "golang x libraries"
+    },
+    {
+      "description": "Group the TUI stack (charmbracelet + muesli) so Bubble Tea updates land together.",
+      "matchPackageNames": [
+        "/^github\\.com/charmbracelet\\//",
+        "/^github\\.com/muesli\\//"
+      ],
+      "groupName": "charmbracelet TUI stack"
+    },
+    {
+      "description": "Auto-merge patch and minor updates for dev dependencies after CI passes. Major versions stay manual.",
+      "matchUpdateTypes": [
+        "patch",
+        "minor"
+      ],
+      "matchDepTypes": [
+        "devDependencies",
+        "dev"
+      ],
+      "automerge": false
     }
   ]
 }
