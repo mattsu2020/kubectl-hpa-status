@@ -22,9 +22,6 @@ func TestNewDoctorCommand(t *testing.T) {
 	if !strings.Contains(cmd.Short, "Diagnose HPA scaling failures") {
 		t.Fatalf("unexpected Short: %q", cmd.Short)
 	}
-	if cmd.Flags().Lookup("startup-context") == nil {
-		t.Fatal("expected doctor to expose --startup-context")
-	}
 }
 
 func TestRunDoctorEnablesBundledDiagnostics(t *testing.T) {

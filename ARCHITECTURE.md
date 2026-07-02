@@ -23,15 +23,22 @@ Inference should be labeled with confidence language and covered by tests.
 
 | Path | Responsibility |
 | --- | --- |
-| `cmd/` | Cobra commands, flags, Kubernetes client orchestration, output format routing (~70 files, one feature/subcommand per file) |
+| `cmd/` | Cobra commands, flags, Kubernetes client orchestration, output format routing (~80 files, one feature/subcommand per file) |
 | `pkg/hpa/` | Importable analysis model: HPA signal extraction, health scoring, suggestions, diagnostics, and text/Markdown/HTML/SARIF rendering |
-| `internal/kube/` | kubeconfig resolution, client construction, KEDA/VPA/node/quota reads, scale-target and pod info, test helpers |
+| `pkg/hpa/render/` | Shared report renderers (Markdown/HTML/list/incident) extracted from the root `pkg/hpa` `*_text.go` files |
+| `pkg/style/` | Terminal color and semantic styling (shared by cmd and pkg/hpa renderers) |
+| `internal/kube/` | kubeconfig resolution, client construction, KEDA/VPA/node/quota reads, scale-target and pod info |
+| `internal/kubeconv/` | DTO translation `internal/kube` → `pkg/hpa` analysis types; the boundary layer that keeps `internal/kube` free of `pkg/hpa` imports |
 | `internal/enrichment/` | Batched KEDA/VPA enrichment context and status tracking |
-| `internal/tui/` | Bubble Tea dashboard: model/update/view plus a per-view renderer |
+| `internal/cmdoptions/` | Structured CLI option model + presets + normalization, decoupled from cobra; accessed from `cmd/` only through `cmd/options_bridge.go` |
+| `internal/render/` | Pure output-format routing (json/yaml/jsonpath/template/prometheus/markdown/html/incident), with `cmd/output.go` as a thin facade |
+| `internal/patch/` | RFC 7396 JSON merge patch helpers for suggestions |
+| `internal/tui/` | Bubble Tea dashboard: model/update/view plus per-view renderers |
 | `internal/history/` | Health snapshot store for trend/sparkline replay |
 | `internal/i18n/` | Embedded locale bundles (en/ja), dynamically loaded from `locales/` |
-| `pkg/style/` | Terminal color and semantic styling (shared by cmd and pkg/hpa renderers) |
-| `internal/patch/` | Strategic merge patch helpers for suggestions |
+| `internal/testutil/` | Shared fake-client/HPA/workload builders used by `cmd/`, `internal/`, and `pkg/hpa` tests |
+| `cmd/internal/{client,errs,output}` | Lifted helpers (client construction, sentinel errors, output predicates) following the facade-then-migrate pattern |
+| `cmd/bundle/` | Bundle report renderer layer, extracted from `cmd/` |
 | `test/e2e/` | kind-backed command path tests |
 
 `pkg/hpa/` files follow a per-domain suffix convention: `analysis.go`
@@ -66,8 +73,15 @@ Refactoring notes:
   (`hpaanalysis.EventsFromCore`) are centralized in `internal/kube/hpa.go` and
   `pkg/hpa/events.go` respectively; commands call them instead of inlining the
   raw client calls.
-- Client creation goes through `newClientOrDefault` (`cmd/client_helpers.go`)
-  so the standard "failed to create Kubernetes client" message is shared.
+- Client creation goes through `newClientOrDefault` (`cmd/client_helpers.go`,
+  re-exporting `cmd/internal/client`) so the standard "failed to create
+  Kubernetes client" message is shared. A small set of commands
+  (`list`, `autoscaler_map`, `blockers`, `capacity_plan`, `rollout`,
+  `completion`, `apply`) intentionally call `opts.NewClient()` directly to
+  bypass that wrapper — each bypass site carries a comment stating why (e.g.
+  structured JSON/YAML output must stay schema-clean, shell completion must
+  stay silent, client failure is non-fatal). See `client_helpers.go` for the
+  full rationale.
 - `EnrichmentStatus` on `Analysis` is now a typed `*hpaanalysis.EnrichmentStatus`
   (mirror of `internal/enrichment.Status` via `Status.ToAnalysisStatus`) instead
   of `interface{}`.
