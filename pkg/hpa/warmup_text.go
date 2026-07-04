@@ -5,7 +5,7 @@ import (
 	"io"
 	"math"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/warmup"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )

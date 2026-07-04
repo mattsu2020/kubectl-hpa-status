@@ -3,7 +3,7 @@ package tui
 import (
 	"context"
 
-	"github.com/charmbracelet/bubbles/textinput"
+	"charm.land/bubbles/v2/textinput"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/audit"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"

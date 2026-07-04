@@ -14,9 +14,9 @@ import (
 )
 
 type blockerOutput struct {
-	Namespace string                     `json:"namespace" yaml:"namespace"`
-	Name      string                     `json:"name" yaml:"name"`
-	Target    string                     `json:"target" yaml:"target"`
+	Namespace string          `json:"namespace" yaml:"namespace"`
+	Name      string          `json:"name" yaml:"name"`
+	Target    string          `json:"target" yaml:"target"`
 	Report    *blocker.Report `json:"blockerReport" yaml:"blockerReport"`
 }
 

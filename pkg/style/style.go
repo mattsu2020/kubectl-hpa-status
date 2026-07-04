@@ -5,8 +5,8 @@ package style
 import (
 	"fmt"
 
-	"github.com/charmbracelet/lipgloss"
-	"github.com/muesli/termenv"
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/colorprofile"
 )
 
 // Theme holds all styled renderers used by the CLI output layer.
@@ -36,26 +36,23 @@ func NewTheme(colorEnabled bool) Theme {
 		return Theme{enabled: false}
 	}
 
-	// Use an explicit renderer with ANSI color profile so styles produce
-	// escape codes even when stdout is not a terminal (important for tests
-	// and piped output with --color=always).
-	r := lipgloss.NewRenderer(nil)
-	r.SetColorProfile(termenv.ANSI256)
-
-	newStyle := func() lipgloss.Style {
-		return r.NewStyle()
-	}
+	// lipgloss v2 downsamples colors at write time via the global
+	// lipgloss.Writer (a colorprofile.Writer). Pin its Profile to TrueColor so
+	// styles emit full-fidelity ANSI codes even when stdout is not a terminal
+	// (important for tests and piped output with --color=always). This replaces
+	// the v1 pattern of constructing a renderer with an explicit profile.
+	lipgloss.Writer.Profile = colorprofile.TrueColor
 
 	return Theme{
 		enabled: true,
-		OK:      newStyle().Foreground(lipgloss.Color("2")).Bold(true),
-		Error:   newStyle().Foreground(lipgloss.Color("1")).Bold(true),
-		Limited: newStyle().Foreground(lipgloss.Color("3")).Bold(true),
-		Header:  newStyle().Bold(true),
-		Dim:     newStyle().Faint(true),
-		Bold:    newStyle().Bold(true),
-		Warning: newStyle().Foreground(lipgloss.Color("3")),
-		Success: newStyle().Foreground(lipgloss.Color("2")),
+		OK:      lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Bold(true),
+		Error:   lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Bold(true),
+		Limited: lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true),
+		Header:  lipgloss.NewStyle().Bold(true),
+		Dim:     lipgloss.NewStyle().Faint(true),
+		Bold:    lipgloss.NewStyle().Bold(true),
+		Warning: lipgloss.NewStyle().Foreground(lipgloss.Color("3")),
+		Success: lipgloss.NewStyle().Foreground(lipgloss.Color("2")),
 	}
 }
 

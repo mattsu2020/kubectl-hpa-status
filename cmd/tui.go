@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/tui"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/audit"
@@ -102,7 +102,7 @@ func runTUI(ctx context.Context, out io.Writer, opts *options, initialName strin
 	})
 	model = model.WithContext(ctx)
 
-	_, err = tea.NewProgram(model, tea.WithAltScreen(), tea.WithContext(ctx), tea.WithOutput(out)).Run()
+	_, err = tea.NewProgram(model, tea.WithContext(ctx), tea.WithOutput(out)).Run()
 	return err
 }
 

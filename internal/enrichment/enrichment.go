@@ -244,6 +244,7 @@ func buildKEDAAnalysis(info kube.KEDAInfo, hpa *autoscalingv2.HorizontalPodAutos
 		CooldownPeriod:   info.CooldownPeriod,
 		MinReplicaCount:  info.MinReplicaCount,
 		MaxReplicaCount:  info.MaxReplicaCount,
+		IdleReplicaCount: info.IdleReplicaCount,
 		Lines:            conditionLines,
 		Fallback:         fallback,
 	}

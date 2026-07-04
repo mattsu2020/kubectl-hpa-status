@@ -3,8 +3,8 @@ package tui
 import (
 	"time"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
 
@@ -152,7 +152,12 @@ func (m Model) updateBatchAudit(msg batchAuditMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-//nolint:gocyclo // Key dispatch table: each case is a flat, independent key binding handler.
+// handleKey is the key dispatch table. Each case matches one key binding and
+// delegates to either a small inline mutation or a named handler method (see
+// handleXxxKey below). Keeping each binding isolated makes the dispatch flat
+// and each handler independently testable.
+//
+//nolint:gocyclo // Key dispatch table: complexity is bounded by the number of bindings (~25) and cannot drop below it without sacrificing the readable per-binding case structure.
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case key.Matches(msg, m.keys.Quit):
@@ -184,40 +189,13 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case key.Matches(msg, m.keys.Help):
-		if m.viewMode == helpView {
-			m.viewMode = listView
-		} else {
-			m.viewMode = helpView
-		}
-		return m, nil
+		return m.toggleHelpView(), nil
 
 	case key.Matches(msg, m.keys.Sort):
-		sortCycle := []string{"name", "health-score", "issue", "namespace"}
-		found := false
-		for i, f := range sortCycle {
-			if m.sortField == f {
-				m.sortField = sortCycle[(i+1)%len(sortCycle)]
-				found = true
-				break
-			}
-		}
-		if !found {
-			m.sortField = "health-score"
-		}
-		m.sortDescending = !m.sortDescending
-		m.sortItems()
-		m.cursor = 0
-		return m, nil
+		return m.handleSortKey(), nil
 
 	case key.Matches(msg, m.keys.JumpProblem):
-		filtered := m.filteredItems()
-		for i, item := range filtered {
-			if item.Health != string(hpaanalysis.HealthOK) {
-				m.cursor = i
-				break
-			}
-		}
-		return m, nil
+		return m.handleJumpProblemKey(), nil
 
 	case key.Matches(msg, m.keys.Metrics):
 		if m.viewMode == detailView || m.viewMode == listView {
@@ -226,34 +204,13 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case key.Matches(msg, m.keys.ToggleSelect):
-		if m.viewMode == listView {
-			filtered := m.filteredItems()
-			if m.cursor >= 0 && m.cursor < len(filtered) {
-				k := filtered[m.cursor].Namespace + "/" + filtered[m.cursor].Name
-				m.selected[k] = !m.selected[k]
-				m.batchApplyConfirm = false
-				m.batchApplyPreview = nil
-			}
-		}
-		return m, nil
+		return m.handleToggleSelectKey(), nil
 
 	case key.Matches(msg, m.keys.SelectAll):
-		if m.viewMode == listView {
-			for _, item := range m.filteredItems() {
-				m.selected[item.Namespace+"/"+item.Name] = true
-			}
-			m.batchApplyConfirm = false
-			m.batchApplyPreview = nil
-		}
-		return m, nil
+		return m.handleSelectAllKey(), nil
 
 	case key.Matches(msg, m.keys.DeselectAll):
-		if m.viewMode == listView {
-			m.selected = map[string]bool{}
-			m.batchApplyConfirm = false
-			m.batchApplyPreview = nil
-		}
-		return m, nil
+		return m.handleDeselectAllKey(), nil
 
 	case key.Matches(msg, m.keys.History):
 		if m.viewMode == detailView {
@@ -263,21 +220,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case key.Matches(msg, m.keys.Hints):
-		if m.viewMode == detailView {
-			filtered := m.filteredItems()
-			if m.cursor >= 0 && m.cursor < len(filtered) {
-				item := filtered[m.cursor]
-				k := item.Namespace + "/" + item.Name
-				if report, ok := m.reports[k]; ok && report.Analysis.MetricHints != nil {
-					flows := hpaanalysis.BuildTroubleshootingFlows(report.Analysis.MetricHints.Hints)
-					if len(flows) > 0 {
-						m.hintsState = &hintsState{flows: flows}
-						m.viewMode = hintsView
-					}
-				}
-			}
-		}
-		return m, nil
+		return m.handleHintsKey(), nil
 
 	case key.Matches(msg, m.keys.Overview):
 		if m.viewMode == listView {
@@ -301,76 +244,204 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleBatchApplyKey()
 
 	case key.Matches(msg, m.keys.MetricMode):
-		if m.viewMode == simView && m.simState != nil {
-			m.simState.metricMode = !m.simState.metricMode
-			if m.simState.metricMode {
-				m.simState.metricInput.Focus()
-			} else {
-				m.simState.metricInput.Blur()
-			}
-		}
-		return m, nil
+		return m.handleMetricModeKey(), nil
 
 	case key.Matches(msg, m.keys.DryRun):
-		if m.viewMode == fixView && m.fixState != nil && len(m.fixState.suggestions) > 0 {
-			suggestion := m.fixState.suggestions[m.fixState.selected]
-			switch {
-			case suggestion.Patch != "":
-				m.fixState.dryRunResult = "patch preview: " + suggestion.Patch
-			case suggestion.Command != "":
-				m.fixState.dryRunResult = "command preview: " + suggestion.Command
-			default:
-				m.fixState.dryRunResult = "no patch or command available for this suggestion"
-			}
-			m.fixState.applied = false
-			m.fixState.applyErr = nil
-		}
-		return m, nil
+		return m.handleDryRunKey(), nil
 
 	case key.Matches(msg, m.keys.TabField):
-		if m.viewMode == simView && m.simState != nil && !m.simState.metricMode {
-			m.simState.focusIndex++
-			if m.simState.focusIndex >= len(m.simState.fields) {
-				m.simState.focusIndex = 0
-			}
-		}
-		return m, nil
+		return m.handleTabField(+1), nil
 
 	case key.Matches(msg, m.keys.ShiftTabField):
-		if m.viewMode == simView && m.simState != nil && !m.simState.metricMode {
-			m.simState.focusIndex--
-			if m.simState.focusIndex < 0 {
-				m.simState.focusIndex = len(m.simState.fields) - 1
-			}
-		}
-		return m, nil
+		return m.handleTabField(-1), nil
 
 	case key.Matches(msg, m.keys.IntervalUp):
-		step := m.interval / 2
-		if step < time.Second {
-			step = time.Second
-		}
-		newInterval := m.interval - step
-		if newInterval < time.Second {
-			newInterval = time.Second
-		}
-		m.interval = newInterval
-		return m, nil
+		return m.handleIntervalKey(-1), nil
 
 	case key.Matches(msg, m.keys.IntervalDown):
-		step := m.interval / 2
-		if step < time.Second {
-			step = time.Second
-		}
-		newInterval := m.interval + step
-		if newInterval > 60*time.Second {
-			newInterval = 60 * time.Second
-		}
-		m.interval = newInterval
-		return m, nil
+		return m.handleIntervalKey(+1), nil
 	}
 
 	return m, nil
+}
+
+// toggleHelpView flips between the help overlay and the previous list view.
+func (m Model) toggleHelpView() Model {
+	if m.viewMode == helpView {
+		m.viewMode = listView
+	} else {
+		m.viewMode = helpView
+	}
+	return m
+}
+
+// handleSortKey cycles through the sort fields (name → health-score → issue →
+// namespace) and toggles the sort direction on each press.
+func (m Model) handleSortKey() Model {
+	sortCycle := []string{"name", "health-score", "issue", "namespace"}
+	found := false
+	for i, f := range sortCycle {
+		if m.sortField == f {
+			m.sortField = sortCycle[(i+1)%len(sortCycle)]
+			found = true
+			break
+		}
+	}
+	if !found {
+		m.sortField = "health-score"
+	}
+	m.sortDescending = !m.sortDescending
+	m.sortItems()
+	m.cursor = 0
+	return m
+}
+
+// handleJumpProblemKey moves the cursor to the first non-OK item in the list.
+func (m Model) handleJumpProblemKey() Model {
+	filtered := m.filteredItems()
+	for i, item := range filtered {
+		if item.Health != string(hpaanalysis.HealthOK) {
+			m.cursor = i
+			break
+		}
+	}
+	return m
+}
+
+// handleToggleSelectKey toggles selection on the item under the cursor and
+// resets any pending batch-apply preview.
+func (m Model) handleToggleSelectKey() Model {
+	if m.viewMode == listView {
+		filtered := m.filteredItems()
+		if m.cursor >= 0 && m.cursor < len(filtered) {
+			k := filtered[m.cursor].Namespace + "/" + filtered[m.cursor].Name
+			m.selected[k] = !m.selected[k]
+			m.batchApplyConfirm = false
+			m.batchApplyPreview = nil
+		}
+	}
+	return m
+}
+
+// handleSelectAllKey selects every filtered item.
+func (m Model) handleSelectAllKey() Model {
+	if m.viewMode == listView {
+		for _, item := range m.filteredItems() {
+			m.selected[item.Namespace+"/"+item.Name] = true
+		}
+		m.batchApplyConfirm = false
+		m.batchApplyPreview = nil
+	}
+	return m
+}
+
+// handleDeselectAllKey clears the selection set.
+func (m Model) handleDeselectAllKey() Model {
+	if m.viewMode == listView {
+		m.selected = map[string]bool{}
+		m.batchApplyConfirm = false
+		m.batchApplyPreview = nil
+	}
+	return m
+}
+
+// handleHintsKey opens the troubleshooting-hints view for the item under the
+// cursor when metric hints are available.
+func (m Model) handleHintsKey() Model {
+	if m.viewMode != detailView {
+		return m
+	}
+	filtered := m.filteredItems()
+	if m.cursor < 0 || m.cursor >= len(filtered) {
+		return m
+	}
+	item := filtered[m.cursor]
+	k := item.Namespace + "/" + item.Name
+	report, ok := m.reports[k]
+	if !ok || report.Analysis.MetricHints == nil {
+		return m
+	}
+	flows := hpaanalysis.BuildTroubleshootingFlows(report.Analysis.MetricHints.Hints)
+	if len(flows) > 0 {
+		m.hintsState = &hintsState{flows: flows}
+		m.viewMode = hintsView
+	}
+	return m
+}
+
+// handleMetricModeKey toggles metric-override input mode within the simulate view.
+func (m Model) handleMetricModeKey() Model {
+	if m.viewMode == simView && m.simState != nil {
+		m.simState.metricMode = !m.simState.metricMode
+		if m.simState.metricMode {
+			m.simState.metricInput.Focus()
+		} else {
+			m.simState.metricInput.Blur()
+		}
+	}
+	return m
+}
+
+// handleDryRunKey previews the currently-selected fix suggestion without applying it.
+func (m Model) handleDryRunKey() Model {
+	if m.viewMode != fixView || m.fixState == nil || len(m.fixState.suggestions) == 0 {
+		return m
+	}
+	suggestion := m.fixState.suggestions[m.fixState.selected]
+	switch {
+	case suggestion.Patch != "":
+		m.fixState.dryRunResult = "patch preview: " + suggestion.Patch
+	case suggestion.Command != "":
+		m.fixState.dryRunResult = "command preview: " + suggestion.Command
+	default:
+		m.fixState.dryRunResult = "no patch or command available for this suggestion"
+	}
+	m.fixState.applied = false
+	m.fixState.applyErr = nil
+	return m
+}
+
+// handleTabField moves the input focus within the simulate view by delta
+// (+1 forward / -1 backward), wrapping at both ends.
+func (m Model) handleTabField(delta int) Model {
+	if m.viewMode != simView || m.simState == nil || m.simState.metricMode {
+		return m
+	}
+	n := len(m.simState.fields)
+	if n == 0 {
+		return m
+	}
+	m.simState.focusIndex += delta
+	if m.simState.focusIndex >= n {
+		m.simState.focusIndex = 0
+	}
+	if m.simState.focusIndex < 0 {
+		m.simState.focusIndex = n - 1
+	}
+	return m
+}
+
+// handleIntervalKey adjusts the auto-refresh interval by delta half-steps
+// (delta=+1 lengthens, -1 shortens), clamped to [1s, 60s].
+func (m Model) handleIntervalKey(delta int) Model {
+	step := m.interval / 2
+	if step < time.Second {
+		step = time.Second
+	}
+	var newInterval time.Duration
+	if delta >= 0 {
+		newInterval = m.interval + step
+		if newInterval > 60*time.Second {
+			newInterval = 60 * time.Second
+		}
+	} else {
+		newInterval = m.interval - step
+		if newInterval < time.Second {
+			newInterval = time.Second
+		}
+	}
+	m.interval = newInterval
+	return m
 }
 
 // moveCursor advances the active view's selection/scroll cursor by delta
@@ -428,19 +499,24 @@ func (m Model) handleSimFieldInput(msg tea.KeyMsg) (tea.Model, bool) {
 	if m.simState == nil || len(m.simState.fields) == 0 {
 		return m, false
 	}
-	switch msg.Type {
-	case tea.KeyBackspace, tea.KeyCtrlH:
+	// bubble tea v2: match on the key's String() form for special keys and
+	// inspect Key().Code/Text for printable input. Both backspace and ctrl+h
+	// are destructive; everything else that carries printable text is filtered
+	// to the numeric grammar the simulate fields accept.
+	k := msg.Key()
+	switch k.Code {
+	case tea.KeyBackspace:
 		field := &m.simState.fields[m.simState.focusIndex]
 		if len(field.Value) > 0 {
 			field.Value = field.Value[:len(field.Value)-1]
 		}
 		return m, true
-	case tea.KeyRunes:
-		if len(msg.Runes) == 0 {
+	default:
+		if len(k.Text) == 0 {
 			return m, false
 		}
 		changed := false
-		for _, r := range msg.Runes {
+		for _, r := range k.Text {
 			if (r >= '0' && r <= '9') || r == '-' || r == '.' {
 				field := &m.simState.fields[m.simState.focusIndex]
 				field.Value += string(r)
@@ -449,7 +525,6 @@ func (m Model) handleSimFieldInput(msg tea.KeyMsg) (tea.Model, bool) {
 		}
 		return m, changed
 	}
-	return m, false
 }
 
 // handleEnter processes the Enter key based on the current view mode.

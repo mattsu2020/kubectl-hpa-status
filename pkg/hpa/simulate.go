@@ -1,6 +1,7 @@
 package hpa
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -137,7 +138,7 @@ func parseNonNegativeInt32(value string, minVal int32, errMsg string) (int32, er
 		return 0, err
 	}
 	if v < minVal {
-		return 0, fmt.Errorf("%s", errMsg)
+		return 0, errors.New(errMsg)
 	}
 	return v, nil
 }

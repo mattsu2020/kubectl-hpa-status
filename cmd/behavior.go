@@ -7,7 +7,6 @@ import (
 	"math"
 	"strings"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	"github.com/spf13/cobra"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
@@ -53,13 +52,9 @@ func newBehaviorCommand(opts *options) *cobra.Command {
 }
 
 func runBehavior(ctx context.Context, out io.Writer, opts *options, name string) error {
-	client, err := newClientOrDefault(opts)
+	_, hpa, err := lookupHPA(ctx, opts, name)
 	if err != nil {
-		return fmt.Errorf("creating client: %w", err)
-	}
-	hpa, err := kube.GetHPAFromClient(ctx, client, name)
-	if err != nil {
-		return wrapHPALookupError(client.Namespace, name, err)
+		return err
 	}
 
 	result := buildBehaviorOutput(hpa)
