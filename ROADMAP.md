@@ -72,7 +72,7 @@ user-visible behavior change.
 
   Step 1+2 are safe to land incrementally (no behavior change); step 3+4 are
   the breaking boundary. The grouping above mirrors the existing
-  `internal/hpa/{keda,vpa,blocker,warmup,flapping,churn,policy,lint,readiness}`
+  `pkg/hpa/{keda,vpa,blocker,warmup,flapping,churn,policy,lint,readiness}`
   sub-package boundaries so each group maps to one owning sub-package.
 - **Re-evaluate testutil SA1019 suppressions:** `internal/testutil` uses
   `fake.NewSimpleClientset` (deprecated, no applyconfig replacement). Re-check

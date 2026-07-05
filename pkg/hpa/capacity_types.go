@@ -1,5 +1,7 @@
 package hpa
 
+import "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
+
 // CapacityContext holds infrastructure capacity analysis for the HPA scale target.
 type CapacityContext struct {
 	PendingPods      []PendingPodInfo  `json:"pendingPods,omitempty" yaml:"pendingPods,omitempty"`
@@ -54,7 +56,7 @@ type CapacityPlanInput struct {
 	// LimitRanges holds LimitRange min/max constraints for containers and pods.
 	LimitRanges []LimitRangeConstraint
 	// NodeCapacity holds aggregate node allocatable resources.
-	NodeCapacity *NodeCapacitySummary
+	NodeCapacity *blocker.NodeCapacitySummary
 	// PendingPods lists pods in Pending phase for the scale target.
 	PendingPods []PendingPodInfo
 	// PDBs lists PodDisruptionBudgets in the namespace.

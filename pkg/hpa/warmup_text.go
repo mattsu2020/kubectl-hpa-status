@@ -5,12 +5,13 @@ import (
 	"io"
 	"math"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/warmup"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
 // AppendWarmupText writes the warmup analysis section to out.
-func AppendWarmupText(out *[]byte, analysis *WarmupAnalysis, theme style.Theme, lbls labels) {
+func AppendWarmupText(out *[]byte, analysis *warmup.Analysis, theme style.Theme, lbls labels) {
 	if analysis == nil {
 		return
 	}
@@ -62,7 +63,7 @@ func AppendWarmupText(out *[]byte, analysis *WarmupAnalysis, theme style.Theme, 
 }
 
 // WriteWarmupText writes a standalone warmup report.
-func WriteWarmupText(w io.Writer, analysis *WarmupAnalysis, theme style.Theme) error {
+func WriteWarmupText(w io.Writer, analysis *warmup.Analysis, theme style.Theme) error {
 	if analysis == nil {
 		return nil
 	}
@@ -74,7 +75,7 @@ func WriteWarmupText(w io.Writer, analysis *WarmupAnalysis, theme style.Theme) e
 }
 
 // WriteWarmupMarkdown renders a WarmupAnalysis as a Markdown section.
-func WriteWarmupMarkdown(w io.Writer, analysis *WarmupAnalysis) error {
+func WriteWarmupMarkdown(w io.Writer, analysis *warmup.Analysis) error {
 	if analysis == nil {
 		return nil
 	}
@@ -106,7 +107,7 @@ func WriteWarmupMarkdown(w io.Writer, analysis *WarmupAnalysis) error {
 }
 
 // WriteWarmupHTML renders a WarmupAnalysis as an HTML section.
-func WriteWarmupHTML(w io.Writer, analysis *WarmupAnalysis) error {
+func WriteWarmupHTML(w io.Writer, analysis *warmup.Analysis) error {
 	if analysis == nil {
 		return nil
 	}

@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -196,7 +196,7 @@ func defaultKeys() keyMap {
 			key.WithHelp("m", "metrics detail"),
 		),
 		ToggleSelect: key.NewBinding(
-			key.WithKeys(" "),
+			key.WithKeys("space", " "),
 			key.WithHelp("space", "toggle select"),
 		),
 		SelectAll: key.NewBinding(

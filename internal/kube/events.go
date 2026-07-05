@@ -43,6 +43,10 @@ func FetchRecentEventsForObjects(ctx context.Context, client kubernetes.Interfac
 
 	events, err := client.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
+		// Best-effort: an Events List failure (RBAC denial on events, API
+		// server hiccup) is indistinguishable from "no events" to the caller.
+		// The status report degrades to omitting the events section rather
+		// than failing the whole command.
 		return nil
 	}
 	var result []EventInfo

@@ -180,11 +180,6 @@ Refactoring notes:
 - The `record` / `replay` cobra command constructors live in
   `replay_commands.go`; the heavy lifting stays in `replay_lab*.go` and
   `runRecord` (in `timeline.go`).
-- Deprecated flag aliases (`--recommend`, `--export-patch`) are annotated
-  `[deprecated]` in `--help` via `markFlagDeprecated` and emit a one-time
-  stderr notice through `internal/cmdoptions.warnDeprecatedOnce` when
-  actually used. Both are scheduled for removal in v2.0 (see `ROADMAP.md`),
-  alongside the hidden `analyze` subcommand.
 - Test files are organised by source area rather than as monolithic grab-bags:
   `commands_batch_test.go` (run-command smoke tests),
   `render_batch_test.go` (renderer smoke tests),
@@ -426,7 +421,10 @@ and scaling policies. Clusters without KEDA installed do not pay this cost.
 
 - Add an opt-in direct CRD fetch that bypasses the heuristic entirely
 - Cache ScaledObject lookups to reduce API server load during watch/list
-- Support KEDA v1alpha2 API version alongside v1alpha1
+- Extract `spec.idleReplicaCount` from KEDA ScaledObjects (currently the only
+  replica-count field not surfaced by `ExtractKEDAInfo`; `minReplicaCount`
+  and `maxReplicaCount` are already covered). KEDA serves ScaledObject only
+  at `keda.sh/v1alpha1` — there is no `v1alpha2` to multiplex.
 
 ## Large Cluster Lists
 

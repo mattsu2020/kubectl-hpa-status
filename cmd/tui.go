@@ -7,9 +7,10 @@ import (
 	"os"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/tui"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/audit"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -85,7 +86,7 @@ func runTUI(ctx context.Context, out io.Writer, opts *options, initialName strin
 			}
 			return nil
 		},
-		AuditFn: func(auditCtx context.Context, ns, name string) (*hpaanalysis.AuditReport, error) {
+		AuditFn: func(auditCtx context.Context, ns, name string) (*audit.Report, error) {
 			hpa, err := client.Interface.AutoscalingV2().
 				HorizontalPodAutoscalers(ns).
 				Get(auditCtx, name, metav1.GetOptions{})
@@ -96,12 +97,12 @@ func runTUI(ctx context.Context, out io.Writer, opts *options, initialName strin
 			if hpa.Spec.MinReplicas != nil {
 				minReplicas = *hpa.Spec.MinReplicas
 			}
-			return hpaanalysis.AuditHPA(hpa, minReplicas), nil
+			return audit.Run(hpa, minReplicas), nil
 		},
 	})
 	model = model.WithContext(ctx)
 
-	_, err = tea.NewProgram(model, tea.WithAltScreen(), tea.WithContext(ctx), tea.WithOutput(out)).Run()
+	_, err = tea.NewProgram(model, tea.WithContext(ctx), tea.WithOutput(out)).Run()
 	return err
 }
 

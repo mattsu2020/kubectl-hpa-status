@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	"github.com/spf13/cobra"
 )
 
@@ -43,13 +42,9 @@ func newEstimateCommand(opts *options) *cobra.Command {
 }
 
 func runEstimate(ctx context.Context, out io.Writer, opts *options, name string, proposedMax int32, podCost float64, carbonKg float64) error {
-	client, err := newClientOrDefault(opts)
+	_, hpa, err := lookupHPA(ctx, opts, name)
 	if err != nil {
 		return err
-	}
-	hpa, err := kube.GetHPAFromClient(ctx, client, name)
-	if err != nil {
-		return wrapHPALookupError(client.Namespace, name, err)
 	}
 	if proposedMax <= 0 {
 		return fmt.Errorf("--max-replicas must be greater than zero")

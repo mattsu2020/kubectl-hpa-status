@@ -94,10 +94,11 @@ func TestExtractKEDAInfo(t *testing.T) {
 				"namespace": "default",
 			},
 			"spec": map[string]any{
-				"pollingInterval": int64(30),
-				"cooldownPeriod":  int64(300),
-				"minReplicaCount": int64(1),
-				"maxReplicaCount": int64(50),
+				"pollingInterval":  int64(30),
+				"cooldownPeriod":   int64(300),
+				"minReplicaCount":  int64(1),
+				"maxReplicaCount":  int64(50),
+				"idleReplicaCount": int64(0),
 				"triggers": []any{
 					map[string]any{
 						"type": "azure-queue",
@@ -136,6 +137,9 @@ func TestExtractKEDAInfo(t *testing.T) {
 	}
 	if info.MaxReplicaCount == nil || *info.MaxReplicaCount != 50 {
 		t.Fatalf("expected maxReplicaCount 50, got %v", info.MaxReplicaCount)
+	}
+	if info.IdleReplicaCount == nil || *info.IdleReplicaCount != 0 {
+		t.Fatalf("expected idleReplicaCount 0, got %v", info.IdleReplicaCount)
 	}
 	if len(info.Triggers) != 1 {
 		t.Fatalf("expected 1 trigger, got %d", len(info.Triggers))

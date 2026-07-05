@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"slices"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/audit"
 )
 
 // This file holds the batch audit/apply handlers and their helpers, split
@@ -30,7 +31,7 @@ func (m Model) handleBatchAuditKey() (tea.Model, tea.Cmd) {
 
 	m.batchAuditState = &batchAuditState{
 		loading: true,
-		reports: map[string]*hpaanalysis.AuditReport{},
+		reports: map[string]*audit.Report{},
 	}
 	m.viewMode = batchAuditView
 
@@ -38,7 +39,7 @@ func (m Model) handleBatchAuditKey() (tea.Model, tea.Cmd) {
 	namespace := m.namespace
 
 	return m, func() tea.Msg {
-		reports := make(map[string]*hpaanalysis.AuditReport)
+		reports := make(map[string]*audit.Report)
 		var lastErr error
 		for _, name := range selected {
 			// `name` is the selection key. It is either a bare HPA name (when a
@@ -180,16 +181,16 @@ func splitNamespaceName(key string) []string {
 }
 
 // buildBatchAuditEntries converts audit reports into display entries.
-func buildBatchAuditEntries(reports map[string]*hpaanalysis.AuditReport) []batchAuditEntry {
+func buildBatchAuditEntries(reports map[string]*audit.Report) []batchAuditEntry {
 	entries := make([]batchAuditEntry, 0, len(reports))
 	for _, report := range reports {
 		critical := 0
 		warnings := 0
 		for _, f := range report.Findings {
 			switch f.Severity {
-			case hpaanalysis.AuditSeverityCritical:
+			case audit.AuditCritical:
 				critical++
-			case hpaanalysis.AuditSeverityWarning:
+			case audit.AuditWarning:
 				warnings++
 			}
 		}

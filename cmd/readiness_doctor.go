@@ -29,14 +29,9 @@ func newReadinessDoctorCommand(opts *options) *cobra.Command {
 }
 
 func runReadinessDoctor(ctx context.Context, out io.Writer, opts *options, name string) error {
-	client, err := newClientOrDefault(opts)
+	client, hpa, err := lookupHPA(ctx, opts, name)
 	if err != nil {
 		return err
-	}
-
-	hpa, err := kube.GetHPAFromClient(ctx, client, name)
-	if err != nil {
-		return wrapHPALookupError(client.Namespace, name, err)
 	}
 
 	// Fetch scale target to get pod template (for probe info) and selector.

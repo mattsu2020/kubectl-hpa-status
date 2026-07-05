@@ -23,6 +23,7 @@ func TestAnalyze_NilInputs(t *testing.T) {
 func TestAnalyze_ReplicaBoundMismatch(t *testing.T) {
 	minRepl := int32(2)
 	maxRepl := int32(20)
+	idleRepl := int32(0)
 	hpa := &autoscalingv2.HorizontalPodAutoscaler{
 		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
 			MinReplicas: &minRepl,
@@ -30,8 +31,9 @@ func TestAnalyze_ReplicaBoundMismatch(t *testing.T) {
 		},
 	}
 	k := &Analysis{
-		MinReplicaCount: &minRepl,
-		MaxReplicaCount: &maxRepl,
+		MinReplicaCount:  &minRepl,
+		MaxReplicaCount:  &maxRepl,
+		IdleReplicaCount: &idleRepl,
 	}
 	lines := Analyze(hpa, k)
 	joined := strings.Join(lines, "\n")
@@ -41,6 +43,9 @@ func TestAnalyze_ReplicaBoundMismatch(t *testing.T) {
 	}
 	if !strings.Contains(joined, "maxReplicaCount=20 differs from HPA maxReplicas=10") {
 		t.Errorf("expected max mismatch line, got:\n%s", joined)
+	}
+	if !strings.Contains(joined, "KEDA idleReplicaCount=0 is set") {
+		t.Errorf("expected idleReplicaCount observation line, got:\n%s", joined)
 	}
 }
 

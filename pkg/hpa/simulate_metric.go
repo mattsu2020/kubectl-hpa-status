@@ -421,6 +421,10 @@ func applyUtilizationPercentOverride(value string, spec autoscalingv2.MetricSpec
 	pctStr := strings.TrimSuffix(value, "%")
 	simUtil, err := strconv.ParseInt(pctStr, 10, 32)
 	if err != nil {
+		// Best-effort: a malformed --simulate-metric override (non-numeric
+		// percent) yields no projection rather than aborting the simulate run.
+		// Validation of the flag value is deferred to here so the error path
+		// stays local to the simulation.
 		return nil
 	}
 	targetUtil := resolveTargetUtilization(spec)
@@ -437,6 +441,8 @@ func applyUtilizationPercentOverride(value string, spec autoscalingv2.MetricSpec
 func applyRelativeUtilizationOverride(value string, currentUtil int32, spec autoscalingv2.MetricSpec, original *autoscalingv2.HorizontalPodAutoscaler) *metricSimulationUpdate {
 	newUtil, err := parseRelativeValue(value, currentUtil)
 	if err != nil {
+		// Best-effort: a malformed --simulate-metric override (non-numeric
+		// relative value) yields no projection rather than aborting the run.
 		return nil
 	}
 	targetUtil := resolveTargetUtilization(spec)

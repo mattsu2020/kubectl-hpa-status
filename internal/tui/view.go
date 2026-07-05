@@ -4,12 +4,24 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
 
-// View renders the current state of the TUI.
-func (m Model) View() string {
+// View renders the current state of the TUI. Returns a tea.View so the bubble
+// tea v2 runtime can manage alt-screen and downsampling; the content itself
+// is assembled by viewContent. AltScreen is pinned on the view because v2
+// removed the program-level WithAltScreen option.
+func (m Model) View() tea.View {
+	v := tea.NewView(m.viewContent())
+	v.AltScreen = true
+	return v
+}
+
+// viewContent assembles the screen content as a plain string. Split out from
+// View so the multiple early-return paths stay simple string returns.
+func (m Model) viewContent() string {
 	if m.width == 0 {
 		return "Loading..."
 	}

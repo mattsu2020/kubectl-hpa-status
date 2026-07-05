@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/lint"
 )
 
 // WriteLintText renders a LintResult as human-readable text.
-func WriteLintText(w io.Writer, result *LintResult) error {
+func WriteLintText(w io.Writer, result *lint.Result) error {
 	if result == nil {
 		return nil
 	}
@@ -32,7 +34,7 @@ func WriteLintText(w io.Writer, result *LintResult) error {
 }
 
 // WriteLintSummary renders a severity breakdown and pass/fail status.
-func WriteLintSummary(w io.Writer, result *LintResult) error {
+func WriteLintSummary(w io.Writer, result *lint.Result) error {
 	if result == nil {
 		return nil
 	}
@@ -56,7 +58,7 @@ func WriteLintSummary(w io.Writer, result *LintResult) error {
 // WriteLintDiff renders auto-fix proposals for each finding that has one.
 // For each fixable finding, it shows the rule, severity, before/after
 // comparison, the kubectl patch command, and the risk level.
-func WriteLintDiff(w io.Writer, result *LintResult) error {
+func WriteLintDiff(w io.Writer, result *lint.Result) error {
 	if result == nil {
 		return nil
 	}
@@ -104,7 +106,7 @@ func WriteLintDiff(w io.Writer, result *LintResult) error {
 
 // WriteLintCompact renders a LintResult in one-line-per-finding format
 // suitable for CI output.
-func WriteLintCompact(w io.Writer, result *LintResult, filePath string) error {
+func WriteLintCompact(w io.Writer, result *lint.Result, filePath string) error {
 	if result == nil {
 		return nil
 	}

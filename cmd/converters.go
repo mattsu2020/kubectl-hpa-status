@@ -4,6 +4,7 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kubeconv"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
 )
 
 // This file is a thin facade that re-exports the kubeconv package under the
@@ -16,7 +17,7 @@ func convertPendingPodInfos(details []kube.PendingPodDetail) []hpaanalysis.Pendi
 	return kubeconv.PendingPodInfos(details)
 }
 
-func convertToBlockerPodInfos(details []kube.PendingPodDetail) []hpaanalysis.BlockerPodInfo {
+func convertToBlockerPodInfos(details []kube.PendingPodDetail) []blocker.PodInfo {
 	return kubeconv.ToBlockerPodInfos(details)
 }
 

@@ -107,38 +107,26 @@ func TestRunEnrichers_AbortsOnAbortOnError(t *testing.T) {
 // guard for the historical short-circuit behavior).
 func TestSimulationsEnricher_AbortsOnError(t *testing.T) {
 	opts := defaultRootOptions()
-	e := newSimulationsEnricher(&opts)
-	if !e.AbortOnError() {
-		t.Error("simulationsEnricher must return AbortOnError()=true to preserve historical behavior")
+	for _, e := range buildStatusEnrichers(&opts) {
+		if e.Name() != "simulations" {
+			continue
+		}
+		if !e.AbortOnError() {
+			t.Error("simulations enricher must return AbortOnError()=true to preserve historical behavior")
+		}
+		return
 	}
+	t.Fatal("simulations enricher not found in buildStatusEnrichers output")
 }
 
-// All non-simulations adapters default to AbortOnError()=false via defaultAbort.
+// All non-simulations adapters default to AbortOnError()=false. This guards the
+// table-driven genericEnricher spec: only the simulations entry sets abortOnError.
 func TestOtherAdapters_DoNotAbortOnError(t *testing.T) {
 	opts := defaultRootOptions()
-	// Enable each adapter's Enabled() path minimally so we exercise the
-	// concrete type's AbortOnError (it does not depend on options).
-	nonAborting := []Enricher{
-		newDecisionTracesEnricher(&opts),
-		newEventsEnricher(&opts),
-		newReportEnricher(&opts),
-		newMetricsDiagnosticsEnricher(&opts),
-		newMetricFreshnessEnricher(&opts),
-		newResourceCheckEnricher(&opts),
-		newTargetReplicaObservationsEnricher(&opts),
-		newPodAnalysisEnricher(&opts),
-		newCapacityAnalysisEnricher(&opts),
-		newRolloutAndBlockersEnricher(&opts),
-		newControllerProfileEnricher(&opts),
-		newCapacityPlanEnricher(&opts),
-		newGitOpsConflictEnricher(&opts),
-		newMetricContractAndAdapterEnricher(&opts),
-		newChurnAndFlappingEnricher(&opts),
-		newVPAAdvisoryEnricher(&opts),
-		newMetricHintsEnricher(&opts),
-		newAdvisorsEnricher(&opts),
-	}
-	for _, e := range nonAborting {
+	for _, e := range buildStatusEnrichers(&opts) {
+		if e.Name() == "simulations" {
+			continue
+		}
 		if e.AbortOnError() {
 			t.Errorf("%s: expected AbortOnError()=false", e.Name())
 		}

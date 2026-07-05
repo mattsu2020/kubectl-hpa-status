@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 )
 
@@ -153,8 +152,8 @@ func (nulWriter) Write(p []byte) (int, error) { return len(p), nil }
 
 // feats returns a Features value with the named flags enabled, for terser
 // test setup. Names match the featureSetters keys in cmdoptions/features.go.
-func feats(names ...string) cmdoptions.Features {
-	var f cmdoptions.Features
+func feats(names ...string) featuresOptions {
+	var f featuresOptions
 	for _, n := range names {
 		f.Enable(n)
 	}

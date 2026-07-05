@@ -7,7 +7,6 @@ import (
 	"io"
 	"strings"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 	"github.com/spf13/cobra"
@@ -61,14 +60,9 @@ func newSimulateCommand(opts *options) *cobra.Command {
 func runSimulate(ctx context.Context, out io.Writer, opts *options, name string,
 	setMetric, setTarget []string, tolerance string, suggest bool, _ int32) error {
 
-	client, err := newClientOrDefault(opts)
+	_, hpa, err := lookupHPA(ctx, opts, name)
 	if err != nil {
 		return err
-	}
-
-	hpa, err := kube.GetHPAFromClient(ctx, client, name)
-	if err != nil {
-		return wrapHPALookupError(client.Namespace, name, err)
 	}
 
 	// Build overrides map from flags.
