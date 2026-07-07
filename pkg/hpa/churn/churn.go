@@ -326,8 +326,10 @@ func behaviorPolicyRecommendation(hpa *autoscalingv2.HorizontalPodAutoscaler) Ch
 
 // currentStabilizationWindowSeconds returns the configured scale-down
 // stabilization window, defaulting to 300 seconds when not explicitly set.
+// A nil HPA is valid: snapshot-based callers (AnalyzeFromSnapshots) analyze
+// recorded traces without access to the live HPA object.
 func currentStabilizationWindowSeconds(hpa *autoscalingv2.HorizontalPodAutoscaler) int32 {
-	if hpa.Spec.Behavior == nil || hpa.Spec.Behavior.ScaleDown == nil {
+	if hpa == nil || hpa.Spec.Behavior == nil || hpa.Spec.Behavior.ScaleDown == nil {
 		return 300
 	}
 	if hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds == nil {

@@ -10,60 +10,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mattsu2020/kubectl-hpa-status/cmd/replaylab"
+
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"sigs.k8s.io/yaml"
 )
-
-// ReplayImpact holds computed percentage changes between current and proposed.
-type ReplayImpact struct {
-	ScaleEventReductionPct float64 `json:"scaleEventReductionPct,omitempty" yaml:"scaleEventReductionPct,omitempty"`
-	PodHoursChangePct      float64 `json:"podHoursChangePct,omitempty" yaml:"podHoursChangePct,omitempty"`
-	UnderProvisionFixed    bool    `json:"underProvisionFixed,omitempty" yaml:"underProvisionFixed,omitempty"`
-	AdditionalWorstCase    int32   `json:"additionalWorstCase,omitempty" yaml:"additionalWorstCase,omitempty"`
-	NoMissedScaleUp        bool    `json:"noMissedScaleUp,omitempty" yaml:"noMissedScaleUp,omitempty"`
-}
-
-type replayLabReport struct {
-	Namespace       string                     `json:"namespace" yaml:"namespace"`
-	Name            string                     `json:"name" yaml:"name"`
-	Record          string                     `json:"record" yaml:"record"`
-	Score           []string                   `json:"score,omitempty" yaml:"score,omitempty"`
-	Candidate       string                     `json:"candidate,omitempty" yaml:"candidate,omitempty"`
-	ProposedConfig  map[string]string          `json:"proposedConfig,omitempty" yaml:"proposedConfig,omitempty"`
-	Current         replayLabSummary           `json:"current" yaml:"current"`
-	CandidateResult *replayLabSummary          `json:"candidateResult,omitempty" yaml:"candidateResult,omitempty"`
-	Candidates      []replayLabCandidateResult `json:"candidates,omitempty" yaml:"candidates,omitempty"`
-	Impact          *ReplayImpact              `json:"impact,omitempty" yaml:"impact,omitempty"`
-	Recommendation  string                     `json:"recommendation,omitempty" yaml:"recommendation,omitempty"`
-	Recommendations []string                   `json:"recommendations,omitempty" yaml:"recommendations,omitempty"`
-	Limitations     []string                   `json:"limitations,omitempty" yaml:"limitations,omitempty"`
-}
-
-type replayLabCandidateResult struct {
-	Name           string            `json:"name" yaml:"name"`
-	Candidate      string            `json:"candidate" yaml:"candidate"`
-	ProposedConfig map[string]string `json:"proposedConfig,omitempty" yaml:"proposedConfig,omitempty"`
-	Summary        replayLabSummary  `json:"summary" yaml:"summary"`
-	Recommendation string            `json:"recommendation,omitempty" yaml:"recommendation,omitempty"`
-}
-
-type replayLabSummary struct {
-	Snapshots               int     `json:"snapshots" yaml:"snapshots"`
-	ScaleEvents             int     `json:"scaleEvents" yaml:"scaleEvents"`
-	DirectionFlips          int     `json:"directionFlips" yaml:"directionFlips"`
-	PeakReplicas            int32   `json:"peakReplicas" yaml:"peakReplicas"`
-	MaxReplicas             int32   `json:"maxReplicas,omitempty" yaml:"maxReplicas,omitempty"`
-	MaxReplicasReached      int     `json:"maxReplicasReached" yaml:"maxReplicasReached"`
-	CappedDurationSeconds   int64   `json:"cappedDurationSeconds" yaml:"cappedDurationSeconds"`
-	CappedDuration          string  `json:"cappedDuration" yaml:"cappedDuration"`
-	EstimatedUnderProvision int     `json:"estimatedUnderProvisionWindows" yaml:"estimatedUnderProvisionWindows"`
-	PodHours                float64 `json:"podHours" yaml:"podHours"`
-	ExtraPodHours           float64 `json:"extraPodHours,omitempty" yaml:"extraPodHours,omitempty"`
-	AdditionalWorstCasePods int32   `json:"additionalWorstCasePods,omitempty" yaml:"additionalWorstCasePods,omitempty"`
-	FlappingScore           string  `json:"flappingScore" yaml:"flappingScore"`
-	FlappingLabel           string  `json:"flappingLabel,omitempty" yaml:"flappingLabel,omitempty"`
-}
 
 type replayCandidateConfig struct {
 	MinReplicas                   *int32
@@ -93,7 +45,7 @@ func runReplayPolicyLab(out io.Writer, opts *options, name, recordPath string, c
 		return err
 	}
 	scores := parseReplayScore(score)
-	report := replayLabReport{
+	report := replaylab.Report{
 		Namespace: trace.Namespace,
 		Name:      trace.HPAName,
 		Record:    recordPath,
@@ -121,7 +73,7 @@ func runReplayPolicyLab(out io.Writer, opts *options, name, recordPath string, c
 		candidateSummary := summarizeReplayTraceWithDemand(candidateTrace, candidate.MaxReplicas, trace)
 		candidateSummary.AdditionalWorstCasePods = candidate.MaxReplicas - report.Current.PeakReplicas
 		candidateSummary.ExtraPodHours = candidateSummary.PodHours - report.Current.PodHours
-		result := replayLabCandidateResult{
+		result := replaylab.CandidateResult{
 			Name:           replayCandidateName(candidatePath, i),
 			Candidate:      candidatePath,
 			ProposedConfig: candidate.Proposed,
@@ -151,7 +103,8 @@ func runReplayPolicyLab(out io.Writer, opts *options, name, recordPath string, c
 		report.CandidateResult = &candidateSummary
 		report.Recommendation = replayLabRecommendation(report.Current, candidateSummary)
 	}
-	return writeReplayLabReport(out, opts, report)
+	format, _ := selectOutputFromOptions(opts)
+	return replaylab.WriteReport(out, format, report)
 }
 
 func inferRecordedTraceName(path, namespace string) (string, error) {
@@ -302,12 +255,12 @@ func parseReplayInt32(key, value string) (int32, error) {
 	return int32(parsed), nil
 }
 
-func summarizeReplayTrace(trace hpaanalysis.TimelineTrace, maxReplicas int32) replayLabSummary {
+func summarizeReplayTrace(trace hpaanalysis.TimelineTrace, maxReplicas int32) replaylab.Summary {
 	return summarizeReplayTraceWithDemand(trace, maxReplicas, nil)
 }
 
-func summarizeReplayTraceWithDemand(trace hpaanalysis.TimelineTrace, maxReplicas int32, demandTrace *hpaanalysis.TimelineTrace) replayLabSummary {
-	summary := replayLabSummary{Snapshots: len(trace.Snapshots), MaxReplicas: maxReplicas}
+func summarizeReplayTraceWithDemand(trace hpaanalysis.TimelineTrace, maxReplicas int32, demandTrace *hpaanalysis.TimelineTrace) replaylab.Summary {
+	summary := replaylab.Summary{Snapshots: len(trace.Snapshots), MaxReplicas: maxReplicas}
 	var lastDesired int32
 	var lastDirection int32
 	for i, snap := range trace.Snapshots {
@@ -433,8 +386,8 @@ func applyReplayCandidate(trace hpaanalysis.TimelineTrace, candidate replayCandi
 }
 
 // computeReplayImpact calculates percentage changes between current and proposed summaries.
-func computeReplayImpact(current, proposed replayLabSummary) *ReplayImpact {
-	impact := &ReplayImpact{}
+func computeReplayImpact(current, proposed replaylab.Summary) *replaylab.Impact {
+	impact := &replaylab.Impact{}
 
 	if current.ScaleEvents > 0 && proposed.ScaleEvents < current.ScaleEvents {
 		impact.ScaleEventReductionPct = float64(current.ScaleEvents-proposed.ScaleEvents) / float64(current.ScaleEvents) * 100
@@ -472,7 +425,7 @@ func replayFlappingScore(scaleEvents, directionFlips int) string {
 	}
 }
 
-func replayLabRecommendation(current, candidate replayLabSummary) string {
+func replayLabRecommendation(current, candidate replaylab.Summary) string {
 	var parts []string
 	if current.ScaleEvents > 0 && candidate.ScaleEvents < current.ScaleEvents {
 		reduction := float64(current.ScaleEvents-candidate.ScaleEvents) / float64(current.ScaleEvents) * 100
@@ -490,7 +443,7 @@ func replayLabRecommendation(current, candidate replayLabSummary) string {
 	return strings.Join(parts, "; ") + "."
 }
 
-func replayPolicyRecommendation(current replayLabSummary, candidate replayLabCandidateResult) string {
+func replayPolicyRecommendation(current replaylab.Summary, candidate replaylab.CandidateResult) string {
 	summary := candidate.Summary
 	parts := []string{candidate.Name}
 	if current.ScaleEvents > 0 && summary.ScaleEvents < current.ScaleEvents {

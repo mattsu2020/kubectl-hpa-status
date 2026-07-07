@@ -1,4 +1,4 @@
-package cmd
+package replaylab
 
 import (
 	"encoding/json"
@@ -14,8 +14,9 @@ import (
 // from replay_lab.go to separate computation from presentation. The report
 // structs and analysis logic remain in replay_lab.go.
 
-func writeReplayLabReport(out io.Writer, opts *options, report replayLabReport) error {
-	format, _ := selectOutputFromOptions(opts)
+// WriteReport renders the report in the requested output format: json, yaml,
+// markdown/md, or (default) text.
+func WriteReport(out io.Writer, format string, report Report) error {
 	switch format {
 	case "json":
 		encoder := json.NewEncoder(out)
@@ -35,7 +36,7 @@ func writeReplayLabReport(out io.Writer, opts *options, report replayLabReport) 
 	}
 }
 
-func writeReplayLabText(out io.Writer, report replayLabReport) error {
+func writeReplayLabText(out io.Writer, report Report) error {
 	_, _ = fmt.Fprintf(out, "Scenario comparison: %s/%s\n", report.Namespace, report.Name)
 	_, _ = fmt.Fprintf(out, "Replay Summary: %s / %s\n\n", report.Name, report.Namespace)
 	if len(report.Candidates) > 1 {
@@ -80,7 +81,7 @@ func writeReplayLabText(out io.Writer, report replayLabReport) error {
 	return nil
 }
 
-func writeReplayPolicyTable(out io.Writer, report replayLabReport) {
+func writeReplayPolicyTable(out io.Writer, report Report) {
 	if len(report.Score) > 0 {
 		_, _ = fmt.Fprintf(out, "Score focus: %s\n\n", strings.Join(report.Score, ","))
 	}
@@ -91,7 +92,7 @@ func writeReplayPolicyTable(out io.Writer, report replayLabReport) {
 	}
 }
 
-func writeReplayPolicyRow(out io.Writer, name string, summary replayLabSummary) {
+func writeReplayPolicyRow(out io.Writer, name string, summary Summary) {
 	replicaMinutes := summary.PodHours * 60
 	_, _ = fmt.Fprintf(out, "%-28s %-9s %-16.0f %-7d %-7d\n",
 		truncateReplayColumn(name, 28),
@@ -102,7 +103,7 @@ func writeReplayPolicyRow(out io.Writer, name string, summary replayLabSummary) 
 	)
 }
 
-func replaySLORisk(summary replayLabSummary) string {
+func replaySLORisk(summary Summary) string {
 	switch {
 	case summary.MaxReplicasReached > 5 || summary.EstimatedUnderProvision > 3:
 		return "high"
@@ -123,7 +124,7 @@ func truncateReplayColumn(value string, width int) string {
 	return value[:width-3] + "..."
 }
 
-func writeReplayLabSummaryText(out io.Writer, title string, summary replayLabSummary) {
+func writeReplayLabSummaryText(out io.Writer, title string, summary Summary) {
 	_, _ = fmt.Fprintf(out, "%s:\n", title)
 	_, _ = fmt.Fprintf(out, "  snapshots: %d\n", summary.Snapshots)
 	_, _ = fmt.Fprintf(out, "  scale events: %d\n", summary.ScaleEvents)
@@ -145,7 +146,7 @@ func writeReplayLabSummaryText(out io.Writer, title string, summary replayLabSum
 	}
 }
 
-func writeReplayLabMarkdown(out io.Writer, report replayLabReport) error {
+func writeReplayLabMarkdown(out io.Writer, report Report) error {
 	_, _ = fmt.Fprintf(out, "# Scenario comparison: %s/%s\n\n", report.Namespace, report.Name)
 	if len(report.Candidates) > 1 {
 		writeReplayPolicyMarkdown(out, report)
@@ -186,7 +187,7 @@ func writeReplayLabMarkdown(out io.Writer, report replayLabReport) error {
 	return nil
 }
 
-func writeReplayPolicyMarkdown(out io.Writer, report replayLabReport) {
+func writeReplayPolicyMarkdown(out io.Writer, report Report) {
 	if len(report.Score) > 0 {
 		_, _ = fmt.Fprintf(out, "**Score focus:** %s\n\n", strings.Join(report.Score, ", "))
 	}
@@ -207,7 +208,7 @@ func writeReplayPolicyMarkdown(out io.Writer, report replayLabReport) {
 	}
 }
 
-func writeReplayPolicyMarkdownRow(out io.Writer, name string, summary replayLabSummary) {
+func writeReplayPolicyMarkdownRow(out io.Writer, name string, summary Summary) {
 	_, _ = fmt.Fprintf(out, "| %s | %s | %.0f | %d | %d |\n",
 		name,
 		replaySLORisk(summary),
@@ -217,7 +218,7 @@ func writeReplayPolicyMarkdownRow(out io.Writer, name string, summary replayLabS
 	)
 }
 
-func writeReplayLabSummaryMarkdown(out io.Writer, title string, summary replayLabSummary) {
+func writeReplayLabSummaryMarkdown(out io.Writer, title string, summary Summary) {
 	_, _ = fmt.Fprintf(out, "## %s\n\n", title)
 	_, _ = fmt.Fprintf(out, "- **Snapshots:** %d\n", summary.Snapshots)
 	_, _ = fmt.Fprintf(out, "- **Scale events:** %d\n", summary.ScaleEvents)
@@ -250,7 +251,7 @@ func sortedReplayConfigKeys(values map[string]string) []string {
 }
 
 // writeReplayImpactText renders the Impact section comparing current and proposed.
-func writeReplayImpactText(out io.Writer, impact ReplayImpact, current replayLabSummary, _ *replayLabSummary) {
+func writeReplayImpactText(out io.Writer, impact Impact, current Summary, _ *Summary) {
 	_, _ = fmt.Fprintln(out, "\nImpact:")
 	if impact.ScaleEventReductionPct > 0 {
 		_, _ = fmt.Fprintf(out, "  - scale churn reduced by %.0f%%\n", impact.ScaleEventReductionPct)
@@ -270,7 +271,7 @@ func writeReplayImpactText(out io.Writer, impact ReplayImpact, current replayLab
 }
 
 // writeReplayImpactMarkdown renders the Impact section in Markdown.
-func writeReplayImpactMarkdown(out io.Writer, impact ReplayImpact, current replayLabSummary, _ *replayLabSummary) {
+func writeReplayImpactMarkdown(out io.Writer, impact Impact, current Summary, _ *Summary) {
 	_, _ = fmt.Fprintln(out, "## Impact")
 	_, _ = fmt.Fprintln(out)
 	if impact.ScaleEventReductionPct > 0 {

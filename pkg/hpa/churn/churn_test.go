@@ -202,3 +202,28 @@ func TestAnalyzeChurnFromEvents(t *testing.T) {
 		})
 	}
 }
+
+// TestAnalyzeFromRescales_NilHPA guards the snapshot-replay path: history and
+// replay viewers analyze recorded traces without a live HPA object, so a nil
+// HPA must produce recommendations from defaults instead of panicking.
+func TestAnalyzeFromRescales_NilHPA(t *testing.T) {
+	t.Parallel()
+	base := time.Date(2025, 1, 2, 3, 0, 0, 0, time.UTC)
+	var rescales []event.RescaleData
+	for i, size := range []int32{2, 8, 2, 9, 2, 10} {
+		rescales = append(rescales, event.RescaleData{
+			Timestamp: base.Add(time.Duration(i) * time.Minute),
+			NewSize:   size,
+		})
+	}
+	got := AnalyzeFromRescales(rescales, nil)
+	if got == nil {
+		t.Fatal("expected analysis for nil HPA")
+	}
+	if got.Level == ChurnLow {
+		t.Fatalf("expected churn above LOW for oscillating trace, got %s", got.Level)
+	}
+	if len(got.Recommendations) == 0 {
+		t.Fatal("expected recommendations built from default stabilization window")
+	}
+}

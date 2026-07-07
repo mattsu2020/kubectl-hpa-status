@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -203,5 +204,17 @@ func buildBatchAuditEntries(reports map[string]*hpaanalysis.AuditReport) []batch
 			Summary:   report.Summary,
 		})
 	}
+	// Sort worst score first so the most problematic HPAs surface at the top;
+	// tie-break on namespace/name to keep the order stable across refreshes
+	// (map iteration order is random).
+	slices.SortFunc(entries, func(a, b batchAuditEntry) int {
+		if a.Score != b.Score {
+			return a.Score - b.Score
+		}
+		if a.Namespace != b.Namespace {
+			return cmp.Compare(a.Namespace, b.Namespace)
+		}
+		return cmp.Compare(a.Name, b.Name)
+	})
 	return entries
 }
