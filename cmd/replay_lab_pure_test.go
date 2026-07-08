@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mattsu2020/kubectl-hpa-status/cmd/replaylab"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
 
@@ -264,13 +265,13 @@ func TestApplyReplayCandidateScaleDownStabilization(t *testing.T) {
 }
 
 func TestComputeReplayImpact(t *testing.T) {
-	current := replayLabSummary{
+	current := replaylab.Summary{
 		ScaleEvents:             10,
 		PodHours:                100,
 		EstimatedUnderProvision: 3,
 		PeakReplicas:            8,
 	}
-	proposed := replayLabSummary{
+	proposed := replaylab.Summary{
 		ScaleEvents:             4,
 		PodHours:                80,
 		EstimatedUnderProvision: 0,
@@ -301,8 +302,8 @@ func TestComputeReplayImpact(t *testing.T) {
 
 func TestComputeReplayImpactNoOp(t *testing.T) {
 	// When proposed is not an improvement, no impact flags should fire.
-	current := replayLabSummary{ScaleEvents: 5, PodHours: 50, EstimatedUnderProvision: 2, PeakReplicas: 10}
-	proposed := replayLabSummary{ScaleEvents: 5, PodHours: 50, EstimatedUnderProvision: 2, MaxReplicas: 10}
+	current := replaylab.Summary{ScaleEvents: 5, PodHours: 50, EstimatedUnderProvision: 2, PeakReplicas: 10}
+	proposed := replaylab.Summary{ScaleEvents: 5, PodHours: 50, EstimatedUnderProvision: 2, MaxReplicas: 10}
 	impact := computeReplayImpact(current, proposed)
 	if impact.ScaleEventReductionPct != 0 || impact.PodHoursChangePct != 0 || impact.UnderProvisionFixed || impact.NoMissedScaleUp {
 		t.Fatalf("expected zeroed impact, got %+v", impact)
@@ -314,8 +315,8 @@ func TestComputeReplayImpactNoOp(t *testing.T) {
 
 func TestReplayLabRecommendation(t *testing.T) {
 	t.Run("improvement detected", func(t *testing.T) {
-		current := replayLabSummary{ScaleEvents: 10, EstimatedUnderProvision: 3}
-		candidate := replayLabSummary{ScaleEvents: 4, EstimatedUnderProvision: 1, AdditionalWorstCasePods: 2}
+		current := replaylab.Summary{ScaleEvents: 10, EstimatedUnderProvision: 3}
+		candidate := replaylab.Summary{ScaleEvents: 4, EstimatedUnderProvision: 1, AdditionalWorstCasePods: 2}
 		got := replayLabRecommendation(current, candidate)
 		if got == "" {
 			t.Fatalf("expected non-empty recommendation")
@@ -326,8 +327,8 @@ func TestReplayLabRecommendation(t *testing.T) {
 		}
 	})
 	t.Run("no improvement", func(t *testing.T) {
-		current := replayLabSummary{ScaleEvents: 5, EstimatedUnderProvision: 0}
-		candidate := replayLabSummary{ScaleEvents: 5, EstimatedUnderProvision: 0, AdditionalWorstCasePods: 0}
+		current := replaylab.Summary{ScaleEvents: 5, EstimatedUnderProvision: 0}
+		candidate := replaylab.Summary{ScaleEvents: 5, EstimatedUnderProvision: 0, AdditionalWorstCasePods: 0}
 		got := replayLabRecommendation(current, candidate)
 		if got == "" {
 			t.Fatalf("expected fallback recommendation text")

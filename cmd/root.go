@@ -3,6 +3,7 @@ package cmd
 
 import (
 	"fmt"
+	"runtime/debug"
 
 	"github.com/spf13/cobra"
 )
@@ -10,9 +11,11 @@ import (
 var (
 	// version is the plugin version. Overridden via -ldflags at release time
 	// (see .goreleaser.yml). The default reflects the v2.0 development line.
-	version = "v2.0.0-dev"
-	commit  = "unknown"
-	date    = "unknown"
+	// When left at the defaults (e.g. `go install`), buildVersion falls back
+	// to the Go build info embedded by the toolchain.
+	version = defaultVersion
+	commit  = defaultCommit
+	date    = defaultDate
 )
 
 // NewRootCommand creates and returns the root cobra command for kubectl-hpa-status.
@@ -133,7 +136,8 @@ func registerCommands(root *cobra.Command, opts *options) {
 }
 
 func buildVersion() string {
-	return fmt.Sprintf("%s (commit: %s, built: %s)", version, commit, date)
+	v, c, d := resolveBuildInfo(version, commit, date, debug.ReadBuildInfo)
+	return fmt.Sprintf("%s (commit: %s, built: %s)", v, c, d)
 }
 
 // newVersionCommand prints version and build metadata.
