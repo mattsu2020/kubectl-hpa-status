@@ -58,15 +58,9 @@ func newTimelineCommand(opts *options) *cobra.Command {
 }
 
 func runRetrospectiveTimeline(ctx context.Context, out io.Writer, opts *options, name string, since time.Duration, replay bool) error {
-	client, err := newClientOrDefault(opts)
+	client, hpa, err := lookupHPA(ctx, opts, name)
 	if err != nil {
 		return err
-	}
-
-	// 1. Fetch the HPA object (needed for behavior, conditions, metrics).
-	hpa, err := kube.GetHPAFromClient(ctx, client, name)
-	if err != nil {
-		return wrapHPALookupError(client.Namespace, name, err)
 	}
 
 	// 2. Fetch events since the cutoff time.

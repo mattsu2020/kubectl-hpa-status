@@ -3,8 +3,9 @@ package tui
 import (
 	"context"
 
-	"github.com/charmbracelet/bubbles/textinput"
+	"charm.land/bubbles/v2/textinput"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/audit"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
@@ -16,7 +17,7 @@ type ApplyFunc func(ctx context.Context, namespace, name, patch string) error
 // AuditFunc runs the best-practice auditor on an HPA and returns the report.
 // Injected from the cmd layer to keep the TUI package free of direct
 // Kubernetes client dependencies.
-type AuditFunc func(ctx context.Context, namespace, name string) (*hpaanalysis.AuditReport, error)
+type AuditFunc func(ctx context.Context, namespace, name string) (*audit.Report, error)
 
 // simState holds the interactive simulation panel state.
 type simState struct {
@@ -58,7 +59,7 @@ type replayState struct {
 
 // batchAuditState holds the batch auditor results for selected HPAs.
 type batchAuditState struct {
-	reports   map[string]*hpaanalysis.AuditReport
+	reports   map[string]*audit.Report
 	results   []batchAuditEntry
 	scrollPos int
 	err       error
@@ -105,6 +106,6 @@ type replayLoadedMsg struct {
 
 // batchAuditMsg carries the results of a batch audit operation.
 type batchAuditMsg struct {
-	reports map[string]*hpaanalysis.AuditReport
+	reports map[string]*audit.Report
 	err     error
 }

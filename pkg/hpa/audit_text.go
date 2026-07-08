@@ -3,10 +3,12 @@ package hpa
 import (
 	"fmt"
 	"io"
+
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/audit"
 )
 
-// WriteAuditText renders an AuditReport as human-readable text.
-func WriteAuditText(w io.Writer, report *AuditReport, provider LabelProvider) error {
+// WriteAuditText renders an audit.Report as human-readable text.
+func WriteAuditText(w io.Writer, report *audit.Report, provider LabelProvider) error {
 	labels := resolveLabels(provider)
 
 	if _, err := fmt.Fprintf(w, "%s: %s/%s (%s)\n", labels.Target, report.Namespace, report.Name, report.Target); err != nil {
@@ -39,7 +41,7 @@ func WriteAuditText(w io.Writer, report *AuditReport, provider LabelProvider) er
 	return nil
 }
 
-func writeAuditFinding(w io.Writer, index int, f AuditFinding) error {
+func writeAuditFinding(w io.Writer, index int, f audit.Finding) error {
 	severity := string(f.Severity)
 	if _, err := fmt.Fprintf(w, "%d. [%s] %s (%s)\n", index, severity, f.Title, f.ID); err != nil {
 		return err

@@ -8,6 +8,7 @@ import (
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
 )
 
 // richAnalysisFixture populates every Analysis branch the bundle renderers
@@ -43,7 +44,7 @@ func richAnalysisFixture() hpaanalysis.Analysis {
 		Evidence:      []string{"pod web-2 unschedulable"},
 		NextActions:   []string{"add nodes"},
 	}
-	a.BlockerReport = &hpaanalysis.BlockerReport{
+	a.BlockerReport = &blocker.Report{
 		Namespace:       "production",
 		Name:            "web",
 		Target:          "Deployment/web",
@@ -51,7 +52,7 @@ func richAnalysisFixture() hpaanalysis.Analysis {
 		DesiredReplicas: 5,
 		ReadyReplicas:   3,
 		Summary:         "scale-up blocked by scheduling",
-		Blockers: []hpaanalysis.BlockerFinding{
+		Blockers: []blocker.Finding{
 			{ID: "sched-1", Severity: "HIGH", Category: "scheduling", Message: "pods unschedulable", Detail: "Insufficient cpu"},
 		},
 		Interpretation: "cluster is out of cpu",

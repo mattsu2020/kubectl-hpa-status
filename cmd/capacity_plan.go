@@ -7,6 +7,7 @@ import (
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 	"github.com/spf13/cobra"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -168,7 +169,7 @@ func assembleCapacityPlanInput(ctx context.Context, client *kube.Client, hpa *au
 	// Fetch node capacity.
 	nodeCap, _ := kube.FetchNodeCapacity(ctx, client.Interface)
 	if nodeCap != nil {
-		input.NodeCapacity = &hpaanalysis.NodeCapacitySummary{
+		input.NodeCapacity = &blocker.NodeCapacitySummary{
 			TotalNodes:   nodeCap.TotalNodes,
 			AllocCPU:     nodeCap.AllocCPU.String(),
 			AllocMemory:  nodeCap.AllocMemory.String(),

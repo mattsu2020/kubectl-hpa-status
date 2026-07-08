@@ -177,3 +177,40 @@ func buildAuditSummary(report *Report) string {
 	}
 	return fmt.Sprintf("Found %d critical, %d warnings, %d informational findings (score: %d/100)", critical, warning, info, report.Score)
 }
+
+// ---------------------------------------------------------------------------
+// Profile-specific audit rules
+// ---------------------------------------------------------------------------
+
+// profileSpecificRules returns audit rules that apply only when a specific
+// workload profile is selected. Each rule applies profile-adjusted thresholds.
+func profileSpecificRules(profile Profile) []Rule {
+	switch profile {
+	case ProfileLatency:
+		return []Rule{
+			latencyStabilizationRule,
+			latencyScaleUpPolicyRule,
+		}
+	case ProfileCost:
+		return []Rule{
+			costMinReplicasRule,
+			costScaleDownRule,
+		}
+	case ProfileBatch:
+		return []Rule{
+			batchToleranceRule,
+		}
+	case ProfileKEDA:
+		return []Rule{
+			kedaScaleToZeroRule,
+			kedaCooldownRule,
+		}
+	case ProfileCritical:
+		return []Rule{
+			criticalMaxHeadroomRule,
+			criticalMinReplicasRule,
+		}
+	default:
+		return nil
+	}
+}

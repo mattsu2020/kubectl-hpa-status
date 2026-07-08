@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
@@ -1116,8 +1117,8 @@ func TestApplyEnrichmentPenalties(t *testing.T) {
 			Triggers: []KEDATriggerSummary{{Type: "prometheus", Status: "Active"}},
 		}
 	}
-	vpaConflict := func() *VPAConflictInfo {
-		return &VPAConflictInfo{VPAName: "my-vpa", UpdateMode: "Auto"}
+	vpaConflict := func() *vpa.ConflictInfo {
+		return &vpa.ConflictInfo{VPAName: "my-vpa", UpdateMode: "Auto"}
 	}
 
 	tests := []struct {
@@ -1125,7 +1126,7 @@ func TestApplyEnrichmentPenalties(t *testing.T) {
 		health     string
 		score      int
 		keda       func() *KEDAAnalysis
-		vpa        func() *VPAConflictInfo
+		vpa        func() *vpa.ConflictInfo
 		weights    HealthWeights
 		wantScore  int
 		wantHealth string

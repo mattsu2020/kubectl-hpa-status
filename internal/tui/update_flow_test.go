@@ -7,27 +7,28 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/audit"
 )
 
 // pressTUIKey feeds a single key press through Update and returns the new model.
 func pressTUIKey(t *testing.T, m Model, k string) (Model, tea.Cmd) {
 	t.Helper()
-	var msg tea.KeyMsg
+	var msg tea.KeyPressMsg
 	switch k {
 	case "tab":
-		msg = tea.KeyMsg{Type: tea.KeyTab}
+		msg = tea.KeyPressMsg{Code: tea.KeyTab}
 	case "shift+tab":
-		msg = tea.KeyMsg{Type: tea.KeyShiftTab}
+		msg = tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}
 	case "enter":
-		msg = tea.KeyMsg{Type: tea.KeyEnter}
+		msg = tea.KeyPressMsg{Code: tea.KeyEnter}
 	case "esc":
-		msg = tea.KeyMsg{Type: tea.KeyEsc}
+		msg = tea.KeyPressMsg{Code: tea.KeyEsc}
 	case "backspace":
-		msg = tea.KeyMsg{Type: tea.KeyBackspace}
+		msg = tea.KeyPressMsg{Code: tea.KeyBackspace}
 	default:
-		msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)}
+		msg = tea.KeyPressMsg{Text: k, Code: rune(k[0])}
 	}
 	updated, cmd := m.Update(msg)
 	return updated.(Model), cmd
@@ -89,7 +90,7 @@ func TestUpdate_ReplayLoadedMsg(t *testing.T) {
 func TestUpdate_BatchAuditMsg(t *testing.T) {
 	m := detailModel(Options{})
 	m.batchAuditState = &batchAuditState{loading: true}
-	reports := map[string]*hpaanalysis.AuditReport{
+	reports := map[string]*audit.Report{
 		"default/web": {Namespace: "default", Name: "web", Score: 80, Summary: "good"},
 	}
 	updated, _ := m.Update(batchAuditMsg{reports: reports})
@@ -379,8 +380,8 @@ func TestKeyFlow_BatchAudit(t *testing.T) {
 		t.Fatal("expected error without AuditFn")
 	}
 
-	auditFn := func(_ context.Context, namespace, name string) (*hpaanalysis.AuditReport, error) {
-		return &hpaanalysis.AuditReport{Namespace: namespace, Name: name, Score: 90, Summary: "ok"}, nil
+	auditFn := func(_ context.Context, namespace, name string) (*audit.Report, error) {
+		return &audit.Report{Namespace: namespace, Name: name, Score: 90, Summary: "ok"}, nil
 	}
 	m = detailModel(Options{AuditFn: auditFn})
 	m.viewMode = listView
@@ -474,12 +475,12 @@ func TestSplitNamespaceName(t *testing.T) {
 
 func TestBuildBatchAuditEntries_SortedByScore(t *testing.T) {
 	t.Parallel()
-	reports := map[string]*hpaanalysis.AuditReport{
+	reports := map[string]*audit.Report{
 		"a/high": {Namespace: "a", Name: "high", Score: 95, Summary: "fine"},
 		"a/low": {Namespace: "a", Name: "low", Score: 20, Summary: "bad",
-			Findings: []hpaanalysis.AuditFinding{
-				{Severity: hpaanalysis.AuditSeverityCritical},
-				{Severity: hpaanalysis.AuditSeverityWarning},
+			Findings: []audit.Finding{
+				{Severity: audit.AuditCritical},
+				{Severity: audit.AuditWarning},
 			}},
 	}
 	entries := buildBatchAuditEntries(reports)
@@ -541,14 +542,14 @@ func TestCurrentReport_OutOfRange(t *testing.T) {
 func TestView_SimView(t *testing.T) {
 	m := detailModel(Options{})
 	m2, _ := pressTUIKey(t, m, "s")
-	out := m2.View()
+	out := m2.View().Content
 	if !strings.Contains(out, "maxReplicas") || !strings.Contains(out, "minReplicas") {
 		t.Errorf("expected sim fields in view, got:\n%s", out)
 	}
 
 	// Metric mode input rendering.
 	m3, _ := pressTUIKey(t, m2, "M")
-	if !strings.Contains(m3.View(), "metric") && !strings.Contains(strings.ToLower(m3.View()), "metric") {
+	if !strings.Contains(m3.View().Content, "metric") && !strings.Contains(strings.ToLower(m3.View().Content), "metric") {
 		t.Error("expected metric input hint in metric mode view")
 	}
 
@@ -559,11 +560,11 @@ func TestView_SimView(t *testing.T) {
 		SimulatedValue: "10",
 		Interpretation: []string{"scale ceiling doubled"},
 	}
-	if out := m3.View(); !strings.Contains(out, "maxReplicas") {
+	if out := m3.View().Content; !strings.Contains(out, "maxReplicas") {
 		t.Errorf("expected result parameter in view, got:\n%s", out)
 	}
 	m3.simState.err = errors.New("sim failed")
-	if out := m3.View(); !strings.Contains(out, "sim failed") {
+	if out := m3.View().Content; !strings.Contains(out, "sim failed") {
 		t.Error("expected simulation error in view")
 	}
 }
@@ -578,7 +579,7 @@ func TestView_FixView(t *testing.T) {
 		},
 		dryRunResult: "patch preview: {}",
 	}
-	out := m.View()
+	out := m.View().Content
 	for _, want := range []string{"tune window", "add stabilization", "patch preview"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected %q in fix view", want)
@@ -587,11 +588,11 @@ func TestView_FixView(t *testing.T) {
 
 	// Applied status rendering (success and error).
 	m.fixState.applied = true
-	if out := m.View(); out == "" {
+	if out := m.View().Content; out == "" {
 		t.Error("expected non-empty applied view")
 	}
 	m.fixState.applyErr = errors.New("forbidden")
-	if out := m.View(); !strings.Contains(out, "forbidden") {
+	if out := m.View().Content; !strings.Contains(out, "forbidden") {
 		t.Error("expected apply error in fix view")
 	}
 }
@@ -602,13 +603,13 @@ func TestView_ReplayView(t *testing.T) {
 
 	// Loading state.
 	m.replayState = &replayState{loading: true}
-	if out := m.View(); out == "" {
+	if out := m.View().Content; out == "" {
 		t.Error("expected loading view")
 	}
 
 	// Error state.
 	m.replayState = &replayState{err: errors.New("no trace file")}
-	if out := m.View(); !strings.Contains(out, "no trace file") {
+	if out := m.View().Content; !strings.Contains(out, "no trace file") {
 		t.Error("expected error in replay view")
 	}
 
@@ -632,7 +633,7 @@ func TestView_ReplayView(t *testing.T) {
 			},
 		},
 	}
-	out := m.View()
+	out := m.View().Content
 	// The analysis summary shows bottleneck counts, not the Summary text;
 	// the bottleneck section shows individual messages.
 	for _, want := range []string{"web", "Replay Analysis:", "1 HIGH", "pods pending"} {
@@ -648,7 +649,7 @@ func TestView_HistoryView(t *testing.T) {
 
 	// Empty history.
 	m.historyState = &historyState{}
-	if out := m.View(); !strings.Contains(out, "web") {
+	if out := m.View().Content; !strings.Contains(out, "web") {
 		t.Error("expected HPA name in empty history view")
 	}
 
@@ -664,7 +665,7 @@ func TestView_HistoryView(t *testing.T) {
 		})
 	}
 	m.historyState = &historyState{snapshots: snapshots}
-	out := m.View()
+	out := m.View().Content
 	if !strings.Contains(out, "web") {
 		t.Errorf("expected header in history view, got:\n%s", firstN(out, 200))
 	}
@@ -678,7 +679,7 @@ func TestView_OverviewView(t *testing.T) {
 		{Namespace: "default", Name: "api", Health: "ERROR"},
 		{Namespace: "default", Name: "worker", Health: "WARNING"},
 	}
-	out := m.View()
+	out := m.View().Content
 	if out == "" {
 		t.Fatal("expected non-empty overview")
 	}
@@ -689,7 +690,7 @@ func TestView_BatchAuditView(t *testing.T) {
 	m.viewMode = batchAuditView
 
 	m.batchAuditState = &batchAuditState{loading: true}
-	if out := m.View(); out == "" {
+	if out := m.View().Content; out == "" {
 		t.Error("expected loading batch audit view")
 	}
 
@@ -698,7 +699,7 @@ func TestView_BatchAuditView(t *testing.T) {
 			{Namespace: "default", Name: "web", Score: 40, Findings: 3, Critical: 1, Warnings: 2, Summary: "needs work"},
 		},
 	}
-	out := m.View()
+	out := m.View().Content
 	if !strings.Contains(out, "web") {
 		t.Errorf("expected entry in batch audit view, got:\n%s", firstN(out, 200))
 	}
@@ -714,7 +715,7 @@ func TestView_HintsView(t *testing.T) {
 				Steps: []hpaanalysis.MetricHintFix{{Description: "check adapter"}}},
 		},
 	}
-	out := m.View()
+	out := m.View().Content
 	if !strings.Contains(out, "External metric missing") {
 		t.Errorf("expected flow title in hints view, got:\n%s", firstN(out, 300))
 	}

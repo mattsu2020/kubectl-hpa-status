@@ -5,7 +5,10 @@ package hpa
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/suggestion"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/warmup"
 )
 
 const limitation = "[observed] This plugin uses existing HPA status, conditions, metrics, and events. It does not expose internal controller calculations."
@@ -165,7 +168,7 @@ type Analysis struct {
 	// KEDAInfo holds KEDA-specific analysis, populated when --keda is enabled.
 	KEDAInfo *KEDAAnalysis `json:"keda,omitempty" yaml:"keda,omitempty"`
 	// VPAConflict holds VPA conflict detection results, populated when --vpa is enabled.
-	VPAConflict *VPAConflictInfo `json:"vpaConflict,omitempty" yaml:"vpaConflict,omitempty"`
+	VPAConflict *vpa.ConflictInfo `json:"vpaConflict,omitempty" yaml:"vpaConflict,omitempty"`
 	// TargetReplicas holds replica status from the scale target resource.
 	TargetReplicas *TargetReplicaInfo `json:"targetReplicas,omitempty" yaml:"targetReplicas,omitempty"`
 	// Debug lists verbose debug lines, populated when the debug option is enabled.
@@ -229,7 +232,7 @@ type Analysis struct {
 	ControllerProfile *ControllerProfile `json:"controllerProfile,omitempty" yaml:"controllerProfile,omitempty"`
 	// BlockerReport holds scale-out blocker analysis for the HPA scale target.
 	// Populated when --capacity-deep is enabled or via the blockers subcommand.
-	BlockerReport *BlockerReport `json:"blockerReport,omitempty" yaml:"blockerReport,omitempty"`
+	BlockerReport *blocker.Report `json:"blockerReport,omitempty" yaml:"blockerReport,omitempty"`
 	// CapacityPlan holds a pre-flight capacity check result, diagnosing whether
 	// it is safe to raise maxReplicas. Populated when --capacity-plan is enabled
 	// or via the capacity subcommand.
@@ -256,7 +259,7 @@ type Analysis struct {
 	// VPAAdvisory holds the VPA-HPA coexistence advisory result, providing
 	// structured recommendations when VPA and HPA target the same workload.
 	// Populated when --vpa is enabled and a VPA conflict is detected.
-	VPAAdvisory *VPAAdvisory `json:"vpaAdvisory,omitempty" yaml:"vpaAdvisory,omitempty"`
+	VPAAdvisory *vpa.Advisory `json:"vpaAdvisory,omitempty" yaml:"vpaAdvisory,omitempty"`
 	// MetricHints holds troubleshooting hints for custom/external metrics,
 	// identifying common failure patterns with remediation steps.
 	// Populated when --metric-hints is enabled.
@@ -264,7 +267,7 @@ type Analysis struct {
 	// WarmupAnalysis holds the warmup analysis result, diagnosing why pods
 	// are not yet ready after HPA scales out. Populated when --warmup is enabled
 	// or during the doctor command.
-	WarmupAnalysis *WarmupAnalysis `json:"warmupAnalysis,omitempty" yaml:"warmupAnalysis,omitempty"`
+	WarmupAnalysis *warmup.Analysis `json:"warmupAnalysis,omitempty" yaml:"warmupAnalysis,omitempty"`
 	// ContainerAdvisor holds the ContainerResource advisor result, suggesting
 	// ContainerResource metrics for multi-container workloads.
 	// Populated when --container-advisor is enabled.

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	"github.com/spf13/cobra"
 )
 
@@ -36,13 +35,9 @@ func newTuneCommand(opts *options) *cobra.Command {
 }
 
 func runTune(ctx context.Context, out io.Writer, opts *options, name, goal string, suggest bool) error {
-	client, err := newClientOrDefault(opts)
+	_, hpa, err := lookupHPA(ctx, opts, name)
 	if err != nil {
 		return err
-	}
-	hpa, err := kube.GetHPAFromClient(ctx, client, name)
-	if err != nil {
-		return wrapHPALookupError(client.Namespace, name, err)
 	}
 	report := tuneReport{
 		Namespace: hpa.Namespace,

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/lint"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
@@ -48,9 +49,9 @@ func collectLintFiles(filePath string) ([]string, error) {
 func lintFileResultForReadError(file string, readErr error) lintFileResult {
 	return lintFileResult{
 		File: file,
-		Result: &hpaanalysis.LintResult{
-			Findings: []hpaanalysis.LintFinding{{
-				Severity: hpaanalysis.LintError,
+		Result: &lint.Result{
+			Findings: []lint.Finding{{
+				Severity: lint.Error,
 				Rule:     "file-read",
 				Message:  fmt.Sprintf("Cannot read file: %v", readErr),
 			}},
@@ -99,7 +100,7 @@ func lintOneFile(file string, decoder runtimeDecoder, workloads map[lintWorkload
 		}
 		foundHPA = true
 
-		result := hpaanalysis.LintHPA(hpa)
+		result := lint.Run(hpa)
 		addGitOpsLintFindings(result, hpa, workloads)
 		results = append(results, lintFileResult{
 			File:   file,
@@ -117,7 +118,7 @@ func lintOneFile(file string, decoder runtimeDecoder, workloads map[lintWorkload
 func emitLintOutput(out io.Writer, allResults []lintFileResult, filePath, outputFmt string, sarif, fix bool, exitCode int) (handled bool, err error) {
 	if sarif || outputFmt == "sarif" {
 		combined := combineLintResults(allResults)
-		sarifJSON := hpaanalysis.FormatLintSARIF(combined, filePath)
+		sarifJSON := lint.FormatLintSARIF(combined, filePath)
 		_, err := fmt.Fprintln(out, sarifJSON)
 		return true, err
 	}

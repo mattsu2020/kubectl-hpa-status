@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/lint"
 	"github.com/spf13/cobra"
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -149,7 +149,7 @@ func lintObjectKey(namespace, kind, name string) lintWorkloadKey {
 	return lintWorkloadKey{Namespace: namespace, Kind: kind, Name: name}
 }
 
-func addGitOpsLintFindings(result *hpaanalysis.LintResult, hpa *autoscalingv2.HorizontalPodAutoscaler, workloads map[lintWorkloadKey]lintWorkloadInfo) {
+func addGitOpsLintFindings(result *lint.Result, hpa *autoscalingv2.HorizontalPodAutoscaler, workloads map[lintWorkloadKey]lintWorkloadInfo) {
 	if result == nil || hpa == nil {
 		return
 	}
@@ -157,8 +157,8 @@ func addGitOpsLintFindings(result *hpaanalysis.LintResult, hpa *autoscalingv2.Ho
 	if !ok || info.Replicas == nil {
 		return
 	}
-	result.Findings = append(result.Findings, hpaanalysis.LintFinding{
-		Severity: hpaanalysis.LintWarning,
+	result.Findings = append(result.Findings, lint.Finding{
+		Severity: lint.Warning,
 		Rule:     "gitops-replicas",
 		Message: fmt.Sprintf("%s/%s sets spec.replicas=%d while HPA %s exists. GitOps apply may reset HPA-managed replicas.",
 			hpa.Spec.ScaleTargetRef.Kind, hpa.Spec.ScaleTargetRef.Name, *info.Replicas, hpa.Name),
@@ -170,7 +170,7 @@ func addGitOpsLintFindings(result *hpaanalysis.LintResult, hpa *autoscalingv2.Ho
 type lintFileResult struct {
 	File   string
 	HPA    string
-	Result *hpaanalysis.LintResult
+	Result *lint.Result
 }
 
 // exitCodeError is returned when lint finds errors.
@@ -197,8 +197,8 @@ func splitYAMLDocuments(data []byte) [][]byte {
 }
 
 // combineLintResults combines multiple lint results into one for SARIF output.
-func combineLintResults(results []lintFileResult) *hpaanalysis.LintResult {
-	combined := &hpaanalysis.LintResult{Pass: true}
+func combineLintResults(results []lintFileResult) *lint.Result {
+	combined := &lint.Result{Pass: true}
 	for _, r := range results {
 		if r.Result == nil {
 			continue
@@ -222,9 +222,9 @@ func writeGitHubLintAnnotations(out io.Writer, results []lintFileResult) error {
 		for _, finding := range r.Result.Findings {
 			level := "notice"
 			switch finding.Severity {
-			case hpaanalysis.LintError:
+			case lint.Error:
 				level = "error"
-			case hpaanalysis.LintWarning:
+			case lint.Warning:
 				level = "warning"
 			}
 			message := strings.TrimSpace(finding.Message)

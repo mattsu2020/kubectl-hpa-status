@@ -10,6 +10,12 @@ import (
 // and this file can be deleted. The canonical definitions and constructors
 // (noSnapshotsError) live in cmd/internal/errs so extracted sub-packages can
 // reach them without importing cmd.
+//
+// Tracking: as of the Phase D refactor (refactor/phase-d-architecture-migration),
+// the cmd/ split is still in progress — `cmd/internal/{errs,client,output}`
+// and `cmd/bundle` have landed, but the remaining command groups
+// (`replay`, `alerts`/`completion`/`compat`/`version`) still live in `cmd/`.
+// This shim stays until those groups migrate; do not delete prematurely.
 
 // ErrHPANotFound is returned (wrapped) by the status path when the HPA cannot
 // be found in the cluster, so callers can match on errors.Is instead of the

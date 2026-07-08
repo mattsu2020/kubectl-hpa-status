@@ -26,6 +26,11 @@ type (
 	commandPresetOptions = cmdoptions.CommandPresetOptions
 )
 
+// preset aliases the CommandPreset type so command files (e.g. preset_helpers.go)
+// can reference it without importing internal/cmdoptions directly, keeping the
+// bridge the single vocabulary for cmdoptions symbols inside cmd/.
+type preset = cmdoptions.CommandPreset
+
 // Preset consts cover every CommandPreset defined in internal/cmdoptions. New
 // presets must be added here so command files stay free of direct cmdoptions
 // references.

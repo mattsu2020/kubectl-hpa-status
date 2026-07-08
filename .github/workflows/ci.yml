@@ -161,6 +161,39 @@ jobs:
         with:
           version: v2.12.2
 
+  # Security scanning with SARIF upload to the GitHub Security tab.
+  # Runs gosec with SARIF output and uploads alongside CodeQL findings so all
+  # security alerts are visible in one place. Mirrors the gosec exclusions used
+  # in the build job (G115/G304/G602/G301/G302/G306).
+  code-scanning:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Run gosec (SARIF)
+        uses: securego/gosec@v2.27.1
+        with:
+          # Same exclusions as the build-job gosec step; emit SARIF for upload.
+          args: -exclude G115,G304,G602,G301,G302,G306 -fmt sarif -out gosec-results.sarif ./...
+
+      - name: Upload gosec SARIF results
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: gosec-results.sarif
+          category: gosec
+
   # Forward-compatibility gate: build and test against the next Go release in
   # addition to the version pinned in go.mod. Catches upstream API removals and
   # stdlib behavior changes before they land in the supported toolchain. Allowed

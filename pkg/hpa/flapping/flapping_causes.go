@@ -1,151 +1,13 @@
 package flapping
 
-// This file holds the flapping diagnosis path (DiagnoseFlapping):
-// direction-flip detection, cause analysis, and fix generation.
-
 import (
 	"fmt"
-	"sort"
-	"time"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/event"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
 )
-
-// DiagnoseFlapping analyzes HPA rescale events for rapid oscillation patterns
-// (alternating scale-up/scale-down in short windows) and produces a diagnosis
-// with root causes and recommendations. Returns nil if fewer than 3 rescale
-// events are available (insufficient data to establish a pattern).
-func DiagnoseFlapping(events []event.Event, hpa *autoscalingv2.HorizontalPodAutoscaler) *Diagnosis {
-	if hpa == nil || len(events) == 0 {
-		return nil
-	}
-
-	rescales := extractRescaleEvents(events)
-	if len(rescales) < 3 {
-		return nil
-	}
-
-	sort.Slice(rescales, func(i, j int) bool {
-		return rescales[i].Timestamp.Before(rescales[j].Timestamp)
-	})
-
-	flips := detectDirectionFlips(rescales)
-	if len(flips) == 0 {
-		return &Diagnosis{
-			Detected:  false,
-			Severity:  "LOW",
-			FlipCount: 0,
-		}
-	}
-
-	flipCount := len(flips)
-	windowSeconds := windowFromFlips(flips)
-	severity := flappingSeverity(flipCount, windowSeconds)
-	pattern := describeFlappingPattern(flips)
-
-	causes := diagnoseFlappingCauses(hpa, rescales)
-	recommendations := generateFlappingFixes(hpa, causes)
-
-	diagnosis := &Diagnosis{
-		Detected:           true,
-		Severity:           severity,
-		Pattern:            pattern,
-		FlipCount:          flipCount,
-		WindowSeconds:      windowSeconds,
-		EstimatedCauses:    causes,
-		Recommendations:    recommendations,
-		EventTTLLimitation: fmt.Sprintf("Events are retained for %s by default; older flapping patterns may not be visible. Use 'record' for long-term monitoring.", eventTTLDefault),
-	}
-
-	return diagnosis
-}
-
-// directionFlip represents a point where the scaling direction changed.
-type directionFlip struct {
-	timestamp time.Time
-	from      int32 // previous replica count
-	to        int32 // next replica count
-	direction int   // 1 = scale-up, -1 = scale-down
-}
-
-// detectDirectionFlips identifies points where the scaling direction changes
-// between consecutive rescale events.
-func detectDirectionFlips(rescales []event.RescaleData) []directionFlip {
-	var flips []directionFlip
-	prevDirection := 0
-
-	for i := 1; i < len(rescales); i++ {
-		delta := rescales[i].NewSize - rescales[i-1].NewSize
-		if delta == 0 {
-			continue
-		}
-
-		dir := 1
-		if delta < 0 {
-			dir = -1
-		}
-
-		if prevDirection != 0 && dir != prevDirection {
-			flips = append(flips, directionFlip{
-				timestamp: rescales[i].Timestamp,
-				from:      rescales[i-1].NewSize,
-				to:        rescales[i].NewSize,
-				direction: dir,
-			})
-		}
-		prevDirection = dir
-	}
-
-	return flips
-}
-
-// windowFromFlips computes the time span in seconds from the first to the last
-// direction flip.
-func windowFromFlips(flips []directionFlip) int {
-	if len(flips) < 2 {
-		return 0
-	}
-	return int(flips[len(flips)-1].timestamp.Sub(flips[0].timestamp).Seconds())
-}
-
-// flappingSeverity classifies flapping severity based on flip count and time
-// window.
-func flappingSeverity(flipCount int, windowSeconds int) string {
-	switch {
-	case flipCount >= 6 || (flipCount >= 3 && windowSeconds > 0 && windowSeconds < 300):
-		return "CRITICAL"
-	case flipCount >= 3 || (flipCount >= 2 && windowSeconds > 0 && windowSeconds < 600):
-		return "HIGH"
-	case flipCount >= 2:
-		return "MEDIUM"
-	default:
-		return "LOW"
-	}
-}
-
-// describeFlappingPattern produces a human-readable description of the
-// oscillation pattern.
-func describeFlappingPattern(flips []directionFlip) string {
-	if len(flips) == 0 {
-		return ""
-	}
-
-	windowSeconds := windowFromFlips(flips)
-	windowDesc := formatDuration(time.Duration(windowSeconds) * time.Second)
-
-	if len(flips) == 1 {
-		dir := "up-down"
-		if flips[0].direction == 1 {
-			dir = "down-up"
-		}
-		return fmt.Sprintf("%s reversal in %s", dir, windowDesc)
-	}
-
-	return fmt.Sprintf("%d direction flips in %s", len(flips), windowDesc)
-}
 
 // diagnoseFlappingCauses identifies likely root causes of the observed
 // flapping.
@@ -269,11 +131,3 @@ func generateFlappingFixes(hpa *autoscalingv2.HorizontalPodAutoscaler, causes []
 
 	return fixes
 }
-
-// candidateWindowMultipliers defines the multipliers applied to the current
-// stabilization window to generate candidate window values for simulation.
-var candidateWindowMultipliers = []float64{1.5, 2.0, 3.0}
-
-// fixedCandidateWindows provides additional fixed window values (in seconds)
-// that are always evaluated regardless of the current window.
-var fixedCandidateWindows = []int32{300, 600}

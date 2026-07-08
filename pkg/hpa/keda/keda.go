@@ -30,8 +30,12 @@ type Analysis struct {
 	CooldownPeriod   *int32           `json:"cooldownPeriod,omitempty" yaml:"cooldownPeriod,omitempty"`
 	MinReplicaCount  *int32           `json:"minReplicaCount,omitempty" yaml:"minReplicaCount,omitempty"`
 	MaxReplicaCount  *int32           `json:"maxReplicaCount,omitempty" yaml:"maxReplicaCount,omitempty"`
-	Lines            []string         `json:"lines,omitempty" yaml:"lines,omitempty"`
-	Fallback         *FallbackInfo    `json:"fallback,omitempty" yaml:"fallback,omitempty"`
+	// IdleReplicaCount is the replica count KEDA scales the workload down to
+	// when the triggers are idle (scale-to-zero fallback). Populated from
+	// spec.idleReplicaCount; nil when unset.
+	IdleReplicaCount *int32        `json:"idleReplicaCount,omitempty" yaml:"idleReplicaCount,omitempty"`
+	Lines            []string      `json:"lines,omitempty" yaml:"lines,omitempty"`
+	Fallback         *FallbackInfo `json:"fallback,omitempty" yaml:"fallback,omitempty"`
 }
 
 // TriggerSummary is a display-oriented summary of a KEDA trigger.
@@ -151,6 +155,9 @@ func analyzeReplicaBounds(hpa *autoscalingv2.HorizontalPodAutoscaler, k *Analysi
 	}
 	if k.MaxReplicaCount != nil && *k.MaxReplicaCount != hpa.Spec.MaxReplicas {
 		lines = append(lines, fmt.Sprintf("[observed] KEDA maxReplicaCount=%d differs from HPA maxReplicas=%d; KEDA reconciliation may override manual HPA changes.", *k.MaxReplicaCount, hpa.Spec.MaxReplicas))
+	}
+	if k.IdleReplicaCount != nil {
+		lines = append(lines, fmt.Sprintf("[observed] KEDA idleReplicaCount=%d is set; KEDA will scale the workload down to this many replicas when all triggers are idle (scale-to-zero fallback).", *k.IdleReplicaCount))
 	}
 
 	return lines

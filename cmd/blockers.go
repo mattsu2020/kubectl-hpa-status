@@ -7,16 +7,17 @@ import (
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 	"github.com/spf13/cobra"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
 type blockerOutput struct {
-	Namespace string                     `json:"namespace" yaml:"namespace"`
-	Name      string                     `json:"name" yaml:"name"`
-	Target    string                     `json:"target" yaml:"target"`
-	Report    *hpaanalysis.BlockerReport `json:"blockerReport" yaml:"blockerReport"`
+	Namespace string          `json:"namespace" yaml:"namespace"`
+	Name      string          `json:"name" yaml:"name"`
+	Target    string          `json:"target" yaml:"target"`
+	Report    *blocker.Report `json:"blockerReport" yaml:"blockerReport"`
 }
 
 func newBlockersCommand(opts *options) *cobra.Command {
@@ -86,7 +87,7 @@ func runBlockers(ctx context.Context, out io.Writer, opts *options, names []stri
 
 // buildBlockerReport assembles BlockerInput from various fetchers and runs
 // the blocker analysis engine.
-func buildBlockerReport(ctx context.Context, opts *options, analysis hpaanalysis.Analysis, namespace, name string) *hpaanalysis.BlockerReport {
+func buildBlockerReport(ctx context.Context, opts *options, analysis hpaanalysis.Analysis, namespace, name string) *blocker.Report {
 	// Best-effort client: a client-creation failure here is not fatal to the
 	// overall status report; returning nil lets the caller skip the blocker
 	// section and record a warning instead of aborting. Bypasses the standard
@@ -103,7 +104,7 @@ func buildBlockerReport(ctx context.Context, opts *options, analysis hpaanalysis
 	}
 
 	input := assembleBlockerInput(ctx, client, hpa)
-	report := hpaanalysis.AnalyzeBlockers(input)
+	report := blocker.AnalyzeBlockers(input)
 	report.Namespace = namespace
 	report.Name = name
 	report.Target = analysis.Target
@@ -113,9 +114,9 @@ func buildBlockerReport(ctx context.Context, opts *options, analysis hpaanalysis
 
 // buildBlockerReportForStatus builds a BlockerReport within an existing
 // buildStatusReport call, reusing the already-created client.
-func buildBlockerReportForStatus(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, target string) *hpaanalysis.BlockerReport {
+func buildBlockerReportForStatus(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, target string) *blocker.Report {
 	input := assembleBlockerInput(ctx, client, hpa)
-	report := hpaanalysis.AnalyzeBlockers(input)
+	report := blocker.AnalyzeBlockers(input)
 	report.Namespace = hpa.Namespace
 	report.Name = hpa.Name
 	report.Target = target
@@ -124,8 +125,8 @@ func buildBlockerReportForStatus(ctx context.Context, client *kube.Client, hpa *
 }
 
 // assembleBlockerInput gathers all observable signals for blocker analysis.
-func assembleBlockerInput(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) hpaanalysis.BlockerInput {
-	input := hpaanalysis.BlockerInput{
+func assembleBlockerInput(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) blocker.Input {
+	input := blocker.Input{
 		Namespace:       hpa.Namespace,
 		DesiredReplicas: hpa.Status.DesiredReplicas,
 		CurrentReplicas: hpa.Status.CurrentReplicas,
@@ -169,7 +170,7 @@ func assembleBlockerInput(ctx context.Context, client *kube.Client, hpa *autosca
 	// Fetch node capacity (deep mode).
 	nodeCap, _ := kube.FetchNodeCapacity(ctx, client.Interface)
 	if nodeCap != nil {
-		input.NodeCapacity = &hpaanalysis.NodeCapacitySummary{
+		input.NodeCapacity = &blocker.NodeCapacitySummary{
 			TotalNodes:   nodeCap.TotalNodes,
 			AllocCPU:     nodeCap.AllocCPU.String(),
 			AllocMemory:  nodeCap.AllocMemory.String(),
@@ -181,7 +182,7 @@ func assembleBlockerInput(ctx context.Context, client *kube.Client, hpa *autosca
 }
 
 // enrichBlockerInputFromPods counts ready/total pods from PodInfo slice.
-func enrichBlockerInputFromPods(input hpaanalysis.BlockerInput, pods []kube.PodInfo) hpaanalysis.BlockerInput {
+func enrichBlockerInputFromPods(input blocker.Input, pods []kube.PodInfo) blocker.Input {
 	var ready, total int32
 	for _, pod := range pods {
 		total++
@@ -196,13 +197,13 @@ func enrichBlockerInputFromPods(input hpaanalysis.BlockerInput, pods []kube.PodI
 
 // convertToBlockerContainerStatuses converts internal ContainerStatusDetail
 // to ContainerStatusSummary.
-func convertToBlockerContainerStatuses(details []kube.ContainerStatusDetail) []hpaanalysis.ContainerStatusSummary {
+func convertToBlockerContainerStatuses(details []kube.ContainerStatusDetail) []blocker.ContainerStatusSummary {
 	if len(details) == 0 {
 		return nil
 	}
-	result := make([]hpaanalysis.ContainerStatusSummary, 0, len(details))
+	result := make([]blocker.ContainerStatusSummary, 0, len(details))
 	for _, d := range details {
-		result = append(result, hpaanalysis.ContainerStatusSummary{
+		result = append(result, blocker.ContainerStatusSummary{
 			Pod:           d.Pod,
 			Container:     d.Container,
 			Waiting:       d.Waiting,
@@ -215,9 +216,9 @@ func convertToBlockerContainerStatuses(details []kube.ContainerStatusDetail) []h
 
 // convertToBlockerQuotas converts internal QuotaInfo to BlockerQuotaInfo,
 // computing the usage ratio.
-func convertToBlockerQuotas(infos []kube.QuotaInfo) []hpaanalysis.BlockerQuotaInfo {
-	return convertQuotaDetail(infos, func(q kube.QuotaInfo) hpaanalysis.BlockerQuotaInfo {
-		return hpaanalysis.BlockerQuotaInfo{
+func convertToBlockerQuotas(infos []kube.QuotaInfo) []blocker.QuotaInfo {
+	return convertQuotaDetail(infos, func(q kube.QuotaInfo) blocker.QuotaInfo {
+		return blocker.QuotaInfo{
 			Name:     q.Name,
 			Resource: q.Resource,
 			Used:     q.Used,

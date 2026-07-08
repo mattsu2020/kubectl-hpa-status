@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/lint"
 )
 
 // This file holds cross-cutting renderer smoke tests (write* helpers and the
@@ -16,8 +17,8 @@ import (
 func TestWriteGitHubLintAnnotations(t *testing.T) {
 	results := []lintFileResult{{
 		File: "k8s/hpa.yaml",
-		Result: &hpaanalysis.LintResult{Findings: []hpaanalysis.LintFinding{{
-			Severity:       hpaanalysis.LintWarning,
+		Result: &lint.Result{Findings: []lint.Finding{{
+			Severity:       lint.Warning,
 			Rule:           "max-replicas",
 			Message:        "maxReplicas may be too low",
 			Recommendation: "raise maxReplicas after preflight",

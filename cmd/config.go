@@ -157,6 +157,9 @@ func applyConfigDefaults(cmd *cobra.Command, opts *options) error {
 	if path == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
+			// Best-effort: if the home directory is unresolvable (rare: $HOME
+			// unset on a stripped-down environment), silently skip config-file
+			// loading and fall back to flag/defaults only.
 			return nil
 		}
 		path = filepath.Join(home, ".kube", "hpa-status.yaml")

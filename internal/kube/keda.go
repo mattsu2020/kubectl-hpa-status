@@ -33,6 +33,7 @@ type KEDAInfo struct {
 	CooldownPeriod   *int32              `json:"cooldownPeriod,omitempty" yaml:"cooldownPeriod,omitempty"`
 	MinReplicaCount  *int32              `json:"minReplicaCount,omitempty" yaml:"minReplicaCount,omitempty"`
 	MaxReplicaCount  *int32              `json:"maxReplicaCount,omitempty" yaml:"maxReplicaCount,omitempty"`
+	IdleReplicaCount *int32              `json:"idleReplicaCount,omitempty" yaml:"idleReplicaCount,omitempty"`
 	Conditions       []KEDACondition     `json:"conditions,omitempty" yaml:"conditions,omitempty"`
 	Advanced         map[string]string   `json:"advanced,omitempty" yaml:"advanced,omitempty"`
 	Fallback         *KEDAFallback       `json:"fallback,omitempty" yaml:"fallback,omitempty"`
@@ -189,6 +190,7 @@ func ExtractKEDAInfo(u *unstructured.Unstructured) KEDAInfo {
 		info.CooldownPeriod = extractInt32Ptr(spec, "cooldownPeriod")
 		info.MinReplicaCount = extractInt32Ptr(spec, "minReplicaCount")
 		info.MaxReplicaCount = extractInt32Ptr(spec, "maxReplicaCount")
+		info.IdleReplicaCount = extractInt32Ptr(spec, "idleReplicaCount")
 		if advanced, ok := nestedMap(spec, "advanced"); ok {
 			info.Advanced = extractAdvanced(advanced)
 		}

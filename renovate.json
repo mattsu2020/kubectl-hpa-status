@@ -3,7 +3,8 @@
   "extends": [
     "config:recommended",
     ":dependencyDashboard",
-    ":semanticCommits"
+    ":semanticCommits",
+    ":automergeMinor"
   ],
   "labels": [
     "dependencies"
@@ -29,38 +30,52 @@
   },
   "packageRules": [
     {
-      "description": "Group Kubernetes client libraries so they move together and stay API-compatible.",
+      "description": "Group Kubernetes client libraries so they move together and stay API-compatible. Auto-merge patch/minor after CI; major versions require manual review because k8s.io libs can carry breaking API changes across minor bumps.",
       "matchPackageNames": [
-        "/^k8s\\.io\\//"
+        "/^k8s\\.io\\//",
+        "/^sigs\\.k8s\\.io\\//"
       ],
-      "groupName": "kubernetes client libraries"
+      "groupName": "kubernetes client libraries",
+      "automerge": false
     },
     {
-      "description": "Group golang.org/x libraries.",
+      "description": "Group golang.org/x libraries; auto-merge patch/minor after CI passes.",
       "matchPackageNames": [
         "/^golang\\.org\\/x\\//"
       ],
-      "groupName": "golang x libraries"
+      "groupName": "golang x libraries",
+      "automergeType": "pr",
+      "automerge": true
     },
     {
-      "description": "Group the TUI stack (charmbracelet + muesli) so Bubble Tea updates land together.",
+      "description": "Group the TUI stack (charmbracelet + muesli) so updates land together. Stay manual: bubbletea/lipgloss v1->v2 is a breaking module-path change that needs code changes, not just a version bump.",
       "matchPackageNames": [
         "/^github\\.com/charmbracelet\\//",
-        "/^github\\.com/muesli\\//"
+        "/^github\\.com/muesli\\//",
+        "/^charm\\.land\\//"
       ],
-      "groupName": "charmbracelet TUI stack"
+      "groupName": "charmbracelet TUI stack",
+      "automerge": false
     },
     {
-      "description": "Auto-merge patch and minor updates for dev dependencies after CI passes. Major versions stay manual.",
+      "description": "Group cobra/pflag CLI stack; auto-merge patch/minor after CI passes.",
+      "matchPackageNames": [
+        "/^github\\.com/spf13\\//"
+      ],
+      "groupName": "spf13 CLI stack",
+      "automergeType": "pr",
+      "automerge": true
+    },
+    {
+      "description": "Major version updates always require manual review (breaking changes). Override the :automergeMinor preset for safety.",
       "matchUpdateTypes": [
-        "patch",
-        "minor"
+        "major"
       ],
-      "matchDepTypes": [
-        "devDependencies",
-        "dev"
-      ],
-      "automerge": false
+      "automerge": false,
+      "labels": [
+        "dependencies",
+        "breaking"
+      ]
     }
   ]
 }

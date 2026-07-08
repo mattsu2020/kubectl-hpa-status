@@ -1,8 +1,5 @@
 package flapping
 
-// This file holds the flapping prevention path (AnalyzeFlappingPrevention):
-// stabilization-window what-if simulation and its shared parsing helpers.
-
 import (
 	"fmt"
 	"regexp"
@@ -14,6 +11,14 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/event"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
 )
+
+// candidateWindowMultipliers defines the multipliers applied to the current
+// stabilization window to generate candidate window values for simulation.
+var candidateWindowMultipliers = []float64{1.5, 2.0, 3.0}
+
+// fixedCandidateWindows provides additional fixed window values (in seconds)
+// that are always evaluated regardless of the current window.
+var fixedCandidateWindows = []int32{300, 600}
 
 // AnalyzeFlappingPrevention analyzes HPA rescale events to recommend
 // stabilization window changes that reduce replica flapping. It simulates
