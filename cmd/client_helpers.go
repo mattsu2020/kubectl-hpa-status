@@ -43,22 +43,9 @@ func newClientOrDefault(opts *options) (*kube.Client, error) {
 	return client.NewClientOrDefault(opts)
 }
 
-// lookupHPA collapses the two-step pattern repeated across ~20 status-style
-// commands: create the standard client, then fetch the named HPA, wrapping a
-// lookup failure with the canonical "HPA not found" sentinel so callers can
-// errors.Is on it. It uses newClientOrDefault, so it carries the standard
-// "failed to create Kubernetes client" message on client-creation failure
-// (no --no-wrap bypass). Commands that must keep their output schema-clean
-// or treat client failure as non-fatal should keep calling opts.NewClient()
-// directly — see the bypass list in the file comment above.
+// lookupHPA re-exports client.LookupHPA under the unexported name used by
+// cmd/. When extracted sub-packages migrate, they should call client.LookupHPA
+// directly and this facade can shrink.
 func lookupHPA(ctx context.Context, opts *options, name string) (*kube.Client, *autoscalingv2.HorizontalPodAutoscaler, error) {
-	c, err := newClientOrDefault(opts)
-	if err != nil {
-		return nil, nil, err
-	}
-	hpa, err := kube.GetHPAFromClient(ctx, c, name)
-	if err != nil {
-		return c, nil, wrapHPALookupError(c.Namespace, name, err)
-	}
-	return c, hpa, nil
+	return client.LookupHPA(ctx, opts, name)
 }

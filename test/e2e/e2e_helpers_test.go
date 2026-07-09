@@ -591,6 +591,104 @@ func createMultiMetricHPA(t *testing.T, client *kubernetes.Clientset, nsName, hp
 	}
 }
 
+// createBehaviorPolicyHPA creates an HPA with explicit scaleUp/scaleDown
+// policies (percent and pods) so the behavior subcommand and status
+// --explain path can assert policy visualization for ROADMAP coverage.
+func createBehaviorPolicyHPA(t *testing.T, client *kubernetes.Clientset, nsName, hpaName, rcName string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	minReplicas := int32(2)
+	scaleUpStab := int32(0)
+	scaleDownStab := int32(180)
+	selectMax := autoscalingv2.MaxChangePolicySelect
+	selectMin := autoscalingv2.MinChangePolicySelect
+	hpa := &autoscalingv2.HorizontalPodAutoscaler{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      hpaName,
+			Namespace: nsName,
+		},
+		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
+				APIVersion: "v1",
+				Kind:       "ReplicationController",
+				Name:       rcName,
+			},
+			MinReplicas: &minReplicas,
+			MaxReplicas: 20,
+			Metrics: []autoscalingv2.MetricSpec{
+				{
+					Type: autoscalingv2.ResourceMetricSourceType,
+					Resource: &autoscalingv2.ResourceMetricSource{
+						Name: corev1.ResourceCPU,
+						Target: autoscalingv2.MetricTarget{
+							Type:               autoscalingv2.UtilizationMetricType,
+							AverageUtilization: int32Ptr(70),
+						},
+					},
+				},
+			},
+			Behavior: &autoscalingv2.HorizontalPodAutoscalerBehavior{
+				ScaleUp: &autoscalingv2.HPAScalingRules{
+					StabilizationWindowSeconds: &scaleUpStab,
+					SelectPolicy:               &selectMax,
+					Policies: []autoscalingv2.HPAScalingPolicy{
+						{Type: autoscalingv2.PercentScalingPolicy, Value: 100, PeriodSeconds: 15},
+						{Type: autoscalingv2.PodsScalingPolicy, Value: 4, PeriodSeconds: 15},
+					},
+				},
+				ScaleDown: &autoscalingv2.HPAScalingRules{
+					StabilizationWindowSeconds: &scaleDownStab,
+					SelectPolicy:               &selectMin,
+					Policies: []autoscalingv2.HPAScalingPolicy{
+						{Type: autoscalingv2.PodsScalingPolicy, Value: 1, PeriodSeconds: 60},
+					},
+				},
+			},
+		},
+	}
+	hpa, err := client.AutoscalingV2().HorizontalPodAutoscalers(nsName).Create(ctx, hpa, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("failed to create behavior-policy HPA %s: %v", hpaName, err)
+	}
+
+	hpa.Status = autoscalingv2.HorizontalPodAutoscalerStatus{
+		CurrentReplicas: 4,
+		DesiredReplicas: 8,
+		Conditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
+			{
+				Type:               autoscalingv2.ScalingActive,
+				Status:             corev1.ConditionTrue,
+				Reason:             "ValidMetricFound",
+				Message:            "the HPA was able to successfully calculate a recommendation",
+				LastTransitionTime: metav1.Now(),
+			},
+			{
+				Type:               autoscalingv2.AbleToScale,
+				Status:             corev1.ConditionTrue,
+				Reason:             "ReadyForScale",
+				Message:            "recommended size is different from current size",
+				LastTransitionTime: metav1.Now(),
+			},
+		},
+		CurrentMetrics: []autoscalingv2.MetricStatus{
+			{
+				Type: autoscalingv2.ResourceMetricSourceType,
+				Resource: &autoscalingv2.ResourceMetricStatus{
+					Name: corev1.ResourceCPU,
+					Current: autoscalingv2.MetricValueStatus{
+						AverageUtilization: int32Ptr(140),
+					},
+				},
+			},
+		},
+	}
+	if _, err := client.AutoscalingV2().HorizontalPodAutoscalers(nsName).UpdateStatus(ctx, hpa, metav1.UpdateOptions{}); err != nil {
+		t.Fatalf("failed to update behavior-policy HPA %s status: %v", hpaName, err)
+	}
+}
+
 // writeTempConfigFile writes content to a temporary file and registers cleanup
 // to remove it when the test finishes. Returns the file path.
 func writeTempConfigFile(t *testing.T, content string) string {

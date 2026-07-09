@@ -5,12 +5,14 @@
 package client
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
 	"github.com/mattsu2020/kubectl-hpa-status/cmd/internal/errs"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
 // WrapClientError formats a Kubernetes client creation error with the standard
@@ -43,4 +45,24 @@ func NewClientOrDefault(opts *cmdoptions.Root) (*kube.Client, error) {
 		return nil, WrapClientError(err)
 	}
 	return client, nil
+}
+
+// LookupHPA collapses the two-step pattern used by status-style commands:
+// create the standard client, then fetch the named HPA, wrapping a lookup
+// failure with the canonical "HPA not found" sentinel so callers can
+// errors.Is on it. It uses NewClientOrDefault, so client-creation failures
+// carry the standard "failed to create Kubernetes client" message.
+//
+// Commands that must keep their output schema-clean or treat client failure
+// as non-fatal should call opts.NewClient() directly instead.
+func LookupHPA(ctx context.Context, opts *cmdoptions.Root, name string) (*kube.Client, *autoscalingv2.HorizontalPodAutoscaler, error) {
+	c, err := NewClientOrDefault(opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	hpa, err := kube.GetHPAFromClient(ctx, c, name)
+	if err != nil {
+		return c, nil, WrapHPALookupError(c.Namespace, name, err)
+	}
+	return c, hpa, nil
 }

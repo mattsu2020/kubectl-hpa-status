@@ -229,121 +229,173 @@ func looksLikeKEDAManaged(hpa *autoscalingv2.HorizontalPodAutoscaler) bool {
 	return util.LooksLikeKEDAManaged(hpa)
 }
 
-// RecommendedActions generates actionable recommendation strings.
-func RecommendedActions(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []string {
-	var actions []string
+// actionCase is the single source of truth for recommended actions. Both the
+// human-facing Actions []string (via RecommendedActions) and the machine-
+// readable StructuredActions (via buildStructuredActions) are derived from
+// this list so the two outputs cannot diverge.
+type actionCase struct {
+	reason         string
+	humanMessage   string // full operator-facing sentence for Actions
+	message        string // short structured Message
+	nextStep       string
+	severity       Severity
+	confidence     Confidence
+	classification Classification
+}
+
+// collectActionCases walks HPA status once and returns every recommended
+// action in evaluation order. Early-return cases (e.g. ScalingActive != True)
+// still include any metric-specific follow-ups collected before the return.
+func collectActionCases(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []actionCase {
+	var cases []actionCase
+
 	if hpa.Status.ObservedGeneration != nil && *hpa.Status.ObservedGeneration < hpa.Generation {
-		actions = append(actions, "Wait for the HPA controller to observe the latest spec generation before trusting this status.")
+		cases = append(cases, actionCase{
+			reason:         "WaitForGeneration",
+			humanMessage:   "Wait for the HPA controller to observe the latest spec generation before trusting this status.",
+			message:        "Status does not reflect the latest spec",
+			nextStep:       "Wait for controller reconciliation",
+			severity:       SeverityWarning,
+			confidence:     ConfidenceHigh,
+			classification: ClassificationObserved,
+		})
 	}
+
 	if condition := FindCondition(hpa, ConditionScalingActive); condition != nil && condition.Status != corev1.ConditionTrue {
-		actions = append(actions, "Check metrics-server or custom/external metrics adapters; ScalingActive is not True.")
-		actions = append(actions, staleMetricActions(hpa)...)
-		return actions
+		cases = append(cases, actionCase{
+			reason:         "RestoreMetrics",
+			humanMessage:   "Check metrics-server or custom/external metrics adapters; ScalingActive is not True.",
+			message:        "ScalingActive is not True",
+			nextStep:       "Check metrics-server or custom/external metrics adapters",
+			severity:       SeverityError,
+			confidence:     ConfidenceHigh,
+			classification: ClassificationObserved,
+		})
+		cases = append(cases, staleMetricActionCases(hpa)...)
+		return cases
 	}
+
 	if condition := FindCondition(hpa, ConditionAbleToScale); condition != nil && condition.Reason == "ScaleDownStabilized" {
+		human := "CPU or memory may already be low, but scale-down is stabilized; review HPA behavior and recent recommendations."
+		nextStep := "Review HPA behavior and recent recommendations"
 		if window := scaleDownStabilizationWindow(hpa); window != nil {
-			actions = append(actions, fmt.Sprintf("CPU or memory may already be low, but scale-down is stabilized; estimated wait up to ~%ds or review spec.behavior.scaleDown.stabilizationWindowSeconds.", *window))
-		} else {
-			actions = append(actions, "CPU or memory may already be low, but scale-down is stabilized; review HPA behavior and recent recommendations.")
+			human = fmt.Sprintf("CPU or memory may already be low, but scale-down is stabilized; estimated wait up to ~%ds or review spec.behavior.scaleDown.stabilizationWindowSeconds.", *window)
+			nextStep = fmt.Sprintf("Estimated wait up to ~%ds or review spec.behavior.scaleDown.stabilizationWindowSeconds", *window)
 		}
+		cases = append(cases, actionCase{
+			reason:         "WaitForStabilization",
+			humanMessage:   human,
+			message:        "Scale-down is stabilized",
+			nextStep:       nextStep,
+			severity:       SeverityInfo,
+			confidence:     ConfidenceMedium,
+			classification: ClassificationEstimated,
+		})
 	}
+
 	if condition := FindCondition(hpa, ConditionScalingLimited); condition != nil && condition.Status == corev1.ConditionTrue {
 		switch hpa.Status.DesiredReplicas {
 		case hpa.Spec.MaxReplicas:
-			actions = append(actions, "HPA is capped at maxReplicas; raise maxReplicas or reduce load/target utilization if more capacity is expected.")
+			cases = append(cases, actionCase{
+				reason:         "RaiseMaxReplicas",
+				humanMessage:   "HPA is capped at maxReplicas; raise maxReplicas or reduce load/target utilization if more capacity is expected.",
+				message:        "HPA is capped at maxReplicas",
+				nextStep:       "Raise maxReplicas or reduce load/target utilization if more capacity is expected",
+				severity:       SeverityWarning,
+				confidence:     ConfidenceHigh,
+				classification: ClassificationObserved,
+			})
 		case minReplicas:
-			actions = append(actions, "HPA is capped at minReplicas; lower minReplicas if scale-down below this point is expected.")
+			cases = append(cases, actionCase{
+				reason:         "LowerMinReplicas",
+				humanMessage:   "HPA is capped at minReplicas; lower minReplicas if scale-down below this point is expected.",
+				message:        "HPA is capped at minReplicas",
+				nextStep:       "Lower minReplicas if scale-down below this point is expected",
+				severity:       SeverityWarning,
+				confidence:     ConfidenceHigh,
+				classification: ClassificationObserved,
+			})
 		}
 	}
-	if len(actions) == 0 && hpa.Status.DesiredReplicas == hpa.Status.CurrentReplicas {
-		actions = append(actions, "No immediate action is visible from HPA status; inspect metrics and recent Events if behavior is unexpected.")
+
+	if len(cases) == 0 && hpa.Status.DesiredReplicas == hpa.Status.CurrentReplicas {
+		cases = append(cases, actionCase{
+			reason:         "NoImmediateAction",
+			humanMessage:   "No immediate action is visible from HPA status; inspect metrics and recent Events if behavior is unexpected.",
+			message:        "No immediate action is visible from HPA status",
+			nextStep:       "Inspect metrics and recent Events if behavior is unexpected",
+			severity:       SeverityInfo,
+			confidence:     ConfidenceMedium,
+			classification: ClassificationObserved,
+		})
 	}
-	return actions
+
+	return cases
 }
 
-func staleMetricActions(hpa *autoscalingv2.HorizontalPodAutoscaler) []string {
-	var actions []string
+// staleMetricActionCases returns per-metric follow-up actions used when the
+// metrics pipeline is inactive. Shared by the human and structured action
+// paths via collectActionCases.
+func staleMetricActionCases(hpa *autoscalingv2.HorizontalPodAutoscaler) []actionCase {
+	var cases []actionCase
 	for _, spec := range hpa.Spec.Metrics {
 		switch {
 		case spec.Type == autoscalingv2.ExternalMetricSourceType && spec.External != nil:
-			actions = append(actions, fmt.Sprintf("Verify external metric %q in the external metrics API; if it is retired, remove it from spec.metrics so it no longer blocks scaling.", spec.External.Metric.Name))
+			name := spec.External.Metric.Name
+			cases = append(cases, actionCase{
+				reason:         "VerifyExternalMetric",
+				humanMessage:   fmt.Sprintf("Verify external metric %q in the external metrics API; if it is retired, remove it from spec.metrics so it no longer blocks scaling.", name),
+				message:        fmt.Sprintf("External metric %q may be missing or retired", name),
+				nextStep:       fmt.Sprintf("Verify external metric %q in the external metrics API", name),
+				severity:       SeverityWarning,
+				confidence:     ConfidenceHigh,
+				classification: ClassificationObserved,
+			})
 		case spec.Type == autoscalingv2.ObjectMetricSourceType && spec.Object != nil:
-			actions = append(actions, fmt.Sprintf("Verify object metric %q and its described object %s/%s before changing replica bounds.", spec.Object.Metric.Name, spec.Object.DescribedObject.Kind, spec.Object.DescribedObject.Name))
+			name := spec.Object.Metric.Name
+			kind := spec.Object.DescribedObject.Kind
+			objName := spec.Object.DescribedObject.Name
+			cases = append(cases, actionCase{
+				reason:         "VerifyObjectMetric",
+				humanMessage:   fmt.Sprintf("Verify object metric %q and its described object %s/%s before changing replica bounds.", name, kind, objName),
+				message:        fmt.Sprintf("Object metric %q may be missing", name),
+				nextStep:       fmt.Sprintf("Verify object metric %q and described object %s/%s", name, kind, objName),
+				severity:       SeverityWarning,
+				confidence:     ConfidenceHigh,
+				classification: ClassificationObserved,
+			})
 		}
+	}
+	return cases
+}
+
+// RecommendedActions generates actionable recommendation strings.
+// Derived from collectActionCases so the text list stays aligned with
+// StructuredActions.
+func RecommendedActions(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []string {
+	cases := collectActionCases(hpa, minReplicas)
+	actions := make([]string, 0, len(cases))
+	for _, c := range cases {
+		actions = append(actions, c.humanMessage)
 	}
 	return actions
 }
 
-// buildStructuredActions mirrors the key cases from RecommendedActions() and
-// returns machine-readable StructuredMessage entries.
+// buildStructuredActions returns machine-readable StructuredMessage entries
+// derived from the same collectActionCases list as RecommendedActions.
 func buildStructuredActions(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []StructuredMessage {
-	var msgs []StructuredMessage
-
-	// Wait for generation
-	if hpa.Status.ObservedGeneration != nil && *hpa.Status.ObservedGeneration < hpa.Generation {
+	cases := collectActionCases(hpa, minReplicas)
+	msgs := make([]StructuredMessage, 0, len(cases))
+	for _, c := range cases {
 		msgs = append(msgs, StructuredMessage{
-			Reason:         "WaitForGeneration",
-			Message:        "Status does not reflect the latest spec",
-			NextStep:       "Wait for controller reconciliation",
-			Severity:       SeverityWarning,
-			Confidence:     ConfidenceHigh,
-			Classification: ClassificationObserved,
+			Reason:         c.reason,
+			Message:        c.message,
+			NextStep:       c.nextStep,
+			Severity:       c.severity,
+			Confidence:     c.confidence,
+			Classification: c.classification,
 		})
 	}
-
-	// ScalingActive not True → check metrics
-	if condition := FindCondition(hpa, ConditionScalingActive); condition != nil && condition.Status != corev1.ConditionTrue {
-		msgs = append(msgs, StructuredMessage{
-			Reason:         "RestoreMetrics",
-			Message:        "ScalingActive is not True",
-			NextStep:       "Check metrics-server or custom/external metrics adapters",
-			Severity:       SeverityError,
-			Confidence:     ConfidenceHigh,
-			Classification: ClassificationObserved,
-		})
-		return msgs
-	}
-
-	// ScaleDownStabilized
-	if condition := FindCondition(hpa, ConditionAbleToScale); condition != nil && condition.Reason == "ScaleDownStabilized" {
-		nextStep := "Review HPA behavior and recent recommendations"
-		if window := scaleDownStabilizationWindow(hpa); window != nil {
-			nextStep = fmt.Sprintf("Estimated wait up to ~%ds or review spec.behavior.scaleDown.stabilizationWindowSeconds", *window)
-		}
-		msgs = append(msgs, StructuredMessage{
-			Reason:         "WaitForStabilization",
-			Message:        "Scale-down is stabilized",
-			NextStep:       nextStep,
-			Severity:       SeverityInfo,
-			Confidence:     ConfidenceMedium,
-			Classification: ClassificationEstimated,
-		})
-	}
-
-	// ScalingLimited
-	if condition := FindCondition(hpa, ConditionScalingLimited); condition != nil && condition.Status == corev1.ConditionTrue {
-		switch hpa.Status.DesiredReplicas {
-		case hpa.Spec.MaxReplicas:
-			msgs = append(msgs, StructuredMessage{
-				Reason:         "RaiseMaxReplicas",
-				Message:        "HPA is capped at maxReplicas",
-				NextStep:       "Raise maxReplicas or reduce load/target utilization if more capacity is expected",
-				Severity:       SeverityWarning,
-				Confidence:     ConfidenceHigh,
-				Classification: ClassificationObserved,
-			})
-		case minReplicas:
-			msgs = append(msgs, StructuredMessage{
-				Reason:         "LowerMinReplicas",
-				Message:        "HPA is capped at minReplicas",
-				NextStep:       "Lower minReplicas if scale-down below this point is expected",
-				Severity:       SeverityWarning,
-				Confidence:     ConfidenceHigh,
-				Classification: ClassificationObserved,
-			})
-		}
-	}
-
 	return msgs
 }
 

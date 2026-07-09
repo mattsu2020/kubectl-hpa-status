@@ -4,10 +4,13 @@ KUBECTL ?= kubectl
 
 BIN := kubectl-hpa-status
 COVERAGE_OUT := coverage.out
+# Match release stripping (-s -w) so local binaries stay closer to release size.
+# Override with LDFLAGS= for debug builds that need full symbols.
+LDFLAGS ?= -s -w
 
 .PHONY: build
 build:
-	$(GO) build -o $(BIN) .
+	$(GO) build -ldflags="$(LDFLAGS)" -o $(BIN) .
 
 .PHONY: test
 test:

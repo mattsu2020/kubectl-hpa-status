@@ -70,8 +70,8 @@ When adding a rule:
 - prefer explicit HPA status fields over Event message parsing
 - add a confidence label when the output is inferential
 - avoid claiming the HPA controller's private intermediate recommendation
-- add or update a focused unit test in `pkg/hpa/analysis_test.go`
-- add command behavior tests in `cmd/root_integration_test.go` when flags or apply behavior change
+- add or update a focused unit test under `pkg/hpa/analysis_*_test.go` (core, structured, metrics, health, suggestions, text)
+- add command behavior tests in `cmd/root_*_integration_test.go` when flags or apply behavior change
 - document any new user-facing output in `README.md`
 
 For list output changes, update `pkg/hpa/text.go` and cover the table behavior

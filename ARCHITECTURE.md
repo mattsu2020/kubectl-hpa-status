@@ -187,7 +187,9 @@ Refactoring notes:
   `converters_extra_test.go` (converter unit tests),
   `output_extra_test.go` (output-rendering unit tests),
   `root_extra_test.go` (remaining unit tests),
-  `root_integration_test.go` (status/list/watch/exit-code integration tests),
+  `root_status_integration_test.go` / `root_list_integration_test.go` /
+  `root_watch_integration_test.go` / `root_simulate_integration_test.go`
+  (status/list/watch/exit-code/simulate integration tests),
   `replay_timeline_integration_test.go` (replay/why-not-scale/advisor/
   ownership/profile/retrospective-timeline integration tests).
 - Leaf domains under `pkg/hpa` are being extracted one at a time into

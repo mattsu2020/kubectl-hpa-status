@@ -79,6 +79,55 @@ func TestAnalysisGroupViews(t *testing.T) {
 			t.Fatalf("Lifecycle should be zero for unset telemetry: %+v", l)
 		}
 	})
+
+	t.Run("Capacity snapshots capacity signals", func(t *testing.T) {
+		// Unset capacity fields must yield a zero view without panic.
+		c := a.Capacity()
+		if c.CapacityContext != nil || c.CapacityPlan != nil || c.PodAnalysis != nil {
+			t.Fatalf("Capacity should be zero for unset fields: %+v", c)
+		}
+	})
+
+	t.Run("ScaleToZeroGroup snapshots cold-start signals", func(t *testing.T) {
+		s := a.ScaleToZeroGroup()
+		if s.ScaleToZero != nil || s.WarmupAnalysis != nil {
+			t.Fatalf("ScaleToZeroGroup should be zero for unset fields: %+v", s)
+		}
+	})
+
+	t.Run("Stability snapshots flapping/churn signals", func(t *testing.T) {
+		s := a.Stability()
+		if s.FlappingSimulation != nil || s.ChurnAnalysis != nil {
+			t.Fatalf("Stability should be zero for unset fields: %+v", s)
+		}
+	})
+
+	t.Run("Advisory snapshots VPA/tuning advice", func(t *testing.T) {
+		adv := a.Advisory()
+		if adv.VPAConflict != nil || adv.ContainerAdvisor != nil {
+			t.Fatalf("Advisory should be zero for unset fields: %+v", adv)
+		}
+	})
+
+	t.Run("Controllers snapshots external controller signals", func(t *testing.T) {
+		c := a.Controllers()
+		if c.KEDAInfo != nil || c.RolloutDiagnosis != nil || c.ControllerProfile != nil {
+			t.Fatalf("Controllers should be zero for unset fields: %+v", c)
+		}
+	})
+
+	t.Run("Blockers snapshots apply-time gates", func(t *testing.T) {
+		b := a.Blockers()
+		if b.BlockerReport != nil || b.GitOpsConflict != nil {
+			t.Fatalf("Blockers should be zero for unset fields: %+v", b)
+		}
+	})
+
+	t.Run("HealthState mirrors Health string", func(t *testing.T) {
+		if a.HealthState() != HealthOK {
+			t.Fatalf("HealthState() = %q, want %q", a.HealthState(), HealthOK)
+		}
+	})
 }
 
 // TestAnalysisGroupViews_SharedPointersAreReadOnly documents that pointer
@@ -87,10 +136,15 @@ func TestAnalysisGroupViews(t *testing.T) {
 // must not mutate the shared pointers.
 func TestAnalysisGroupViews_SharedPointersAreReadOnly(t *testing.T) {
 	tr := &TargetReplicaInfo{ReadyReplicas: 5}
-	a := &Analysis{TargetReplicas: tr}
+	plan := &CapacityPlan{Safe: true}
+	a := &Analysis{TargetReplicas: tr, CapacityPlan: plan}
 
 	r := a.Replicas()
 	if r.TargetReplicas != tr {
 		t.Fatal("Replicas view should share the TargetReplicas pointer")
+	}
+	c := a.Capacity()
+	if c.CapacityPlan != plan {
+		t.Fatal("Capacity view should share the CapacityPlan pointer")
 	}
 }

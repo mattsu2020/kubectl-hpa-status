@@ -16,6 +16,14 @@ const (
 	HealthStabilized HealthState = "STABILIZED"
 )
 
+// HealthState returns the typed health state for a.Health without changing the
+// JSON wire type of Analysis.Health (still a plain string for compatibility).
+// Empty or unknown values are returned as HealthState(a.Health) unchanged so
+// callers can compare against the Health* constants.
+func (a Analysis) HealthState() HealthState {
+	return HealthState(a.Health)
+}
+
 // HealthSignal records a single penalty signal that contributed to the final
 // health state. Signals are exposed via --debug and -o json for transparency.
 type HealthSignal struct {

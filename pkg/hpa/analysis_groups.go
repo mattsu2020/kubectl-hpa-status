@@ -1,5 +1,11 @@
 package hpa
 
+import (
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/warmup"
+)
+
 // This file provides additive, read-only "group views" over the flat Analysis
 // struct, implementing the first step of the v2 grouping migration tracked in
 // ROADMAP.md ("Migration strategy (additive)"). The flat fields and their JSON
@@ -175,5 +181,110 @@ func (a *Analysis) Lifecycle() LifecycleView {
 		Debug:            a.Debug,
 		HiddenFactors:    a.HiddenFactors,
 		EnrichmentStatus: a.EnrichmentStatus,
+	}
+}
+
+// CapacityView groups scheduling and cluster capacity signals.
+type CapacityView struct {
+	CapacityContext  *CapacityContext
+	CapacityHeadroom *CapacityHeadroom
+	CapacityPlan     *CapacityPlan
+	ResourceCheck    *ResourceCheckResult
+	PodAnalysis      *PodAnalysis
+	ScalePath        *ScalePath
+	ReadinessImpact  *ReadinessImpact
+}
+
+// Capacity returns the scheduling/capacity group view.
+func (a *Analysis) Capacity() CapacityView {
+	return CapacityView{
+		CapacityContext:  a.CapacityContext,
+		CapacityHeadroom: a.CapacityHeadroom,
+		CapacityPlan:     a.CapacityPlan,
+		ResourceCheck:    a.ResourceCheck,
+		PodAnalysis:      a.PodAnalysis,
+		ScalePath:        a.ScalePath,
+		ReadinessImpact:  a.ReadinessImpact,
+	}
+}
+
+// ScaleToZeroView groups scale-to-zero and cold-start/warmup signals.
+type ScaleToZeroView struct {
+	ScaleToZero    *ScaleToZeroInfo
+	WarmupAnalysis *warmup.Analysis
+}
+
+// ScaleToZeroGroup returns the scale-to-zero/warmup group view. The method
+// name avoids a collision with the existing ScaleToZero field.
+func (a *Analysis) ScaleToZeroGroup() ScaleToZeroView {
+	return ScaleToZeroView{
+		ScaleToZero:    a.ScaleToZero,
+		WarmupAnalysis: a.WarmupAnalysis,
+	}
+}
+
+// StabilityView groups flapping and churn diagnosis signals.
+type StabilityView struct {
+	FlappingSimulation *SimulationResult
+	FlappingPrevention *FlappingPreventionReport
+	FlappingDiagnosis  *FlappingDiagnosis
+	ChurnAnalysis      *ChurnAnalysis
+}
+
+// Stability returns the flapping/churn group view.
+func (a *Analysis) Stability() StabilityView {
+	return StabilityView{
+		FlappingSimulation: a.FlappingSimulation,
+		FlappingPrevention: a.FlappingPrevention,
+		FlappingDiagnosis:  a.FlappingDiagnosis,
+		ChurnAnalysis:      a.ChurnAnalysis,
+	}
+}
+
+// AdvisoryView groups VPA and container/behavior tuning advice.
+type AdvisoryView struct {
+	VPAConflict      *vpa.ConflictInfo
+	VPAAdvisory      *vpa.Advisory
+	ContainerAdvisor *ContainerAdvisorResult
+	BehaviorAdvisor  *BehaviorAdvisorResult
+}
+
+// Advisory returns the VPA/container/behavior advisory group view.
+func (a *Analysis) Advisory() AdvisoryView {
+	return AdvisoryView{
+		VPAConflict:      a.VPAConflict,
+		VPAAdvisory:      a.VPAAdvisory,
+		ContainerAdvisor: a.ContainerAdvisor,
+		BehaviorAdvisor:  a.BehaviorAdvisor,
+	}
+}
+
+// ControllersView groups external controller integrations.
+type ControllersView struct {
+	KEDAInfo          *KEDAAnalysis
+	RolloutDiagnosis  *RolloutDiagnosis
+	ControllerProfile *ControllerProfile
+}
+
+// Controllers returns the external-controller group view.
+func (a *Analysis) Controllers() ControllersView {
+	return ControllersView{
+		KEDAInfo:          a.KEDAInfo,
+		RolloutDiagnosis:  a.RolloutDiagnosis,
+		ControllerProfile: a.ControllerProfile,
+	}
+}
+
+// BlockersView groups apply-time gating signals.
+type BlockersView struct {
+	BlockerReport  *blocker.Report
+	GitOpsConflict *GitOpsConflict
+}
+
+// Blockers returns the apply-time gating group view.
+func (a *Analysis) Blockers() BlockersView {
+	return BlockersView{
+		BlockerReport:  a.BlockerReport,
+		GitOpsConflict: a.GitOpsConflict,
 	}
 }

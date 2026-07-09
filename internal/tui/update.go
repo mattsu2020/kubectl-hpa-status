@@ -152,117 +152,86 @@ func (m Model) updateBatchAudit(msg batchAuditMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// handleKey is the key dispatch table. Each case matches one key binding and
-// delegates to either a small inline mutation or a named handler method (see
-// handleXxxKey below). Keeping each binding isolated makes the dispatch flat
-// and each handler independently testable.
-//
-//nolint:gocyclo // Key dispatch table: complexity is bounded by the number of bindings (~25) and cannot drop below it without sacrificing the readable per-binding case structure.
+// keyBindingHandler pairs a key binding with its action. handleKey walks this
+// table in order so cyclomatic complexity stays O(1) regardless of binding count.
+type keyBindingHandler struct {
+	binding key.Binding
+	handle  func(Model) (tea.Model, tea.Cmd)
+}
+
+// handleKey dispatches key presses via a binding table. Each entry delegates
+// to either a small inline mutation or a named handleXxx method. Table order
+// is the match priority; the first matching binding wins.
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch {
-	case key.Matches(msg, m.keys.Quit):
-		return m, tea.Quit
-
-	case key.Matches(msg, m.keys.Up):
-		return m.moveCursor(-1), nil
-
-	case key.Matches(msg, m.keys.Down):
-		return m.moveCursor(+1), nil
-
-	case key.Matches(msg, m.keys.Enter):
-		return m.handleEnter()
-
-	case key.Matches(msg, m.keys.Escape):
-		return m.handleEscape()
-
-	case key.Matches(msg, m.keys.Refresh):
-		m.loading = true
-		return m, fetchHPAs(m)
-
-	case key.Matches(msg, m.keys.Pause):
-		m.paused = !m.paused
-		return m, nil
-
-	case key.Matches(msg, m.keys.Filter):
-		m.filtering = true
-		m.filterInput.Focus()
-		return m, nil
-
-	case key.Matches(msg, m.keys.Help):
-		return m.toggleHelpView(), nil
-
-	case key.Matches(msg, m.keys.Sort):
-		return m.handleSortKey(), nil
-
-	case key.Matches(msg, m.keys.JumpProblem):
-		return m.handleJumpProblemKey(), nil
-
-	case key.Matches(msg, m.keys.Metrics):
-		if m.viewMode == detailView || m.viewMode == listView {
-			m.viewMode = metricsView
+	for _, entry := range m.keyHandlers() {
+		if key.Matches(msg, entry.binding) {
+			return entry.handle(m)
 		}
-		return m, nil
-
-	case key.Matches(msg, m.keys.ToggleSelect):
-		return m.handleToggleSelectKey(), nil
-
-	case key.Matches(msg, m.keys.SelectAll):
-		return m.handleSelectAllKey(), nil
-
-	case key.Matches(msg, m.keys.DeselectAll):
-		return m.handleDeselectAllKey(), nil
-
-	case key.Matches(msg, m.keys.History):
-		if m.viewMode == detailView {
-			m.viewMode = historyView
-			m.historyState = &historyState{}
-		}
-		return m, nil
-
-	case key.Matches(msg, m.keys.Hints):
-		return m.handleHintsKey(), nil
-
-	case key.Matches(msg, m.keys.Overview):
-		if m.viewMode == listView {
-			m.viewMode = overviewView
-		}
-		return m, nil
-
-	case key.Matches(msg, m.keys.Simulate):
-		return m.handleSimulateKey()
-
-	case key.Matches(msg, m.keys.Fix):
-		return m.handleFixKey()
-
-	case key.Matches(msg, m.keys.Replay):
-		return m.handleReplayKey()
-
-	case key.Matches(msg, m.keys.BatchAudit):
-		return m.handleBatchAuditKey()
-
-	case key.Matches(msg, m.keys.BatchApply):
-		return m.handleBatchApplyKey()
-
-	case key.Matches(msg, m.keys.MetricMode):
-		return m.handleMetricModeKey(), nil
-
-	case key.Matches(msg, m.keys.DryRun):
-		return m.handleDryRunKey(), nil
-
-	case key.Matches(msg, m.keys.TabField):
-		return m.handleTabField(+1), nil
-
-	case key.Matches(msg, m.keys.ShiftTabField):
-		return m.handleTabField(-1), nil
-
-	case key.Matches(msg, m.keys.IntervalUp):
-		return m.handleIntervalKey(-1), nil
-
-	case key.Matches(msg, m.keys.IntervalDown):
-		return m.handleIntervalKey(+1), nil
 	}
-
 	return m, nil
+}
+
+// keyHandlers returns the full key binding table for the current model. Built
+// per call so bindings always reflect the live m.keys configuration (tests
+// may override individual bindings).
+func (m Model) keyHandlers() []keyBindingHandler {
+	return []keyBindingHandler{
+		{m.keys.Quit, func(m Model) (tea.Model, tea.Cmd) { return m, tea.Quit }},
+		{m.keys.Up, func(m Model) (tea.Model, tea.Cmd) { return m.moveCursor(-1), nil }},
+		{m.keys.Down, func(m Model) (tea.Model, tea.Cmd) { return m.moveCursor(+1), nil }},
+		{m.keys.Enter, func(m Model) (tea.Model, tea.Cmd) { return m.handleEnter() }},
+		{m.keys.Escape, func(m Model) (tea.Model, tea.Cmd) { return m.handleEscape() }},
+		{m.keys.Refresh, func(m Model) (tea.Model, tea.Cmd) {
+			m.loading = true
+			return m, fetchHPAs(m)
+		}},
+		{m.keys.Pause, func(m Model) (tea.Model, tea.Cmd) {
+			m.paused = !m.paused
+			return m, nil
+		}},
+		{m.keys.Filter, func(m Model) (tea.Model, tea.Cmd) {
+			m.filtering = true
+			m.filterInput.Focus()
+			return m, nil
+		}},
+		{m.keys.Help, func(m Model) (tea.Model, tea.Cmd) { return m.toggleHelpView(), nil }},
+		{m.keys.Sort, func(m Model) (tea.Model, tea.Cmd) { return m.handleSortKey(), nil }},
+		{m.keys.JumpProblem, func(m Model) (tea.Model, tea.Cmd) { return m.handleJumpProblemKey(), nil }},
+		{m.keys.Metrics, func(m Model) (tea.Model, tea.Cmd) {
+			if m.viewMode == detailView || m.viewMode == listView {
+				m.viewMode = metricsView
+			}
+			return m, nil
+		}},
+		{m.keys.ToggleSelect, func(m Model) (tea.Model, tea.Cmd) { return m.handleToggleSelectKey(), nil }},
+		{m.keys.SelectAll, func(m Model) (tea.Model, tea.Cmd) { return m.handleSelectAllKey(), nil }},
+		{m.keys.DeselectAll, func(m Model) (tea.Model, tea.Cmd) { return m.handleDeselectAllKey(), nil }},
+		{m.keys.History, func(m Model) (tea.Model, tea.Cmd) {
+			if m.viewMode == detailView {
+				m.viewMode = historyView
+				m.historyState = &historyState{}
+			}
+			return m, nil
+		}},
+		{m.keys.Hints, func(m Model) (tea.Model, tea.Cmd) { return m.handleHintsKey(), nil }},
+		{m.keys.Overview, func(m Model) (tea.Model, tea.Cmd) {
+			if m.viewMode == listView {
+				m.viewMode = overviewView
+			}
+			return m, nil
+		}},
+		{m.keys.Simulate, func(m Model) (tea.Model, tea.Cmd) { return m.handleSimulateKey() }},
+		{m.keys.Fix, func(m Model) (tea.Model, tea.Cmd) { return m.handleFixKey() }},
+		{m.keys.Replay, func(m Model) (tea.Model, tea.Cmd) { return m.handleReplayKey() }},
+		{m.keys.BatchAudit, func(m Model) (tea.Model, tea.Cmd) { return m.handleBatchAuditKey() }},
+		{m.keys.BatchApply, func(m Model) (tea.Model, tea.Cmd) { return m.handleBatchApplyKey() }},
+		{m.keys.MetricMode, func(m Model) (tea.Model, tea.Cmd) { return m.handleMetricModeKey(), nil }},
+		{m.keys.DryRun, func(m Model) (tea.Model, tea.Cmd) { return m.handleDryRunKey(), nil }},
+		{m.keys.TabField, func(m Model) (tea.Model, tea.Cmd) { return m.handleTabField(+1), nil }},
+		{m.keys.ShiftTabField, func(m Model) (tea.Model, tea.Cmd) { return m.handleTabField(-1), nil }},
+		{m.keys.IntervalUp, func(m Model) (tea.Model, tea.Cmd) { return m.handleIntervalKey(-1), nil }},
+		{m.keys.IntervalDown, func(m Model) (tea.Model, tea.Cmd) { return m.handleIntervalKey(+1), nil }},
+	}
 }
 
 // toggleHelpView flips between the help overlay and the previous list view.

@@ -70,22 +70,86 @@ type enricherSpec struct {
 }
 
 // buildStatusEnrichers constructs the ordered list of enrichment steps for the
-// given options. Each spec captures the options fields it needs for both its
-// enabled predicate and run body at this point, so the returned slice is bound
-// to opts.
+// given options. Steps are grouped into named dependency phases (see
+// statusEnricherPhases); flattening phases in order preserves the historical
+// sequential semantics.
 //
-// The order matches the original sequential calls exactly because several
-// enrichers depend on fields populated by earlier steps:
-//   - enrichReport (KEDA/VPA) must run before enrichVPAAdvisory.
-//   - enrichMetricFreshnessReport, enrichMetricContractAndAdapter and
-//     enrichEvents must run before enrichMetricHints.
-//   - enrichAdvisors must run before FinalizeAnalysis and the health snapshot.
-//
-// Do not reorder without re-reading buildStatusReport's dependency comments.
-//
-//nolint:gocyclo // Enricher registration table: each slice entry is a flat, independent spec literal. Complexity reflects declaration breadth, not logic.
+// Cross-phase dependencies (do not reorder phases or steps without review):
+//   - report (KEDA/VPA, phase core) must run before vpa-advisory (phase advisors)
+//   - metric-freshness, metric-contract-and-adapter, and events must run before
+//     metric-hints (phase advisors)
+//   - advisors must run before FinalizeAnalysis / health snapshot (caller side)
 func buildStatusEnrichers(opts *options) []Enricher {
-	specs := []enricherSpec{
+	return materializeEnrichers(statusEnricherPhases(opts))
+}
+
+// statusEnricherPhases returns the ordered dependency buckets that make up the
+// status enrichment pipeline. Each phase is a contiguous block of specs; the
+// relative order of phases and of steps within a phase is part of the public
+// pipeline contract (tests pin the flattened name sequence).
+func statusEnricherPhases(opts *options) [][]enricherSpec {
+	return [][]enricherSpec{
+		// phase core: decision traces, events, and base KEDA/VPA report
+		enricherPhaseCore(opts),
+		// phase metricsPods: metrics pipeline, resources, pods, simulations
+		enricherPhaseMetricsPods(opts),
+		// phase capacity: capacity, rollout, blockers, controller profile, plans
+		enricherPhaseCapacity(opts),
+		// phase advisors: gitops, contracts, churn/flapping, VPA advice, hints, advisors
+		enricherPhaseAdvisors(opts),
+	}
+}
+
+// materializeEnrichers flattens phase specs into Enricher adapters in order.
+func materializeEnrichers(phases [][]enricherSpec) []Enricher {
+	var n int
+	for _, phase := range phases {
+		n += len(phase)
+	}
+	enrichers := make([]Enricher, 0, n)
+	for _, phase := range phases {
+		for _, s := range phase {
+			enrichers = append(enrichers, &genericEnricher{
+				name:         s.name,
+				enabled:      s.enabled,
+				run:          s.run,
+				abortOnError: s.abortOnError,
+			})
+		}
+	}
+	return enrichers
+}
+
+// statusEnricherNames is the canonical flattened order of enricher names.
+// Used by tests to pin phase composition without depending on option gates.
+var statusEnricherNames = []string{
+	// core
+	"decision-traces",
+	"events",
+	"report",
+	// metricsPods
+	"metrics-diagnostics",
+	"metric-freshness",
+	"resource-check",
+	"target-replica-observations",
+	"pod-analysis",
+	"simulations",
+	// capacity
+	"capacity-analysis",
+	"rollout-and-blockers",
+	"controller-profile",
+	"capacity-plan",
+	// advisors
+	"gitops-conflict",
+	"metric-contract-and-adapter",
+	"churn-and-flapping",
+	"vpa-advisory",
+	"metric-hints",
+	"advisors",
+}
+
+func enricherPhaseCore(opts *options) []enricherSpec {
+	return []enricherSpec{
 		{
 			name:    "decision-traces",
 			enabled: func() bool { return opts.DecisionTrace || opts.DecisionTraceFormat != "" },
@@ -110,6 +174,11 @@ func buildStatusEnrichers(opts *options) []Enricher {
 				return nil
 			},
 		},
+	}
+}
+
+func enricherPhaseMetricsPods(opts *options) []enricherSpec {
+	return []enricherSpec{
 		{
 			name:    "metrics-diagnostics",
 			enabled: func() bool { return opts.DiagnoseMetrics },
@@ -176,6 +245,11 @@ func buildStatusEnrichers(opts *options) []Enricher {
 				})
 			},
 		},
+	}
+}
+
+func enricherPhaseCapacity(opts *options) []enricherSpec {
+	return []enricherSpec{
 		{
 			name: "capacity-analysis",
 			enabled: func() bool {
@@ -224,6 +298,11 @@ func buildStatusEnrichers(opts *options) []Enricher {
 				return nil
 			},
 		},
+	}
+}
+
+func enricherPhaseAdvisors(opts *options) []enricherSpec {
+	return []enricherSpec{
 		{
 			name:    "gitops-conflict",
 			enabled: func() bool { return opts.GitOpsCheck || opts.ManifestPath != "" },
@@ -284,16 +363,6 @@ func buildStatusEnrichers(opts *options) []Enricher {
 			},
 		},
 	}
-	enrichers := make([]Enricher, len(specs))
-	for i, s := range specs {
-		enrichers[i] = &genericEnricher{
-			name:         s.name,
-			enabled:      s.enabled,
-			run:          s.run,
-			abortOnError: s.abortOnError,
-		}
-	}
-	return enrichers
 }
 
 // runEnrichers executes each enabled enricher in order. When an enricher

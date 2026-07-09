@@ -80,3 +80,33 @@ func TestNewClientOrDefault(t *testing.T) {
 		}
 	})
 }
+
+func TestLookupHPA(t *testing.T) {
+	t.Run("missing HPA wraps ErrHPANotFound", func(t *testing.T) {
+		opts := &cmdoptions.Root{}
+		opts.ClientOverride = fake.NewClientset()
+		opts.Namespace = "default"
+		_, _, err := LookupHPA(t.Context(), opts, "missing-hpa")
+		if err == nil {
+			t.Fatal("expected not-found error")
+		}
+		if !errors.Is(err, errs.ErrHPANotFound) {
+			t.Fatalf("expected ErrHPANotFound, got: %v", err)
+		}
+		if !strings.Contains(err.Error(), "failed to get HPA") {
+			t.Fatalf("expected canonical lookup prefix, got: %v", err)
+		}
+	})
+
+	t.Run("client failure uses standard wrap", func(t *testing.T) {
+		opts := &cmdoptions.Root{}
+		opts.Kubeconfig = filepath.Join(t.TempDir(), "does-not-exist")
+		_, _, err := LookupHPA(t.Context(), opts, "web")
+		if err == nil {
+			t.Fatal("expected client error")
+		}
+		if !strings.Contains(err.Error(), "failed to create Kubernetes client") {
+			t.Fatalf("expected client wrap, got: %v", err)
+		}
+	})
+}

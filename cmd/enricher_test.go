@@ -132,3 +132,28 @@ func TestOtherAdapters_DoNotAbortOnError(t *testing.T) {
 		}
 	}
 }
+
+// TestStatusEnrichers_PhaseOrder pins the flattened enricher sequence so a
+// phase refactor cannot silently reorder steps that later steps depend on.
+func TestStatusEnrichers_PhaseOrder(t *testing.T) {
+	opts := defaultRootOptions()
+	got := buildStatusEnrichers(&opts)
+	if len(got) != len(statusEnricherNames) {
+		t.Fatalf("len(enrichers)=%d, want %d", len(got), len(statusEnricherNames))
+	}
+	for i, e := range got {
+		if e.Name() != statusEnricherNames[i] {
+			t.Errorf("enricher[%d]=%q, want %q", i, e.Name(), statusEnricherNames[i])
+		}
+	}
+	// Four named phases must all be present and non-empty.
+	phases := statusEnricherPhases(&opts)
+	if len(phases) != 4 {
+		t.Fatalf("expected 4 phases, got %d", len(phases))
+	}
+	for i, phase := range phases {
+		if len(phase) == 0 {
+			t.Errorf("phase %d is empty", i)
+		}
+	}
+}
