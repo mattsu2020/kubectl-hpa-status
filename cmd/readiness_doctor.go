@@ -7,6 +7,8 @@ import (
 	"io"
 	"time"
 
+	hpareadiness "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/readiness"
+
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
@@ -17,7 +19,10 @@ import (
 
 func newReadinessDoctorCommand(opts *options) *cobra.Command {
 	return &cobra.Command{
-		Use:               "doctor NAME",
+		// Named readiness-doctor: the historical Use line "doctor NAME" was
+		// shadowed by the primary doctor command (registered first), which
+		// made this command unreachable and duplicated "doctor" in --help.
+		Use:               "readiness-doctor NAME",
 		Short:             "Focused readiness diagnostic for HPA scale target pods",
 		Long:              "Analyze pod age distribution, probe configuration, CPU initialization window impact, and metric exclusion estimates to diagnose why HPA may not be scaling as expected.",
 		Args:              cobra.ExactArgs(1),
@@ -75,7 +80,7 @@ func runReadinessDoctor(ctx context.Context, out io.Writer, opts *options, name 
 	}
 
 	// Build pod details with age.
-	podDetails := make([]hpaanalysis.ReadinessDoctorPod, 0, len(podList.Items))
+	podDetails := make([]hpareadiness.DoctorPod, 0, len(podList.Items))
 	now := time.Now()
 	for i := range podList.Items {
 		pod := &podList.Items[i]
@@ -83,7 +88,7 @@ func runReadinessDoctor(ctx context.Context, out io.Writer, opts *options, name 
 		if pod.Status.StartTime != nil {
 			ageSeconds = int64(now.Sub(pod.Status.StartTime.Time).Seconds())
 		}
-		podDetails = append(podDetails, hpaanalysis.ReadinessDoctorPod{
+		podDetails = append(podDetails, hpareadiness.DoctorPod{
 			Name:       pod.Name,
 			Ready:      isPodReady(pod),
 			AgeSeconds: ageSeconds,
@@ -94,7 +99,7 @@ func runReadinessDoctor(ctx context.Context, out io.Writer, opts *options, name 
 	missingMetrics := countMissingMetrics(ctx, client, hpa.Namespace, info.SelectorStr, podList.Items)
 
 	target := fmt.Sprintf("%s/%s", hpa.Spec.ScaleTargetRef.Kind, hpa.Spec.ScaleTargetRef.Name)
-	input := hpaanalysis.ReadinessDoctorInput{
+	input := hpareadiness.DoctorInput{
 		Namespace:             hpa.Namespace,
 		HPAName:               hpa.Name,
 		Target:                target,
@@ -108,7 +113,7 @@ func runReadinessDoctor(ctx context.Context, out io.Writer, opts *options, name 
 		MissingMetricPods:     missingMetrics,
 	}
 
-	report := hpaanalysis.AnalyzeReadinessDoctor(input)
+	report := hpareadiness.AnalyzeReadinessDoctor(input)
 
 	format, templateStr := selectOutputFromOptions(opts)
 

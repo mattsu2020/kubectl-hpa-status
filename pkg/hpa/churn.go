@@ -16,14 +16,22 @@ import (
 // Churn domain type aliases.
 type (
 	// ChurnLevel aliases churn.ChurnLevel.
+	//
+	// Deprecated: Use churn.ChurnLevel instead.
 	ChurnLevel = churn.ChurnLevel
 	// ChurnAnalysis aliases churn.ChurnAnalysis.
+	//
+	// Deprecated: Use churn.ChurnAnalysis instead.
 	ChurnAnalysis = churn.ChurnAnalysis
 	// ChurnRecommendation aliases churn.ChurnRecommendation.
+	//
+	// Deprecated: Use churn.ChurnRecommendation instead.
 	ChurnRecommendation = churn.ChurnRecommendation
 )
 
 // Churn level constants.
+//
+// Deprecated: Use the canonical churn.ChurnLow/ChurnMedium/ChurnHigh/ChurnCritical constants instead.
 const (
 	ChurnLow      = churn.ChurnLow
 	ChurnMedium   = churn.ChurnMedium
@@ -33,6 +41,8 @@ const (
 
 // AnalyzeChurnFromEvents detects thrashing/churn from HPA events. Delegates
 // to churn.AnalyzeChurnFromEvents.
+//
+// Deprecated: Use churn.AnalyzeChurnFromEvents instead.
 func AnalyzeChurnFromEvents(events []Event, hpa *autoscalingv2.HorizontalPodAutoscaler) *ChurnAnalysis {
 	return churn.AnalyzeChurnFromEvents(events, hpa)
 }

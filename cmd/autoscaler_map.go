@@ -183,12 +183,7 @@ func fetchAutoscalerMapKEDA(ctx context.Context, opts *options, hpa *autoscaling
 		return nil
 	}
 
-	dynClient, _, err := kube.NewDynamicClient(kube.Options{
-		Kubeconfig: opts.Kubeconfig,
-		Context:    opts.ContextName,
-		QPS:        opts.QPS,
-		Burst:      opts.Burst,
-	})
+	dynClient, _, err := kube.NewDynamicClient(opts.KubeOptions())
 	if err != nil {
 		// Best-effort: a dynamic-client failure (RBAC denial on keda.sh,
 		// missing KEDA CRD) silently skips the KEDA section rather than
@@ -236,12 +231,7 @@ func fetchAutoscalerMapVPA(ctx context.Context, opts *options, hpa *autoscalingv
 		return nil
 	}
 
-	dynClient, _, err := kube.NewDynamicClient(kube.Options{
-		Kubeconfig: opts.Kubeconfig,
-		Context:    opts.ContextName,
-		QPS:        opts.QPS,
-		Burst:      opts.Burst,
-	})
+	dynClient, _, err := kube.NewDynamicClient(opts.KubeOptions())
 	if err != nil {
 		// Best-effort: a dynamic-client failure (RBAC denial on autoscaling.k8s.io,
 		// missing VPA CRD) silently skips the VPA section rather than aborting

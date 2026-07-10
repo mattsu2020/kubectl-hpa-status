@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"time"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -22,8 +23,9 @@ type Options struct {
 	Context    string
 	Kubeconfig string
 	Cluster    string
-	QPS        float32 // Client-side rate limiting queries per second. 0 means client-go default (5).
-	Burst      int     // Client-side rate limiting burst size. 0 means client-go default (10).
+	QPS        float32       // Client-side rate limiting queries per second. 0 means client-go default (5).
+	Burst      int           // Client-side rate limiting burst size. 0 means client-go default (10).
+	Timeout    time.Duration // Per-request timeout applied to the REST config. 0 means no timeout.
 }
 
 // Client wraps a Kubernetes typed client with namespace information.
@@ -67,13 +69,6 @@ func NewClient(opts Options, extra ...ClientOption) (*Client, error) {
 	namespace, restConfig, err := resolveNamespaceAndRestConfig(opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Kubernetes client from kubeconfig/context flags: %w", err)
-	}
-
-	if opts.QPS > 0 {
-		restConfig.QPS = opts.QPS
-	}
-	if opts.Burst > 0 {
-		restConfig.Burst = opts.Burst
 	}
 
 	client, err := kubernetes.NewForConfig(restConfig)
@@ -178,7 +173,29 @@ func deferredClientConfig(opts Options) clientcmd.ClientConfig {
 // resolving the namespace. Used by constructors that do not need a namespace
 // (e.g. NewDiscoveryClient).
 func restConfigFromOptions(opts Options) (*restclient.Config, error) {
-	return deferredClientConfig(opts).ClientConfig()
+	restConfig, err := deferredClientConfig(opts).ClientConfig()
+	if err != nil {
+		return nil, err
+	}
+	applyRestOptions(restConfig, opts)
+	return restConfig, nil
+}
+
+// applyRestOptions copies the client tuning knobs (rate limiting, per-request
+// timeout) from Options onto the resolved REST config. It is the single
+// application point shared by every client constructor (typed, dynamic,
+// discovery), so the flags behave identically regardless of which client a
+// command builds.
+func applyRestOptions(restConfig *restclient.Config, opts Options) {
+	if opts.QPS > 0 {
+		restConfig.QPS = opts.QPS
+	}
+	if opts.Burst > 0 {
+		restConfig.Burst = opts.Burst
+	}
+	if opts.Timeout > 0 {
+		restConfig.Timeout = opts.Timeout
+	}
 }
 
 // resolveNamespaceAndRestConfig resolves both the effective namespace and the
@@ -199,6 +216,7 @@ func resolveNamespaceAndRestConfig(opts Options) (string, *restclient.Config, er
 	if err != nil {
 		return "", nil, err
 	}
+	applyRestOptions(restConfig, opts)
 	return namespace, restConfig, nil
 }
 

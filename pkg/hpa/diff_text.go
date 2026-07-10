@@ -11,9 +11,17 @@ import (
 // previous and current analysis. Changed fields are shown with emphasis;
 // unchanged fields are dimmed when the theme supports it.
 func WriteStatusDiff(w io.Writer, state WatchState, theme style.Theme) error {
+	return WriteStatusDiffWithOptions(w, state, StatusTextOptions{Theme: theme})
+}
+
+// WriteStatusDiffWithOptions writes the change-highlighting status display
+// with full rendering options, localising the Summary line via
+// opts.SummaryTranslator when configured.
+func WriteStatusDiffWithOptions(w io.Writer, state WatchState, opts StatusTextOptions) error {
+	theme := opts.Theme
 	// When there is no previous state, fall back to full status display.
 	if state.Previous == nil {
-		return WriteStatusText(w, StatusReport{Analysis: *state.Current}, theme)
+		return WriteStatusTextWithOptions(w, StatusReport{Analysis: *state.Current}, opts)
 	}
 	a := state.Current
 	prev := state.Previous
@@ -33,12 +41,12 @@ func WriteStatusDiff(w io.Writer, state WatchState, theme style.Theme) error {
 	out = fmt.Appendf(out, "Replicas: current=%s desired=%s min=%d max=%d\n", current, desired, a.Min, a.Max)
 
 	out = append(out, '\n')
+	summary := opts.translateSummary(a.Summary, a.SummaryKey)
 	summaryChanged := a.Summary != prev.Summary
-	summaryText := theme.SummaryColor(a.Summary)
 	if summaryChanged {
-		out = fmt.Appendf(out, "Summary: %s\n", summaryText)
+		out = fmt.Appendf(out, "Summary: %s\n", theme.SummaryColor(summary))
 	} else {
-		out = fmt.Appendf(out, "Summary: %s\n", theme.Dim.Render(a.Summary))
+		out = fmt.Appendf(out, "Summary: %s\n", theme.Dim.Render(summary))
 	}
 
 	appendDiffConditionsSection(&out, a, prev, theme)

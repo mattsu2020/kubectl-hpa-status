@@ -119,6 +119,15 @@ func (w HealthWeights) Clone() HealthWeights {
 }
 
 // Analysis holds the complete analysis result for a single HPA.
+//
+// Field policy: Analysis is the JSON/YAML output surface consumed by scripts
+// and external tools, so existing field names and shapes are frozen (renames
+// and removals require a SchemaVersion bump; see docs/output-schema.json and
+// the consistency test in output_schema_test.go). New analysis domains must
+// NOT add loose scalar fields here; group them into a dedicated sub-struct
+// exposed through a single pointer field (as HealthResult, CapacityContext,
+// and BlockerReport do) so the struct grows by feature, stays navigable, and
+// omits empty domains from serialized output via omitempty.
 type Analysis struct {
 	// Namespace is the Kubernetes namespace of the HPA.
 	Namespace string `json:"namespace" yaml:"namespace"`

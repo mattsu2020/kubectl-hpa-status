@@ -7,6 +7,9 @@ import (
 	"testing"
 	"time"
 
+	hpakeda "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/keda"
+	hpavpa "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
+
 	tea "charm.land/bubbletea/v2"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
@@ -705,9 +708,9 @@ func TestView_DetailViewWithKEDAInfo(t *testing.T) {
 	m.reports = map[string]*hpaanalysis.StatusReport{
 		"default/keda-worker": {Analysis: hpaanalysis.Analysis{
 			Name: "keda-worker", Namespace: "default",
-			KEDAInfo: &hpaanalysis.KEDAAnalysis{
+			KEDAInfo: &hpakeda.Analysis{
 				ScaledObjectName: "worker-so",
-				Triggers: []hpaanalysis.KEDATriggerSummary{
+				Triggers: []hpakeda.TriggerSummary{
 					{Type: "prometheus", Name: "http-rate", Status: "Active", MetricName: "http_requests", Threshold: "100", CurrentValue: "250"},
 				},
 				PollingInterval: &polling,
@@ -737,10 +740,10 @@ func TestView_DetailViewWithVPAConflict(t *testing.T) {
 	m.reports = map[string]*hpaanalysis.StatusReport{
 		"default/web": {Analysis: hpaanalysis.Analysis{
 			Name: "web", Namespace: "default",
-			VPAConflict: &hpaanalysis.VPAConflictInfo{
+			VPAConflict: &hpavpa.ConflictInfo{
 				VPAName:    "web-vpa",
 				UpdateMode: "Auto",
-				Recommendations: []hpaanalysis.VPARecommendation{
+				Recommendations: []hpavpa.Recommendation{
 					{Container: "app", Resource: "cpu", Target: "500m"},
 				},
 			},

@@ -28,6 +28,7 @@ func registerCommonFlags(cmd *cobra.Command, opts *options) {
 	cmd.PersistentFlags().IntVar(&opts.Concurrency, "concurrency", runtime.NumCPU(), "maximum number of HPAs to analyze in parallel for multi-HPA status/timeline; defaults to the number of CPUs")
 	cmd.PersistentFlags().Float32Var(&opts.QPS, "qps", 0, "client-side rate limiting queries per second (0 uses client-go default)")
 	cmd.PersistentFlags().IntVar(&opts.Burst, "burst", 0, "client-side rate limiting burst size (0 uses client-go default)")
+	cmd.PersistentFlags().DurationVar(&opts.RequestTimeout, "request-timeout", opts.RequestTimeout, "timeout for each Kubernetes API request; set 0 to wait indefinitely")
 
 	cmd.PersistentFlags().BoolVar(&opts.Apply, "apply", false, "run suggested HPA spec patch workflow")
 	cmd.PersistentFlags().BoolVar(&opts.Diff, "diff", false, "show field-level diff of suggested changes")

@@ -25,40 +25,55 @@ type EventInfo struct {
 	Timestamp time.Time
 }
 
-// FetchRecentEventsForObjects fetches namespace events and returns recent
-// events whose involved object name is in objectNames.
+// FetchRecentEventsForObjects fetches recent namespace events whose involved
+// object name is in objectNames. Each name is queried with an
+// involvedObject.name field selector plus a Limit so the API server filters
+// server-side; busy namespaces are never listed in full. objectNames is small
+// in practice (the HPA plus its workload chain), so per-name queries stay
+// cheaper than one unbounded namespace-wide list.
 func FetchRecentEventsForObjects(ctx context.Context, client kubernetes.Interface, namespace string, objectNames []string, limit int) []EventInfo {
 	if len(objectNames) == 0 || limit <= 0 {
 		return nil
 	}
-	names := make(map[string]struct{}, len(objectNames))
+	names := make([]string, 0, len(objectNames))
+	seen := make(map[string]struct{}, len(objectNames))
 	for _, name := range objectNames {
-		if name != "" {
-			names[name] = struct{}{}
-		}
-	}
-	if len(names) == 0 {
-		return nil
-	}
-
-	events, err := client.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{})
-	if err != nil {
-		// Best-effort: an Events List failure (RBAC denial on events, API
-		// server hiccup) is indistinguishable from "no events" to the caller.
-		// The status report degrades to omitting the events section rather
-		// than failing the whole command.
-		return nil
-	}
-	var result []EventInfo
-	for _, event := range events.Items {
-		if _, ok := names[event.InvolvedObject.Name]; !ok {
+		if name == "" {
 			continue
 		}
-		result = append(result, EventInfo{
-			Reason:    event.Reason,
-			Message:   strings.ReplaceAll(event.Message, "\n", " "),
-			Timestamp: coreEventTimestamp(event),
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	var result []EventInfo
+	for _, name := range names {
+		events, err := client.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{
+			FieldSelector: fields.OneTermEqualSelector("involvedObject.name", name).String(),
+			Limit:         eventsSinceFetchLimit,
 		})
+		if err != nil {
+			// Best-effort: an Events List failure (RBAC denial on events, API
+			// server hiccup) is indistinguishable from "no events" to the
+			// caller. The status report degrades to omitting the events
+			// section rather than failing the whole command.
+			continue
+		}
+		for _, event := range events.Items {
+			// Re-check the name client-side: the fake clientset used in tests
+			// ignores field selectors and returns every event in the namespace.
+			if event.InvolvedObject.Name != name {
+				continue
+			}
+			result = append(result, EventInfo{
+				Reason:    event.Reason,
+				Message:   strings.ReplaceAll(event.Message, "\n", " "),
+				Timestamp: coreEventTimestamp(event),
+			})
+		}
 	}
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].Timestamp.After(result[j].Timestamp)

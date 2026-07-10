@@ -7,6 +7,9 @@ import (
 	"os"
 	"time"
 
+	hpakeda "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/keda"
+	hpavpa "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
+
 	tea "charm.land/bubbletea/v2"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/tui"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
@@ -58,9 +61,9 @@ func runTUI(ctx context.Context, out io.Writer, opts *options, initialName strin
 
 	// Create enrichment context and build a callback for batched enrichment.
 	ec := newEnrichmentContext(ctx, opts)
-	var enrichFn func(context.Context, []autoscalingv2.HorizontalPodAutoscaler) (map[string]*hpaanalysis.KEDAAnalysis, map[string]*hpaanalysis.VPAConflictInfo)
+	var enrichFn func(context.Context, []autoscalingv2.HorizontalPodAutoscaler) (map[string]*hpakeda.Analysis, map[string]*hpavpa.ConflictInfo)
 	if ec != nil {
-		enrichFn = func(enrichCtx context.Context, hpas []autoscalingv2.HorizontalPodAutoscaler) (map[string]*hpaanalysis.KEDAAnalysis, map[string]*hpaanalysis.VPAConflictInfo) {
+		enrichFn = func(enrichCtx context.Context, hpas []autoscalingv2.HorizontalPodAutoscaler) (map[string]*hpakeda.Analysis, map[string]*hpavpa.ConflictInfo) {
 			keda, _ := enrichListKEDA(enrichCtx, ec, hpas)
 			vpa, _ := enrichListVPA(enrichCtx, ec, hpas)
 			return keda, vpa

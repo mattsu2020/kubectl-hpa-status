@@ -57,7 +57,7 @@ func runWatch(ctx context.Context, out io.Writer, opts *options, name string, in
 		if err != nil {
 			return err
 		}
-		if err := writeWatchReport(out, opts, theme, report, previous); err != nil {
+		if err := writeWatchReport(out, opts, report, previous); err != nil {
 			return err
 		}
 		previous = &report.Analysis
@@ -92,22 +92,21 @@ func clearWatchScreen(out io.Writer, theme style.Theme) error {
 }
 
 // writeWatchReport renders the current report via the selected format, choosing dashboard/diff/text rendering inside the fallback.
-func writeWatchReport(out io.Writer, opts *options, theme style.Theme, report hpaanalysis.StatusReport, previous *hpaanalysis.Analysis) error {
+// All three paths thread StatusTextOptions so the Summary line is localised when --lang is set.
+func writeWatchReport(out io.Writer, opts *options, report hpaanalysis.StatusReport, previous *hpaanalysis.Analysis) error {
 	format, templateStr := selectOutputFromOptions(opts)
 	return writeOutput(out, format, templateStr, report, func() error {
+		textOpts := statusTextOptions(opts, out)
 		if opts.Dashboard {
-			return hpaanalysis.WriteStatusDashboard(out, report, theme)
+			return hpaanalysis.WriteStatusDashboardWithOptions(out, report, textOpts)
 		}
 		if previous != nil {
-			return hpaanalysis.WriteStatusDiff(out, hpaanalysis.WatchState{
+			return hpaanalysis.WriteStatusDiffWithOptions(out, hpaanalysis.WatchState{
 				Previous: previous,
 				Current:  &report.Analysis,
-			}, theme)
+			}, textOpts)
 		}
-		// Use the options-aware writer so the Summary line is localised when
-		// --lang is set (dashboard/diff paths above do not yet thread
-		// StatusTextOptions and render Summary verbatim).
-		return hpaanalysis.WriteStatusTextWithOptions(out, report, statusTextOptions(opts, out))
+		return hpaanalysis.WriteStatusTextWithOptions(out, report, textOpts)
 	})
 }
 

@@ -4,6 +4,9 @@ import (
 	"strings"
 	"testing"
 
+	hpakeda "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/keda"
+	hpavpa "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
+
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
 
@@ -292,14 +295,14 @@ func TestRenderDetailKEDA(t *testing.T) {
 	polling := int32(30)
 	cooldown := int32(300)
 	a := &hpaanalysis.Analysis{
-		KEDAInfo: &hpaanalysis.KEDAAnalysis{
+		KEDAInfo: &hpakeda.Analysis{
 			ScaledObjectName: "web-scaledobject",
-			Triggers: []hpaanalysis.KEDATriggerSummary{
+			Triggers: []hpakeda.TriggerSummary{
 				{Type: "kafka", Name: "keda-kafka", Status: "Active", MetricName: "lag", Threshold: "5", CurrentValue: "12"},
 			},
 			PollingInterval: &polling,
 			CooldownPeriod:  &cooldown,
-			Fallback:        &hpaanalysis.KEDAFallbackInfo{FailureThreshold: 3, Replicas: 1},
+			Fallback:        &hpakeda.FallbackInfo{FailureThreshold: 3, Replicas: 1},
 		},
 	}
 	out := renderToString(func(sb *strings.Builder) { renderDetailKEDA(sb, a) })
@@ -329,7 +332,7 @@ func TestRenderDetailKEDA_Nil(t *testing.T) {
 
 func TestRenderDetailKEDATrigger_AuthRef(t *testing.T) {
 	out := renderToString(func(sb *strings.Builder) {
-		renderDetailKEDATrigger(sb, hpaanalysis.KEDATriggerSummary{Type: "prometheus", AuthRef: "keda-trigger-auth"})
+		renderDetailKEDATrigger(sb, hpakeda.TriggerSummary{Type: "prometheus", AuthRef: "keda-trigger-auth"})
 	})
 	if !strings.Contains(out, "authRef=keda-trigger-auth") {
 		t.Errorf("keda trigger: expected authRef line, got:\n%s", out)
@@ -354,10 +357,10 @@ func TestRenderDetailSuggestions(t *testing.T) {
 
 func TestRenderDetailVPA(t *testing.T) {
 	a := &hpaanalysis.Analysis{
-		VPAConflict: &hpaanalysis.VPAConflictInfo{
+		VPAConflict: &hpavpa.ConflictInfo{
 			VPAName:    "web-vpa",
 			UpdateMode: "Auto",
-			Recommendations: []hpaanalysis.VPARecommendation{
+			Recommendations: []hpavpa.Recommendation{
 				{Container: "app", Resource: "cpu", Target: "500m"},
 			},
 		},

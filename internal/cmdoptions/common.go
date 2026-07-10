@@ -29,6 +29,7 @@ type Common struct {
 	Concurrency     int
 	QPS             float32
 	Burst           int
+	RequestTimeout  time.Duration
 	OutputTemplates map[string]OutputTemplateConfig
 	ClientOverride  kubernetes.Interface
 	In              io.Reader
@@ -64,6 +65,7 @@ func (c *Common) KubeOptions() kube.Options {
 		Cluster:    c.Cluster,
 		QPS:        c.QPS,
 		Burst:      c.Burst,
+		Timeout:    c.RequestTimeout,
 	}
 }
 

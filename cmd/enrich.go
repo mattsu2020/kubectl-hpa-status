@@ -3,6 +3,9 @@ package cmd
 import (
 	"context"
 
+	hpakeda "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/keda"
+	hpavpa "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
+
 	"github.com/mattsu2020/kubectl-hpa-status/internal/enrichment"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -15,12 +18,9 @@ type enrichmentContext = enrichment.Context
 // newEnrichmentContext creates an enrichment context from CLI options.
 func newEnrichmentContext(ctx context.Context, opts *options) *enrichment.Context {
 	return enrichment.NewContext(ctx, enrichment.Config{
-		Namespace:  opts.Namespace,
-		Context:    opts.ContextName,
-		Kubeconfig: opts.Kubeconfig,
-		Cluster:    opts.Cluster,
-		KEDA:       opts.KEDA,
-		VPA:        opts.VPA,
+		Kube: opts.KubeOptions(),
+		KEDA: opts.KEDA,
+		VPA:  opts.VPA,
 	})
 }
 
@@ -32,13 +32,13 @@ func enrichReport(ctx context.Context, ec *enrichment.Context, hpa *autoscalingv
 // enrichListKEDA performs batched KEDA enrichment for multiple HPAs.
 // Returns the per-HPA analysis map plus per-namespace list-failure warnings
 // (namespace → messages).
-func enrichListKEDA(ctx context.Context, ec *enrichment.Context, hpas []autoscalingv2.HorizontalPodAutoscaler) (map[string]*hpaanalysis.KEDAAnalysis, map[string][]string) {
+func enrichListKEDA(ctx context.Context, ec *enrichment.Context, hpas []autoscalingv2.HorizontalPodAutoscaler) (map[string]*hpakeda.Analysis, map[string][]string) {
 	return enrichment.BatchKEDA(ctx, ec, hpas)
 }
 
 // enrichListVPA performs batched VPA enrichment for multiple HPAs.
 // Returns the per-HPA conflict map plus per-namespace list-failure warnings
 // (namespace → messages).
-func enrichListVPA(ctx context.Context, ec *enrichment.Context, hpas []autoscalingv2.HorizontalPodAutoscaler) (map[string]*hpaanalysis.VPAConflictInfo, map[string][]string) {
+func enrichListVPA(ctx context.Context, ec *enrichment.Context, hpas []autoscalingv2.HorizontalPodAutoscaler) (map[string]*hpavpa.ConflictInfo, map[string][]string) {
 	return enrichment.BatchVPA(ctx, ec, hpas)
 }

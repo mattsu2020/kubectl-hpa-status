@@ -5,6 +5,10 @@ import (
 	"fmt"
 	"time"
 
+	hpachurn "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/churn"
+	hpaflapping "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/flapping"
+	hpavpa "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
+
 	"github.com/mattsu2020/kubectl-hpa-status/internal/history"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
@@ -263,19 +267,19 @@ func enrichMetricContractAndAdapter(ctx context.Context, client *kube.Client, hp
 
 func enrichChurnAndFlapping(_ context.Context, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, cfg ChurnAndFlappingConfig) {
 	if cfg.ChurnDetect && cfg.EventsEnabled {
-		report.Analysis.ChurnAnalysis = hpaanalysis.AnalyzeChurnFromEvents(report.Events, hpa)
+		report.Analysis.ChurnAnalysis = hpachurn.AnalyzeChurnFromEvents(report.Events, hpa)
 		if report.Analysis.ChurnAnalysis != nil {
 			hpaanalysis.ApplyChurnPenalty(&report.Analysis, cfg.HealthWeights)
 		}
 	}
 	if cfg.FlappingAdvisor {
-		report.Analysis.FlappingPrevention = hpaanalysis.AnalyzeFlappingPrevention(report.Events, hpa)
+		report.Analysis.FlappingPrevention = hpaflapping.AnalyzeFlappingPrevention(report.Events, hpa)
 	}
 }
 
 func enrichVPAAdvisory(hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
 	if report.Analysis.VPAConflict != nil {
-		report.Analysis.VPAAdvisory = hpaanalysis.AnalyzeVPAAdvisory(hpa, report.Analysis.VPAConflict)
+		report.Analysis.VPAAdvisory = hpavpa.AnalyzeAdvisory(hpa, report.Analysis.VPAConflict)
 	}
 }
 

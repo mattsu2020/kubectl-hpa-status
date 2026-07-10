@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	hpakeda "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/keda"
+
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
@@ -48,9 +50,9 @@ func TestEnrichMetricFreshnessAddsKEDAEvidence(t *testing.T) {
 	report := hpaanalysis.StatusReport{
 		Analysis: hpaanalysis.Analysis{
 			MetricFreshnessEntries: hpaanalysis.AnalyzeMetricFreshness(hpa, nil),
-			KEDAInfo: &hpaanalysis.KEDAAnalysis{
+			KEDAInfo: &hpakeda.Analysis{
 				ScaledObjectName: "web",
-				Triggers: []hpaanalysis.KEDATriggerSummary{
+				Triggers: []hpakeda.TriggerSummary{
 					{
 						Type:       "http",
 						Name:       "http-requests",

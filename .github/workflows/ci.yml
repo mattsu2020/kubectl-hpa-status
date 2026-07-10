@@ -97,9 +97,9 @@ jobs:
             fi
           }
           TOTAL=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
-          check "Total" "$TOTAL" 50
-          check "pkg/hpa" "$(func_avg '/pkg/hpa/')" 60
-          check "cmd" "$(func_avg '/cmd/')" 45
+          check "Total" "$TOTAL" 65
+          check "pkg/hpa" "$(func_avg '/pkg/hpa/')" 70
+          check "cmd" "$(func_avg '/cmd/')" 60
 
       - name: Check README sync
         if: matrix.os == 'ubuntu-latest'

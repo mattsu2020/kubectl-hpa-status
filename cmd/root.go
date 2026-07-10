@@ -79,60 +79,100 @@ func NewRootCommand() *cobra.Command {
 	return root
 }
 
-// commandBuilders is the registry of subcommands attached to the root command.
-// Add a new subcommand by appending its constructor here. Most constructors
-// share the (opts) signature; the few that need the root command (completion)
-// or no options (alerts, version) use a thin adapter below.
-var commandBuilders = []func(opts *options) *cobra.Command{
-	newStatusCommand,
-	newExplainCommand,
-	newDoctorCommand,
-	newReadinessDoctorCommand,
-	newWhyNotScaleCommand,
-	newReadinessCommand,
-	newAssumptionsCommand,
-	newListCommand,
-	newScanCommand,
-	newFleetCommand,
-	newWatchCommand,
-	newTUICommand,
-	newTimelineCommand,
-	newTraceCommand,
-	newCompareCommand,
-	newProfileCommand,
-	newPathCommand,
-	newBlockersCommand,
-	newAdvisorCommand,
-	newContainerAdvisorCommand,
-	newNodeContextCommand,
-	newRolloutCommand,
-	newRolloutContextCommand,
-	newPreflightCommand,
-	newRecordCommand,
-	newReplayCommand,
-	newMetricsCommand,
-	newHistoryCommand,
-	newBehaviorCommand,
-	newTuneCommand,
-	newEstimateCommand,
-	newSLOCommand,
-	newExportCommand,
-	newRecommendCommand,
-	newSnapshotCommand,
-	newLintCommand,
-	newOwnershipCommand,
-	func(*options) *cobra.Command { return newAlertsCommand() },
-	newSimulateCommand,
-	newCompatCommand,
-	func(*options) *cobra.Command { return newVersionCommand() },
+// commandGroup pairs a cobra help group with the constructors of the
+// subcommands that belong to it, so the root --help output presents the ~40
+// subcommands by workflow instead of one flat alphabetical list.
+type commandGroup struct {
+	group    cobra.Group
+	builders []func(opts *options) *cobra.Command
 }
 
-// registerCommands attaches the registered subcommands to root. The completion
-// command needs the root itself, so it is wired separately after the loop.
+// commandGroups is the registry of subcommands attached to the root command.
+// Add a new subcommand by appending its constructor to the group matching its
+// workflow. Most constructors share the (opts) signature; the few that need no
+// options (alerts, version) use a thin adapter. Commands outside every group
+// (version, completion, alpha, help) appear under "Additional Commands".
+var commandGroups = []commandGroup{
+	{
+		group: cobra.Group{ID: "diagnose", Title: "Diagnose Commands:"},
+		builders: []func(opts *options) *cobra.Command{
+			newStatusCommand,
+			newDoctorCommand,
+			newReadinessDoctorCommand,
+			newWhyNotScaleCommand,
+			newBlockersCommand,
+			newTraceCommand,
+			newPathCommand,
+			newReadinessCommand,
+			newRolloutCommand,
+			newRolloutContextCommand,
+			newNodeContextCommand,
+			newMetricsCommand,
+			newExplainCommand,
+		},
+	},
+	{
+		group: cobra.Group{ID: "fleet", Title: "Fleet Overview Commands:"},
+		builders: []func(opts *options) *cobra.Command{
+			newListCommand,
+			newScanCommand,
+			newFleetCommand,
+			newCompareCommand,
+			newOwnershipCommand,
+		},
+	},
+	{
+		group: cobra.Group{ID: "monitor", Title: "Monitoring & History Commands:"},
+		builders: []func(opts *options) *cobra.Command{
+			newWatchCommand,
+			newTUICommand,
+			newTimelineCommand,
+			newHistoryCommand,
+			newRecordCommand,
+			newReplayCommand,
+		},
+	},
+	{
+		group: cobra.Group{ID: "tune", Title: "Tuning & Planning Commands:"},
+		builders: []func(opts *options) *cobra.Command{
+			newAdvisorCommand,
+			newContainerAdvisorCommand,
+			newTuneCommand,
+			newBehaviorCommand,
+			newSimulateCommand,
+			newEstimateCommand,
+			newRecommendCommand,
+			newPreflightCommand,
+			newAssumptionsCommand,
+			newProfileCommand,
+			newSLOCommand,
+		},
+	},
+	{
+		group: cobra.Group{ID: "integrate", Title: "Integration & Export Commands:"},
+		builders: []func(opts *options) *cobra.Command{
+			newExportCommand,
+			newSnapshotCommand,
+			func(*options) *cobra.Command { return newAlertsCommand() },
+			newLintCommand,
+			newCompatCommand,
+		},
+	},
+}
+
+// registerCommands attaches the grouped subcommands to root. The completion
+// and version commands are wired separately: completion needs the root itself,
+// and both belong under "Additional Commands" rather than a workflow group.
 func registerCommands(root *cobra.Command, opts *options) {
-	for _, build := range commandBuilders {
-		root.AddCommand(build(opts))
+	for _, cg := range commandGroups {
+		root.AddGroup(&cg.group)
+		for _, build := range cg.builders {
+			sub := build(opts)
+			sub.GroupID = cg.group.ID
+			root.AddCommand(sub)
+		}
 	}
+	root.AddCommand(newVersionCommand())
 	root.AddCommand(newCompletionCommand(root))
 }
 

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	hpakeda "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/keda"
+
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
 
@@ -251,7 +253,7 @@ func renderDetailKEDA(sb *strings.Builder, a *hpaanalysis.Analysis) {
 	}
 }
 
-func renderDetailKEDATrigger(sb *strings.Builder, t hpaanalysis.KEDATriggerSummary) {
+func renderDetailKEDATrigger(sb *strings.Builder, t hpakeda.TriggerSummary) {
 	label := t.Type
 	if t.Name != "" {
 		label = fmt.Sprintf("%s (%s)", t.Type, t.Name)

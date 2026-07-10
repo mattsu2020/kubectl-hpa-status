@@ -8,7 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	hpapolicy "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/policy"
+
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -19,7 +20,7 @@ type policyCommandOptions struct {
 }
 
 type policyListReport struct {
-	Items []hpaanalysis.PolicyReport `json:"items" yaml:"items"`
+	Items []hpapolicy.Report `json:"items" yaml:"items"`
 }
 
 func newPolicyCommand(opts *options) *cobra.Command {
@@ -148,7 +149,7 @@ func runPolicy(ctx context.Context, out io.Writer, opts *options, policyOpts *po
 		path = "~/.kube/hpa-policies.yaml"
 	}
 	path = expandHomePath(path)
-	policyFile, err := hpaanalysis.LoadPolicyFile(path)
+	policyFile, err := hpapolicy.LoadPolicyFile(path)
 	if err != nil {
 		return err
 	}
@@ -158,13 +159,13 @@ func runPolicy(ctx context.Context, out io.Writer, opts *options, policyOpts *po
 		return err
 	}
 
-	var reports []hpaanalysis.PolicyReport
+	var reports []hpapolicy.Report
 	if name != "" {
 		hpa, err := client.Interface.AutoscalingV2().HorizontalPodAutoscalers(client.Namespace).Get(ctx, name, metav1.GetOptions{})
 		if err != nil {
 			return wrapHPALookupError(client.Namespace, name, err)
 		}
-		reports = append(reports, *hpaanalysis.EvaluatePolicies(hpa, policyFile))
+		reports = append(reports, *hpapolicy.EvaluatePolicies(hpa, policyFile))
 	} else {
 		namespace := client.Namespace
 		if opts.AllNamespaces {
@@ -175,7 +176,7 @@ func runPolicy(ctx context.Context, out io.Writer, opts *options, policyOpts *po
 			return fmt.Errorf("failed to list HPAs: %w", err)
 		}
 		for i := range hpas.Items {
-			reports = append(reports, *hpaanalysis.EvaluatePolicies(&hpas.Items[i], policyFile))
+			reports = append(reports, *hpapolicy.EvaluatePolicies(&hpas.Items[i], policyFile))
 		}
 	}
 

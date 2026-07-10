@@ -8,6 +8,8 @@ package kubeconv
 import (
 	"fmt"
 
+	hpavpa "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
+
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
@@ -172,11 +174,11 @@ func PDBDisruptionMessage(p kube.PDBInfo) string {
 // This is the canonical converter: internal/enrichment delegates here instead
 // of keeping a private copy, so the kube -> hpa VPA mapping has exactly one
 // definition.
-func VPAInfo(vpa *kube.VPAInfo) *hpaanalysis.VPAInfo {
+func VPAInfo(vpa *kube.VPAInfo) *hpavpa.Info {
 	if vpa == nil {
 		return nil
 	}
-	out := &hpaanalysis.VPAInfo{
+	out := &hpavpa.Info{
 		Name:                vpa.Name,
 		TargetRef:           vpa.TargetRef,
 		TargetKind:          vpa.TargetKind,
@@ -185,7 +187,7 @@ func VPAInfo(vpa *kube.VPAInfo) *hpaanalysis.VPAInfo {
 		ControlledResources: append([]string(nil), vpa.ControlledResources...),
 	}
 	for _, r := range vpa.Recommendations {
-		out.Recommendations = append(out.Recommendations, hpaanalysis.VPARecommendationInfo{
+		out.Recommendations = append(out.Recommendations, hpavpa.RecommendationInfo{
 			Container: r.Container,
 			Resource:  r.Resource,
 			Target:    r.Target,

@@ -22,6 +22,10 @@ func DefaultRoot() Root {
 			Color:     "auto",
 			ChunkSize: 500,
 			DryRun:    true,
+			// RequestTimeout bounds each Kubernetes API request so an
+			// unresponsive API server fails the command instead of hanging
+			// it indefinitely. Users can pass --request-timeout=0 to disable.
+			RequestTimeout: 30 * time.Second,
 		},
 		Status: Status{
 			Events: EventOption{Enabled: true, Limit: 5},

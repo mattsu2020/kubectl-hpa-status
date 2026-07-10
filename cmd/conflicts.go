@@ -8,9 +8,10 @@ import (
 	"sort"
 	"strings"
 
+	hpavpa "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
+
 	"github.com/mattsu2020/kubectl-hpa-status/internal/enrichment"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
-	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
@@ -111,13 +112,10 @@ func detectHPAConflicts(ctx context.Context, opts *options, hpas []autoscalingv2
 	return items
 }
 
-func conflictVPAResults(ctx context.Context, opts *options, hpas []autoscalingv2.HorizontalPodAutoscaler) map[string]*hpaanalysis.VPAConflictInfo {
+func conflictVPAResults(ctx context.Context, opts *options, hpas []autoscalingv2.HorizontalPodAutoscaler) map[string]*hpavpa.ConflictInfo {
 	ec := enrichment.NewContext(ctx, enrichment.Config{
-		Namespace:  opts.Namespace,
-		Context:    opts.ContextName,
-		Kubeconfig: opts.Kubeconfig,
-		Cluster:    opts.Cluster,
-		VPA:        "on",
+		Kube: opts.KubeOptions(),
+		VPA:  "on",
 	})
 	results, _ := enrichment.BatchVPA(ctx, ec, hpas)
 	return results

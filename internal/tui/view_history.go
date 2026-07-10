@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	hpachurn "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/churn"
+
 	"charm.land/lipgloss/v2"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
@@ -11,7 +13,7 @@ import (
 // historyState holds the history/sparkline view state for a single HPA.
 type historyState struct {
 	snapshots     []hpaanalysis.TimelineSnapshot
-	churnAnalysis *hpaanalysis.ChurnAnalysis
+	churnAnalysis *hpachurn.ChurnAnalysis
 	scrollPos     int
 }
 
@@ -218,7 +220,7 @@ func (m Model) renderHistoryView() string {
 
 	// Determine available snapshots from history state.
 	var snapshots []hpaanalysis.TimelineSnapshot
-	var churn *hpaanalysis.ChurnAnalysis
+	var churn *hpachurn.ChurnAnalysis
 	var scrollPos int
 
 	if m.historyState != nil {
@@ -278,7 +280,7 @@ func appendHistoryHeader(sb *strings.Builder, item hpaanalysis.ListItem, snapsho
 	sb.WriteString("\n\n")
 }
 
-func appendHistoryChurnSection(sb *strings.Builder, churn *hpaanalysis.ChurnAnalysis) {
+func appendHistoryChurnSection(sb *strings.Builder, churn *hpachurn.ChurnAnalysis) {
 	if churn == nil {
 		return
 	}
@@ -294,7 +296,7 @@ func appendHistoryChurnSection(sb *strings.Builder, churn *hpaanalysis.ChurnAnal
 	sb.WriteString("\n")
 }
 
-func appendHistoryRecommendations(sb *strings.Builder, churn *hpaanalysis.ChurnAnalysis, width int) {
+func appendHistoryRecommendations(sb *strings.Builder, churn *hpachurn.ChurnAnalysis, width int) {
 	if churn == nil || len(churn.Recommendations) == 0 {
 		return
 	}
@@ -308,7 +310,7 @@ func appendHistoryRecommendations(sb *strings.Builder, churn *hpaanalysis.ChurnA
 	}
 }
 
-func appendHistoryReplicaTrend(sb *strings.Builder, snapshots []hpaanalysis.TimelineSnapshot, churn *hpaanalysis.ChurnAnalysis, graphWidth int) {
+func appendHistoryReplicaTrend(sb *strings.Builder, snapshots []hpaanalysis.TimelineSnapshot, churn *hpachurn.ChurnAnalysis, graphWidth int) {
 	sb.WriteString("\n")
 	sb.WriteString("Replica Trend:\n")
 	desiredValues := make([]float64, len(snapshots))
@@ -327,7 +329,7 @@ func appendHistoryReplicaTrend(sb *strings.Builder, snapshots []hpaanalysis.Time
 	}
 }
 
-func churnSparkStyle(churn *hpaanalysis.ChurnAnalysis) lipgloss.Style {
+func churnSparkStyle(churn *hpachurn.ChurnAnalysis) lipgloss.Style {
 	if churn == nil {
 		return okStyle
 	}

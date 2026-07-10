@@ -7,21 +7,23 @@ import (
 	"net/url"
 	"time"
 
+	hpachurn "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/churn"
+
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/spf13/cobra"
 )
 
 type historyReport struct {
-	Namespace         string                     `json:"namespace" yaml:"namespace"`
-	Name              string                     `json:"name" yaml:"name"`
-	Since             string                     `json:"since" yaml:"since"`
-	Prometheus        string                     `json:"prometheus,omitempty" yaml:"prometheus,omitempty"`
-	Health            string                     `json:"health" yaml:"health"`
-	HealthScore       int                        `json:"healthScore" yaml:"healthScore"`
-	Queries           []prometheusQuery          `json:"queries,omitempty" yaml:"queries,omitempty"`
-	Anomalies         []string                   `json:"anomalies,omitempty" yaml:"anomalies,omitempty"`
-	Churn             *hpaanalysis.ChurnAnalysis `json:"churn,omitempty" yaml:"churn,omitempty"`
-	StructuredSummary string                     `json:"structuredSummary,omitempty" yaml:"structuredSummary,omitempty"`
+	Namespace         string                  `json:"namespace" yaml:"namespace"`
+	Name              string                  `json:"name" yaml:"name"`
+	Since             string                  `json:"since" yaml:"since"`
+	Prometheus        string                  `json:"prometheus,omitempty" yaml:"prometheus,omitempty"`
+	Health            string                  `json:"health" yaml:"health"`
+	HealthScore       int                     `json:"healthScore" yaml:"healthScore"`
+	Queries           []prometheusQuery       `json:"queries,omitempty" yaml:"queries,omitempty"`
+	Anomalies         []string                `json:"anomalies,omitempty" yaml:"anomalies,omitempty"`
+	Churn             *hpachurn.ChurnAnalysis `json:"churn,omitempty" yaml:"churn,omitempty"`
+	StructuredSummary string                  `json:"structuredSummary,omitempty" yaml:"structuredSummary,omitempty"`
 }
 
 type prometheusQuery struct {
@@ -93,7 +95,7 @@ func historyAnomalies(a hpaanalysis.Analysis) []string {
 	if a.Health == string(hpaanalysis.HealthLimited) && a.Current == a.Max {
 		anomalies = append(anomalies, "HPA is capped at maxReplicas; investigate capacity and target metric demand")
 	}
-	if a.ChurnAnalysis != nil && (a.ChurnAnalysis.Level == hpaanalysis.ChurnHigh || a.ChurnAnalysis.Level == hpaanalysis.ChurnCritical) {
+	if a.ChurnAnalysis != nil && (a.ChurnAnalysis.Level == hpachurn.ChurnHigh || a.ChurnAnalysis.Level == hpachurn.ChurnCritical) {
 		anomalies = append(anomalies, "replica churn suggests oscillation; review stabilization windows and tolerance")
 	}
 	if a.StabilizationRemaining != nil && *a.StabilizationRemaining > 0 {

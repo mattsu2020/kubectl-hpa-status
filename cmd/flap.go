@@ -8,6 +8,8 @@ import (
 	"sort"
 	"time"
 
+	hpaflapping "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/flapping"
+
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
@@ -16,18 +18,18 @@ import (
 )
 
 type flapReport struct {
-	Namespace       string                                `json:"namespace" yaml:"namespace"`
-	Name            string                                `json:"name" yaml:"name"`
-	Source          string                                `json:"source" yaml:"source"`
-	Snapshots       int                                   `json:"snapshots,omitempty" yaml:"snapshots,omitempty"`
-	ScaleEvents     int                                   `json:"scaleEvents" yaml:"scaleEvents"`
-	DirectionFlips  int                                   `json:"directionFlips" yaml:"directionFlips"`
-	ReplicaMin      int32                                 `json:"replicaMin,omitempty" yaml:"replicaMin,omitempty"`
-	ReplicaMax      int32                                 `json:"replicaMax,omitempty" yaml:"replicaMax,omitempty"`
-	Level           string                                `json:"level" yaml:"level"`
-	Recommendations []string                              `json:"recommendations,omitempty" yaml:"recommendations,omitempty"`
-	Prevention      *hpaanalysis.FlappingPreventionReport `json:"prevention,omitempty" yaml:"prevention,omitempty"`
-	Diagnosis       *hpaanalysis.FlappingDiagnosis        `json:"diagnosis,omitempty" yaml:"diagnosis,omitempty"`
+	Namespace       string                        `json:"namespace" yaml:"namespace"`
+	Name            string                        `json:"name" yaml:"name"`
+	Source          string                        `json:"source" yaml:"source"`
+	Snapshots       int                           `json:"snapshots,omitempty" yaml:"snapshots,omitempty"`
+	ScaleEvents     int                           `json:"scaleEvents" yaml:"scaleEvents"`
+	DirectionFlips  int                           `json:"directionFlips" yaml:"directionFlips"`
+	ReplicaMin      int32                         `json:"replicaMin,omitempty" yaml:"replicaMin,omitempty"`
+	ReplicaMax      int32                         `json:"replicaMax,omitempty" yaml:"replicaMax,omitempty"`
+	Level           string                        `json:"level" yaml:"level"`
+	Recommendations []string                      `json:"recommendations,omitempty" yaml:"recommendations,omitempty"`
+	Prevention      *hpaflapping.PreventionReport `json:"prevention,omitempty" yaml:"prevention,omitempty"`
+	Diagnosis       *hpaflapping.Diagnosis        `json:"diagnosis,omitempty" yaml:"diagnosis,omitempty"`
 }
 
 func newFlapCommand(opts *options) *cobra.Command {
@@ -63,8 +65,8 @@ func runFlapLive(ctx context.Context, out io.Writer, opts *options, name string,
 		return fmt.Errorf("failed to fetch events: %w", err)
 	}
 	events := hpaanalysis.EventsFromCore(coreEvents)
-	prevention := hpaanalysis.AnalyzeFlappingPrevention(events, hpa)
-	diagnosis := hpaanalysis.DiagnoseFlapping(events, hpa)
+	prevention := hpaflapping.AnalyzeFlappingPrevention(events, hpa)
+	diagnosis := hpaflapping.DiagnoseFlapping(events, hpa)
 	report := flapReport{
 		Namespace:       hpa.Namespace,
 		Name:            hpa.Name,
@@ -150,7 +152,7 @@ func writeFlapReport(out io.Writer, opts *options, report flapReport) error {
 	}
 }
 
-func writeFlapDiagnosisText(out io.Writer, d *hpaanalysis.FlappingDiagnosis) {
+func writeFlapDiagnosisText(out io.Writer, d *hpaflapping.Diagnosis) {
 	_, _ = fmt.Fprintln(out, "\nFlapping Diagnosis:")
 	_, _ = fmt.Fprintf(out, "  severity: %s\n", d.Severity)
 	if d.Pattern != "" {
@@ -178,7 +180,7 @@ func writeFlapDiagnosisText(out io.Writer, d *hpaanalysis.FlappingDiagnosis) {
 	}
 }
 
-func writeFlapPreventionText(out io.Writer, report *hpaanalysis.FlappingPreventionReport) {
+func writeFlapPreventionText(out io.Writer, report *hpaflapping.PreventionReport) {
 	_, _ = fmt.Fprintln(out, "\nFlapping Prevention:")
 	_, _ = fmt.Fprintf(out, "  Current stabilization window: %ds\n", report.CurrentWindow)
 	_, _ = fmt.Fprintf(out, "  Direction flips: %d\n", report.CurrentDirectionFlips)

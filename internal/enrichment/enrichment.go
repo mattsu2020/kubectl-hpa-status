@@ -8,6 +8,9 @@ import (
 	"fmt"
 	"strings"
 
+	hpakeda "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/keda"
+	hpavpa "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
+
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kubeconv"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
@@ -20,12 +23,12 @@ import (
 // Config holds the parameters needed to create an enrichment context.
 // This decouples enrichment from the CLI options struct.
 type Config struct {
-	Namespace  string
-	Context    string
-	Kubeconfig string
-	Cluster    string
-	KEDA       string // "auto" (default), "on" (force), "off" (disable)
-	VPA        string // "auto" (default), "on" (force), "off" (disable)
+	// Kube carries the full client connection settings (namespace, context,
+	// kubeconfig, cluster, rate limits, request timeout) so enrichment
+	// clients honor the same tuning flags as the primary typed client.
+	Kube kube.Options
+	KEDA string // "auto" (default), "on" (force), "off" (disable)
+	VPA  string // "auto" (default), "on" (force), "off" (disable)
 }
 
 // Context holds reusable clients and CRD availability for enrichment
@@ -73,12 +76,7 @@ func NewContext(_ context.Context, cfg Config) *Context {
 		return &Context{status: status}
 	}
 
-	disco, err := kube.NewDiscoveryClient(kube.Options{
-		Namespace:  cfg.Namespace,
-		Context:    cfg.Context,
-		Kubeconfig: cfg.Kubeconfig,
-		Cluster:    cfg.Cluster,
-	})
+	disco, err := kube.NewDiscoveryClient(cfg.Kube)
 	if err != nil {
 		setEnrichmentError(kedaEntry, requested(cfg.KEDA), fmt.Sprintf("discovery client creation failed: %v", err))
 		setEnrichmentError(vpaEntry, requested(cfg.VPA), fmt.Sprintf("discovery client creation failed: %v", err))
@@ -101,12 +99,7 @@ func NewContext(_ context.Context, cfg Config) *Context {
 		return &Context{status: status}
 	}
 
-	dynClient, ns, err := kube.NewDynamicClient(kube.Options{
-		Namespace:  cfg.Namespace,
-		Context:    cfg.Context,
-		Kubeconfig: cfg.Kubeconfig,
-		Cluster:    cfg.Cluster,
-	})
+	dynClient, ns, err := kube.NewDynamicClient(cfg.Kube)
 	if err != nil {
 		setEnrichmentError(kedaEntry, kedaEnabled, fmt.Sprintf("dynamic client creation failed: %v", err))
 		setEnrichmentError(vpaEntry, vpaEnabled, fmt.Sprintf("dynamic client creation failed: %v", err))
@@ -203,10 +196,10 @@ func (ec *Context) VPAEnabled() bool { return ec != nil && ec.vpaEnabled }
 
 // buildKEDAAnalysis converts a KEDAInfo into a KEDAAnalysis with trigger
 // summaries, condition lines, fallback info, and cross-reference interpretation.
-func buildKEDAAnalysis(info kube.KEDAInfo, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpaanalysis.KEDAAnalysis {
-	triggers := make([]hpaanalysis.KEDATriggerSummary, 0, len(info.Triggers))
+func buildKEDAAnalysis(info kube.KEDAInfo, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpakeda.Analysis {
+	triggers := make([]hpakeda.TriggerSummary, 0, len(info.Triggers))
 	for _, t := range info.Triggers {
-		triggers = append(triggers, hpaanalysis.KEDATriggerSummary{
+		triggers = append(triggers, hpakeda.TriggerSummary{
 			Type:         t.Type,
 			Name:         t.Name,
 			Status:       t.Status,
@@ -229,15 +222,15 @@ func buildKEDAAnalysis(info kube.KEDAInfo, hpa *autoscalingv2.HorizontalPodAutos
 		conditionLines = []string{fmt.Sprintf("ScaledObject reports %d condition(s), all healthy.", len(info.Conditions))}
 	}
 
-	var fallback *hpaanalysis.KEDAFallbackInfo
+	var fallback *hpakeda.FallbackInfo
 	if info.Fallback != nil {
-		fallback = &hpaanalysis.KEDAFallbackInfo{
+		fallback = &hpakeda.FallbackInfo{
 			FailureThreshold: info.Fallback.FailureThreshold,
 			Replicas:         info.Fallback.Replicas,
 		}
 	}
 
-	kedaAnalysis := &hpaanalysis.KEDAAnalysis{
+	kedaAnalysis := &hpakeda.Analysis{
 		ScaledObjectName: info.ScaledObjectName,
 		Triggers:         triggers,
 		PollingInterval:  info.PollingInterval,
@@ -249,14 +242,14 @@ func buildKEDAAnalysis(info kube.KEDAInfo, hpa *autoscalingv2.HorizontalPodAutos
 		Fallback:         fallback,
 	}
 
-	kedaAnalysis.Lines = append(kedaAnalysis.Lines, hpaanalysis.AnalyzeKEDA(hpa, kedaAnalysis)...)
+	kedaAnalysis.Lines = append(kedaAnalysis.Lines, hpakeda.Analyze(hpa, kedaAnalysis)...)
 
 	return kedaAnalysis
 }
 
 // EnrichKEDA performs KEDA ScaledObject enrichment for a single HPA.
 // Returns nil if the HPA is not KEDA-managed or enrichment fails.
-func EnrichKEDA(ctx context.Context, ec *Context, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpaanalysis.KEDAAnalysis {
+func EnrichKEDA(ctx context.Context, ec *Context, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpakeda.Analysis {
 	det := kube.DetectKEDA(hpa)
 	if !det.Managed {
 		return nil
@@ -264,7 +257,7 @@ func EnrichKEDA(ctx context.Context, ec *Context, hpa *autoscalingv2.HorizontalP
 
 	scaledObject, err := kube.FindScaledObjectForHPA(ctx, ec.dynClient, nil, hpa)
 	if err != nil {
-		return &hpaanalysis.KEDAAnalysis{
+		return &hpakeda.Analysis{
 			Lines: []string{fmt.Sprintf("[observed] HPA appears KEDA-managed but no ScaledObject found: %v", err)},
 		}
 	}
@@ -285,8 +278,8 @@ func EnrichVPA(ctx context.Context, ec *Context, hpa *autoscalingv2.HorizontalPo
 	}
 
 	analysisVPA := convertVPAInfo(vpaInfo)
-	report.Analysis.VPAConflict = hpaanalysis.NewVPAConflictInfo(analysisVPA)
-	report.Analysis.Interpretation = append(report.Analysis.Interpretation, hpaanalysis.AnalyzeVPA(hpa, analysisVPA)...)
+	report.Analysis.VPAConflict = hpavpa.NewConflictInfo(analysisVPA)
+	report.Analysis.Interpretation = append(report.Analysis.Interpretation, hpavpa.Analyze(hpa, analysisVPA)...)
 }
 
 // EnrichReport applies KEDA and VPA enrichment to a StatusReport and
@@ -317,7 +310,7 @@ func EnrichReport(ctx context.Context, ec *Context, hpa *autoscalingv2.Horizonta
 // The returned warnings map records per-namespace list failures (namespace →
 // messages) so callers can surface them (e.g. into Analysis.Warnings) instead
 // of silently treating a permissions error as "no ScaledObjects found".
-func BatchKEDA(ctx context.Context, ec *Context, hpas []autoscalingv2.HorizontalPodAutoscaler) (map[string]*hpaanalysis.KEDAAnalysis, map[string][]string) {
+func BatchKEDA(ctx context.Context, ec *Context, hpas []autoscalingv2.HorizontalPodAutoscaler) (map[string]*hpakeda.Analysis, map[string][]string) {
 	if ec == nil || !ec.kedaEnabled {
 		return nil, nil
 	}
@@ -341,7 +334,7 @@ func BatchKEDA(ctx context.Context, ec *Context, hpas []autoscalingv2.Horizontal
 		}
 	}
 
-	results := map[string]*hpaanalysis.KEDAAnalysis{}
+	results := map[string]*hpakeda.Analysis{}
 	for i := range hpas {
 		hpa := &hpas[i]
 		det := kube.DetectKEDA(hpa)
@@ -359,7 +352,7 @@ func BatchKEDA(ctx context.Context, ec *Context, hpas []autoscalingv2.Horizontal
 
 		key := hpa.Namespace + "/" + hpa.Name
 		if scaledObj == nil {
-			results[key] = &hpaanalysis.KEDAAnalysis{
+			results[key] = &hpakeda.Analysis{
 				Lines: []string{"[observed] HPA appears KEDA-managed but no matching ScaledObject found"},
 			}
 			continue
@@ -377,7 +370,7 @@ func BatchKEDA(ctx context.Context, ec *Context, hpas []autoscalingv2.Horizontal
 // The returned warnings map records per-namespace list failures (namespace →
 // messages) so callers can surface them (e.g. into Analysis.Warnings) instead
 // of silently treating a permissions error as "no VPAs found".
-func BatchVPA(ctx context.Context, ec *Context, hpas []autoscalingv2.HorizontalPodAutoscaler) (map[string]*hpaanalysis.VPAConflictInfo, map[string][]string) {
+func BatchVPA(ctx context.Context, ec *Context, hpas []autoscalingv2.HorizontalPodAutoscaler) (map[string]*hpavpa.ConflictInfo, map[string][]string) {
 	if ec == nil || !ec.vpaEnabled {
 		return nil, nil
 	}
@@ -401,7 +394,7 @@ func BatchVPA(ctx context.Context, ec *Context, hpas []autoscalingv2.HorizontalP
 		}
 	}
 
-	results := map[string]*hpaanalysis.VPAConflictInfo{}
+	results := map[string]*hpavpa.ConflictInfo{}
 	for i := range hpas {
 		hpa := &hpas[i]
 
@@ -414,7 +407,7 @@ func BatchVPA(ctx context.Context, ec *Context, hpas []autoscalingv2.HorizontalP
 				continue
 			}
 			if vpaTargetMatchesHPA(vpa, hpa) {
-				results[hpa.Namespace+"/"+hpa.Name] = hpaanalysis.NewVPAConflictInfo(convertVPAInfo(&vpa))
+				results[hpa.Namespace+"/"+hpa.Name] = hpavpa.NewConflictInfo(convertVPAInfo(&vpa))
 				break
 			}
 		}
@@ -428,7 +421,7 @@ func BatchVPA(ctx context.Context, ec *Context, hpas []autoscalingv2.HorizontalP
 // not depend on pkg/hpa, so this conversion is centralized in internal/kubeconv
 // (kubeconv.VPAInfo); this wrapper keeps the enrichment-internal call sites
 // stable while sharing the single canonical mapping.
-func convertVPAInfo(vpa *kube.VPAInfo) *hpaanalysis.VPAInfo {
+func convertVPAInfo(vpa *kube.VPAInfo) *hpavpa.Info {
 	return kubeconv.VPAInfo(vpa)
 }
 

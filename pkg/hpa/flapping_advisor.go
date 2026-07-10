@@ -18,22 +18,38 @@ import (
 // historical hpaanalysis.Flapping* names.
 type (
 	// FlappingPreventionReport aliases flapping.PreventionReport.
+	//
+	// Deprecated: Use flapping.PreventionReport instead.
 	FlappingPreventionReport = flapping.PreventionReport
 	// FlappingSimulation aliases flapping.Simulation.
+	//
+	// Deprecated: Use flapping.Simulation instead.
 	FlappingSimulation = flapping.Simulation
 	// FlappingDiagnosis aliases flapping.Diagnosis.
+	//
+	// Deprecated: Use flapping.Diagnosis instead.
 	FlappingDiagnosis = flapping.Diagnosis
 	// FlappingCause aliases flapping.Cause.
+	//
+	// Deprecated: Use flapping.Cause instead.
 	FlappingCause = flapping.Cause
 	// FlappingFix aliases flapping.Fix.
+	//
+	// Deprecated: Use flapping.Fix instead.
 	FlappingFix = flapping.Fix
 	// AnomalyType aliases flapping.AnomalyType.
+	//
+	// Deprecated: Use flapping.AnomalyType instead.
 	AnomalyType = flapping.AnomalyType
 	// AnomalyDetection aliases flapping.AnomalyDetection.
+	//
+	// Deprecated: Use flapping.AnomalyDetection instead.
 	AnomalyDetection = flapping.AnomalyDetection
 )
 
 // Flapping anomaly type constants.
+//
+// Deprecated: Use the canonical flapping.Anomaly* constants instead.
 const (
 	AnomalySuddenDegradation     = flapping.AnomalySuddenDegradation
 	AnomalyStuckState            = flapping.AnomalyStuckState
@@ -42,12 +58,16 @@ const (
 
 // DiagnoseFlapping detects scaling flapping. Delegates to
 // flapping.DiagnoseFlapping.
+//
+// Deprecated: Use flapping.DiagnoseFlapping instead.
 func DiagnoseFlapping(events []Event, hpa *autoscalingv2.HorizontalPodAutoscaler) *FlappingDiagnosis {
 	return flapping.DiagnoseFlapping(events, hpa)
 }
 
 // AnalyzeFlappingPrevention analyzes whether the HPA's behavior policies
 // would prevent detected flapping. Delegates to flapping.AnalyzeFlappingPrevention.
+//
+// Deprecated: Use flapping.AnalyzeFlappingPrevention instead.
 func AnalyzeFlappingPrevention(events []Event, hpa *autoscalingv2.HorizontalPodAutoscaler) *FlappingPreventionReport {
 	return flapping.AnalyzeFlappingPrevention(events, hpa)
 }

@@ -7,6 +7,9 @@ import (
 	"strings"
 	"time"
 
+	hpakeda "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/keda"
+	hpavpa "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
+
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
@@ -94,8 +97,8 @@ type Options struct {
 	// to a slice of HPAs. When set, fetchHPAs calls it after the initial
 	// analysis pass to populate KEDAInfo and VPAConflict fields.
 	EnrichHPAs func(ctx context.Context, hpas []autoscalingv2.HorizontalPodAutoscaler) (
-		kedaResults map[string]*hpaanalysis.KEDAAnalysis,
-		vpaResults map[string]*hpaanalysis.VPAConflictInfo,
+		kedaResults map[string]*hpakeda.Analysis,
+		vpaResults map[string]*hpavpa.ConflictInfo,
 	)
 
 	// HealthWeights holds user-configured penalty weights for enrichment
@@ -458,8 +461,8 @@ func fetchHPAs(m Model) tea.Cmd {
 		}
 
 		// Run optional batched KEDA/VPA enrichment.
-		var kedaResults map[string]*hpaanalysis.KEDAAnalysis
-		var vpaResults map[string]*hpaanalysis.VPAConflictInfo
+		var kedaResults map[string]*hpakeda.Analysis
+		var vpaResults map[string]*hpavpa.ConflictInfo
 		if cfg.opts.EnrichHPAs != nil {
 			kedaResults, vpaResults = cfg.opts.EnrichHPAs(cfg.ctx, hpas.Items)
 		}

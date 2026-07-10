@@ -36,14 +36,7 @@ func newCompatCommand(opts *options) *cobra.Command {
 }
 
 func runCompat(ctx context.Context, out io.Writer, opts *options) error {
-	disco, err := kube.NewDiscoveryClient(kube.Options{
-		Namespace:  opts.Namespace,
-		Context:    opts.ContextName,
-		Kubeconfig: opts.Kubeconfig,
-		Cluster:    opts.Cluster,
-		QPS:        opts.QPS,
-		Burst:      opts.Burst,
-	})
+	disco, err := kube.NewDiscoveryClient(opts.KubeOptions())
 	if err != nil {
 		return err
 	}

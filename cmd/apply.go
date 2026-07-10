@@ -8,6 +8,8 @@ import (
 	"os"
 	"strings"
 
+	hpapolicy "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/policy"
+
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/patch"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
@@ -88,11 +90,11 @@ func guardPatches(out io.Writer, opts *options, current *autoscalingv2.Horizonta
 	if opts.PolicyGuard == "" {
 		return patches, nil
 	}
-	policyFile, err := hpaanalysis.LoadPolicyFile(opts.PolicyGuard)
+	policyFile, err := hpapolicy.LoadPolicyFile(opts.PolicyGuard)
 	if err != nil {
 		return nil, err
 	}
-	result := hpaanalysis.GuardFix(patches, policyFile, current)
+	result := hpapolicy.GuardFix(patches, policyFile, current)
 	if err := hpaanalysis.WritePolicyGuardText(out, result); err != nil {
 		return nil, err
 	}

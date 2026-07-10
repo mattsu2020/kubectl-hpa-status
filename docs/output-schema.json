@@ -10,6 +10,7 @@
     "statusReport": {
       "type": "object",
       "properties": {
+        "apiVersion": { "type": "string" },
         "analysis": { "$ref": "#/$defs/analysis" },
         "events": {
           "type": "array",

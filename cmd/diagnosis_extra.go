@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	hpareadiness "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/readiness"
+
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	appsv1 "k8s.io/api/apps/v1"
@@ -22,12 +24,12 @@ const (
 	defaultCPUInitializationPeriod = 5 * time.Minute
 )
 
-func buildReadinessImpact(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpaanalysis.ReadinessImpact {
+func buildReadinessImpact(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpareadiness.Impact {
 	if client == nil || hpa == nil {
 		return nil
 	}
 	profile := hpaanalysis.DefaultControllerProfile()
-	impact := &hpaanalysis.ReadinessImpact{
+	impact := &hpareadiness.Impact{
 		InitialReadinessDelay:   profile.InitialReadinessDelay,
 		CPUInitializationPeriod: profile.CPUInitializationPeriod,
 		NextChecks: []string{
@@ -58,7 +60,7 @@ func buildReadinessImpact(ctx context.Context, client *kube.Client, hpa *autosca
 }
 
 // countNotYetReadyPods increments NotYetReadyPods for young non-Ready pods and records evidence and describe-pod next-checks.
-func countNotYetReadyPods(impact *hpaanalysis.ReadinessImpact, pods []corev1.Pod, namespace string, now time.Time) {
+func countNotYetReadyPods(impact *hpareadiness.Impact, pods []corev1.Pod, namespace string, now time.Time) {
 	for _, pod := range pods {
 		if podReadyForImpact(pod) {
 			continue
@@ -78,7 +80,7 @@ func countNotYetReadyPods(impact *hpaanalysis.ReadinessImpact, pods []corev1.Pod
 }
 
 // countMissingMetricPods increments MissingMetricPods for running pods lacking a PodMetrics sample, recording evidence.
-func countMissingMetricPods(ctx context.Context, impact *hpaanalysis.ReadinessImpact, client *kube.Client, namespace, selector string, pods []corev1.Pod) {
+func countMissingMetricPods(ctx context.Context, impact *hpareadiness.Impact, client *kube.Client, namespace, selector string, pods []corev1.Pod) {
 	metricPods, metricErr := fetchPodMetricNames(ctx, client, namespace, selector)
 	if metricErr != nil {
 		impact.Evidence = append(impact.Evidence, fmt.Sprintf("PodMetrics not checked: %v", metricErr))
@@ -100,7 +102,7 @@ func countMissingMetricPods(ctx context.Context, impact *hpaanalysis.ReadinessIm
 }
 
 // finalizeReadinessImpact sets LikelyAffected and appends PossibleEffects based on the recorded counts.
-func finalizeReadinessImpact(impact *hpaanalysis.ReadinessImpact) {
+func finalizeReadinessImpact(impact *hpareadiness.Impact) {
 	impact.LikelyAffected = impact.NotYetReadyPods > 0 || impact.MissingMetricPods > 0
 	if impact.NotYetReadyPods > 0 {
 		impact.PossibleEffects = append(impact.PossibleEffects,

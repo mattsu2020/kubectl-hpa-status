@@ -75,7 +75,15 @@ func WriteScalePathText(w io.Writer, path *ScalePath) error {
 
 // WriteStatusDashboard writes a compact dashboard format status report.
 func WriteStatusDashboard(w io.Writer, report StatusReport, theme style.Theme) error {
+	return WriteStatusDashboardWithOptions(w, report, StatusTextOptions{Theme: theme})
+}
+
+// WriteStatusDashboardWithOptions writes a compact dashboard format status
+// report with full rendering options, localising the Summary line via
+// opts.SummaryTranslator when configured.
+func WriteStatusDashboardWithOptions(w io.Writer, report StatusReport, opts StatusTextOptions) error {
 	a := report.Analysis
+	theme := opts.Theme
 	diff := a.Desired - a.Current
 	var out []byte
 	out = fmt.Appendf(out, "kubectl-hpa-status dashboard\n")
@@ -87,7 +95,7 @@ func WriteStatusDashboard(w io.Writer, report StatusReport, theme style.Theme) e
 		progress := FormatStabilizationWithSource(a.StabilizationRemaining, a.StabilizationWindowSeconds, a.StabilizationSource)
 		out = fmt.Appendf(out, "Stabilizing %s\n", progress)
 	}
-	out = fmt.Appendf(out, "Summary  %s\n", theme.SummaryColor(a.Summary))
+	out = fmt.Appendf(out, "Summary  %s\n", theme.SummaryColor(opts.translateSummary(a.Summary, a.SummaryKey)))
 
 	out = append(out, "\nConditions\n"...)
 	if len(a.Conditions) == 0 {

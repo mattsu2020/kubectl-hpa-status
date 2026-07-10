@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	hpakeda "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/keda"
+
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
@@ -58,13 +60,13 @@ func richAnalysisFixture() hpaanalysis.Analysis {
 		Interpretation: "cluster is out of cpu",
 		NextCommands:   []string{"kubectl describe nodes"},
 	}
-	a.KEDAInfo = &hpaanalysis.KEDAAnalysis{
+	a.KEDAInfo = &hpakeda.Analysis{
 		ScaledObjectName: "web-so",
 		PollingInterval:  &pollingInterval,
-		Triggers: []hpaanalysis.KEDATriggerSummary{
+		Triggers: []hpakeda.TriggerSummary{
 			{Type: "kafka", Name: "lag", Status: "Active", Threshold: "100", CurrentValue: "250", AuthRef: "kafka-auth"},
 		},
-		Fallback: &hpaanalysis.KEDAFallbackInfo{FailureThreshold: 3, Replicas: 2},
+		Fallback: &hpakeda.FallbackInfo{FailureThreshold: 3, Replicas: 2},
 		Lines:    []string{"[observed] HPA is owned by KEDA"},
 	}
 	a.MetricsDiagnostics = &hpaanalysis.MetricsPipelineDiagnostics{
