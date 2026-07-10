@@ -43,10 +43,10 @@ func DefaultRoot() Root {
 // pointers) — are deep-copied so mutating the returned Root never leaks
 // back into the original.
 //
-// The two input-port fields, ClientOverride (a kubernetes.Interface) and
-// In (an io.Reader), are intentionally shared: they describe a live
-// client/stdin the copy should keep using, not data to fork. If a caller
-// needs to swap the client or input, set the field explicitly after Copy.
+// The input/output port fields, ClientOverride (a kubernetes.Interface), In
+// (an io.Reader), and Err (an io.Writer), are intentionally shared: they
+// describe live command dependencies the copy should keep using, not data to
+// fork. If a caller needs to swap one, set it explicitly after Copy.
 func (r Root) Copy() Root {
 	clone := r // value copy: all scalar/struct fields are now independent
 
@@ -68,7 +68,7 @@ func (r Root) Copy() Root {
 	// not mutate the shared original.
 	clone.HealthWeights = r.HealthWeights.Clone()
 
-	// ClientOverride and In are intentionally shared (see doc comment).
+	// ClientOverride, In, and Err are intentionally shared (see doc comment).
 	return clone
 }
 

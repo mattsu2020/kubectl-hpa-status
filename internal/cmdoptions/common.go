@@ -12,26 +12,30 @@ import (
 // Common holds CLI flags shared across commands: Kubernetes connection, output
 // formatting, language, debug settings, and cross-command workflow flags.
 type Common struct {
-	Namespace             string
-	AllNamespaces         bool
-	ContextName           string
-	Kubeconfig            string
-	Cluster               string
-	Output                string
-	Template              string
-	Wide                  bool
-	Selector              string
-	Color                 string
-	Lang                  string
-	Debug                 bool
-	Config                string
-	ChunkSize             int64
-	Concurrency           int
-	QPS                   float32
-	Burst                 int
-	OutputTemplates       map[string]OutputTemplateConfig
-	ClientOverride        kubernetes.Interface
-	In                    io.Reader
+	Namespace       string
+	AllNamespaces   bool
+	ContextName     string
+	Kubeconfig      string
+	Cluster         string
+	Output          string
+	Template        string
+	Wide            bool
+	Selector        string
+	Color           string
+	Lang            string
+	Debug           bool
+	Config          string
+	ChunkSize       int64
+	Concurrency     int
+	QPS             float32
+	Burst           int
+	OutputTemplates map[string]OutputTemplateConfig
+	ClientOverride  kubernetes.Interface
+	In              io.Reader
+	// Err receives diagnostic output such as warnings and per-item failures.
+	// It is intentionally not a CLI flag: cobra wires it to ErrOrStderr so
+	// machine-readable stdout remains safe to redirect.
+	Err                   io.Writer
 	Apply                 bool
 	Diff                  bool
 	DryRun                bool

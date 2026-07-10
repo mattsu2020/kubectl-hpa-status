@@ -62,10 +62,14 @@ func (s *listStreamer) writeTable(items []hpaanalysis.ListItem) error {
 		Labels:            labelProviderForLang(s.opts.Lang, s.opts.Output),
 		SummaryTranslator: summaryTranslatorForLang(s.opts.Lang, s.opts.Output),
 	}
-	return hpaanalysis.WriteListTextStreaming(s.out, hpaanalysis.ListReport{
+	err := hpaanalysis.WriteListTextStreaming(s.out, hpaanalysis.ListReport{
 		APIVersion: hpaanalysis.SchemaVersion,
 		Items:      items,
 	}, textOpts, s.first)
+	if err == nil {
+		s.first = false
+	}
+	return err
 }
 
 func (s *listStreamer) writeJSONL(items []hpaanalysis.ListItem) error {

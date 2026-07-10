@@ -37,6 +37,7 @@ func NewRootCommand() *cobra.Command {
 			return hpaNameCompletion(opts)(cmd, args, toComplete)
 		},
 		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
+			opts.Err = cmd.ErrOrStderr()
 			if err := applyConfigDefaults(cmd, opts); err != nil {
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %v\n", err)
 			}

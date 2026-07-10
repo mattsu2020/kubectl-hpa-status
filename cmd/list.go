@@ -224,7 +224,7 @@ func buildListItems(ctx context.Context, opts *options, hpas []autoscalingv2.Hor
 		} else {
 			// Surface the init failure so --trend silently producing no trend data
 			// (e.g. an unwritable cache dir) is not mistaken for "no history yet".
-			fmt.Fprintf(os.Stderr, "warning: health trend store unavailable, --trend will show no data: %v\n", err)
+			_, _ = fmt.Fprintf(errorWriter(opts, os.Stderr), "warning: health trend store unavailable, --trend will show no data: %v\n", err)
 		}
 	}
 

@@ -81,15 +81,16 @@ func streamingHPAName(i int) string {
 
 // TestRunListStreamingJSONL verifies the jsonl streaming path emits one JSON
 // object per HPA, one per line, without an enclosing array, and that it does
-// not buffer every HPA before emitting. A small ChunkSize forces the fake
-// client to paginate, and the output must decode as newline-delimited objects.
+// not buffer every HPA before emitting. The output must decode as
+// newline-delimited objects. Page-boundary behavior is covered directly below
+// because the client-go fake does not implement Continue-token pagination.
 func TestRunListStreamingJSONL(t *testing.T) {
 	fakeClient := testutil.NewFakeClient(buildStreamingHPAs(5)...)
 
 	opts := streamingTestOpts()
 	opts.ClientOverride = fakeClient
 	opts.Output = "jsonl"
-	opts.ChunkSize = 2 // force multiple pages
+	opts.ChunkSize = 2
 
 	var buf bytes.Buffer
 	if err := runList(context.Background(), &buf, opts); err != nil {
@@ -123,7 +124,7 @@ func TestRunListStreamingTable(t *testing.T) {
 
 	opts := streamingTestOpts()
 	opts.ClientOverride = fakeClient
-	opts.ChunkSize = 2 // force two pages
+	opts.ChunkSize = 2
 
 	var buf bytes.Buffer
 	if err := runList(context.Background(), &buf, opts); err != nil {
@@ -139,6 +140,32 @@ func TestRunListStreamingTable(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		if !strings.Contains(output, streamingHPAName(i)) {
 			t.Fatalf("expected HPA %q in streamed table output:\n%s", streamingHPAName(i), output)
+		}
+	}
+}
+
+// TestListStreamerWritesHeaderOnceAcrossPages exercises the streamer's page
+// boundary directly. The client-go fake does not produce Continue tokens, so
+// this test is the regression guard for real API-server pagination.
+func TestListStreamerWritesHeaderOnceAcrossPages(t *testing.T) {
+	opts := streamingTestOpts()
+	var buf bytes.Buffer
+	streamer := newListStreamer(&buf, opts)
+
+	if err := streamer.writePage([]hpaanalysis.ListItem{{Namespace: "default", Name: "first"}}); err != nil {
+		t.Fatalf("first page: %v", err)
+	}
+	if err := streamer.writePage([]hpaanalysis.ListItem{{Namespace: "default", Name: "second"}}); err != nil {
+		t.Fatalf("second page: %v", err)
+	}
+
+	output := buf.String()
+	if got := strings.Count(output, "NAMESPACE"); got != 1 {
+		t.Fatalf("header count = %d, want 1:\n%s", got, output)
+	}
+	for _, name := range []string{"first", "second"} {
+		if !strings.Contains(output, name) {
+			t.Fatalf("missing row %q:\n%s", name, output)
 		}
 	}
 }

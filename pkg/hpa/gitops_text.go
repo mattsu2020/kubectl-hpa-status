@@ -241,7 +241,7 @@ func WriteGitOpsConflictHTML(w io.Writer, report *GitOpsConflict) error {
 		return err
 	}
 
-	_, err := fmt.Fprintf(w, `<h2>GitOps Conflict: %s/%s (%s)</h2>`, report.Namespace, report.Name, report.Target)
+	_, err := fmt.Fprintf(w, `<h2>GitOps Conflict: %s/%s (%s)</h2>`, escapeHTML(report.Namespace), escapeHTML(report.Name), escapeHTML(report.Target))
 	if err != nil {
 		return err
 	}
@@ -280,7 +280,7 @@ func writeGitOpsHTMLConflicts(w io.Writer, conflicts []GitOpsConflictEntry) erro
 	}
 	for _, c := range conflicts {
 		if _, err := fmt.Fprintf(w, `<tr class="%s"><td>%s</td><td>%s/%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>`,
-			gitOpsSeverityClass(c.Severity), c.Severity, c.Kind, c.Name, c.Field,
+			gitOpsSeverityClass(c.Severity), escapeHTML(c.Severity), escapeHTML(c.Kind), escapeHTML(c.Name), escapeHTML(c.Field),
 			escapeHTML(c.ManifestValue), escapeHTML(c.LiveValue), escapeHTML(c.HPADesired),
 			escapeHTML(c.Detail), escapeHTML(c.Remediation)); err != nil {
 			return err

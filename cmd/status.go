@@ -125,7 +125,7 @@ func runStatusMultiple(ctx context.Context, out io.Writer, opts *options, names 
 	// machine-readable consumers. Output modes that carry per-item errors in
 	// their own schema (json/yaml/text/ai-context) skip this for those items.
 	if !batchOutputCarriesErrors(opts) {
-		emitPerItemErrors(out, results)
+		emitPerItemErrors(errorWriter(opts, out), results)
 	}
 
 	if opts.Export != "" {
@@ -238,8 +238,18 @@ func successReports(results []reportResult) []hpaanalysis.StatusReport {
 	return reports
 }
 
+// errorWriter returns the command's diagnostic stream. The fallback preserves
+// the behavior of direct helper callers that do not use cobra (primarily unit
+// tests), while normal CLI execution always supplies ErrOrStderr.
+func errorWriter(opts *options, fallback io.Writer) io.Writer {
+	if opts != nil && opts.Err != nil {
+		return opts.Err
+	}
+	return fallback
+}
+
 // emitPerItemErrors writes one render.Error-shaped line per failed item to
-// stderr (or out when stderr is unavailable, matching existing conventions).
+// the diagnostic stream.
 // It is used only by output modes that cannot carry per-item errors in their
 // own schema.
 func emitPerItemErrors(out io.Writer, results []reportResult) {
