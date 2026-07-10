@@ -148,16 +148,25 @@ func runTimeline(ctx context.Context, out io.Writer, opts *options, name string,
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
+	client, err := newClientOrDefault(opts)
+	if err != nil {
+		return err
+	}
 	ec := newEnrichmentContext(ctx, opts)
 	var snapshots []hpaanalysis.TimelineSnapshot
+	const maxTimelineSnapshots = 500
 
 	for {
-		report, err := buildStatusReportWithClient(ctx, opts, name, true, ec)
+		report, err := buildStatusReport(ctx, opts, client, name, true, ec)
 		if err != nil {
 			return err
 		}
 		snapshot := hpaanalysis.SnapshotFromReport(report)
 		snapshots = append(snapshots, snapshot)
+		if len(snapshots) > maxTimelineSnapshots {
+			copy(snapshots, snapshots[len(snapshots)-maxTimelineSnapshots:])
+			snapshots = snapshots[:maxTimelineSnapshots]
+		}
 
 		if clearScreen := theme.ScreenClear(); clearScreen != "" {
 			if _, err := out.Write([]byte(clearScreen)); err != nil {
@@ -199,6 +208,10 @@ func runRecord(ctx context.Context, out io.Writer, opts *options, name string, i
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
+	client, err := newClientOrDefault(opts)
+	if err != nil {
+		return err
+	}
 	ec := newEnrichmentContext(ctx, opts)
 	start := time.Now()
 	counts := map[string]int{}
@@ -206,7 +219,7 @@ func runRecord(ctx context.Context, out io.Writer, opts *options, name string, i
 	interestingChanges := map[string][]string{}
 
 	for {
-		records, err := recordOnce(ctx, opts, name, interval, ec)
+		records, err := recordOnce(ctx, opts, client, name, interval, ec)
 		if err != nil {
 			return err
 		}
@@ -237,29 +250,26 @@ func runRecord(ctx context.Context, out io.Writer, opts *options, name string, i
 	}
 }
 
-func recordOnce(ctx context.Context, opts *options, name string, interval time.Duration, ec *enrichmentContext) ([]hpaanalysis.TimelineTrace, error) {
+func recordOnce(ctx context.Context, opts *options, client *kube.Client, name string, interval time.Duration, ec *enrichmentContext) ([]hpaanalysis.TimelineTrace, error) {
 	if name != "" {
-		report, err := buildStatusReportWithClient(ctx, opts, name, true, ec)
+		report, err := buildStatusReport(ctx, opts, client, name, true, ec)
 		if err != nil {
 			return nil, err
 		}
 		return []hpaanalysis.TimelineTrace{traceFromReport(report, interval)}, nil
 	}
 
-	client, err := newClientOrDefault(opts)
-	if err != nil {
-		return nil, err
-	}
 	namespace := client.Namespace
 	if opts.AllNamespaces {
 		namespace = metav1.NamespaceAll
 	}
 	var records []hpaanalysis.TimelineTrace
-	err = kube.ListHPAsEachPage(ctx, client.Interface, namespace, metav1.ListOptions{LabelSelector: opts.Selector}, opts.ChunkSize, func(page *autoscalingv2.HorizontalPodAutoscalerList) error {
+	err := kube.ListHPAsEachPage(ctx, client.Interface, namespace, metav1.ListOptions{LabelSelector: opts.Selector}, opts.ChunkSize, func(page *autoscalingv2.HorizontalPodAutoscalerList) error {
 		for i := range page.Items {
 			local := copyOptions(opts)
 			local.Namespace = page.Items[i].Namespace
-			report, err := buildStatusReportWithClient(ctx, &local, page.Items[i].Name, true, ec)
+			pageClient := &kube.Client{Interface: client.Interface, Namespace: page.Items[i].Namespace}
+			report, err := buildStatusReport(ctx, &local, pageClient, page.Items[i].Name, true, ec)
 			if err != nil {
 				return err
 			}

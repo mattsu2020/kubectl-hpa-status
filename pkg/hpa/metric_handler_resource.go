@@ -32,7 +32,8 @@ func (resourceHandler) ImpactRatio(hpa *autoscalingv2.HorizontalPodAutoscaler, m
 	if metric.Resource == nil {
 		return "", nil
 	}
-	ratio := utilizationRatio(metric.Resource.Current.AverageUtilization, FindResourceTarget(hpa, string(metric.Resource.Name)))
+	targetSpec := FindResourceTargetSpec(hpa, string(metric.Resource.Name))
+	ratio, _ := calculateRatioAndNote(metric.Resource.Current, targetSpec, FormatMetricTarget(targetSpec))
 	return string(metric.Resource.Name), ratio
 }
 

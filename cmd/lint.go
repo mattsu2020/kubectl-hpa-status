@@ -40,63 +40,93 @@ func newLintCommand(opts *options) *cobra.Command {
 }
 
 func runLint(ctx context.Context, out io.Writer, _ *options, filePath, outputFmt string, sarif, fix bool, failOn string) error {
+	failOn = strings.ToLower(strings.TrimSpace(failOn))
+	if err := validateLintFailOn(failOn); err != nil {
+		return err
+	}
+	outputFmt = strings.ToLower(strings.TrimSpace(outputFmt))
+	if err := validateLintOutputFormat(outputFmt, sarif); err != nil {
+		return err
+	}
+
 	files, err := collectLintFiles(filePath)
 	if err != nil {
 		return err
 	}
 
 	if len(files) == 0 {
+		if sarif || outputFmt == "sarif" || outputFmt == "json" || outputFmt == "yaml" || outputFmt == "github" {
+			return emitLintOutput(out, nil, filePath, outputFmt, sarif, fix)
+		}
 		_, _ = fmt.Fprintln(out, "No YAML/JSON files found.")
 		return nil
 	}
 
 	decoder := serializer.NewCodecFactory(scheme.Scheme).UniversalDeserializer()
 	var allResults []lintFileResult
-	exitCode := 0
 	workloads := collectLintWorkloads(files, decoder)
 
 	for _, f := range files {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		// Files without an HPA document are skipped silently; lintOneFile
 		// returns no results for them, so allResults is unchanged.
 		results, _ := lintOneFile(f, decoder, workloads)
-		for _, r := range results {
-			if r.Result != nil && !r.Result.Pass {
-				exitCode = 1
-			}
-			allResults = append(allResults, r)
-		}
+		allResults = append(allResults, results...)
 	}
 
-	handled, err := emitLintOutput(out, allResults, filePath, outputFmt, sarif, fix, exitCode)
-	if handled {
+	if err := emitLintOutput(out, allResults, filePath, outputFmt, sarif, fix); err != nil {
 		return err
 	}
-
-	_ = ctx
-	if exitCode != 0 || shouldFailOn(failOn, allResults) {
+	if shouldFailOn(failOn, allResults) {
 		return &exitCodeError{code: 1}
 	}
 	return nil
 }
 
+func validateLintFailOn(failOn string) error {
+	switch failOn {
+	case "error", "warning", "info":
+		return nil
+	default:
+		return fmt.Errorf("--fail-on must be one of error, warning, info; got %q", failOn)
+	}
+}
+
+func validateLintOutputFormat(outputFmt string, sarif bool) error {
+	if sarif {
+		return nil
+	}
+	switch outputFmt {
+	case "", "text", "table", "json", "yaml", "sarif", "github":
+		return nil
+	default:
+		return fmt.Errorf("lint output must be one of text, json, yaml, sarif, github; got %q", outputFmt)
+	}
+}
+
 // shouldFailOn checks whether findings at the specified severity level
 // or above warrant a non-zero exit code.
 func shouldFailOn(failOn string, results []lintFileResult) bool {
-	switch failOn {
-	case "warning":
-		for _, r := range results {
-			if r.Result != nil && (r.Result.Warnings > 0 || r.Result.Errors > 0) {
+	for _, r := range results {
+		if r.Result == nil {
+			continue
+		}
+		switch failOn {
+		case "error":
+			if r.Result.Errors > 0 {
+				return true
+			}
+		case "warning":
+			if r.Result.Errors > 0 || r.Result.Warnings > 0 {
+				return true
+			}
+		case "info":
+			if len(r.Result.Findings) > 0 {
 				return true
 			}
 		}
-	case "info":
-		for _, r := range results {
-			if r.Result != nil && len(r.Result.Findings) > 0 {
-				return true
-			}
-		}
-	default:
-		// "error" is the default; already handled by exitCode != 0.
 	}
 	return false
 }
@@ -168,9 +198,10 @@ func addGitOpsLintFindings(result *lint.Result, hpa *autoscalingv2.HorizontalPod
 }
 
 type lintFileResult struct {
-	File   string
-	HPA    string
-	Result *lint.Result
+	File     string       `json:"file" yaml:"file"`
+	Document int          `json:"document,omitempty" yaml:"document,omitempty"`
+	HPA      string       `json:"hpa,omitempty" yaml:"hpa,omitempty"`
+	Result   *lint.Result `json:"result" yaml:"result"`
 }
 
 // exitCodeError is returned when lint finds errors.
@@ -180,20 +211,6 @@ type exitCodeError struct {
 
 func (e *exitCodeError) Error() string {
 	return fmt.Sprintf("lint found issues (exit code %d)", e.code)
-}
-
-// splitYAMLDocuments splits a multi-document YAML byte slice.
-func splitYAMLDocuments(data []byte) [][]byte {
-	s := string(data)
-	docs := strings.Split(s, "\n---\n")
-	var result [][]byte
-	for _, doc := range docs {
-		trimmed := strings.TrimSpace(doc)
-		if trimmed != "" {
-			result = append(result, []byte(doc))
-		}
-	}
-	return result
 }
 
 // combineLintResults combines multiple lint results into one for SARIF output.

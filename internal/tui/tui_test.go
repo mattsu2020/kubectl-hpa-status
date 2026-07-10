@@ -284,9 +284,11 @@ func TestHelpView_IncludesWorkflowGuidance(t *testing.T) {
 
 func TestBatchApplyKeyRequiresSecondConfirmation(t *testing.T) {
 	applied := 0
+	calls := 0
 	m := NewModel(nil, "default", Options{
-		ApplyFn: func(context.Context, string, string, string) error {
-			applied++
+		ApplyFn: func(_ context.Context, _, _ string, suggestions []hpaanalysis.Suggestion) error {
+			calls++
+			applied += len(suggestions)
 			return nil
 		},
 	})
@@ -299,11 +301,18 @@ func TestBatchApplyKeyRequiresSecondConfirmation(t *testing.T) {
 		"default/web": {Analysis: hpaanalysis.Analysis{
 			Namespace: "default",
 			Name:      "web",
-			Suggestions: []hpaanalysis.Suggestion{{
-				Title: "Raise maxReplicas",
-				Patch: `{"spec":{"maxReplicas":20}}`,
-				Apply: true,
-			}},
+			Suggestions: []hpaanalysis.Suggestion{
+				{
+					Title: "Raise maxReplicas",
+					Patch: `{"spec":{"maxReplicas":20}}`,
+					Apply: true,
+				},
+				{
+					Title: "Set stabilization",
+					Patch: `{"spec":{"behavior":{"scaleDown":{"stabilizationWindowSeconds":300}}}}`,
+					Apply: true,
+				},
+			},
 		}},
 	}
 
@@ -318,6 +327,10 @@ func TestBatchApplyKeyRequiresSecondConfirmation(t *testing.T) {
 	if !strings.Contains(m2.View().Content, "Batch apply preview") {
 		t.Fatalf("expected preview in list view, got:\n%s", m2.View().Content)
 	}
+	cancelled, _ := m2.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+	if cancelled.(Model).batchApplyConfirm {
+		t.Fatal("Escape must cancel an armed batch apply")
+	}
 
 	_, cmd = m2.Update(tea.KeyPressMsg{Text: "x"})
 	if cmd == nil {
@@ -327,8 +340,8 @@ func TestBatchApplyKeyRequiresSecondConfirmation(t *testing.T) {
 	if _, ok := msg.(applyResultMsg); !ok {
 		t.Fatalf("expected applyResultMsg, got %T", msg)
 	}
-	if applied != 1 {
-		t.Fatalf("expected one apply, got %d", applied)
+	if calls != 1 || applied != 2 {
+		t.Fatalf("expected one grouped call with two suggestions, calls=%d suggestions=%d", calls, applied)
 	}
 }
 

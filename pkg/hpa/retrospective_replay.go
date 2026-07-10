@@ -94,9 +94,6 @@ func AnalyzeReplay(tl RetrospectiveTimeline, hpa *autoscalingv2.HorizontalPodAut
 		return analysis
 	}
 
-	// Extract HPA tolerance configuration.
-	tolerance := extractHPATolerance(hpa)
-
 	// Track control cycle state.
 	var lastRescaleTime time.Time
 	var lastRescaleTo int32
@@ -120,7 +117,7 @@ func AnalyzeReplay(tl RetrospectiveTimeline, hpa *autoscalingv2.HorizontalPodAut
 			stabilizationStart, stabilizedReplicas, lastRescaleTo = analyzeStabilizedEntry(
 				analysis, tl, i, entry, stabilizationStart, stabilizedReplicas, lastRescaleTo)
 		case "metric-change":
-			analyzeMetricChangeEntry(analysis, hpa, entry, tolerance)
+			analyzeMetricChangeEntry(analysis, hpa, entry)
 		}
 	}
 
@@ -284,7 +281,7 @@ func analyzeStabilizedEntry(analysis *ReplayAnalysis, tl RetrospectiveTimeline, 
 }
 
 // analyzeMetricChangeEntry detects CPU tolerance effects from a metric-change entry.
-func analyzeMetricChangeEntry(analysis *ReplayAnalysis, hpa *autoscalingv2.HorizontalPodAutoscaler, entry RetrospectiveEntry, tolerance float64) {
+func analyzeMetricChangeEntry(analysis *ReplayAnalysis, hpa *autoscalingv2.HorizontalPodAutoscaler, entry RetrospectiveEntry) {
 	// Detect tolerance effects from metric changes.
 	if !strings.Contains(entry.Message, "cpu") && !strings.Contains(entry.Message, "CPU") {
 		return
@@ -293,7 +290,7 @@ func analyzeMetricChangeEntry(analysis *ReplayAnalysis, hpa *autoscalingv2.Horiz
 		if !isCPUResourceMetric(metric) {
 			continue
 		}
-		effect, ok := buildCPUToleranceEffect(entry, hpa, metric, tolerance)
+		effect, ok := buildCPUToleranceEffect(entry, hpa, metric)
 		if !ok {
 			continue
 		}
@@ -309,14 +306,16 @@ func isCPUResourceMetric(metric autoscalingv2.MetricStatus) bool {
 }
 
 // buildCPUToleranceEffect constructs a ReplayToleranceEffect for a CPU resource metric, returning ok=false when inputs are missing.
-func buildCPUToleranceEffect(entry RetrospectiveEntry, hpa *autoscalingv2.HorizontalPodAutoscaler, metric autoscalingv2.MetricStatus, tolerance float64) (ReplayToleranceEffect, bool) {
+func buildCPUToleranceEffect(entry RetrospectiveEntry, hpa *autoscalingv2.HorizontalPodAutoscaler, metric autoscalingv2.MetricStatus) (ReplayToleranceEffect, bool) {
 	ratio := float64(*metric.Resource.Current.AverageUtilization) / 100.0
 	target := resourceMetricTargetUtilization(hpa, metric.Resource.Name)
 	targetRatio := 0.5 // Default 50% target
 	if target != nil {
 		targetRatio = float64(*target) / 100.0
 	}
-	withinTolerance := ratio > targetRatio*(1-tolerance) && ratio < targetRatio*(1+tolerance)
+	metricRatio := ratio / targetRatio
+	tolerance, _ := directionalTolerance(hpa, metricRatio)
+	withinTolerance, _ := ratioWithinTolerance(hpa, metricRatio)
 	return ReplayToleranceEffect{
 		Timestamp:   entry.Timestamp,
 		MetricName:  "cpu",
@@ -324,12 +323,4 @@ func buildCPUToleranceEffect(entry RetrospectiveEntry, hpa *autoscalingv2.Horizo
 		Tolerance:   tolerance,
 		Suppressed:  withinTolerance,
 	}, true
-}
-
-// extractHPATolerance extracts the HPA tolerance from spec, defaulting to 0.1.
-func extractHPATolerance(_ *autoscalingv2.HorizontalPodAutoscaler) float64 {
-	// Kubernetes HPA uses a default tolerance of 0.1 (10%).
-	// This is not currently exposed in the HPA spec, so we use the default.
-	// In the future, this may be configurable via annotations or spec fields.
-	return 0.1
 }

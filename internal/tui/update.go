@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"time"
 
 	"charm.land/bubbles/v2/key"
@@ -27,6 +28,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateSimResult(msg)
 	case applyResultMsg:
 		return m.updateApplyResult(msg)
+	case dryRunResultMsg:
+		return m.updateDryRunResult(msg)
 	case replayLoadedMsg:
 		return m.updateReplayLoaded(msg)
 	case batchAuditMsg:
@@ -68,6 +71,13 @@ func (m Model) updateTick() (tea.Model, tea.Cmd) {
 func (m Model) updateFetchResult(msg fetchResultMsg) (tea.Model, tea.Cmd) {
 	m.loading = false
 	m.lastRefresh = time.Now()
+	// A refresh can change the HPA state and regenerate suggestions. Never
+	// carry an armed live-apply confirmation across that state boundary.
+	if m.fixState != nil {
+		m.fixState.applyConfirm = false
+	}
+	m.batchApplyConfirm = false
+	m.batchApplyPreview = nil
 	if msg.err != nil {
 		m.err = msg.err
 		return m, nil
@@ -123,8 +133,23 @@ func (m Model) updateSimResult(msg simResultMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) updateApplyResult(msg applyResultMsg) (tea.Model, tea.Cmd) {
 	if m.fixState != nil {
+		m.fixState.applyConfirm = false
 		m.fixState.applied = true
 		m.fixState.applyErr = msg.err
+	}
+	return m, nil
+}
+
+func (m Model) updateDryRunResult(msg dryRunResultMsg) (tea.Model, tea.Cmd) {
+	if m.fixState != nil {
+		m.fixState.applyConfirm = false
+		m.fixState.applied = false
+		m.fixState.applyErr = msg.err
+		if msg.err != nil {
+			m.fixState.dryRunResult = fmt.Sprintf("validation failed: %v", msg.err)
+		} else {
+			m.fixState.dryRunResult = fmt.Sprintf("server-side validation passed: %s", msg.title)
+		}
 	}
 	return m, nil
 }
@@ -226,7 +251,7 @@ func (m Model) keyHandlers() []keyBindingHandler {
 		{m.keys.BatchAudit, func(m Model) (tea.Model, tea.Cmd) { return m.handleBatchAuditKey() }},
 		{m.keys.BatchApply, func(m Model) (tea.Model, tea.Cmd) { return m.handleBatchApplyKey() }},
 		{m.keys.MetricMode, func(m Model) (tea.Model, tea.Cmd) { return m.handleMetricModeKey(), nil }},
-		{m.keys.DryRun, func(m Model) (tea.Model, tea.Cmd) { return m.handleDryRunKey(), nil }},
+		{m.keys.DryRun, func(m Model) (tea.Model, tea.Cmd) { return m.handleDryRunKey() }},
 		{m.keys.TabField, func(m Model) (tea.Model, tea.Cmd) { return m.handleTabField(+1), nil }},
 		{m.keys.ShiftTabField, func(m Model) (tea.Model, tea.Cmd) { return m.handleTabField(-1), nil }},
 		{m.keys.IntervalUp, func(m Model) (tea.Model, tea.Cmd) { return m.handleIntervalKey(-1), nil }},
@@ -351,23 +376,41 @@ func (m Model) handleMetricModeKey() Model {
 	return m
 }
 
-// handleDryRunKey previews the currently-selected fix suggestion without applying it.
-func (m Model) handleDryRunKey() Model {
+// handleDryRunKey validates the selected suggestion with Kubernetes
+// server-side dry-run without persisting it.
+func (m Model) handleDryRunKey() (tea.Model, tea.Cmd) {
 	if m.viewMode != fixView || m.fixState == nil || len(m.fixState.suggestions) == 0 {
-		return m
+		return m, nil
 	}
 	suggestion := m.fixState.suggestions[m.fixState.selected]
-	switch {
-	case suggestion.Patch != "":
-		m.fixState.dryRunResult = "patch preview: " + suggestion.Patch
-	case suggestion.Command != "":
-		m.fixState.dryRunResult = "command preview: " + suggestion.Command
-	default:
-		m.fixState.dryRunResult = "no patch or command available for this suggestion"
-	}
+	m.fixState.applyConfirm = false
 	m.fixState.applied = false
 	m.fixState.applyErr = nil
-	return m
+	if suggestion.Patch == "" {
+		m.fixState.dryRunResult = "no patch available for server-side validation"
+		return m, nil
+	}
+	if !suggestion.Apply {
+		m.fixState.dryRunResult = "this suggestion is advisory and is not approved for automatic apply"
+		return m, nil
+	}
+	if m.opts.DryRunFn == nil {
+		m.fixState.dryRunResult = "server-side dry-run is unavailable"
+		return m, nil
+	}
+
+	filtered := m.filteredItems()
+	if m.cursor < 0 || m.cursor >= len(filtered) {
+		m.fixState.dryRunResult = "cannot resolve selected HPA"
+		return m, nil
+	}
+	item := filtered[m.cursor]
+	dryRunFn := m.opts.DryRunFn
+	m.fixState.dryRunResult = "validating with Kubernetes API..."
+	return m, func() tea.Msg {
+		err := dryRunFn(m.ctx, item.Namespace, item.Name, []hpaanalysis.Suggestion{suggestion})
+		return dryRunResultMsg{title: suggestion.Title, err: err}
+	}
 }
 
 // handleTabField moves the input focus within the simulate view by delta
@@ -426,6 +469,7 @@ func (m Model) moveCursor(delta int) Model {
 	case fixView:
 		if m.fixState != nil {
 			m.fixState.selected = clampCursor(m.fixState.selected+delta, len(m.fixState.suggestions)-1)
+			m.fixState.applyConfirm = false
 		}
 	case replayView:
 		if m.replayState != nil && m.replayState.trace != nil {
@@ -516,6 +560,19 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 		if m.fixState == nil || len(m.fixState.suggestions) == 0 {
 			return m, nil
 		}
+		if m.opts.ApplyFn == nil {
+			m.fixState.applyConfirm = false
+			m.fixState.applied = true
+			m.fixState.applyErr = fmt.Errorf("live apply is disabled; restart with --apply --dry-run=false")
+			return m, nil
+		}
+		if !m.fixState.applyConfirm {
+			m.fixState.applyConfirm = true
+			m.fixState.applied = false
+			m.fixState.applyErr = nil
+			return m, nil
+		}
+		m.fixState.applyConfirm = false
 		return m, m.applyFix()
 	}
 
@@ -525,6 +582,9 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 // handleEscape processes the Escape key based on the current view mode.
 func (m Model) handleEscape() (tea.Model, tea.Cmd) {
 	switch m.viewMode {
+	case listView:
+		m.batchApplyConfirm = false
+		m.batchApplyPreview = nil
 	case helpView, detailView, metricsView:
 		m.viewMode = listView
 		m.batchApplyConfirm = false

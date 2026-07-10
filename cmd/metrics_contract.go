@@ -148,7 +148,6 @@ func buildMetricContractMetric(m autoscalingv2.MetricSpec, currentMetricMap map[
 	case m.Resource != nil:
 		metric.Name = string(m.Resource.Name)
 		metric.APIGroup = "metrics.k8s.io/v1beta1"
-		currentMetricMap[fmt.Sprintf("Resource/%s", m.Resource.Name)] = true
 	case m.ContainerResource != nil:
 		metric.Name = string(m.ContainerResource.Name)
 		metric.APIGroup = "metrics.k8s.io/v1beta1"

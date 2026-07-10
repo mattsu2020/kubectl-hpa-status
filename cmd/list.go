@@ -205,8 +205,11 @@ func reportListError(out io.Writer, output string, listErr error) error {
 
 // validateListApply ensures --apply is used with a bounded filter.
 func validateListApply(opts *options, filter string) error {
-	if !opts.Problem && filter == "" && opts.HealthScoreMin <= 0 && opts.HealthScoreMax <= 0 {
-		return fmt.Errorf("--apply with list requires --problem, --filter, --health-score, --max-score, or --min-score to avoid applying suggestions to an unbounded set")
+	if normalizeSelector(filter) == "all" {
+		return fmt.Errorf("--apply with list rejects --filter=all; select a bounded set with --problem, a specific --filter, --health-score, or --min-score")
+	}
+	if !opts.Problem && filter == "" && opts.HealthScoreMin <= 0 && effectiveHealthScoreMax(opts) < 0 {
+		return fmt.Errorf("--apply with list requires --problem, a specific --filter, --health-score, or --min-score to avoid applying suggestions to an unbounded set")
 	}
 	return nil
 }
@@ -258,7 +261,7 @@ func buildListItems(ctx context.Context, opts *options, hpas []autoscalingv2.Hor
 		}
 
 		item := hpaanalysis.NewListItem(analysis)
-		if matchesListFilter(item, filter) && matchesHealthScoreRange(item, opts.HealthScoreMin, opts.HealthScoreMax) {
+		if matchesListFilter(item, filter) && matchesHealthScoreRange(item, opts.HealthScoreMin, effectiveHealthScoreMax(opts)) {
 			items = append(items, item)
 		}
 	}
@@ -399,13 +402,23 @@ func matchesHealthScoreRange(item hpaanalysis.ListItem, minScore int, maxScore i
 	if maxScore > 100 {
 		maxScore = 100
 	}
-	if minScore > 0 && item.HealthScore < minScore {
+	if minScore >= 0 && item.HealthScore < minScore {
 		return false
 	}
-	if maxScore > 0 && item.HealthScore > maxScore {
+	if maxScore >= 0 && item.HealthScore > maxScore {
 		return false
 	}
 	return true
+}
+
+func effectiveHealthScoreMax(opts *options) int {
+	if opts == nil {
+		return -1
+	}
+	if opts.HealthScoreMax == 0 && !opts.HealthScoreMaxConfigured {
+		return -1
+	}
+	return opts.HealthScoreMax
 }
 
 func sortListItems(items []hpaanalysis.ListItem, sortBy string) {

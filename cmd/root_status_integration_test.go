@@ -402,6 +402,9 @@ func TestRunStatusMany_PartialFailure_JSONOutput(t *testing.T) {
 	if batch.Items[1].Name != "missing" || string(batch.Items[1].Status) != "error" || batch.Items[1].Report != nil || batch.Items[1].Error == "" {
 		t.Errorf("item 1: expected missing/error/no-report, got %#v", batch.Items[1])
 	}
+	if batch.Items[1].Namespace != "default" {
+		t.Errorf("failed item namespace = %q, want resolved client namespace default", batch.Items[1].Namespace)
+	}
 }
 
 func TestRunStatusMany_PartialFailure_YAMLOutput(t *testing.T) {

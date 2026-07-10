@@ -54,15 +54,42 @@ func FetchPodsForScaleTarget(ctx context.Context, client kubernetes.Interface, n
 // FetchPodInfosForSelector lists pods matching selector and returns readiness
 // and scheduling state used by scale path analysis.
 func FetchPodInfosForSelector(ctx context.Context, client kubernetes.Interface, namespace, selector string) ([]PodInfo, error) {
+	pods, err := FetchPodObjectsForSelector(ctx, client, namespace, selector)
+	if err != nil {
+		return nil, err
+	}
+	return PodInfosFromPods(pods), nil
+}
+
+// FetchPodObjectsForSelector performs the shared, paginated pod list used by
+// bundle and analysis collectors that need multiple views of the same pods.
+func FetchPodObjectsForSelector(ctx context.Context, client kubernetes.Interface, namespace, selector string) ([]corev1.Pod, error) {
 	if selector == "" {
 		return nil, nil
 	}
-	pods, err := client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: selector})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list pods: %w", err)
+	options := metav1.ListOptions{LabelSelector: selector, Limit: 500}
+	var result []corev1.Pod
+	for {
+		pods, err := client.CoreV1().Pods(namespace).List(ctx, options)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list pods: %w", err)
+		}
+		result = append(result, pods.Items...)
+		if pods.Continue == "" {
+			return result, nil
+		}
+		options.Continue = pods.Continue
 	}
-	result := make([]PodInfo, 0, len(pods.Items))
-	for _, pod := range pods.Items {
+}
+
+// PodInfosFromPods derives the compact diagnostic view without another API
+// call.
+func PodInfosFromPods(pods []corev1.Pod) []PodInfo {
+	if len(pods) == 0 {
+		return nil
+	}
+	result := make([]PodInfo, 0, len(pods))
+	for _, pod := range pods {
 		info := PodInfo{
 			Name:          pod.Name,
 			Phase:         string(pod.Status.Phase),
@@ -73,7 +100,7 @@ func FetchPodInfosForSelector(ctx context.Context, client kubernetes.Interface, 
 		}
 		result = append(result, info)
 	}
-	return result, nil
+	return result
 }
 
 func podReady(pod corev1.Pod) bool {

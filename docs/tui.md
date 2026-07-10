@@ -20,8 +20,8 @@ The dashboard refreshes every 5 seconds by default. Use `--interval` at startup 
 3. Press `Enter` to open the detail view.
 4. Use `m`, `h`, `H`, or `T` to inspect metric diagnostics, troubleshooting hints, replica history, or replay data.
 5. Use `s` for a what-if simulation before changing `minReplicas`, `maxReplicas`, or metric values.
-6. Use `f` to inspect safe fix suggestions, and `d` to preview the selected fix.
-7. Leave the TUI and run an explicit CLI export/apply command when you are ready to commit a GitOps change.
+6. Use `f` to inspect safe fix suggestions, and `d` to run the selected fix through Kubernetes server-side dry-run.
+7. By default the TUI is preview-only. Leave it and use the CLI export/apply workflow, or restart with both `--apply --dry-run=false` when an interactive live change is explicitly required.
 
 ## Key Bindings
 
@@ -59,7 +59,8 @@ The dashboard refreshes every 5 seconds by default. Use `--interval` at startup 
 | `Tab` | Move to the next simulation field |
 | `Shift+Tab` | Move to the previous simulation field |
 | `f` | Open the fix wizard when suggestions are available |
-| `d` | Preview the selected fix without applying it |
+| `d` | Validate the selected fix with Kubernetes server-side dry-run |
+| `Enter` in fix wizard | Arm live apply, then press `Enter` again to confirm; available only with `--apply --dry-run=false` |
 | `T` | Open replay timeline from `hpa-trace.json` |
 | `H` | Open history and sparkline view |
 | `h` | Open metric hints troubleshooting when hints are available |
@@ -72,7 +73,7 @@ The dashboard refreshes every 5 seconds by default. Use `--interval` at startup 
 | `a` | Select all visible HPAs |
 | `A` | Clear the selection |
 | `B` | Run the batch auditor on selected HPAs |
-| `x` | Show batch apply guidance for selected HPAs |
+| `x` | Preview selected HPA patches; in explicit live mode, press twice to confirm the batch |
 
 ## Views
 
@@ -89,9 +90,9 @@ The dashboard refreshes every 5 seconds by default. Use `--interval` at startup 
 | Overview | `O` | Summarize cluster-wide health from the list view |
 | Batch auditor | `B` | Audit selected HPAs together |
 
-## Export and GitOps Workflow
+## Apply, Export, and GitOps Workflow
 
-The TUI intentionally keeps export operations explicit so generated changes are reviewable outside the full-screen dashboard. Use the TUI to identify and inspect the HPA, then run one of these commands:
+The TUI defaults to non-mutating inspection. `d` still talks to the API server, but uses `DryRunAll` and does not persist the patch. Use the TUI to identify and inspect the HPA, then run one of these reviewable export commands:
 
 ```sh
 kubectl hpa status <name> -n <namespace> --suggest --export yaml
@@ -99,7 +100,7 @@ kubectl hpa status <name> -n <namespace> --suggest --export kustomize
 kubectl hpa status <name> -n <namespace> --suggest --export helm-values
 ```
 
-For multi-HPA work, select HPAs in the TUI, run `B` to audit them, then export or apply changes one HPA at a time through the CLI. This avoids hiding generated patches inside an interactive session and fits GitOps review flows.
+For multi-HPA work, select HPAs in the TUI, run `B` to audit them, then prefer exporting or applying through the CLI. When an emergency interactive change is necessary, start `tui` with `--apply --dry-run=false`; live apply remains policy-guarded, performs server-side validation, detects resourceVersion conflicts, groups patches atomically per HPA, and requires a second confirmation keypress.
 
 ## Troubleshooting
 

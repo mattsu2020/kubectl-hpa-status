@@ -180,16 +180,25 @@ func toleranceDiagnosticRule(hpa *autoscalingv2.HorizontalPodAutoscaler, minRepl
 	if !ok {
 		return
 	}
-	deviation := metric.Ratio - 1.0
-	if deviation < 0 {
-		deviation = -deviation
+	withinTolerance, tolerance := ratioWithinTolerance(hpa, metric.Ratio)
+	direction := toleranceDirection(metric.Ratio)
+	_, configured := directionalTolerance(hpa, metric.Ratio)
+	source := "Kubernetes default"
+	if configured {
+		source = "HPA-configured"
 	}
-	if deviation < 0.1 {
+	if withinTolerance {
+		confidence := ConfidenceMedium
+		claim := "[estimated]"
+		if condition := FindCondition(hpa, ConditionAbleToScale); condition != nil && condition.Reason == "DesiredWithinTolerance" {
+			confidence = ConfidenceHigh
+			claim = "[tolerance-confirmed] [observed]"
+		}
 		ctx.cases = append(ctx.cases, interpretationCase{
 			reason:     "ToleranceNoScale",
-			message:    fmt.Sprintf("[tolerance-confirmed] [observed] %s metric ratio is %.3f (within ±10%% of target); the Kubernetes default tolerance band of 0.1 (10%%) explains why replicas are unchanged despite %s being %.1f%% %s target.", metric.Name, metric.Ratio, metric.Name, (metric.Ratio-1)*100, metric.Note),
+			message:    fmt.Sprintf("%s %s metric ratio is %.3f, within the %s %s tolerance %.3f; this is consistent with replicas remaining unchanged.", claim, metric.Name, metric.Ratio, source, direction, tolerance),
 			severity:   SeverityInfo,
-			confidence: ConfidenceHigh,
+			confidence: confidence,
 		})
 	} else {
 		ctx.cases = append(ctx.cases,

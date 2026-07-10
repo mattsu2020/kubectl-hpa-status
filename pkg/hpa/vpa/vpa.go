@@ -8,6 +8,8 @@ package vpa
 
 import (
 	"fmt"
+	"sort"
+	"strings"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
@@ -69,22 +71,22 @@ func Analyze(hpa *autoscalingv2.HorizontalPodAutoscaler, v *Info) []string {
 		return nil
 	}
 
-	// Only warn when HPA uses CPU or memory resource metrics.
-	if !hasHPAResourceMetrics(hpa) {
+	conflictResources := overlappingResources(hpa, v.ControlledResources)
+	if len(conflictResources) == 0 {
 		return nil
 	}
 
 	var lines []string
 
 	lines = append(lines, fmt.Sprintf("[observed] VPA %q targets the same resource %s/%s as this HPA.", v.Name, v.TargetKind, v.TargetName))
-	lines = append(lines, "[observed] Both VPA and HPA managing CPU or memory on the same workload can cause conflicting scaling decisions and instability.")
+	lines = append(lines, fmt.Sprintf("[observed] Both VPA and HPA manage the overlapping resource(s) %s; this can cause conflicting scaling decisions and instability.", strings.Join(conflictResources, ", ")))
 	lines = append(lines, "[observed] Consider setting the VPA updateMode to \"Recommender\" so it only provides recommendations without applying pod overrides, or remove the overlapping resource metric from one of the autoscalers.")
 
 	if v.UpdateMode == "Auto" {
 		lines = append(lines, fmt.Sprintf("[observed] VPA %q is in \"Auto\" mode, which will evict and resize pods — this directly conflicts with HPA replica-based scaling.", v.Name))
 	}
 	for _, rec := range v.Recommendations {
-		if !hpaUsesResourceMetric(hpa, rec.Resource) {
+		if !containsResource(conflictResources, rec.Resource) {
 			continue
 		}
 		lines = append(lines, fmt.Sprintf("[estimated] VPA %q recommends %s target=%s for container %q while HPA also scales on %s; compare requests, limits, and HPA target utilization before applying both controllers.", v.Name, rec.Resource, valueOrUnknown(rec.Target), rec.Container, rec.Resource))
@@ -110,25 +112,6 @@ func NewConflictInfo(v *Info) *ConflictInfo {
 		info.Recommendations = append(info.Recommendations, Recommendation(rec))
 	}
 	return info
-}
-
-// hasHPAResourceMetrics checks whether the HPA uses CPU or memory resource metrics.
-func hasHPAResourceMetrics(hpa *autoscalingv2.HorizontalPodAutoscaler) bool {
-	for _, m := range hpa.Spec.Metrics {
-		if m.Type == autoscalingv2.ResourceMetricSourceType && m.Resource != nil {
-			name := string(m.Resource.Name)
-			if name == "cpu" || name == "memory" {
-				return true
-			}
-		}
-		if m.Type == autoscalingv2.ContainerResourceMetricSourceType && m.ContainerResource != nil {
-			name := string(m.ContainerResource.Name)
-			if name == "cpu" || name == "memory" {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func hpaUsesResourceMetric(hpa *autoscalingv2.HorizontalPodAutoscaler, resource string) bool {
@@ -210,7 +193,7 @@ func determineConflictLevel(hpa *autoscalingv2.HorizontalPodAutoscaler, v *Confl
 		return ConflictNone
 	}
 
-	if !hasHPAResourceMetrics(hpa) {
+	if len(identifyConflictResources(hpa, v)) == 0 {
 		return ConflictNone
 	}
 
@@ -225,13 +208,39 @@ func determineConflictLevel(hpa *autoscalingv2.HorizontalPodAutoscaler, v *Confl
 // identifyConflictResources returns the subset of VPA-controlled resources
 // that the HPA also scales on.
 func identifyConflictResources(hpa *autoscalingv2.HorizontalPodAutoscaler, v *ConflictInfo) []string {
+	return overlappingResources(hpa, v.ControlledResources)
+}
+
+func overlappingResources(hpa *autoscalingv2.HorizontalPodAutoscaler, controlledResources []string) []string {
+	if hpa == nil {
+		return nil
+	}
+	controlled := controlledResources
+	if len(controlled) == 0 {
+		// VPA's API default is to control cpu and memory when the field is omitted.
+		controlled = []string{"cpu", "memory"}
+	}
+	seen := make(map[string]struct{}, len(controlled))
 	var conflicts []string
-	for _, resource := range v.ControlledResources {
-		if hpaUsesResourceMetric(hpa, resource) {
-			conflicts = append(conflicts, resource)
+	for _, resource := range controlled {
+		resource = strings.ToLower(resource)
+		if _, ok := seen[resource]; ok || !hpaUsesResourceMetric(hpa, resource) {
+			continue
+		}
+		seen[resource] = struct{}{}
+		conflicts = append(conflicts, resource)
+	}
+	sort.Strings(conflicts)
+	return conflicts
+}
+
+func containsResource(resources []string, wanted string) bool {
+	for _, resource := range resources {
+		if strings.EqualFold(resource, wanted) {
+			return true
 		}
 	}
-	return conflicts
+	return false
 }
 
 // generateRecommendations produces actionable recommendation strings for the
@@ -314,8 +323,8 @@ func buildExplanation(level ConflictLevel, v *ConflictInfo, conflictResources []
 			)
 		}
 		return fmt.Sprintf(
-			"VPA %q is in %q mode targeting %s/%s. The HPA does not use CPU or memory "+
-				"resource metrics, so there is no resource overlap between the two controllers.",
+			"VPA %q is in %q mode targeting %s/%s. Its controlledResources do not overlap "+
+				"the HPA resource metrics, so there is no active resource conflict between the two controllers.",
 			v.VPAName, v.UpdateMode,
 			v.TargetKind, v.TargetName,
 		)

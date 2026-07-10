@@ -51,13 +51,16 @@ func TestAnalyzeDetectsToleranceLikeNoScale(t *testing.T) {
 	if got.ImpactMetric == nil || got.ImpactMetric.Name != "memory" {
 		t.Fatalf("expected memory impact estimate, got %#v", got.ImpactMetric)
 	}
-	if !containsLine(got.Interpretation, "tolerance-confirmed") {
-		t.Fatalf("expected tolerance-confirmed interpretation, got %#v", got.Interpretation)
+	if !containsLine(got.Interpretation, "within the Kubernetes default scaleUp tolerance") {
+		t.Fatalf("expected directional tolerance interpretation, got %#v", got.Interpretation)
 	}
 }
 
-func TestMostInfluentialMetricChoosesLargestDistance(t *testing.T) {
+func TestMostInfluentialMetricChoosesLargestEstimatedDesired(t *testing.T) {
 	hpa := baseHPA()
+	hpa.Status.CurrentReplicas = 10
+	hpa.Status.DesiredReplicas = 10
+	hpa.Spec.MaxReplicas = 20
 	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{
 		resourceMetricSpec(corev1.ResourceCPU, 80),
 		resourceMetricSpec(corev1.ResourceMemory, 50),
@@ -335,8 +338,8 @@ func TestAnalyzeToleranceBoundaries(t *testing.T) {
 	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{resourceMetricStatus(corev1.ResourceCPU, 73)}
 
 	got := Analyze(hpa, true)
-	if !containsLine(got.Interpretation, "tolerance-confirmed") {
-		t.Fatalf("expected tolerance-confirmed mention within 10%% margin, got %#v", got.Interpretation)
+	if !containsLine(got.Interpretation, "within the Kubernetes default scaleUp tolerance") {
+		t.Fatalf("expected directional tolerance mention within 10%% margin, got %#v", got.Interpretation)
 	}
 
 	// Case 2: Outside tolerance (e.g. 90% vs 70% target -> ratio ~1.286)

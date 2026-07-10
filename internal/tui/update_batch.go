@@ -73,10 +73,6 @@ func (m Model) handleBatchApplyKey() (tea.Model, tea.Cmd) {
 	if m.viewMode != listView {
 		return m, nil
 	}
-	if m.opts.ApplyFn == nil {
-		m.err = fmt.Errorf("apply not available (no Kubernetes client)")
-		return m, nil
-	}
 	selected := m.selectedHPANames()
 	if len(selected) == 0 {
 		m.err = fmt.Errorf("no HPAs selected; use space to select, a to select all")
@@ -92,6 +88,12 @@ func (m Model) handleBatchApplyKey() (tea.Model, tea.Cmd) {
 	if !m.batchApplyConfirm {
 		m.batchApplyConfirm = true
 		m.batchApplyPreview = batchApplyPreviewLines(patches)
+		return m, nil
+	}
+	if m.opts.ApplyFn == nil {
+		m.batchApplyConfirm = false
+		m.batchApplyPreview = nil
+		m.err = fmt.Errorf("live apply is disabled; restart with --apply --dry-run=false")
 		return m, nil
 	}
 
@@ -141,22 +143,45 @@ func batchApplyPreviewLines(patches []batchApplyPatchEntry) []string {
 	return preview
 }
 
-// executeBatchApply applies each patch via applyFn and aggregates per-HPA failures into a single applyResultMsg.
+// executeBatchApply groups patches by HPA before invoking applyFn so every
+// HPA's suggestions can be merged and applied atomically by the cmd layer.
 //
 // Per-HPA failures are wrapped with their namespace/name context and joined via
 // errors.Join so callers can still reach each underlying error with errors.As
 // instead of the underlying causes being flattened into an opaque string.
 func executeBatchApply(ctx context.Context, applyFn ApplyFunc, patches []batchApplyPatchEntry) tea.Msg {
-	var errs []error
+	type hpaPatchGroup struct {
+		namespace   string
+		name        string
+		suggestions []hpaanalysis.Suggestion
+	}
+	groups := make([]hpaPatchGroup, 0, len(patches))
+	groupIndex := make(map[string]int, len(patches))
 	for _, p := range patches {
-		if err := applyFn(ctx, p.namespace, p.name, p.patch); err != nil {
-			errs = append(errs, fmt.Errorf("%s/%s: %w", p.namespace, p.name, err))
+		key := p.namespace + "/" + p.name
+		index, ok := groupIndex[key]
+		if !ok {
+			index = len(groups)
+			groupIndex[key] = index
+			groups = append(groups, hpaPatchGroup{namespace: p.namespace, name: p.name})
+		}
+		groups[index].suggestions = append(groups[index].suggestions, hpaanalysis.Suggestion{
+			Title: p.title,
+			Patch: p.patch,
+			Apply: true,
+		})
+	}
+
+	var errs []error
+	for _, group := range groups {
+		if err := applyFn(ctx, group.namespace, group.name, group.suggestions); err != nil {
+			errs = append(errs, fmt.Errorf("%s/%s: %w", group.namespace, group.name, err))
 		}
 	}
 	if len(errs) > 0 {
-		return applyResultMsg{title: fmt.Sprintf("batch: %d/%d failed", len(errs), len(patches)), err: errors.Join(errs...)}
+		return applyResultMsg{title: fmt.Sprintf("batch: %d/%d HPAs failed", len(errs), len(groups)), err: errors.Join(errs...)}
 	}
-	return applyResultMsg{title: fmt.Sprintf("batch: %d patches applied", len(patches)), err: nil}
+	return applyResultMsg{title: fmt.Sprintf("batch: %d patches applied to %d HPAs", len(patches), len(groups)), err: nil}
 }
 
 // selectedHPANames returns the keys of selected HPAs.

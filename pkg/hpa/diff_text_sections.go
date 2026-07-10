@@ -22,9 +22,9 @@ func appendDiffConditionsSection(out *[]byte, a, prev *Analysis, theme style.The
 		statusText := theme.ConditionStatus(condition.Type, condition.Status)
 		prevStatus := prevCondMap[condition.Type]
 		if prevStatus != "" && prevStatus != condition.Status {
-			*out = fmt.Appendf(*out, "  %-15s %s (was %s) %-24s %s\n", condition.Type, statusText, prevStatus, condition.Reason, condition.Message)
+			*out = fmt.Appendf(*out, "  %-15s %s (was %s) %-24s %s\n", SanitizeTerminalText(string(condition.Type)), statusText, prevStatus, SanitizeTerminalText(condition.Reason), SanitizeTerminalText(condition.Message))
 		} else {
-			*out = fmt.Appendf(*out, "  %-15s %-7s %-24s %s\n", condition.Type, statusText, condition.Reason, condition.Message)
+			*out = fmt.Appendf(*out, "  %-15s %-7s %-24s %s\n", SanitizeTerminalText(string(condition.Type)), statusText, SanitizeTerminalText(condition.Reason), SanitizeTerminalText(condition.Message))
 		}
 	}
 }

@@ -132,7 +132,11 @@ func applyMaxReplicasCeilingPenalty(acc *HealthAccumulator, hpa *autoscalingv2.H
 	}
 	hasLimited := hasCondition(hpa.Status.Conditions, ConditionScalingLimited, corev1.ConditionTrue)
 	hasPressure := hasMetricAboveTarget(hpa.Status.CurrentMetrics, hpa)
-	if !hasLimited && !hasPressure {
+	// ScalingLimited already carries the explicit ceiling penalty. The implicit
+	// signal exists only for controllers/status snapshots that expose pressure
+	// at maxReplicas without the condition, so applying both would double-count
+	// the same capacity constraint.
+	if hasLimited || !hasPressure {
 		return health
 	}
 	acc.AddPenalty("Implicit maxReplicas ceiling (current==desired==max with pressure)", w.implicitMaxReplicas, HealthLimited)

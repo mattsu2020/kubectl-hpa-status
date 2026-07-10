@@ -227,17 +227,7 @@ func HTML(out io.Writer, value any) error {
 	case hpaanalysis.StatusReport:
 		return hparender.WriteHTMLReport(out, report)
 	case []hpaanalysis.StatusReport:
-		for i, r := range report {
-			if i > 0 {
-				if _, err := fmt.Fprintln(out); err != nil {
-					return err
-				}
-			}
-			if err := hparender.WriteHTMLReport(out, r); err != nil {
-				return err
-			}
-		}
-		return nil
+		return hparender.WriteHTMLReports(out, report)
 	case hpaanalysis.ListReport:
 		return hparender.WriteHTMLListReport(out, report)
 	default:

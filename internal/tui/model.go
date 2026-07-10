@@ -107,8 +107,14 @@ type Options struct {
 	HealthWeights hpaanalysis.HealthWeights
 
 	// ApplyFn is an optional callback for applying patches from the TUI.
-	// When nil, the fix wizard apply action is disabled.
+	// It must only be set when the user explicitly enabled persistent changes.
+	// When nil, the fix wizard live-apply action is disabled.
 	ApplyFn ApplyFunc
+
+	// DryRunFn validates suggestions with Kubernetes server-side dry-run. It is
+	// available independently of ApplyFn so read-only TUI sessions can safely
+	// validate a proposed change without enabling persistence.
+	DryRunFn ApplyFunc
 
 	// AuditFn is an optional callback for running the best-practice auditor
 	// on an HPA. When nil, the batch auditor action is disabled.
@@ -236,7 +242,7 @@ func defaultKeys() keyMap {
 		),
 		DryRun: key.NewBinding(
 			key.WithKeys("d"),
-			key.WithHelp("d", "preview dry-run"),
+			key.WithHelp("d", "server dry-run"),
 		),
 		IntervalUp: key.NewBinding(
 			key.WithKeys("+", "="),
@@ -252,7 +258,7 @@ func defaultKeys() keyMap {
 		),
 		BatchApply: key.NewBinding(
 			key.WithKeys("x"),
-			key.WithHelp("x", "batch apply"),
+			key.WithHelp("x", "preview/confirm batch apply"),
 		),
 		History: key.NewBinding(
 			key.WithKeys("H"),

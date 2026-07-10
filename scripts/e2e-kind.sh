@@ -23,6 +23,9 @@ CLUSTER_NAME="hpa-status-e2e"
 KIND_NODE_IMAGE="${KIND_NODE_IMAGE:-kindest/node:v1.31.0}"
 INSTALL_KEDA="${INSTALL_KEDA:-false}"
 INSTALL_VPA="${INSTALL_VPA:-false}"
+METRICS_SERVER_VERSION="${METRICS_SERVER_VERSION:-v0.7.0}"
+KEDA_VERSION="${KEDA_VERSION:-v2.20.1}"
+VPA_VERSION="${VPA_VERSION:-vertical-pod-autoscaler-1.3.1}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 MANIFEST_DIR="$PROJECT_DIR/testdata/manifests"
@@ -61,7 +64,7 @@ export KUBECONFIG="$(kind get kubeconfig --name "$CLUSTER_NAME")"
 
 # --- Install metrics-server ---
 log "Installing metrics-server..."
-kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+kubectl apply -f "https://github.com/kubernetes-sigs/metrics-server/releases/download/${METRICS_SERVER_VERSION}/components.yaml"
 kubectl patch deployment metrics-server -n kube-system --type='json' \
     -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
 log "Waiting for metrics-server to be ready..."
@@ -85,13 +88,13 @@ sleep 30
 # --- Optional: Install KEDA CRDs ---
 if [ "$INSTALL_KEDA" = "true" ]; then
     log "Installing KEDA CRDs..."
-    kubectl apply --server-side -f https://github.com/kedacore/keda/releases/latest/download/keda-crds.yaml 2>/dev/null || warn "KEDA CRD install failed (non-fatal)"
+    kubectl apply --server-side -f "https://github.com/kedacore/keda/releases/download/${KEDA_VERSION}/keda-${KEDA_VERSION#v}-crds.yaml" 2>/dev/null || warn "KEDA CRD install failed (non-fatal)"
 fi
 
 # --- Optional: Install VPA CRDs ---
 if [ "$INSTALL_VPA" = "true" ]; then
     log "Installing VPA CRDs..."
-    kubectl apply --server-side -f https://github.com/kubernetes/autoscaler/releases/latest/download/vpa-crds.yaml 2>/dev/null || warn "VPA CRD install failed (non-fatal)"
+    kubectl apply --server-side -f "https://github.com/kubernetes/autoscaler/releases/download/${VPA_VERSION}/vpa-crds.yaml" 2>/dev/null || warn "VPA CRD install failed (non-fatal)"
 fi
 
 # --- Test: list command ---
@@ -107,11 +110,11 @@ OUTPUT=$("$BINARY" status web -n default 2>&1) || fail "status command failed: $
 echo "$OUTPUT" | grep -q "HPA default/web" || fail "status output missing HPA header"
 log "  ✓ status command works"
 
-# --- Test: analyze command ---
-log "Testing: analyze command..."
-OUTPUT=$("$BINARY" analyze web -n default 2>&1) || fail "analyze command failed: $OUTPUT"
-echo "$OUTPUT" | grep -q "Interpretation" || fail "analyze output missing Interpretation"
-log "  ✓ analyze command works"
+# --- Test: explained status ---
+log "Testing: status --explain..."
+OUTPUT=$("$BINARY" status web -n default --explain 2>&1) || fail "status --explain failed: $OUTPUT"
+echo "$OUTPUT" | grep -q "Interpretation" || fail "status --explain output missing Interpretation"
+log "  ✓ status --explain works"
 
 # --- Test: JSON output ---
 log "Testing: JSON output..."
@@ -143,7 +146,14 @@ log "  ✓ scan command works"
 
 # --- Test: suggest ---
 log "Testing: suggest on broken HPA..."
-OUTPUT=$("$BINARY" status hpa-broken -n default --suggest 2>&1) || true
+set +e
+OUTPUT=$("$BINARY" status broken -n default --suggest 2>&1)
+SUGGEST_RC=$?
+set -e
+if [ "$SUGGEST_RC" -gt 2 ]; then
+    fail "suggest command failed unexpectedly (exit=${SUGGEST_RC}): $OUTPUT"
+fi
+echo "$OUTPUT" | grep -q "HPA default/broken" || fail "suggest output did not analyze the requested HPA: $OUTPUT"
 log "  ✓ suggest command works"
 
 log ""

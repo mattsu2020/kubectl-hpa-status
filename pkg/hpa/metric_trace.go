@@ -8,8 +8,6 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
-const defaultTolerance = 0.1
-
 // BuildMetricDecisionTrace builds a comprehensive per-metric analysis trace
 // explaining which metric drove the HPA scaling decision and why.
 func BuildMetricDecisionTrace(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) *MetricDecisionTrace {
@@ -19,7 +17,7 @@ func BuildMetricDecisionTrace(hpa *autoscalingv2.HorizontalPodAutoscaler, minRep
 
 	entries := buildPerMetricTrace(hpa, minReplicas)
 	winner, winnerConfidence := determineWinner(entries, hpa)
-	selectPolicy := resolveSelectPolicy(hpa)
+	selectPolicy := resolveSelectPolicy(hpa, entries, winner)
 	stabEffect := buildStabilizationEffect(hpa)
 	tolEffect := buildToleranceEffect(hpa, entries)
 	summary := buildTraceSummary(entries, winner, winnerConfidence)
@@ -53,29 +51,33 @@ func buildPerMetricTrace(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []
 		if ratio != nil {
 			entry.Ratio = ratio
 			entry.DistanceFromTarget = math.Abs(*ratio - 1.0)
-			entry.ReplicaImpact = entry.DistanceFromTarget * float64(hpa.Status.CurrentReplicas)
+			withinTolerance, tolerance := ratioWithinTolerance(hpa, *ratio)
+			entry.WithinTolerance = withinTolerance
+			entry.EffectiveTolerance = tolerance
+			estimatedDesired := estimatedDesiredForRatio(hpa, *ratio)
+			entry.EstimatedDesiredReplicas = &estimatedDesired
+			entry.ReplicaImpact = float64(estimatedDesired - hpa.Status.CurrentReplicas)
 
 			switch {
-			case *ratio > 1.0+defaultTolerance:
+			case *ratio > 1.0+tolerance:
 				entry.DesiredDirection = "up"
-			case *ratio < 1.0-defaultTolerance:
+			case *ratio < 1.0-tolerance:
 				entry.DesiredDirection = "down"
 			default:
 				entry.DesiredDirection = "none"
 			}
 
-			entry.WithinTolerance = entry.DistanceFromTarget <= defaultTolerance
-
 			ratioStr := formatRatio(*ratio)
 			if entry.WithinTolerance {
-				entry.Note = fmt.Sprintf("%s is within tolerance (%sx target)", name, ratioStr)
+				entry.Note = fmt.Sprintf("%s is within %s tolerance %.3f (%sx target)",
+					name, toleranceDirection(*ratio), tolerance, ratioStr)
 			} else {
 				direction := "above"
 				if *ratio < 1.0 {
 					direction = "below"
 				}
-				entry.Note = fmt.Sprintf("%s is %s target (%sx), estimated replica impact %.1f",
-					name, direction, ratioStr, entry.ReplicaImpact)
+				entry.Note = fmt.Sprintf("%s is %s target (%sx), estimated desired replicas %d (impact %+.0f)",
+					name, direction, ratioStr, estimatedDesired, entry.ReplicaImpact)
 			}
 		} else {
 			entry.DesiredDirection = "none"
@@ -88,7 +90,8 @@ func buildPerMetricTrace(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []
 	return entries
 }
 
-// determineWinner finds the metric with the highest replica impact score.
+// determineWinner finds the metric with the highest estimated desired replica
+// count, matching the HPA controller's multi-metric selection rule.
 // When desiredReplicas == maxReplicas, confidence is Low because the winner
 // cannot be reliably determined.
 func determineWinner(entries []MetricTraceEntry, hpa *autoscalingv2.HorizontalPodAutoscaler) (string, Confidence) {
@@ -97,24 +100,68 @@ func determineWinner(entries []MetricTraceEntry, hpa *autoscalingv2.HorizontalPo
 	}
 
 	var bestName string
-	var bestScore float64
+	var bestDesired int32
+	found := false
+	bestCount := 0
 
 	for _, entry := range entries {
-		if entry.ReplicaImpact > bestScore {
-			bestScore = entry.ReplicaImpact
+		if entry.EstimatedDesiredReplicas != nil && (!found || *entry.EstimatedDesiredReplicas > bestDesired) {
+			bestDesired = *entry.EstimatedDesiredReplicas
 			bestName = entry.Name
+			found = true
+			bestCount = 1
+		} else if entry.EstimatedDesiredReplicas != nil && *entry.EstimatedDesiredReplicas == bestDesired {
+			bestCount++
 		}
 	}
 
-	if bestName == "" {
+	if !found {
 		return "", ""
 	}
 
-	if hpa.Status.DesiredReplicas == hpa.Spec.MaxReplicas {
+	if bestCount > 1 || winnerHiddenByControllerState(hpa) {
 		return bestName, ConfidenceLow
 	}
 
 	return bestName, ConfidenceMedium
+}
+
+func winnerHiddenByControllerState(hpa *autoscalingv2.HorizontalPodAutoscaler) bool {
+	if hpa.Status.DesiredReplicas >= hpa.Spec.MaxReplicas {
+		return true
+	}
+	minReplicas := int32(1)
+	if hpa.Spec.MinReplicas != nil {
+		minReplicas = *hpa.Spec.MinReplicas
+	}
+	if hpa.Status.DesiredReplicas <= minReplicas {
+		minClampHidesWinner := true
+		for _, metric := range hpa.Status.CurrentMetrics {
+			_, ratio := metricImpactRatio(hpa, metric)
+			if ratio != nil && estimatedDesiredForRatio(hpa, *ratio) > minReplicas {
+				minClampHidesWinner = false
+				break
+			}
+		}
+		if minClampHidesWinner {
+			return true
+		}
+	}
+	if len(hpa.Status.CurrentMetrics) < len(hpa.Spec.Metrics) {
+		return true
+	}
+	condition := FindCondition(hpa, ConditionAbleToScale)
+	return condition != nil && condition.Reason == "ScaleDownStabilized"
+}
+
+func toleranceDirection(ratio float64) string {
+	if ratio > 1 {
+		return "scaleUp"
+	}
+	if ratio < 1 {
+		return "scaleDown"
+	}
+	return "effective"
 }
 
 // buildStabilizationEffect checks whether scale-down stabilization is active
@@ -165,14 +212,16 @@ func buildToleranceEffect(hpa *autoscalingv2.HorizontalPodAutoscaler, entries []
 		DefaultTolerance:  defaultTolerance,
 		SuppressedMetrics: suppressed,
 	}
-
-	// Check if tolerance is explicitly configured in behavior spec
-	if hpa.Spec.Behavior != nil {
-		effect.ConfiguredTolerance = findConfiguredTolerance(hpa.Spec.Behavior)
+	effect.ScaleUpTolerance, effect.ScaleDownTolerance = effectiveDirectionalTolerances(hpa)
+	effect.ConfiguredScaleUpTolerance, effect.ConfiguredScaleDownTolerance = configuredDirectionalTolerances(hpa)
+	if effect.ConfiguredScaleUpTolerance != nil && effect.ConfiguredScaleDownTolerance != nil &&
+		*effect.ConfiguredScaleUpTolerance == *effect.ConfiguredScaleDownTolerance {
+		effect.ConfiguredTolerance = effect.ConfiguredScaleUpTolerance
 	}
 
 	if len(suppressed) == len(entries) {
-		effect.Note = "all metrics within tolerance band, no scaling decision triggered"
+		effect.Note = fmt.Sprintf("all metrics within directional tolerance bands (scaleUp=%.3f, scaleDown=%.3f), no scaling decision triggered",
+			effect.ScaleUpTolerance, effect.ScaleDownTolerance)
 	} else {
 		effect.Note = fmt.Sprintf("tolerance suppressed scaling for: %s", strings.Join(suppressed, ", "))
 	}
@@ -180,27 +229,26 @@ func buildToleranceEffect(hpa *autoscalingv2.HorizontalPodAutoscaler, entries []
 	return effect
 }
 
-// findConfiguredTolerance checks if tolerance is explicitly configured in behavior.
-func findConfiguredTolerance(_ *autoscalingv2.HorizontalPodAutoscalerBehavior) *float64 {
-	// HPA behavior spec does not have a direct tolerance field in autoscalingv2,
-	// but the tolerance is part of the controller manager configuration.
-	// We check for any configured tolerance hints in the behavior.
-	return nil
-}
-
 // resolveSelectPolicy reads the selectPolicy from the behavior spec.
 // Returns the effective policy or "Max" as default.
-func resolveSelectPolicy(hpa *autoscalingv2.HorizontalPodAutoscaler) string {
+func resolveSelectPolicy(hpa *autoscalingv2.HorizontalPodAutoscaler, entries []MetricTraceEntry, winner string) string {
 	if hpa.Spec.Behavior == nil {
 		return "Max"
 	}
 
-	// Check scale-up policy first (most common direction for multi-metric)
-	if hpa.Spec.Behavior.ScaleUp != nil && hpa.Spec.Behavior.ScaleUp.SelectPolicy != nil {
-		return string(*hpa.Spec.Behavior.ScaleUp.SelectPolicy)
+	direction := ""
+	for _, entry := range entries {
+		if entry.Name == winner {
+			direction = entry.DesiredDirection
+			break
+		}
 	}
-	if hpa.Spec.Behavior.ScaleDown != nil && hpa.Spec.Behavior.ScaleDown.SelectPolicy != nil {
-		return string(*hpa.Spec.Behavior.ScaleDown.SelectPolicy)
+	if direction == "down" {
+		if rules := hpa.Spec.Behavior.ScaleDown; rules != nil && rules.SelectPolicy != nil {
+			return string(*rules.SelectPolicy)
+		}
+	} else if rules := hpa.Spec.Behavior.ScaleUp; rules != nil && rules.SelectPolicy != nil {
+		return string(*rules.SelectPolicy)
 	}
 
 	return "Max"

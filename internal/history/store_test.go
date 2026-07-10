@@ -1,6 +1,10 @@
 package history
 
 import (
+	"errors"
+	"os"
+	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -44,6 +48,84 @@ func TestHealthStoreAppendAndLoad(t *testing.T) {
 	}
 	if len(loaded) != 2 {
 		t.Errorf("Load() returned %d snapshots, want 2", len(loaded))
+	}
+}
+
+func TestHealthStorePermissionsSortingAndCorruption(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "history")
+	store, err := NewHealthStoreWithDir(dir)
+	if err != nil {
+		t.Fatalf("NewHealthStoreWithDir: %v", err)
+	}
+	if info, statErr := os.Stat(dir); statErr != nil || info.Mode().Perm() != 0o700 {
+		t.Fatalf("history directory permissions: info=%v err=%v", info, statErr)
+	}
+
+	now := time.Now()
+	for _, snap := range []hpa.HealthSnapshot{
+		{Timestamp: now, HealthScore: 90},
+		{Timestamp: now.Add(-time.Hour), HealthScore: 80},
+	} {
+		if err := store.Append("default", "app", snap); err != nil {
+			t.Fatalf("Append: %v", err)
+		}
+	}
+	path := store.filePath("default", "app")
+	if info, statErr := os.Stat(path); statErr != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("history file permissions: info=%v err=%v", info, statErr)
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatalf("open corrupt fixture: %v", err)
+	}
+	if _, err := f.WriteString("not-json\n"); err != nil {
+		t.Fatalf("write corrupt fixture: %v", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("close corrupt fixture: %v", err)
+	}
+
+	loaded, loadErr := store.Load("default", "app", 2*time.Hour)
+	var corrupt *CorruptLinesError
+	if !errors.As(loadErr, &corrupt) {
+		t.Fatalf("Load error = %v, want CorruptLinesError", loadErr)
+	}
+	if len(loaded) != 2 || !loaded[0].Timestamp.Before(loaded[1].Timestamp) {
+		t.Fatalf("valid snapshots were not returned sorted: %#v", loaded)
+	}
+}
+
+func TestHealthStoreConcurrentAppend(t *testing.T) {
+	store, err := NewHealthStoreWithDir(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewHealthStoreWithDir: %v", err)
+	}
+	const count = 20
+	var wg sync.WaitGroup
+	errs := make(chan error, count)
+	for i := 0; i < count; i++ {
+		wg.Add(1)
+		go func(score int) {
+			defer wg.Done()
+			errs <- store.Append("default", "concurrent", hpa.HealthSnapshot{
+				Timestamp:   time.Now().Add(time.Duration(score) * time.Millisecond),
+				HealthScore: score,
+			})
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("concurrent Append: %v", err)
+		}
+	}
+	loaded, err := store.Load("default", "concurrent", time.Hour)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(loaded) != count {
+		t.Fatalf("loaded %d snapshots, want %d", len(loaded), count)
 	}
 }
 

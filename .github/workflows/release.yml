@@ -39,10 +39,18 @@ jobs:
         with:
           cosign-release: 'v2.4.1'
 
+      # GoReleaser delegates archive SBOM generation to Syft. Install a pinned,
+      # immutable Syft release explicitly so a tag build cannot silently lose
+      # the SBOM artifacts declared in .goreleaser.yml.
+      - name: Install Syft
+        uses: anchore/sbom-action/download-syft@v0.24.0
+        with:
+          syft-version: v1.44.0
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7
         with:
-          version: v2.7.0
+          version: v2.16.0
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

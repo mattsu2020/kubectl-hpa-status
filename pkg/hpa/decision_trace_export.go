@@ -31,7 +31,7 @@ func ExportStructuredDecisionTrace(hpa *autoscalingv2.HorizontalPodAutoscaler, a
 	trace.Metrics = buildStructuredMetricTraces(hpa)
 
 	// Determine winner from MetricDecisionTrace if available, otherwise from metrics.
-	trace.WinnerMetric, trace.WinnerConfidence = resolveStructuredWinner(a, trace.Metrics)
+	trace.WinnerMetric, trace.WinnerConfidence = resolveStructuredWinner(hpa, a, trace.Metrics)
 
 	// Estimate raw desired replicas from the largest per-metric desired.
 	trace.EstimatedRawDesired = computeEstimatedRawDesired(trace.Metrics, hpa.Status.CurrentReplicas)
@@ -77,22 +77,25 @@ func buildStructuredMetricTraces(hpa *autoscalingv2.HorizontalPodAutoscaler) []S
 		if ratio != nil {
 			entry.Ratio = ratio
 			entry.DistanceFromTarget = math.Abs(*ratio - 1.0)
+			entry.WithinTolerance, entry.EffectiveTolerance = ratioWithinTolerance(hpa, *ratio)
 
 			switch {
-			case *ratio > 1.0+defaultTolerance:
+			case *ratio > 1.0+entry.EffectiveTolerance:
 				entry.DesiredDirection = "up"
-			case *ratio < 1.0-defaultTolerance:
+			case *ratio < 1.0-entry.EffectiveTolerance:
 				entry.DesiredDirection = "down"
 			default:
 				entry.DesiredDirection = "none"
 			}
 
-			entry.WithinTolerance = entry.DistanceFromTarget <= defaultTolerance
-
 			if hpa.Status.CurrentReplicas > 0 {
-				raw := int32(math.Ceil(float64(hpa.Status.CurrentReplicas) * *ratio))
+				raw := estimatedDesiredForRatio(hpa, *ratio)
 				entry.EstimatedDesiredReplicas = &raw
-				entry.Formula = fmt.Sprintf("ceil(%d * %.3f) = %d", hpa.Status.CurrentReplicas, *ratio, raw)
+				if entry.WithinTolerance {
+					entry.Formula = fmt.Sprintf("|%.3f - 1| <= %.3f; keep %d replicas", *ratio, entry.EffectiveTolerance, raw)
+				} else {
+					entry.Formula = fmt.Sprintf("ceil(%d * %.3f) = %d", hpa.Status.CurrentReplicas, *ratio, raw)
+				}
 			}
 		} else {
 			entry.Confidence = ConfidenceLow
@@ -107,7 +110,7 @@ func buildStructuredMetricTraces(hpa *autoscalingv2.HorizontalPodAutoscaler) []S
 // resolveStructuredWinner determines the winning metric from the existing
 // MetricDecisionTrace on Analysis, falling back to computing it from the
 // structured metric traces.
-func resolveStructuredWinner(a Analysis, metrics []StructuredMetricTrace) (string, Confidence) {
+func resolveStructuredWinner(hpa *autoscalingv2.HorizontalPodAutoscaler, a Analysis, metrics []StructuredMetricTrace) (string, Confidence) {
 	if a.MetricDecisionTrace != nil && a.MetricDecisionTrace.Winner != "" {
 		return a.MetricDecisionTrace.Winner, a.MetricDecisionTrace.WinnerConfidence
 	}
@@ -117,19 +120,27 @@ func resolveStructuredWinner(a Analysis, metrics []StructuredMetricTrace) (strin
 	}
 
 	var bestName string
-	var bestDistance float64
+	var bestDesired int32
+	found := false
+	bestCount := 0
 
 	for _, m := range metrics {
-		if m.DistanceFromTarget > bestDistance {
-			bestDistance = m.DistanceFromTarget
+		if m.EstimatedDesiredReplicas != nil && (!found || *m.EstimatedDesiredReplicas > bestDesired) {
+			bestDesired = *m.EstimatedDesiredReplicas
 			bestName = m.Name
+			found = true
+			bestCount = 1
+		} else if m.EstimatedDesiredReplicas != nil && *m.EstimatedDesiredReplicas == bestDesired {
+			bestCount++
 		}
 	}
 
-	if bestName == "" {
+	if !found {
 		return "", ""
 	}
-
+	if bestCount > 1 || winnerHiddenByControllerState(hpa) {
+		return bestName, ConfidenceLow
+	}
 	return bestName, ConfidenceMedium
 }
 
@@ -177,16 +188,24 @@ func buildStructuredToleranceTrace(hpa *autoscalingv2.HorizontalPodAutoscaler, m
 		EffectiveTolerance: defaultTolerance,
 		SuppressedMetrics:  suppressed,
 	}
-
-	if hpa.Spec.Behavior != nil {
-		trace.ConfiguredTolerance = findConfiguredTolerance(hpa.Spec.Behavior)
-		if trace.ConfiguredTolerance != nil {
-			trace.EffectiveTolerance = *trace.ConfiguredTolerance
+	trace.ScaleUpTolerance, trace.ScaleDownTolerance = effectiveDirectionalTolerances(hpa)
+	trace.ConfiguredScaleUpTolerance, trace.ConfiguredScaleDownTolerance = configuredDirectionalTolerances(hpa)
+	if trace.ConfiguredScaleUpTolerance != nil && trace.ConfiguredScaleDownTolerance != nil &&
+		*trace.ConfiguredScaleUpTolerance == *trace.ConfiguredScaleDownTolerance {
+		trace.ConfiguredTolerance = trace.ConfiguredScaleUpTolerance
+		trace.EffectiveTolerance = *trace.ConfiguredTolerance
+	} else if len(suppressed) > 0 {
+		for _, metric := range metrics {
+			if metric.Name == suppressed[0] {
+				trace.EffectiveTolerance = metric.EffectiveTolerance
+				break
+			}
 		}
 	}
 
 	if len(suppressed) == len(metrics) {
-		trace.Note = "all metrics within tolerance band, no scaling decision triggered"
+		trace.Note = fmt.Sprintf("all metrics within directional tolerance bands (scaleUp=%.3f, scaleDown=%.3f), no scaling decision triggered",
+			trace.ScaleUpTolerance, trace.ScaleDownTolerance)
 	} else {
 		trace.Note = fmt.Sprintf("tolerance suppressed scaling for: %s", joinStrings(suppressed, ", "))
 	}

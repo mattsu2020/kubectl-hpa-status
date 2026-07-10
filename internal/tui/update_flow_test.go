@@ -114,6 +114,22 @@ func TestUpdate_BatchAuditMsg(t *testing.T) {
 	}
 }
 
+func TestUpdate_FetchCancelsArmedApplyConfirmation(t *testing.T) {
+	m := detailModel(Options{})
+	m.fixState = &fixState{applyConfirm: true}
+	m.batchApplyConfirm = true
+	m.batchApplyPreview = []string{"default/web: raise max"}
+
+	updated, _ := m.Update(fetchResultMsg{
+		items:   m.items,
+		reports: m.reports,
+	})
+	m2 := updated.(Model)
+	if m2.fixState.applyConfirm || m2.batchApplyConfirm || len(m2.batchApplyPreview) != 0 {
+		t.Fatal("refresh must cancel every armed apply confirmation")
+	}
+}
+
 // --- key flows ---------------------------------------------------------------
 
 func TestKeyFlow_HistoryOpenAndClose(t *testing.T) {
@@ -257,7 +273,16 @@ func TestKeyFlow_MetricSimulation(t *testing.T) {
 }
 
 func TestKeyFlow_FixWizard(t *testing.T) {
-	m := detailModel(Options{})
+	dryRunCalls := 0
+	m := detailModel(Options{
+		DryRunFn: func(_ context.Context, namespace, name string, suggestions []hpaanalysis.Suggestion) error {
+			dryRunCalls++
+			if namespace != "default" || name != "web" || len(suggestions) != 1 {
+				t.Fatalf("unexpected dry-run request: %s/%s %+v", namespace, name, suggestions)
+			}
+			return nil
+		},
+	})
 
 	// No suggestions: key sets an error and stays in detail view.
 	m2, _ := pressTUIKey(t, m, "f")
@@ -266,7 +291,7 @@ func TestKeyFlow_FixWizard(t *testing.T) {
 	}
 
 	m.reports["default/web"].Analysis.Suggestions = []hpaanalysis.Suggestion{
-		{Title: "patch it", Description: "apply patch", Patch: `{"spec":{"maxReplicas":10}}`},
+		{Title: "patch it", Description: "apply patch", Patch: `{"spec":{"maxReplicas":10}}`, Apply: true},
 		{Title: "run cmd", Description: "run kubectl", Command: "kubectl scale"},
 		{Title: "advice", Description: "read docs"},
 	}
@@ -278,18 +303,24 @@ func TestKeyFlow_FixWizard(t *testing.T) {
 	// Dry run for each suggestion flavor. Note fixState is a shared pointer,
 	// so set selected explicitly for each flavor instead of relying on copies.
 	m3.fixState.selected = 0
-	m5, _ := pressTUIKey(t, m3, "d")
-	if !strings.Contains(m5.fixState.dryRunResult, "patch preview") {
-		t.Fatalf("expected patch preview, got %q", m5.fixState.dryRunResult)
+	m5, dryRunCmd := pressTUIKey(t, m3, "d")
+	if dryRunCmd == nil {
+		t.Fatal("expected server-side dry-run command")
+	}
+	dryRunMsg := dryRunCmd()
+	updated, _ := m5.Update(dryRunMsg)
+	m5 = updated.(Model)
+	if !strings.Contains(m5.fixState.dryRunResult, "server-side validation passed") || dryRunCalls != 1 {
+		t.Fatalf("expected server-side validation, got %q calls=%d", m5.fixState.dryRunResult, dryRunCalls)
 	}
 	m5.fixState.selected = 1
 	m5, _ = pressTUIKey(t, m5, "d")
-	if !strings.Contains(m5.fixState.dryRunResult, "command preview") {
-		t.Fatalf("expected command preview, got %q", m5.fixState.dryRunResult)
+	if !strings.Contains(m5.fixState.dryRunResult, "no patch available") {
+		t.Fatalf("expected no-patch result, got %q", m5.fixState.dryRunResult)
 	}
 	m5.fixState.selected = 2
 	m5, _ = pressTUIKey(t, m5, "d")
-	if !strings.Contains(m5.fixState.dryRunResult, "no patch or command") {
+	if !strings.Contains(m5.fixState.dryRunResult, "no patch available") {
 		t.Fatalf("expected fallback preview, got %q", m5.fixState.dryRunResult)
 	}
 
@@ -317,19 +348,23 @@ func TestKeyFlow_FixWizard(t *testing.T) {
 func TestKeyFlow_FixApplyWithApplyFn(t *testing.T) {
 	applied := false
 	m := detailModel(Options{
-		ApplyFn: func(_ context.Context, namespace, name, patch string) error {
+		ApplyFn: func(_ context.Context, namespace, name string, suggestions []hpaanalysis.Suggestion) error {
 			applied = true
-			if namespace != "default" || name != "web" || patch == "" {
-				t.Errorf("unexpected apply args: %s/%s %q", namespace, name, patch)
+			if namespace != "default" || name != "web" || len(suggestions) != 1 || suggestions[0].Patch == "" {
+				t.Errorf("unexpected apply args: %s/%s %+v", namespace, name, suggestions)
 			}
 			return nil
 		},
 	})
 	m.reports["default/web"].Analysis.Suggestions = []hpaanalysis.Suggestion{
-		{Title: "patch it", Patch: `{"spec":{"maxReplicas":10}}`},
+		{Title: "patch it", Patch: `{"spec":{"maxReplicas":10}}`, Apply: true},
 	}
 	m2, _ := pressTUIKey(t, m, "f")
-	_, cmd := pressTUIKey(t, m2, "enter")
+	m3, cmd := pressTUIKey(t, m2, "enter")
+	if cmd != nil || !m3.fixState.applyConfirm || applied {
+		t.Fatal("first Enter must only arm explicit confirmation")
+	}
+	_, cmd = pressTUIKey(t, m3, "enter")
 	if cmd == nil {
 		t.Fatal("expected apply command")
 	}

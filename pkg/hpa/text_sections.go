@@ -36,7 +36,9 @@ func appendConditionsSection(out *[]byte, a *Analysis, theme style.Theme, labels
 	}
 	for _, condition := range a.Conditions {
 		statusText := theme.ConditionStatus(condition.Type, condition.Status)
-		*out = fmt.Appendf(*out, "  %-15s %-7s %-24s %s\n", condition.Type, statusText, condition.Reason, condition.Message)
+		*out = fmt.Appendf(*out, "  %-15s %-7s %-24s %s\n",
+			SanitizeTerminalText(string(condition.Type)), statusText,
+			SanitizeTerminalText(condition.Reason), SanitizeTerminalText(condition.Message))
 	}
 }
 
@@ -51,7 +53,7 @@ func appendMetricsSection(out *[]byte, a *Analysis, theme style.Theme, labels la
 	for _, metric := range a.Metrics {
 		note := theme.MetricNote(metric.Note)
 		text := formatMetricText(metric, note)
-		*out = fmt.Appendf(*out, "  - %s\n", text)
+		*out = fmt.Appendf(*out, "  - %s\n", SanitizeTerminalText(text))
 	}
 }
 
@@ -71,7 +73,7 @@ func appendStabilizationAndBehavior(out *[]byte, a *Analysis, theme style.Theme,
 		*out = append(*out, '\n')
 		*out = fmt.Appendf(*out, "%s:\n", labels.Behavior)
 		for _, behavior := range a.Behavior {
-			*out = fmt.Appendf(*out, "  - %s\n", behavior.Text)
+			*out = fmt.Appendf(*out, "  - %s\n", SanitizeTerminalText(behavior.Text))
 		}
 	}
 }
@@ -418,9 +420,9 @@ func appendPendingPods(out *[]byte, pods []PendingPodInfo) {
 		if p.Unschedulable {
 			suffix = " (unschedulable)"
 		}
-		*out = fmt.Appendf(*out, "    - %s%s\n", p.Name, suffix)
+		*out = fmt.Appendf(*out, "    - %s%s\n", SanitizeTerminalText(p.Name), suffix)
 		for _, reason := range p.Reasons {
-			*out = fmt.Appendf(*out, "      %s\n", reason)
+			*out = fmt.Appendf(*out, "      %s\n", SanitizeTerminalText(reason))
 		}
 	}
 }
@@ -434,7 +436,7 @@ func appendEventsSection(out *[]byte, report StatusReport, labels labels) {
 		return
 	}
 	for _, event := range report.Events {
-		*out = fmt.Appendf(*out, "  - %s: %s\n", event.Reason, event.Message)
+		*out = fmt.Appendf(*out, "  - %s: %s\n", SanitizeTerminalText(event.Reason), SanitizeTerminalText(event.Message))
 	}
 }
 
@@ -449,6 +451,6 @@ func appendWarningsSection(out *[]byte, a *Analysis, labels labels) {
 	*out = append(*out, '\n')
 	*out = fmt.Appendf(*out, "%s:\n", labels.Warning)
 	for _, warning := range a.Warnings {
-		*out = fmt.Appendf(*out, "  - %s\n", warning)
+		*out = fmt.Appendf(*out, "  - %s\n", SanitizeTerminalText(warning))
 	}
 }

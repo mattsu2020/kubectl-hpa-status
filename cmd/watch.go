@@ -6,6 +6,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 	"github.com/spf13/cobra"
@@ -45,15 +46,22 @@ func runWatch(ctx context.Context, out io.Writer, opts *options, name string, in
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
+	client, err := newClientOrDefault(opts)
+	if err != nil {
+		return err
+	}
 	ec := newEnrichmentContext(ctx, opts)
+	return runWatchPolling(ctx, out, opts, client, ec, name, includeInterpretation, theme, ticker)
+}
 
+func runWatchPolling(ctx context.Context, out io.Writer, opts *options, client *kube.Client, ec *enrichmentContext, name string, includeInterpretation bool, theme style.Theme, ticker *time.Ticker) error {
 	var previous *hpaanalysis.Analysis
 	for {
 		if err := clearWatchScreen(out, theme); err != nil {
 			return err
 		}
 
-		report, err := buildStatusReportWithClient(ctx, opts, name, includeInterpretation, ec)
+		report, err := buildStatusReport(ctx, opts, client, name, includeInterpretation, ec)
 		if err != nil {
 			return err
 		}

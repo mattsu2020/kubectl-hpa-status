@@ -140,9 +140,9 @@ func renderDetailConditions(sb *strings.Builder, a *hpaanalysis.Analysis) {
 			statusStyle = errorStyle
 		}
 		sb.WriteString(fmt.Sprintf("  %-15s %s %s\n",
-			c.Type,
-			statusStyle.Render(c.Status),
-			dimStyle.Render(c.Reason),
+			hpaanalysis.SanitizeTerminalText(string(c.Type)),
+			statusStyle.Render(hpaanalysis.SanitizeTerminalText(string(c.Status))),
+			dimStyle.Render(hpaanalysis.SanitizeTerminalText(c.Reason)),
 		))
 	}
 }
@@ -207,7 +207,9 @@ func renderDetailDecisionSignals(sb *strings.Builder, a *hpaanalysis.Analysis) {
 		if sig.MetricName != "" {
 			metricPart = fmt.Sprintf(" metric=%s", sig.MetricName)
 		}
-		sb.WriteString(dimStyle.Render(fmt.Sprintf("  - %s: %s%s [%s]\n", sig.Reason, sig.Message, metricPart, confidence)))
+		sb.WriteString(dimStyle.Render(fmt.Sprintf("  - %s: %s%s [%s]\n",
+			hpaanalysis.SanitizeTerminalText(sig.Reason), hpaanalysis.SanitizeTerminalText(sig.Message),
+			hpaanalysis.SanitizeTerminalText(metricPart), hpaanalysis.SanitizeTerminalText(string(confidence)))))
 	}
 }
 
@@ -235,7 +237,7 @@ func renderDetailKEDA(sb *strings.Builder, a *hpaanalysis.Analysis) {
 		return
 	}
 	sb.WriteString("\nKEDA:\n")
-	sb.WriteString(fmt.Sprintf("  ScaledObject: %s\n", a.KEDAInfo.ScaledObjectName))
+	sb.WriteString(fmt.Sprintf("  ScaledObject: %s\n", hpaanalysis.SanitizeTerminalText(a.KEDAInfo.ScaledObjectName)))
 	if len(a.KEDAInfo.Triggers) > 0 {
 		sb.WriteString("  Triggers:\n")
 		for _, t := range a.KEDAInfo.Triggers {
@@ -254,9 +256,9 @@ func renderDetailKEDA(sb *strings.Builder, a *hpaanalysis.Analysis) {
 }
 
 func renderDetailKEDATrigger(sb *strings.Builder, t hpakeda.TriggerSummary) {
-	label := t.Type
+	label := hpaanalysis.SanitizeTerminalText(t.Type)
 	if t.Name != "" {
-		label = fmt.Sprintf("%s (%s)", t.Type, t.Name)
+		label = fmt.Sprintf("%s (%s)", hpaanalysis.SanitizeTerminalText(t.Type), hpaanalysis.SanitizeTerminalText(t.Name))
 	}
 	if t.Status != "" {
 		badge := tuiTriggerStatusBadge(t.Status)
@@ -266,13 +268,13 @@ func renderDetailKEDATrigger(sb *strings.Builder, t hpakeda.TriggerSummary) {
 	if t.MetricName != "" || t.Threshold != "" || t.CurrentValue != "" {
 		var detailParts []string
 		if t.MetricName != "" {
-			detailParts = append(detailParts, fmt.Sprintf("metric=%s", t.MetricName))
+			detailParts = append(detailParts, fmt.Sprintf("metric=%s", hpaanalysis.SanitizeTerminalText(t.MetricName)))
 		}
 		if t.Threshold != "" {
-			detailParts = append(detailParts, fmt.Sprintf("threshold=%s", t.Threshold))
+			detailParts = append(detailParts, fmt.Sprintf("threshold=%s", hpaanalysis.SanitizeTerminalText(t.Threshold)))
 		}
 		if t.CurrentValue != "" {
-			detailParts = append(detailParts, fmt.Sprintf("current=%s", t.CurrentValue))
+			detailParts = append(detailParts, fmt.Sprintf("current=%s", hpaanalysis.SanitizeTerminalText(t.CurrentValue)))
 		}
 		sb.WriteString(fmt.Sprintf("      %s\n", strings.Join(detailParts, " ")))
 	}

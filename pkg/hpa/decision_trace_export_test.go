@@ -7,6 +7,7 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -14,6 +15,47 @@ func TestExportStructuredDecisionTrace_NilHPA(t *testing.T) {
 	result := ExportStructuredDecisionTrace(nil, Analysis{})
 	if result != nil {
 		t.Fatalf("expected nil for nil HPA, got %+v", result)
+	}
+}
+
+func TestStructuredWinnerUsesMaximumEstimatedDesired(t *testing.T) {
+	hpa := testutil.BuildHPA("default", "mixed",
+		testutil.WithResourceMetric("cpu", 100, 10),
+		testutil.WithResourceMetric("memory", 100, 150),
+		testutil.WithReplicas(10, 15),
+		testutil.WithMinMax(1, 30),
+	)
+	result := ExportStructuredDecisionTrace(hpa, Analysis{Min: 1, Max: 30})
+	if result.WinnerMetric != "memory" {
+		t.Fatalf("winner = %q, want memory", result.WinnerMetric)
+	}
+	if result.EstimatedRawDesired != 15 {
+		t.Fatalf("estimated raw desired = %d, want 15", result.EstimatedRawDesired)
+	}
+}
+
+func TestResourceAverageValueParticipatesInDecisionTrace(t *testing.T) {
+	target := resource.MustParse("1Gi")
+	current := resource.MustParse("1536Mi")
+	hpa := testutil.BuildHPA("default", "memory-average",
+		testutil.WithReplicas(4, 6), testutil.WithMinMax(1, 20))
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{{
+		Type: autoscalingv2.ResourceMetricSourceType,
+		Resource: &autoscalingv2.ResourceMetricSource{Name: corev1.ResourceMemory,
+			Target: autoscalingv2.MetricTarget{Type: autoscalingv2.AverageValueMetricType, AverageValue: &target}},
+	}}
+	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{{
+		Type: autoscalingv2.ResourceMetricSourceType,
+		Resource: &autoscalingv2.ResourceMetricStatus{Name: corev1.ResourceMemory,
+			Current: autoscalingv2.MetricValueStatus{AverageValue: &current}},
+	}}
+
+	result := ExportStructuredDecisionTrace(hpa, Analysis{Min: 1, Max: 20})
+	if len(result.Metrics) != 1 || result.Metrics[0].Ratio == nil {
+		t.Fatalf("AverageValue ratio missing: %+v", result.Metrics)
+	}
+	if *result.Metrics[0].Ratio != 1.5 || result.WinnerMetric != "memory" {
+		t.Fatalf("unexpected AverageValue decision trace: %+v", result)
 	}
 }
 

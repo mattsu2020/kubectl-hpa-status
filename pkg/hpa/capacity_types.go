@@ -8,6 +8,7 @@ type CapacityContext struct {
 	QuotaConstraints []QuotaConstraint `json:"quotaConstraints,omitempty" yaml:"quotaConstraints,omitempty"`
 	PDBInterference  []PDBInterference `json:"pdbInterference,omitempty" yaml:"pdbInterference,omitempty"`
 	NodeHints        []string          `json:"nodeHints,omitempty" yaml:"nodeHints,omitempty"`
+	Warnings         []string          `json:"warnings,omitempty" yaml:"warnings,omitempty"`
 }
 
 // CapacityHeadroom estimates the extra pod resources required to reach

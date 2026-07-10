@@ -33,6 +33,9 @@ type AutoscalerMap struct {
 	Risk string `json:"risk" yaml:"risk"`
 	// NextChecks lists kubectl verification commands for detected resources.
 	NextChecks []string `json:"nextChecks,omitempty" yaml:"nextChecks,omitempty"`
+	// Warnings records Kubernetes API reads that could not be completed. Missing
+	// data must not be presented as a confirmed blocker.
+	Warnings []string `json:"warnings,omitempty" yaml:"warnings,omitempty"`
 }
 
 // AutoscalerMapLayer describes one layer in the autoscaling chain.
@@ -84,6 +87,9 @@ type AutoscalerMapInput struct {
 	PodSummary AutoscalerMapPodSummary
 	// NodeSummary holds node-level summary information.
 	NodeSummary AutoscalerMapNodeSummary
+	// NodeFetchError distinguishes an unavailable node list from a confirmed
+	// empty cluster.
+	NodeFetchError string
 	// ClusterAutoscaler indicates whether Cluster Autoscaler is detected.
 	ClusterAutoscaler bool
 	// Karpenter indicates whether Karpenter is detected.

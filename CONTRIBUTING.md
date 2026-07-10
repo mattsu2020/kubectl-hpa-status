@@ -25,7 +25,7 @@ make e2e
 kind delete cluster
 ```
 
-Prerequisites: Go 1.25+, kubectl, a Kubernetes cluster (or kind for E2E).
+Prerequisites: Go 1.26.5+, kubectl, a Kubernetes cluster (or kind for E2E).
 
 ## Development
 

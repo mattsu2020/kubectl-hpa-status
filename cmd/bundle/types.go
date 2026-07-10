@@ -41,4 +41,9 @@ type Data struct {
 	Namespace string
 	HPAName   string
 	Timestamp time.Time
+
+	// Redacted records that the bundle is intended for external sharing. ZIP
+	// assembly uses it to run a final redaction pass over every generated entry,
+	// including entries derived from typed fields such as StatusReport.
+	Redacted bool
 }

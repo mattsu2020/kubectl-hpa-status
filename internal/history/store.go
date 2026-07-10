@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -21,6 +22,23 @@ type HealthStore struct {
 	dir string
 }
 
+const (
+	storeDirMode  = 0o700
+	storeFileMode = 0o600
+	lockTimeout   = 2 * time.Second
+)
+
+// CorruptLinesError reports malformed JSONL records while valid snapshots are
+// still returned to the caller.
+type CorruptLinesError struct {
+	Path  string
+	Lines []int
+}
+
+func (e *CorruptLinesError) Error() string {
+	return fmt.Sprintf("history file %s contains %d corrupt line(s): %v", e.Path, len(e.Lines), e.Lines)
+}
+
 // NewHealthStore creates a HealthStore using the platform cache directory.
 // Falls back to ~/.kubectl-hpa-status/history/ if XDG_CACHE_HOME is not set.
 func NewHealthStore() (*HealthStore, error) {
@@ -28,8 +46,11 @@ func NewHealthStore() (*HealthStore, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolving health store directory: %w", err)
 	}
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, storeDirMode); err != nil {
 		return nil, fmt.Errorf("creating health store directory: %w", err)
+	}
+	if err := os.Chmod(dir, storeDirMode); err != nil {
+		return nil, fmt.Errorf("securing health store directory: %w", err)
 	}
 	return &HealthStore{dir: dir}, nil
 }
@@ -37,8 +58,11 @@ func NewHealthStore() (*HealthStore, error) {
 // NewHealthStoreWithDir creates a HealthStore using the given directory.
 // Used for testing with t.TempDir().
 func NewHealthStoreWithDir(dir string) (*HealthStore, error) {
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, storeDirMode); err != nil {
 		return nil, fmt.Errorf("creating health store directory: %w", err)
+	}
+	if err := os.Chmod(dir, storeDirMode); err != nil {
+		return nil, fmt.Errorf("securing health store directory: %w", err)
 	}
 	return &HealthStore{dir: dir}, nil
 }
@@ -50,26 +74,54 @@ func (s *HealthStore) Append(namespace, name string, snapshot hpa.HealthSnapshot
 	}
 
 	path := s.filePath(namespace, name)
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	release, err := acquireLock(path)
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, storeFileMode)
 	if err != nil {
 		return fmt.Errorf("opening health store file: %w", err)
 	}
-	defer func() { _ = f.Close() }()
+	if err := f.Chmod(storeFileMode); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("securing health store file: %w", err)
+	}
 
 	data, err := json.Marshal(snapshot)
 	if err != nil {
+		_ = f.Close()
 		return fmt.Errorf("marshaling health snapshot: %w", err)
 	}
 
-	_, err = fmt.Fprintln(f, string(data))
-	return err
+	if _, err = fmt.Fprintln(f, string(data)); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("writing health snapshot: %w", err)
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("syncing health snapshot: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("closing health snapshot: %w", err)
+	}
+	return nil
 }
 
 // Load reads health snapshots for the given HPA within the specified time window.
 // Returns snapshots sorted by timestamp (oldest first).
 func (s *HealthStore) Load(namespace, name string, since time.Duration) ([]hpa.HealthSnapshot, error) {
 	path := s.filePath(namespace, name)
+	release, err := acquireLock(path)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	return loadHistoryFile(path, since)
+}
 
+func loadHistoryFile(path string, since time.Duration) ([]hpa.HealthSnapshot, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -88,6 +140,7 @@ func (s *HealthStore) Load(namespace, name string, since time.Duration) ([]hpa.H
 	// bufio.ErrTooLong. The default 64KB cap is kept as the initial buffer.
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 	lineNum := 0
+	var corruptLines []int
 	for scanner.Scan() {
 		lineNum++
 		line := strings.TrimSpace(scanner.Text())
@@ -97,7 +150,7 @@ func (s *HealthStore) Load(namespace, name string, since time.Duration) ([]hpa.H
 
 		var snap hpa.HealthSnapshot
 		if err := json.Unmarshal([]byte(line), &snap); err != nil {
-			// Skip corrupt lines rather than failing.
+			corruptLines = append(corruptLines, lineNum)
 			continue
 		}
 
@@ -110,6 +163,12 @@ func (s *HealthStore) Load(namespace, name string, since time.Duration) ([]hpa.H
 		return snapshots, fmt.Errorf("reading health store file at line %d: %w", lineNum, err)
 	}
 
+	sort.SliceStable(snapshots, func(i, j int) bool {
+		return snapshots[i].Timestamp.Before(snapshots[j].Timestamp)
+	})
+	if len(corruptLines) > 0 {
+		return snapshots, &CorruptLinesError{Path: path, Lines: corruptLines}
+	}
 	return snapshots, nil
 }
 
@@ -131,30 +190,88 @@ func (s *HealthStore) LoadMultiple(keys []struct{ NS, Name string }, since time.
 
 // Prune removes entries older than the retention period from the HPA's file.
 func (s *HealthStore) Prune(namespace, name string, retention time.Duration) error {
-	snapshots, err := s.Load(namespace, name, retention)
+	path := s.filePath(namespace, name)
+	release, err := acquireLock(path)
 	if err != nil {
 		return err
 	}
+	defer release()
 
-	// Rewrite the file with only the retained entries.
-	path := s.filePath(namespace, name)
-	f, err := os.Create(path)
-	if err != nil {
-		return fmt.Errorf("rewriting health store file: %w", err)
+	snapshots, loadErr := loadHistoryFile(path, retention)
+	var corruptErr *CorruptLinesError
+	if loadErr != nil {
+		if typed, ok := loadErr.(*CorruptLinesError); ok {
+			corruptErr = typed
+		} else {
+			return loadErr
+		}
 	}
-	defer func() { _ = f.Close() }()
 
-	writer := bufio.NewWriter(f)
+	tmp, err := os.CreateTemp(s.dir, ".history-*.jsonl")
+	if err != nil {
+		return fmt.Errorf("creating temporary health store file: %w", err)
+	}
+	tmpPath := tmp.Name()
+	defer func() {
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
+	}()
+	if err := tmp.Chmod(storeFileMode); err != nil {
+		return fmt.Errorf("securing temporary health store file: %w", err)
+	}
+
+	writer := bufio.NewWriter(tmp)
 	for _, snap := range snapshots {
 		data, err := json.Marshal(snap)
 		if err != nil {
-			continue
+			return fmt.Errorf("marshaling retained health snapshot: %w", err)
 		}
 		if _, err := fmt.Fprintln(writer, string(data)); err != nil {
-			return err
+			return fmt.Errorf("writing retained health snapshot: %w", err)
 		}
 	}
-	return writer.Flush()
+	if err := writer.Flush(); err != nil {
+		return fmt.Errorf("flushing health store file: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		return fmt.Errorf("syncing health store file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("closing health store file: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("replacing health store file: %w", err)
+	}
+	if corruptErr != nil {
+		return corruptErr
+	}
+	return nil
+}
+
+// acquireLock uses a portable O_EXCL lock file so separate kubectl processes
+// cannot append while another process is pruning the same HPA history.
+func acquireLock(path string) (func(), error) {
+	lockPath := path + ".lock"
+	deadline := time.Now().Add(lockTimeout)
+	for {
+		lock, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, storeFileMode)
+		if err == nil {
+			_, _ = fmt.Fprintf(lock, "%d\n", os.Getpid())
+			_ = lock.Close()
+			return func() { _ = os.Remove(lockPath) }, nil
+		}
+		if !os.IsExist(err) {
+			return nil, fmt.Errorf("creating history lock: %w", err)
+		}
+		if info, statErr := os.Stat(lockPath); statErr == nil && time.Since(info.ModTime()) > lockTimeout*5 {
+			_ = os.Remove(lockPath)
+			continue
+		}
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("timed out waiting for history lock %s", lockPath)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 // Dir returns the store directory path.

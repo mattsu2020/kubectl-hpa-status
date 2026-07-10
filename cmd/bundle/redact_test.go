@@ -31,9 +31,7 @@ func TestRedactString(t *testing.T) {
 		{
 			name: "ipv4 octet over 255 untouched",
 			in:   "version 300.1.2.3 stays",
-			// 00.1.2.3 still forms a valid dotted quad after the leading "3",
-			// so the redactor consumes it; the "3" prefix survives.
-			want: "version 3[REDACTED-IP] stays",
+			want: "version 300.1.2.3 stays",
 		},
 		{
 			name: "plain numbers untouched",
@@ -43,7 +41,7 @@ func TestRedactString(t *testing.T) {
 		{
 			name: "ipv6 address",
 			in:   "addr fe80::1ff:fe23:4567:890a end",
-			want: "addr fe80[REDACTED-IP] end",
+			want: "addr [REDACTED-IP] end",
 		},
 		{
 			name: "node name after keyword",
@@ -89,6 +87,51 @@ func TestRedactString(t *testing.T) {
 				t.Errorf("RedactString(%q) = %q, want %q", tt.in, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestRedactString_RedactsEveryNodeOccurrence(t *testing.T) {
+	t.Parallel()
+	got := RedactString("node: worker-a, node: worker-b\nNodeName: worker-c")
+	for _, leaked := range []string{"worker-a", "worker-b", "worker-c"} {
+		if strings.Contains(got, leaked) {
+			t.Fatalf("node name %q leaked in %q", leaked, got)
+		}
+	}
+	if count := strings.Count(got, "[REDACTED-NODE]"); count != 3 {
+		t.Fatalf("redacted node count = %d, want 3: %q", count, got)
+	}
+}
+
+func TestRedactStructuredBytes_RemovesSensitiveValues(t *testing.T) {
+	t.Parallel()
+	input := []byte(`apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    customer: acme
+  annotations:
+    internal-url: https://service.corp.example
+spec:
+  template:
+    spec:
+      containers:
+      - name: app
+        env:
+        - name: API_TOKEN
+          value: super-secret-token
+        envFrom:
+        - secretRef:
+            name: production-credentials
+`)
+	got := string(RedactStructuredBytes(input))
+	for _, leaked := range []string{"acme", "service.corp.example", "super-secret-token", "production-credentials"} {
+		if strings.Contains(got, leaked) {
+			t.Errorf("sensitive value %q leaked in:\n%s", leaked, got)
+		}
+	}
+	if !strings.Contains(got, "[REDACTED]") {
+		t.Fatalf("expected redaction placeholders in:\n%s", got)
 	}
 }
 

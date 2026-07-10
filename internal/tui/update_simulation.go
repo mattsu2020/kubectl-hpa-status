@@ -175,6 +175,10 @@ func (m Model) applyFix() tea.Cmd {
 		m.fixState.applyErr = fmt.Errorf("no patch available for this suggestion")
 		return nil
 	}
+	if !suggestion.Apply {
+		m.fixState.applyErr = fmt.Errorf("suggestion is advisory and is not approved for automatic apply")
+		return nil
+	}
 
 	filtered := m.filteredItems()
 	if m.cursor < 0 || m.cursor >= len(filtered) {
@@ -183,11 +187,10 @@ func (m Model) applyFix() tea.Cmd {
 
 	namespace := filtered[m.cursor].Namespace
 	name := filtered[m.cursor].Name
-	patch := suggestion.Patch
 	applyFn := m.opts.ApplyFn
 
 	return func() tea.Msg {
-		err := applyFn(m.ctx, namespace, name, patch)
+		err := applyFn(m.ctx, namespace, name, []hpaanalysis.Suggestion{suggestion})
 		return applyResultMsg{title: suggestion.Title, err: err}
 	}
 }

@@ -9,10 +9,11 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
-// ApplyFunc applies a JSON merge patch to an HPA and returns any error.
-// This callback is injected from the cmd layer to keep the TUI package
-// free of direct Kubernetes patch imports.
-type ApplyFunc func(ctx context.Context, namespace, name, patch string) error
+// ApplyFunc validates or applies a group of suggestions for one HPA and
+// returns any error. Grouping is intentional: the cmd layer can merge all
+// changes for an HPA into one atomic patch and enforce the same safety policy
+// as the non-interactive CLI.
+type ApplyFunc func(ctx context.Context, namespace, name string, suggestions []hpaanalysis.Suggestion) error
 
 // AuditFunc runs the best-practice auditor on an HPA and returns the report.
 // Injected from the cmd layer to keep the TUI package free of direct
@@ -42,6 +43,7 @@ type simField struct {
 type fixState struct {
 	suggestions  []hpaanalysis.Suggestion
 	selected     int
+	applyConfirm bool
 	applied      bool
 	applyErr     error
 	dryRunResult string
@@ -94,6 +96,14 @@ type simResultMsg struct {
 
 // applyResultMsg carries the result of a patch apply operation.
 type applyResultMsg struct {
+	title string
+	err   error
+}
+
+// dryRunResultMsg carries the result of a real server-side dry-run. It is
+// separate from applyResultMsg so successful validation is never presented as
+// a persisted change.
+type dryRunResultMsg struct {
 	title string
 	err   error
 }

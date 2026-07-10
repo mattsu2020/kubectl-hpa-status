@@ -176,7 +176,7 @@ Commands are grouped into four layers so the top-level surface stays focused on 
 | Operational (`alpha`) | `alpha policy`, `alpha gitops`, `alpha bundle`, `alpha incident-bundle`, `alpha support-bundle` | Apply-time gating, GitOps, support data |
 | Experimental (`alpha`) | `alpha capacity`, `alpha capacity-gap`, `alpha autoscaler-map`, `alpha analyze-record`, `alpha flap` | Niche tools; may change between releases |
 
-The `alpha` commands are also reachable at their historical top-level path (e.g. `bundle`) for compatibility, but those aliases are deprecated and emit a redirect notice; they are scheduled for removal in v2.0. Prefer the `alpha` path.
+Operational and experimental commands are available only below `alpha`; the historical top-level aliases were removed in v2.0.
 
 ## Representative Commands
 
@@ -253,7 +253,7 @@ Single-HPA `status NAME -o json` keeps the historical bare `StatusReport` shape 
 
 ## Roadmap
 
-The active roadmap is tracked in [ROADMAP.md](ROADMAP.md). Near-term priorities are in-TUI batch apply, clearer health-score explanations, broader E2E coverage, KEP-6111 readiness, and release supply-chain hardening.
+The active roadmap is tracked in [ROADMAP.md](ROADMAP.md). Near-term priorities are broader multi-metric/KEDA/VPA E2E coverage, KEP-6111 readiness, and continued release supply-chain hardening.
 
 ## Development
 

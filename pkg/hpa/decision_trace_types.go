@@ -32,10 +32,15 @@ type MetricTraceEntry struct {
 	DistanceFromTarget float64 `json:"distanceFromTarget,omitempty" yaml:"distanceFromTarget,omitempty"`
 	// ReplicaImpact estimates how many replicas this metric would add/remove.
 	ReplicaImpact float64 `json:"replicaImpact,omitempty" yaml:"replicaImpact,omitempty"`
+	// EstimatedDesiredReplicas is this metric's estimated desired count after
+	// applying the tolerance for its scaling direction.
+	EstimatedDesiredReplicas *int32 `json:"estimatedDesiredReplicas,omitempty" yaml:"estimatedDesiredReplicas,omitempty"`
 	// DesiredDirection indicates whether this metric wants scale-up, scale-down, or no-change.
 	DesiredDirection string `json:"desiredDirection" yaml:"desiredDirection"` // "up", "down", "none"
 	// WithinTolerance indicates whether the metric is within the tolerance band.
 	WithinTolerance bool `json:"withinTolerance,omitempty" yaml:"withinTolerance,omitempty"`
+	// EffectiveTolerance is the scaleUp or scaleDown tolerance used for this metric.
+	EffectiveTolerance float64 `json:"effectiveTolerance" yaml:"effectiveTolerance"`
 	// Note is a human-readable explanation for this metric's state.
 	Note string `json:"note,omitempty" yaml:"note,omitempty"`
 }
@@ -91,6 +96,13 @@ type ToleranceEffect struct {
 	DefaultTolerance float64 `json:"defaultTolerance" yaml:"defaultTolerance"`
 	// ConfiguredTolerance is the explicitly configured tolerance, if any.
 	ConfiguredTolerance *float64 `json:"configuredTolerance,omitempty" yaml:"configuredTolerance,omitempty"`
+	// ConfiguredScaleUpTolerance and ConfiguredScaleDownTolerance preserve the
+	// directional HPA behavior settings when they differ.
+	ConfiguredScaleUpTolerance   *float64 `json:"configuredScaleUpTolerance,omitempty" yaml:"configuredScaleUpTolerance,omitempty"`
+	ConfiguredScaleDownTolerance *float64 `json:"configuredScaleDownTolerance,omitempty" yaml:"configuredScaleDownTolerance,omitempty"`
+	// ScaleUpTolerance and ScaleDownTolerance are the effective directional values.
+	ScaleUpTolerance   float64 `json:"scaleUpTolerance" yaml:"scaleUpTolerance"`
+	ScaleDownTolerance float64 `json:"scaleDownTolerance" yaml:"scaleDownTolerance"`
 	// SuppressedMetrics lists metric names whose scaling was suppressed by tolerance.
 	SuppressedMetrics []string `json:"suppressedMetrics,omitempty" yaml:"suppressedMetrics,omitempty"`
 	// Note is a human-readable explanation.
@@ -156,6 +168,8 @@ type StructuredMetricTrace struct {
 	DesiredDirection string `json:"desiredDirection" yaml:"desiredDirection"`
 	// WithinTolerance indicates whether the metric is within the tolerance band.
 	WithinTolerance bool `json:"withinTolerance,omitempty" yaml:"withinTolerance,omitempty"`
+	// EffectiveTolerance is the directional tolerance used for this metric.
+	EffectiveTolerance float64 `json:"effectiveTolerance" yaml:"effectiveTolerance"`
 	// EstimatedDesiredReplicas is the raw desired replica count from this metric alone.
 	EstimatedDesiredReplicas *int32 `json:"estimatedDesiredReplicas,omitempty" yaml:"estimatedDesiredReplicas,omitempty"`
 	// Formula describes the computation used to derive the desired count.
@@ -169,9 +183,13 @@ type ToleranceTrace struct {
 	// DefaultTolerance is the Kubernetes default tolerance (0.1).
 	DefaultTolerance float64 `json:"defaultTolerance" yaml:"defaultTolerance"`
 	// ConfiguredTolerance is the explicitly configured tolerance, if any.
-	ConfiguredTolerance *float64 `json:"configuredTolerance,omitempty" yaml:"configuredTolerance,omitempty"`
+	ConfiguredTolerance          *float64 `json:"configuredTolerance,omitempty" yaml:"configuredTolerance,omitempty"`
+	ConfiguredScaleUpTolerance   *float64 `json:"configuredScaleUpTolerance,omitempty" yaml:"configuredScaleUpTolerance,omitempty"`
+	ConfiguredScaleDownTolerance *float64 `json:"configuredScaleDownTolerance,omitempty" yaml:"configuredScaleDownTolerance,omitempty"`
 	// EffectiveTolerance is the tolerance value used for evaluation.
 	EffectiveTolerance float64 `json:"effectiveTolerance" yaml:"effectiveTolerance"`
+	ScaleUpTolerance   float64 `json:"scaleUpTolerance" yaml:"scaleUpTolerance"`
+	ScaleDownTolerance float64 `json:"scaleDownTolerance" yaml:"scaleDownTolerance"`
 	// SuppressedMetrics lists metrics whose scaling was suppressed by tolerance.
 	SuppressedMetrics []string `json:"suppressedMetrics,omitempty" yaml:"suppressedMetrics,omitempty"`
 	// Note is a human-readable explanation.

@@ -2,7 +2,10 @@ package bundle
 
 import (
 	"archive/zip"
+	"io"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -100,4 +103,52 @@ func TestWriteZip_CreateError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for uncreatable output path, got nil")
 	}
+}
+
+func TestWriteZip_PrivatePermissionsAndFinalRedaction(t *testing.T) {
+	t.Parallel()
+	data := fullZipFixture()
+	data.Redacted = true
+	data.StatusReport.Analysis.Warnings = []string{
+		"node: private-worker at 10.20.30.40",
+	}
+	out := filepath.Join(t.TempDir(), "redacted.zip")
+	if err := WriteZip(data, out); err != nil {
+		t.Fatalf("WriteZip: %v", err)
+	}
+	info, err := os.Stat(out)
+	if err != nil {
+		t.Fatalf("stat output: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("output permissions = %o, want 600", got)
+	}
+
+	zr, err := zip.OpenReader(out)
+	if err != nil {
+		t.Fatalf("opening zip: %v", err)
+	}
+	defer func() { _ = zr.Close() }()
+	for _, file := range zr.File {
+		if file.Name != "analysis.json" {
+			continue
+		}
+		r, openErr := file.Open()
+		if openErr != nil {
+			t.Fatalf("open analysis entry: %v", openErr)
+		}
+		content, readErr := io.ReadAll(r)
+		_ = r.Close()
+		if readErr != nil {
+			t.Fatalf("read analysis entry: %v", readErr)
+		}
+		text := string(content)
+		for _, leaked := range []string{"private-worker", "10.20.30.40"} {
+			if strings.Contains(text, leaked) {
+				t.Fatalf("%q leaked in analysis.json: %s", leaked, text)
+			}
+		}
+		return
+	}
+	t.Fatal("analysis.json entry not found")
 }

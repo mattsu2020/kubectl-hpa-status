@@ -1,6 +1,12 @@
 package bundle
 
-import "strings"
+import (
+	"encoding/json"
+	"net"
+	"strings"
+
+	"sigs.k8s.io/yaml"
+)
 
 // RedactBytes applies redaction patterns to a byte slice. It replaces IP
 // addresses, node names, pod UIDs, and other identifying data with generic
@@ -11,11 +17,9 @@ func RedactBytes(data []byte) []byte {
 	}
 	s := string(data)
 
-	// Redact IPv4 addresses.
-	s = redactIPv4(s)
-
-	// Redact IPv6 addresses.
-	s = redactIPv6(s)
+	// Parse complete address-shaped tokens so IPv6 prefixes cannot leak and
+	// invalid dotted versions are not partially mistaken for IPv4 addresses.
+	s = redactIPAddresses(s)
 
 	// Redact node names (heuristic: alphanumeric strings after "node:" or "Node:").
 	s = redactNodeNames(s)
@@ -35,87 +39,123 @@ func RedactString(s string) string {
 	return string(RedactBytes([]byte(s)))
 }
 
-// redactIPv4 replaces IPv4 addresses with redacted placeholders.
-func redactIPv4(s string) string {
-	var result strings.Builder
-	i := 0
-	for i < len(s) {
-		// Try to match an IPv4 address pattern.
-		start := i
-		octets := 0
-		j := i
-		for octets < 4 && j < len(s) {
-			num := 0
-			digits := 0
-			for j < len(s) && s[j] >= '0' && s[j] <= '9' {
-				num = num*10 + int(s[j]-'0')
-				digits++
-				j++
-			}
-			if digits == 0 || num > 255 {
-				break
-			}
-			octets++
-			if octets < 4 {
-				if j >= len(s) || s[j] != '.' {
-					break
-				}
-				j++
-			}
-		}
-		if octets == 4 {
-			result.WriteString("[REDACTED-IP]")
-			i = j
-		} else {
-			result.WriteByte(s[start])
-			i = start + 1
-		}
+// RedactStructuredBytes removes values commonly carrying credentials or
+// environment-specific identifiers from YAML/JSON Kubernetes objects, then
+// applies the textual address/hostname redactor. It intentionally preserves
+// keys and object shape so a support bundle remains useful for diagnosis.
+func RedactStructuredBytes(data []byte) []byte {
+	if len(data) == 0 {
+		return data
 	}
-	return result.String()
+	var value any
+	if err := yaml.Unmarshal(data, &value); err != nil {
+		return RedactBytes(data)
+	}
+	redactStructuredValue(value, "")
+
+	var (
+		out []byte
+		err error
+	)
+	if json.Valid(data) {
+		out, err = json.MarshalIndent(value, "", "  ")
+	} else {
+		out, err = yaml.Marshal(value)
+	}
+	if err != nil {
+		return RedactBytes(data)
+	}
+	return RedactBytes(out)
 }
 
-// redactIPv6 replaces IPv6 addresses with redacted placeholders.
-func redactIPv6(s string) string {
-	var result strings.Builder
-	i := 0
-	for i < len(s) {
-		if s[i] == ':' && i > 0 && i < len(s)-1 && looksLikeIPv6(s, i) {
-			// Find the end of the IPv6 address.
-			j := i + 1
-			for j < len(s) && isIPv6Char(s[j]) {
-				j++
+func redactStructuredValue(value any, parentKey string) {
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, child := range typed {
+			normalized := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(key, "-", ""), "_", ""))
+			if shouldRedactStructuredField(normalized, parentKey) {
+				typed[key] = redactStructuredFieldValue(child)
+				continue
 			}
-			result.WriteString("[REDACTED-IP]")
-			i = j
-		} else {
+			redactStructuredValue(child, normalized)
+		}
+	case []any:
+		for _, child := range typed {
+			redactStructuredValue(child, parentKey)
+		}
+	}
+}
+
+func shouldRedactStructuredField(key, parentKey string) bool {
+	if parentKey == "annotations" || parentKey == "labels" || parentKey == "data" || parentKey == "stringdata" {
+		return true
+	}
+	if key == "data" || key == "stringdata" || key == "authorization" || key == "cookie" {
+		return true
+	}
+	if key == "value" && parentKey == "env" {
+		return true
+	}
+	if key == "name" && (strings.Contains(parentKey, "secret") || strings.Contains(parentKey, "configmap")) {
+		return true
+	}
+	for _, marker := range []string{"password", "passwd", "token", "secret", "apikey", "clientkey", "privatekey", "credential"} {
+		if strings.Contains(key, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func redactStructuredFieldValue(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(typed))
+		for key := range typed {
+			out[key] = "[REDACTED]"
+		}
+		return out
+	case []any:
+		out := make([]any, len(typed))
+		for i := range out {
+			out[i] = "[REDACTED]"
+		}
+		return out
+	default:
+		return "[REDACTED]"
+	}
+}
+
+// redactIPAddresses replaces complete IPv4 and IPv6 tokens. net.ParseIP is
+// deliberately used instead of a permissive regular expression: support
+// bundles often contain versions and quantities that look address-like.
+func redactIPAddresses(s string) string {
+	var result strings.Builder
+	for i := 0; i < len(s); {
+		if !isIPTokenChar(s[i]) {
 			result.WriteByte(s[i])
 			i++
+			continue
 		}
+		j := i
+		for j < len(s) && isIPTokenChar(s[j]) {
+			j++
+		}
+		candidate := s[i:j]
+		if net.ParseIP(candidate) != nil {
+			result.WriteString("[REDACTED-IP]")
+		} else {
+			result.WriteString(candidate)
+		}
+		i = j
 	}
 	return result.String()
 }
 
-// looksLikeIPv6 checks if the position looks like part of an IPv6 address.
-func looksLikeIPv6(s string, pos int) bool {
-	colonCount := 0
-	// Check backwards.
-	for j := pos - 1; j >= 0 && isIPv6Char(s[j]); j-- {
-		if s[j] == ':' {
-			colonCount++
-		}
-	}
-	// Check forwards.
-	for j := pos + 1; j < len(s) && isIPv6Char(s[j]); j++ {
-		if s[j] == ':' {
-			colonCount++
-		}
-	}
-	return colonCount >= 2
-}
-
-// isIPv6Char checks if a character is valid in an IPv6 address.
-func isIPv6Char(c byte) bool {
-	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') || c == ':'
+func isIPTokenChar(c byte) bool {
+	return (c >= '0' && c <= '9') ||
+		(c >= 'a' && c <= 'f') ||
+		(c >= 'A' && c <= 'F') || c == ':' || c == '.'
 }
 
 // redactNodeNames replaces node names after "node:" or "Node:" keywords.
@@ -134,20 +174,29 @@ func redactNodeNames(s string) string {
 
 // replaceAfterKeyword replaces the value after a keyword.
 func replaceAfterKeyword(s, keyword, _ string) string {
-	idx := strings.Index(s, keyword)
-	if idx < 0 {
-		return s
+	var result strings.Builder
+	remaining := s
+	for {
+		idx := strings.Index(remaining, keyword)
+		if idx < 0 {
+			result.WriteString(remaining)
+			return result.String()
+		}
+		start := idx + len(keyword)
+		end := start
+		for end < len(remaining) && remaining[end] != ' ' && remaining[end] != '\n' && remaining[end] != '\r' && remaining[end] != '\t' && remaining[end] != ',' && remaining[end] != '}' && remaining[end] != ']' {
+			end++
+		}
+		result.WriteString(remaining[:start])
+		if end == start {
+			// Empty value: retain the keyword and continue after it to avoid an
+			// infinite loop.
+			remaining = remaining[start:]
+			continue
+		}
+		result.WriteString("[REDACTED-NODE]")
+		remaining = remaining[end:]
 	}
-	// Find the end of the value (next space, newline, or end of string).
-	start := idx + len(keyword)
-	end := start
-	for end < len(s) && s[end] != ' ' && s[end] != '\n' && s[end] != '\r' && s[end] != '\t' && s[end] != ',' && s[end] != '}' && s[end] != ']' {
-		end++
-	}
-	if end == start {
-		return s
-	}
-	return s[:start] + "[REDACTED-NODE]" + s[end:]
 }
 
 // redactUIDs replaces UUID-style UIDs.

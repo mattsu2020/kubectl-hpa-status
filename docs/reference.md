@@ -92,28 +92,12 @@ Key signals to watch for:
 - `ScaleDownStabilized`: Check `spec.behavior.scaleDown.stabilizationWindowSeconds` and the stabilization window.
 - Output appears stale: Compare `status.observedGeneration` with `metadata.generation`.
 
-Help output after installation:
-
-```text
-Inspect HorizontalPodAutoscaler status
-
-Usage:
-  kubectl-hpa-status [flags]
-  kubectl-hpa-status [command]
-
-Available Commands:
-  analyze     Analyze one HPA using visible Kubernetes API signals
-  completion  Generate shell completion
-  doctor      Diagnose HPA scaling failures across metrics, workload, pods, resources, events, and KEDA
-  list        List HPAs and highlight visible issues
-  scan        Scan all namespaces for HPAs with visible problems
-  status      Show concise status for one HPA
-  timeline    Show HPA scaling decisions over time
-  watch       Watch one HPA status
-
-Common flags include -n/--namespace, -A/--all-namespaces, -o/--output,
---events, --explain, --watch, --interval, --timeout, --since, and --until-condition.
-```
+Run `kubectl hpa status --help` after installation for the authoritative command
+list. The daily command surface includes `status`, `list`, `scan`, `doctor`,
+`watch`, `explain`, and `tui`; operational and experimental commands live under
+`alpha`. Common flags include `-n/--namespace`, `-A/--all-namespaces`,
+`-o/--output`, `--explain`, `--watch`, `--interval`, `--timeout`, `--since`, and
+`--until-condition`.
 
 ## Safe Fix Flow
 
@@ -408,9 +392,9 @@ kubectl hpa status scan -A --report html --summary
 Safe suggestions can be exported without directly patching the live cluster:
 
 ```sh
-kubectl hpa status web -n prod --suggest --export-patch yaml
-kubectl hpa status web -n prod --suggest --export-patch kustomize
-kubectl hpa status scan -A --problem --export-patch directory
+kubectl hpa status web -n prod --suggest --export yaml
+kubectl hpa status web -n prod --suggest --export kustomize
+kubectl hpa status scan -A --problem --export directory
 ```
 
 The single-HPA formats print a minimal `autoscaling/v2` HPA patch document or Kustomize/Helm-friendly snippet. The `directory` mode writes one YAML patch per HPA under `hpa-patches/` for PR workflows.
@@ -450,7 +434,7 @@ kubectl hpa status alerts generate --format datadog
 Analyze durable record files for flapping:
 
 ```sh
-kubectl hpa status analyze-record hpa-history.jsonl --detect flapping
+kubectl hpa status alpha analyze-record hpa-history.jsonl --detect flapping
 ```
 
 The record analyzer counts desired replica changes and direction flips, then suggests stabilization/tolerance review when oscillation is detected.
@@ -607,7 +591,9 @@ This project follows a gradual deprecation policy: features are first marked `De
 
 | Feature | Status | Replacement | Removal Target |
 | --- | --- | --- | --- |
-| `analyze` subcommand | Deprecated (still works, prints deprecation notice) | `status NAME --explain` | v2.0 |
+| `analyze` subcommand | Removed in v2.0 | `status NAME --explain` | Complete |
+| `--recommend`, `--export-patch`, `--max-score` | Removed in v2.0 | `--suggest`, `--export`, `--health-score` | Complete |
+| Top-level operational aliases | Removed in v2.0 | `alpha <command>` | Complete |
 
 ### Migration
 
@@ -617,11 +603,9 @@ Replace any `kubectl hpa analyze NAME` invocation with the equivalent status com
 # Before
 kubectl hpa analyze my-hpa
 
-# After (identical output; the deprecation banner goes away)
+# After
 kubectl hpa status my-hpa --explain
 ```
-
-The `analyze` command exists solely for backward compatibility; new scripts and documentation should use `status --explain`.
 
 ## Feature Status
 

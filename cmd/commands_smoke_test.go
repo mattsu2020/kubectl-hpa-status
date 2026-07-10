@@ -38,6 +38,13 @@ func TestNewSupportBundleCommand(t *testing.T) {
 	if c.Args == nil {
 		t.Fatal("Args validator must be set")
 	}
+	redact, err := c.Flags().GetBool("redact")
+	if err != nil {
+		t.Fatalf("read --redact: %v", err)
+	}
+	if !redact {
+		t.Fatal("support bundles must default to redaction")
+	}
 }
 
 func TestNewEnrichmentContextNilOptsSafe(t *testing.T) {

@@ -4,14 +4,41 @@ metadata:
   name: kubectl-hpa-status-readonly
   annotations:
     kubectl-hpa-status.io/profile: minimal
-    kubectl-hpa-status.io/description: "Minimum read-only permissions for status, analyze, list, scan, watch, --explain, and --suggest."
+    kubectl-hpa-status.io/description: "Minimum read-only permissions for HPA-only status, list, scan, and watch."
+rules:
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubectl-hpa-status-diagnostics
+  annotations:
+    kubectl-hpa-status.io/profile: diagnostic
+    kubectl-hpa-status.io/description: "Additional read-only permissions for explain, doctor, capacity, rollout, bundles, KEDA, and VPA enrichment."
 rules:
   - apiGroups: ["autoscaling"]
     resources: ["horizontalpodautoscalers"]
     verbs: ["get", "list", "watch"]
   - apiGroups: [""]
-    resources: ["events"]
+    resources: ["events", "pods", "nodes", "resourcequotas", "limitranges"]
     verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods", "nodes"]
+    verbs: ["get", "list"]
+  - apiGroups: ["keda.sh"]
+    resources: ["scaledobjects", "triggerauthentications", "clustertriggerauthentications"]
+    verbs: ["get", "list"]
+  - apiGroups: ["autoscaling.k8s.io"]
+    resources: ["verticalpodautoscalers"]
+    verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -19,11 +46,8 @@ metadata:
   name: kubectl-hpa-status-apply
   annotations:
     kubectl-hpa-status.io/profile: recommended-for-apply
-    kubectl-hpa-status.io/description: "Recommended permissions when operators use --fix --apply. Patch is only needed for applying suggested HPA spec changes."
+    kubectl-hpa-status.io/description: "Additional mutation permission for explicit --apply workflows. Bind with the minimal or diagnostic role as needed."
 rules:
   - apiGroups: ["autoscaling"]
     resources: ["horizontalpodautoscalers"]
     verbs: ["get", "list", "watch", "patch"]
-  - apiGroups: [""]
-    resources: ["events"]
-    verbs: ["get", "list", "watch"]

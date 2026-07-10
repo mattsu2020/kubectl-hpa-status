@@ -85,7 +85,7 @@ func enrichDecisionTraces(hpa *autoscalingv2.HorizontalPodAutoscaler, report *hp
 }
 
 func enrichEvents(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, eventLimit int) {
-	coreEvents, err := kube.FetchRecentHPAEvents(ctx, client.Interface, hpa.Namespace, hpa.Name, int64(eventLimit))
+	coreEvents, err := kube.FetchRecentHPAEventsForObject(ctx, client.Interface, hpa, int64(eventLimit))
 	if err != nil {
 		report.Events = []hpaanalysis.Event{{Reason: "Error", Message: fmt.Sprintf("failed to list events: %v", err)}}
 		return
@@ -328,7 +328,10 @@ func recordHealthSnapshotAndTrend(_ context.Context, opts *options, hpa *autosca
 	}
 
 	snapshots, loadErr := store.Load(hpa.Namespace, hpa.Name, opts.TrendSince)
-	if loadErr == nil && len(snapshots) > 0 {
+	if loadErr != nil {
+		report.Analysis.Warnings = append(report.Analysis.Warnings, fmt.Sprintf("health trend load warning: %v", loadErr))
+	}
+	if len(snapshots) > 0 {
 		trend := hpaanalysis.AnalyzeHealthTrend(snapshots)
 		report.Analysis.HealthTrend = &trend
 	}

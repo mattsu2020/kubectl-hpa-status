@@ -41,7 +41,11 @@ func (m Model) renderFixView() string {
 
 	// Footer.
 	sb.WriteString("\n")
-	sb.WriteString(dimStyle.Render("Enter=apply  d=dry-run  ↑↓=select  Esc=cancel"))
+	if m.fixState.applyConfirm {
+		sb.WriteString(warnStyle.Render("Press Enter again to APPLY TO THE LIVE CLUSTER"))
+		sb.WriteString("  ")
+	}
+	sb.WriteString(dimStyle.Render("Enter=confirm apply  d=server dry-run  ↑↓=select  Esc=cancel"))
 
 	return sb.String()
 }
@@ -98,6 +102,11 @@ func appendFixPreview(sb *strings.Builder, st *fixState) {
 }
 
 func appendFixApplyStatus(sb *strings.Builder, st *fixState) {
+	if st.applyConfirm {
+		sb.WriteString("\n")
+		sb.WriteString(warnStyle.Render("  WARNING: the next Enter will persist this patch."))
+		sb.WriteString("\n")
+	}
 	if st.applied {
 		sb.WriteString("\n")
 		if st.applyErr != nil {
@@ -108,6 +117,10 @@ func appendFixApplyStatus(sb *strings.Builder, st *fixState) {
 		sb.WriteString("\n")
 	}
 	if st.dryRunResult != "" {
-		sb.WriteString(fmt.Sprintf("\n  Dry-run: %s\n", okStyle.Render(st.dryRunResult)))
+		resultStyle := okStyle
+		if st.applyErr != nil {
+			resultStyle = errorStyle
+		}
+		sb.WriteString(fmt.Sprintf("\n  Dry-run: %s\n", resultStyle.Render(st.dryRunResult)))
 	}
 }

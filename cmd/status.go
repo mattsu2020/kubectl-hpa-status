@@ -70,7 +70,10 @@ func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []st
 // runStatusSingle handles the single-HPA status path, including structured/AI/apply/export output modes.
 func runStatusSingle(ctx context.Context, out io.Writer, opts *options, name string, includeInterpretation bool) error {
 	watchMode := opts.Watch.Watch
-	ec := newEnrichmentContext(ctx, opts)
+	var ec *enrichmentContext
+	if !opts.NoEnrich {
+		ec = newEnrichmentContext(ctx, opts)
+	}
 	report, err := buildStatusReportWithClient(ctx, opts, name, includeInterpretation, ec)
 	if err != nil {
 		writeErrorIfStructured(out, opts.Output, err)
@@ -80,10 +83,16 @@ func runStatusSingle(ctx context.Context, out io.Writer, opts *options, name str
 		if report.Analysis.StructuredDecisionTrace == nil {
 			report.Analysis.StructuredDecisionTrace = hpaanalysis.ExportStructuredDecisionTrace(nil, report.Analysis)
 		}
-		return writeOutput(out, "json", "", report.Analysis.StructuredDecisionTrace, nil)
+		return joinOutputAndExit(
+			writeOutput(out, "json", "", report.Analysis.StructuredDecisionTrace, nil),
+			warningExitCode(report.Analysis.Health, report.Analysis.Name, report.Analysis.Namespace, watchMode),
+		)
 	}
 	if opts.ContextForAI || opts.Ask != "" {
-		return writeAIContext(out, report, opts.Ask)
+		return joinOutputAndExit(
+			writeAIContext(out, report, opts.Ask),
+			warningExitCode(report.Analysis.Health, report.Analysis.Name, report.Analysis.Namespace, watchMode),
+		)
 	}
 	if opts.Apply {
 		applied, err := applySuggestions(ctx, out, opts, name, report.Analysis.Suggestions)
@@ -93,7 +102,10 @@ func runStatusSingle(ctx context.Context, out io.Writer, opts *options, name str
 		report.Analysis.Actions = append(report.Analysis.Actions, applied...)
 	}
 	if opts.Export != "" {
-		return writeGitOpsExport(out, opts.Export, report)
+		return joinOutputAndExit(
+			writeGitOpsExport(out, opts.Export, report),
+			warningExitCode(report.Analysis.Health, report.Analysis.Name, report.Analysis.Namespace, watchMode),
+		)
 	}
 
 	format, templateStr := selectOutputFromOptions(opts)
@@ -112,7 +124,10 @@ func runStatusSingle(ctx context.Context, out io.Writer, opts *options, name str
 // severe per-item outcome (error > warning > ok).
 func runStatusMultiple(ctx context.Context, out io.Writer, opts *options, names []string, includeInterpretation bool) error {
 	watchMode := opts.Watch.Watch
-	ec := newEnrichmentContext(ctx, opts)
+	var ec *enrichmentContext
+	if !opts.NoEnrich {
+		ec = newEnrichmentContext(ctx, opts)
+	}
 	// Create client once for all HPAs to avoid redundant kubeconfig parsing.
 	client, err := newClientOrDefault(opts)
 	if err != nil {
@@ -261,14 +276,19 @@ func emitPerItemErrors(out io.Writer, results []reportResult) {
 	}
 }
 
-// joinExportAndExit returns the export error if non-nil, otherwise the
-// aggregated exit-code error. An export write failure is treated as more
-// severe than a per-item warning.
-func joinExportAndExit(exportErr, exitErr error) error {
-	if exportErr != nil {
-		return exportErr
+// joinOutputAndExit returns the output error if non-nil, otherwise the
+// health-derived exit-code error. A write failure is treated as more severe
+// than a warning result.
+func joinOutputAndExit(outputErr, exitErr error) error {
+	if outputErr != nil {
+		return outputErr
 	}
 	return exitErr
+}
+
+// joinExportAndExit preserves the historical helper name used by batch export.
+func joinExportAndExit(exportErr, exitErr error) error {
+	return joinOutputAndExit(exportErr, exitErr)
 }
 
 // buildReportsConcurrently builds status reports for all named HPAs
@@ -283,7 +303,7 @@ func joinExportAndExit(exportErr, exitErr error) error {
 func buildReportsConcurrently(ctx context.Context, opts *options, client *kube.Client, names []string, includeInterpretation bool, ec *enrichmentContext) []reportResult {
 	results := make([]reportResult, len(names))
 	for i, name := range names {
-		results[i] = reportResult{name: name, namespace: opts.Namespace, err: errPending}
+		results[i] = reportResult{name: name, namespace: client.Namespace, err: errPending}
 	}
 
 	g, gctx := errgroup.WithContext(ctx)

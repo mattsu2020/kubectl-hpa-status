@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
-	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 // Assumption represents a single detected HPA controller assumption with its
@@ -161,15 +160,23 @@ func detectSyncPeriod() Assumption {
 // values on scaleDown or scaleUp behavior, falling back to the Kubernetes
 // default of 0.1 (10%).
 func detectTolerance(hpa *autoscalingv2.HorizontalPodAutoscaler) Assumption {
-	tolerance := extractSpecTolerance(hpa)
-	if tolerance != nil {
+	scaleUp, scaleDown := configuredDirectionalTolerances(hpa)
+	if scaleUp != nil || scaleDown != nil {
+		upValue := defaultTolerance
+		downValue := defaultTolerance
+		if scaleUp != nil {
+			upValue = *scaleUp
+		}
+		if scaleDown != nil {
+			downValue = *scaleDown
+		}
 		return Assumption{
 			Name:        "GlobalTolerance",
-			Value:       tolerance.String(),
+			Value:       fmt.Sprintf("scaleUp=%.3g, scaleDown=%.3g", upValue, downValue),
 			Source:      "hpa.spec",
 			Confidence:  "high",
-			Impact:      "Scaling is suppressed when the metric ratio is within the tolerance band around the target",
-			Description: "The tolerance value defines the band around the target metric within which the HPA will not trigger scaling. Default is 0.1 (10%).",
+			Impact:      "Scaling is suppressed using the tolerance configured for the requested direction",
+			Description: "scaleUp and scaleDown tolerances are evaluated independently; an unset direction uses the Kubernetes default 0.1 (10%).",
 		}
 	}
 
@@ -259,24 +266,6 @@ func detectUpscaleStabilization(hpa *autoscalingv2.HorizontalPodAutoscaler) Assu
 		Impact:      "Scale-up decisions can be delayed by this stabilization window",
 		Description: "The scaleUp stabilizationWindowSeconds prevents repeated scale-up. Default is 0s (immediate).",
 	}
-}
-
-// extractSpecTolerance looks for an explicitly configured tolerance in the HPA
-// behavior spec. It checks scaleDown first, then scaleUp, returning the first
-// non-nil, non-zero tolerance found.
-func extractSpecTolerance(hpa *autoscalingv2.HorizontalPodAutoscaler) *resource.Quantity {
-	if hpa.Spec.Behavior == nil {
-		return nil
-	}
-	if hpa.Spec.Behavior.ScaleDown != nil && hpa.Spec.Behavior.ScaleDown.Tolerance != nil &&
-		!hpa.Spec.Behavior.ScaleDown.Tolerance.IsZero() {
-		return hpa.Spec.Behavior.ScaleDown.Tolerance
-	}
-	if hpa.Spec.Behavior.ScaleUp != nil && hpa.Spec.Behavior.ScaleUp.Tolerance != nil &&
-		!hpa.Spec.Behavior.ScaleUp.Tolerance.IsZero() {
-		return hpa.Spec.Behavior.ScaleUp.Tolerance
-	}
-	return nil
 }
 
 // buildAssumptionsSummary generates a one-line summary describing the overall

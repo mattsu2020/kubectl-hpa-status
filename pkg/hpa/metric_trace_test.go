@@ -319,7 +319,7 @@ func TestBuildMetricDecisionTrace(t *testing.T) {
 			wantNil:            false,
 			wantMetricCount:    2,
 			wantWinner:         "cpu",
-			wantConfidence:     ConfidenceMedium,
+			wantConfidence:     ConfidenceLow,
 			wantSuppressedDown: true,
 			wantWithinTolIdx:   -1,
 		},
@@ -444,6 +444,70 @@ func TestBuildMetricDecisionTrace(t *testing.T) {
 				t.Error("expected non-empty summary")
 			}
 		})
+	}
+}
+
+func TestMetricWinnerUsesMaximumEstimatedDesiredNotAbsoluteDistance(t *testing.T) {
+	hpa := &autoscalingv2.HorizontalPodAutoscaler{
+		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+			MinReplicas: int32Ptr(1),
+			MaxReplicas: 30,
+			Metrics: []autoscalingv2.MetricSpec{
+				{Type: autoscalingv2.ResourceMetricSourceType, Resource: &autoscalingv2.ResourceMetricSource{Name: corev1.ResourceCPU, Target: autoscalingv2.MetricTarget{Type: autoscalingv2.UtilizationMetricType, AverageUtilization: int32Ptr(100)}}},
+				{Type: autoscalingv2.ResourceMetricSourceType, Resource: &autoscalingv2.ResourceMetricSource{Name: corev1.ResourceMemory, Target: autoscalingv2.MetricTarget{Type: autoscalingv2.UtilizationMetricType, AverageUtilization: int32Ptr(100)}}},
+			},
+		},
+		Status: autoscalingv2.HorizontalPodAutoscalerStatus{
+			CurrentReplicas: 10,
+			DesiredReplicas: 15,
+			CurrentMetrics: []autoscalingv2.MetricStatus{
+				{Type: autoscalingv2.ResourceMetricSourceType, Resource: &autoscalingv2.ResourceMetricStatus{Name: corev1.ResourceCPU, Current: autoscalingv2.MetricValueStatus{AverageUtilization: int32Ptr(10)}}},
+				{Type: autoscalingv2.ResourceMetricSourceType, Resource: &autoscalingv2.ResourceMetricStatus{Name: corev1.ResourceMemory, Current: autoscalingv2.MetricValueStatus{AverageUtilization: int32Ptr(150)}}},
+			},
+		},
+	}
+
+	trace := BuildMetricDecisionTrace(hpa, 1)
+	if trace.Winner != "memory" {
+		t.Fatalf("winner = %q, want memory (15 replicas beats cpu's 1 despite smaller target distance)", trace.Winner)
+	}
+	if trace.Metrics[0].EstimatedDesiredReplicas == nil || *trace.Metrics[0].EstimatedDesiredReplicas != 1 {
+		t.Fatalf("cpu estimated desired = %v, want 1", trace.Metrics[0].EstimatedDesiredReplicas)
+	}
+	if trace.Metrics[1].EstimatedDesiredReplicas == nil || *trace.Metrics[1].EstimatedDesiredReplicas != 15 {
+		t.Fatalf("memory estimated desired = %v, want 15", trace.Metrics[1].EstimatedDesiredReplicas)
+	}
+}
+
+func TestMetricTraceUsesDirectionalConfiguredTolerance(t *testing.T) {
+	up := resource.MustParse("0.05")
+	down := resource.MustParse("0.20")
+	hpa := &autoscalingv2.HorizontalPodAutoscaler{
+		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+			MinReplicas: int32Ptr(1), MaxReplicas: 20,
+			Behavior: &autoscalingv2.HorizontalPodAutoscalerBehavior{
+				ScaleUp: &autoscalingv2.HPAScalingRules{Tolerance: &up}, ScaleDown: &autoscalingv2.HPAScalingRules{Tolerance: &down},
+			},
+			Metrics: []autoscalingv2.MetricSpec{
+				{Type: autoscalingv2.ResourceMetricSourceType, Resource: &autoscalingv2.ResourceMetricSource{Name: corev1.ResourceCPU, Target: autoscalingv2.MetricTarget{Type: autoscalingv2.UtilizationMetricType, AverageUtilization: int32Ptr(100)}}},
+				{Type: autoscalingv2.ResourceMetricSourceType, Resource: &autoscalingv2.ResourceMetricSource{Name: corev1.ResourceMemory, Target: autoscalingv2.MetricTarget{Type: autoscalingv2.UtilizationMetricType, AverageUtilization: int32Ptr(100)}}},
+			},
+		},
+		Status: autoscalingv2.HorizontalPodAutoscalerStatus{CurrentReplicas: 10, DesiredReplicas: 11, CurrentMetrics: []autoscalingv2.MetricStatus{
+			{Type: autoscalingv2.ResourceMetricSourceType, Resource: &autoscalingv2.ResourceMetricStatus{Name: corev1.ResourceCPU, Current: autoscalingv2.MetricValueStatus{AverageUtilization: int32Ptr(108)}}},
+			{Type: autoscalingv2.ResourceMetricSourceType, Resource: &autoscalingv2.ResourceMetricStatus{Name: corev1.ResourceMemory, Current: autoscalingv2.MetricValueStatus{AverageUtilization: int32Ptr(85)}}},
+		}},
+	}
+
+	trace := BuildMetricDecisionTrace(hpa, 1)
+	if trace.Metrics[0].WithinTolerance || trace.Metrics[0].DesiredDirection != "up" {
+		t.Fatalf("scale-up metric should be outside 0.05 tolerance: %+v", trace.Metrics[0])
+	}
+	if !trace.Metrics[1].WithinTolerance || trace.Metrics[1].DesiredDirection != "none" {
+		t.Fatalf("scale-down metric should be inside 0.20 tolerance: %+v", trace.Metrics[1])
+	}
+	if trace.ToleranceEffect == nil || trace.ToleranceEffect.ScaleUpTolerance != 0.05 || trace.ToleranceEffect.ScaleDownTolerance != 0.20 {
+		t.Fatalf("unexpected tolerance effect: %+v", trace.ToleranceEffect)
 	}
 }
 

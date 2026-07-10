@@ -6,8 +6,11 @@ type List struct {
 	Filter         string
 	HealthScoreMin int
 	HealthScoreMax int
-	Problem        bool
-	Summary        bool
-	GitOpsDrift    bool
-	Conflicts      bool
+	// HealthScoreMaxConfigured distinguishes an explicit --health-score=0
+	// from the zero value of programmatically constructed options.
+	HealthScoreMaxConfigured bool
+	Problem                  bool
+	Summary                  bool
+	GitOpsDrift              bool
+	Conflicts                bool
 }

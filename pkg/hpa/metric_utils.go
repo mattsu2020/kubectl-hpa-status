@@ -122,36 +122,33 @@ func MetricOutsideTarget(hpa *autoscalingv2.HorizontalPodAutoscaler) (MetricImpa
 	return MetricImpactGuess{}, false
 }
 
-// MostInfluentialMetric estimates which metric has the largest scaling impact
-// across all metric types: Resource, ContainerResource, External, Pods, and Object.
+// MostInfluentialMetric estimates the metric that would request the largest
+// desired replica count across Resource, ContainerResource, External, Pods,
+// and Object metrics. Kubernetes selects the maximum recommendation rather
+// than the metric with the largest absolute distance from target.
 func MostInfluentialMetric(hpa *autoscalingv2.HorizontalPodAutoscaler) (MetricImpactGuess, bool) {
 	if hpa == nil {
 		return MetricImpactGuess{}, false
 	}
 	var best MetricImpactGuess
-	var bestScore float64
+	var bestDesired int32
+	found := false
+	hasDeviation := false
 
 	for _, metric := range hpa.Status.CurrentMetrics {
 		name, ratio := metricImpactRatio(hpa, metric)
 		if ratio == nil {
 			continue
 		}
-		distance := *ratio - 1
-		if distance < 0 {
-			distance = -distance
+		if *ratio != 1 {
+			hasDeviation = true
 		}
-
-		// Score by estimated replica impact: ratio distance * currentReplicas gives
-		// a rough estimate of how many replicas this metric would want.
-		// Higher impact = more likely to be the winner.
-		replicaImpact := distance * float64(hpa.Status.CurrentReplicas)
-
-		if replicaImpact > bestScore {
-			bestScore = replicaImpact
-			note := "largest visible ratio distance from target"
-			if hpa.Status.CurrentReplicas > 0 {
-				note = fmt.Sprintf("estimated replica impact %.1f (ratio distance %.3f x %d current replicas)", replicaImpact, distance, hpa.Status.CurrentReplicas)
-			}
+		desired := estimatedDesiredForRatio(hpa, *ratio)
+		if !found || desired > bestDesired {
+			bestDesired = desired
+			found = true
+			note := fmt.Sprintf("largest estimated desired replica count %d (ceil of %d current replicas x %.3f ratio, subject to directional tolerance)",
+				desired, hpa.Status.CurrentReplicas, *ratio)
 			best = MetricImpactGuess{
 				Name:  name,
 				Ratio: *ratio,
@@ -160,7 +157,7 @@ func MostInfluentialMetric(hpa *autoscalingv2.HorizontalPodAutoscaler) (MetricIm
 		}
 	}
 
-	return best, bestScore > 0
+	return best, found && hasDeviation
 }
 
 func prioritizedConditions(conditions []autoscalingv2.HorizontalPodAutoscalerCondition) []autoscalingv2.HorizontalPodAutoscalerCondition {

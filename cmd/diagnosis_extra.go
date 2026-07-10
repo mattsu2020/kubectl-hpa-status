@@ -367,8 +367,14 @@ func buildCapacityHeadroom(ctx context.Context, client *kube.Client, hpa *autosc
 		Risk:                       "cluster schedulable headroom could not be confirmed from visible API data",
 	}
 	nodeCap, nodeErr := kube.FetchNodeCapacity(ctx, client.Interface)
-	usedCPU, usedMem := sumScheduledPodRequests(ctx, client)
-	if nodeErr == nil && nodeCap != nil {
+	usedCPU, usedMem, podErr := sumScheduledPodRequests(ctx, client)
+	if nodeErr != nil {
+		headroom.Evidence = append(headroom.Evidence, fmt.Sprintf("node capacity unavailable: %v", nodeErr))
+	}
+	if podErr != nil {
+		headroom.Evidence = append(headroom.Evidence, fmt.Sprintf("scheduled pod requests unavailable: %v", podErr))
+	}
+	if nodeErr == nil && podErr == nil && nodeCap != nil {
 		cpuRemaining := nodeCap.AllocCPU.DeepCopy()
 		cpuRemaining.Sub(usedCPU)
 		memRemaining := nodeCap.AllocMemory.DeepCopy()
@@ -409,26 +415,33 @@ func sumPodTemplateRequests(tmpl *corev1.PodTemplateSpec) (resource.Quantity, re
 	return cpu, mem
 }
 
-func sumScheduledPodRequests(ctx context.Context, client *kube.Client) (resource.Quantity, resource.Quantity) {
+func sumScheduledPodRequests(ctx context.Context, client *kube.Client) (resource.Quantity, resource.Quantity, error) {
 	var cpu, mem resource.Quantity
-	pods, err := client.Interface.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return cpu, mem
-	}
-	for _, pod := range pods.Items {
-		if pod.Spec.NodeName == "" || pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
-			continue
+	listOptions := metav1.ListOptions{Limit: 500}
+	for {
+		pods, err := client.Interface.CoreV1().Pods("").List(ctx, listOptions)
+		if err != nil {
+			return cpu, mem, fmt.Errorf("list cluster pods: %w", err)
 		}
-		for _, container := range pod.Spec.Containers {
-			if q, ok := container.Resources.Requests[corev1.ResourceCPU]; ok {
-				cpu.Add(q)
+		for _, pod := range pods.Items {
+			if pod.Spec.NodeName == "" || pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
+				continue
 			}
-			if q, ok := container.Resources.Requests[corev1.ResourceMemory]; ok {
-				mem.Add(q)
+			for _, container := range pod.Spec.Containers {
+				if q, ok := container.Resources.Requests[corev1.ResourceCPU]; ok {
+					cpu.Add(q)
+				}
+				if q, ok := container.Resources.Requests[corev1.ResourceMemory]; ok {
+					mem.Add(q)
+				}
 			}
 		}
+		if pods.Continue == "" {
+			break
+		}
+		listOptions.Continue = pods.Continue
 	}
-	return cpu, mem
+	return cpu, mem, nil
 }
 
 func multiplyQuantity(q resource.Quantity, factor int32) resource.Quantity {

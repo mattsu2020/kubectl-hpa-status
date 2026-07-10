@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"bytes"
+	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -9,14 +11,20 @@ import (
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	k8stesting "k8s.io/client-go/testing"
 )
 
 func TestPrintBatchSummary(t *testing.T) {
 	t.Run("counts distinct HPAs across multiple patches", func(t *testing.T) {
 		entries := []batchEntry{
-			{Namespace: "default", Name: "web", Suggestion: hpaanalysis.Suggestion{Title: "raise-max", Risk: "low"}},
-			{Namespace: "default", Name: "web", Suggestion: hpaanalysis.Suggestion{Title: "add-behavior", Risk: "low"}},
-			{Namespace: "prod", Name: "api", Suggestion: hpaanalysis.Suggestion{Title: "raise-max", Risk: "medium"}},
+			{Namespace: "default", Name: "web", Suggestions: []hpaanalysis.Suggestion{
+				{Title: "raise-max", Risk: "low"},
+				{Title: "add-behavior", Risk: "low"},
+			}},
+			{Namespace: "prod", Name: "api", Suggestions: []hpaanalysis.Suggestion{
+				{Title: "raise-max", Risk: "medium"},
+			}},
 		}
 		var buf bytes.Buffer
 		if err := printBatchSummary(&buf, entries); err != nil {
@@ -70,13 +78,18 @@ func TestCollectBatchEntries_FiltersBySelectedAndApplyPatch(t *testing.T) {
 		if len(entries) == 0 {
 			t.Skip("no applyable suggestion surfaced for this fixture; adjust the builder")
 		}
-		// Every entry must reference the selected HPA.
+		// The selected HPA must produce one grouped entry.
+		if len(entries) != 1 {
+			t.Fatalf("expected one HPA-level entry, got %d", len(entries))
+		}
 		for _, e := range entries {
 			if e.Namespace != "default" || e.Name != "web" {
 				t.Fatalf("entry referenced unexpected HPA: %s/%s", e.Namespace, e.Name)
 			}
-			if !e.Suggestion.Apply || e.Suggestion.Patch == "" {
-				t.Fatalf("entry Suggestion must be applyable with a patch: %+v", e.Suggestion)
+			for _, suggestion := range e.Suggestions {
+				if !suggestion.Apply || suggestion.Patch == "" {
+					t.Fatalf("entry suggestion must be applyable with a patch: %+v", suggestion)
+				}
 			}
 		}
 	})
@@ -114,5 +127,93 @@ func setScalingLimited(hpa *autoscalingv2.HorizontalPodAutoscaler) {
 			Type:   autoscalingv2.ScalingLimited,
 			Status: corev1.ConditionTrue,
 		},
+	}
+}
+
+func TestExecuteBatchPatchesGroupsSuggestionsPerHPA(t *testing.T) {
+	hpa := testutil.BuildHPA("default", "web")
+	fakeClient := testutil.NewFakeClient(hpa)
+	opts := &options{
+		Common: commonOptions{
+			ClientOverride: fakeClient,
+			DryRun:         false,
+			Yes:            true,
+		},
+	}
+	entries := []batchEntry{{
+		Namespace: "default",
+		Name:      "web",
+		Suggestions: []hpaanalysis.Suggestion{
+			{Title: "raise-min", Apply: true, Patch: `{"spec":{"minReplicas":2}}`},
+			{Title: "raise-max", Apply: true, Patch: `{"spec":{"maxReplicas":20}}`},
+		},
+	}}
+
+	var out bytes.Buffer
+	if err := executeBatchPatches(context.Background(), &out, opts, entries); err != nil {
+		t.Fatalf("executeBatchPatches: %v\n%s", err, out.String())
+	}
+
+	livePatches := 0
+	for _, action := range fakeClient.Actions() {
+		patchAction, ok := action.(k8stesting.PatchActionImpl)
+		if !ok || patchAction.GetName() != "web" {
+			continue
+		}
+		if len(patchAction.GetPatchOptions().DryRun) == 0 {
+			livePatches++
+			patch := string(patchAction.GetPatch())
+			if !strings.Contains(patch, "minReplicas") || !strings.Contains(patch, "maxReplicas") {
+				t.Fatalf("live patch was not merged: %s", patch)
+			}
+		}
+	}
+	if livePatches != 1 {
+		t.Fatalf("live patch calls = %d, want one atomic HPA patch; actions=%+v", livePatches, fakeClient.Actions())
+	}
+}
+
+func TestExecuteBatchPatchesReturnsAggregateFailure(t *testing.T) {
+	good := testutil.BuildHPA("default", "good")
+	bad := testutil.BuildHPA("default", "bad")
+	fakeClient := testutil.NewFakeClient(good, bad)
+	fakeClient.PrependReactor("patch", "horizontalpodautoscalers", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		if action.(k8stesting.PatchAction).GetName() == "bad" {
+			return true, nil, fmt.Errorf("injected patch failure")
+		}
+		return false, nil, nil
+	})
+
+	opts := &options{
+		Common: commonOptions{
+			ClientOverride: fakeClient,
+			DryRun:         true,
+			Yes:            true,
+		},
+	}
+	entries := []batchEntry{
+		{
+			Namespace: "default",
+			Name:      "good",
+			Suggestions: []hpaanalysis.Suggestion{
+				{Title: "raise-max", Apply: true, Patch: `{"spec":{"maxReplicas":20}}`},
+			},
+		},
+		{
+			Namespace: "default",
+			Name:      "bad",
+			Suggestions: []hpaanalysis.Suggestion{
+				{Title: "raise-max", Apply: true, Patch: `{"spec":{"maxReplicas":20}}`},
+			},
+		},
+	}
+
+	var out bytes.Buffer
+	err := executeBatchPatches(context.Background(), &out, opts, entries)
+	if err == nil || !strings.Contains(err.Error(), "1 of 2 HPA") {
+		t.Fatalf("aggregate error = %v, want one failed target", err)
+	}
+	if !strings.Contains(out.String(), "1 succeeded, 1 failed") {
+		t.Fatalf("missing aggregate summary:\n%s", out.String())
 	}
 }

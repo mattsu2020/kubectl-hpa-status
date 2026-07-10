@@ -91,8 +91,8 @@ user-visible behavior change.
 - **Preflight and impact commands:** `preflight`, `behavior`, and `estimate` cover capacity validation, behavior visualization, and rough cost impact.
 - **Metrics adapter probe:** `metrics probe` combines freshness, contract, adapter diagnostics, and metric hints for custom/external metrics.
 - **CI/report outputs:** `lint -o github` emits GitHub Actions annotations and `scan --summary --report markdown|html` produces cluster summary reports.
-- **GitOps and policy workflows:** `--export-patch`, `recommend --policy`, and `compare -A --only-drift` support PR-based operations and environment drift review.
-- **Operationalization:** `alerts generate` creates starter monitoring rules and `analyze-record --detect flapping` turns durable records into churn insights.
+- **GitOps and policy workflows:** `--export`, `recommend --policy`, and `compare -A --only-drift` support PR-based operations and environment drift review.
+- **Operationalization:** `alerts generate` creates starter monitoring rules and `alpha analyze-record --detect flapping` turns durable records into churn insights.
 - **Explainability and TUI safety:** `--format structured`, `explain`, score breakdowns, hidden decision factors, and in-TUI two-step batch apply preview improve operator confidence.
 - **Trend and tuning workflows:** `history`, `tune`, `slo`, Prometheus query links, and carbon-aware `estimate` connect HPA behavior to incidents, SLOs, cost, and sustainability.
 - **CI/CD and GitOps reporting:** `scan/list --report junit|sarif`, `list --gitops-drift`, `export --prometheus`, and local AI context packs make HPA health easier to automate and share.

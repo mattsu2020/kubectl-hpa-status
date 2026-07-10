@@ -2,9 +2,8 @@ package kube
 
 import (
 	"context"
-	"fmt"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -25,15 +24,18 @@ func FetchContainerStatuses(ctx context.Context, client kubernetes.Interface, na
 		return nil, nil
 	}
 
-	pods, err := client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: selector,
-	})
+	pods, err := FetchPodObjectsForSelector(ctx, client, namespace, selector)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list pods for container status: %w", err)
+		return nil, err
 	}
+	return ContainerStatusesFromPods(pods), nil
+}
 
+// ContainerStatusesFromPods extracts container state from an already-fetched
+// pod set.
+func ContainerStatusesFromPods(pods []corev1.Pod) []ContainerStatusDetail {
 	var result []ContainerStatusDetail
-	for _, pod := range pods.Items {
+	for _, pod := range pods {
 		for _, cs := range pod.Status.ContainerStatuses {
 			detail := ContainerStatusDetail{
 				Pod:          pod.Name,
@@ -47,5 +49,5 @@ func FetchContainerStatuses(ctx context.Context, client kubernetes.Interface, na
 			result = append(result, detail)
 		}
 	}
-	return result, nil
+	return result
 }

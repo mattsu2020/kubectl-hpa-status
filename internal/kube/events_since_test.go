@@ -6,9 +6,11 @@ import (
 	"time"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 func TestFetchRecentHPAEventsSince_TimeFiltering(t *testing.T) {
@@ -58,6 +60,29 @@ func TestFetchRecentHPAEventsSince_TimeFiltering(t *testing.T) {
 	}
 	if result[1].Message != "New size: 7" {
 		t.Errorf("expected second event 'New size: 7', got %q", result[1].Message)
+	}
+}
+
+func TestFetchRecentHPAEventsForObjectFiltersKindUIDBeforeLimit(t *testing.T) {
+	now := time.Now()
+	uid := types.UID("current-hpa-uid")
+	hpa := &autoscalingv2.HorizontalPodAutoscaler{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "web", UID: uid},
+	}
+	objects := []runtime.Object{
+		&corev1.Event{ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "old"}, InvolvedObject: corev1.ObjectReference{Kind: "HorizontalPodAutoscaler", Name: "web", UID: uid}, Message: "old", LastTimestamp: metav1.NewTime(now.Add(-time.Hour))},
+		&corev1.Event{ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "new"}, InvolvedObject: corev1.ObjectReference{Kind: "HorizontalPodAutoscaler", Name: "web", UID: uid}, Message: "new", LastTimestamp: metav1.NewTime(now)},
+		&corev1.Event{ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "wrong-kind"}, InvolvedObject: corev1.ObjectReference{Kind: "Deployment", Name: "web", UID: uid}, Message: "wrong kind", LastTimestamp: metav1.NewTime(now.Add(time.Minute))},
+		&corev1.Event{ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "wrong-uid"}, InvolvedObject: corev1.ObjectReference{Kind: "HorizontalPodAutoscaler", Name: "web", UID: types.UID("old-hpa-uid")}, Message: "wrong uid", LastTimestamp: metav1.NewTime(now.Add(2 * time.Minute))},
+	}
+	client := testutil.NewFakeClientWithObjects(objects...)
+
+	result, err := FetchRecentHPAEventsForObject(context.Background(), client, hpa, 1)
+	if err != nil {
+		t.Fatalf("FetchRecentHPAEventsForObject: %v", err)
+	}
+	if len(result) != 1 || result[0].Message != "new" {
+		t.Fatalf("kind/UID filtering and post-sort limit failed: %+v", result)
 	}
 }
 

@@ -19,6 +19,7 @@ func AnalyzeAutoscalerMap(input AutoscalerMapInput) *AutoscalerMap {
 		Blockers:        []AutoscalerMapBlocker{},
 		NextActions:     []string{},
 		NextChecks:      []string{},
+		Warnings:        []string{},
 	}
 
 	// Layer 1: HPA.
@@ -112,6 +113,16 @@ func buildPodsLayer(input AutoscalerMapInput, am *AutoscalerMap) AutoscalerMapLa
 
 // buildNodesLayer constructs the nodes layer, including capacity details, tainted-node hints, and a blocker when no nodes are found.
 func buildNodesLayer(input AutoscalerMapInput, am *AutoscalerMap) AutoscalerMapLayer {
+	if input.NodeFetchError != "" {
+		am.Warnings = append(am.Warnings, "node capacity unavailable: "+input.NodeFetchError)
+		return AutoscalerMapLayer{
+			Name:     "nodes",
+			Resource: "unknown",
+			Status:   "node data unavailable",
+			Details:  []string{input.NodeFetchError},
+			Healthy:  false,
+		}
+	}
 	nodesHealthy := input.NodeSummary.TotalNodes > 0
 	nodeLayer := AutoscalerMapLayer{
 		Name:     "nodes",

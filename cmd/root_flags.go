@@ -43,6 +43,20 @@ func registerCommonFlags(cmd *cobra.Command, opts *options) {
 	cmd.PersistentFlags().DurationVar(&opts.TrendRetain, "trend-retain", 72*time.Hour, "retention period for health history (default: 72h)")
 
 	cmd.PersistentFlags().StringArrayVar(&opts.HealthWeightOverrides, "health-weight", nil, "override a health score penalty, for example scalingInactive=50; repeatable")
+	cmd.PersistentFlags().StringVar(&opts.KEDA, "keda", opts.KEDA, "KEDA ScaledObject enrichment: auto (enable when CRD present), on (force), off (disable)")
+	cmd.PersistentFlags().StringVar(&opts.VPA, "vpa", opts.VPA, "VPA conflict detection: auto (enable when CRD present), on (force), off (disable)")
+	cmd.PersistentFlags().StringVar(&opts.PolicyGuard, "policy-guard", "", "path to a policy file used to guard --apply patches")
+	cmd.PersistentFlags().StringVar(&opts.PolicyGuardMode, "policy-guard-mode", opts.PolicyGuardMode, "policy guard mode for --apply: block or warn")
+	cmd.PersistentFlags().StringVar(&opts.Report, "report", "", "generate standalone report: markdown, html, incident, junit, or sarif")
+
+	// Preserve the historical boolean-style shorthand while keeping the values
+	// tri-state: --keda/--vpa means on, and =auto|off stays available.
+	if keda := cmd.PersistentFlags().Lookup("keda"); keda != nil {
+		keda.NoOptDefVal = "on"
+	}
+	if vpa := cmd.PersistentFlags().Lookup("vpa"); vpa != nil {
+		vpa.NoOptDefVal = "on"
+	}
 }
 
 // registerStatusFlags registers flags specific to the status / analyze command.
@@ -54,10 +68,8 @@ func registerStatusFlags(cmd *cobra.Command, opts *options) {
 	cmd.Flags().BoolVar(&opts.Fix, "fix", false, "show stronger fix plan with patch commands")
 	cmd.Flags().BoolVar(&opts.NoInterpret, "no-interpret", false, "omit interpretation and show raw status-derived data")
 	cmd.Flags().Var(&opts.Events, "events", "show recent HPA events: true, false, or a number")
-	cmd.Flags().StringVar(&opts.KEDA, "keda", "auto", "KEDA ScaledObject enrichment: auto (enable when CRD present), on (force), off (disable)")
 	cmd.Flags().BoolVar(&opts.DiagnoseMetrics, "diagnose-metrics", false, "run comprehensive metrics pipeline health checks")
 	cmd.Flags().BoolVar(&opts.MetricsFreshness, "metrics-freshness", false, "analyze per-metric data freshness, source, and staleness risk")
-	cmd.Flags().StringVar(&opts.VPA, "vpa", "auto", "VPA conflict detection: auto (enable when CRD present), on (force), off (disable)")
 	cmd.Flags().BoolVar(&opts.CheckResources, "check-resources", false, "check HPA target utilization against pod resource requests")
 	cmd.Flags().BoolVar(&opts.ExplainPods, "explain-pods", false, "analyze scale target pods for readiness, resource requests, and metric coverage")
 	cmd.Flags().StringArrayVar(&opts.Simulate, "simulate", nil, "simulate HPA spec changes (e.g. maxReplicas=20); repeatable")
@@ -86,7 +98,6 @@ func registerStatusFlags(cmd *cobra.Command, opts *options) {
 	cmd.Flags().BoolVar(&opts.CapacityDeep, "capacity-deep", false, "deep capacity analysis for scale-out blockers including node capacity and container failures")
 	cmd.Flags().BoolVar(&opts.CapacityPlan, "capacity-plan", false, "run capacity plan analysis when HPA is at maxReplicas")
 	cmd.Flags().Int32Var(&opts.TargetMax, "target-max", 0, "target maxReplicas for capacity plan (default: 2x current max, capped at 200)")
-	cmd.Flags().StringVar(&opts.Report, "report", "", "generate standalone report: markdown, html, incident, junit, or sarif")
 	cmd.Flags().BoolVar(&opts.GitOpsCheck, "gitops-check", false, "detect GitOps manifest conflicts with HPA-managed replicas")
 	cmd.Flags().StringVar(&opts.ManifestPath, "manifest", "", "path to manifest file or directory for GitOps conflict detection")
 	cmd.Flags().BoolVar(&opts.MetricContract, "metric-contract", false, "verify HPA metric references are queryable from metrics APIs")
@@ -98,8 +109,6 @@ func registerStatusFlags(cmd *cobra.Command, opts *options) {
 	cmd.Flags().BoolVar(&opts.FlappingAdvisor, "flapping-advisor", false, "recommend stabilization window changes to reduce replica flapping")
 	cmd.Flags().BoolVar(&opts.TrendAnomaly, "trend-anomaly", false, "detect anomalies in health score history (enabled by default with --trend)")
 	cmd.Flags().StringVar(&opts.IncidentTemplate, "incident-template", "", "path to a custom incident report template file")
-	cmd.Flags().StringVar(&opts.PolicyGuard, "policy-guard", "", "path to a policy file used to guard --apply patches")
-	cmd.Flags().StringVar(&opts.PolicyGuardMode, "policy-guard-mode", "block", "policy guard mode for --apply: block or warn")
 	cmd.Flags().BoolVar(&opts.AdapterDiagnostics, "adapter-diagnostics", false, "diagnose custom/external metrics adapter signals")
 }
 

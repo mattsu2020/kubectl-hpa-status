@@ -14,11 +14,14 @@ type Status struct {
 	Format                string
 	Ask                   string
 	Events                EventOption
-	Report                string
-	ManifestPath          string
-	DecisionTraceFormat   string
-	IncidentTemplate      string
-	PolicyGuard           string
-	PolicyGuardMode       string
-	AnalysisProfile       AnalysisProfile
+	// EventsConfigured distinguishes the HPA-only default from an explicit
+	// events: false setting in config/CLI. It is runtime metadata, not a flag.
+	EventsConfigured    bool
+	Report              string
+	ManifestPath        string
+	DecisionTraceFormat string
+	IncidentTemplate    string
+	PolicyGuard         string
+	PolicyGuardMode     string
+	AnalysisProfile     AnalysisProfile
 }

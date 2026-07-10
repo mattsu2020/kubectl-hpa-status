@@ -19,8 +19,11 @@ import (
 // normalizes user input before comparison.
 var (
 	validColorValues  = []string{"auto", "always", "never"}
-	validOutputValues = []string{"table", "wide", "json", "jsonl", "yaml", "jsonpath", "template", "gotemplate"}
-	validLangValues   = []string{"en", "ja"}
+	validOutputValues = []string{
+		"table", "wide", "json", "jsonl", "yaml", "jsonpath", "template", "gotemplate",
+		"markdown", "md", "html", "incident", "prometheus", "junit", "sarif", "github",
+	}
+	validLangValues = []string{"en", "ja"}
 
 	// outputFlagDisplayValues mirrors validOutputValues but keeps the
 	// kubectl-conventional "go-template" spelling for the --help string.
@@ -94,6 +97,12 @@ func validateConfig(cfg configFile) error {
 	if cfg.ChunkSize != nil && *cfg.ChunkSize < 0 {
 		return fmt.Errorf("config chunkSize must be >= 0, got %d", *cfg.ChunkSize)
 	}
+	if cfg.Events != nil && *cfg.Events < 1 {
+		return fmt.Errorf("config events must be greater than zero, got %d", *cfg.Events)
+	}
+	if cfg.AllNamespaces != nil && *cfg.AllNamespaces && cfg.Namespace != "" {
+		return fmt.Errorf("config namespace and allNamespaces=true cannot be used together")
+	}
 
 	if err := validateScoreField("minScore", cfg.MinScore); err != nil {
 		return err
@@ -104,6 +113,13 @@ func validateConfig(cfg configFile) error {
 	if err := validateScoreField("healthScore", cfg.HealthScore); err != nil {
 		return err
 	}
+	effectiveMaxScore := cfg.HealthScore
+	if effectiveMaxScore == nil {
+		effectiveMaxScore = cfg.MaxScore
+	}
+	if cfg.MinScore != nil && effectiveMaxScore != nil && *cfg.MinScore > *effectiveMaxScore {
+		return fmt.Errorf("config minScore cannot be greater than healthScore/maxScore")
+	}
 
 	if !isAcceptedNormalized(strings.ToLower(cfg.Color), validColorValues) {
 		return fmt.Errorf("config color must be one of %s; got %q", strings.Join(validColorValues, ", "), cfg.Color)
@@ -111,14 +127,87 @@ func validateConfig(cfg configFile) error {
 
 	// normalizeSelector collapses "go-template" into "gotemplate", so validate
 	// against the canonical "gotemplate" spelling used in validOutputValues.
-	if !isAcceptedNormalized(normalizeSelector(cfg.Output), validOutputValues) {
+	if !isAcceptedConfigOutput(cfg.Output, cfg.Templates) {
 		return fmt.Errorf("config output must be one of %s; got %q", strings.Join(validOutputValues, ", "), cfg.Output)
 	}
 
 	if !isAcceptedNormalized(strings.ToLower(cfg.Lang), validLangValues) {
 		return fmt.Errorf("config lang must be one of %s; got %q", strings.Join(validLangValues, ", "), cfg.Lang)
 	}
+	if err := validateMode("config filter", normalizeSelector(cfg.Filter), "", "all", "ok", "error", "limited", "scalinglimited", "issue"); err != nil {
+		return err
+	}
+	if err := validateMode("config sortBy", normalizeSelector(cfg.SortBy), "", "namespace", "name", "current", "currentreplicas", "desired", "desiredreplicas", "diff", "replicadiff", "difference", "age", "creationtimestamp", "health", "healthscore", "score", "problem", "issue", "min", "minreplicas", "max", "maxreplicas", "target"); err != nil {
+		return err
+	}
 
+	if cfg.Keda != nil {
+		if err := validateConfigEnrichmentMode("keda", *cfg.Keda); err != nil {
+			return err
+		}
+	}
+	if cfg.Vpa != nil {
+		if err := validateConfigEnrichmentMode("vpa", *cfg.Vpa); err != nil {
+			return err
+		}
+	}
+	if err := validateConfigTemplates(cfg.Templates); err != nil {
+		return err
+	}
+	if err := validateConfigHealthWeights(cfg.HealthWeights); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func isAcceptedConfigOutput(value string, templates map[string]outputTemplateConfig) bool {
+	if value == "" || isAcceptedNormalized(normalizeSelector(value), validOutputValues) {
+		return true
+	}
+	if _, ok := templates[value]; ok {
+		return true
+	}
+	if name, _, ok := parsePrefixedFormat(value); ok {
+		_, exists := templates[name]
+		return exists
+	}
+	return false
+}
+
+func validateConfigEnrichmentMode(field, value string) error {
+	normalized := normalizeEnrichmentMode(value)
+	switch normalized {
+	case "", "auto", "on", "off":
+		return nil
+	default:
+		return fmt.Errorf("config %s must be one of auto, on, off; got %q", field, value)
+	}
+}
+
+func validateConfigTemplates(templates map[string]outputTemplateConfig) error {
+	for name, templateCfg := range templates {
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("config template name must not be empty")
+		}
+		if strings.TrimSpace(templateCfg.Template) == "" {
+			return fmt.Errorf("config template %q must provide a non-empty template", name)
+		}
+		switch normalizeSelector(templateCfg.Type) {
+		case "", "jsonpath", "template", "gotemplate":
+		default:
+			return fmt.Errorf("config template %q type must be jsonpath or go-template; got %q", name, templateCfg.Type)
+		}
+	}
+	return nil
+}
+
+func validateConfigHealthWeights(weights hpaanalysis.HealthWeights) error {
+	opts := &options{}
+	opts.HealthWeights = weights
+	if err := validateConfiguredHealthWeights(opts); err != nil {
+		return fmt.Errorf("config %w", err)
+	}
 	return nil
 }
 
@@ -141,13 +230,37 @@ func loadConfigFile(path string) (configFile, error) {
 		return configFile{}, err
 	}
 	var cfg configFile
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	if err := yaml.UnmarshalStrict(data, &cfg); err != nil {
 		return configFile{}, err
 	}
 	if err := validateConfig(cfg); err != nil {
 		return configFile{}, err
 	}
+	cfg.Output = canonicalConfigOutput(cfg.Output)
+	cfg.Color = strings.ToLower(strings.TrimSpace(cfg.Color))
+	cfg.Lang = strings.ToLower(strings.TrimSpace(cfg.Lang))
+	if cfg.Keda != nil {
+		normalized := normalizeEnrichmentMode(*cfg.Keda)
+		cfg.Keda = &normalized
+	}
+	if cfg.Vpa != nil {
+		normalized := normalizeEnrichmentMode(*cfg.Vpa)
+		cfg.Vpa = &normalized
+	}
 	return cfg, nil
+}
+
+func canonicalConfigOutput(value string) string {
+	switch normalizeSelector(value) {
+	case "gotemplate":
+		return "go-template"
+	case "table", "wide", "json", "jsonl", "yaml", "jsonpath", "template",
+		"markdown", "md", "html", "incident", "prometheus", "junit", "sarif", "github":
+		return strings.ToLower(strings.TrimSpace(value))
+	default:
+		// Named templates are case-sensitive map keys and must be preserved.
+		return value
+	}
 }
 
 // applyConfigDefaults resolves the config file path, loads the config, and

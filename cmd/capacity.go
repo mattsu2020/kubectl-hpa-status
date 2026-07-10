@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
@@ -15,19 +16,35 @@ import (
 func buildCapacityContext(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpaanalysis.CapacityContext {
 	result := &hpaanalysis.CapacityContext{}
 
-	selector := capacitySelector(ctx, client, hpa)
+	selector, err := capacitySelectorWithError(ctx, client, hpa)
+	if err != nil {
+		result.Warnings = append(result.Warnings, fmt.Sprintf("scale target selector unavailable: %v", err))
+		return result
+	}
 	if selector == "" {
 		return result
 	}
 
-	pendingDetails, _ := kube.FetchPendingPodDetails(ctx, client.Interface, hpa.Namespace, selector)
-	result.PendingPods = convertPendingPodInfos(pendingDetails)
+	pendingDetails, pendingErr := kube.FetchPendingPodDetails(ctx, client.Interface, hpa.Namespace, selector)
+	if pendingErr != nil {
+		result.Warnings = append(result.Warnings, fmt.Sprintf("pending pods unavailable: %v", pendingErr))
+	} else {
+		result.PendingPods = convertPendingPodInfos(pendingDetails)
+	}
 
-	quotaInfos, _ := kube.FetchResourceQuotas(ctx, client.Interface, hpa.Namespace)
-	result.QuotaConstraints = convertQuotas(quotaInfos)
+	quotaInfos, quotaErr := kube.FetchResourceQuotas(ctx, client.Interface, hpa.Namespace)
+	if quotaErr != nil {
+		result.Warnings = append(result.Warnings, fmt.Sprintf("resource quotas unavailable: %v", quotaErr))
+	} else {
+		result.QuotaConstraints = convertQuotas(quotaInfos)
+	}
 
-	pdbInfos, _ := kube.FetchPodDisruptionBudgets(ctx, client.Interface, hpa.Namespace, hpa.UID)
-	result.PDBInterference = convertPDBs(pdbInfos)
+	pdbInfos, pdbErr := kube.FetchPodDisruptionBudgets(ctx, client.Interface, hpa.Namespace, hpa.UID)
+	if pdbErr != nil {
+		result.Warnings = append(result.Warnings, fmt.Sprintf("pod disruption budgets unavailable: %v", pdbErr))
+	} else {
+		result.PDBInterference = convertPDBs(pdbInfos)
+	}
 
 	result.NodeHints = kube.GenerateNodeHints(pendingDetails, quotaInfos)
 
@@ -36,12 +53,17 @@ func buildCapacityContext(ctx context.Context, client *kube.Client, hpa *autosca
 
 // capacitySelector resolves the label selector for the HPA scale target.
 func capacitySelector(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) string {
+	selector, _ := capacitySelectorWithError(ctx, client, hpa)
+	return selector
+}
+
+func capacitySelectorWithError(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) (string, error) {
 	selector, err := scaleTargetSelector(ctx, client, hpa.Namespace, hpa.Spec.ScaleTargetRef)
 	if err != nil || selector == nil {
-		return ""
+		return "", err
 	}
 
-	return metav1.FormatLabelSelector(selector)
+	return metav1.FormatLabelSelector(selector), nil
 }
 
 // scaleTargetSelector resolves the label selector of the HPA's scale target.

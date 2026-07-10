@@ -275,6 +275,30 @@ func TestHTML_RejectsUnknownType(t *testing.T) {
 	}
 }
 
+func TestHTML_MultipleReportsProduceSingleDocument(t *testing.T) {
+	t.Parallel()
+	reports := []hpaanalysis.StatusReport{
+		{Analysis: hpaanalysis.Analysis{Name: "one", Namespace: "default"}},
+		{Analysis: hpaanalysis.Analysis{Name: "two", Namespace: "default"}},
+	}
+	var buf bytes.Buffer
+	if err := HTML(&buf, reports); err != nil {
+		t.Fatalf("HTML: %v", err)
+	}
+	output := buf.String()
+	if got := strings.Count(output, "<!DOCTYPE html>"); got != 1 {
+		t.Fatalf("doctype count = %d, want 1", got)
+	}
+	if got := strings.Count(output, "</html>"); got != 1 {
+		t.Fatalf("closing html count = %d, want 1", got)
+	}
+	for _, name := range []string{"one", "two"} {
+		if !strings.Contains(output, "HPA Status Report: "+name) {
+			t.Errorf("missing report %q in output", name)
+		}
+	}
+}
+
 func TestIncident_RejectsUnknownType(t *testing.T) {
 	var buf bytes.Buffer
 	if err := Incident(&buf, 42); err == nil {

@@ -30,6 +30,3 @@ docs/**           linguist-documentation
 *.cast            linguist-generated
 images/**         linguist-generated
 CHANGELOG.md      linguist-generated=true
-
-# Make sure GitHub diffs show these as renamed rather than fully rewritten.
-*.go -diff=astextplain

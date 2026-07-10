@@ -5,7 +5,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"os"
+	"io"
+	"strings"
 	"time"
 )
 
@@ -17,34 +18,39 @@ type bundleZipEntry struct {
 
 // WriteZip writes all collected data into a zip archive.
 func WriteZip(data *Data, outputPath string) error {
-	file, err := os.Create(outputPath)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = file.Close() }()
-
-	zw := zip.NewWriter(file)
-	defer func() { _ = zw.Close() }()
-
 	entries, err := buildBundleZipEntries(data)
 	if err != nil {
 		return err
 	}
-
-	for _, entry := range entries {
-		if len(entry.Content) == 0 {
-			continue
+	return WritePrivateFileAtomic(outputPath, func(w io.Writer) error {
+		zw := zip.NewWriter(w)
+		for _, entry := range entries {
+			if len(entry.Content) == 0 {
+				continue
+			}
+			content := entry.Content
+			if data.Redacted {
+				if strings.HasSuffix(entry.Name, ".json") || strings.HasSuffix(entry.Name, ".yaml") {
+					content = RedactStructuredBytes(content)
+				} else {
+					content = RedactBytes(content)
+				}
+			}
+			entryWriter, createErr := zw.Create(entry.Name)
+			if createErr != nil {
+				_ = zw.Close()
+				return fmt.Errorf("creating zip entry %s: %w", entry.Name, createErr)
+			}
+			if _, writeErr := entryWriter.Write(content); writeErr != nil {
+				_ = zw.Close()
+				return fmt.Errorf("writing zip entry %s: %w", entry.Name, writeErr)
+			}
 		}
-		w, err := zw.Create(entry.Name)
-		if err != nil {
-			return fmt.Errorf("creating zip entry %s: %w", entry.Name, err)
+		if closeErr := zw.Close(); closeErr != nil {
+			return fmt.Errorf("finalizing zip archive: %w", closeErr)
 		}
-		if _, err := w.Write(entry.Content); err != nil {
-			return fmt.Errorf("writing zip entry %s: %w", entry.Name, err)
-		}
-	}
-
-	return nil
+		return nil
+	})
 }
 
 func buildBundleZipEntries(data *Data) ([]bundleZipEntry, error) {
@@ -64,21 +70,33 @@ func buildBundleZipEntries(data *Data) ([]bundleZipEntry, error) {
 		{"metrics-api.txt", data.MetricsAPI},
 	}
 
-	appendJSONEntry(&entries, "analysis.json", data.StatusReport.Analysis)
+	if err := appendJSONEntry(&entries, "analysis.json", data.StatusReport.Analysis); err != nil {
+		return nil, err
+	}
 	if len(data.ContainerStatuses) > 0 {
-		appendJSONEntry(&entries, "container-statuses.json", data.ContainerStatuses)
+		if err := appendJSONEntry(&entries, "container-statuses.json", data.ContainerStatuses); err != nil {
+			return nil, err
+		}
 	}
 	if len(data.ResourceQuotas) > 0 {
-		appendJSONEntry(&entries, "resourcequotas.json", data.ResourceQuotas)
+		if err := appendJSONEntry(&entries, "resourcequotas.json", data.ResourceQuotas); err != nil {
+			return nil, err
+		}
 	}
 	if len(data.LimitRanges) > 0 {
-		appendJSONEntry(&entries, "limitranges.json", data.LimitRanges)
+		if err := appendJSONEntry(&entries, "limitranges.json", data.LimitRanges); err != nil {
+			return nil, err
+		}
 	}
 	if len(data.PDBs) > 0 {
-		appendJSONEntry(&entries, "pdbs.json", data.PDBs)
+		if err := appendJSONEntry(&entries, "pdbs.json", data.PDBs); err != nil {
+			return nil, err
+		}
 	}
 	if data.NodeCapacity != nil {
-		appendJSONEntry(&entries, "node-capacity.json", data.NodeCapacity)
+		if err := appendJSONEntry(&entries, "node-capacity.json", data.NodeCapacity); err != nil {
+			return nil, err
+		}
 	}
 
 	// Metadata.
@@ -95,10 +113,11 @@ func buildBundleZipEntries(data *Data) ([]bundleZipEntry, error) {
 
 // appendJSONEntry marshals value as pretty JSON and appends it under name when
 // marshalling succeeds.
-func appendJSONEntry(entries *[]bundleZipEntry, name string, value any) {
+func appendJSONEntry(entries *[]bundleZipEntry, name string, value any) error {
 	payload, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
-		return
+		return fmt.Errorf("marshal zip entry %s: %w", name, err)
 	}
 	*entries = append(*entries, bundleZipEntry{Name: name, Content: payload})
+	return nil
 }

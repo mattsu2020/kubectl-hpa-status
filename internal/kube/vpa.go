@@ -193,11 +193,44 @@ func FindConflictingVPA(ctx context.Context, dynClient dynamic.Interface, namesp
 			if info.UpdateMode == "Off" {
 				continue
 			}
+			if !vpaControlsHPAResource(hpa, info.ControlledResources) {
+				continue
+			}
 			return &info, nil
 		}
 	}
 
 	return nil, nil
+}
+
+func vpaControlsHPAResource(hpa *autoscalingv2.HorizontalPodAutoscaler, controlledResources []string) bool {
+	controlled := make(map[string]struct{}, len(controlledResources))
+	if len(controlledResources) == 0 {
+		// VPA defaults controlledResources to cpu and memory when omitted.
+		controlled["cpu"] = struct{}{}
+		controlled["memory"] = struct{}{}
+	} else {
+		for _, name := range controlledResources {
+			controlled[strings.ToLower(name)] = struct{}{}
+		}
+	}
+	for _, metric := range hpa.Spec.Metrics {
+		name := ""
+		switch metric.Type {
+		case autoscalingv2.ResourceMetricSourceType:
+			if metric.Resource != nil {
+				name = string(metric.Resource.Name)
+			}
+		case autoscalingv2.ContainerResourceMetricSourceType:
+			if metric.ContainerResource != nil {
+				name = string(metric.ContainerResource.Name)
+			}
+		}
+		if _, ok := controlled[strings.ToLower(name)]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 // hasResourceMetrics returns true when the HPA uses CPU or memory resource metrics.

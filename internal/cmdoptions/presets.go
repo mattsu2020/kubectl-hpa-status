@@ -242,6 +242,9 @@ func ApplyCommandPreset(root Root, preset CommandPreset, extra ...CommandPresetO
 
 func applyPresetDoctor(local *Root, _ CommandPresetOptions) {
 	applyDoctorFeatures(&local.Features)
+	local.Events = EventOption{Enabled: true, Limit: 5}
+	local.KEDA = "auto"
+	local.VPA = "auto"
 }
 
 func applyPresetExplain(local *Root, opts CommandPresetOptions) {

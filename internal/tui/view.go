@@ -101,7 +101,7 @@ func (m Model) renderHelpView() string {
 		{"Tab", "Move to the next simulation field"},
 		{"Shift+Tab", "Move to the previous simulation field"},
 		{"f", "Open the fix wizard when suggestions are available"},
-		{"d", "Preview the selected fix without applying it"},
+		{"d", "Validate the selected fix with Kubernetes server-side dry-run"},
 		{"T", "Open replay timeline from hpa-trace.json"},
 		{"H", "Open history and sparkline view"},
 		{"h", "Open metric hints troubleshooting when hints are available"},
@@ -112,7 +112,7 @@ func (m Model) renderHelpView() string {
 		{"a", "Select all visible HPAs"},
 		{"A", "Clear the selection"},
 		{"B", "Run the batch auditor on selected HPAs"},
-		{"x", "Show batch apply guidance for selected HPAs"},
+		{"x", "Preview and explicitly confirm batch apply for selected HPAs"},
 	})
 
 	sb.WriteString(headerStyle.Render(" Export workflow "))
@@ -180,7 +180,11 @@ func (m Model) renderListView() string {
 		for _, line := range m.batchApplyPreview {
 			sb.WriteString(fmt.Sprintf("  - %s\n", line))
 		}
-		sb.WriteString(dimStyle.Render("Press x again to apply, Esc to cancel."))
+		if m.opts.ApplyFn == nil {
+			sb.WriteString(dimStyle.Render("Live apply is disabled; restart with --apply --dry-run=false to enable it. Esc=cancel."))
+		} else {
+			sb.WriteString(dimStyle.Render("Press x again to apply, Esc to cancel."))
+		}
 		sb.WriteString("\n\n")
 	}
 

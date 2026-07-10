@@ -3,6 +3,7 @@ package cmd
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -56,16 +57,27 @@ func applySuggestionsInNamespace(ctx context.Context, out io.Writer, opts *optio
 		return []string{"No applicable HPA patch was allowed by policy guard."}, nil
 	}
 
+	mergedPatch, mergeErr := mergeSuggestionPatches(patches)
+	if mergeErr == nil {
+		if err := guardMergedPatch(out, opts, current, mergedPatch); err != nil {
+			return nil, err
+		}
+	}
+
 	if err := printProposedPatches(out, current, patches); err != nil {
 		return nil, err
 	}
 
 	// Phase 1: Pre-validate all patches with server-side dry-run before
 	// asking for confirmation or applying anything.
-	if err := preValidatePatches(ctx, client, namespace, name, patches); err != nil {
+	if err := preValidatePatches(ctx, client, namespace, name, patches, mergedPatch, mergeErr); err != nil {
 		return nil, err
 	}
-	if _, err := fmt.Fprintf(out, "All %d patch(es) passed server-side dry-run validation.\n", len(patches)); err != nil {
+	validationMessage := fmt.Sprintf("All %d patch(es) passed server-side dry-run validation.", len(patches))
+	if mergeErr == nil {
+		validationMessage = fmt.Sprintf("All %d patch(es) and their combined final state passed server-side dry-run validation.", len(patches))
+	}
+	if _, err := fmt.Fprintln(out, validationMessage); err != nil {
 		return nil, err
 	}
 
@@ -83,7 +95,7 @@ func applySuggestionsInNamespace(ctx context.Context, out io.Writer, opts *optio
 		}
 	}
 
-	return executePatches(ctx, out, client, namespace, name, patches, opts.AllowPartial)
+	return executePatches(ctx, out, client, namespace, name, patches, opts.AllowPartial, current.ResourceVersion)
 }
 
 func guardPatches(out io.Writer, opts *options, current *autoscalingv2.HorizontalPodAutoscaler, patches []hpaanalysis.Suggestion) ([]hpaanalysis.Suggestion, error) {
@@ -110,6 +122,62 @@ func guardPatches(out io.Writer, opts *options, current *autoscalingv2.Horizonta
 	return result.Allowed, nil
 }
 
+// guardMergedPatch evaluates the complete state produced by all allowed
+// suggestions. Evaluating suggestions independently is insufficient because
+// two individually valid changes can violate a policy only when combined.
+func guardMergedPatch(out io.Writer, opts *options, current *autoscalingv2.HorizontalPodAutoscaler, mergedPatch string) error {
+	if opts.PolicyGuard == "" {
+		return nil
+	}
+	policyFile, err := hpapolicy.LoadPolicyFile(opts.PolicyGuard)
+	if err != nil {
+		return err
+	}
+	report, err := hpapolicy.EvaluateMergePatch(current, mergedPatch, policyFile)
+	if err != nil {
+		return err
+	}
+
+	combined := hpaanalysis.Suggestion{
+		Title: "Combined final HPA state",
+		Patch: mergedPatch,
+		Apply: true,
+	}
+	result := &hpaanalysis.GuardResult{Allowed: []hpaanalysis.Suggestion{combined}}
+	for _, violation := range report.Violations {
+		switch violation.Severity {
+		case "critical":
+			result.Blocked = append(result.Blocked, hpaanalysis.GuardBlocked{
+				Suggestion: combined,
+				Reason:     violation.Description,
+				PolicyRule: violation.RuleID,
+			})
+		case "warning":
+			result.Warnings = append(result.Warnings, hpaanalysis.GuardWarning{
+				Suggestion: combined,
+				Reason:     violation.Description,
+				PolicyRule: violation.RuleID,
+			})
+		}
+	}
+	if len(result.Blocked) > 0 || len(result.Warnings) > 0 {
+		if err := hpaanalysis.WritePolicyGuardText(out, result); err != nil {
+			return err
+		}
+	}
+
+	switch opts.PolicyGuardMode {
+	case "", "block":
+		if len(result.Blocked) > 0 {
+			return fmt.Errorf("policy guard blocked the combined final HPA state: %w", ErrPolicyGuardBlocked)
+		}
+	case "warn":
+	default:
+		return fmt.Errorf("invalid --policy-guard-mode %q; use block or warn", opts.PolicyGuardMode)
+	}
+	return nil
+}
+
 func collectApplicablePatches(suggestions []hpaanalysis.Suggestion) []hpaanalysis.Suggestion {
 	var patches []hpaanalysis.Suggestion
 	for _, suggestion := range suggestions {
@@ -129,13 +197,20 @@ func printProposedPatches(out io.Writer, current *autoscalingv2.HorizontalPodAut
 	return nil
 }
 
-func preValidatePatches(ctx context.Context, client *kube.Client, namespace, name string, patches []hpaanalysis.Suggestion) error {
+func preValidatePatches(ctx context.Context, client *kube.Client, namespace, name string, patches []hpaanalysis.Suggestion, mergedPatch string, mergeErr error) error {
 	dryRunOpts := metav1.PatchOptions{DryRun: []string{metav1.DryRunAll}}
 	for _, suggestion := range patches {
 		if _, err := client.Interface.AutoscalingV2().
 			HorizontalPodAutoscalers(namespace).
 			Patch(ctx, name, types.MergePatchType, []byte(suggestion.Patch), dryRunOpts); err != nil {
 			return fmt.Errorf("pre-validation failed for patch %q: %w", suggestion.Title, err)
+		}
+	}
+	if mergeErr == nil && len(patches) > 1 {
+		if _, err := client.Interface.AutoscalingV2().
+			HorizontalPodAutoscalers(namespace).
+			Patch(ctx, name, types.MergePatchType, []byte(mergedPatch), dryRunOpts); err != nil {
+			return fmt.Errorf("combined final patch failed server-side dry-run validation: %w", err)
 		}
 	}
 	return nil
@@ -147,6 +222,14 @@ func dryRunResults(patches []hpaanalysis.Suggestion) []string {
 		results[i] = fmt.Sprintf("Dry-run validated: %s", suggestion.Title)
 	}
 	return results
+}
+
+func mergeSuggestionPatches(patches []hpaanalysis.Suggestion) (string, error) {
+	patchItems := make([]patch.Patch, len(patches))
+	for i, suggestion := range patches {
+		patchItems[i] = patch.Patch{Title: suggestion.Title, JSON: suggestion.Patch}
+	}
+	return patch.MergePatches(patchItems)
 }
 
 func confirmApply(out io.Writer, opts *options, count int, namespace, name string) error {
@@ -181,13 +264,23 @@ func confirmApply(out io.Writer, opts *options, count int, namespace, name strin
 	return nil
 }
 
-func executePatches(ctx context.Context, out io.Writer, client *kube.Client, namespace, name string, patches []hpaanalysis.Suggestion, allowPartial bool) ([]string, error) {
-	patchItems := make([]patch.Patch, len(patches))
-	for i, s := range patches {
-		patchItems[i] = patch.Patch{Title: s.Title, JSON: s.Patch}
+func executePatches(ctx context.Context, out io.Writer, client *kube.Client, namespace, name string, patches []hpaanalysis.Suggestion, allowPartial bool, expectedResourceVersion string) ([]string, error) {
+	current, err := client.Interface.AutoscalingV2().
+		HorizontalPodAutoscalers(namespace).
+		Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, wrapHPALookupError(namespace, name, err)
 	}
-	merged, mergeErr := patch.MergePatches(patchItems)
+	if current.ResourceVersion != expectedResourceVersion {
+		return nil, fmt.Errorf("HPA %s/%s changed after it was reviewed (resourceVersion %q -> %q); no changes were applied, review the updated HPA and retry", namespace, name, expectedResourceVersion, current.ResourceVersion)
+	}
+
+	merged, mergeErr := mergeSuggestionPatches(patches)
 	if mergeErr == nil {
+		merged, err = mergePatchWithResourceVersion(merged, expectedResourceVersion)
+		if err != nil {
+			return nil, fmt.Errorf("adding resourceVersion precondition: %w", err)
+		}
 		// Validate the merged patch with a server-side dry-run before applying,
 		// so an invalid merge is rejected without touching the HPA.
 		if _, err := client.Interface.AutoscalingV2().
@@ -196,7 +289,7 @@ func executePatches(ctx context.Context, out io.Writer, client *kube.Client, nam
 			return nil, fmt.Errorf("merged patch failed server-side dry-run validation: %w", err)
 		}
 		// Single merged patch — atomic application.
-		_, err := client.Interface.AutoscalingV2().
+		_, err = client.Interface.AutoscalingV2().
 			HorizontalPodAutoscalers(namespace).
 			Patch(ctx, name, types.MergePatchType, []byte(merged), metav1.PatchOptions{})
 		if err != nil {
@@ -220,14 +313,44 @@ func executePatches(ctx context.Context, out io.Writer, client *kube.Client, nam
 	_, _ = fmt.Fprintf(out, "WARNING: if a later patch fails, the HPA %s/%s will be left partially modified — inspect it with `kubectl describe hpa %s -n %s` and reconcile manually.\n", namespace, name, name, namespace)
 
 	var applied []string
+	resourceVersion := expectedResourceVersion
 	for _, suggestion := range patches {
-		_, err := client.Interface.AutoscalingV2().
+		patchJSON, err := mergePatchWithResourceVersion(suggestion.Patch, resourceVersion)
+		if err != nil {
+			return applied, fmt.Errorf("adding resourceVersion precondition to %q: %w", suggestion.Title, err)
+		}
+		updated, err := client.Interface.AutoscalingV2().
 			HorizontalPodAutoscalers(namespace).
-			Patch(ctx, name, types.MergePatchType, []byte(suggestion.Patch), metav1.PatchOptions{})
+			Patch(ctx, name, types.MergePatchType, []byte(patchJSON), metav1.PatchOptions{})
 		if err != nil {
 			return applied, fmt.Errorf("partial apply: %d/%d succeeded, then failed on %q: %w (HPA %s/%s is partially modified; re-run apply or reconcile manually with `kubectl describe hpa %s -n %s`)", len(applied), len(patches), suggestion.Title, err, namespace, name, name, namespace)
 		}
+		resourceVersion = updated.ResourceVersion
 		applied = append(applied, fmt.Sprintf("Applied: %s", suggestion.Title))
 	}
 	return applied, nil
+}
+
+// mergePatchWithResourceVersion adds a Kubernetes optimistic-concurrency
+// precondition without discarding any metadata fields already in the patch.
+// An empty resourceVersion is omitted for fake/embedded clients that do not
+// model Kubernetes object versions.
+func mergePatchWithResourceVersion(mergePatch, resourceVersion string) (string, error) {
+	var patchMap map[string]any
+	if err := json.Unmarshal([]byte(mergePatch), &patchMap); err != nil {
+		return "", err
+	}
+	metadata, ok := patchMap["metadata"].(map[string]any)
+	if !ok {
+		metadata = map[string]any{}
+		patchMap["metadata"] = metadata
+	}
+	if resourceVersion != "" {
+		metadata["resourceVersion"] = resourceVersion
+	}
+	encoded, err := json.Marshal(patchMap)
+	if err != nil {
+		return "", err
+	}
+	return string(encoded), nil
 }

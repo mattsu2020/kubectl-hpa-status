@@ -7,9 +7,11 @@ import (
 	"strings"
 	"time"
 
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -27,10 +29,10 @@ type EventInfo struct {
 
 // FetchRecentEventsForObjects fetches recent namespace events whose involved
 // object name is in objectNames. Each name is queried with an
-// involvedObject.name field selector plus a Limit so the API server filters
-// server-side; busy namespaces are never listed in full. objectNames is small
-// in practice (the HPA plus its workload chain), so per-name queries stay
-// cheaper than one unbounded namespace-wide list.
+// involvedObject.name field selector and paginates the filtered result so the
+// API server filters server-side without truncating a newer event that happens
+// to be on a later page. objectNames is small in practice (the HPA plus its
+// workload chain), so per-name queries stay cheaper than one namespace-wide list.
 func FetchRecentEventsForObjects(ctx context.Context, client kubernetes.Interface, namespace string, objectNames []string, limit int) []EventInfo {
 	if len(objectNames) == 0 || limit <= 0 {
 		return nil
@@ -51,10 +53,8 @@ func FetchRecentEventsForObjects(ctx context.Context, client kubernetes.Interfac
 
 	var result []EventInfo
 	for _, name := range names {
-		events, err := client.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{
-			FieldSelector: fields.OneTermEqualSelector("involvedObject.name", name).String(),
-			Limit:         eventsSinceFetchLimit,
-		})
+		events, err := listCoreEventsBySelector(ctx, client, namespace,
+			fields.OneTermEqualSelector("involvedObject.name", name).String())
 		if err != nil {
 			// Best-effort: an Events List failure (RBAC denial on events, API
 			// server hiccup) is indistinguishable from "no events" to the
@@ -62,7 +62,7 @@ func FetchRecentEventsForObjects(ctx context.Context, client kubernetes.Interfac
 			// section rather than failing the whole command.
 			continue
 		}
-		for _, event := range events.Items {
+		for _, event := range events {
 			// Re-check the name client-side: the fake clientset used in tests
 			// ignores field selectors and returns every event in the namespace.
 			if event.InvolvedObject.Name != name {
@@ -88,8 +88,17 @@ func coreEventTimestamp(event corev1.Event) time.Time {
 	if !event.LastTimestamp.IsZero() {
 		return event.LastTimestamp.Time
 	}
+	if event.Series != nil && !event.Series.LastObservedTime.IsZero() {
+		return event.Series.LastObservedTime.Time
+	}
 	if !event.EventTime.IsZero() {
 		return event.EventTime.Time
+	}
+	if !event.FirstTimestamp.IsZero() {
+		return event.FirstTimestamp.Time
+	}
+	if !event.CreationTimestamp.IsZero() {
+		return event.CreationTimestamp.Time
 	}
 	return time.Time{}
 }
@@ -99,26 +108,79 @@ func coreEventTimestamp(event corev1.Event) time.Time {
 // (most recent first). Callers (typically in cmd/) convert to pkg/hpa.Event
 // via hpaanalysis.EventFromCore.
 func FetchRecentHPAEvents(ctx context.Context, client kubernetes.Interface, namespace, name string, limit int64) ([]corev1.Event, error) {
-	selector := fields.OneTermEqualSelector("involvedObject.name", name)
-	events, err := client.CoreV1().
-		Events(namespace).
-		List(ctx, metav1.ListOptions{
-			FieldSelector: selector.String(),
-			Limit:         limit,
-		})
+	return fetchRecentHPAEvents(ctx, client, namespace, name, "", limit)
+}
+
+// FetchRecentHPAEventsForObject fetches events for one concrete HPA identity.
+// Including kind and UID prevents events from an older HPA incarnation or a
+// different object with the same name from being mixed into the report.
+func FetchRecentHPAEventsForObject(ctx context.Context, client kubernetes.Interface, hpa *autoscalingv2.HorizontalPodAutoscaler, limit int64) ([]corev1.Event, error) {
+	if hpa == nil {
+		return nil, fmt.Errorf("fetch HPA events: HPA is nil")
+	}
+	return fetchRecentHPAEvents(ctx, client, hpa.Namespace, hpa.Name, hpa.UID, limit)
+}
+
+func fetchRecentHPAEvents(ctx context.Context, client kubernetes.Interface, namespace, name string, uid types.UID, limit int64) ([]corev1.Event, error) {
+	if limit <= 0 {
+		return nil, nil
+	}
+	selectors := []fields.Selector{
+		fields.OneTermEqualSelector("involvedObject.name", name),
+		fields.OneTermEqualSelector("involvedObject.kind", "HorizontalPodAutoscaler"),
+	}
+	if uid != "" {
+		selectors = append(selectors, fields.OneTermEqualSelector("involvedObject.uid", string(uid)))
+	}
+	selector := fields.AndSelectors(selectors...)
+	events, err := listCoreEventsBySelector(ctx, client, namespace, selector.String())
 	if err != nil {
 		return nil, fmt.Errorf("list HPA events: %w", err)
 	}
 
-	sort.Slice(events.Items, func(i, j int) bool {
-		return events.Items[i].LastTimestamp.After(events.Items[j].LastTimestamp.Time)
+	filtered := events[:0]
+	for i := range events {
+		event := events[i]
+		if event.InvolvedObject.Name != name || !strings.EqualFold(event.InvolvedObject.Kind, "HorizontalPodAutoscaler") {
+			continue
+		}
+		if uid != "" && event.InvolvedObject.UID != uid {
+			continue
+		}
+		filtered = append(filtered, event)
+	}
+	sort.SliceStable(filtered, func(i, j int) bool {
+		return coreEventTimestamp(filtered[i]).After(coreEventTimestamp(filtered[j]))
 	})
 
-	outLimit := len(events.Items)
+	outLimit := len(filtered)
 	if int64(outLimit) > limit {
 		outLimit = int(limit)
 	}
-	return events.Items[:outLimit], nil
+	return filtered[:outLimit], nil
+}
+
+func listCoreEventsBySelector(ctx context.Context, client kubernetes.Interface, namespace, selector string) ([]corev1.Event, error) {
+	var result []corev1.Event
+	continueToken := ""
+	for {
+		page, err := client.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{
+			FieldSelector: selector,
+			Limit:         eventsSinceFetchLimit,
+			Continue:      continueToken,
+		})
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, page.Items...)
+		if page.Continue == "" {
+			return result, nil
+		}
+		if page.Continue == continueToken {
+			return nil, fmt.Errorf("events pagination returned repeated continue token %q", continueToken)
+		}
+		continueToken = page.Continue
+	}
 }
 
 // FetchRecentHPAEventsSince fetches Kubernetes events for the specified HPA

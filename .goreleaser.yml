@@ -80,7 +80,7 @@ release:
     kubectl plugin list
     ```
 
-brews:
+homebrew_casks:
   - name: kubectl-hpa-status
     repository:
       owner: mattsu2020
@@ -89,10 +89,6 @@ brews:
     homepage: https://github.com/mattsu2020/kubectl-hpa-status
     description: kubectl plugin for HPA status, scaling analysis, and suggested fixes
     license: Apache-2.0
-    install: |
-      bin.install "kubectl-hpa-status"
-    test: |
-      system "#{bin}/kubectl-hpa-status", "version"
     caveats: |
       Try:
         kubectl-hpa-status list -A --wide

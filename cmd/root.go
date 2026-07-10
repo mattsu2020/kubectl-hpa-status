@@ -36,16 +36,18 @@ func NewRootCommand() *cobra.Command {
 			}
 			return hpaNameCompletion(opts)(cmd, args, toComplete)
 		},
-		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
+		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			opts.Err = cmd.ErrOrStderr()
 			if err := applyConfigDefaults(cmd, opts); err != nil {
-				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %v\n", err)
+				return err
 			}
 			if err := applyHealthWeightOverrides(opts); err != nil {
-				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %v\n", err)
+				return err
 			}
 			opts.Normalize()
+			applyStatusDepthDefaults(cmd, opts)
 			opts.In = cmd.InOrStdin()
+			return validateEffectiveOptions(cmd, opts)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {

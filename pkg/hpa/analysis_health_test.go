@@ -1,6 +1,7 @@
 package hpa
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
@@ -163,5 +164,26 @@ func TestHealthWeightsExplicitZeroDisablesPenalty(t *testing.T) {
 	zeroScore := zeroResult.Score
 	if zeroScore != defaultScore+healthPenaltyScalingLimited {
 		t.Fatalf("expected %d (score without ScalingLimited penalty), got %d", defaultScore+healthPenaltyScalingLimited, zeroScore)
+	}
+}
+
+func TestHealthDoesNotDoubleCountExplicitAndImplicitMaxLimit(t *testing.T) {
+	hpa := baseHPA()
+	hpa.Status.CurrentReplicas = 10
+	hpa.Status.DesiredReplicas = 10
+	hpa.Spec.MaxReplicas = 10
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{resourceMetricSpec(corev1.ResourceCPU, 80)}
+	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{resourceMetricStatus(corev1.ResourceCPU, 100)}
+	hpa.Status.Conditions = append(hpa.Status.Conditions,
+		autoscalingv2.HorizontalPodAutoscalerCondition{Type: ConditionScalingLimited, Status: corev1.ConditionTrue, Reason: "TooManyReplicas"})
+
+	result := HealthWithWeights(hpa, 2, HealthWeights{})
+	if result.Score != healthScoreMax-healthPenaltyScalingLimited {
+		t.Fatalf("score = %d, want only ScalingLimited penalty (%d)", result.Score, healthScoreMax-healthPenaltyScalingLimited)
+	}
+	for _, signal := range result.Signals {
+		if strings.Contains(signal.Reason, "Implicit maxReplicas") {
+			t.Fatalf("implicit ceiling signal must not duplicate ScalingLimited: %+v", result.Signals)
+		}
 	}
 }

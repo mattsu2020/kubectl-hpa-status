@@ -58,28 +58,34 @@ func applyLocalConfig(opts *options, cfg configFile, changed flagChangedFunc) {
 
 func applyEventsConfig(opts *options, cfg configFile, changed flagChangedFunc) {
 	if changed("events") {
+		opts.EventsConfigured = true
 		return
 	}
 
 	if cfg.Events != nil {
+		opts.EventsConfigured = true
 		opts.Events.Enabled = true
 		opts.Events.Limit = *cfg.Events
 	}
 	if cfg.EventsEnabled != nil {
+		opts.EventsConfigured = true
 		opts.Events.Enabled = *cfg.EventsEnabled
 	}
 }
 
 func applyHealthScoreConfig(opts *options, cfg configFile, changed flagChangedFunc) {
-	if changed("max-score") || changed("health-score") {
+	if changed("health-score") {
+		opts.HealthScoreMaxConfigured = true
 		return
 	}
 
 	switch {
 	case cfg.HealthScore != nil:
 		opts.HealthScoreMax = *cfg.HealthScore
+		opts.HealthScoreMaxConfigured = true
 	case cfg.MaxScore != nil:
 		opts.HealthScoreMax = *cfg.MaxScore
+		opts.HealthScoreMaxConfigured = true
 	}
 }
 

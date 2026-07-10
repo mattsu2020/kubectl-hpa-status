@@ -93,7 +93,8 @@ func appendDecisionTraceTolerance(out *[]byte, trace *StructuredDecisionTrace) {
 	}
 
 	*out = append(*out, "\n  Tolerance effect:\n"...)
-	*out = fmt.Appendf(*out, "    effective tolerance: %.2f\n", trace.ToleranceEffect.EffectiveTolerance)
+	*out = fmt.Appendf(*out, "    effective tolerance: scaleUp=%.2f scaleDown=%.2f\n",
+		trace.ToleranceEffect.ScaleUpTolerance, trace.ToleranceEffect.ScaleDownTolerance)
 	if len(trace.ToleranceEffect.SuppressedMetrics) > 0 {
 		*out = fmt.Appendf(*out, "    suppressed metrics: %s\n",
 			joinStrings(trace.ToleranceEffect.SuppressedMetrics, ", "))

@@ -18,7 +18,6 @@ import (
 	"golang.org/x/term"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 )
 
 func newTUICommand(opts *options) *cobra.Command {
@@ -30,6 +29,8 @@ func newTUICommand(opts *options) *cobra.Command {
 			return runTUI(cmd.Context(), cmd.OutOrStdout(), opts, "", false)
 		},
 	}
+	cmd.Flags().StringVar(&opts.PolicyGuard, "policy-guard", opts.PolicyGuard, "path to a policy file used to guard TUI apply patches")
+	cmd.Flags().StringVar(&opts.PolicyGuardMode, "policy-guard-mode", opts.PolicyGuardMode, "policy guard mode for TUI apply: block or warn")
 	return cmd
 }
 
@@ -70,6 +71,8 @@ func runTUI(ctx context.Context, out io.Writer, opts *options, initialName strin
 		}
 	}
 
+	liveApplyFn, dryRunFn := newTUIApplyCallbacks(opts)
+
 	model := tui.NewModel(client.Interface, namespace, tui.Options{
 		AllNamespaces: opts.AllNamespaces,
 		Debug:         opts.Debug,
@@ -80,15 +83,8 @@ func runTUI(ctx context.Context, out io.Writer, opts *options, initialName strin
 		StartInDetail: startInDetail,
 		EnrichHPAs:    enrichFn,
 		HealthWeights: opts.HealthWeights,
-		ApplyFn: func(applyCtx context.Context, ns, name, patch string) error {
-			_, err := client.Interface.AutoscalingV2().
-				HorizontalPodAutoscalers(ns).
-				Patch(applyCtx, name, types.MergePatchType, []byte(patch), metav1.PatchOptions{})
-			if err != nil {
-				return fmt.Errorf("patch failed: %w", err)
-			}
-			return nil
-		},
+		ApplyFn:       liveApplyFn,
+		DryRunFn:      dryRunFn,
 		AuditFn: func(auditCtx context.Context, ns, name string) (*audit.Report, error) {
 			hpa, err := client.Interface.AutoscalingV2().
 				HorizontalPodAutoscalers(ns).
@@ -107,6 +103,30 @@ func runTUI(ctx context.Context, out io.Writer, opts *options, initialName strin
 
 	_, err = tea.NewProgram(model, tea.WithContext(ctx), tea.WithOutput(out)).Run()
 	return err
+}
+
+func newTUIApplyCallbacks(opts *options) (liveApplyFn, dryRunFn tui.ApplyFunc) {
+	dryRunFn = newTUIApplyFunc(opts, true)
+	if opts.Apply && !opts.DryRun {
+		liveApplyFn = newTUIApplyFunc(opts, false)
+	}
+	return liveApplyFn, dryRunFn
+}
+
+// newTUIApplyFunc adapts the TUI to the same validation, policy, confirmation,
+// merge, and optimistic-concurrency workflow used by CLI apply. Persistent
+// callbacks are only installed by runTUI after both --apply and
+// --dry-run=false were explicitly selected; dry-run callbacks always force
+// DryRun=true regardless of the caller's options.
+func newTUIApplyFunc(opts *options, dryRun bool) tui.ApplyFunc {
+	return func(applyCtx context.Context, namespace, name string, suggestions []hpaanalysis.Suggestion) error {
+		applyOpts := copyOptions(opts)
+		applyOpts.Apply = true
+		applyOpts.DryRun = dryRun
+		applyOpts.Yes = true
+		_, err := applySuggestionsInNamespace(applyCtx, io.Discard, &applyOpts, namespace, name, suggestions, true)
+		return err
+	}
 }
 
 func isInteractiveTerminal(out io.Writer) bool {

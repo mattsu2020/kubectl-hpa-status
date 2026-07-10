@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"time"
 
@@ -122,15 +121,6 @@ func collectSnapshotData(ctx context.Context, client *kube.Client, opts *options
 }
 
 func writeSnapshotZip(data *snapshotData, outputPath string) error {
-	file, err := os.Create(outputPath)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = file.Close() }()
-
-	zw := zip.NewWriter(file)
-	defer func() { _ = zw.Close() }()
-
 	entries := []struct {
 		Name    string
 		Content []byte
@@ -149,20 +139,27 @@ func writeSnapshotZip(data *snapshotData, outputPath string) error {
 		))},
 	}
 
-	for _, entry := range entries {
-		if len(entry.Content) == 0 {
-			continue
+	return bundle.WritePrivateFileAtomic(outputPath, func(w io.Writer) error {
+		zw := zip.NewWriter(w)
+		for _, entry := range entries {
+			if len(entry.Content) == 0 {
+				continue
+			}
+			entryWriter, createErr := zw.Create(entry.Name)
+			if createErr != nil {
+				_ = zw.Close()
+				return fmt.Errorf("creating zip entry %s: %w", entry.Name, createErr)
+			}
+			if _, writeErr := entryWriter.Write(entry.Content); writeErr != nil {
+				_ = zw.Close()
+				return fmt.Errorf("writing zip entry %s: %w", entry.Name, writeErr)
+			}
 		}
-		w, err := zw.Create(entry.Name)
-		if err != nil {
-			return fmt.Errorf("creating zip entry %s: %w", entry.Name, err)
+		if closeErr := zw.Close(); closeErr != nil {
+			return fmt.Errorf("finalizing zip archive: %w", closeErr)
 		}
-		if _, err := w.Write(entry.Content); err != nil {
-			return fmt.Errorf("writing zip entry %s: %w", entry.Name, err)
-		}
-	}
-
-	return nil
+		return nil
+	})
 }
 
 func fetchSnapshotTarget(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) []byte {
@@ -296,10 +293,10 @@ func buildSnapshotReport(ctx context.Context, _ *kube.Client, opts *options, hpa
 // It replaces IP addresses, node names, pod UIDs, and other identifying data
 // with generic placeholders.
 func redactSnapshotData(data *snapshotData) {
-	data.HPA = redactBytes(data.HPA)
-	data.Deployment = redactBytes(data.Deployment)
-	data.ReplicaSets = redactBytes(data.ReplicaSets)
-	data.Pods = redactBytes(data.Pods)
+	data.HPA = bundle.RedactStructuredBytes(data.HPA)
+	data.Deployment = bundle.RedactStructuredBytes(data.Deployment)
+	data.ReplicaSets = bundle.RedactStructuredBytes(data.ReplicaSets)
+	data.Pods = bundle.RedactStructuredBytes(data.Pods)
 	data.Events = redactBytes(data.Events)
 	data.MetricsAPI = redactBytes(data.MetricsAPI)
 	data.Analysis = redactBytes(data.Analysis)

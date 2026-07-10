@@ -20,7 +20,10 @@ func newSupportBundleCommand(opts *options) *cobra.Command {
 			return runSupportBundle(cmd.Context(), cmd.OutOrStdout(), opts, args[0], format, output, redact)
 		},
 	}
-	addBundleFlags(cmd, "hpa-support-bundle-<name>-<timestamp>.{md|zip}")
+	// Support bundles are intended to leave the operator's machine, so use the
+	// privacy-preserving default. --redact=false remains available for local,
+	// trusted incident archives that require exact object values.
+	addBundleFlags(cmd, "hpa-support-bundle-<name>-<timestamp>.{md|zip}", true)
 	return cmd
 }
 

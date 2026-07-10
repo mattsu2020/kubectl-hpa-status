@@ -19,7 +19,7 @@ func LoadPolicyFile(path string) (File, error) {
 	}
 
 	var pf File
-	if err := yaml.Unmarshal(data, &pf); err != nil {
+	if err := yaml.UnmarshalStrict(data, &pf); err != nil {
 		return File{}, fmt.Errorf("parsing policy file %s: %w", path, err)
 	}
 
@@ -28,6 +28,21 @@ func LoadPolicyFile(path string) (File, error) {
 	}
 
 	return pf, nil
+}
+
+// EvaluateMergePatch applies an RFC 7396 JSON merge patch to a copy of hpa and
+// evaluates the resulting, complete HPA against policyFile. Callers use this
+// after combining multiple independently suggested patches so policy rules are
+// checked against the exact final state that would be persisted.
+func EvaluateMergePatch(hpa *autoscalingv2.HorizontalPodAutoscaler, mergePatch string, policyFile File) (*Report, error) {
+	if hpa == nil {
+		return nil, fmt.Errorf("cannot evaluate policy guard without an HPA")
+	}
+	patched, err := applySuggestionPatch(hpa, mergePatch)
+	if err != nil {
+		return nil, fmt.Errorf("applying merged patch for policy evaluation: %w", err)
+	}
+	return EvaluatePolicies(patched, policyFile), nil
 }
 
 // GuardFix evaluates suggested merge patches against a policy file before

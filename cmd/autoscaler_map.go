@@ -133,8 +133,12 @@ func assembleAutoscalerMapInput(ctx context.Context, client *kube.Client, opts *
 		}
 	}
 
-	// Fetch node capacity.
-	nodeCap, _ := kube.FetchNodeCapacity(ctx, client.Interface)
+	// Fetch node capacity. Preserve RBAC/network failures as unknown data rather
+	// than turning the zero value into a false "no schedulable nodes" blocker.
+	nodeCap, nodeErr := kube.FetchNodeCapacity(ctx, client.Interface)
+	if nodeErr != nil {
+		input.NodeFetchError = nodeErr.Error()
+	}
 	if nodeCap != nil {
 		input.NodeSummary = hpaanalysis.AutoscalerMapNodeSummary{
 			TotalNodes:        nodeCap.TotalNodes,

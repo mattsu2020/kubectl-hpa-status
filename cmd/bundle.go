@@ -3,14 +3,15 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/mattsu2020/kubectl-hpa-status/cmd/bundle"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/spf13/cobra"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"sigs.k8s.io/yaml"
@@ -29,17 +30,17 @@ func newBundleCommand(opts *options) *cobra.Command {
 			return runBundle(cmd.Context(), cmd.OutOrStdout(), opts, args[0], format, output, redact)
 		},
 	}
-	addBundleFlags(cmd, "hpa-bundle-<name>-<timestamp>.{md|zip}")
+	addBundleFlags(cmd, "hpa-bundle-<name>-<timestamp>.{md|zip}", false)
 	return cmd
 }
 
 // addBundleFlags registers the --format / --output / --redact flags shared by
 // the bundle and support-bundle commands. Only the --output help text (the
 // default filename pattern) differs between the two commands.
-func addBundleFlags(cmd *cobra.Command, defaultOutputPattern string) {
+func addBundleFlags(cmd *cobra.Command, defaultOutputPattern string, redactDefault bool) {
 	cmd.Flags().String("format", "markdown", "output format: markdown or zip")
 	cmd.Flags().StringP("output", "o", "", "output file path (default: "+defaultOutputPattern+")")
-	cmd.Flags().Bool("redact", false, "redact sensitive information (IPs, node names, pod UIDs)")
+	cmd.Flags().Bool("redact", redactDefault, "redact sensitive information (credentials, labels, annotations, IPs, node names, and pod UIDs)")
 }
 
 // readBundleFlags reads the three bundle flags registered by addBundleFlags.
@@ -148,34 +149,30 @@ func collectBundleData(ctx context.Context, client *kube.Client, opts *options, 
 	// 5. ReplicaSets (reuse snapshot helper).
 	data.ReplicaSets = fetchSnapshotReplicaSets(ctx, client, hpa)
 
-	// 6. Pods (reuse snapshot helper) + raw PodInfos for table rendering.
-	data.Pods = fetchSnapshotPods(ctx, client, hpa)
+	// 6. Fetch pods once and derive every bundle view (serialized pod info,
+	// event object names, and container status) from the same snapshot.
 	if selector != "" {
-		podInfos, err := kube.FetchPodInfosForSelector(ctx, client.Interface, client.Namespace, selector)
+		pods, err := kube.FetchPodObjectsForSelector(ctx, client.Interface, client.Namespace, selector)
 		if err != nil {
-			// Mirror steps 9-13: surface the failure rather than silently leaving
-			// the PodInfos table empty.
-			data.Warnings = append(data.Warnings, fmt.Sprintf("pod infos: %v", err))
+			data.Warnings = append(data.Warnings, fmt.Sprintf("pods: %v", err))
+		} else {
+			data.PodInfos = kube.PodInfosFromPods(pods)
+			data.ContainerStatuses = kube.ContainerStatusesFromPods(pods)
+			if encoded, marshalErr := json.MarshalIndent(data.PodInfos, "", "  "); marshalErr != nil {
+				data.Warnings = append(data.Warnings, fmt.Sprintf("marshal pod infos: %v", marshalErr))
+			} else {
+				data.Pods = encoded
+			}
 		}
-		data.PodInfos = podInfos
 	}
 
 	// 7. Events with wider scope (HPA + scale target + pods).
-	objectNames := bundleEventObjectNames(ctx, client, hpa)
+	objectNames := bundleEventObjectNames(hpa, data.PodInfos)
 	events := kube.FetchRecentEventsForObjects(ctx, client.Interface, hpa.Namespace, objectNames, 30)
 	data.Events = formatBundleEvents(events)
 
 	// 8. Metrics API status (reuse snapshot helper).
 	data.MetricsAPI = fetchSnapshotMetricsAPI(ctx, client)
-
-	// 9. Container statuses.
-	if selector != "" {
-		containerStatuses, err := kube.FetchContainerStatuses(ctx, client.Interface, hpa.Namespace, selector)
-		if err != nil {
-			data.Warnings = append(data.Warnings, fmt.Sprintf("container statuses: %v", err))
-		}
-		data.ContainerStatuses = containerStatuses
-	}
 
 	// 10. All ResourceQuotas (not just >= 80%).
 	data.ResourceQuotas, err = kube.FetchAllResourceQuotas(ctx, client.Interface, hpa.Namespace)
@@ -207,18 +204,8 @@ func collectBundleData(ctx context.Context, client *kube.Client, opts *options, 
 
 // bundleEventObjectNames collects object names for event fetching:
 // HPA itself, the scale target, and all pods of the scale target.
-func bundleEventObjectNames(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) []string {
+func bundleEventObjectNames(hpa *autoscalingv2.HorizontalPodAutoscaler, pods []kube.PodInfo) []string {
 	names := []string{hpa.Name, hpa.Spec.ScaleTargetRef.Name}
-
-	info, err := kube.FetchScaleTargetInfo(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef)
-	if err != nil || info == nil || info.SelectorStr == "" {
-		return names
-	}
-
-	pods, err := kube.FetchPodInfosForSelector(ctx, client.Interface, hpa.Namespace, info.SelectorStr)
-	if err != nil {
-		return names
-	}
 	for _, pod := range pods {
 		names = append(names, pod.Name)
 	}
@@ -235,8 +222,8 @@ func formatBundleEvents(events []kube.EventInfo) []byte {
 	for _, event := range events {
 		sb.WriteString(fmt.Sprintf("[%s] %s: %s\n",
 			event.Timestamp.Format(time.RFC3339),
-			event.Reason,
-			event.Message,
+			hpaanalysis.SanitizeTerminalText(event.Reason),
+			hpaanalysis.SanitizeTerminalText(event.Message),
 		))
 	}
 	return []byte(sb.String())
@@ -246,12 +233,13 @@ func formatBundleEvents(events []kube.EventInfo) []byte {
 // sensitive fields in PodInfos. The StatusReport is redacted at render time
 // when the full markdown is assembled and passed through redactBytes.
 func redactBundleData(data *bundle.Data) {
-	data.HPA = bundle.RedactBytes(data.HPA)
-	data.ScaleTarget = bundle.RedactBytes(data.ScaleTarget)
-	data.ReplicaSets = bundle.RedactBytes(data.ReplicaSets)
-	data.Pods = bundle.RedactBytes(data.Pods)
+	data.HPA = bundle.RedactStructuredBytes(data.HPA)
+	data.ScaleTarget = bundle.RedactStructuredBytes(data.ScaleTarget)
+	data.ReplicaSets = bundle.RedactStructuredBytes(data.ReplicaSets)
+	data.Pods = bundle.RedactStructuredBytes(data.Pods)
 	data.Events = bundle.RedactBytes(data.Events)
 	data.MetricsAPI = bundle.RedactBytes(data.MetricsAPI)
+	data.Redacted = true
 
 	// Redact node names from PodInfos so the markdown table is safe.
 	for i := range data.PodInfos {
@@ -279,5 +267,5 @@ func writeBundleMarkdownFile(data *bundle.Data, outputPath string, redact bool) 
 		content = bundle.RedactBytes(content)
 	}
 
-	return os.WriteFile(outputPath, content, 0o644)
+	return bundle.WritePrivateFile(outputPath, content)
 }

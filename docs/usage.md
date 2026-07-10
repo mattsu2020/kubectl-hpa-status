@@ -26,7 +26,7 @@ kubectl hpa status scan -A --report junit > hpa-health.xml
 kubectl hpa status list -A --problem --report sarif > hpa-health.sarif
 kubectl hpa status export --prometheus
 kubectl hpa status alerts generate --format prometheus
-kubectl hpa status analyze-record hpa-history.jsonl --detect flapping
+kubectl hpa status alpha analyze-record hpa-history.jsonl --detect flapping
 kubectl hpa status <hpa-name> --watch --interval 5s
 kubectl hpa status <hpa-name> --watch --timeout 2m --until-condition scaling-limited
 kubectl hpa status list [-A] [--selector app=web] [--sort-by desired] [--filter scaling-limited]
@@ -61,33 +61,33 @@ kubectl-hpa-status completion zsh
 | `--config` | all commands | Read defaults from a YAML/JSON config file. Defaults to `~/.kube/hpa-status.yaml` when present. |
 | `--chunk-size` | `list`, `scan`, `tui` | Kubernetes list page size. Defaults to 500; set 0 to disable pagination. |
 | `--health-weight name=value` | all analysis commands | Override one health score penalty from the CLI. Repeatable; names include `scalingInactive`, `unableToScale`, `scalingLimited`, `implicitMaxReplicas`, `scaleDownStabilized`, and `atMinimumReplicas`. |
-| `-o table\|wide\|json\|jsonl\|yaml\|jsonpath=...\|template=...\|prometheus\|junit\|sarif` | status, doctor, analyze, list, scan | Output format. YAML is supported for both single and multiple HPA output. `junit` and `sarif` are intended for `list`/`scan`. `jsonl` streams one JSON object per line for `list`/`scan` and keeps memory flat on large clusters (requires no `--sort-by`/`--apply`/KEDA/VPA). For the JSON schema, see [output-schema.json](output-schema.json). |
+| `-o table\|wide\|json\|jsonl\|yaml\|jsonpath=...\|template=...\|prometheus\|junit\|sarif` | status, doctor, list, scan | Output format. YAML is supported for both single and multiple HPA output. `junit` and `sarif` are intended for `list`/`scan`. `jsonl` streams one JSON object per line for `list`/`scan` and keeps memory flat on large clusters when enrichment and whole-report features are disabled. For the JSON schema, see [output-schema.json](output-schema.json). |
 | `--wide` | table output | Show target, min, max, and replica delta columns where applicable. |
 | `--sort-by namespace\|name\|current\|desired\|diff\|health-score\|issue\|problem` | `list`, `scan` | Sort list output. `problem` puts the lowest health score and largest replica delta first. |
 | `--filter all\|ok\|error\|limited\|scaling-limited\|issue` | `list`, `scan` | Filter by health or issue text. |
-| `--health-score`, `--max-score` | `list`, `scan` | Show only HPAs whose health score is at or below the threshold. |
+| `--health-score` | `list`, `scan` | Show only HPAs whose health score is at or below the threshold. |
 | `--min-score` | `list`, `scan` | Show only HPAs whose health score is at or above the threshold. |
 | `--problem` | `list`, `scan` | Show only HPAs with a visible issue. |
 | `--color auto\|always\|never` | text output | Control terminal color output. |
 | `--interpret` | `status` | Include diagnostic interpretation in compact status output. |
-| `--explain` | `status`, `doctor`, `analyze` | Include detailed interpretation and recommended actions. `doctor` enables this by default. |
-| `--suggest`, `--recommend` | `status`, `doctor`, `analyze` | Include concrete `kubectl patch` commands when a safe HPA spec suggestion is visible. `--recommend` is an alias for `--suggest`. |
-| `--export-patch yaml\|kustomize\|helm-values\|directory` | `status`, `scan` | Export safe suggestions as GitOps-friendly patches. `directory` is for `scan`/`list` and writes per-HPA YAML files. |
-| `--fix` | `status`, `doctor`, `analyze` | Show a stronger fix plan with applicable patches. |
-| `--diff` | `status`, `doctor`, `analyze` | Include field-level diffs for suggested HPA spec patches. |
-| `--apply` | `status`, `doctor`, `analyze`, `list`, `scan` | Validate suggested HPA patches with server-side dry-run by default. For `list`, combine it with `--problem`, `--filter`, or a score filter. |
+| `--explain` | `status`, `doctor` | Include detailed interpretation and recommended actions. `doctor` enables this by default. |
+| `--suggest` | `status`, `doctor` | Include concrete `kubectl patch` commands when a safe HPA spec suggestion is visible. |
+| `--export yaml\|kustomize\|helm-values\|directory` | `status`, `scan` | Export safe suggestions as GitOps-friendly patches. `directory` is for `scan`/`list` and writes per-HPA YAML files. |
+| `--fix` | `status`, `doctor` | Show a stronger fix plan with applicable patches. |
+| `--diff` | `status`, `doctor` | Include field-level diffs for suggested HPA spec patches. |
+| `--apply` | `status`, `doctor`, `list`, `scan` | Validate suggested HPA patches with server-side dry-run by default. For `list`, combine it with `--problem`, a restrictive `--filter`, or a score filter. |
 | `--dry-run=false` | `--apply` workflow | Persist changes; still shows a diff and asks for confirmation unless `-y` is set. |
-| `--keda` | `status`, `doctor`, `analyze` | For KEDA-managed HPAs, look up the matching ScaledObject and include trigger details (metric name, threshold, current value, auth ref). |
-| `--vpa` | `status`, `doctor`, `analyze` | Detect VerticalPodAutoscaler conflicts with the HPA target. |
-| `--diagnose-metrics` | `status`, `doctor`, `analyze` | Run comprehensive metrics pipeline health checks with per-metric status and remediation steps. `doctor` enables this by default. |
-| `--metrics-freshness` | `status`, `doctor`, `analyze` | Check currentMetrics presence, FailedGet*Metric Events, metrics API discovery, resource PodMetrics sample timestamp/window, and KEDA trigger context. `doctor` enables this by default. |
-| `--check-resources` | `status`, `doctor`, `analyze` | Validate HPA target utilization against pod resource requests/limits. `doctor` enables this by default. |
+| `--keda` | `status`, `doctor` | For KEDA-managed HPAs, look up the matching ScaledObject and include trigger details (metric name, threshold, current value, auth ref). |
+| `--vpa` | `status`, `doctor` | Detect VerticalPodAutoscaler conflicts with the HPA target. |
+| `--diagnose-metrics` | `status`, `doctor` | Run comprehensive metrics pipeline health checks with per-metric status and remediation steps. `doctor` enables this by default. |
+| `--metrics-freshness` | `status`, `doctor` | Check currentMetrics presence, FailedGet*Metric Events, metrics API discovery, resource PodMetrics sample timestamp/window, and KEDA trigger context. `doctor` enables this by default. |
+| `--check-resources` | `status`, `doctor` | Validate HPA target utilization against pod resource requests/limits. `doctor` enables this by default. |
 | `--report markdown\|html\|incident\|junit\|sarif` | `status`, `doctor`, `list`, `scan` | Generate standalone reports. `markdown`, `html`, and `incident` are general report formats; `junit` and `sarif` are for CI/CD health gates on `list`/`scan`. |
 | `--summary` | `scan` with `--report markdown\|html` | Include cluster summary, worst HPAs, and prioritized actions. |
 | `--lang=ja`, `-o ja` | text output | Show Japanese text labels. |
-| `--no-interpret` | `status`, `doctor`, `analyze` | Omit interpretation and show status-derived data only. |
-| `--events=false` | `status`, `doctor`, `analyze` | Omit recent HPA Events. |
-| `--events=3` | `status`, `doctor`, `analyze` | Show the latest 3 HPA Events. |
+| `--no-interpret` | `status`, `doctor` | Omit interpretation and show status-derived data only. |
+| `--events=false` | `status`, `doctor` | Omit recent HPA Events. |
+| `--events=3` | `status`, `doctor` | Show the latest 3 HPA Events. |
 | `--watch --interval 5s` | `status`, `watch` | Refresh one HPA periodically. Watch mode accepts exactly one HPA name. |
 | `--dashboard` | `watch` | Render watch output as a compact terminal dashboard. |
 | `--timeout 2m` | watch mode | Stop watch after a duration. |
@@ -121,7 +121,7 @@ Each HPA receives a health score from 0 to 100. The score starts at 100 and pena
 | Scale-down stabilization window active | -10 |
 | At minimum replicas | -5 |
 
-**Health states**: `OK` → `STABILIZED` → `LIMITED` → `ERROR` (worsening order). Use `--health-score`, `--min-score`, and `--max-score` to filter by score range.
+**Health states**: `OK` → `STABILIZED` → `LIMITED` → `ERROR` (worsening order). Use `--health-score` and `--min-score` to filter by score range.
 
 ## Config File
 
@@ -181,7 +181,8 @@ Common key bindings:
 | `M` | Toggle parameter and metric-value simulation inside simulation |
 | `Tab` / `Shift+Tab` | Move between simulation fields |
 | `f` | Open the fix wizard when suggestions are available |
-| `d` | Preview the selected fix without applying it |
+| `d` | Validate the selected fix with Kubernetes server-side dry-run |
+| `Enter` in fix wizard | Arm and then confirm live apply; enabled only with `--apply --dry-run=false` |
 | `T` | Open replay timeline from `hpa-trace.json` |
 | `H` | Open history and sparkline view |
 | `h` | Open metric hints troubleshooting when hints are available |
@@ -191,13 +192,13 @@ Common key bindings:
 | `a` | Select all filtered HPAs |
 | `A` | Deselect all |
 | `B` | Run the batch auditor on selected HPAs |
-| `x` | Show batch apply guidance for selected HPAs |
+| `x` | Preview a batch; in explicit live mode, press twice to confirm |
 | `r` | Refresh data now |
 | `p` | Pause / resume auto-refresh |
 | `?` | Toggle key binding help overlay |
 | `q` / `Ctrl+c` | Quit |
 
-The dashboard auto-refreshes every 5 seconds by default. Use `+`/`-` keys to adjust at runtime (1s–60s). Filter accepts partial matches across multiple fields. Sort cycles through available columns. Use `g` to quickly jump to the first HPA that needs attention. Export remains an explicit CLI workflow; use `--suggest --export yaml`, `--export kustomize`, or `--export helm-values` after inspecting an HPA in the TUI.
+The dashboard auto-refreshes every 5 seconds by default. Use `+`/`-` keys to adjust at runtime (1s–60s). Filter accepts partial matches across multiple fields. Sort cycles through available columns. Use `g` to quickly jump to the first HPA that needs attention. The TUI is preview-only by default; use `--suggest --export yaml`, `--export kustomize`, or `--export helm-values` after inspection. Explicit live mode requires both `--apply` and `--dry-run=false` and retains server-side validation, policy checks, conflict detection, and two-step confirmation.
 
 ## JSONPath and Template Output
 

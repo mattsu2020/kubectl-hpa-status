@@ -3,6 +3,7 @@ package cmd
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -15,11 +16,13 @@ import (
 // This file holds the list/scan batch-apply and patch-export helpers, split
 // from list.go so list.go stays focused on listing, filtering, and sorting.
 
-// batchEntry holds a single HPA suggestion for batch patch application.
+// batchEntry holds every applicable suggestion for one HPA. Keeping the group
+// intact is important: applySuggestionsInNamespace can merge the patches and
+// apply the HPA update atomically (or refuse without --allow-partial).
 type batchEntry struct {
-	Namespace  string
-	Name       string
-	Suggestion hpaanalysis.Suggestion
+	Namespace   string
+	Name        string
+	Suggestions []hpaanalysis.Suggestion
 }
 
 func applyListSuggestions(ctx context.Context, out io.Writer, opts *options, hpas []autoscalingv2.HorizontalPodAutoscaler, items []hpaanalysis.ListItem) error {
@@ -41,7 +44,7 @@ func applyListSuggestions(ctx context.Context, out io.Writer, opts *options, hpa
 		return fmt.Errorf("write batch summary: %w", err)
 	}
 
-	confirmed, err := confirmBatchApply(out, opts, len(entries))
+	confirmed, err := confirmBatchApply(out, opts, batchPatchCount(entries))
 	if err != nil {
 		return fmt.Errorf("confirm batch apply: %w", err)
 	}
@@ -64,7 +67,7 @@ func exportListPatchesDirectory(out io.Writer, opts *options, hpas []autoscaling
 		return nil
 	}
 	dir := "hpa-patches"
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil { // #nosec G301 -- GitOps patch directory is intentionally user-readable.
 		return fmt.Errorf("create patch export directory %s: %w", dir, err)
 	}
 	written := 0
@@ -83,7 +86,7 @@ func exportListPatchesDirectory(out io.Writer, opts *options, hpas []autoscaling
 			continue
 		}
 		path := fmt.Sprintf("%s/%s-%s-hpa-patch.yaml", dir, hpa.Namespace, hpa.Name)
-		if err := os.WriteFile(path, []byte(buf.String()), 0o644); err != nil {
+		if err := os.WriteFile(path, []byte(buf.String()), 0o644); err != nil { // #nosec G306 -- exported GitOps manifests are intended for review/commit.
 			return fmt.Errorf("write patch file %s: %w", path, err)
 		}
 		written++
@@ -94,7 +97,8 @@ func exportListPatchesDirectory(out io.Writer, opts *options, hpas []autoscaling
 	return nil
 }
 
-// collectBatchEntries gathers applicable suggestions from selected HPAs.
+// collectBatchEntries gathers applicable suggestions from selected HPAs,
+// preserving one entry per HPA so patches for the same object stay atomic.
 func collectBatchEntries(opts *options, hpas []autoscalingv2.HorizontalPodAutoscaler, selected map[string]bool) []batchEntry {
 	var entries []batchEntry
 	for i := range hpas {
@@ -103,17 +107,29 @@ func collectBatchEntries(opts *options, hpas []autoscalingv2.HorizontalPodAutosc
 			continue
 		}
 		analysis := hpaanalysis.AnalyzeWithOptions(hpa, true, analysisOptions(opts.HealthWeights, opts.Debug))
+		var suggestions []hpaanalysis.Suggestion
 		for _, s := range analysis.Suggestions {
 			if s.Apply && s.Patch != "" {
-				entries = append(entries, batchEntry{
-					Namespace:  hpa.Namespace,
-					Name:       hpa.Name,
-					Suggestion: s,
-				})
+				suggestions = append(suggestions, s)
 			}
+		}
+		if len(suggestions) > 0 {
+			entries = append(entries, batchEntry{
+				Namespace:   hpa.Namespace,
+				Name:        hpa.Name,
+				Suggestions: suggestions,
+			})
 		}
 	}
 	return entries
+}
+
+func batchPatchCount(entries []batchEntry) int {
+	total := 0
+	for _, entry := range entries {
+		total += len(entry.Suggestions)
+	}
+	return total
 }
 
 // printBatchSummary displays a summary table of all patches to apply.
@@ -122,15 +138,17 @@ func printBatchSummary(out io.Writer, entries []batchEntry) error {
 	for _, e := range entries {
 		seenHPAs[e.Namespace+"/"+e.Name] = true
 	}
-	if _, err := fmt.Fprintf(out, "\nBatch patch summary (%d patches across %d HPA(s)):\n", len(entries), len(seenHPAs)); err != nil {
+	if _, err := fmt.Fprintf(out, "\nBatch patch summary (%d patches across %d HPA(s)):\n", batchPatchCount(entries), len(seenHPAs)); err != nil {
 		return fmt.Errorf("write output: %w", err)
 	}
 	if _, err := fmt.Fprintln(out, "  NAMESPACE/NAME                    PATCH                           RISK"); err != nil {
 		return fmt.Errorf("write output: %w", err)
 	}
 	for _, e := range entries {
-		if _, err := fmt.Fprintf(out, "  %-35s %-30s %s\n", e.Namespace+"/"+e.Name, e.Suggestion.Title, e.Suggestion.Risk); err != nil {
-			return fmt.Errorf("write output: %w", err)
+		for _, suggestion := range e.Suggestions {
+			if _, err := fmt.Fprintf(out, "  %-35s %-30s %s\n", e.Namespace+"/"+e.Name, suggestion.Title, suggestion.Risk); err != nil {
+				return fmt.Errorf("write output: %w", err)
+			}
 		}
 	}
 	if _, err := fmt.Fprintln(out); err != nil {
@@ -178,16 +196,20 @@ func confirmBatchApply(out io.Writer, opts *options, count int) (bool, error) {
 	return true, nil
 }
 
-// executeBatchPatches applies each patch entry and reports results.
+// executeBatchPatches applies one atomic patch group per HPA and reports every
+// target failure. Cross-HPA application is necessarily non-atomic, so a
+// failure is aggregated and returned non-nil for automation to detect.
 func executeBatchPatches(ctx context.Context, out io.Writer, opts *options, entries []batchEntry) error {
 	var succeeded, failed int
+	var failures []error
 	for _, e := range entries {
-		results, err := applySuggestionsInNamespace(ctx, out, opts, e.Namespace, e.Name, []hpaanalysis.Suggestion{e.Suggestion}, true)
+		results, err := applySuggestionsInNamespace(ctx, out, opts, e.Namespace, e.Name, e.Suggestions, true)
 		if err != nil {
 			if _, ferr := fmt.Fprintf(out, "  FAILED %s/%s: %v\n", e.Namespace, e.Name, err); ferr != nil {
 				return fmt.Errorf("write output: %w", ferr)
 			}
 			failed++
+			failures = append(failures, fmt.Errorf("%s/%s: %w", e.Namespace, e.Name, err))
 			continue
 		}
 		for _, line := range results {
@@ -198,8 +220,11 @@ func executeBatchPatches(ctx context.Context, out io.Writer, opts *options, entr
 		succeeded++
 	}
 
-	if _, err := fmt.Fprintf(out, "\nBatch complete: %d succeeded, %d failed\n", succeeded, failed); err != nil {
+	if _, err := fmt.Fprintf(out, "\nBatch complete: %d succeeded, %d failed (HPA targets; cross-HPA operation is non-atomic)\n", succeeded, failed); err != nil {
 		return fmt.Errorf("write output: %w", err)
+	}
+	if len(failures) > 0 {
+		return fmt.Errorf("batch apply failed for %d of %d HPA(s): %w", failed, len(entries), errors.Join(failures...))
 	}
 	return nil
 }

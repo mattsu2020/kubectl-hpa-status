@@ -155,6 +155,33 @@ func TestSimulateMetricChange_MultipleOverrides(t *testing.T) {
 	}
 }
 
+func TestSimulateMetricChangeAggregatesMaximumDesiredAcrossMetrics(t *testing.T) {
+	hpa := buildMultiMetricSimHPA(10, 10, 30)
+	result, err := SimulateMetricChange(hpa, map[string]string{"cpu": "10%", "memory": "90%"}, HealthWeights{})
+	if err != nil {
+		t.Fatalf("SimulateMetricChange: %v", err)
+	}
+	// cpu requests 2 replicas (10/50), memory requests 15 (90/60). The
+	// multi-metric HPA recommendation is the maximum, not the largest distance.
+	if result.After.DesiredReplicas != 15 {
+		t.Fatalf("after desired replicas = %d, want 15", result.After.DesiredReplicas)
+	}
+}
+
+func TestSimulateMetricChangeUsesCurrentReplicasAsFormulaBase(t *testing.T) {
+	hpa := buildMetricSimHPA(4, 8, 20, 50)
+	result, err := SimulateMetricChange(hpa, map[string]string{"cpu": "80%"}, HealthWeights{})
+	if err != nil {
+		t.Fatalf("SimulateMetricChange: %v", err)
+	}
+	if result.After.DesiredReplicas != 7 {
+		t.Fatalf("after desired replicas = %d, want ceil(4 * 1.6) = 7", result.After.DesiredReplicas)
+	}
+	if result.MetricSimulations[0].ProjectedReplicas != 7 {
+		t.Fatalf("metric projected replicas = %d, want 7", result.MetricSimulations[0].ProjectedReplicas)
+	}
+}
+
 func TestSimulateMetricChange_DeepCopyIsolation(t *testing.T) {
 	hpa := buildMetricSimHPA(4, 4, 10, 50)
 

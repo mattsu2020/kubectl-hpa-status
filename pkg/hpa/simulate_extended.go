@@ -10,31 +10,7 @@ import (
 // SimulateExtended wraps the existing simulation with time-series projection
 // and extended risk assessment. It does not mutate the original HPA.
 func SimulateExtended(hpa *autoscalingv2.HorizontalPodAutoscaler, overrides map[string]string, weights HealthWeights, extOpts SimulationExtendedOptions) (*SimulationResult, error) {
-	if hpa == nil {
-		return nil, ErrNilHPA
-	}
-
-	// Run the base simulation.
-	result, err := SimulateHPA(hpa, overrides, weights)
-	if err != nil {
-		return nil, err
-	}
-
-	// Build time-series projection if duration is specified.
-	if extOpts.DurationSeconds > 0 {
-		modified := hpa.DeepCopy()
-		for path, value := range overrides {
-			if err := applySimulationOverride(modified, path, value); err != nil {
-				return nil, fmt.Errorf("override %s=%s: %w", path, value, err)
-			}
-		}
-		result.TimeSeriesProjection = ProjectReplicaTrajectory(hpa, modified, extOpts)
-	}
-
-	// Extended risk assessment.
-	result.RiskWarnings = assessExtendedRisk(hpa, overrides, result)
-
-	return result, nil
+	return SimulateScenario(hpa, overrides, nil, weights, extOpts)
 }
 
 // assessExtendedRisk generates risk warnings based on the simulation parameters

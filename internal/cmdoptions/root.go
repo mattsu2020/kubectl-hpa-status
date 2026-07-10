@@ -28,9 +28,13 @@ func DefaultRoot() Root {
 			RequestTimeout: 30 * time.Second,
 		},
 		Status: Status{
-			Events: EventOption{Enabled: true, Limit: 5},
+			// Plain status is deliberately HPA-only. Deeper presets and explicit
+			// enrichment flags opt into additional API reads.
+			Events:          EventOption{Enabled: false, Limit: 5},
+			PolicyGuardMode: "block",
 		},
 		List: List{
+			HealthScoreMin: -1,
 			HealthScoreMax: -1,
 		},
 		Watch: Watch{

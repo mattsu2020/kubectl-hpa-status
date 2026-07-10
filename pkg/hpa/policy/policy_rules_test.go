@@ -694,6 +694,17 @@ rules:
 			t.Error("expected validation error for invalid severity")
 		}
 	})
+
+	t.Run("unknown field rejected", func(t *testing.T) {
+		path := filepath.Join(dir, "unknown-field.yaml")
+		content := "apiVersion: hpa-status/v1\nunknownSetting: true\nrules: []\n"
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := LoadPolicyFile(path); err == nil {
+			t.Error("expected strict parsing error for unknown policy field")
+		}
+	})
 }
 
 // --- mergeJSONMap / applySuggestionPatch ------------------------------------
@@ -846,6 +857,37 @@ func TestGuardFix_WarningProducesWarningButAllowed(t *testing.T) {
 	}
 	if len(result.Allowed) != 1 {
 		t.Errorf("warning should still allow the suggestion, got allowed=%d", len(result.Allowed))
+	}
+}
+
+func TestEvaluateMergePatch_CatchesCombinedViolation(t *testing.T) {
+	t.Parallel()
+	hpa := policyTestHPA(withMinReplicas(2)) // max=10
+	file := File{Rules: []Rule{{
+		ID: "replica-range", Name: "Replica Range", Severity: "critical",
+		Parameters: Params{"maxRatio": 10},
+	}}}
+
+	// Each patch passes against the original HPA: 10/1=10 and 15/2=7.
+	for _, mergePatch := range []string{
+		`{"spec":{"minReplicas":1}}`,
+		`{"spec":{"maxReplicas":15}}`,
+	} {
+		report, err := EvaluateMergePatch(hpa, mergePatch, file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(report.Violations) != 0 {
+			t.Fatalf("individual patch unexpectedly violated policy: %+v", report.Violations)
+		}
+	}
+
+	report, err := EvaluateMergePatch(hpa, `{"spec":{"minReplicas":1,"maxReplicas":15}}`, file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Violations) != 1 || report.Violations[0].RuleID != "replica-range" {
+		t.Fatalf("expected combined replica-range violation, got %+v", report.Violations)
 	}
 }
 

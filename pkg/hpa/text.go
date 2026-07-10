@@ -102,7 +102,9 @@ func WriteStatusDashboardWithOptions(w io.Writer, report StatusReport, opts Stat
 		out = append(out, "  No conditions reported.\n"...)
 	} else {
 		for _, condition := range a.Conditions {
-			out = fmt.Appendf(out, "  %-15s %s %-24s %s\n", condition.Type, theme.ConditionStatus(condition.Type, condition.Status), condition.Reason, condition.Message)
+			out = fmt.Appendf(out, "  %-15s %s %-24s %s\n",
+				SanitizeTerminalText(string(condition.Type)), theme.ConditionStatus(condition.Type, condition.Status),
+				SanitizeTerminalText(condition.Reason), SanitizeTerminalText(condition.Message))
 		}
 	}
 

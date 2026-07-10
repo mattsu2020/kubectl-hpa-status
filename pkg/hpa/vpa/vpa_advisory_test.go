@@ -28,6 +28,29 @@ func hpaWithResourceMetric(resource corev1.ResourceName) *autoscalingv2.Horizont
 	}
 }
 
+func TestControlledResourcesMustOverlapHPA(t *testing.T) {
+	hpa := hpaWithResourceMetric(corev1.ResourceCPU)
+	info := &Info{
+		Name: "v1", TargetKind: "Deployment", TargetName: "web", UpdateMode: "Auto",
+		ControlledResources: []string{"memory"},
+	}
+	if lines := Analyze(hpa, info); lines != nil {
+		t.Fatalf("disjoint controlledResources should not produce warnings: %v", lines)
+	}
+	advisory := AnalyzeAdvisory(hpa, &ConflictInfo{
+		VPAName: "v1", TargetKind: "Deployment", TargetName: "web", UpdateMode: "Auto",
+		ControlledResources: []string{"memory"},
+	})
+	if advisory.Level != ConflictNone || len(advisory.ConflictResources) != 0 {
+		t.Fatalf("disjoint resources should be safe: %+v", advisory)
+	}
+
+	info.ControlledResources = nil
+	if lines := Analyze(hpa, info); len(lines) == 0 {
+		t.Fatal("omitted controlledResources should use the VPA cpu/memory defaults")
+	}
+}
+
 func hpaWithContainerResourceMetric(resource corev1.ResourceName) *autoscalingv2.HorizontalPodAutoscaler {
 	return &autoscalingv2.HorizontalPodAutoscaler{
 		ObjectMeta: metav1.ObjectMeta{Name: "hpa1", Namespace: "ns1"},

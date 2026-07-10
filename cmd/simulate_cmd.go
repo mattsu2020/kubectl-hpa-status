@@ -10,20 +10,21 @@ import (
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 	"github.com/spf13/cobra"
-	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"sigs.k8s.io/yaml"
 )
 
 type simulateReport struct {
-	Namespace      string                      `json:"namespace" yaml:"namespace"`
-	Name           string                      `json:"name" yaml:"name"`
-	Before         hpaanalysis.SimulationState `json:"before" yaml:"before"`
-	After          hpaanalysis.SimulationState `json:"after" yaml:"after"`
-	Confidence     string                      `json:"confidence" yaml:"confidence"`
-	Parameter      string                      `json:"parameter,omitempty" yaml:"parameter,omitempty"`
-	Interpretation []string                    `json:"interpretation,omitempty" yaml:"interpretation,omitempty"`
-	Suggestions    []hpaanalysis.Suggestion    `json:"suggestions,omitempty" yaml:"suggestions,omitempty"`
-	RiskWarnings   []string                    `json:"riskWarnings,omitempty" yaml:"riskWarnings,omitempty"`
+	Namespace      string                       `json:"namespace" yaml:"namespace"`
+	Name           string                       `json:"name" yaml:"name"`
+	Before         hpaanalysis.SimulationState  `json:"before" yaml:"before"`
+	After          hpaanalysis.SimulationState  `json:"after" yaml:"after"`
+	Confidence     string                       `json:"confidence" yaml:"confidence"`
+	Parameter      string                       `json:"parameter,omitempty" yaml:"parameter,omitempty"`
+	Interpretation []string                     `json:"interpretation,omitempty" yaml:"interpretation,omitempty"`
+	Suggestions    []hpaanalysis.Suggestion     `json:"suggestions,omitempty" yaml:"suggestions,omitempty"`
+	RiskWarnings   []string                     `json:"riskWarnings,omitempty" yaml:"riskWarnings,omitempty"`
+	RiskAssessment string                       `json:"riskAssessment,omitempty" yaml:"riskAssessment,omitempty"`
+	TimeSeries     []hpaanalysis.ProjectedState `json:"timeSeriesProjection,omitempty" yaml:"timeSeriesProjection,omitempty"`
 }
 
 func newSimulateCommand(opts *options) *cobra.Command {
@@ -58,7 +59,7 @@ func newSimulateCommand(opts *options) *cobra.Command {
 }
 
 func runSimulate(ctx context.Context, out io.Writer, opts *options, name string,
-	setMetric, setTarget []string, tolerance string, suggest bool, _ int32) error {
+	setMetric, setTarget []string, tolerance string, suggest bool, duration int32) error {
 
 	_, hpa, err := lookupHPA(ctx, opts, name)
 	if err != nil {
@@ -71,21 +72,18 @@ func runSimulate(ctx context.Context, out io.Writer, opts *options, name string,
 		return err
 	}
 
-	// Run simulation with spec overrides.
-	var simResult *hpaanalysis.SimulationResult
-	if len(overrides) > 0 {
-		simResult, err = hpaanalysis.SimulateHPA(hpa, overrides, hpaanalysis.HealthWeights{})
-		if err != nil {
-			return fmt.Errorf("simulation failed: %w", err)
-		}
-	} else {
-		simResult = simulateCurrentState(hpa)
+	metricOverrides, err := parseSetMetricFlags(setMetric)
+	if err != nil {
+		return err
+	}
+	if duration < 0 {
+		return fmt.Errorf("--duration must be >= 0")
 	}
 
-	// --set-metric: apply metric value overrides for display.
-	// These modify the simulated "current metric values" which affects ratio display.
-	if err := validateSetMetricFlags(setMetric); err != nil {
-		return err
+	simResult, err := hpaanalysis.SimulateScenario(hpa, overrides, metricOverrides,
+		hpaanalysis.HealthWeights{}, hpaanalysis.SimulationExtendedOptions{DurationSeconds: duration})
+	if err != nil {
+		return fmt.Errorf("simulation failed: %w", err)
 	}
 
 	// Build report.
@@ -98,15 +96,21 @@ func runSimulate(ctx context.Context, out io.Writer, opts *options, name string,
 		Parameter:      simResult.Parameter,
 		Interpretation: simResult.Interpretation,
 		RiskWarnings:   simResult.RiskWarnings,
+		RiskAssessment: simResult.RiskAssessment,
+		TimeSeries:     simResult.TimeSeriesProjection,
 	}
 
 	// Optional suggestions on the simulated state.
 	if suggest {
-		var minReplicas int32 = 1
-		if hpa.Spec.MinReplicas != nil {
-			minReplicas = *hpa.Spec.MinReplicas
+		simulatedHPA, buildErr := hpaanalysis.BuildSimulatedHPA(hpa, overrides, metricOverrides)
+		if buildErr != nil {
+			return fmt.Errorf("build simulated HPA for suggestions: %w", buildErr)
 		}
-		report.Suggestions = hpaanalysis.BuildSuggestions(hpa, minReplicas)
+		var minReplicas int32 = 1
+		if simulatedHPA.Spec.MinReplicas != nil {
+			minReplicas = *simulatedHPA.Spec.MinReplicas
+		}
+		report.Suggestions = hpaanalysis.BuildSuggestions(simulatedHPA, minReplicas)
 	}
 
 	// Render output.
@@ -135,22 +139,18 @@ func runSimulate(ctx context.Context, out io.Writer, opts *options, name string,
 func buildSimulateOverrides(setTarget []string, tolerance string) (map[string]string, error) {
 	overrides := make(map[string]string)
 
-	// --set-target: cpu=60 → targetAverageUtilization=60
+	// --set-target: cpu=60 → metric.cpu.target=60
 	for _, t := range setTarget {
 		parts := strings.SplitN(t, "=", 2)
 		if len(parts) != 2 {
 			return nil, fmt.Errorf("invalid --set-target %q: expected name=value format", t)
 		}
-		metricName := strings.ToLower(parts[0])
-		value := parts[1]
-		switch metricName {
-		case "cpu":
-			overrides["cpu.targetAverageUtilization"] = value
-		case "memory":
-			overrides["memory.targetAverageUtilization"] = value
-		default:
-			overrides[metricName+".targetAverageUtilization"] = value
+		metricName := strings.ToLower(strings.TrimSpace(parts[0]))
+		value := strings.TrimSpace(parts[1])
+		if metricName == "" || value == "" {
+			return nil, fmt.Errorf("invalid --set-target %q: name and value must be non-empty", t)
 		}
+		overrides["metric."+metricName+".target"] = value
 	}
 
 	// --tolerance
@@ -161,34 +161,21 @@ func buildSimulateOverrides(setTarget []string, tolerance string) (map[string]st
 	return overrides, nil
 }
 
-// simulateCurrentState returns a SimulationResult reflecting the HPA's current
-// state, used when no spec overrides are supplied.
-func simulateCurrentState(hpa *autoscalingv2.HorizontalPodAutoscaler) *hpaanalysis.SimulationResult {
-	analysis := hpaanalysis.AnalyzeWithOptions(hpa, true, hpaanalysis.AnalysisOptions{})
-	simResult := &hpaanalysis.SimulationResult{
-		Before: hpaanalysis.SimulationState{
-			DesiredReplicas: analysis.Desired,
-			Health:          analysis.Health,
-			HealthScore:     analysis.HealthScore,
-			Summary:         analysis.Summary,
-			Metrics:         analysis.Metrics,
-		},
-		Confidence: "estimated",
-	}
-	simResult.After = simResult.Before
-	return simResult
-}
-
-// validateSetMetricFlags validates the --set-metric name=value pairs. The
-// metric value override is informational for now and is not applied.
-func validateSetMetricFlags(setMetric []string) error {
+func parseSetMetricFlags(setMetric []string) (map[string]string, error) {
+	overrides := make(map[string]string, len(setMetric))
 	for _, m := range setMetric {
 		parts := strings.SplitN(m, "=", 2)
 		if len(parts) != 2 {
-			return fmt.Errorf("invalid --set-metric %q: expected name=value format", m)
+			return nil, fmt.Errorf("invalid --set-metric %q: expected name=value format", m)
 		}
+		name := strings.ToLower(strings.TrimSpace(parts[0]))
+		value := strings.TrimSpace(parts[1])
+		if name == "" || value == "" {
+			return nil, fmt.Errorf("invalid --set-metric %q: name and value must be non-empty", m)
+		}
+		overrides[name] = value
 	}
-	return nil
+	return overrides, nil
 }
 
 func writeSimulateText(out io.Writer, report simulateReport, theme style.Theme) error {
@@ -199,7 +186,12 @@ func writeSimulateText(out io.Writer, report simulateReport, theme style.Theme) 
 	}
 	_, _ = fmt.Fprintf(out, "  Confidence: %s\n\n", theme.SummaryColor(report.Confidence))
 
-	// Before/After comparison.
+	writeSimulateStateComparison(out, report)
+	writeSimulateSupplementalSections(out, report)
+	return nil
+}
+
+func writeSimulateStateComparison(out io.Writer, report simulateReport) {
 	_, _ = fmt.Fprintln(out, "  Current State:")
 	_, _ = fmt.Fprintf(out, "    desiredReplicas: %d\n", report.Before.DesiredReplicas)
 	_, _ = fmt.Fprintf(out, "    health: %s (score: %d)\n", report.Before.Health, report.Before.HealthScore)
@@ -220,7 +212,9 @@ func writeSimulateText(out io.Writer, report simulateReport, theme style.Theme) 
 			_, _ = fmt.Fprintf(out, "    summary: %s\n", report.After.Summary)
 		}
 	}
+}
 
+func writeSimulateSupplementalSections(out io.Writer, report simulateReport) {
 	if len(report.Interpretation) > 0 {
 		_, _ = fmt.Fprintln(out, "\n  Interpretation:")
 		for _, line := range report.Interpretation {
@@ -234,6 +228,14 @@ func writeSimulateText(out io.Writer, report simulateReport, theme style.Theme) 
 			_, _ = fmt.Fprintf(out, "    ⚠ %s\n", w)
 		}
 	}
+	if report.RiskAssessment != "" {
+		_, _ = fmt.Fprintf(out, "\n  Risk Assessment:\n    %s\n", report.RiskAssessment)
+	}
+
+	if len(report.TimeSeries) > 0 {
+		_, _ = fmt.Fprintln(out, "\n  Projected Trajectory:")
+		_, _ = fmt.Fprint(out, hpaanalysis.FormatTrajectoryASCII(report.TimeSeries, 40))
+	}
 
 	if len(report.Suggestions) > 0 {
 		_, _ = fmt.Fprintln(out, "\n  Suggestions:")
@@ -244,6 +246,4 @@ func writeSimulateText(out io.Writer, report simulateReport, theme style.Theme) 
 			}
 		}
 	}
-
-	return nil
 }

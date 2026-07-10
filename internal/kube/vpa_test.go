@@ -256,3 +256,21 @@ func TestHasResourceMetrics_NoMetrics(t *testing.T) {
 		t.Fatal("expected hasResourceMetrics=false for no metrics")
 	}
 }
+
+func TestVPAControlsHPAResourceRequiresIntersection(t *testing.T) {
+	target := int32(80)
+	hpa := &autoscalingv2.HorizontalPodAutoscaler{Spec: autoscalingv2.HorizontalPodAutoscalerSpec{Metrics: []autoscalingv2.MetricSpec{{
+		Type: autoscalingv2.ResourceMetricSourceType,
+		Resource: &autoscalingv2.ResourceMetricSource{Name: corev1.ResourceCPU,
+			Target: autoscalingv2.MetricTarget{Type: autoscalingv2.UtilizationMetricType, AverageUtilization: &target}},
+	}}}}
+	if vpaControlsHPAResource(hpa, []string{"memory"}) {
+		t.Fatal("memory-only VPA must not conflict with a CPU-only HPA")
+	}
+	if !vpaControlsHPAResource(hpa, []string{"cpu"}) {
+		t.Fatal("CPU-controlled VPA should overlap a CPU HPA")
+	}
+	if !vpaControlsHPAResource(hpa, nil) {
+		t.Fatal("omitted controlledResources defaults to cpu and memory")
+	}
+}

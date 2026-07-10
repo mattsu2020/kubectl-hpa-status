@@ -56,6 +56,30 @@ func TestAnalyzeAutoscalerMap_Healthy(t *testing.T) {
 	}
 }
 
+func TestAnalyzeAutoscalerMap_NodeReadFailureIsUnknown(t *testing.T) {
+	input := AutoscalerMapInput{
+		Namespace:               "default",
+		HPAName:                 "web",
+		Target:                  "Deployment/web",
+		CurrentReplicas:         3,
+		DesiredReplicas:         3,
+		MaxReplicas:             10,
+		WorkloadReadyReplicas:   3,
+		WorkloadDesiredReplicas: 3,
+		ScalingActive:           true,
+		NodeFetchError:          "nodes is forbidden",
+	}
+	am := AnalyzeAutoscalerMap(input)
+	for _, blocker := range am.Blockers {
+		if blocker.Message == "No schedulable nodes found in cluster" {
+			t.Fatalf("RBAC failure was converted into a confirmed blocker: %#v", blocker)
+		}
+	}
+	if len(am.Warnings) == 0 || !strings.Contains(am.Warnings[0], "forbidden") {
+		t.Fatalf("expected node read warning, got %#v", am.Warnings)
+	}
+}
+
 func TestAnalyzeAutoscalerMap_PendingPods(t *testing.T) {
 	input := AutoscalerMapInput{
 		Namespace:               "production",

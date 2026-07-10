@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
@@ -20,6 +21,10 @@ import (
 func buildScalePath(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpaanalysis.ScalePath {
 	input := hpaanalysis.ScalePathInput{}
 	info, err := kube.FetchScaleTargetInfo(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef)
+	var collectionWarnings []string
+	if err != nil {
+		collectionWarnings = append(collectionWarnings, fmt.Sprintf("scale target unavailable: %v", err))
+	}
 	if err == nil && info != nil {
 		input.Target = &hpaanalysis.ScalePathTarget{
 			Kind:            info.Kind,
@@ -30,14 +35,20 @@ func buildScalePath(ctx context.Context, client *kube.Client, hpa *autoscalingv2
 		}
 		if pods, podErr := kube.FetchPodInfosForSelector(ctx, client.Interface, hpa.Namespace, info.SelectorStr); podErr == nil {
 			input.Pods = convertScalePathPods(pods)
+		} else {
+			collectionWarnings = append(collectionWarnings, fmt.Sprintf("pods unavailable: %v", podErr))
 		}
 		if replicaSets, rsErr := kube.FetchReplicaSetsForScaleTarget(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef, info.SelectorStr); rsErr == nil {
 			input.ReplicaSets = convertScalePathReplicaSets(replicaSets)
+		} else {
+			collectionWarnings = append(collectionWarnings, fmt.Sprintf("replica sets unavailable: %v", rsErr))
 		}
 		objectNames := scalePathEventObjectNames(hpa, input.Pods, input.ReplicaSets)
 		input.Events = convertScalePathEvents(kube.FetchRecentEventsForObjects(ctx, client.Interface, hpa.Namespace, objectNames, 10))
 	}
-	return hpaanalysis.AnalyzeScalePath(hpa, input)
+	result := hpaanalysis.AnalyzeScalePath(hpa, input)
+	result.ProbeWarnings = append(result.ProbeWarnings, collectionWarnings...)
+	return result
 }
 
 func convertScalePathPods(pods []kube.PodInfo) []hpaanalysis.ScalePathPod {

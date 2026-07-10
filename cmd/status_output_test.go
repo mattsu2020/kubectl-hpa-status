@@ -38,3 +38,53 @@ func TestRunStatusMultipleKeepsMarkdownStdoutCleanOnItemFailure(t *testing.T) {
 		t.Fatalf("stderr does not contain the failed item:\n%s", stderr.String())
 	}
 }
+
+func TestRunStatusSingleEarlyOutputModesPreserveWarningExit(t *testing.T) {
+	hpa := testutil.BuildHPA("default", "limited",
+		testutil.WithReplicas(10, 10),
+		testutil.WithMinMax(1, 10),
+		testutil.WithScalingLimitedTrue("TooManyReplicas"),
+	)
+
+	tests := []struct {
+		name   string
+		mutate func(*options)
+	}{
+		{
+			name: "structured",
+			mutate: func(opts *options) {
+				opts.Format = "structured"
+			},
+		},
+		{
+			name: "ai context",
+			mutate: func(opts *options) {
+				opts.ContextForAI = true
+			},
+		},
+		{
+			name: "gitops export",
+			mutate: func(opts *options) {
+				opts.Export = "yaml"
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := &options{
+				Common: commonOptions{ClientOverride: testutil.NewFakeClient(hpa)},
+				Status: statusOptions{Features: feats("noEnrich")},
+			}
+			tc.mutate(opts)
+			var out bytes.Buffer
+			err := runStatusSingle(context.Background(), &out, opts, "limited", true)
+			if !isExitCodeWarning(err) {
+				t.Fatalf("error = %T %v, want warning exit", err, err)
+			}
+			if out.Len() == 0 {
+				t.Fatal("expected output before warning exit")
+			}
+		})
+	}
+}

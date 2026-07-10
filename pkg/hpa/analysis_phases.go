@@ -71,10 +71,11 @@ func detectImpactMetric(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler) 
 	if !ok {
 		return a
 	}
-	// When desiredReplicas == maxReplicas, the winner metric cannot be reliably determined
-	if src.Status.DesiredReplicas == src.Spec.MaxReplicas {
+	// Limits, stabilization, and missing metric status can hide the controller's
+	// actual winning recommendation.
+	if winnerHiddenByControllerState(src) {
 		guess.Confidence = string(ConfidenceLow)
-		guess.Note = "desiredReplicas == maxReplicas so the winner metric cannot be reliably determined"
+		guess.Note += "; controller state may hide the actual winner"
 	} else {
 		guess.Confidence = string(ConfidenceMedium)
 	}
