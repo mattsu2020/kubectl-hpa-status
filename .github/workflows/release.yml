@@ -37,7 +37,7 @@ jobs:
       - name: Install cosign
         uses: sigstore/cosign-installer@v3
         with:
-          cosign-release: 'v2.4.1'
+          cosign-release: 'v2.6.3'
 
       # GoReleaser delegates archive SBOM generation to Syft. Install a pinned,
       # immutable Syft release explicitly so a tag build cannot silently lose
