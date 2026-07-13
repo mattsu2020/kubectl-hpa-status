@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.0.0] - 2026-06-30
+## [2.0.0] - 2026-07-13
 
 This release removes deprecated command/flag aliases and lands the first
 structural refactors of the `cmd/` package and the `Analysis` model. See the
@@ -45,20 +45,9 @@ removed aliases.
 - New `cmd/internal/{errs,client,output}` and `cmd/bundle` sub-packages as the first extractions from the monolithic `cmd/` package, following the facade-then-migrate pattern.
 - Test coverage lifted across `cmd/` (12 previously-untested files), `internal/cmdoptions` (34.9% → 61.2%), `pkg/hpa/keda` (45.8% → 96.6%), and other low-coverage packages.
 - Split the 1934-line `test/e2e/e2e_test.go` into per-area files (`e2e_status_test.go`, `e2e_list_scan_test.go`, `e2e_config_test.go`, `e2e_keda_test.go`, `e2e_watch_tui_test.go`, plus shared `e2e_helpers_test.go`).
-
-
-### Changed (breaking)
-- `status NAME1 NAME2 -o json` and `-o yaml` now emit a `StatusBatch` envelope instead of a bare `[]StatusReport` array. New shape:
-  ```json
-  {
-    "apiVersion": "hpa-status/v1",
-    "items": [
-      {"namespace": "default", "name": "web", "status": "ok", "report": { ... }},
-      {"namespace": "default", "name": "missing", "status": "error", "error": "HPA \"missing\" was not found ..."}
-    ]
-  }
-  ```
-  Single-HPA `status NAME -o json` is unchanged (still a bare `StatusReport`). Failed items have `status: "error"`, a non-empty `error` string, and no `report` field.
+- Streaming output for the `list` command on large clusters, plus refined status display.
+- Single-HPA `status -o json`/`-o yaml` reports now include an `apiVersion` field.
+- `LDFLAGS` Makefile variable (default `-s -w`) so local builds match release stripping; override with `LDFLAGS=` for debug builds.
 
 ## [0.10.0] - 2026-06-13
 
