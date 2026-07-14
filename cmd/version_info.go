@@ -27,7 +27,14 @@ func resolveBuildInfo(v, c, d string, readBuildInfo func() (*debug.BuildInfo, bo
 	if v == defaultVersion && info.Main.Version != "" && info.Main.Version != "(devel)" {
 		v = info.Main.Version
 	}
-	for _, s := range info.Settings {
+	c, d = resolveVCSSettings(c, d, info.Settings)
+	return v, c, d
+}
+
+// resolveVCSSettings fills commit and build date from vcs build settings when
+// the ldflags defaults are still in place.
+func resolveVCSSettings(c, d string, settings []debug.BuildSetting) (string, string) {
+	for _, s := range settings {
 		if s.Value == "" {
 			continue
 		}
@@ -42,5 +49,5 @@ func resolveBuildInfo(v, c, d string, readBuildInfo func() (*debug.BuildInfo, bo
 			}
 		}
 	}
-	return v, c, d
+	return c, d
 }

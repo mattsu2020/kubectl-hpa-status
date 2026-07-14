@@ -29,32 +29,10 @@ func Format(out io.Writer, format string, templateStr string, value any, writeTe
 	switch format {
 	case "", "table", "wide", "ja":
 		return writeText()
-	case "json":
-		encoder := json.NewEncoder(out)
-		encoder.SetIndent("", "  ")
-		return encoder.Encode(value)
-	case "jsonl":
-		return JSONLines(out, value)
-	case "yaml":
-		data, err := yaml.Marshal(value)
-		if err != nil {
+	default:
+		if handled, err := formatStructured(out, format, templateStr, value); handled {
 			return err
 		}
-		_, err = out.Write(data)
-		return err
-	case "jsonpath":
-		return JSONPath(out, templateStr, value)
-	case "go-template", "template":
-		return Template(out, templateStr, value)
-	case "prometheus":
-		return Prometheus(out, value)
-	case "markdown", "md":
-		return Markdown(out, value)
-	case "html":
-		return HTML(out, value)
-	case "incident":
-		return Incident(out, value)
-	default:
 		if expr, kind, ok := ParsePrefixedFormat(format); ok {
 			switch kind {
 			case "jsonpath":
@@ -64,6 +42,41 @@ func Format(out io.Writer, format string, templateStr string, value any, writeTe
 			}
 		}
 		return fmt.Errorf("unsupported output format %q", format)
+	}
+}
+
+// formatStructured serializes value for the machine-readable formats. The
+// first return value reports whether format matched one of them; when false
+// the caller falls through to prefixed-format parsing.
+func formatStructured(out io.Writer, format, templateStr string, value any) (handled bool, err error) {
+	switch format {
+	case "json":
+		encoder := json.NewEncoder(out)
+		encoder.SetIndent("", "  ")
+		return true, encoder.Encode(value)
+	case "jsonl":
+		return true, JSONLines(out, value)
+	case "yaml":
+		data, err := yaml.Marshal(value)
+		if err != nil {
+			return true, err
+		}
+		_, err = out.Write(data)
+		return true, err
+	case "jsonpath":
+		return true, JSONPath(out, templateStr, value)
+	case "go-template", "template":
+		return true, Template(out, templateStr, value)
+	case "prometheus":
+		return true, Prometheus(out, value)
+	case "markdown", "md":
+		return true, Markdown(out, value)
+	case "html":
+		return true, HTML(out, value)
+	case "incident":
+		return true, Incident(out, value)
+	default:
+		return false, nil
 	}
 }
 

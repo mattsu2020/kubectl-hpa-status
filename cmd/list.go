@@ -112,18 +112,23 @@ func runList(ctx context.Context, out io.Writer, opts *options) error {
 	}
 	sortListItems(report.Items, sortBy)
 
+	return finishAccumulatedList(ctx, out, opts, filter, hpas.Items, report)
+}
+
+// finishAccumulatedList runs the apply / export / write phase for the buffered
+// (non-streaming) list path after the report has been built and sorted.
+func finishAccumulatedList(ctx context.Context, out io.Writer, opts *options, filter string, hpas []autoscalingv2.HorizontalPodAutoscaler, report hpaanalysis.ListReport) error {
 	if opts.Apply {
 		if err := validateListApply(opts, filter); err != nil {
 			return err
 		}
-		if err := applyListSuggestions(ctx, out, opts, hpas.Items, report.Items); err != nil {
+		if err := applyListSuggestions(ctx, out, opts, hpas, report.Items); err != nil {
 			return err
 		}
 	}
 	if opts.Export == "directory" {
-		return exportListPatchesDirectory(out, opts, hpas.Items, report.Items)
+		return exportListPatchesDirectory(out, opts, hpas, report.Items)
 	}
-
 	return writeListResult(out, opts, report)
 }
 

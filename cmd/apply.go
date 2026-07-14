@@ -23,18 +23,56 @@ func applySuggestions(ctx context.Context, out io.Writer, opts *options, name st
 	return applySuggestionsInNamespace(ctx, out, opts, "", name, suggestions, false)
 }
 
-//nolint:gocyclo // Multi-phase apply workflow: collect, validate, confirm, merge/apply
+// applyPlan holds the validated state produced by the setup/guard phase of an
+// apply run, ready for the confirm-and-execute phase.
+type applyPlan struct {
+	client    *kube.Client
+	namespace string
+	current   *autoscalingv2.HorizontalPodAutoscaler
+	patches   []hpaanalysis.Suggestion
+}
+
 func applySuggestionsInNamespace(ctx context.Context, out io.Writer, opts *options, namespace string, name string, suggestions []hpaanalysis.Suggestion, skipConfirm bool) ([]string, error) {
+	plan, done, err := prepareApplyPlan(ctx, out, opts, namespace, name, suggestions)
+	if err != nil {
+		return nil, err
+	}
+	if done != nil {
+		return done, nil
+	}
+
+	validated, done, err := validateApplyPlan(ctx, out, opts, plan)
+	if err != nil {
+		return nil, err
+	}
+	if done != nil {
+		return done, nil
+	}
+
+	// Real apply path: confirm unless skipped.
+	if !opts.Yes && !skipConfirm {
+		if err := confirmApply(out, opts, len(validated.patches), validated.namespace, name); err != nil {
+			return nil, err
+		}
+	}
+
+	return executePatches(ctx, out, validated.client, validated.namespace, name, validated.patches, opts.AllowPartial, validated.current.ResourceVersion)
+}
+
+// prepareApplyPlan collects applicable patches, creates the client, fetches the
+// current HPA, and runs the policy guard. A non-nil []string return is a
+// short-circuit result (nothing to apply) that the caller should return as-is.
+func prepareApplyPlan(ctx context.Context, out io.Writer, opts *options, namespace, name string, suggestions []hpaanalysis.Suggestion) (*applyPlan, []string, error) {
 	patches := collectApplicablePatches(suggestions)
 	if len(patches) == 0 {
-		return []string{"No applicable HPA patch was suggested."}, nil
+		return nil, []string{"No applicable HPA patch was suggested."}, nil
 	}
 	// applySuggestions returns (messages, err) rather than a single error,
 	// so it surfaces the raw client-creation error to the caller instead of
 	// the standard wrapper. The caller wraps it for display.
 	client, err := opts.NewClient()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if namespace == "" {
 		namespace = client.Namespace
@@ -45,57 +83,56 @@ func applySuggestionsInNamespace(ctx context.Context, out io.Writer, opts *optio
 		HorizontalPodAutoscalers(namespace).
 		Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
-		return nil, wrapHPALookupError(namespace, name, err)
+		return nil, nil, wrapHPALookupError(namespace, name, err)
 	}
 
-	guardedPatches, err := guardPatches(out, opts, current, patches)
+	patches, err = guardPatches(out, opts, current, patches)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	patches = guardedPatches
 	if len(patches) == 0 {
-		return []string{"No applicable HPA patch was allowed by policy guard."}, nil
+		return nil, []string{"No applicable HPA patch was allowed by policy guard."}, nil
 	}
 
-	mergedPatch, mergeErr := mergeSuggestionPatches(patches)
+	return &applyPlan{client: client, namespace: namespace, current: current, patches: patches}, nil, nil
+}
+
+// validateApplyPlan guards the merged patch, prints the proposed diffs, and
+// runs the server-side dry-run pre-validation. A non-nil []string return is a
+// short-circuit result (dry-run mode) that the caller should return as-is.
+func validateApplyPlan(ctx context.Context, out io.Writer, opts *options, plan *applyPlan) (*applyPlan, []string, error) {
+	mergedPatch, mergeErr := mergeSuggestionPatches(plan.patches)
 	if mergeErr == nil {
-		if err := guardMergedPatch(out, opts, current, mergedPatch); err != nil {
-			return nil, err
+		if err := guardMergedPatch(out, opts, plan.current, mergedPatch); err != nil {
+			return nil, nil, err
 		}
 	}
 
-	if err := printProposedPatches(out, current, patches); err != nil {
-		return nil, err
+	if err := printProposedPatches(out, plan.current, plan.patches); err != nil {
+		return nil, nil, err
 	}
 
-	// Phase 1: Pre-validate all patches with server-side dry-run before
-	// asking for confirmation or applying anything.
-	if err := preValidatePatches(ctx, client, namespace, name, patches, mergedPatch, mergeErr); err != nil {
-		return nil, err
+	// Pre-validate all patches with server-side dry-run before asking for
+	// confirmation or applying anything.
+	if err := preValidatePatches(ctx, plan.client, plan.namespace, plan.current.Name, plan.patches, mergedPatch, mergeErr); err != nil {
+		return nil, nil, err
 	}
-	validationMessage := fmt.Sprintf("All %d patch(es) passed server-side dry-run validation.", len(patches))
+	validationMessage := fmt.Sprintf("All %d patch(es) passed server-side dry-run validation.", len(plan.patches))
 	if mergeErr == nil {
-		validationMessage = fmt.Sprintf("All %d patch(es) and their combined final state passed server-side dry-run validation.", len(patches))
+		validationMessage = fmt.Sprintf("All %d patch(es) and their combined final state passed server-side dry-run validation.", len(plan.patches))
 	}
 	if _, err := fmt.Fprintln(out, validationMessage); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if opts.DryRun {
 		if _, err := fmt.Fprintln(out, "Dry-run mode is enabled; patches were validated but not persisted. Use --dry-run=false to apply changes."); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		return dryRunResults(patches), nil
+		return nil, dryRunResults(plan.patches), nil
 	}
 
-	// Real apply path: confirm unless skipped.
-	if !opts.Yes && !skipConfirm {
-		if err := confirmApply(out, opts, len(patches), namespace, name); err != nil {
-			return nil, err
-		}
-	}
-
-	return executePatches(ctx, out, client, namespace, name, patches, opts.AllowPartial, current.ResourceVersion)
+	return plan, nil, nil
 }
 
 func guardPatches(out io.Writer, opts *options, current *autoscalingv2.HorizontalPodAutoscaler, patches []hpaanalysis.Suggestion) ([]hpaanalysis.Suggestion, error) {

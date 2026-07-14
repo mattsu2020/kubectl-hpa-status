@@ -358,19 +358,7 @@ func detectAutoscalerType(ca, karpenter bool) string {
 // next actions, and risk assessment.
 func buildAutoscalerMapSummaryEnhanced(am *AutoscalerMap, input AutoscalerMapInput) (string, string, []string, string) {
 	blockerCount := len(am.Blockers)
-	highCount := 0
-	mediumCount := 0
-	lowCount := 0
-	for _, b := range am.Blockers {
-		switch b.Severity {
-		case "high":
-			highCount++
-		case "medium":
-			mediumCount++
-		case "low":
-			lowCount++
-		}
-	}
+	highCount, mediumCount, lowCount := countBlockerSeverities(am.Blockers)
 
 	summary := "autoscaling chain is healthy"
 	if blockerCount > 0 {
@@ -378,15 +366,13 @@ func buildAutoscalerMapSummaryEnhanced(am *AutoscalerMap, input AutoscalerMapInp
 	}
 
 	rec := ""
-	var actions []string
-
 	if highCount > 0 {
 		rec = fmt.Sprintf("Address %d high-severity blocker(s) to restore autoscaling health.", highCount)
 	} else if blockerCount > 0 {
 		rec = "Minor blockers detected; monitor for escalation."
 	}
 
-	actions = append(actions, fmt.Sprintf("kubectl get hpa %s -n %s", input.HPAName, input.Namespace))
+	actions := []string{fmt.Sprintf("kubectl get hpa %s -n %s", input.HPAName, input.Namespace)}
 	if input.PodSummary.Pending > 0 {
 		actions = append(actions, fmt.Sprintf("kubectl get pods -n %s -l <selector> | grep Pending", input.Namespace))
 	}
@@ -406,4 +392,19 @@ func buildAutoscalerMapSummaryEnhanced(am *AutoscalerMap, input AutoscalerMapInp
 	}
 
 	return summary, rec, actions, risk
+}
+
+// countBlockerSeverities tallies blockers by their high/medium/low severity.
+func countBlockerSeverities(blockers []AutoscalerMapBlocker) (high, medium, low int) {
+	for _, b := range blockers {
+		switch b.Severity {
+		case "high":
+			high++
+		case "medium":
+			medium++
+		case "low":
+			low++
+		}
+	}
+	return high, medium, low
 }
