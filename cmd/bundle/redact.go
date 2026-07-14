@@ -86,11 +86,30 @@ func redactStructuredValue(value any, parentKey string) {
 	}
 }
 
+// redactedParentKeys marks containers whose every child value is sensitive.
+var redactedParentKeys = map[string]bool{
+	"annotations": true,
+	"labels":      true,
+	"data":        true,
+	"stringdata":  true,
+}
+
+// redactedFieldKeys marks field names that are sensitive regardless of parent.
+var redactedFieldKeys = map[string]bool{
+	"data":          true,
+	"stringdata":    true,
+	"authorization": true,
+	"cookie":        true,
+}
+
+// redactedKeyMarkers marks substrings that flag a field name as sensitive.
+var redactedKeyMarkers = []string{
+	"password", "passwd", "token", "secret", "apikey",
+	"clientkey", "privatekey", "credential",
+}
+
 func shouldRedactStructuredField(key, parentKey string) bool {
-	if parentKey == "annotations" || parentKey == "labels" || parentKey == "data" || parentKey == "stringdata" {
-		return true
-	}
-	if key == "data" || key == "stringdata" || key == "authorization" || key == "cookie" {
+	if redactedParentKeys[parentKey] || redactedFieldKeys[key] {
 		return true
 	}
 	if key == "value" && parentKey == "env" {
@@ -99,7 +118,7 @@ func shouldRedactStructuredField(key, parentKey string) bool {
 	if key == "name" && (strings.Contains(parentKey, "secret") || strings.Contains(parentKey, "configmap")) {
 		return true
 	}
-	for _, marker := range []string{"password", "passwd", "token", "secret", "apikey", "clientkey", "privatekey", "credential"} {
+	for _, marker := range redactedKeyMarkers {
 		if strings.Contains(key, marker) {
 			return true
 		}

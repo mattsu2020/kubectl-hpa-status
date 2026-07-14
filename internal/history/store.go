@@ -6,6 +6,7 @@ package history
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -199,12 +200,8 @@ func (s *HealthStore) Prune(namespace, name string, retention time.Duration) err
 
 	snapshots, loadErr := loadHistoryFile(path, retention)
 	var corruptErr *CorruptLinesError
-	if loadErr != nil {
-		if typed, ok := loadErr.(*CorruptLinesError); ok {
-			corruptErr = typed
-		} else {
-			return loadErr
-		}
+	if loadErr != nil && !errors.As(loadErr, &corruptErr) {
+		return loadErr
 	}
 
 	tmp, err := os.CreateTemp(s.dir, ".history-*.jsonl")

@@ -35,6 +35,24 @@ func validateEffectiveOptions(cmd *cobra.Command, opts *options) error {
 		opts.HealthScoreMaxConfigured = true
 	}
 
+	checks := []func() error{
+		func() error { return validateNumericRanges(opts) },
+		func() error { return validateEnumModes(opts) },
+		func() error { return validateCommandOutputModes(cmd, opts) },
+		func() error { return validateConfiguredHealthWeights(opts) },
+		func() error { return validateOutputOption(cmd, opts) },
+		func() error { return validateApplyOutputContract(opts) },
+		func() error { return validateListCommandOptions(cmd, opts) },
+	}
+	for _, check := range checks {
+		if err := check(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateNumericRanges(opts *options) error {
 	if !isAcceptedNormalized(opts.Color, validColorValues) {
 		return fmt.Errorf("--color must be one of %s; got %q", strings.Join(validColorValues, ", "), opts.Color)
 	}
@@ -59,6 +77,10 @@ func validateEffectiveOptions(cmd *cobra.Command, opts *options) error {
 	if opts.RequestTimeout < 0 {
 		return fmt.Errorf("--request-timeout must be >= 0, got %s", opts.RequestTimeout)
 	}
+	return validateAnalysisRanges(opts)
+}
+
+func validateAnalysisRanges(opts *options) error {
 	if opts.WatchInterval <= 0 {
 		return fmt.Errorf("--interval must be greater than zero, got %s", opts.WatchInterval)
 	}
@@ -77,53 +99,45 @@ func validateEffectiveOptions(cmd *cobra.Command, opts *options) error {
 	if opts.Events.Enabled && opts.Events.Limit < 1 {
 		return fmt.Errorf("--events limit must be greater than zero")
 	}
+	return nil
+}
 
-	if err := validateMode("--keda", opts.KEDA, "", "auto", "on", "off"); err != nil {
-		return err
+func validateEnumModes(opts *options) error {
+	modes := []struct {
+		flag     string
+		value    string
+		accepted []string
+	}{
+		{"--keda", opts.KEDA, []string{"", "auto", "on", "off"}},
+		{"--vpa", opts.VPA, []string{"", "auto", "on", "off"}},
+		{"--policy-guard-mode", opts.PolicyGuardMode, []string{"block", "warn"}},
+		{"--format", opts.Format, []string{"", "structured"}},
+		{"--decision-trace-format", opts.DecisionTraceFormat, []string{"", "text", "json", "yaml"}},
+		{"--report", opts.Report, []string{"", "markdown", "md", "html", "incident", "junit", "sarif"}},
+		{"--export", opts.Export, []string{"", "yaml", "kustomize", "helm-values", "directory"}},
 	}
-	if err := validateMode("--vpa", opts.VPA, "", "auto", "on", "off"); err != nil {
-		return err
-	}
-	if err := validateMode("--policy-guard-mode", opts.PolicyGuardMode, "block", "warn"); err != nil {
-		return err
-	}
-	if err := validateMode("--format", opts.Format, "", "structured"); err != nil {
-		return err
-	}
-	if err := validateMode("--decision-trace-format", opts.DecisionTraceFormat, "", "text", "json", "yaml"); err != nil {
-		return err
-	}
-	if err := validateMode("--report", opts.Report, "", "markdown", "md", "html", "incident", "junit", "sarif"); err != nil {
-		return err
-	}
-	if err := validateMode("--export", opts.Export, "", "yaml", "kustomize", "helm-values", "directory"); err != nil {
-		return err
-	}
-	if err := validateCommandOutputModes(cmd, opts); err != nil {
-		return err
-	}
-	if err := validateConfiguredHealthWeights(opts); err != nil {
-		return err
-	}
-	if err := validateOutputOption(cmd, opts); err != nil {
-		return err
-	}
-	if err := validateApplyOutputContract(opts); err != nil {
-		return err
-	}
-
-	if cmd != nil && (cmd.Name() == "list" || cmd.Name() == "scan") {
-		if err := validateListOptions(opts); err != nil {
+	for _, mode := range modes {
+		if err := validateMode(mode.flag, mode.value, mode.accepted...); err != nil {
 			return err
 		}
-		if cmd.Name() == "list" && opts.Apply {
-			filter := opts.Filter
-			if opts.Problem && filter == "" {
-				filter = "issue"
-			}
-			if err := validateListApply(opts, filter); err != nil {
-				return err
-			}
+	}
+	return nil
+}
+
+func validateListCommandOptions(cmd *cobra.Command, opts *options) error {
+	if cmd == nil || (cmd.Name() != "list" && cmd.Name() != "scan") {
+		return nil
+	}
+	if err := validateListOptions(opts); err != nil {
+		return err
+	}
+	if cmd.Name() == "list" && opts.Apply {
+		filter := opts.Filter
+		if opts.Problem && filter == "" {
+			filter = "issue"
+		}
+		if err := validateListApply(opts, filter); err != nil {
+			return err
 		}
 	}
 	return nil
