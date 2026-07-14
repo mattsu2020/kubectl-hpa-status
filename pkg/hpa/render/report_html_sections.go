@@ -224,38 +224,17 @@ func writeHTMLMetricFreshness(out *strings.Builder, a hpa.Analysis) {
 }
 
 func writeHTMLCapacityContext(out *strings.Builder, a hpa.Analysis) {
-	if a.CapacityContext == nil {
+	cc := a.CapacityContext
+	if cc == nil {
 		return
 	}
-	cc := a.CapacityContext
-	if len(cc.PendingPods) == 0 && len(cc.QuotaConstraints) == 0 && len(cc.PDBInterference) == 0 && len(cc.NodeHints) == 0 {
+	tables := capacityContextTables(cc)
+	if len(tables) == 0 && len(cc.NodeHints) == 0 {
 		return
 	}
 	out.WriteString("<h2>Capacity Context</h2>\n")
-	if len(cc.PendingPods) > 0 {
-		out.WriteString("<h3>Pending Pods</h3>\n<table>\n<tr><th>Name</th><th>Unschedulable</th><th>Reasons</th></tr>\n")
-		for _, p := range cc.PendingPods {
-			reasons := strings.Join(p.Reasons, "; ")
-			out.WriteString(fmt.Sprintf("<tr><td>%s</td><td>%v</td><td>%s</td></tr>\n",
-				rendutil.HTMLEscape(p.Name), p.Unschedulable, rendutil.HTMLEscape(reasons)))
-		}
-		out.WriteString("</table>\n")
-	}
-	if len(cc.QuotaConstraints) > 0 {
-		out.WriteString("<h3>ResourceQuotas</h3>\n<table>\n<tr><th>Name</th><th>Resource</th><th>Used</th><th>Hard</th><th>Message</th></tr>\n")
-		for _, q := range cc.QuotaConstraints {
-			out.WriteString(fmt.Sprintf("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",
-				rendutil.HTMLEscape(q.Name), rendutil.HTMLEscape(q.Resource), rendutil.HTMLEscape(q.Used), rendutil.HTMLEscape(q.Hard), rendutil.HTMLEscape(q.Message)))
-		}
-		out.WriteString("</table>\n")
-	}
-	if len(cc.PDBInterference) > 0 {
-		out.WriteString("<h3>PodDisruptionBudgets</h3>\n<table>\n<tr><th>Name</th><th>Disruption</th></tr>\n")
-		for _, p := range cc.PDBInterference {
-			out.WriteString(fmt.Sprintf("<tr><td>%s</td><td>%s</td></tr>\n",
-				rendutil.HTMLEscape(p.Name), rendutil.HTMLEscape(p.Disruption)))
-		}
-		out.WriteString("</table>\n")
+	for _, t := range tables {
+		writeHTMLTable(out, t)
 	}
 	if len(cc.NodeHints) > 0 {
 		out.WriteString("<h3>Hints</h3>\n<ul>\n")

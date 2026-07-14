@@ -22,6 +22,33 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
+// formatRenderers maps each non-textual output format to its renderer. The
+// template argument is only consulted by the jsonpath/template entries.
+var formatRenderers = map[string]func(out io.Writer, templateStr string, value any) error{
+	"json": func(out io.Writer, _ string, value any) error {
+		encoder := json.NewEncoder(out)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(value)
+	},
+	"jsonl": func(out io.Writer, _ string, value any) error { return JSONLines(out, value) },
+	"yaml": func(out io.Writer, _ string, value any) error {
+		data, err := yaml.Marshal(value)
+		if err != nil {
+			return err
+		}
+		_, err = out.Write(data)
+		return err
+	},
+	"jsonpath":    JSONPath,
+	"go-template": Template,
+	"template":    Template,
+	"prometheus":  func(out io.Writer, _ string, value any) error { return Prometheus(out, value) },
+	"markdown":    func(out io.Writer, _ string, value any) error { return Markdown(out, value) },
+	"md":          func(out io.Writer, _ string, value any) error { return Markdown(out, value) },
+	"html":        func(out io.Writer, _ string, value any) error { return HTML(out, value) },
+	"incident":    func(out io.Writer, _ string, value any) error { return Incident(out, value) },
+}
+
 // Format is the top-level output-format dispatcher. writeText is invoked for
 // the human-readable formats ("", "table", "wide", "ja"); every other format
 // serializes value directly.
@@ -29,42 +56,14 @@ func Format(out io.Writer, format string, templateStr string, value any, writeTe
 	switch format {
 	case "", "table", "wide", "ja":
 		return writeText()
-	case "json":
-		encoder := json.NewEncoder(out)
-		encoder.SetIndent("", "  ")
-		return encoder.Encode(value)
-	case "jsonl":
-		return JSONLines(out, value)
-	case "yaml":
-		data, err := yaml.Marshal(value)
-		if err != nil {
-			return err
-		}
-		_, err = out.Write(data)
-		return err
-	case "jsonpath":
-		return JSONPath(out, templateStr, value)
-	case "go-template", "template":
-		return Template(out, templateStr, value)
-	case "prometheus":
-		return Prometheus(out, value)
-	case "markdown", "md":
-		return Markdown(out, value)
-	case "html":
-		return HTML(out, value)
-	case "incident":
-		return Incident(out, value)
-	default:
-		if expr, kind, ok := ParsePrefixedFormat(format); ok {
-			switch kind {
-			case "jsonpath":
-				return JSONPath(out, expr, value)
-			case "go-template":
-				return Template(out, expr, value)
-			}
-		}
-		return fmt.Errorf("unsupported output format %q", format)
 	}
+	if renderer, ok := formatRenderers[format]; ok {
+		return renderer(out, templateStr, value)
+	}
+	if expr, kind, ok := ParsePrefixedFormat(format); ok {
+		return formatRenderers[kind](out, expr, value)
+	}
+	return fmt.Errorf("unsupported output format %q", format)
 }
 
 // ParsePrefixedFormat recognizes "jsonpath=", "jsonpath:", "template=",
