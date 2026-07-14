@@ -3,6 +3,7 @@ package cmd
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -179,7 +180,7 @@ func readYAMLDocuments(data []byte) ([][]byte, error) {
 	var docs [][]byte
 	for {
 		doc, err := reader.Read()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			return docs, nil
 		}
 		if err != nil {

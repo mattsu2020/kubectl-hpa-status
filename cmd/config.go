@@ -94,6 +94,23 @@ func validateConfig(cfg configFile) error {
 		return fmt.Errorf("config configVersion must be %q (or omitted for backward compatibility); got %q", configVersionCurrent, cfg.ConfigVersion)
 	}
 
+	checks := []func() error{
+		func() error { return validateConfigScalars(cfg) },
+		func() error { return validateConfigScores(cfg) },
+		func() error { return validateConfigSelectors(cfg) },
+		func() error { return validateConfigEnrichment(cfg) },
+		func() error { return validateConfigTemplates(cfg.Templates) },
+		func() error { return validateConfigHealthWeights(cfg.HealthWeights) },
+	}
+	for _, check := range checks {
+		if err := check(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateConfigScalars(cfg configFile) error {
 	if cfg.ChunkSize != nil && *cfg.ChunkSize < 0 {
 		return fmt.Errorf("config chunkSize must be >= 0, got %d", *cfg.ChunkSize)
 	}
@@ -103,7 +120,10 @@ func validateConfig(cfg configFile) error {
 	if cfg.AllNamespaces != nil && *cfg.AllNamespaces && cfg.Namespace != "" {
 		return fmt.Errorf("config namespace and allNamespaces=true cannot be used together")
 	}
+	return nil
+}
 
+func validateConfigScores(cfg configFile) error {
 	if err := validateScoreField("minScore", cfg.MinScore); err != nil {
 		return err
 	}
@@ -120,7 +140,10 @@ func validateConfig(cfg configFile) error {
 	if cfg.MinScore != nil && effectiveMaxScore != nil && *cfg.MinScore > *effectiveMaxScore {
 		return fmt.Errorf("config minScore cannot be greater than healthScore/maxScore")
 	}
+	return nil
+}
 
+func validateConfigSelectors(cfg configFile) error {
 	if !isAcceptedNormalized(strings.ToLower(cfg.Color), validColorValues) {
 		return fmt.Errorf("config color must be one of %s; got %q", strings.Join(validColorValues, ", "), cfg.Color)
 	}
@@ -137,10 +160,10 @@ func validateConfig(cfg configFile) error {
 	if err := validateMode("config filter", normalizeSelector(cfg.Filter), "", "all", "ok", "error", "limited", "scalinglimited", "issue"); err != nil {
 		return err
 	}
-	if err := validateMode("config sortBy", normalizeSelector(cfg.SortBy), "", "namespace", "name", "current", "currentreplicas", "desired", "desiredreplicas", "diff", "replicadiff", "difference", "age", "creationtimestamp", "health", "healthscore", "score", "problem", "issue", "min", "minreplicas", "max", "maxreplicas", "target"); err != nil {
-		return err
-	}
+	return validateMode("config sortBy", normalizeSelector(cfg.SortBy), "", "namespace", "name", "current", "currentreplicas", "desired", "desiredreplicas", "diff", "replicadiff", "difference", "age", "creationtimestamp", "health", "healthscore", "score", "problem", "issue", "min", "minreplicas", "max", "maxreplicas", "target")
+}
 
+func validateConfigEnrichment(cfg configFile) error {
 	if cfg.Keda != nil {
 		if err := validateConfigEnrichmentMode("keda", *cfg.Keda); err != nil {
 			return err
@@ -151,13 +174,6 @@ func validateConfig(cfg configFile) error {
 			return err
 		}
 	}
-	if err := validateConfigTemplates(cfg.Templates); err != nil {
-		return err
-	}
-	if err := validateConfigHealthWeights(cfg.HealthWeights); err != nil {
-		return err
-	}
-
 	return nil
 }
 
