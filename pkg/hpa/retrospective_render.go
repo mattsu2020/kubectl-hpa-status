@@ -14,15 +14,16 @@ import (
 //
 //	10:01 desired 3 -> 5   cpu 142% over target
 //	10:02 scaleUp limited by policy: +2 pods / 60s
-func WriteRetrospectiveTimeline(w io.Writer, tl RetrospectiveTimeline, _ style.Theme) error {
+func WriteRetrospectiveTimeline(w io.Writer, tl RetrospectiveTimeline, theme style.Theme) error {
 	var out strings.Builder
 
-	out.WriteString(fmt.Sprintf("HPA Scaling Timeline: %s (%s)  since %s ago\n\n",
-		tl.HPAName, tl.Namespace, formatDuration(now().Sub(tl.Since))))
+	header := fmt.Sprintf("HPA Scaling Timeline: %s (%s)  since %s ago",
+		tl.HPAName, tl.Namespace, formatDuration(now().Sub(tl.Since)))
+	out.WriteString(theme.Header.Render(header) + "\n\n")
 
 	if len(tl.Warnings) > 0 {
 		for _, warn := range tl.Warnings {
-			out.WriteString(fmt.Sprintf("Warning: %s\n", warn))
+			out.WriteString(theme.Warning.Render(fmt.Sprintf("Warning: %s", warn)) + "\n")
 		}
 		out.WriteString("\n")
 	}
@@ -160,10 +161,10 @@ func formatDuration(d time.Duration) string {
 
 // WriteReplayText renders a ReplayAnalysis as a text timeline with
 // bottleneck markers, control cycles, and stabilization windows.
-func WriteReplayText(w io.Writer, analysis *ReplayAnalysis, tl RetrospectiveTimeline, _ style.Theme) error {
+func WriteReplayText(w io.Writer, analysis *ReplayAnalysis, tl RetrospectiveTimeline, theme style.Theme) error {
 	var out strings.Builder
 
-	out.WriteString(fmt.Sprintf("HPA Replay Analysis: %s (%s)\n", tl.HPAName, tl.Namespace))
+	out.WriteString(theme.Header.Render(fmt.Sprintf("HPA Replay Analysis: %s (%s)", tl.HPAName, tl.Namespace)) + "\n")
 	out.WriteString(fmt.Sprintf("Period: %s - %s\n\n",
 		tl.Since.Format("15:04"), tl.Until.Format("15:04")))
 
@@ -173,9 +174,9 @@ func WriteReplayText(w io.Writer, analysis *ReplayAnalysis, tl RetrospectiveTime
 	out.WriteString(replayToleranceEffectsText(analysis))
 
 	// Summary.
-	out.WriteString(analysis.Summary)
+	out.WriteString(theme.SummaryColor(analysis.Summary))
 	out.WriteString("\n\n")
-	out.WriteString("Note: " + tl.Disclaimer + "\n")
+	out.WriteString(theme.Dim.Render("Note: "+tl.Disclaimer) + "\n")
 
 	_, err := io.WriteString(w, out.String())
 	return err

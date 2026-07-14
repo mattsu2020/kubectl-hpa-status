@@ -150,6 +150,25 @@ func (t Theme) SummaryColor(summary string) string {
 	return summary
 }
 
+// SummaryColorForKey styles a translated summary using its stable semantic
+// key. Falling back to SummaryColor preserves behavior for custom summaries
+// that do not carry a key.
+func (t Theme) SummaryColorForKey(summary, key string) string {
+	if !t.enabled {
+		return summary
+	}
+	switch key {
+	case "dir_unavailable", "dir_inactive", "dir_no_recommendation":
+		return t.Error.Render(summary)
+	case "dir_scale_up", "dir_scale_to_zero", "dir_scaled_to_zero", "dir_at_max", "dir_at_min", "dir_at_min_scale_to_zero":
+		return t.Warning.Render(summary)
+	case "dir_scale_down", "dir_unchanged":
+		return summary
+	default:
+		return t.SummaryColor(summary)
+	}
+}
+
 // MetricNote renders a metric comparison note with color.
 func (t Theme) MetricNote(note string) string {
 	if !t.enabled || note == "" {

@@ -244,3 +244,48 @@ func writeHTMLCapacityContext(out *strings.Builder, a hpa.Analysis) {
 		out.WriteString("</ul>\n")
 	}
 }
+
+func writeHTMLStructuredDecisionTrace(out *strings.Builder, a hpa.Analysis) {
+	sdt := a.StructuredDecisionTrace
+	if sdt == nil {
+		return
+	}
+	out.WriteString("<h2>Structured Decision Trace</h2>\n<ul>\n")
+	out.WriteString(fmt.Sprintf("<li><strong>Schema:</strong> %s</li>\n", rendutil.HTMLEscape(sdt.SchemaVersion)))
+	out.WriteString(fmt.Sprintf("<li><strong>HPA:</strong> %s/%s</li>\n", rendutil.HTMLEscape(sdt.Namespace), rendutil.HTMLEscape(sdt.Name)))
+	out.WriteString(fmt.Sprintf("<li><strong>Replicas:</strong> current=%d desired=%d min=%d max=%d</li>\n", sdt.CurrentReplicas, sdt.VisibleDesiredReplicas, sdt.MinReplicas, sdt.MaxReplicas))
+	if sdt.Summary != "" {
+		out.WriteString(fmt.Sprintf("<li><strong>Summary:</strong> %s</li>\n", rendutil.HTMLEscape(sdt.Summary)))
+	}
+	out.WriteString("</ul>\n")
+	if len(sdt.Metrics) > 0 {
+		out.WriteString("<h3>Metric Analysis</h3>\n<table><tr><th>Metric</th><th>Type</th><th>Current</th><th>Target</th><th>Direction</th></tr>\n")
+		for _, metric := range sdt.Metrics {
+			out.WriteString(fmt.Sprintf("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",
+				rendutil.HTMLEscape(metric.Name), rendutil.HTMLEscape(metric.Type), rendutil.HTMLEscape(metric.Current),
+				rendutil.HTMLEscape(metric.Target), rendutil.HTMLEscape(metric.DesiredDirection)))
+		}
+		out.WriteString("</table>\n")
+	}
+	if len(sdt.DecisionPath) > 0 {
+		out.WriteString("<h3>Decision Path</h3>\n<table><tr><th>Step</th><th>Description</th><th>Result</th><th>Impact</th><th>Confidence</th></tr>\n")
+		for _, step := range sdt.DecisionPath {
+			out.WriteString(fmt.Sprintf("<tr><td>%d</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n", step.Step,
+				rendutil.HTMLEscape(step.Description), rendutil.HTMLEscape(step.Result), rendutil.HTMLEscape(step.Impact), rendutil.HTMLEscape(string(step.Confidence))))
+		}
+		out.WriteString("</table>\n")
+	}
+}
+
+func writeHTMLWarnings(out *strings.Builder, a hpa.Analysis) {
+	if len(a.Warnings) == 0 {
+		return
+	}
+	out.WriteString("<h2>Warnings</h2>\n<ul>\n")
+	for _, warning := range a.Warnings {
+		out.WriteString("<li>")
+		out.WriteString(rendutil.HTMLEscape(warning))
+		out.WriteString("</li>\n")
+	}
+	out.WriteString("</ul>\n")
+}

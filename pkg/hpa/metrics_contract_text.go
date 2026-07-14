@@ -3,8 +3,8 @@ package hpa
 import (
 	"fmt"
 	"io"
-	"strings"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
@@ -138,18 +138,18 @@ func WriteMetricContractMarkdown(w io.Writer, report *MetricContractReport) erro
 func WriteMetricContractHTML(w io.Writer, report *MetricContractReport) error {
 	var out []byte
 
-	out = fmt.Appendf(out, `<h2>Metrics Contract: %s/%s (%s)</h2>`+"\n", report.Namespace, report.Name, report.Target)
+	out = fmt.Appendf(out, `<h2>Metrics Contract: %s/%s (%s)</h2>`+"\n", rendutil.HTMLEscape(report.Namespace), rendutil.HTMLEscape(report.Name), rendutil.HTMLEscape(report.Target))
 
 	// Overall status
 	statusClass := metricContractHTMLClass(report.OverallStatus)
-	out = fmt.Appendf(out, `<p class="%s"><strong>Overall Status:</strong> %s</p>`+"\n", statusClass, report.OverallStatus)
-	out = fmt.Appendf(out, "<p><strong>Summary:</strong> %s</p>"+"\n\n", report.Summary)
+	out = fmt.Appendf(out, `<p class="%s"><strong>Overall Status:</strong> %s</p>`+"\n", statusClass, rendutil.HTMLEscape(report.OverallStatus))
+	out = fmt.Appendf(out, "<p><strong>Summary:</strong> %s</p>"+"\n\n", rendutil.HTMLEscape(report.Summary))
 
 	if len(report.Remediation) > 0 {
 		out = append(out, "<h3>Remediation</h3>"+"\n"...)
 		out = append(out, "<ul>"+"\n"...)
 		for _, step := range report.Remediation {
-			out = fmt.Appendf(out, "  <li>%s</li>"+"\n", htmlEscape(step))
+			out = fmt.Appendf(out, "  <li>%s</li>"+"\n", rendutil.HTMLEscape(step))
 		}
 		out = append(out, "</ul>"+"\n\n"...)
 	}
@@ -160,16 +160,16 @@ func WriteMetricContractHTML(w io.Writer, report *MetricContractReport) error {
 		out = append(out, "<ol>"+"\n"...)
 		for _, check := range report.Checks {
 			checkClass := metricContractHTMLClass(check.Status)
-			out = fmt.Appendf(out, `  <li class="%s"><strong>%s/%s</strong> — %s`+"\n", checkClass, check.MetricType, check.MetricName, check.Status)
+			out = fmt.Appendf(out, `  <li class="%s"><strong>%s/%s</strong> — %s`+"\n", checkClass, rendutil.HTMLEscape(check.MetricType), rendutil.HTMLEscape(check.MetricName), rendutil.HTMLEscape(check.Status))
 
 			// APIService status
 			apiStatus := "Available"
 			if !check.APIServiceAvailable {
 				apiStatus = "Unavailable"
 			}
-			out = fmt.Appendf(out, `    <ul><li>APIService: <code>%s</code> — %s</li>`+"\n", check.APIService, apiStatus)
+			out = fmt.Appendf(out, `    <ul><li>APIService: <code>%s</code> — %s</li>`+"\n", rendutil.HTMLEscape(check.APIService), apiStatus)
 			if check.APIServiceMessage != "" {
-				out = fmt.Appendf(out, `    <li>Message: %s</li>`+"\n", metricContractHTMLEscape(check.APIServiceMessage))
+				out = fmt.Appendf(out, `    <li>Message: %s</li>`+"\n", rendutil.HTMLEscape(check.APIServiceMessage))
 			}
 
 			// Data status
@@ -178,15 +178,15 @@ func WriteMetricContractHTML(w io.Writer, report *MetricContractReport) error {
 				if check.DataMessage != "" {
 					dataMsg += " (" + check.DataMessage + ")"
 				}
-				out = fmt.Appendf(out, `    <li>Data: %s</li>`+"\n", metricContractHTMLEscape(dataMsg))
+				out = fmt.Appendf(out, `    <li>Data: %s</li>`+"\n", rendutil.HTMLEscape(dataMsg))
 			}
 
 			// Detail and remediation
 			if check.Detail != "" {
-				out = fmt.Appendf(out, `    <li>Detail: %s</li>`+"\n", metricContractHTMLEscape(check.Detail))
+				out = fmt.Appendf(out, `    <li>Detail: %s</li>`+"\n", rendutil.HTMLEscape(check.Detail))
 			}
 			if check.Remediation != "" {
-				out = fmt.Appendf(out, `    <li>Remediation: %s</li>`+"\n", metricContractHTMLEscape(check.Remediation))
+				out = fmt.Appendf(out, `    <li>Remediation: %s</li>`+"\n", rendutil.HTMLEscape(check.Remediation))
 			}
 
 			out = append(out, "    </ul></li>"+"\n"...)
@@ -238,14 +238,4 @@ func metricContractHTMLClass(status string) string {
 	default:
 		return "status-unknown"
 	}
-}
-
-// metricContractHTMLEscape escapes special HTML characters for metric contract output.
-func metricContractHTMLEscape(s string) string {
-	s = strings.ReplaceAll(s, "&", "&amp;")
-	s = strings.ReplaceAll(s, "<", "&lt;")
-	s = strings.ReplaceAll(s, ">", "&gt;")
-	s = strings.ReplaceAll(s, `"`, "&quot;")
-	s = strings.ReplaceAll(s, "'", "&#39;")
-	return s
 }

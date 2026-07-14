@@ -305,7 +305,7 @@ func TestEnrichKEDA_NotKEDAManaged(t *testing.T) {
 
 // --- EnrichVPA tests ---
 
-func TestEnrichVPA_NilContext(_ *testing.T) {
+func TestEnrichVPA_NilContext(t *testing.T) {
 	// EnrichVPA accesses ec.dynClient, so nil context will panic.
 	// This test verifies the behavior with a valid but non-enriched context.
 	ec := &Context{
@@ -323,8 +323,10 @@ func TestEnrichVPA_NilContext(_ *testing.T) {
 	}
 	// EnrichVPA doesn't check vpaEnabled; it tries to use dynClient.
 	// With nil dynClient, FindConflictingVPA will fail and return early.
-	EnrichVPA(context.Background(), ec, hpa, report)
-	// No panic is the main assertion.
+	outcome := EnrichVPA(context.Background(), ec, hpa, report)
+	if outcome.State != StateError {
+		t.Fatalf("expected error outcome, got %s", outcome.State)
+	}
 }
 
 // --- EnrichReport tests ---
@@ -337,7 +339,10 @@ func TestEnrichReport_NilContext(_ *testing.T) {
 }
 
 func TestEnrichReport_BothDisabled(t *testing.T) {
-	ec := &Context{kedaEnabled: false, vpaEnabled: false}
+	ec := &Context{kedaEnabled: false, vpaEnabled: false, status: Status{
+		KEDA: &Entry{Source: SourceKEDA, State: StateDisabled},
+		VPA:  &Entry{Source: SourceVPA, State: StateDisabled},
+	}}
 	report := &hpaanalysis.StatusReport{
 		Analysis: hpaanalysis.Analysis{Name: "test"},
 	}
@@ -345,6 +350,9 @@ func TestEnrichReport_BothDisabled(t *testing.T) {
 	EnrichReport(context.Background(), ec, hpa, report, hpaanalysis.HealthWeights{})
 	if report.Analysis.KEDAInfo != nil {
 		t.Fatal("expected no KEDA info when both disabled")
+	}
+	if report.Analysis.EnrichmentStatus == nil || report.Analysis.EnrichmentStatus.KEDA.State != hpaanalysis.EnrichmentStateDisabled {
+		t.Fatal("expected disabled enrichment status to be attached")
 	}
 }
 

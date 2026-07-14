@@ -27,12 +27,18 @@ func FetchReplicaSetsForScaleTarget(ctx context.Context, client kubernetes.Inter
 		if selector == "" {
 			return nil, nil
 		}
-		list, err := client.AppsV1().ReplicaSets(namespace).List(ctx, metav1.ListOptions{LabelSelector: selector})
+		items, err := collectListPages(ctx, metav1.ListOptions{LabelSelector: selector}, func(ctx context.Context, page metav1.ListOptions) ([]appsv1.ReplicaSet, string, error) {
+			list, err := client.AppsV1().ReplicaSets(namespace).List(ctx, page)
+			if err != nil {
+				return nil, "", err
+			}
+			return list.Items, list.Continue, nil
+		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to list ReplicaSets for Deployment %s/%s: %w", namespace, ref.Name, err)
 		}
-		result := make([]ReplicaSetInfo, 0, len(list.Items))
-		for _, rs := range list.Items {
+		result := make([]ReplicaSetInfo, 0, len(items))
+		for _, rs := range items {
 			if !ownedBy(rs.OwnerReferences, "Deployment", ref.Name) {
 				continue
 			}

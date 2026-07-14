@@ -10,6 +10,8 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	k8stesting "k8s.io/client-go/testing"
 )
 
 // makeFleetHPA builds a minimal HPA with explicit current/desired/maxReplicas
@@ -168,20 +170,19 @@ func TestRunFleet_DefaultRiskIsMaxSurge(t *testing.T) {
 }
 
 // Ensure runFleet surfaces list failures rather than silently emitting an
-// empty report. We trigger this by pointing at a namespace the fake client
-// does not serve; the exact error shape is not asserted, only that it is
-// non-nil and wrapped.
+// empty report.
 func TestRunFleet_ListErrorPropagates(t *testing.T) {
-	// An empty client still lists successfully (returning nothing), so to
-	// exercise the error path we pass a nil client override that forces the
-	// kubeconfig-resolution error. This documents that runFleet does not
-	// swallow client-creation errors.
-	opts := &options{}
+	fakeClient := testutil.NewFakeClient()
+	fakeClient.PrependReactor("list", "horizontalpodautoscalers", func(k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, errors.New("injected list failure")
+	})
+	opts := &options{Common: commonOptions{ClientOverride: fakeClient}}
 	var buf bytes.Buffer
 	err := runFleet(context.Background(), &buf, opts, "max-surge")
 	if err == nil {
-		t.Skip("client creation succeeded without kubeconfig; cannot exercise list error path here")
+		t.Fatal("expected list error")
 	}
-	// Just ensure it is a real error, not a panic sentinel.
-	var _ = errors.Is
+	if !strings.Contains(err.Error(), "injected list failure") {
+		t.Fatalf("expected wrapped list error, got %v", err)
+	}
 }

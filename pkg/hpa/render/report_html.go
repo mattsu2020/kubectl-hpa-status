@@ -82,6 +82,8 @@ func writeHTMLReportContent(out *strings.Builder, report hpa.StatusReport) {
 	writeHTMLSimulation(out, a)
 	writeHTMLMetricFreshness(out, a)
 	writeHTMLCapacityContext(out, a)
+	writeHTMLStructuredDecisionTrace(out, a)
+	writeHTMLWarnings(out, a)
 }
 
 // htmlConditionStatus returns a color-coded condition status for HTML.

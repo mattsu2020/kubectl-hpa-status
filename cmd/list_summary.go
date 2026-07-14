@@ -11,6 +11,13 @@ import (
 )
 
 func writeClusterSummaryMarkdown(out io.Writer, report hpaanalysis.ListReport) error {
+	var buffer strings.Builder
+	writeClusterSummaryMarkdownTo(&buffer, report)
+	_, err := io.WriteString(out, buffer.String())
+	return err
+}
+
+func writeClusterSummaryMarkdownTo(out io.Writer, report hpaanalysis.ListReport) {
 	items := append([]hpaanalysis.ListItem(nil), report.Items...)
 	sort.SliceStable(items, func(i, j int) bool {
 		return items[i].HealthScore < items[j].HealthScore
@@ -44,10 +51,16 @@ func writeClusterSummaryMarkdown(out io.Writer, report hpaanalysis.ListReport) e
 			_, _ = fmt.Fprintf(out, "- %s\n", action)
 		}
 	}
-	return nil
 }
 
 func writeClusterSummaryHTML(out io.Writer, report hpaanalysis.ListReport) error {
+	var buffer strings.Builder
+	writeClusterSummaryHTMLTo(&buffer, report)
+	_, err := io.WriteString(out, buffer.String())
+	return err
+}
+
+func writeClusterSummaryHTMLTo(out io.Writer, report hpaanalysis.ListReport) {
 	items := append([]hpaanalysis.ListItem(nil), report.Items...)
 	sort.SliceStable(items, func(i, j int) bool {
 		return items[i].HealthScore < items[j].HealthScore
@@ -75,7 +88,6 @@ func writeClusterSummaryHTML(out io.Writer, report hpaanalysis.ListReport) error
 		_, _ = fmt.Fprintln(out, "</ul>")
 	}
 	_, _ = fmt.Fprintln(out, "</body></html>")
-	return nil
 }
 
 func clusterHealthCounts(items []hpaanalysis.ListItem) map[string]int {

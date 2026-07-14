@@ -5,11 +5,15 @@
 package event
 
 import (
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
 )
+
+var newSizePattern = regexp.MustCompile(`(?i)new size:\s*(\d+)`)
 
 // Event is a simplified Kubernetes event with reason, message, and timestamp.
 // pkg/hpa re-exports it as hpaanalysis.Event; the Kubernetes client calls
@@ -57,4 +61,18 @@ func FromCoreSlice(coreEvents []corev1.Event) []Event {
 type RescaleData struct {
 	Timestamp time.Time
 	NewSize   int32
+}
+
+// ParseNewSize extracts the replica count from a SuccessfulRescale message.
+// The boolean distinguishes a valid scale-to-zero event from malformed text.
+func ParseNewSize(message string) (int32, bool) {
+	match := newSizePattern.FindStringSubmatch(message)
+	if len(match) < 2 {
+		return 0, false
+	}
+	value, err := strconv.ParseInt(match[1], 10, 32)
+	if err != nil {
+		return 0, false
+	}
+	return int32(value), true
 }

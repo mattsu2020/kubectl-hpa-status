@@ -16,6 +16,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/mattsu2020/kubectl-hpa-status/cmd"
@@ -169,6 +170,16 @@ func TestE2E_MaxReplicasCap(t *testing.T) {
 	if _, err := client.AppsV1().Deployments(nsName).Create(ctx0, deploy, metav1.CreateOptions{}); err != nil {
 		t.Fatalf("failed to create Deployment: %v", err)
 	}
+	service := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: deployName, Namespace: nsName},
+		Spec: corev1.ServiceSpec{
+			Selector: map[string]string{"app": deployName},
+			Ports:    []corev1.ServicePort{{Port: 80, TargetPort: intstr.FromInt32(80)}},
+		},
+	}
+	if _, err := client.CoreV1().Services(nsName).Create(ctx0, service, metav1.CreateOptions{}); err != nil {
+		t.Fatalf("failed to create Service: %v", err)
+	}
 
 	// 2. HPA targeting the Deployment at 50% average CPU utilization so the
 	//    load job pushes it over target quickly.
@@ -200,7 +211,8 @@ func TestE2E_MaxReplicasCap(t *testing.T) {
 		t.Fatalf("failed to create HPA: %v", err)
 	}
 
-	// 3. CPU load job — busybox spinning to push utilization above target.
+	// 3. Send HTTP traffic to the target Deployment. Burning CPU in an
+	//    unrelated Pod would not affect the HPA target's utilization.
 	loadJob := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{Name: "cap-load", Namespace: nsName},
 		Spec: batchv1.JobSpec{
@@ -210,7 +222,7 @@ func TestE2E_MaxReplicasCap(t *testing.T) {
 					Containers: []corev1.Container{{
 						Name:    "load",
 						Image:   "busybox",
-						Command: []string{"sh", "-c", "while true; do :; done"},
+						Command: []string{"sh", "-c", "while true; do wget -q -O- http://" + deployName + "; done"},
 						Resources: corev1.ResourceRequirements{
 							Requests: corev1.ResourceList{
 								corev1.ResourceCPU: resource.MustParse("200m"),
@@ -251,8 +263,8 @@ func TestE2E_MaxReplicasCap(t *testing.T) {
 	}
 
 	if !reached {
-		t.Skipf("Skipping assertion: HPA did not reach maxReplicas=%d within %s (last desired=%d); "+
-			"metrics-server may be slow or the load job may not have scheduled",
+		t.Fatalf("HPA did not reach maxReplicas=%d within %s (last desired=%d); "+
+			"check metrics-server and load generator logs",
 			maxRepl, pollTimeout, lastRepl)
 	}
 	t.Logf("HPA reached maxReplicas=%d", maxRepl)

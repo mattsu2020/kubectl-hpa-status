@@ -3,8 +3,8 @@ package hpa
 import (
 	"fmt"
 	"io"
-	"strings"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
@@ -189,7 +189,9 @@ func writeGitOpsMarkdownConflicts(w io.Writer, conflicts []GitOpsConflictEntry) 
 		}
 		kindName := fmt.Sprintf("%s/%s", c.Kind, c.Name)
 		if _, err := fmt.Fprintf(w, "| %s | %s | %s | %s | %s | %s | %s | %s |\n",
-			severity, kindName, c.Field, c.ManifestValue, c.LiveValue, c.HPADesired, c.Detail, c.Remediation); err != nil {
+			rendutil.MarkdownCell(severity), rendutil.MarkdownCell(kindName), rendutil.MarkdownCell(c.Field),
+			rendutil.MarkdownCell(c.ManifestValue), rendutil.MarkdownCell(c.LiveValue), rendutil.MarkdownCell(c.HPADesired),
+			rendutil.MarkdownCell(c.Detail), rendutil.MarkdownCell(c.Remediation)); err != nil {
 			return err
 		}
 	}
@@ -241,12 +243,12 @@ func WriteGitOpsConflictHTML(w io.Writer, report *GitOpsConflict) error {
 		return err
 	}
 
-	_, err := fmt.Fprintf(w, `<h2>GitOps Conflict: %s/%s (%s)</h2>`, escapeHTML(report.Namespace), escapeHTML(report.Name), escapeHTML(report.Target))
+	_, err := fmt.Fprintf(w, `<h2>GitOps Conflict: %s/%s (%s)</h2>`, rendutil.HTMLEscape(report.Namespace), rendutil.HTMLEscape(report.Name), rendutil.HTMLEscape(report.Target))
 	if err != nil {
 		return err
 	}
 
-	_, err = fmt.Fprintf(w, `<p><strong>Summary:</strong> %s</p>`, escapeHTML(report.Summary))
+	_, err = fmt.Fprintf(w, `<p><strong>Summary:</strong> %s</p>`, rendutil.HTMLEscape(report.Summary))
 	if err != nil {
 		return err
 	}
@@ -280,9 +282,9 @@ func writeGitOpsHTMLConflicts(w io.Writer, conflicts []GitOpsConflictEntry) erro
 	}
 	for _, c := range conflicts {
 		if _, err := fmt.Fprintf(w, `<tr class="%s"><td>%s</td><td>%s/%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>`,
-			gitOpsSeverityClass(c.Severity), escapeHTML(c.Severity), escapeHTML(c.Kind), escapeHTML(c.Name), escapeHTML(c.Field),
-			escapeHTML(c.ManifestValue), escapeHTML(c.LiveValue), escapeHTML(c.HPADesired),
-			escapeHTML(c.Detail), escapeHTML(c.Remediation)); err != nil {
+			gitOpsSeverityClass(c.Severity), rendutil.HTMLEscape(c.Severity), rendutil.HTMLEscape(c.Kind), rendutil.HTMLEscape(c.Name), rendutil.HTMLEscape(c.Field),
+			rendutil.HTMLEscape(c.ManifestValue), rendutil.HTMLEscape(c.LiveValue), rendutil.HTMLEscape(c.HPADesired),
+			rendutil.HTMLEscape(c.Detail), rendutil.HTMLEscape(c.Remediation)); err != nil {
 			return err
 		}
 	}
@@ -298,7 +300,7 @@ func writeGitOpsHTMLWarnings(w io.Writer, warnings []string) error {
 		return err
 	}
 	for _, warnMsg := range warnings {
-		if _, err := fmt.Fprintf(w, `<li>%s</li>`, escapeHTML(warnMsg)); err != nil {
+		if _, err := fmt.Fprintf(w, `<li>%s</li>`, rendutil.HTMLEscape(warnMsg)); err != nil {
 			return err
 		}
 	}
@@ -314,22 +316,12 @@ func writeGitOpsHTMLPatches(w io.Writer, patches []string) error {
 		return err
 	}
 	for _, p := range patches {
-		if _, err := fmt.Fprintf(w, "%s\n", escapeHTML(p)); err != nil {
+		if _, err := fmt.Fprintf(w, "%s\n", rendutil.HTMLEscape(p)); err != nil {
 			return err
 		}
 	}
 	_, err := fmt.Fprintln(w, `</code></pre>`)
 	return err
-}
-
-// escapeHTML escapes HTML special characters.
-func escapeHTML(s string) string {
-	s = strings.ReplaceAll(s, "&", "&amp;")
-	s = strings.ReplaceAll(s, "<", "&lt;")
-	s = strings.ReplaceAll(s, ">", "&gt;")
-	s = strings.ReplaceAll(s, "\"", "&quot;")
-	s = strings.ReplaceAll(s, "'", "&#39;")
-	return s
 }
 
 // gitOpsSeverityClass maps a GitOps conflict severity to its CSS class.

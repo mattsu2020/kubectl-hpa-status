@@ -67,14 +67,13 @@ func HasKEDAValueFallback(m map[string]string) bool {
 	return false
 }
 
-// MarshalJSON serialises a value to a JSON string, returning "{}" on error.
-// Callers always pass internal map[string]any literals built from HPA fields,
-// so a marshal failure is not expected; returning an empty JSON object avoids
-// crashing the CLI on a single bad value.
-func MarshalJSON(value any) string {
+// MustMarshalJSON serialises an internal patch value. Patch builders only pass
+// JSON-compatible maps; panicking on a programmer error is safer than silently
+// returning a valid-looking no-op patch.
+func MustMarshalJSON(value any) string {
 	data, err := json.Marshal(value)
 	if err != nil {
-		return "{}"
+		panic(fmt.Sprintf("marshal internal JSON patch: %v", err))
 	}
 	return string(data)
 }

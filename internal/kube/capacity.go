@@ -41,15 +41,13 @@ func FetchPendingPodDetails(ctx context.Context, client kubernetes.Interface, na
 		return nil, nil
 	}
 
-	pods, err := client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: selector,
-	})
+	pods, err := listPods(ctx, client, namespace, metav1.ListOptions{LabelSelector: selector})
 	if err != nil {
 		return nil, fmt.Errorf("list pending pods: %w", err)
 	}
 
 	var pending []PendingPodDetail
-	for _, pod := range pods.Items {
+	for _, pod := range pods {
 		if pod.Status.Phase != corev1.PodPending {
 			continue
 		}
@@ -215,9 +213,9 @@ func FetchAllResourceQuotas(ctx context.Context, client kubernetes.Interface, na
 // signal is found. This is best-effort and may produce false negatives.
 func DetectClusterAutoscaler(ctx context.Context, client kubernetes.Interface) bool {
 	// Check nodes for CA annotation.
-	nodes, err := client.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	nodes, err := listNodes(ctx, client, metav1.ListOptions{})
 	if err == nil {
-		for _, node := range nodes.Items {
+		for _, node := range nodes {
 			if _, ok := node.Annotations["cluster-autoscaler.kubernetes.io/safe-to-evict"]; ok {
 				return true
 			}

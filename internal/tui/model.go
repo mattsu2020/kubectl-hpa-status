@@ -16,6 +16,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -477,7 +478,8 @@ func fetchHPAs(m Model) tea.Cmd {
 		reports := make(map[string]*hpaanalysis.StatusReport, len(hpas.Items))
 		for i := range hpas.Items {
 			analysis := hpaanalysis.AnalyzeWithOptions(&hpas.Items[i], true, hpaanalysis.AnalysisOptions{
-				Debug: cfg.opts.Debug,
+				Debug:         cfg.opts.Debug,
+				HealthWeights: cfg.opts.HealthWeights,
 			})
 
 			// Apply enrichment data from batched results.
@@ -495,6 +497,7 @@ func fetchHPAs(m Model) tea.Cmd {
 			if analysis.KEDAInfo != nil || analysis.VPAConflict != nil {
 				hpaanalysis.ApplyEnrichmentPenalties(&analysis, cfg.opts.HealthWeights)
 			}
+			analysis = hpaanalysis.FinalizeAnalysis(analysis)
 
 			item := hpaanalysis.NewListItem(analysis)
 			items = append(items, item)
@@ -534,15 +537,9 @@ func healthStyle(health string) lipgloss.Style {
 }
 
 func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen-1] + "…"
+	return rendutil.TruncateDisplayWidth(s, maxLen, "…")
 }
 
 func padRight(s string, width int) string {
-	if len(s) >= width {
-		return s[:width]
-	}
-	return s + strings.Repeat(" ", width-len(s))
+	return rendutil.FitDisplayWidth(s, width)
 }

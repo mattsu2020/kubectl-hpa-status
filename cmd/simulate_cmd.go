@@ -179,6 +179,13 @@ func parseSetMetricFlags(setMetric []string) (map[string]string, error) {
 }
 
 func writeSimulateText(out io.Writer, report simulateReport, theme style.Theme) error {
+	var buffer strings.Builder
+	writeSimulateTextTo(&buffer, report, theme)
+	_, err := io.WriteString(out, buffer.String())
+	return err
+}
+
+func writeSimulateTextTo(out io.Writer, report simulateReport, theme style.Theme) {
 	_, _ = fmt.Fprintf(out, "HPA Simulation: %s/%s\n\n", report.Namespace, report.Name)
 
 	if report.Parameter != "" {
@@ -188,7 +195,6 @@ func writeSimulateText(out io.Writer, report simulateReport, theme style.Theme) 
 
 	writeSimulateStateComparison(out, report)
 	writeSimulateSupplementalSections(out, report)
-	return nil
 }
 
 func writeSimulateStateComparison(out io.Writer, report simulateReport) {

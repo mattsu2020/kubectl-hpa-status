@@ -16,7 +16,7 @@ func stabilizationWindowRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32
 		return nil
 	}
 
-	patch := util.MarshalJSON(map[string]any{
+	patch := util.MustMarshalJSON(map[string]any{
 		"spec": map[string]any{
 			"behavior": map[string]any{
 				"scaleDown": map[string]any{

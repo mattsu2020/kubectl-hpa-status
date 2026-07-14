@@ -21,7 +21,7 @@ test-race:
 	$(GO) test -race ./...
 
 .PHONY: ci
-ci: build vet lint fmt-check test test-race docs-check
+ci: tidy build vet lint fmt-check test test-race coverage-check docs-check
 	@echo "local CI checks passed"
 
 .PHONY: tidy
@@ -31,11 +31,11 @@ tidy:
 
 .PHONY: fmt
 fmt:
-	gofmt -w cmd/ pkg/ internal/
+	gofmt -w *.go cmd/ pkg/ internal/
 
 .PHONY: fmt-check
 fmt-check:
-	@out=$$(gofmt -l cmd/ pkg/ internal/); \
+	@out=$$(gofmt -l *.go cmd/ pkg/ internal/); \
 	if [ -n "$$out" ]; then \
 		echo "gofmt would modify the following files; run 'make fmt' and commit:"; \
 		echo "$$out"; \
@@ -46,6 +46,10 @@ fmt-check:
 coverage:
 	$(GO) test -coverprofile=$(COVERAGE_OUT) ./...
 	$(GO) tool cover -func=$(COVERAGE_OUT)
+
+.PHONY: coverage-check
+coverage-check: coverage
+	bash scripts/check-coverage.sh $(COVERAGE_OUT)
 
 .PHONY: docs-check
 docs-check:

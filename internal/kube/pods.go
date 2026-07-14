@@ -37,15 +37,13 @@ func FetchPodsForScaleTarget(ctx context.Context, client kubernetes.Interface, n
 		return nil, nil
 	}
 
-	pods, err := client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: selector,
-	})
+	pods, err := listPods(ctx, client, namespace, metav1.ListOptions{LabelSelector: selector})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list pods: %w", err)
 	}
 
-	names := make([]string, 0, len(pods.Items))
-	for _, pod := range pods.Items {
+	names := make([]string, 0, len(pods))
+	for _, pod := range pods {
 		names = append(names, pod.Name)
 	}
 	return names, nil
@@ -67,19 +65,21 @@ func FetchPodObjectsForSelector(ctx context.Context, client kubernetes.Interface
 	if selector == "" {
 		return nil, nil
 	}
-	options := metav1.ListOptions{LabelSelector: selector, Limit: 500}
-	var result []corev1.Pod
-	for {
-		pods, err := client.CoreV1().Pods(namespace).List(ctx, options)
-		if err != nil {
-			return nil, fmt.Errorf("failed to list pods: %w", err)
-		}
-		result = append(result, pods.Items...)
-		if pods.Continue == "" {
-			return result, nil
-		}
-		options.Continue = pods.Continue
+	pods, err := listPods(ctx, client, namespace, metav1.ListOptions{LabelSelector: selector})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list pods: %w", err)
 	}
+	return pods, nil
+}
+
+func listPods(ctx context.Context, client kubernetes.Interface, namespace string, opts metav1.ListOptions) ([]corev1.Pod, error) {
+	return collectListPages(ctx, opts, func(ctx context.Context, page metav1.ListOptions) ([]corev1.Pod, string, error) {
+		list, err := client.CoreV1().Pods(namespace).List(ctx, page)
+		if err != nil {
+			return nil, "", err
+		}
+		return list.Items, list.Continue, nil
+	})
 }
 
 // PodInfosFromPods derives the compact diagnostic view without another API

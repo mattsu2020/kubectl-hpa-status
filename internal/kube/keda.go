@@ -230,19 +230,35 @@ func FindScaledObjectForHPA(ctx context.Context, dynClient dynamic.Interface, _ 
 	}
 
 	// Fallback: list ScaledObjects and find one that references this HPA's scaleTargetRef.
-	list, err := dynClient.Resource(scaledObjectGVR).Namespace(hpa.Namespace).List(ctx, metav1.ListOptions{})
+	items, err := FetchScaledObjects(ctx, dynClient, hpa.Namespace)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list ScaledObjects in namespace %s: %w", hpa.Namespace, err)
+		return nil, err
 	}
 
-	for i := range list.Items {
-		ref := extractScaleTargetRef(&list.Items[i])
+	for i := range items {
+		ref := extractScaleTargetRef(&items[i])
 		if ref != nil && ref.Name == hpa.Spec.ScaleTargetRef.Name && ref.Kind == hpa.Spec.ScaleTargetRef.Kind {
-			return &list.Items[i], nil
+			return &items[i], nil
 		}
 	}
 
 	return nil, fmt.Errorf("hpa %s/%s: %w", hpa.Namespace, hpa.Name, ErrScaledObjectNotFound)
+}
+
+// FetchScaledObjects lists all KEDA ScaledObjects in a namespace using the
+// shared Kubernetes continue-token contract.
+func FetchScaledObjects(ctx context.Context, dynClient dynamic.Interface, namespace string) ([]unstructured.Unstructured, error) {
+	items, err := collectListPages(ctx, metav1.ListOptions{}, func(ctx context.Context, page metav1.ListOptions) ([]unstructured.Unstructured, string, error) {
+		list, err := dynClient.Resource(scaledObjectGVR).Namespace(namespace).List(ctx, page)
+		if err != nil {
+			return nil, "", err
+		}
+		return list.Items, list.GetContinue(), nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list ScaledObjects in namespace %s: %w", namespace, err)
+	}
+	return items, nil
 }
 
 // extractScaledObjectName derives the ScaledObject name backing this HPA from

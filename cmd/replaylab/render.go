@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 	"sigs.k8s.io/yaml"
 )
 
@@ -37,6 +38,13 @@ func WriteReport(out io.Writer, format string, report Report) error {
 }
 
 func writeReplayLabText(out io.Writer, report Report) error {
+	var buffer strings.Builder
+	writeReplayLabTextTo(&buffer, report)
+	_, err := io.WriteString(out, buffer.String())
+	return err
+}
+
+func writeReplayLabTextTo(out io.Writer, report Report) {
 	_, _ = fmt.Fprintf(out, "Scenario comparison: %s/%s\n", report.Namespace, report.Name)
 	_, _ = fmt.Fprintf(out, "Replay Summary: %s / %s\n\n", report.Name, report.Namespace)
 	if len(report.Candidates) > 1 {
@@ -53,7 +61,7 @@ func writeReplayLabText(out io.Writer, report Report) error {
 				_, _ = fmt.Fprintf(out, "  - %s\n", limitation)
 			}
 		}
-		return nil
+		return
 	}
 	writeReplayLabSummaryText(out, "Current", report.Current)
 	if report.CandidateResult != nil {
@@ -78,7 +86,6 @@ func writeReplayLabText(out io.Writer, report Report) error {
 			_, _ = fmt.Fprintf(out, "  - %s\n", limitation)
 		}
 	}
-	return nil
 }
 
 func writeReplayPolicyTable(out io.Writer, report Report) {
@@ -115,13 +122,7 @@ func replaySLORisk(summary Summary) string {
 }
 
 func truncateReplayColumn(value string, width int) string {
-	if len(value) <= width {
-		return value
-	}
-	if width <= 3 {
-		return value[:width]
-	}
-	return value[:width-3] + "..."
+	return rendutil.TruncateDisplayWidth(value, width, "...")
 }
 
 func writeReplayLabSummaryText(out io.Writer, title string, summary Summary) {
@@ -147,6 +148,13 @@ func writeReplayLabSummaryText(out io.Writer, title string, summary Summary) {
 }
 
 func writeReplayLabMarkdown(out io.Writer, report Report) error {
+	var buffer strings.Builder
+	writeReplayLabMarkdownTo(&buffer, report)
+	_, err := io.WriteString(out, buffer.String())
+	return err
+}
+
+func writeReplayLabMarkdownTo(out io.Writer, report Report) {
 	_, _ = fmt.Fprintf(out, "# Scenario comparison: %s/%s\n\n", report.Namespace, report.Name)
 	if len(report.Candidates) > 1 {
 		writeReplayPolicyMarkdown(out, report)
@@ -157,7 +165,7 @@ func writeReplayLabMarkdown(out io.Writer, report Report) error {
 				_, _ = fmt.Fprintf(out, "- %s\n", limitation)
 			}
 		}
-		return nil
+		return
 	}
 	writeReplayLabSummaryMarkdown(out, "Current", report.Current)
 	if report.CandidateResult != nil {
@@ -184,7 +192,6 @@ func writeReplayLabMarkdown(out io.Writer, report Report) error {
 			_, _ = fmt.Fprintf(out, "- %s\n", limitation)
 		}
 	}
-	return nil
 }
 
 func writeReplayPolicyMarkdown(out io.Writer, report Report) {

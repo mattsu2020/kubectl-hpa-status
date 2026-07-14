@@ -76,7 +76,7 @@ func TestCollectBatchEntries_FiltersBySelectedAndApplyPatch(t *testing.T) {
 		selected := map[string]bool{"default/web": true}
 		entries := collectBatchEntries(opts, hpas, selected)
 		if len(entries) == 0 {
-			t.Skip("no applyable suggestion surfaced for this fixture; adjust the builder")
+			t.Fatal("fixture contract broken: expected an applyable suggestion")
 		}
 		// The selected HPA must produce one grouped entry.
 		if len(entries) != 1 {

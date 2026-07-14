@@ -25,10 +25,11 @@ func WriteStatusDiffWithOptions(w io.Writer, state WatchState, opts StatusTextOp
 	}
 	a := state.Current
 	prev := state.Previous
+	labels := resolveLabels(opts.Labels)
 	var out []byte
 
 	out = fmt.Appendf(out, "HPA %s/%s\n", a.Namespace, a.Name)
-	out = fmt.Appendf(out, "Target: %s\n", a.Target)
+	out = fmt.Appendf(out, "%s: %s\n", labels.Target, a.Target)
 
 	// Replicas: highlight when changed
 	desiredChanged := a.Desired != prev.Desired
@@ -38,43 +39,57 @@ func WriteStatusDiffWithOptions(w io.Writer, state WatchState, opts StatusTextOp
 	if currentChanged {
 		current = theme.Bold.Render(current)
 	}
-	out = fmt.Appendf(out, "Replicas: current=%s desired=%s min=%d max=%d\n", current, desired, a.Min, a.Max)
+	out = fmt.Appendf(out, "%s: current=%s desired=%s min=%d max=%d\n", labels.Replicas, current, desired, a.Min, a.Max)
 
 	out = append(out, '\n')
 	summary := opts.translateSummary(a.Summary, a.SummaryKey)
 	summaryChanged := a.Summary != prev.Summary
 	if summaryChanged {
-		out = fmt.Appendf(out, "Summary: %s\n", theme.SummaryColor(summary))
+		out = fmt.Appendf(out, "%s: %s\n", labels.Summary, theme.SummaryColorForKey(summary, a.SummaryKey))
 	} else {
-		out = fmt.Appendf(out, "Summary: %s\n", theme.Dim.Render(summary))
+		out = fmt.Appendf(out, "%s: %s\n", labels.Summary, theme.Dim.Render(summary))
 	}
 
-	appendDiffConditionsSection(&out, a, prev, theme)
-	appendDiffMetricsSection(&out, a, prev, theme)
-	appendDiffBehaviorSection(&out, a)
-	appendDiffActionsSection(&out, a, theme)
-	appendDiffInterpretationSection(&out, a, theme)
+	appendDiffConditionsSection(&out, a, prev, theme, labels)
+	appendDiffMetricsSection(&out, a, prev, theme, labels)
+	appendDiffBehaviorSection(&out, a, labels)
+	appendDiffActionsSection(&out, a, theme, labels)
+	appendDiffInterpretationSection(&out, a, theme, labels)
 
 	_, writeErr := w.Write(out)
 	return writeErr
 }
 
-// conditionMap builds a map from condition type to status for quick lookup.
-func conditionMap(conditions []Condition) map[string]string {
-	m := make(map[string]string, len(conditions))
+// conditionMap builds a map from condition type to the full observable value.
+func conditionMap(conditions []Condition) map[string]Condition {
+	m := make(map[string]Condition, len(conditions))
 	for _, c := range conditions {
-		m[c.Type] = c.Status
+		m[c.Type] = c
 	}
 	return m
 }
 
-// metricMap builds a map from metric name to text for quick lookup.
-func metricMap(metrics []Metric) map[string]string {
-	m := make(map[string]string, len(metrics))
+// metricMap uses all identity fields so object/external metrics with the same
+// name or an empty name cannot collide.
+func metricMap(metrics []Metric) map[string]Metric {
+	m := make(map[string]Metric, len(metrics))
 	for _, metric := range metrics {
-		if metric.Name != "" {
-			m[metric.Name] = metric.Text
-		}
+		m[metricIdentity(metric)] = metric
 	}
 	return m
+}
+
+func metricIdentity(metric Metric) string {
+	return metric.Type + "\x00" + metric.Name + "\x00" + metric.Selector + "\x00" + metric.Object
+}
+
+func metricEqual(a, b Metric) bool {
+	if a.Type != b.Type || a.Name != b.Name || a.Selector != b.Selector || a.Object != b.Object ||
+		a.Current != b.Current || a.Target != b.Target || a.Note != b.Note {
+		return false
+	}
+	if a.Ratio == nil || b.Ratio == nil {
+		return a.Ratio == nil && b.Ratio == nil
+	}
+	return *a.Ratio == *b.Ratio
 }

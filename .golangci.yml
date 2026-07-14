@@ -68,6 +68,20 @@ linters:
               desc: pkg/hpa must not import cmd (CLI layer); this would reverse the dependency direction
             - pkg: github.com/mattsu2020/kubectl-hpa-status/internal
               desc: pkg/hpa must not import internal/ packages; pkg/hpa is a public library
+        kube-no-hpa:
+          files:
+            - '**/internal/kube/*.go'
+          deny:
+            - pkg: github.com/mattsu2020/kubectl-hpa-status/pkg/hpa
+              desc: internal/kube exposes neutral DTOs and must not depend on the public analysis layer
+        cmdoptions-through-bridges:
+          files:
+            - '**/cmd/**/*.go'
+            - '!**/cmd/options_bridge.go'
+            - '!**/cmd/internal/client/**'
+          deny:
+            - pkg: github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions
+              desc: cmd must use the compatibility bridge while the package split is in progress
 
   exclusions:
     rules:

@@ -101,6 +101,14 @@ func TestSummaryColor(t *testing.T) {
 	}
 }
 
+func TestSummaryColorForKeyStylesTranslatedText(t *testing.T) {
+	theme := NewTheme(true)
+	got := theme.SummaryColorForKey("現在スケールアップを要求しています", "dir_scale_up")
+	if !strings.Contains(got, "\x1b[") {
+		t.Fatalf("translated summary was not styled: %q", got)
+	}
+}
+
 func TestMetricNote(t *testing.T) {
 	theme := NewTheme(true)
 	above := theme.MetricNote("current value is above target")

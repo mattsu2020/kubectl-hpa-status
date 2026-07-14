@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
@@ -260,34 +261,11 @@ func isMetricValueZero(spec autoscalingv2.MetricSpec, currentMetrics []autoscali
 
 // isCurrentValueZero checks if a metric status has a zero or nil value.
 func isCurrentValueZero(status autoscalingv2.MetricStatus) bool {
-	switch status.Type {
-	case autoscalingv2.ResourceMetricSourceType:
-		if status.Resource != nil {
-			v := status.Resource.Current
-			return isMetricValueStatusZero(v)
-		}
-	case autoscalingv2.ContainerResourceMetricSourceType:
-		if status.ContainerResource != nil {
-			v := status.ContainerResource.Current
-			return isMetricValueStatusZero(v)
-		}
-	case autoscalingv2.ExternalMetricSourceType:
-		if status.External != nil {
-			v := status.External.Current
-			return isMetricValueStatusZero(v)
-		}
-	case autoscalingv2.PodsMetricSourceType:
-		if status.Pods != nil {
-			v := status.Pods.Current
-			return isMetricValueStatusZero(v)
-		}
-	case autoscalingv2.ObjectMetricSourceType:
-		if status.Object != nil {
-			v := status.Object.Current
-			return isMetricValueStatusZero(v)
-		}
+	value, ok := currentMetricValueStatus(status)
+	if !ok {
+		return true
 	}
-	return true
+	return isMetricValueStatusZero(value)
 }
 
 // isMetricValueStatusZero returns true if all value fields in a MetricValueStatus
@@ -308,8 +286,5 @@ func isMetricValueStatusZero(v autoscalingv2.MetricValueStatus) bool {
 // truncateMessage truncates a message to maxLen characters, appending "..." if
 // truncated.
 func truncateMessage(msg string, maxLen int) string {
-	if len(msg) <= maxLen {
-		return msg
-	}
-	return msg[:maxLen] + "..."
+	return rendutil.TruncateDisplayWidth(msg, maxLen, "...")
 }

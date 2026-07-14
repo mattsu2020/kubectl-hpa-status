@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
@@ -121,10 +122,7 @@ func confidenceStyle(confidence string, theme style.Theme) lipgloss.Style {
 }
 
 func truncateImpact(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen-3] + "..."
+	return rendutil.TruncateDisplayWidth(s, maxLen, "...")
 }
 
 func assumptionsSummary(a *ControllerAssumptions) string {

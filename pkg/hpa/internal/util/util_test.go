@@ -105,17 +105,19 @@ func TestHasKEDAValueFallback(t *testing.T) {
 	}
 }
 
-func TestMarshalJSON(t *testing.T) {
+func TestMustMarshalJSON(t *testing.T) {
 	t.Run("valid value", func(t *testing.T) {
-		if got := MarshalJSON(map[string]any{"a": 1}); got != `{"a":1}` {
-			t.Fatalf("MarshalJSON = %q, want {\"a\":1}", got)
+		if got := MustMarshalJSON(map[string]any{"a": 1}); got != `{"a":1}` {
+			t.Fatalf("MustMarshalJSON = %q, want {\"a\":1}", got)
 		}
 	})
-	t.Run("invalid value returns empty object", func(t *testing.T) {
-		// Channels cannot be marshalled to JSON.
-		if got := MarshalJSON(make(chan int)); got != "{}" {
-			t.Fatalf("MarshalJSON(chan) = %q, want {}", got)
-		}
+	t.Run("invalid value panics", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Fatal("expected panic for non-JSON value")
+			}
+		}()
+		_ = MustMarshalJSON(make(chan int))
 	})
 }
 

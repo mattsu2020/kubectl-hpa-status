@@ -288,3 +288,46 @@ func (a *Analysis) Blockers() BlockersView {
 		GitOpsConflict: a.GitOpsConflict,
 	}
 }
+
+// GroupedAnalysis is the additive nested representation used as the migration
+// boundary for the future v2 output schema. The existing flat Analysis remains
+// the v1 wire contract; new serializers can consume this value without
+// learning the 65-field layout.
+type GroupedAnalysis struct {
+	Meta        MetaView        `json:"meta" yaml:"meta"`
+	Replicas    ReplicasView    `json:"replicas" yaml:"replicas"`
+	Decision    DecisionView    `json:"decision" yaml:"decision"`
+	Metrics     MetricsView     `json:"metrics" yaml:"metrics"`
+	Conditions  ConditionsView  `json:"conditions" yaml:"conditions"`
+	Capacity    CapacityView    `json:"capacity" yaml:"capacity"`
+	ScaleToZero ScaleToZeroView `json:"scaleToZero" yaml:"scaleToZero"`
+	Stability   StabilityView   `json:"stability" yaml:"stability"`
+	Advisory    AdvisoryView    `json:"advisory" yaml:"advisory"`
+	Controllers ControllersView `json:"controllers" yaml:"controllers"`
+	Blockers    BlockersView    `json:"blockers" yaml:"blockers"`
+	Actions     ActionsView     `json:"actions" yaml:"actions"`
+	Lifecycle   LifecycleView   `json:"lifecycle" yaml:"lifecycle"`
+}
+
+// Grouped returns all v2 groups in one stable value. It is intentionally
+// additive and does not change v1 JSON/YAML serialization.
+func (a *Analysis) Grouped() GroupedAnalysis {
+	if a == nil {
+		return GroupedAnalysis{}
+	}
+	return GroupedAnalysis{
+		Meta:        a.Meta(),
+		Replicas:    a.Replicas(),
+		Decision:    a.Decision(),
+		Metrics:     a.MetricsGroup(),
+		Conditions:  a.ConditionsGroup(),
+		Capacity:    a.Capacity(),
+		ScaleToZero: a.ScaleToZeroGroup(),
+		Stability:   a.Stability(),
+		Advisory:    a.Advisory(),
+		Controllers: a.Controllers(),
+		Blockers:    a.Blockers(),
+		Actions:     a.ActionsGroup(),
+		Lifecycle:   a.Lifecycle(),
+	}
+}

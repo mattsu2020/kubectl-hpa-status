@@ -265,29 +265,9 @@ func applyRelativeOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, spec auto
 
 // resolveMetricSpec finds the spec metric matching the given name (case-insensitive).
 func resolveMetricSpec(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) (autoscalingv2.MetricSpec, bool) {
-	lower := strings.ToLower(name)
 	for _, m := range hpa.Spec.Metrics {
-		switch m.Type {
-		case autoscalingv2.ResourceMetricSourceType:
-			if strings.ToLower(string(m.Resource.Name)) == lower {
-				return m, true
-			}
-		case autoscalingv2.ExternalMetricSourceType:
-			if strings.ToLower(m.External.Metric.Name) == lower {
-				return m, true
-			}
-		case autoscalingv2.PodsMetricSourceType:
-			if strings.ToLower(m.Pods.Metric.Name) == lower {
-				return m, true
-			}
-		case autoscalingv2.ObjectMetricSourceType:
-			if strings.ToLower(m.Object.Metric.Name) == lower {
-				return m, true
-			}
-		case autoscalingv2.ContainerResourceMetricSourceType:
-			if strings.ToLower(string(m.ContainerResource.Name)) == lower {
-				return m, true
-			}
+		if metricSpecNameMatches(m, name) {
+			return m, true
 		}
 	}
 	return autoscalingv2.MetricSpec{}, false

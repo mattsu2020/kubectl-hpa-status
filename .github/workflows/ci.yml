@@ -55,7 +55,7 @@ jobs:
         # formatting errors. Mirrors the local `make fmt-check` target.
         if: matrix.os == 'ubuntu-latest'
         run: |
-          out=$(gofmt -l cmd/ pkg/ internal/)
+          out=$(gofmt -l *.go cmd/ pkg/ internal/)
           if [ -n "$out" ]; then
             echo "::error::gofmt would modify the following files; run 'gofmt -w' and commit:"
             echo "$out"
@@ -83,28 +83,7 @@ jobs:
 
       - name: Check coverage threshold
         if: matrix.os == 'ubuntu-latest'
-        run: |
-          # Tiered regression gates: the core analysis package (pkg/hpa) is held
-          # to a higher bar than cmd/ (which has thinner integration coverage).
-          # Raise these as coverage improves.
-          # coverage.out records statement blocks as: range statements count.
-          # Weight by statement count; averaging function percentages lets many
-          # tiny functions hide an uncovered large function.
-          statement_coverage() {
-            awk -v p="$1" 'NR > 1 && $1 ~ p { total += $2; if ($3 > 0) covered += $2 } END { if (total > 0) printf "%.1f", covered * 100 / total; else print 0 }' coverage.out
-          }
-          check() {
-            name="$1"; val="$2"; threshold="$3"
-            echo "$name coverage: ${val}% (threshold ${threshold}%)"
-            if [ "$(echo "$val < $threshold" | bc -l)" = "1" ]; then
-              echo "::error::$name coverage ${val}% is below ${threshold}%"
-              exit 1
-            fi
-          }
-          TOTAL=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
-          check "Total" "$TOTAL" 65
-          check "pkg/hpa" "$(statement_coverage '/pkg/hpa/')" 70
-          check "cmd" "$(statement_coverage '/cmd/')" 55
+        run: bash scripts/check-coverage.sh coverage.out
 
       - name: Check README sync
         if: matrix.os == 'ubuntu-latest'
@@ -191,7 +170,7 @@ jobs:
         uses: securego/gosec@v2.27.1
         with:
           # Same exclusions as the build-job gosec step; emit SARIF for upload.
-          args: -exclude G115,G304,G602,G301,G302,G306 -fmt sarif -out gosec-results.sarif ./...
+          args: -exclude G115,G304,G602 -fmt sarif -out gosec-results.sarif ./...
 
       - name: Upload gosec SARIF results
         if: always()

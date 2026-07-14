@@ -95,7 +95,7 @@ func WriteStatusDashboardWithOptions(w io.Writer, report StatusReport, opts Stat
 		progress := FormatStabilizationWithSource(a.StabilizationRemaining, a.StabilizationWindowSeconds, a.StabilizationSource)
 		out = fmt.Appendf(out, "Stabilizing %s\n", progress)
 	}
-	out = fmt.Appendf(out, "Summary  %s\n", theme.SummaryColor(opts.translateSummary(a.Summary, a.SummaryKey)))
+	out = fmt.Appendf(out, "Summary  %s\n", theme.SummaryColorForKey(opts.translateSummary(a.Summary, a.SummaryKey), a.SummaryKey))
 
 	out = append(out, "\nConditions\n"...)
 	if len(a.Conditions) == 0 {
@@ -158,7 +158,7 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 	appendScoreBreakdown(&out, a)
 
 	out = append(out, '\n')
-	out = fmt.Appendf(out, "%s: %s\n", labels.Summary, theme.SummaryColor(opts.translateSummary(a.Summary, a.SummaryKey)))
+	out = fmt.Appendf(out, "%s: %s\n", labels.Summary, theme.SummaryColorForKey(opts.translateSummary(a.Summary, a.SummaryKey), a.SummaryKey))
 
 	appendConditionsSection(&out, a, theme, labels)
 	appendMetricsSection(&out, a, theme, labels)

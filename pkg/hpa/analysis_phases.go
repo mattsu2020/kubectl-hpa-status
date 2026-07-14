@@ -162,6 +162,11 @@ func correlateStabilizationChurn(a Analysis) Analysis {
 		return a
 	}
 	line := "[estimated] Churn detected while stabilization window is active — consider increasing scaleDown.stabilizationWindowSeconds to reduce thrashing."
+	for _, existing := range a.Interpretation {
+		if existing == line {
+			return a
+		}
+	}
 	a.Interpretation = append(a.Interpretation, line)
 	return a
 }
@@ -181,9 +186,13 @@ func FinalizeAnalysis(a Analysis) Analysis {
 // assumptions visible in structured output so operators (and future
 // KEP-based controller config reads) can distinguish measured vs assumed.
 func collectAssumptions(a Analysis) Analysis {
-	assumptions := a.Assumptions
-	if assumptions == nil {
-		assumptions = []Assumption{}
+	// Finalization may be invoked by more than one workflow layer. Rebuild the
+	// assumptions owned by this phase instead of appending duplicates.
+	assumptions := make([]Assumption, 0, len(a.Assumptions)+2)
+	for _, assumption := range a.Assumptions {
+		if assumption.Name != "tolerance" && assumption.Name != "stabilizationRemaining" {
+			assumptions = append(assumptions, assumption)
+		}
 	}
 	assumptions = append(assumptions, Assumption{
 		Name:       "tolerance",

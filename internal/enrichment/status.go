@@ -42,6 +42,21 @@ type Status struct {
 	VPA  *Entry `json:"vpa,omitempty" yaml:"vpa,omitempty"`
 }
 
+// Clone returns an independent status value suitable for attaching to one
+// HPA report. Context status is shared by concurrent report builders and must
+// remain immutable after construction.
+func (s Status) Clone() Status {
+	return Status{KEDA: cloneEntry(s.KEDA), VPA: cloneEntry(s.VPA)}
+}
+
+func cloneEntry(entry *Entry) *Entry {
+	if entry == nil {
+		return nil
+	}
+	cloned := *entry
+	return &cloned
+}
+
 // KEDAEntry returns the KEDA enrichment entry, or a disabled default.
 func (s *Status) KEDAEntry() Entry {
 	if s != nil && s.KEDA != nil {

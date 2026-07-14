@@ -443,7 +443,7 @@ func kubectlPatchCommandWithDryRun(hpa *autoscalingv2.HorizontalPodAutoscaler, p
 
 // marshalJSON delegates to util.MarshalJSON.
 func marshalJSON(value any) string {
-	return util.MarshalJSON(value)
+	return util.MustMarshalJSON(value)
 }
 
 // SuggestionDiff renders a field-level diff of a suggestion's patch against

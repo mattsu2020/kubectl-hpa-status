@@ -79,45 +79,15 @@ func buildDecisionTraceMetric(hpa *autoscalingv2.HorizontalPodAutoscaler, metric
 }
 
 func metricDisplayValues(hpa *autoscalingv2.HorizontalPodAutoscaler, metric autoscalingv2.MetricStatus) (string, string) {
-	switch metric.Type {
-	case autoscalingv2.ResourceMetricSourceType:
-		if metric.Resource == nil {
-			return "", ""
-		}
-		target := FindResourceTarget(hpa, string(metric.Resource.Name))
-		current := metricValueStatusString(metric.Resource.Current)
-		return current, target
-	case autoscalingv2.ContainerResourceMetricSourceType:
-		if metric.ContainerResource == nil {
-			return "", ""
-		}
-		target := FindContainerResourceTarget(hpa, string(metric.ContainerResource.Name), metric.ContainerResource.Container)
-		current := metricValueStatusString(metric.ContainerResource.Current)
-		return current, target
-	case autoscalingv2.PodsMetricSourceType:
-		if metric.Pods == nil {
-			return "", ""
-		}
-		target := FindPodsTarget(hpa, metric.Pods.Metric.Name, metric.Pods.Metric.Selector)
-		current := metricValueStatusString(metric.Pods.Current)
-		return current, target
-	case autoscalingv2.ObjectMetricSourceType:
-		if metric.Object == nil {
-			return "", ""
-		}
-		target := FindObjectTarget(hpa, metric.Object.Metric.Name, metric.Object.Metric.Selector, metric.Object.DescribedObject)
-		current := metricValueStatusString(metric.Object.Current)
-		return current, target
-	case autoscalingv2.ExternalMetricSourceType:
-		if metric.External == nil {
-			return "", ""
-		}
-		target := FindExternalTarget(hpa, metric.External.Metric.Name, metric.External.Metric.Selector)
-		current := metricValueStatusString(metric.External.Current)
-		return current, target
-	default:
+	value, ok := currentMetricValueStatus(metric)
+	if !ok {
 		return "", ""
 	}
+	target, ok := matchingMetricTarget(hpa, metric)
+	if !ok {
+		return metricValueStatusString(value), ""
+	}
+	return metricValueStatusString(value), FormatMetricTarget(*target)
 }
 
 func metricValueStatusString(v autoscalingv2.MetricValueStatus) string {

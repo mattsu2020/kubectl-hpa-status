@@ -91,7 +91,7 @@ func generateFlappingFixes(hpa *autoscalingv2.HorizontalPodAutoscaler, causes []
 			if recommendedWindow < 300 {
 				recommendedWindow = 300
 			}
-			patch := util.MarshalJSON(map[string]any{
+			patch := util.MustMarshalJSON(map[string]any{
 				"spec": map[string]any{
 					"behavior": map[string]any{
 						"scaleDown": map[string]any{
@@ -108,7 +108,7 @@ func generateFlappingFixes(hpa *autoscalingv2.HorizontalPodAutoscaler, causes []
 
 		case "missing-scaledown-policy":
 			window := currentStabilizationWindowSeconds(hpa)
-			patch := util.MarshalJSON(map[string]any{
+			patch := util.MustMarshalJSON(map[string]any{
 				"spec": map[string]any{
 					"behavior": map[string]any{
 						"scaleDown": map[string]any{

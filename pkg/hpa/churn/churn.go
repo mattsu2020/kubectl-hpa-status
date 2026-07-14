@@ -5,7 +5,6 @@ package churn
 
 import (
 	"fmt"
-	"regexp"
 
 	"sort"
 	"time"
@@ -252,7 +251,7 @@ func stabilizationWindowRecommendation(hpa *autoscalingv2.HorizontalPodAutoscale
 	currentWindow := currentStabilizationWindowSeconds(hpa)
 	recommendedWindow := currentWindow * 2
 
-	patch := util.MarshalJSON(map[string]any{
+	patch := util.MustMarshalJSON(map[string]any{
 		"spec": map[string]any{
 			"behavior": map[string]any{
 				"scaleDown": map[string]any{
@@ -275,7 +274,7 @@ func stabilizationWindowRecommendation(hpa *autoscalingv2.HorizontalPodAutoscale
 // toleranceRecommendation recommends adding explicit tolerance to dampen
 // small metric fluctuations that trigger unnecessary rescales.
 func toleranceRecommendation() ChurnRecommendation {
-	patch := util.MarshalJSON(map[string]any{
+	patch := util.MustMarshalJSON(map[string]any{
 		"spec": map[string]any{
 			"behavior": map[string]any{
 				"scaleDown": map[string]any{
@@ -300,7 +299,7 @@ func toleranceRecommendation() ChurnRecommendation {
 func behaviorPolicyRecommendation(hpa *autoscalingv2.HorizontalPodAutoscaler) ChurnRecommendation {
 	stabilizationSeconds := currentStabilizationWindowSeconds(hpa)
 
-	patch := util.MarshalJSON(map[string]any{
+	patch := util.MustMarshalJSON(map[string]any{
 		"spec": map[string]any{
 			"behavior": map[string]any{
 				"scaleDown": map[string]any{
@@ -338,24 +337,10 @@ func currentStabilizationWindowSeconds(hpa *autoscalingv2.HorizontalPodAutoscale
 	return *hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds
 }
 
-// newSizeRegex extracts the "new size: N" replica count from a
-// SuccessfulRescale event message.
-var newSizeRegex = regexp.MustCompile(`(?i)new size:\s*(\d+)`)
-
 // parseRescaleSize extracts the new replica count from an HPA event message
 // containing the "New size: N" pattern. Returns 0 if the pattern cannot be
 // parsed.
 func parseRescaleSize(message string) int32 {
-	match := newSizeRegex.FindStringSubmatch(message)
-	if len(match) < 2 {
-		return 0
-	}
-	var result int32
-	if _, err := fmt.Sscanf(match[1], "%d", &result); err != nil {
-		return 0
-	}
+	result, _ := event.ParseNewSize(message)
 	return result
 }
-
-// parseRescaleSize and newSizeRegex are defined earlier in this file (local
-// copies of the pkg/hpa helpers to keep this leaf package self-contained).

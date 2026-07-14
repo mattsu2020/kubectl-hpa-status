@@ -124,6 +124,47 @@ func metricDisplayName(metric autoscalingv2.MetricStatus) string {
 	return handlerFor(metric.Type).DisplayName(metric)
 }
 
+// currentMetricValueStatus returns the value payload for any supported metric
+// status. Keeping this type switch next to the handler registry prevents
+// decision tracing and freshness analysis from maintaining their own copies.
+func currentMetricValueStatus(metric autoscalingv2.MetricStatus) (autoscalingv2.MetricValueStatus, bool) {
+	switch metric.Type {
+	case autoscalingv2.ResourceMetricSourceType:
+		if metric.Resource != nil {
+			return metric.Resource.Current, true
+		}
+	case autoscalingv2.ContainerResourceMetricSourceType:
+		if metric.ContainerResource != nil {
+			return metric.ContainerResource.Current, true
+		}
+	case autoscalingv2.PodsMetricSourceType:
+		if metric.Pods != nil {
+			return metric.Pods.Current, true
+		}
+	case autoscalingv2.ObjectMetricSourceType:
+		if metric.Object != nil {
+			return metric.Object.Current, true
+		}
+	case autoscalingv2.ExternalMetricSourceType:
+		if metric.External != nil {
+			return metric.External.Current, true
+		}
+	}
+	return autoscalingv2.MetricValueStatus{}, false
+}
+
+func matchingMetricTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, current autoscalingv2.MetricStatus) (*autoscalingv2.MetricTarget, bool) {
+	for i := range hpa.Spec.Metrics {
+		spec := &hpa.Spec.Metrics[i]
+		if spec.Type == current.Type && handlerFor(spec.Type).MatchesCurrent(*spec, current) {
+			if target := metricTargetPointer(spec); target != nil {
+				return target, true
+			}
+		}
+	}
+	return nil, false
+}
+
 // specMetricSelector returns the formatted selector string for a spec metric,
 // or empty string if the metric type does not support selectors.
 func specMetricSelector(spec autoscalingv2.MetricSpec) string {

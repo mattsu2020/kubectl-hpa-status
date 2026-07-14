@@ -208,22 +208,78 @@ func applySimulationOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, path, v
 		return applyMetricTargetOverride(hpa, name, value)
 	}
 
-	if handled, err := applyReplicaSimulationOverride(hpa, normalizedPath, value); handled {
+	if definition, ok := simulationOverrideDefinitions[normalizedPath]; ok {
+		return definition.Apply(hpa, value)
+	}
+	return fmt.Errorf("unsupported path %q; supported: %s, metric.<name>.target", path, strings.Join(supportedSimulationPaths(), ", "))
+}
+
+type simulationOverrideDefinition struct {
+	Name     string
+	Apply    func(*autoscalingv2.HorizontalPodAutoscaler, string) error
+	Original func(*autoscalingv2.HorizontalPodAutoscaler) string
+}
+
+func replicaOverride(path string) func(*autoscalingv2.HorizontalPodAutoscaler, string) error {
+	return func(hpa *autoscalingv2.HorizontalPodAutoscaler, value string) error {
+		_, err := applyReplicaSimulationOverride(hpa, path, value)
 		return err
 	}
-	if handled, err := applyBehaviorSimulationOverride(hpa, normalizedPath, value); handled {
+}
+
+func behaviorOverride(path string) func(*autoscalingv2.HorizontalPodAutoscaler, string) error {
+	return func(hpa *autoscalingv2.HorizontalPodAutoscaler, value string) error {
+		_, err := applyBehaviorSimulationOverride(hpa, path, value)
 		return err
 	}
-	switch normalizedPath {
-	case "tolerance":
+}
+
+var simulationOverrideDefinitions = map[string]simulationOverrideDefinition{
+	"maxreplicas": {Name: "maxReplicas", Apply: replicaOverride("maxreplicas"), Original: func(hpa *autoscalingv2.HorizontalPodAutoscaler) string {
+		return fmt.Sprintf("%d", hpa.Spec.MaxReplicas)
+	}},
+	"minreplicas":                          {Name: "minReplicas", Apply: replicaOverride("minreplicas"), Original: originalMinReplicas},
+	"targetaverageutilization":             {Name: "targetAverageUtilization", Apply: replicaOverride("targetaverageutilization"), Original: originalTargetAverageUtilization},
+	"scaledown.stabilizationwindowseconds": {Name: "scaleDown.stabilizationWindowSeconds", Apply: behaviorOverride("scaledown.stabilizationwindowseconds"), Original: originalScaleDownStabilizationWindow},
+	"scaleup.stabilizationwindowseconds":   {Name: "scaleUp.stabilizationWindowSeconds", Apply: behaviorOverride("scaleup.stabilizationwindowseconds"), Original: originalScaleUpStabilizationWindow},
+	"scaledown.selectpolicy": {Name: "scaleDown.selectPolicy", Apply: behaviorOverride("scaledown.selectpolicy"), Original: func(hpa *autoscalingv2.HorizontalPodAutoscaler) string {
+		if hpa.Spec.Behavior != nil && hpa.Spec.Behavior.ScaleDown != nil && hpa.Spec.Behavior.ScaleDown.SelectPolicy != nil {
+			return string(*hpa.Spec.Behavior.ScaleDown.SelectPolicy)
+		}
+		return "Max"
+	}},
+	"scaleup.selectpolicy": {Name: "scaleUp.selectPolicy", Apply: behaviorOverride("scaleup.selectpolicy"), Original: func(hpa *autoscalingv2.HorizontalPodAutoscaler) string {
+		if hpa.Spec.Behavior != nil && hpa.Spec.Behavior.ScaleUp != nil && hpa.Spec.Behavior.ScaleUp.SelectPolicy != nil {
+			return string(*hpa.Spec.Behavior.ScaleUp.SelectPolicy)
+		}
+		return "Max"
+	}},
+	"tolerance": {Name: "tolerance", Apply: func(hpa *autoscalingv2.HorizontalPodAutoscaler, value string) error {
 		return applyToleranceOverride(hpa, "both", value)
-	case "scaleup.tolerance":
+	}, Original: func(hpa *autoscalingv2.HorizontalPodAutoscaler) string {
+		up, down := effectiveDirectionalTolerances(hpa)
+		return fmt.Sprintf("scaleUp=%.3g,scaleDown=%.3g", up, down)
+	}},
+	"scaleup.tolerance": {Name: "scaleUp.tolerance", Apply: func(hpa *autoscalingv2.HorizontalPodAutoscaler, value string) error {
 		return applyToleranceOverride(hpa, "up", value)
-	case "scaledown.tolerance":
+	}, Original: func(hpa *autoscalingv2.HorizontalPodAutoscaler) string {
+		return originalDirectionalTolerance(hpa, true)
+	}},
+	"scaledown.tolerance": {Name: "scaleDown.tolerance", Apply: func(hpa *autoscalingv2.HorizontalPodAutoscaler, value string) error {
 		return applyToleranceOverride(hpa, "down", value)
-	default:
-		return fmt.Errorf("unsupported path %q; supported: maxReplicas, minReplicas, scaleDown.stabilizationWindowSeconds, scaleDown.stabilizationWindow, scaleUp.stabilizationWindowSeconds, scaleUp.stabilizationWindow, scaleDown.selectPolicy, scaleUp.selectPolicy, targetAverageUtilization, metric.<name>.target, tolerance, scaleUp.tolerance, scaleDown.tolerance", path)
+	}, Original: func(hpa *autoscalingv2.HorizontalPodAutoscaler) string {
+		return originalDirectionalTolerance(hpa, false)
+	}},
+}
+
+func supportedSimulationPaths() []string {
+	paths := make([]string, 0, len(simulationOverrideDefinitions)+2)
+	for _, definition := range simulationOverrideDefinitions {
+		paths = append(paths, definition.Name)
 	}
+	paths = append(paths, "scaleDown.stabilizationWindow", "scaleUp.stabilizationWindow")
+	sort.Strings(paths)
+	return paths
 }
 
 func applyReplicaSimulationOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, normalizedPath, value string) (bool, error) {
@@ -481,35 +537,19 @@ func parseInt32(value string) (int32, error) {
 
 // originalValue returns the current value for the given path on the original HPA.
 func originalValue(hpa *autoscalingv2.HorizontalPodAutoscaler, path string) string {
-	switch normalizeSimulationPath(path) {
-	case "maxreplicas":
-		return fmt.Sprintf("%d", hpa.Spec.MaxReplicas)
-	case "minreplicas":
-		return originalMinReplicas(hpa)
-	case "scaledown.stabilizationwindowseconds":
-		return originalScaleDownStabilizationWindow(hpa)
-	case "scaleup.stabilizationwindowseconds":
-		return originalScaleUpStabilizationWindow(hpa)
-	case "targetaverageutilization":
-		return originalTargetAverageUtilization(hpa)
-	case "scaleup.tolerance":
-		return originalDirectionalTolerance(hpa, true)
-	case "scaledown.tolerance":
-		return originalDirectionalTolerance(hpa, false)
-	case "tolerance":
-		up, down := effectiveDirectionalTolerances(hpa)
-		return fmt.Sprintf("scaleUp=%.3g,scaleDown=%.3g", up, down)
-	default:
-		if strings.HasPrefix(normalizeSimulationPath(path), "metric.") && strings.HasSuffix(normalizeSimulationPath(path), ".target") {
-			name := strings.TrimSuffix(strings.TrimPrefix(normalizeSimulationPath(path), "metric."), ".target")
-			if spec, found := resolveMetricSpec(hpa, name); found {
-				if target := metricTargetPointer(&spec); target != nil {
-					return FormatMetricTarget(*target)
-				}
+	normalizedPath := normalizeSimulationPath(path)
+	if definition, ok := simulationOverrideDefinitions[normalizedPath]; ok {
+		return definition.Original(hpa)
+	}
+	if strings.HasPrefix(normalizedPath, "metric.") && strings.HasSuffix(normalizedPath, ".target") {
+		name := strings.TrimSuffix(strings.TrimPrefix(normalizedPath, "metric."), ".target")
+		if spec, found := resolveMetricSpec(hpa, name); found {
+			if target := metricTargetPointer(&spec); target != nil {
+				return FormatMetricTarget(*target)
 			}
 		}
-		return "<unknown>"
 	}
+	return "<unknown>"
 }
 
 func originalDirectionalTolerance(hpa *autoscalingv2.HorizontalPodAutoscaler, scaleUp bool) string {

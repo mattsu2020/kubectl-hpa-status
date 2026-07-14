@@ -6,13 +6,11 @@ import (
 	"strings"
 	"time"
 
+	eventutil "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/event"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 )
-
-// newSizeRegex extracts the new replica count from HPA event messages like:
-// "New size: 5; reason: cpu resource utilization (percentage of request) above target"
-var newSizeRegex = regexp.MustCompile(`(?i)new size:\s*(\d+)`)
 
 // metricReasonRegex extracts metric information from HPA rescale reason strings.
 var metricReasonRegex = regexp.MustCompile(`(?i)reason:\s*(.+)$`)
@@ -147,14 +145,7 @@ func classifyEvent(event Event, prevDesired int32, hpa *autoscalingv2.Horizontal
 
 // parseNewSize extracts the new replica count from an HPA event message.
 func parseNewSize(message string) int32 {
-	match := newSizeRegex.FindStringSubmatch(message)
-	if len(match) < 2 {
-		return 0
-	}
-	var result int32
-	if _, err := fmt.Sscanf(match[1], "%d", &result); err != nil {
-		return 0
-	}
+	result, _ := eventutil.ParseNewSize(message)
 	return result
 }
 
@@ -367,14 +358,7 @@ func formatScaleUpPolicySummary(hpa *autoscalingv2.HorizontalPodAutoscaler) stri
 	return ""
 }
 
-// truncateMessageRetro truncates a message to maxLen bytes, appending "..."
-// if truncated. Assumes ASCII content; multi-byte characters may be split.
+// truncateMessageRetro truncates a message to maxLen terminal columns.
 func truncateMessageRetro(msg string, maxLen int) string {
-	if len(msg) <= maxLen {
-		return msg
-	}
-	if maxLen <= 3 {
-		return msg[:maxLen]
-	}
-	return msg[:maxLen-3] + "..."
+	return rendutil.TruncateDisplayWidth(msg, maxLen, "...")
 }

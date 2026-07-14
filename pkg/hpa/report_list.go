@@ -23,11 +23,11 @@ func WriteMarkdownListReport(w io.Writer, report ListReport) error {
 
 	for _, item := range report.Items {
 		out.WriteString("| ")
-		out.WriteString(item.Namespace)
+		out.WriteString(escapeMarkdown(item.Namespace))
 		out.WriteString(" | ")
-		out.WriteString(item.Name)
+		out.WriteString(escapeMarkdown(item.Name))
 		out.WriteString(" | ")
-		out.WriteString(item.Target)
+		out.WriteString(escapeMarkdown(item.Target))
 		out.WriteString(" | ")
 		out.WriteString(fmt.Sprintf("%d", item.Current))
 		out.WriteString(" | ")
@@ -37,7 +37,7 @@ func WriteMarkdownListReport(w io.Writer, report ListReport) error {
 		out.WriteString(" | ")
 		out.WriteString(fmt.Sprintf("%d", item.Max))
 		out.WriteString(" | ")
-		out.WriteString(item.Health)
+		out.WriteString(escapeMarkdown(item.Health))
 		out.WriteString(" | ")
 		out.WriteString(fmt.Sprintf("%d", item.HealthScore))
 		out.WriteString(" | ")

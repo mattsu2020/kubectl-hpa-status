@@ -3,11 +3,25 @@ package replaylab
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
 	"sigs.k8s.io/yaml"
 )
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("write failed") }
+
+func TestWriteReportPropagatesWriterError(t *testing.T) {
+	t.Parallel()
+	for _, format := range []string{"text", "markdown"} {
+		if err := WriteReport(failingWriter{}, format, Report{Name: "test"}); err == nil {
+			t.Fatalf("format %s: expected writer error", format)
+		}
+	}
+}
 
 func fullReport() Report {
 	return Report{

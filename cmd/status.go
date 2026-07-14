@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"runtime"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
@@ -309,7 +308,7 @@ func buildReportsConcurrently(ctx context.Context, opts *options, client *kube.C
 	g, gctx := errgroup.WithContext(ctx)
 	limit := opts.Concurrency
 	if limit < 1 {
-		limit = runtime.NumCPU()
+		limit = defaultConcurrency()
 	}
 	g.SetLimit(limit)
 

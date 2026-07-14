@@ -25,7 +25,7 @@ func registerCommonFlags(cmd *cobra.Command, opts *options) {
 	cmd.PersistentFlags().BoolVarP(&opts.Debug, "debug", "v", false, "include internal analysis details such as ratios and health scoring inputs")
 	cmd.PersistentFlags().StringVar(&opts.Config, "config", "", "optional config file for analysis settings such as health score weights")
 	cmd.PersistentFlags().Int64Var(&opts.ChunkSize, "chunk-size", opts.ChunkSize, "Kubernetes list page size for list/scan/tui; set 0 to disable pagination")
-	cmd.PersistentFlags().IntVar(&opts.Concurrency, "concurrency", runtime.NumCPU(), "maximum number of HPAs to analyze in parallel for multi-HPA status/timeline; defaults to the number of CPUs")
+	cmd.PersistentFlags().IntVar(&opts.Concurrency, "concurrency", defaultConcurrency(), "maximum number of HPAs to analyze in parallel for multi-HPA status/timeline; defaults to min(CPUs, client-go burst 10)")
 	cmd.PersistentFlags().Float32Var(&opts.QPS, "qps", 0, "client-side rate limiting queries per second (0 uses client-go default)")
 	cmd.PersistentFlags().IntVar(&opts.Burst, "burst", 0, "client-side rate limiting burst size (0 uses client-go default)")
 	cmd.PersistentFlags().DurationVar(&opts.RequestTimeout, "request-timeout", opts.RequestTimeout, "timeout for each Kubernetes API request; set 0 to wait indefinitely")
@@ -57,6 +57,10 @@ func registerCommonFlags(cmd *cobra.Command, opts *options) {
 	if vpa := cmd.PersistentFlags().Lookup("vpa"); vpa != nil {
 		vpa.NoOptDefVal = "on"
 	}
+}
+
+func defaultConcurrency() int {
+	return min(runtime.NumCPU(), 10)
 }
 
 // registerStatusFlags registers flags specific to the status / analyze command.

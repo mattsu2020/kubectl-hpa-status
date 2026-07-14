@@ -21,7 +21,7 @@ type NodeCapacityInfo struct {
 // FetchNodeCapacity lists all nodes and returns an aggregate capacity summary.
 // It sums allocatable CPU and memory and counts tainted nodes (NoSchedule/NoExecute).
 func FetchNodeCapacity(ctx context.Context, client kubernetes.Interface) (*NodeCapacityInfo, error) {
-	nodes, err := client.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	nodes, err := listNodes(ctx, client, metav1.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list nodes: %w", err)
 	}
@@ -29,7 +29,7 @@ func FetchNodeCapacity(ctx context.Context, client kubernetes.Interface) (*NodeC
 	var totalCPU, totalMemory resource.Quantity
 	var taintedNodes int32
 
-	for _, node := range nodes.Items {
+	for _, node := range nodes {
 		if cpu, ok := node.Status.Allocatable[corev1.ResourceCPU]; ok {
 			totalCPU.Add(cpu)
 		}
@@ -42,11 +42,21 @@ func FetchNodeCapacity(ctx context.Context, client kubernetes.Interface) (*NodeC
 	}
 
 	return &NodeCapacityInfo{
-		TotalNodes:   int32(len(nodes.Items)),
+		TotalNodes:   int32(len(nodes)),
 		AllocCPU:     totalCPU,
 		AllocMemory:  totalMemory,
 		TaintedNodes: taintedNodes,
 	}, nil
+}
+
+func listNodes(ctx context.Context, client kubernetes.Interface, opts metav1.ListOptions) ([]corev1.Node, error) {
+	return collectListPages(ctx, opts, func(ctx context.Context, page metav1.ListOptions) ([]corev1.Node, string, error) {
+		list, err := client.CoreV1().Nodes().List(ctx, page)
+		if err != nil {
+			return nil, "", err
+		}
+		return list.Items, list.Continue, nil
+	})
 }
 
 // hasBlockingTaint returns true if any taint has NoSchedule or NoExecute effect,

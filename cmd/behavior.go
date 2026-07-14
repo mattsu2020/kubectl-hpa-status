@@ -199,6 +199,13 @@ func behaviorStepDelta(replicas int32, rules behaviorDirection, direction int32)
 }
 
 func writeBehaviorText(out io.Writer, result behaviorOutput) error {
+	var buffer strings.Builder
+	writeBehaviorTextTo(&buffer, result)
+	_, err := io.WriteString(out, buffer.String())
+	return err
+}
+
+func writeBehaviorTextTo(out io.Writer, result behaviorOutput) {
 	_, _ = fmt.Fprintf(out, "HPA behavior: %s/%s\n\n", result.Namespace, result.Name)
 	_, _ = fmt.Fprintf(out, "current=%d desired=%d\n\n", result.Current, result.Desired)
 	writeBehaviorDirectionText(out, "ScaleUp", result.ScaleUp)
@@ -209,7 +216,6 @@ func writeBehaviorText(out io.Writer, result behaviorOutput) error {
 			_, _ = fmt.Fprintf(out, "  t+%ds: %d\n", point.AfterSeconds, point.Replicas)
 		}
 	}
-	return nil
 }
 
 func writeBehaviorDirectionText(out io.Writer, title string, direction behaviorDirection) {

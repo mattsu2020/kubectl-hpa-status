@@ -6,8 +6,6 @@ package e2e
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"math/rand"
 	"os"
 	"strings"
 	"testing"
@@ -59,16 +57,16 @@ func setupTestNamespace(t *testing.T, kubeconfig string) (*rest.Config, *kuberne
 		t.Skipf("Skipping E2E test: API server is unreachable: %v", err)
 	}
 
-	nsName := fmt.Sprintf("hpa-status-e2e-%d", rand.New(rand.NewSource(time.Now().UnixNano())).Intn(100000))
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: nsName,
+			GenerateName: "hpa-status-e2e-",
 		},
 	}
-	_, err = client.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
+	created, err := client.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
 	if err != nil {
-		t.Fatalf("failed to create namespace %s: %v", nsName, err)
+		t.Fatalf("failed to create namespace: %v", err)
 	}
+	nsName := created.Name
 	t.Cleanup(func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cleanupCancel()

@@ -31,6 +31,11 @@ jobs:
       - name: Test
         run: go test ./...
 
+      - name: Verify reproducible module inputs
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
       # Install cosign for keyless sigstore signing of release artifacts.
       # COSIGN_EXPERIMENTAL=1 enables keyless (certificate-based) signing that
       # does not require a persisted private key.

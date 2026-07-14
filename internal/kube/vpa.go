@@ -45,11 +45,17 @@ type VPARecommendationInfo struct {
 
 // FetchVPAs lists all VPAs in the given namespace using the dynamic client.
 func FetchVPAs(ctx context.Context, dynClient dynamic.Interface, namespace string) ([]unstructured.Unstructured, error) {
-	list, err := dynClient.Resource(vpaGVR).Namespace(namespace).List(ctx, metav1.ListOptions{})
+	items, err := collectListPages(ctx, metav1.ListOptions{}, func(ctx context.Context, page metav1.ListOptions) ([]unstructured.Unstructured, string, error) {
+		list, err := dynClient.Resource(vpaGVR).Namespace(namespace).List(ctx, page)
+		if err != nil {
+			return nil, "", err
+		}
+		return list.Items, list.GetContinue(), nil
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list VPAs in namespace %s: %w", namespace, err)
 	}
-	return list.Items, nil
+	return items, nil
 }
 
 // ExtractVPAInfo parses a VPA unstructured object into VPAInfo.

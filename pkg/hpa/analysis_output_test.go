@@ -128,6 +128,29 @@ func TestWriteStatusDiff_ConditionsChanged(t *testing.T) {
 	}
 }
 
+func TestWriteStatusDiff_ConditionMessageOnlyChange(t *testing.T) {
+	previous := &Analysis{Conditions: []Condition{{Type: "AbleToScale", Status: "True", Reason: "Ready", Message: "old"}}}
+	current := &Analysis{Conditions: []Condition{{Type: "AbleToScale", Status: "True", Reason: "Ready", Message: "new"}}}
+	var buf bytes.Buffer
+	if err := WriteStatusDiff(&buf, WatchState{Previous: previous, Current: current}, style.NewTheme(false)); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "(changed)") {
+		t.Fatalf("message-only condition change was not detected: %q", buf.String())
+	}
+}
+
+func TestMetricMapKeepsEmptyNamesAndSelectorsDistinct(t *testing.T) {
+	metrics := []Metric{
+		{Type: "External", Name: "queue", Selector: "team=a", Current: "1"},
+		{Type: "External", Name: "queue", Selector: "team=b", Current: "2"},
+		{Type: "Resource", Current: "3"},
+	}
+	if got := len(metricMap(metrics)); got != 3 {
+		t.Fatalf("metricMap retained %d metrics, want 3", got)
+	}
+}
+
 func TestWriteStatusDiff_NilPrevious(t *testing.T) {
 	// Diff with nil previous should not panic; the caller should use
 	// WriteStatusText for the first iteration, but WriteStatusDiff

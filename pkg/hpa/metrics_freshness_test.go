@@ -469,7 +469,7 @@ func TestTruncateMessage(t *testing.T) {
 	if !strings.HasSuffix(got, "...") {
 		t.Errorf("expected truncated message to end with '...', got: %q", got)
 	}
-	if len(got) != 53 { // 50 + "..."
-		t.Errorf("expected length 53, got %d", len(got))
+	if len(got) != 50 { // max length includes the ellipsis
+		t.Errorf("expected length 50, got %d", len(got))
 	}
 }

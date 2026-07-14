@@ -2,7 +2,6 @@ package flapping
 
 import (
 	"fmt"
-	"regexp"
 	"sort"
 	"time"
 
@@ -151,7 +150,7 @@ func simulateCandidates(rescales []event.RescaleData, currentFlips int, candidat
 		}
 
 		confidence := flappingConfidence(reduction)
-		patch := util.MarshalJSON(map[string]any{
+		patch := util.MustMarshalJSON(map[string]any{
 			"spec": map[string]any{
 				"behavior": map[string]any{
 					"scaleDown": map[string]any{
@@ -309,22 +308,9 @@ func currentStabilizationWindowSeconds(hpa *autoscalingv2.HorizontalPodAutoscale
 	return *hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds
 }
 
-// newSizeRegex extracts the "new size: N" replica count from a
-// SuccessfulRescale event message. Local copy of pkg/hpa.newSizeRegex to
-// keep this leaf package self-contained; keep in sync with retrospective.go.
-var newSizeRegex = regexp.MustCompile(`(?i)new size:\s*(\d+)`)
-
 // parseRescaleSize extracts the new replica count from an HPA event message.
-// Returns 0 when the message does not contain a parseable size. Local copy of
-// pkg/hpa.parseRescaleSize; keep in sync with churn.go.
+// Returns 0 when the message does not contain a parseable size.
 func parseRescaleSize(message string) int32 {
-	match := newSizeRegex.FindStringSubmatch(message)
-	if len(match) < 2 {
-		return 0
-	}
-	var result int32
-	if _, err := fmt.Sscanf(match[1], "%d", &result); err != nil {
-		return 0
-	}
+	result, _ := event.ParseNewSize(message)
 	return result
 }

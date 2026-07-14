@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"charm.land/lipgloss/v2"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -225,91 +225,12 @@ func churnScoreFromAnalysis(ca *ChurnAnalysis) int {
 }
 
 func padRight(s string, width int) string {
-	w := lipgloss.Width(s)
-	if w >= width {
-		return s
-	}
-	return s + strings.Repeat(" ", width-w)
+	return rendutil.PadDisplayWidth(s, width)
 }
 
 // WriteListText writes a table-formatted list of HPA items.
 func WriteListText(w io.Writer, report ListReport, opts ListTextOptions) error {
-	t := opts.theme()
-	var out []byte
-	showTrend := listHasTrend(report.Items)
-	if opts.Wide {
-		header := fmt.Sprintf("%s %s %s %s %s %s %s %s %s %s %s %s %s %s",
-			padRight("NAMESPACE", 20),
-			padRight("NAME", 32),
-			padRight("TARGET", 28),
-			padRight("CURRENT", 8),
-			padRight("DESIRED", 8),
-			padRight("DIFF", 8),
-			padRight("MIN", 8),
-			padRight("MAX", 8),
-			padRight("HEALTH", 12),
-			padRight("SCORE", 8),
-			padRight("METRICS", 20),
-			padRight("BEHAVIOR", 28),
-			padRight("ISSUE", 32),
-			padRight("CONDITIONS", 36))
-		if showTrend {
-			header = fmt.Sprintf("%s %s", header, padRight("TREND", 20))
-		}
-		out = fmt.Appendf(out, "%s %s\n", header, "SUMMARY")
-		for _, item := range report.Items {
-			row := fmt.Sprintf("%s %s %s %s %s %s %s %s %s %s %s %s %s %s",
-				padRight(item.Namespace, 20),
-				padRight(item.Name, 32),
-				padRight(item.Target, 28),
-				padRight(fmt.Sprintf("%d", item.Current), 8),
-				padRight(fmt.Sprintf("%d", item.Desired), 8),
-				padRight(formatReplicaDiff(item.Desired-item.Current), 8),
-				padRight(fmt.Sprintf("%d", item.Min), 8),
-				padRight(fmt.Sprintf("%d", item.Max), 8),
-				padRight(t.HealthLabel(item.Health, item.HealthScore), 12),
-				padRight(fmt.Sprintf("%d", item.HealthScore), 8),
-				padRight(item.Metrics, 20),
-				padRight(item.Behavior, 28),
-				padRight(t.Issue(item.Issue, item.Health), 32),
-				padRight(item.Conditions, 36))
-			if showTrend {
-				row = fmt.Sprintf("%s %s", row, padRight(item.TrendSparkline, 20))
-			}
-			out = fmt.Appendf(out, "%s %s\n", row, opts.translateSummary(item.Summary, item.SummaryKey))
-		}
-		_, err := w.Write(out)
-		return err
-	}
-
-	header := fmt.Sprintf("%s %s %s %s %s %s %s",
-		padRight("NAMESPACE", 20),
-		padRight("NAME", 32),
-		padRight("CURRENT", 8),
-		padRight("DESIRED", 8),
-		padRight("HEALTH", 12),
-		padRight("SCORE", 8),
-		padRight("ISSUE", 32))
-	if showTrend {
-		header = fmt.Sprintf("%s %s", header, padRight("TREND", 20))
-	}
-	out = fmt.Appendf(out, "%s %s\n", header, "SUMMARY")
-	for _, item := range report.Items {
-		row := fmt.Sprintf("%s %s %s %s %s %s %s",
-			padRight(item.Namespace, 20),
-			padRight(item.Name, 32),
-			padRight(fmt.Sprintf("%d", item.Current), 8),
-			padRight(fmt.Sprintf("%d", item.Desired), 8),
-			padRight(t.HealthLabel(item.Health, item.HealthScore), 12),
-			padRight(fmt.Sprintf("%d", item.HealthScore), 8),
-			padRight(t.Issue(item.Issue, item.Health), 32))
-		if showTrend {
-			row = fmt.Sprintf("%s %s", row, padRight(item.TrendSparkline, 20))
-		}
-		out = fmt.Appendf(out, "%s %s\n", row, opts.translateSummary(item.Summary, item.SummaryKey))
-	}
-	_, err := w.Write(out)
-	return err
+	return WriteListTextStreaming(w, report, opts, true)
 }
 
 func listHasTrend(items []ListItem) bool {

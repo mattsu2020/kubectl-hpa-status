@@ -15,7 +15,6 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kubeconv"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/dynamic"
 )
@@ -248,53 +247,88 @@ func buildKEDAAnalysis(info kube.KEDAInfo, hpa *autoscalingv2.HorizontalPodAutos
 }
 
 // EnrichKEDA performs KEDA ScaledObject enrichment for a single HPA.
-// Returns nil if the HPA is not KEDA-managed or enrichment fails.
+// Callers that need diagnostic state should use EnrichReport, which preserves
+// the distinction between skipped, active, and failed enrichment.
 func EnrichKEDA(ctx context.Context, ec *Context, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpakeda.Analysis {
+	result, _ := enrichKEDA(ctx, ec, hpa)
+	return result
+}
+
+func enrichKEDA(ctx context.Context, ec *Context, hpa *autoscalingv2.HorizontalPodAutoscaler) (*hpakeda.Analysis, Entry) {
+	entry := Entry{Source: SourceKEDA, State: StateSkipped}
 	det := kube.DetectKEDA(hpa)
 	if !det.Managed {
-		return nil
+		entry.Reason = "HPA is not KEDA-managed"
+		return nil, entry
+	}
+	if ec == nil || ec.dynClient == nil {
+		entry.State = StateError
+		entry.Reason = "dynamic client is unavailable"
+		return nil, entry
 	}
 
 	scaledObject, err := kube.FindScaledObjectForHPA(ctx, ec.dynClient, nil, hpa)
 	if err != nil {
-		return &hpakeda.Analysis{
-			Lines: []string{fmt.Sprintf("[observed] HPA appears KEDA-managed but no ScaledObject found: %v", err)},
-		}
+		entry.State = StateError
+		entry.Reason = err.Error()
+		return nil, entry
 	}
 
 	info := kube.ExtractKEDAInfo(scaledObject)
-	return buildKEDAAnalysis(info, hpa)
+	entry.State = StateActive
+	return buildKEDAAnalysis(info, hpa), entry
 }
 
 // EnrichVPA performs VPA conflict enrichment for a single HPA.
-// Silently skips on any error (CRD absent, client failure, no conflict).
-func EnrichVPA(ctx context.Context, ec *Context, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
+// The returned Entry distinguishes no conflict from API/RBAC failures.
+func EnrichVPA(ctx context.Context, ec *Context, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) Entry {
+	entry := Entry{Source: SourceVPA, State: StateSkipped}
+	if ec == nil || ec.dynClient == nil {
+		entry.State = StateError
+		entry.Reason = "dynamic client is unavailable"
+		return entry
+	}
 	vpaInfo, err := kube.FindConflictingVPA(ctx, ec.dynClient, report.Analysis.Namespace, hpa)
 	if err != nil {
-		return
+		entry.State = StateError
+		entry.Reason = err.Error()
+		return entry
 	}
 	if vpaInfo == nil {
-		return
+		entry.Reason = "no conflicting VPA found"
+		return entry
 	}
 
 	analysisVPA := convertVPAInfo(vpaInfo)
 	report.Analysis.VPAConflict = hpavpa.NewConflictInfo(analysisVPA)
 	report.Analysis.Interpretation = append(report.Analysis.Interpretation, hpavpa.Analyze(hpa, analysisVPA)...)
+	entry.State = StateActive
+	return entry
 }
 
 // EnrichReport applies KEDA and VPA enrichment to a StatusReport and
 // adjusts the health score with enrichment penalties.
 func EnrichReport(ctx context.Context, ec *Context, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, weights hpaanalysis.HealthWeights) {
-	if ec == nil || (!ec.kedaEnabled && !ec.vpaEnabled) {
+	if ec == nil {
 		return
 	}
+	status := ec.status.Clone()
 
 	if ec.kedaEnabled {
-		report.Analysis.KEDAInfo = EnrichKEDA(ctx, ec, hpa)
+		var outcome Entry
+		report.Analysis.KEDAInfo, outcome = enrichKEDA(ctx, ec, hpa)
+		status.KEDA = &outcome
+		if outcome.State == StateError {
+			report.Analysis.Warnings = append(report.Analysis.Warnings, "KEDA enrichment failed: "+outcome.Reason)
+		}
 	}
 
 	if ec.vpaEnabled {
-		EnrichVPA(ctx, ec, hpa, report)
+		outcome := EnrichVPA(ctx, ec, hpa, report)
+		status.VPA = &outcome
+		if outcome.State == StateError {
+			report.Analysis.Warnings = append(report.Analysis.Warnings, "VPA enrichment failed: "+outcome.Reason)
+		}
 	}
 
 	if report.Analysis.KEDAInfo != nil || report.Analysis.VPAConflict != nil {
@@ -302,7 +336,7 @@ func EnrichReport(ctx context.Context, ec *Context, hpa *autoscalingv2.Horizonta
 	}
 
 	// Attach enrichment status to analysis for diagnostic output.
-	report.Analysis.EnrichmentStatus = ec.status.ToAnalysisStatus()
+	report.Analysis.EnrichmentStatus = status.ToAnalysisStatus()
 }
 
 // BatchKEDA performs batched KEDA enrichment for multiple HPAs.
@@ -323,13 +357,13 @@ func BatchKEDA(ctx context.Context, ec *Context, hpas []autoscalingv2.Horizontal
 	warnings := map[string][]string{}
 	allScaledObjects := map[string][]*unstructured.Unstructured{}
 	for ns := range namespaces {
-		soList, err := ec.dynClient.Resource(kube.ScaledObjectGVR()).Namespace(ns).List(ctx, metav1.ListOptions{})
+		soList, err := kube.FetchScaledObjects(ctx, ec.dynClient, ns)
 		if err != nil {
 			warnings[ns] = append(warnings[ns], fmt.Sprintf("KEDA ScaledObject list failed: %v", err))
 			continue
 		}
-		for i := range soList.Items {
-			item := soList.Items[i]
+		for i := range soList {
+			item := soList[i]
 			allScaledObjects[ns] = append(allScaledObjects[ns], &item)
 		}
 	}

@@ -3,6 +3,8 @@ package blocker
 import (
 	"fmt"
 	"strings"
+
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 )
 
 // scaleOutDesiredRule detects when HPA wants more replicas than currently exist.
@@ -285,10 +287,7 @@ func describeNamespace(input Input) string {
 
 // truncateBlockerMessage truncates a message to maxLen characters.
 func truncateBlockerMessage(msg string, maxLen int) string {
-	if len(msg) <= maxLen {
-		return msg
-	}
-	return msg[:maxLen-3] + "..."
+	return rendutil.TruncateDisplayWidth(msg, maxLen, "...")
 }
 
 // deduplicateFindings replaces all findings with a given ID prefix by a single
