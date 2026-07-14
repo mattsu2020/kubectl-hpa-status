@@ -180,15 +180,10 @@ func WriteAssumptionsTextWithExplain(w io.Writer, assumptions *ControllerAssumpt
 		out.WriteString(fmt.Sprintf("%-26s %-14s %-20s %-12s %s\n",
 			"ASSUMPTION", "VALUE", "SOURCE", "CONFIDENCE", "IMPACT"))
 		out.WriteString(strings.Repeat("-", 110) + "\n")
-
 		for _, row := range assumptionRows {
 			cs := confidenceStyle(row.a.Confidence, theme)
 			out.WriteString(fmt.Sprintf("%-26s %-14s %-20s %-12s %s\n",
-				row.label,
-				row.a.Value,
-				row.a.Source,
-				cs.Render(row.a.Confidence),
-				truncateImpact(row.a.Impact, 40)))
+				row.label, row.a.Value, row.a.Source, cs.Render(row.a.Confidence), truncateImpact(row.a.Impact, 40)))
 			if row.a.Description != "" {
 				out.WriteString(fmt.Sprintf("  %s\n", theme.Dim.Render(row.a.Description)))
 			}
@@ -197,15 +192,10 @@ func WriteAssumptionsTextWithExplain(w io.Writer, assumptions *ControllerAssumpt
 		out.WriteString(fmt.Sprintf("%-26s %-14s %-20s %-10s %s\n",
 			"ASSUMPTION", "VALUE", "SOURCE", "CONFIDENCE", "IMPACT"))
 		out.WriteString(strings.Repeat("-", 100) + "\n")
-
 		for _, row := range assumptionRows {
 			cs := confidenceStyle(row.a.Confidence, theme)
 			out.WriteString(fmt.Sprintf("%-26s %-14s %-20s %-10s %s\n",
-				row.label,
-				row.a.Value,
-				row.a.Source,
-				cs.Render(row.a.Confidence),
-				truncateImpact(row.a.Impact, 40)))
+				row.label, row.a.Value, row.a.Source, cs.Render(row.a.Confidence), truncateImpact(row.a.Impact, 40)))
 		}
 	}
 
@@ -221,24 +211,7 @@ func WriteAssumptionsTextWithExplain(w io.Writer, assumptions *ControllerAssumpt
 	}
 
 	if explain {
-		hasLow := false
-		for _, row := range assumptionRows {
-			if row.a.Confidence == "low" {
-				hasLow = true
-				break
-			}
-		}
-		if hasLow {
-			out.WriteString("\nWarning:\n")
-			out.WriteString("  kube-controller-manager flags are not directly visible via the HPA API.\n")
-			out.WriteString("  Values marked 'low' confidence may differ in your cluster.\n")
-		}
-		for _, row := range assumptionRows {
-			if strings.HasPrefix(row.a.Source, "kube-system/") {
-				out.WriteString(fmt.Sprintf("\nObserved profile: %s\n", row.a.Source))
-				break
-			}
-		}
+		writeAssumptionsLowConfidenceNotes(&out, assumptionRows)
 	}
 
 	out.WriteString(fmt.Sprintf("\nConfidence:\n  %s: derived from Kubernetes defaults and visible HPA spec\n",
@@ -247,4 +220,30 @@ func WriteAssumptionsTextWithExplain(w io.Writer, assumptions *ControllerAssumpt
 
 	_, err := fmt.Fprint(w, out.String())
 	return err
+}
+
+// writeAssumptionsLowConfidenceNotes appends the low-confidence warning and any
+// observed kube-system controller-manager profile note (explain mode only).
+func writeAssumptionsLowConfidenceNotes(out *strings.Builder, rows []struct {
+	label string
+	a     Assumption
+}) {
+	hasLow := false
+	for _, row := range rows {
+		if row.a.Confidence == "low" {
+			hasLow = true
+			break
+		}
+	}
+	if hasLow {
+		out.WriteString("\nWarning:\n")
+		out.WriteString("  kube-controller-manager flags are not directly visible via the HPA API.\n")
+		out.WriteString("  Values marked 'low' confidence may differ in your cluster.\n")
+	}
+	for _, row := range rows {
+		if strings.HasPrefix(row.a.Source, "kube-system/") {
+			out.WriteString(fmt.Sprintf("\nObserved profile: %s\n", row.a.Source))
+			break
+		}
+	}
 }

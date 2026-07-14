@@ -102,36 +102,7 @@ func (m Model) renderOverviewView() string {
 	sb.WriteString("\n\n")
 
 	// 2. Health Distribution.
-	sb.WriteString("Health Distribution:\n")
-	healthOrder := []string{
-		string(hpaanalysis.HealthOK),
-		string(hpaanalysis.HealthStabilized),
-		string(hpaanalysis.HealthLimited),
-		string(hpaanalysis.HealthError),
-	}
-	for _, state := range healthOrder {
-		count := healthDist[state]
-		if count == 0 {
-			continue
-		}
-		bar := strings.Repeat("█", count)
-		var coloredBar string
-		switch state {
-		case string(hpaanalysis.HealthOK):
-			coloredBar = okStyle.Render(bar)
-		case string(hpaanalysis.HealthStabilized):
-			coloredBar = warnStyle.Render(bar)
-		case string(hpaanalysis.HealthLimited):
-			coloredBar = warnStyle.Render(bar)
-		case string(hpaanalysis.HealthError):
-			coloredBar = errorStyle.Render(bar)
-		default:
-			coloredBar = dimStyle.Render(bar)
-		}
-		sb.WriteString(fmt.Sprintf("  %-12s %s %d\n", state, coloredBar, count))
-	}
-	sb.WriteString(fmt.Sprintf("  Average Score: %.0f/100\n", avgScore))
-	sb.WriteString("\n")
+	renderHealthDistribution(&sb, healthDist, avgScore)
 
 	// 3. Score Histogram sparkline.
 	sb.WriteString("Score Distribution:\n  ")
@@ -194,4 +165,39 @@ func (m Model) renderOverviewView() string {
 	sb.WriteString(dimStyle.Render("Press O to toggle | esc: back to list"))
 
 	return sb.String()
+}
+
+// renderHealthDistribution writes the per-state health bar chart and average
+// score line into sb.
+func renderHealthDistribution(sb *strings.Builder, healthDist map[string]int, avgScore float64) {
+	sb.WriteString("Health Distribution:\n")
+	healthOrder := []string{
+		string(hpaanalysis.HealthOK),
+		string(hpaanalysis.HealthStabilized),
+		string(hpaanalysis.HealthLimited),
+		string(hpaanalysis.HealthError),
+	}
+	for _, state := range healthOrder {
+		count := healthDist[state]
+		if count == 0 {
+			continue
+		}
+		bar := strings.Repeat("█", count)
+		var coloredBar string
+		switch state {
+		case string(hpaanalysis.HealthOK):
+			coloredBar = okStyle.Render(bar)
+		case string(hpaanalysis.HealthStabilized):
+			coloredBar = warnStyle.Render(bar)
+		case string(hpaanalysis.HealthLimited):
+			coloredBar = warnStyle.Render(bar)
+		case string(hpaanalysis.HealthError):
+			coloredBar = errorStyle.Render(bar)
+		default:
+			coloredBar = dimStyle.Render(bar)
+		}
+		sb.WriteString(fmt.Sprintf("  %-12s %s %d\n", state, coloredBar, count))
+	}
+	sb.WriteString(fmt.Sprintf("  Average Score: %.0f/100\n", avgScore))
+	sb.WriteString("\n")
 }

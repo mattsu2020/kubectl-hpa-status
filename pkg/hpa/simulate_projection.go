@@ -134,17 +134,8 @@ func FormatTrajectoryASCII(states []ProjectedState, width int) string {
 	}
 
 	// Find min/max replicas for Y-axis scaling.
-	minReplicas := states[0].ProjectedReplicas
-	maxReplicas := states[0].ProjectedReplicas
+	minReplicas, maxReplicas := replicaBounds(states)
 	maxOffset := states[len(states)-1].TimeOffset
-	for _, s := range states {
-		if s.ProjectedReplicas < minReplicas {
-			minReplicas = s.ProjectedReplicas
-		}
-		if s.ProjectedReplicas > maxReplicas {
-			maxReplicas = s.ProjectedReplicas
-		}
-	}
 
 	replicaRange := maxReplicas - minReplicas
 	if replicaRange == 0 {
@@ -161,7 +152,39 @@ func FormatTrajectoryASCII(states []ProjectedState, width int) string {
 		}
 	}
 
-	// Plot points.
+	plotTrajectoryPoints(rows, states, width, graphHeight, maxOffset, minReplicas, replicaRange)
+
+	// Build output string.
+	var result string
+	for i, row := range rows {
+		label := fmt.Sprintf("%3d", maxReplicas-int32(i)*replicaRange/int32(graphHeight))
+		result += label + " │" + strings.Join(row, "") + "│\n"
+	}
+
+	// X-axis with time labels.
+	result += "    └" + repeatChar("─", width) + "┘\n"
+	result += fmt.Sprintf("     0s%"+fmt.Sprintf("%d", width-4)+"s\n", FormatDuration(int64(maxOffset)))
+
+	return result
+}
+
+// replicaBounds returns the min and max projected replicas across states.
+func replicaBounds(states []ProjectedState) (minReplicas, maxReplicas int32) {
+	minReplicas = states[0].ProjectedReplicas
+	maxReplicas = states[0].ProjectedReplicas
+	for _, s := range states {
+		if s.ProjectedReplicas < minReplicas {
+			minReplicas = s.ProjectedReplicas
+		}
+		if s.ProjectedReplicas > maxReplicas {
+			maxReplicas = s.ProjectedReplicas
+		}
+	}
+	return minReplicas, maxReplicas
+}
+
+// plotTrajectoryPoints marks each projected state onto the ASCII graph grid.
+func plotTrajectoryPoints(rows [][]string, states []ProjectedState, width, graphHeight int, maxOffset, minReplicas, replicaRange int32) {
 	for _, s := range states {
 		if maxOffset <= 0 {
 			continue
@@ -181,19 +204,6 @@ func FormatTrajectoryASCII(states []ProjectedState, width int) string {
 
 		rows[y][x] = "█"
 	}
-
-	// Build output string.
-	var result string
-	for i, row := range rows {
-		label := fmt.Sprintf("%3d", maxReplicas-int32(i)*replicaRange/int32(graphHeight))
-		result += label + " │" + strings.Join(row, "") + "│\n"
-	}
-
-	// X-axis with time labels.
-	result += "    └" + repeatChar("─", width) + "┘\n"
-	result += fmt.Sprintf("     0s%"+fmt.Sprintf("%d", width-4)+"s\n", FormatDuration(int64(maxOffset)))
-
-	return result
 }
 
 // FormatSimulationExtended renders the extended simulation result including

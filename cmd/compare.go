@@ -73,35 +73,40 @@ func runCompare(ctx context.Context, out io.Writer, opts *options, fromRef, toRe
 	}
 	report := buildCompareReport(fromLabel, toLabel, fromHPA, toHPA)
 	return writeOutput(out, opts.Output, opts.Template, report, func() error {
-		if _, err := fmt.Fprintf(out, "HPA Compare: %s -> %s\n\n", report.From, report.To); err != nil {
-			return fmt.Errorf("write compare header: %w", err)
+		return writeCompareText(out, report)
+	})
+}
+
+// writeCompareText renders the human-readable single-pair compare output.
+func writeCompareText(out io.Writer, report compareReport) error {
+	if _, err := fmt.Fprintf(out, "HPA Compare: %s -> %s\n\n", report.From, report.To); err != nil {
+		return fmt.Errorf("write compare header: %w", err)
+	}
+	if len(report.Differences) == 0 {
+		if _, err := fmt.Fprintln(out, "Different:\n  none"); err != nil {
+			return fmt.Errorf("write compare differences: %w", err)
 		}
-		if len(report.Differences) == 0 {
-			if _, err := fmt.Fprintln(out, "Different:\n  none"); err != nil {
+	} else {
+		if _, err := fmt.Fprintln(out, "Different:"); err != nil {
+			return fmt.Errorf("write compare differences: %w", err)
+		}
+		for _, diff := range report.Differences {
+			if _, err := fmt.Fprintf(out, "  %s: from=%s to=%s\n", diff.Field, diff.From, diff.To); err != nil {
 				return fmt.Errorf("write compare differences: %w", err)
 			}
-		} else {
-			if _, err := fmt.Fprintln(out, "Different:"); err != nil {
-				return fmt.Errorf("write compare differences: %w", err)
-			}
-			for _, diff := range report.Differences {
-				if _, err := fmt.Fprintf(out, "  %s: from=%s to=%s\n", diff.Field, diff.From, diff.To); err != nil {
-					return fmt.Errorf("write compare differences: %w", err)
-				}
-			}
 		}
-		if len(report.Risks) > 0 {
-			if _, err := fmt.Fprintln(out, "\nRisk:"); err != nil {
+	}
+	if len(report.Risks) > 0 {
+		if _, err := fmt.Fprintln(out, "\nRisk:"); err != nil {
+			return fmt.Errorf("write compare risks: %w", err)
+		}
+		for _, risk := range report.Risks {
+			if _, err := fmt.Fprintf(out, "  - %s\n", risk); err != nil {
 				return fmt.Errorf("write compare risks: %w", err)
 			}
-			for _, risk := range report.Risks {
-				if _, err := fmt.Fprintf(out, "  - %s\n", risk); err != nil {
-					return fmt.Errorf("write compare risks: %w", err)
-				}
-			}
 		}
-		return nil
-	})
+	}
+	return nil
 }
 
 func runCompareAll(ctx context.Context, out io.Writer, opts *options, fromContext, toContext string, onlyDrift bool) error {

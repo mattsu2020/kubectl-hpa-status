@@ -197,7 +197,15 @@ Refactoring notes:
   shared clock/labels/`FormatMetricStatus` helpers). Each extraction keeps the
   `hpaanalysis.*` public API stable via type aliases and thin wrapper functions
   in `pkg/hpa`, so `cmd/` and `internal/` callers keep compiling without new
-  imports. Completed so far:
+  imports. The re-export facades (`policy.go`, `flapping_advisor.go`,
+  `churn.go`, `keda.go`, `vpa.go`, `readiness.go`) carry `Deprecated:` markers
+  pointing at the canonical sub-package symbols; they exist only for external
+  importers of `pkg/hpa`. All in-tree callers already use the canonical
+  sub-package symbols directly (verified: zero `hpaanalysis.<deprecated>`
+  references under `cmd/` and `internal/`), so the facades are removal
+  candidates for the next major version (v3.0.0). Until then they stay as a
+  compatibility layer; do not add new usages of the deprecated aliases.
+  Completed so far:
   - `pkg/hpa/keda` — KEDA ScaledObject analysis (`keda.Analysis`, `keda.Analyze`).
     Re-exported as `hpaanalysis.KEDAAnalysis`, `hpaanalysis.AnalyzeKEDA`, etc.
   - `pkg/hpa/vpa` — VPA/HPA coexistence conflict analysis (`vpa.Info`,

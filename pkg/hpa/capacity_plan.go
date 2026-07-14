@@ -514,37 +514,41 @@ func buildRecommendation(plan *CapacityPlan, input CapacityPlanInput) (bool, str
 		}
 	}
 
-	var actions []string
-	for _, c := range plan.Checks {
-		if c.Pass {
-			continue
-		}
-		if strings.Contains(c.Message, "quota CPU remaining") {
-			actions = append(actions, "Increase namespace CPU quota or reduce pod CPU requests")
-		}
-		if strings.Contains(c.Message, "quota memory remaining") {
-			actions = append(actions, "Increase namespace memory quota or reduce pod memory requests")
-		}
-		if strings.Contains(c.Message, "exceeds LimitRange") {
-			actions = append(actions, "Adjust pod requests or LimitRange constraints")
-		}
-		if strings.Contains(c.Message, "below LimitRange") {
-			actions = append(actions, "Raise container requests to meet LimitRange minimums")
-		}
-		if strings.Contains(c.Message, "no schedulable nodes") {
-			actions = append(actions, "Add nodes or remove blocking taints")
-		}
-		if strings.Contains(c.Message, "already Pending") {
-			actions = append(actions, "Resolve pending pod scheduling issues before scaling")
-		}
-	}
-
+	actions := capacityRemediationActions(plan.Checks)
 	if len(actions) == 0 {
 		actions = append(actions, "Review capacity constraints before raising maxReplicas")
 	}
 
 	rec := fmt.Sprintf("Do not raise maxReplicas to %d yet.", plan.TargetMaxReplicas)
 	return false, rec, actions
+}
+
+// capacityRemediationActions maps each failing check message to a suggested
+// remediation action.
+func capacityRemediationActions(checks []CapacityCheckResult) []string {
+	remediations := []struct {
+		substr string
+		action string
+	}{
+		{"quota CPU remaining", "Increase namespace CPU quota or reduce pod CPU requests"},
+		{"quota memory remaining", "Increase namespace memory quota or reduce pod memory requests"},
+		{"exceeds LimitRange", "Adjust pod requests or LimitRange constraints"},
+		{"below LimitRange", "Raise container requests to meet LimitRange minimums"},
+		{"no schedulable nodes", "Add nodes or remove blocking taints"},
+		{"already Pending", "Resolve pending pod scheduling issues before scaling"},
+	}
+	var actions []string
+	for _, c := range checks {
+		if c.Pass {
+			continue
+		}
+		for _, r := range remediations {
+			if strings.Contains(c.Message, r.substr) {
+				actions = append(actions, r.action)
+			}
+		}
+	}
+	return actions
 }
 
 // countFailingByPrefix counts failed checks whose message starts with prefix.
