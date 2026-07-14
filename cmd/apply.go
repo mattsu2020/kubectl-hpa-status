@@ -23,7 +23,6 @@ func applySuggestions(ctx context.Context, out io.Writer, opts *options, name st
 	return applySuggestionsInNamespace(ctx, out, opts, "", name, suggestions, false)
 }
 
-//nolint:gocyclo // Multi-phase apply workflow: collect, validate, confirm, merge/apply
 func applySuggestionsInNamespace(ctx context.Context, out io.Writer, opts *options, namespace string, name string, suggestions []hpaanalysis.Suggestion, skipConfirm bool) ([]string, error) {
 	patches := collectApplicablePatches(suggestions)
 	if len(patches) == 0 {
@@ -48,20 +47,12 @@ func applySuggestionsInNamespace(ctx context.Context, out io.Writer, opts *optio
 		return nil, wrapHPALookupError(namespace, name, err)
 	}
 
-	guardedPatches, err := guardPatches(out, opts, current, patches)
+	patches, mergedPatch, mergeErr, err := guardAndMergePatches(out, opts, current, patches)
 	if err != nil {
 		return nil, err
 	}
-	patches = guardedPatches
 	if len(patches) == 0 {
 		return []string{"No applicable HPA patch was allowed by policy guard."}, nil
-	}
-
-	mergedPatch, mergeErr := mergeSuggestionPatches(patches)
-	if mergeErr == nil {
-		if err := guardMergedPatch(out, opts, current, mergedPatch); err != nil {
-			return nil, err
-		}
 	}
 
 	if err := printProposedPatches(out, current, patches); err != nil {
@@ -73,11 +64,7 @@ func applySuggestionsInNamespace(ctx context.Context, out io.Writer, opts *optio
 	if err := preValidatePatches(ctx, client, namespace, name, patches, mergedPatch, mergeErr); err != nil {
 		return nil, err
 	}
-	validationMessage := fmt.Sprintf("All %d patch(es) passed server-side dry-run validation.", len(patches))
-	if mergeErr == nil {
-		validationMessage = fmt.Sprintf("All %d patch(es) and their combined final state passed server-side dry-run validation.", len(patches))
-	}
-	if _, err := fmt.Fprintln(out, validationMessage); err != nil {
+	if err := reportValidationSuccess(out, len(patches), mergeErr == nil); err != nil {
 		return nil, err
 	}
 
@@ -96,6 +83,40 @@ func applySuggestionsInNamespace(ctx context.Context, out io.Writer, opts *optio
 	}
 
 	return executePatches(ctx, out, client, namespace, name, patches, opts.AllowPartial, current.ResourceVersion)
+}
+
+// guardAndMergePatches runs the per-patch policy guard, then merges the
+// allowed patches and guards the merged final state (two individually valid
+// changes can violate a policy only when combined). It returns the allowed
+// patches, the merged patch, and the merge error for the later validation
+// phase; a failed merge is not fatal here because preValidatePatches falls
+// back to per-patch validation.
+func guardAndMergePatches(out io.Writer, opts *options, current *autoscalingv2.HorizontalPodAutoscaler, patches []hpaanalysis.Suggestion) ([]hpaanalysis.Suggestion, string, error, error) {
+	allowed, err := guardPatches(out, opts, current, patches)
+	if err != nil {
+		return nil, "", nil, err
+	}
+	if len(allowed) == 0 {
+		return nil, "", nil, nil
+	}
+	mergedPatch, mergeErr := mergeSuggestionPatches(allowed)
+	if mergeErr == nil {
+		if err := guardMergedPatch(out, opts, current, mergedPatch); err != nil {
+			return nil, "", nil, err
+		}
+	}
+	return allowed, mergedPatch, mergeErr, nil
+}
+
+// reportValidationSuccess announces the dry-run validation outcome; the
+// wording notes whether the merged final state was also validated.
+func reportValidationSuccess(out io.Writer, patchCount int, mergedValidated bool) error {
+	message := fmt.Sprintf("All %d patch(es) passed server-side dry-run validation.", patchCount)
+	if mergedValidated {
+		message = fmt.Sprintf("All %d patch(es) and their combined final state passed server-side dry-run validation.", patchCount)
+	}
+	_, err := fmt.Fprintln(out, message)
+	return err
 }
 
 func guardPatches(out io.Writer, opts *options, current *autoscalingv2.HorizontalPodAutoscaler, patches []hpaanalysis.Suggestion) ([]hpaanalysis.Suggestion, error) {

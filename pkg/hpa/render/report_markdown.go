@@ -278,41 +278,17 @@ func appendMarkdownMetricFreshness(out *strings.Builder, a *hpa.Analysis) {
 
 func appendMarkdownCapacityContext(out *strings.Builder, a *hpa.Analysis) {
 	// Capacity Context
-	if a.CapacityContext == nil {
+	cc := a.CapacityContext
+	if cc == nil {
 		return
 	}
-	cc := a.CapacityContext
-	if len(cc.PendingPods) == 0 && len(cc.QuotaConstraints) == 0 && len(cc.PDBInterference) == 0 && len(cc.NodeHints) == 0 {
+	tables := capacityContextTables(cc)
+	if len(tables) == 0 && len(cc.NodeHints) == 0 {
 		return
 	}
 	out.WriteString("## Capacity Context\n\n")
-	if len(cc.PendingPods) > 0 {
-		out.WriteString("### Pending Pods\n\n")
-		out.WriteString("| Name | Unschedulable | Reasons |\n")
-		out.WriteString("|------|---------------|--------|\n")
-		for _, p := range cc.PendingPods {
-			reasons := strings.Join(p.Reasons, "; ")
-			out.WriteString(fmt.Sprintf("| %s | %v | %s |\n", rendutil.EscapeMarkdown(p.Name), p.Unschedulable, rendutil.EscapeMarkdown(reasons)))
-		}
-		out.WriteString("\n")
-	}
-	if len(cc.QuotaConstraints) > 0 {
-		out.WriteString("### ResourceQuotas\n\n")
-		out.WriteString("| Name | Resource | Used | Hard | Message |\n")
-		out.WriteString("|------|----------|------|------|--------|\n")
-		for _, q := range cc.QuotaConstraints {
-			out.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s |\n", rendutil.EscapeMarkdown(q.Name), rendutil.EscapeMarkdown(q.Resource), rendutil.EscapeMarkdown(q.Used), rendutil.EscapeMarkdown(q.Hard), rendutil.EscapeMarkdown(q.Message)))
-		}
-		out.WriteString("\n")
-	}
-	if len(cc.PDBInterference) > 0 {
-		out.WriteString("### PodDisruptionBudgets\n\n")
-		out.WriteString("| Name | Disruption |\n")
-		out.WriteString("|------|-----------|\n")
-		for _, p := range cc.PDBInterference {
-			out.WriteString(fmt.Sprintf("| %s | %s |\n", rendutil.EscapeMarkdown(p.Name), rendutil.EscapeMarkdown(p.Disruption)))
-		}
-		out.WriteString("\n")
+	for _, t := range tables {
+		writeMarkdownTable(out, t)
 	}
 	if len(cc.NodeHints) > 0 {
 		out.WriteString("### Hints\n\n")
