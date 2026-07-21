@@ -22,7 +22,9 @@ func newIncidentBundleCommand(opts *options) *cobra.Command {
 	}
 	cmd.Flags().String("format", "zip", "output format: markdown or zip")
 	cmd.Flags().StringP("output", "o", "", "output file path")
-	cmd.Flags().Bool("redact", false, "redact sensitive information")
+	// Incident bundles leave the operator's machine by definition, so redaction
+	// is on by default. --redact=false remains for trusted local archives.
+	cmd.Flags().Bool("redact", true, "redact sensitive information; use --redact=false only for trusted local archives")
 	return cmd
 }
 
