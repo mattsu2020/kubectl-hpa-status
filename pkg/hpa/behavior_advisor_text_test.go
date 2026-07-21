@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/behavioradvisor"
 )
 
 func TestWriteBehaviorAdvisorText_NilResult(t *testing.T) {
@@ -18,7 +20,7 @@ func TestWriteBehaviorAdvisorText_NilResult(t *testing.T) {
 
 func TestWriteBehaviorAdvisorText_NoFindings(t *testing.T) {
 	var buf bytes.Buffer
-	result := &BehaviorAdvisorResult{Summary: "all good"}
+	result := &behavioradvisor.Result{Summary: "all good"}
 	if err := WriteBehaviorAdvisorText(&buf, result, nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -29,8 +31,8 @@ func TestWriteBehaviorAdvisorText_NoFindings(t *testing.T) {
 
 func TestWriteBehaviorAdvisorText_WithFindings(t *testing.T) {
 	var buf bytes.Buffer
-	result := &BehaviorAdvisorResult{
-		Findings: []BehaviorFinding{{
+	result := &behavioradvisor.Result{
+		Findings: []behavioradvisor.Finding{{
 			ID:          "stabilization-window",
 			Category:    "stabilization",
 			Severity:    SeverityWarning,
@@ -67,8 +69,8 @@ func TestAppendBehaviorAdvisorText(t *testing.T) {
 		t.Fatalf("expected empty buffer for nil result, got %q", buf)
 	}
 
-	result := &BehaviorAdvisorResult{
-		Findings: []BehaviorFinding{
+	result := &behavioradvisor.Result{
+		Findings: []behavioradvisor.Finding{
 			{ID: "a", Severity: SeverityInfo, Message: "info finding"},
 			{ID: "b", Severity: SeverityWarning, Message: "with current", Current: "5", Recommended: "10", Patch: "patch-cmd"},
 		},

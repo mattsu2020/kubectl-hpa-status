@@ -7,6 +7,7 @@ import (
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/audit"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/autoscalermap"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/behavioradvisor"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/churn"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/containeradvisor"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/gitops"
@@ -103,7 +104,7 @@ func TestRenderSmokeWriters(t *testing.T) {
 		{"ReadinessDoctorText", func(w *bytes.Buffer) error { return WriteReadinessDoctorText(w, &ReadinessDoctorReport{}, theme) }},
 		{"ReadinessDoctorMarkdown", func(w *bytes.Buffer) error { return WriteReadinessDoctorMarkdown(w, &ReadinessDoctorReport{}) }},
 		{"DecisionTrace", func(w *bytes.Buffer) error { return WriteDecisionTraceText(w, &DecisionTrace{}) }},
-		{"BehaviorAdvisor", func(w *bytes.Buffer) error { return WriteBehaviorAdvisorText(w, &BehaviorAdvisorResult{}, nil) }},
+		{"BehaviorAdvisor", func(w *bytes.Buffer) error { return WriteBehaviorAdvisorText(w, &behavioradvisor.Result{}, nil) }},
 		{"PolicyGuardPopulated", func(w *bytes.Buffer) error { return WritePolicyGuardText(w, populatedGuard) }},
 		{"AuditPopulated", func(w *bytes.Buffer) error { return WriteAuditText(w, populatedAudit, nil) }},
 	}

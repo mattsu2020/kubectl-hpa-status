@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/behavioradvisor"
 	hpachurn "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/churn"
 	hpaflapping "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/flapping"
 	hpavpa "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
@@ -296,7 +297,7 @@ func enrichAdvisors(ctx context.Context, client *kube.Client, hpa *autoscalingv2
 		report.Analysis.ContainerAdvisor = buildContainerAdvisor(ctx, client, hpa)
 	}
 	if cfg.BehaviorAdvisor {
-		report.Analysis.BehaviorAdvisor = hpaanalysis.AnalyzeBehaviorAdvisor(hpa)
+		report.Analysis.BehaviorAdvisor = behavioradvisor.Analyze(hpa)
 	}
 }
 

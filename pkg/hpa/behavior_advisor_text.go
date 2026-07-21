@@ -3,10 +3,12 @@ package hpa
 import (
 	"fmt"
 	"io"
+
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/behavioradvisor"
 )
 
-// WriteBehaviorAdvisorText renders a BehaviorAdvisorResult as human-readable text.
-func WriteBehaviorAdvisorText(w io.Writer, result *BehaviorAdvisorResult, provider LabelProvider) error {
+// WriteBehaviorAdvisorText renders a behavioradvisor.Result as human-readable text.
+func WriteBehaviorAdvisorText(w io.Writer, result *behavioradvisor.Result, provider LabelProvider) error {
 	if result == nil {
 		return nil
 	}
@@ -37,7 +39,7 @@ func WriteBehaviorAdvisorText(w io.Writer, result *BehaviorAdvisorResult, provid
 	return nil
 }
 
-func writeBehaviorFinding(w io.Writer, f BehaviorFinding) error {
+func writeBehaviorFinding(w io.Writer, f behavioradvisor.Finding) error {
 	severity := string(f.Severity)
 	if _, err := fmt.Fprintf(w, "  [%s] %s\n", severity, f.Message); err != nil {
 		return err
@@ -68,7 +70,7 @@ func writeBehaviorFinding(w io.Writer, f BehaviorFinding) error {
 
 // AppendBehaviorAdvisorText appends the behavior advisor section to a byte buffer
 // (used by the main status text renderer).
-func AppendBehaviorAdvisorText(out *[]byte, result *BehaviorAdvisorResult, labels labels) {
+func AppendBehaviorAdvisorText(out *[]byte, result *behavioradvisor.Result, labels labels) {
 	if result == nil {
 		return
 	}

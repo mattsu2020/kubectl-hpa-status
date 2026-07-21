@@ -5,6 +5,7 @@ package hpa
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/behavioradvisor"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/containeradvisor"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/gitops"
@@ -286,7 +287,7 @@ type Analysis struct {
 	// BehaviorAdvisor holds the behavior tuning advisor result, analyzing
 	// scaleUp/scaleDown policies, stabilization windows, and tolerance.
 	// Populated when --behavior-advisor is enabled.
-	BehaviorAdvisor *BehaviorAdvisorResult `json:"behaviorAdvisor,omitempty" yaml:"behaviorAdvisor,omitempty"`
+	BehaviorAdvisor *behavioradvisor.Result `json:"behaviorAdvisor,omitempty" yaml:"behaviorAdvisor,omitempty"`
 	// HealthTrend holds the health score trend analysis over time.
 	// Populated when --trend is enabled and sufficient history is available.
 	HealthTrend *HealthTrendResult `json:"healthTrend,omitempty" yaml:"healthTrend,omitempty"`

@@ -1,14 +1,19 @@
-package hpa
+// Package behavioradvisor evaluates HPA scaling-behavior configuration
+// (stabilization windows, tolerance, policies) and suggests tuning. It is a
+// pure, dependency-free analysis package; the behavior_advisor_text.go
+// renderer stays in pkg/hpa because it shares the labels machinery.
+package behavioradvisor
 
 import (
 	"fmt"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/confidence"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
-// BehaviorAdvisorInput aggregates signals for behavior tuning analysis.
-type BehaviorAdvisorInput struct {
+// Input aggregates signals for behavior tuning analysis.
+type Input struct {
 	// HasExplicitBehavior is true when spec.behavior is set.
 	HasExplicitBehavior bool
 	// ScaleDownWindow is the configured scaleDown.stabilizationWindowSeconds, nil if unset.
@@ -33,22 +38,22 @@ type BehaviorAdvisorInput struct {
 	DesiredReplicas int32
 }
 
-// BehaviorAdvisorResult holds the behavior tuning advisor analysis.
-type BehaviorAdvisorResult struct {
+// Result holds the behavior tuning advisor analysis.
+type Result struct {
 	// Findings lists all behavior tuning findings.
-	Findings []BehaviorFinding `json:"findings" yaml:"findings"`
+	Findings []Finding `json:"findings" yaml:"findings"`
 	// Summary is a one-line summary of the behavior tuning analysis.
 	Summary string `json:"summary" yaml:"summary"`
 }
 
-// BehaviorFinding represents a single behavior tuning finding.
-type BehaviorFinding struct {
+// Finding represents a single behavior tuning finding.
+type Finding struct {
 	// ID is a unique identifier for the finding.
 	ID string `json:"id" yaml:"id"`
 	// Category classifies the finding: "stabilization", "tolerance", "policy".
 	Category string `json:"category" yaml:"category"`
 	// Severity is the finding severity: info, warning, error.
-	Severity Severity `json:"severity" yaml:"severity"`
+	Severity confidence.Severity `json:"severity" yaml:"severity"`
 	// Message is a human-readable description of the finding.
 	Message string `json:"message" yaml:"message"`
 	// Current shows the current configuration value.
@@ -59,15 +64,15 @@ type BehaviorFinding struct {
 	Patch string `json:"patch,omitempty" yaml:"patch,omitempty"`
 }
 
-// AnalyzeBehaviorAdvisor evaluates HPA behavior configuration and suggests tuning.
+// Analyze evaluates HPA behavior configuration and suggests tuning.
 // This is a pure function with no Kubernetes API dependencies.
-func AnalyzeBehaviorAdvisor(hpa *autoscalingv2.HorizontalPodAutoscaler) *BehaviorAdvisorResult {
+func Analyze(hpa *autoscalingv2.HorizontalPodAutoscaler) *Result {
 	if hpa == nil {
 		return nil
 	}
 
 	input := extractBehaviorAdvisorInput(hpa)
-	var findings []BehaviorFinding
+	var findings []Finding
 
 	// Check stabilization windows.
 	findings = append(findings, checkStabilizationWindow(input)...)
@@ -79,22 +84,22 @@ func AnalyzeBehaviorAdvisor(hpa *autoscalingv2.HorizontalPodAutoscaler) *Behavio
 	findings = append(findings, checkPolicies(input)...)
 
 	if len(findings) == 0 {
-		return &BehaviorAdvisorResult{
+		return &Result{
 			Findings: nil,
 			Summary:  "Behavior configuration looks reasonable. No tuning recommendations.",
 		}
 	}
 
 	summary := buildBehaviorAdvisorSummary(findings)
-	return &BehaviorAdvisorResult{
+	return &Result{
 		Findings: findings,
 		Summary:  summary,
 	}
 }
 
 // extractBehaviorAdvisorInput extracts behavior advisor input from an HPA.
-func extractBehaviorAdvisorInput(hpa *autoscalingv2.HorizontalPodAutoscaler) BehaviorAdvisorInput {
-	input := BehaviorAdvisorInput{
+func extractBehaviorAdvisorInput(hpa *autoscalingv2.HorizontalPodAutoscaler) Input {
+	input := Input{
 		HasExplicitBehavior: hpa.Spec.Behavior != nil,
 		CurrentReplicas:     hpa.Status.CurrentReplicas,
 		DesiredReplicas:     hpa.Status.DesiredReplicas,
@@ -136,18 +141,18 @@ func extractBehaviorAdvisorInput(hpa *autoscalingv2.HorizontalPodAutoscaler) Beh
 }
 
 // checkStabilizationWindow checks stabilization window settings.
-func checkStabilizationWindow(input BehaviorAdvisorInput) []BehaviorFinding {
-	var findings []BehaviorFinding
+func checkStabilizationWindow(input Input) []Finding {
+	var findings []Finding
 
 	// Scale-down stabilization window analysis.
 	if input.ScaleDownWindow != nil {
 		window := *input.ScaleDownWindow
 		if window > 600 {
 			minutes := window / 60
-			findings = append(findings, BehaviorFinding{
+			findings = append(findings, Finding{
 				ID:       "behavior-scaledown-window-long",
 				Category: "stabilization",
-				Severity: SeverityWarning,
+				Severity: confidence.Warning,
 				Message: fmt.Sprintf(
 					"Scale-down stabilization window is %d seconds (%d minutes). "+
 						"Scale-down may remain suppressed for up to %d minutes after load drops.",
@@ -158,10 +163,10 @@ func checkStabilizationWindow(input BehaviorAdvisorInput) []BehaviorFinding {
 			})
 		}
 	} else {
-		findings = append(findings, BehaviorFinding{
+		findings = append(findings, Finding{
 			ID:       "behavior-scaledown-window-default",
 			Category: "stabilization",
-			Severity: SeverityInfo,
+			Severity: confidence.Info,
 			Message: "Scale-down stabilization window is not explicitly set. " +
 				"The controller-manager default (300s) applies implicitly. " +
 				"Explicit configuration prevents surprise behavior changes across Kubernetes upgrades.",
@@ -173,10 +178,10 @@ func checkStabilizationWindow(input BehaviorAdvisorInput) []BehaviorFinding {
 
 	// Scale-up stabilization window analysis.
 	if input.ScaleUpWindow != nil && *input.ScaleUpWindow > 120 {
-		findings = append(findings, BehaviorFinding{
+		findings = append(findings, Finding{
 			ID:       "behavior-scaleup-window-long",
 			Category: "stabilization",
-			Severity: SeverityWarning,
+			Severity: confidence.Warning,
 			Message: fmt.Sprintf(
 				"Scale-up stabilization window is %d seconds. "+
 					"This delays adding capacity under load. For bursty workloads, consider ≤60s.",
@@ -190,8 +195,8 @@ func checkStabilizationWindow(input BehaviorAdvisorInput) []BehaviorFinding {
 }
 
 // checkTolerance checks tolerance settings.
-func checkTolerance(input BehaviorAdvisorInput) []BehaviorFinding {
-	var findings []BehaviorFinding
+func checkTolerance(input Input) []Finding {
+	var findings []Finding
 
 	defaultTolerance := 0.1
 
@@ -206,10 +211,10 @@ func checkTolerance(input BehaviorAdvisorInput) []BehaviorFinding {
 	}
 
 	if scaleDownTol > 0.2 {
-		findings = append(findings, BehaviorFinding{
+		findings = append(findings, Finding{
 			ID:       "behavior-tolerance-scaledown-loose",
 			Category: "tolerance",
-			Severity: SeverityInfo,
+			Severity: confidence.Info,
 			Message: fmt.Sprintf(
 				"Scale-down tolerance is %.0f%%. A loose tolerance means small metric fluctuations "+
 					"won't trigger scale-down, which can delay releasing unused capacity.",
@@ -220,10 +225,10 @@ func checkTolerance(input BehaviorAdvisorInput) []BehaviorFinding {
 	}
 
 	if scaleUpTol > 0.15 && scaleUpTol != defaultTolerance {
-		findings = append(findings, BehaviorFinding{
+		findings = append(findings, Finding{
 			ID:       "behavior-tolerance-scaleup-loose",
 			Category: "tolerance",
-			Severity: SeverityWarning,
+			Severity: confidence.Warning,
 			Message: fmt.Sprintf(
 				"Scale-up tolerance is %.0f%%. A loose scale-up tolerance may delay adding capacity "+
 					"under load, leading to latency spikes.",
@@ -234,10 +239,10 @@ func checkTolerance(input BehaviorAdvisorInput) []BehaviorFinding {
 	}
 
 	if input.ScaleUpTolerance == nil && input.ScaleDownTolerance == nil && !input.HasExplicitBehavior {
-		findings = append(findings, BehaviorFinding{
+		findings = append(findings, Finding{
 			ID:       "behavior-tolerance-default",
 			Category: "tolerance",
-			Severity: SeverityInfo,
+			Severity: confidence.Info,
 			Message: "Tolerance is not explicitly set. The default 0.1 (10%) applies. " +
 				"Workloads with tight scaling requirements may benefit from a narrower tolerance.",
 			Current:     "default (0.1 / 10%)",
@@ -249,14 +254,14 @@ func checkTolerance(input BehaviorAdvisorInput) []BehaviorFinding {
 }
 
 // checkPolicies checks scaling policy settings.
-func checkPolicies(input BehaviorAdvisorInput) []BehaviorFinding {
-	var findings []BehaviorFinding
+func checkPolicies(input Input) []Finding {
+	var findings []Finding
 
 	if len(input.ScaleDownPolicies) == 0 && input.HasExplicitBehavior {
-		findings = append(findings, BehaviorFinding{
+		findings = append(findings, Finding{
 			ID:       "behavior-scaledown-no-policies",
 			Category: "policy",
-			Severity: SeverityInfo,
+			Severity: confidence.Info,
 			Message: "No explicit scaleDown policies configured. " +
 				"The HPA controller uses default behavior which may cause aggressive downscaling.",
 			Current:     "default scaleDown behavior",
@@ -265,10 +270,10 @@ func checkPolicies(input BehaviorAdvisorInput) []BehaviorFinding {
 	}
 
 	if len(input.ScaleUpPolicies) == 0 && input.HasExplicitBehavior {
-		findings = append(findings, BehaviorFinding{
+		findings = append(findings, Finding{
 			ID:       "behavior-scaleup-no-policies",
 			Category: "policy",
-			Severity: SeverityInfo,
+			Severity: confidence.Info,
 			Message: "No explicit scaleUp policies configured. " +
 				"The HPA controller uses default behavior which may not match your workload's scaling needs.",
 			Current:     "default scaleUp behavior",
@@ -280,12 +285,12 @@ func checkPolicies(input BehaviorAdvisorInput) []BehaviorFinding {
 }
 
 // buildBehaviorAdvisorSummary creates a one-line summary.
-func buildBehaviorAdvisorSummary(findings []BehaviorFinding) string {
+func buildBehaviorAdvisorSummary(findings []Finding) string {
 	warnings := 0
 	infos := 0
 	for _, f := range findings {
 		switch f.Severity {
-		case SeverityWarning, SeverityError:
+		case confidence.Warning, confidence.Error:
 			warnings++
 		default:
 			infos++

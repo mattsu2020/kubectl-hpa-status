@@ -1,6 +1,7 @@
 package hpa
 
 import (
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/behavioradvisor"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/containeradvisor"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/gitops"
@@ -248,7 +249,7 @@ type AdvisoryView struct {
 	VPAConflict      *vpa.ConflictInfo
 	VPAAdvisory      *vpa.Advisory
 	ContainerAdvisor *containeradvisor.Result
-	BehaviorAdvisor  *BehaviorAdvisorResult
+	BehaviorAdvisor  *behavioradvisor.Result
 }
 
 // Advisory returns the VPA/container/behavior advisory group view.

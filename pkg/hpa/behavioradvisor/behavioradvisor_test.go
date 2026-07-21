@@ -1,15 +1,18 @@
-package hpa
+package behavioradvisor
 
 import (
 	"testing"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/confidence"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
+func int32Ptr(v int32) *int32 { return &v }
+
 func TestAnalyzeBehaviorAdvisor_NilHPA(t *testing.T) {
-	result := AnalyzeBehaviorAdvisor(nil)
+	result := Analyze(nil)
 	if result != nil {
 		t.Error("expected nil for nil HPA")
 	}
@@ -33,7 +36,7 @@ func TestAnalyzeBehaviorAdvisor_NoBehavior(t *testing.T) {
 		},
 	}
 
-	result := AnalyzeBehaviorAdvisor(hpa)
+	result := Analyze(hpa)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -68,7 +71,7 @@ func TestAnalyzeBehaviorAdvisor_LongScaleDownWindow(t *testing.T) {
 		},
 	}
 
-	result := AnalyzeBehaviorAdvisor(hpa)
+	result := Analyze(hpa)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -77,7 +80,7 @@ func TestAnalyzeBehaviorAdvisor_LongScaleDownWindow(t *testing.T) {
 	for _, f := range result.Findings {
 		if f.ID == "behavior-scaledown-window-long" {
 			found = true
-			if f.Severity != SeverityWarning {
+			if f.Severity != confidence.Warning {
 				t.Errorf("expected warning severity, got %s", f.Severity)
 			}
 			break
@@ -100,7 +103,7 @@ func TestAnalyzeBehaviorAdvisor_LongScaleUpWindow(t *testing.T) {
 		},
 	}
 
-	result := AnalyzeBehaviorAdvisor(hpa)
+	result := Analyze(hpa)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -129,7 +132,7 @@ func TestAnalyzeBehaviorAdvisor_LooseTolerance(t *testing.T) {
 		},
 	}
 
-	result := AnalyzeBehaviorAdvisor(hpa)
+	result := Analyze(hpa)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -158,7 +161,7 @@ func TestAnalyzeBehaviorAdvisor_NoPoliciesWithExplicitBehavior(t *testing.T) {
 		},
 	}
 
-	result := AnalyzeBehaviorAdvisor(hpa)
+	result := Analyze(hpa)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -207,7 +210,7 @@ func TestAnalyzeBehaviorAdvisor_ReasonableConfig(t *testing.T) {
 		},
 	}
 
-	result := AnalyzeBehaviorAdvisor(hpa)
+	result := Analyze(hpa)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
