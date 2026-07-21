@@ -16,3 +16,11 @@ func TestHTMLEscapeExact(t *testing.T) {
 		t.Fatalf("HTMLEscape() = %q, want %q", got, want)
 	}
 }
+
+func TestMarkdownInline(t *testing.T) {
+	got := MarkdownInline("line1\r\nline2\rline3<b>")
+	want := "line1 line2 line3&lt;b&gt;"
+	if got != want {
+		t.Fatalf("MarkdownInline() = %q, want %q", got, want)
+	}
+}
