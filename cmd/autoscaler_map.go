@@ -195,7 +195,7 @@ func fetchAutoscalerMapKEDA(ctx context.Context, opts *options, hpa *autoscaling
 		return nil
 	}
 
-	scaledObj, err := kube.FindScaledObjectForHPA(ctx, dynClient, nil, hpa)
+	scaledObj, err := kube.FindScaledObjectForHPA(ctx, dynClient, hpa)
 	if err != nil || scaledObj == nil {
 		return &hpaanalysis.AutoscalerMapKEDAInfo{
 			ScaledObjectName: string(detection.Source),

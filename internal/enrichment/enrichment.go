@@ -55,21 +55,27 @@ func (ec *Context) Status() Status {
 // CRD availability via API discovery and creates a dynamic client only when
 // at least one enrichment source is available. Always returns a non-nil Context
 // with status populated to explain why enrichment may be unavailable.
+//
+// The context parameter is currently unused: client-go's DiscoveryInterface
+// offers no context-aware calls in this version, and every discovery request
+// is already bounded by the rest config's RequestTimeout (default 30s). The
+// parameter stays so per-request cancellation can be threaded through once
+// the discovery API gains context support.
 func NewContext(_ context.Context, cfg Config) *Context {
 	kedaEntry := &Entry{Source: SourceKEDA, State: StateDisabled}
 	vpaEntry := &Entry{Source: SourceVPA, State: StateDisabled}
-	if requested(cfg.KEDA) {
+	if Requested(cfg.KEDA) {
 		kedaEntry.State = StateUnavailable
 		kedaEntry.Reason = "not requested"
 	}
-	if requested(cfg.VPA) {
+	if Requested(cfg.VPA) {
 		vpaEntry.State = StateUnavailable
 		vpaEntry.Reason = "not requested"
 	}
 
 	status := Status{KEDA: kedaEntry, VPA: vpaEntry}
 
-	if !requested(cfg.KEDA) && !requested(cfg.VPA) {
+	if !Requested(cfg.KEDA) && !Requested(cfg.VPA) {
 		kedaEntry.State = StateDisabled
 		vpaEntry.State = StateDisabled
 		return &Context{status: status}
@@ -77,8 +83,8 @@ func NewContext(_ context.Context, cfg Config) *Context {
 
 	disco, err := kube.NewDiscoveryClient(cfg.Kube)
 	if err != nil {
-		setEnrichmentError(kedaEntry, requested(cfg.KEDA), fmt.Sprintf("discovery client creation failed: %v", err))
-		setEnrichmentError(vpaEntry, requested(cfg.VPA), fmt.Sprintf("discovery client creation failed: %v", err))
+		setEnrichmentError(kedaEntry, Requested(cfg.KEDA), fmt.Sprintf("discovery client creation failed: %v", err))
+		setEnrichmentError(vpaEntry, Requested(cfg.VPA), fmt.Sprintf("discovery client creation failed: %v", err))
 		return &Context{status: status}
 	}
 
@@ -91,8 +97,8 @@ func NewContext(_ context.Context, cfg Config) *Context {
 	// itself failed (RBAC denial, network timeout), the wrapped error replaces
 	// the misleading hard-coded "CRD ... not found" string so operators see the
 	// actual cause. A nil error means the CRD is simply absent.
-	applyCRDAvailability(kedaEntry, requested(cfg.KEDA), crdAvail.KEDA, crdReason(crdAvail.KEDError))
-	applyCRDAvailability(vpaEntry, requested(cfg.VPA), crdAvail.VPA, crdReason(crdAvail.VPAError))
+	applyCRDAvailability(kedaEntry, Requested(cfg.KEDA), crdAvail.KEDA, crdReason(crdAvail.KEDError))
+	applyCRDAvailability(vpaEntry, Requested(cfg.VPA), crdAvail.VPA, crdReason(crdAvail.VPAError))
 
 	if !kedaEnabled && !vpaEnabled {
 		return &Context{status: status}
@@ -165,11 +171,13 @@ func isEnabled(mode string, crdPresent bool) bool {
 	}
 }
 
-// requested reports whether the mode asks for enrichment at all (on or auto),
+// Requested reports whether the mode asks for enrichment at all (on or auto),
 // as opposed to off/empty which skip discovery entirely. It also accepts the
 // legacy bool spellings ("true"/"1") so existing --keda=true invocations keep
-// working after the flag became a tri-state string.
-func requested(mode string) bool {
+// working after the flag became a tri-state string. It is exported so callers
+// outside the package (e.g. cmd's streaming-eligibility check) share one
+// definition instead of mirroring the switch.
+func Requested(mode string) bool {
 	switch mode {
 	case "on", "auto", "true", "1":
 		return true
@@ -267,7 +275,7 @@ func enrichKEDA(ctx context.Context, ec *Context, hpa *autoscalingv2.HorizontalP
 		return nil, entry
 	}
 
-	scaledObject, err := kube.FindScaledObjectForHPA(ctx, ec.dynClient, nil, hpa)
+	scaledObject, err := kube.FindScaledObjectForHPA(ctx, ec.dynClient, hpa)
 	if err != nil {
 		entry.State = StateError
 		entry.Reason = err.Error()

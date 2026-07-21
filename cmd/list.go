@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/enrichment"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/history"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
@@ -150,7 +151,7 @@ func canStreamList(opts *options) bool {
 	if opts.SortBy != "" || opts.Apply || opts.Export == "directory" || opts.GitOpsDrift || opts.Trend {
 		return false
 	}
-	if enrichmentRequested(opts.KEDA) || enrichmentRequested(opts.VPA) {
+	if enrichment.Requested(opts.KEDA) || enrichment.Requested(opts.VPA) {
 		return false
 	}
 	// --report pins a format (markdown/html/junit/sarif) that needs the whole
@@ -160,18 +161,6 @@ func canStreamList(opts *options) bool {
 	}
 	switch normalizeOutputFormat(opts.Output) {
 	case "", "table", "wide", "jsonl":
-		return true
-	default:
-		return false
-	}
-}
-
-// enrichmentRequested reports whether a KEDA/VPA mode asks for enrichment at
-// all (on or auto), as opposed to off. Mirrors internal/enrichment.requested
-// but lives in cmd so canStreamList does not depend on the enrichment package.
-func enrichmentRequested(mode string) bool {
-	switch mode {
-	case "on", "auto", "true", "1":
 		return true
 	default:
 		return false

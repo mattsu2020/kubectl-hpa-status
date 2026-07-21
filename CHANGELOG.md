@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`bundle`, `incident-bundle`, and `snapshot` now redact by default.**
+  These commands produce evidence packs meant to leave the operator's machine,
+  so `--redact` defaults to `true` (matching `support-bundle`). Pass
+  `--redact=false` only for trusted local archives that require exact object
+  values.
+
+### Added
+
+- **Input size guardrails.** Files read fully into memory (candidate HPA
+  manifests, recorded JSON traces, GitOps manifests, config files) are capped
+  at 50 MiB, and JSONL record streaming is capped at 1,000,000 snapshots per
+  HPA to prevent out-of-memory aborts on pathologically large inputs.
+- **Directory walk limits for `lint` and `gitops review`.** Walks are bounded
+  to depth 20 and 10,000 files and skip `.git`, `node_modules`, and `vendor`
+  directories, so a stray `lint /` no longer scans an entire filesystem.
+- **Symlink-safe bundle output.** Bundle and snapshot writers refuse to write
+  through an existing symlink at the output path.
+- **Matchable simulation errors.** `pkg/hpa` now exports
+  `ErrUnsupportedSimulationPath` and `ErrInvalidSimulationValue` so callers
+  can branch with `errors.Is` instead of matching message text.
+
+### Fixed
+
+- `ai-context` output now sanitizes cluster-controlled condition/metric text
+  so ANSI escape sequences cannot spoof the terminal.
+
+### Internal
+
+- Deduplicated the enrichment mode check: `internal/enrichment.Requested` is
+  now the single definition shared with `cmd`.
+- Unified the previously duplicated `filepath.Walk` collectors of `lint` and
+  `gitops review` into one bounded `collectManifestFiles` helper.
+- Removed the unused `kubernetes.Interface` parameter from
+  `kube.FindScaledObjectForHPA`.
+- Raised `pkg/hpa` test coverage from 70.0% to ~74% (cluster diagnostics,
+  behavior/container advisor text renderers, autoscaler map text, churn
+  facades, structured decision trace text).
+
 ## [2.0.0] - 2026-07-13
 
 This release removes deprecated command/flag aliases and lands the first

@@ -35,8 +35,8 @@ func TestNewBundleCommand(t *testing.T) {
 		t.Fatalf("expected default format 'markdown', got %q", format)
 	}
 	redact, _ := cmd.Flags().GetBool("redact")
-	if redact {
-		t.Fatal("expected default redact to be false")
+	if !redact {
+		t.Fatal("expected default redact to be true (bundles are meant to be shared)")
 	}
 }
 

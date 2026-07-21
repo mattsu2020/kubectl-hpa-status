@@ -33,7 +33,9 @@ func newSnapshotCommand(opts *options) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringP("output", "o", "", "output zip file path (default: hpa-snapshot-<name>-<timestamp>.zip)")
-	cmd.Flags().Bool("redact", false, "redact sensitive information (IPs, node names, pod UIDs) from the bundle")
+	// Snapshots are built for incident sharing, so redaction is on by default.
+	// --redact=false remains for trusted local archives.
+	cmd.Flags().Bool("redact", true, "redact sensitive information (IPs, node names, pod UIDs) from the bundle; use --redact=false only for trusted local archives")
 	return cmd
 }
 

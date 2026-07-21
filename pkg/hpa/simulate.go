@@ -12,6 +12,17 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
+// Sentinel errors for simulation override validation so callers can branch
+// with errors.Is instead of matching message text.
+var (
+	// ErrUnsupportedSimulationPath is returned when an override path is not
+	// one of the supported dot-notation fields.
+	ErrUnsupportedSimulationPath = errors.New("unsupported path")
+	// ErrInvalidSimulationValue is returned when an override value fails
+	// validation for its target field (range, sign, format).
+	ErrInvalidSimulationValue = errors.New("invalid simulation value")
+)
+
 // SimulateHPA creates a deep copy of the HPA, applies the given overrides, and
 // compares the analysis of the modified HPA against the original. Returns a
 // SimulationResult describing the before/after state, or an error if the
@@ -211,7 +222,7 @@ func applySimulationOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, path, v
 	if definition, ok := simulationOverrideDefinitions[normalizedPath]; ok {
 		return definition.Apply(hpa, value)
 	}
-	return fmt.Errorf("unsupported path %q; supported: %s, metric.<name>.target", path, strings.Join(supportedSimulationPaths(), ", "))
+	return fmt.Errorf("%w %q; supported: %s, metric.<name>.target", ErrUnsupportedSimulationPath, path, strings.Join(supportedSimulationPaths(), ", "))
 }
 
 type simulationOverrideDefinition struct {
@@ -350,7 +361,7 @@ func applyToleranceOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, directio
 	}
 	floatValue := tolerance.AsApproximateFloat64()
 	if math.IsNaN(floatValue) || math.IsInf(floatValue, 0) || floatValue < 0 || floatValue > 1 {
-		return fmt.Errorf("tolerance must be between 0 and 1, got %q", value)
+		return fmt.Errorf("%w: tolerance must be between 0 and 1, got %q", ErrInvalidSimulationValue, value)
 	}
 	ensureBehavior(hpa)
 	if direction == "both" || direction == "up" {
@@ -472,7 +483,7 @@ func parsePositiveInt32(value string) (int32, error) {
 		return 0, err
 	}
 	if v <= 0 {
-		return 0, fmt.Errorf("targetAverageUtilization must be > 0")
+		return 0, fmt.Errorf("%w: targetAverageUtilization must be > 0, got %d", ErrInvalidSimulationValue, v)
 	}
 	return v, nil
 }

@@ -241,7 +241,7 @@ func validateScoreField(name string, v *int) error {
 
 // loadConfigFile reads and parses a YAML config file at the given path.
 func loadConfigFile(path string) (configFile, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- path is from user --config flag, not arbitrary input
+	data, err := readFileBounded(path)
 	if err != nil {
 		return configFile{}, err
 	}

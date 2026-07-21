@@ -139,7 +139,7 @@ func parseManifestReplicas(manifestPath string, targetKind, targetName string) (
 // parseFileForReplicas parses a single manifest file and extracts spec.replicas
 // if the file contains the target resource.
 func parseFileForReplicas(filePath, targetKind, targetName string) (*int32, bool) {
-	data, err := os.ReadFile(filePath)
+	data, err := readFileBounded(filePath)
 	if err != nil {
 		return nil, false
 	}

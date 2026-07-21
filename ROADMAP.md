@@ -84,6 +84,45 @@ user-visible behavior change.
   `fake.NewSimpleClientset` (deprecated, no applyconfig replacement). Re-check
   on each client-go upgrade and remove the `//nolint:staticcheck` once an
   alternative lands.
+- **Extract `pkg/hpa/core` shared helpers:** `FormatMetricStatus`, the labels
+  machinery, `TimelineSnapshot` helpers, clock, and conditions utilities are
+  the shared dependency that keeps `capacity`, `simulate`, `decision`,
+  `metrics`, `health`, `retrospective`, and `timeline` in the `pkg/hpa` root
+  (see ARCHITECTURE.md "leaf domain extraction prerequisite"). Lifting them
+  into `pkg/hpa/core` unblocks the domain extractions below.
+- **Extract `simulate` and `capacity` domains:** Once `core` exists, move the
+  tightly-coupled `simulate*.go` files (simulate, simulate_metric,
+  simulate_extended, simulate_projection) into `pkg/hpa/simulate/`, and the
+  `CapacityContext`/`CapacityHeadroom`/`CapacityPlan` trio into
+  `pkg/hpa/capacity/` (with `blocker.nodeCapacityRule` re-homed to capacity),
+  keeping deprecated re-export facades in `pkg/hpa` until the facade-removal
+  policy below clears them.
+- **Unify the enrichment layer:** `internal/enrichment.Status` is hand-mirrored
+  into `pkg/hpa.EnrichmentStatus`; the enricher pipeline engine
+  (`cmd/enricher.go`) is not cmd-specific. Move the pipeline into
+  `internal/enrichment`, collapse the Status mirror, and split per-source
+  enrichers into `internal/enrichment/{keda,vpa,churn}`.
+- **TUI sub-models per view mode:** `internal/tui.Model` permanently holds six
+  independent state machines and switches over 11 view modes in three files.
+  Extract each view mode into its own `tea.Model` (state + key handlers +
+  render) and let the top-level Model delegate to `currentView`, turning
+  "edit 3 files to add a view" into "add 1 file".
+- **Facade removal policy:** Deprecated re-export facades (`pkg/hpa/keda.go`,
+  `vpa.go`, `churn.go`, `policy.go`, `readiness.go`, `flapping_advisor.go`,
+  `cmd/converters.go`, `cmd/output.go`) have no removal deadline. Add a CI
+  check that fails when an in-tree call site uses a `// Deprecated:` facade,
+  and record a removal condition per facade (e.g. zero external importers for
+  one release) in ARCHITECTURE.md.
+- **Consolidate advisor/doctor command surfaces (user-visible):** `advisor`,
+  `recommend`, and `container-advisor` overlap, as do `doctor`,
+  `readiness-doctor`, and the `diagnosis-*` family. Plan subcommand grouping
+  (`advisor container|behavior|recommend`, `doctor readiness|rollout|capacity`)
+  with deprecated aliases for one minor release before removal.
+- **Lower command-addition cost:** Adding one command today touches ~9 places
+  (command file, commandGroups, options_bridge preset, cmdoptions preset +
+  feature flag, enricher phase, Analysis field, text renderer, schema test).
+  Evaluate an `AnalysisPlugin`-style registry (name + enrich + render) so a
+  new analysis domain registers in one place.
 
 ## Recently Added
 

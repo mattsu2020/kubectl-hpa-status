@@ -147,7 +147,7 @@ func inferRecordedTraceName(path, namespace string) (string, error) {
 }
 
 func inferRecordedJSONTraceName(path, namespace string) (string, error) {
-	data, err := os.ReadFile(path)
+	data, err := readFileBounded(path)
 	if err != nil {
 		return "", fmt.Errorf("failed to read record file: %w", err)
 	}
@@ -165,7 +165,7 @@ func inferRecordedJSONTraceName(path, namespace string) (string, error) {
 }
 
 func loadCandidateHPA(path string) (*autoscalingv2.HorizontalPodAutoscaler, error) {
-	data, err := os.ReadFile(path)
+	data, err := readFileBounded(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read candidate HPA %s: %w", path, err)
 	}

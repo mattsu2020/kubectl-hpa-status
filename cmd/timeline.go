@@ -393,6 +393,9 @@ func loadRecordedTrace(path, namespace, name string) (*hpaanalysis.TimelineTrace
 			continue
 		}
 		mergeRecordedTrace(&combined, trace)
+		if len(combined.Snapshots) > maxSnapshotsPerTrace {
+			return nil, snapshotLimitError(path)
+		}
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("failed to scan record file: %w", err)
@@ -407,7 +410,7 @@ func loadRecordedTrace(path, namespace, name string) (*hpaanalysis.TimelineTrace
 }
 
 func loadRecordedJSONTrace(path, namespace, name string) (*hpaanalysis.TimelineTrace, error) {
-	data, err := os.ReadFile(path)
+	data, err := readFileBounded(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read record file: %w", err)
 	}

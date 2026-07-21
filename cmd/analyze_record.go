@@ -114,6 +114,9 @@ func loadAllRecordedTraces(path string) (map[string]hpaanalysis.TimelineTrace, e
 		}
 		current.End = trace.End
 		current.Snapshots = append(current.Snapshots, trace.Snapshots...)
+		if len(current.Snapshots) > maxSnapshotsPerTrace {
+			return nil, snapshotLimitError(path)
+		}
 		result[key] = current
 	}
 	if err := scanner.Err(); err != nil {
@@ -121,6 +124,17 @@ func loadAllRecordedTraces(path string) (map[string]hpaanalysis.TimelineTrace, e
 	}
 	return result, nil
 }
+
+// Flapping severity thresholds for recorded-trace analysis. An HPA is
+// classified by the number of scale-direction reversals (direction flips) and
+// the total desiredReplicas changes across the recording.
+const (
+	flappingCriticalDirectionFlips = 6
+	flappingCriticalDesiredChanges = 15
+	flappingHighDirectionFlips     = 3
+	flappingHighDesiredChanges     = 8
+	flappingMediumDesiredChanges   = 4
+)
 
 func analyzeTraceFlapping(_ string, trace hpaanalysis.TimelineTrace) recordAnalysisItem {
 	item := recordAnalysisItem{
@@ -152,11 +166,11 @@ func analyzeTraceFlapping(_ string, trace hpaanalysis.TimelineTrace) recordAnaly
 		lastDesired = snap.Desired
 	}
 	switch {
-	case item.DirectionFlips >= 6 || item.DesiredChanges >= 15:
+	case item.DirectionFlips >= flappingCriticalDirectionFlips || item.DesiredChanges >= flappingCriticalDesiredChanges:
 		item.Level = "CRITICAL"
-	case item.DirectionFlips >= 3 || item.DesiredChanges >= 8:
+	case item.DirectionFlips >= flappingHighDirectionFlips || item.DesiredChanges >= flappingHighDesiredChanges:
 		item.Level = "HIGH"
-	case item.DirectionFlips > 0 || item.DesiredChanges >= 4:
+	case item.DirectionFlips > 0 || item.DesiredChanges >= flappingMediumDesiredChanges:
 		item.Level = "MEDIUM"
 	}
 	if item.Level != "LOW" {

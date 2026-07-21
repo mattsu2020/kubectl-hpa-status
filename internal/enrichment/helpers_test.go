@@ -19,8 +19,8 @@ func TestRequested(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.mode, func(t *testing.T) {
-			if got := requested(tc.mode); got != tc.want {
-				t.Fatalf("requested(%q) = %v, want %v", tc.mode, got, tc.want)
+			if got := Requested(tc.mode); got != tc.want {
+				t.Fatalf("Requested(%q) = %v, want %v", tc.mode, got, tc.want)
 			}
 		})
 	}
