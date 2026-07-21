@@ -1,73 +1,27 @@
 package hpa
 
 import (
-	autoscalingv2 "k8s.io/api/autoscaling/v2"
-
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/flapping"
 )
 
-// This file is a thin re-export facade for the flapping domain, which now
-// lives in pkg/hpa/flapping. The types and functions below preserve the
-// existing hpaanalysis.* API surface. The canonical implementations are in
-// pkg/hpa/flapping/flapping.go (types renamed to drop the Flapping prefix to
-// avoid stuttering). The flapping_advisor_text.go and flapping_text.go
-// renderers stay in pkg/hpa because they share the labels machinery.
-
-// Flapping domain type aliases. The canonical types in pkg/hpa/flapping drop
-// the Flapping prefix (e.g. flapping.Diagnosis); these aliases preserve the
-// historical hpaanalysis.Flapping* names.
+// This file re-exports the subset of the flapping domain (which now lives in
+// pkg/hpa/flapping) that this package still uses as its own vocabulary: the
+// Analysis struct's FlappingPrevention/FlappingDiagnosis fields and the
+// anomaly detection types/constants in health_trend_anomaly.go. The
+// flapping_advisor_text.go and flapping_text.go renderers stay in pkg/hpa
+// because they share the labels machinery.
 type (
 	// FlappingPreventionReport aliases flapping.PreventionReport.
-	//
-	// Deprecated: Use flapping.PreventionReport instead.
 	FlappingPreventionReport = flapping.PreventionReport
-	// FlappingSimulation aliases flapping.Simulation.
-	//
-	// Deprecated: Use flapping.Simulation instead.
-	FlappingSimulation = flapping.Simulation
 	// FlappingDiagnosis aliases flapping.Diagnosis.
-	//
-	// Deprecated: Use flapping.Diagnosis instead.
 	FlappingDiagnosis = flapping.Diagnosis
-	// FlappingCause aliases flapping.Cause.
-	//
-	// Deprecated: Use flapping.Cause instead.
-	FlappingCause = flapping.Cause
-	// FlappingFix aliases flapping.Fix.
-	//
-	// Deprecated: Use flapping.Fix instead.
-	FlappingFix = flapping.Fix
-	// AnomalyType aliases flapping.AnomalyType.
-	//
-	// Deprecated: Use flapping.AnomalyType instead.
-	AnomalyType = flapping.AnomalyType
 	// AnomalyDetection aliases flapping.AnomalyDetection.
-	//
-	// Deprecated: Use flapping.AnomalyDetection instead.
 	AnomalyDetection = flapping.AnomalyDetection
 )
 
-// Flapping anomaly type constants.
-//
-// Deprecated: Use the canonical flapping.Anomaly* constants instead.
+// Flapping anomaly type constants, aliased from pkg/hpa/flapping.
 const (
 	AnomalySuddenDegradation     = flapping.AnomalySuddenDegradation
 	AnomalyStuckState            = flapping.AnomalyStuckState
 	AnomalyOscillationEscalation = flapping.AnomalyOscillationEscalation
 )
-
-// DiagnoseFlapping detects scaling flapping. Delegates to
-// flapping.DiagnoseFlapping.
-//
-// Deprecated: Use flapping.DiagnoseFlapping instead.
-func DiagnoseFlapping(events []Event, hpa *autoscalingv2.HorizontalPodAutoscaler) *FlappingDiagnosis {
-	return flapping.DiagnoseFlapping(events, hpa)
-}
-
-// AnalyzeFlappingPrevention analyzes whether the HPA's behavior policies
-// would prevent detected flapping. Delegates to flapping.AnalyzeFlappingPrevention.
-//
-// Deprecated: Use flapping.AnalyzeFlappingPrevention instead.
-func AnalyzeFlappingPrevention(events []Event, hpa *autoscalingv2.HorizontalPodAutoscaler) *FlappingPreventionReport {
-	return flapping.AnalyzeFlappingPrevention(events, hpa)
-}
