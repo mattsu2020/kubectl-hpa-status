@@ -11,13 +11,18 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/kubernetes"
+)
+
+const (
+	kedaAPIGroup    = "keda.sh"
+	kedaAPIVersion  = "v1alpha1"
+	kedaResourcePlr = "scaledobjects"
 )
 
 var scaledObjectGVR = schema.GroupVersionResource{
-	Group:    "keda.sh",
-	Version:  "v1alpha1",
-	Resource: "scaledobjects",
+	Group:    kedaAPIGroup,
+	Version:  kedaAPIVersion,
+	Resource: kedaResourcePlr,
 }
 
 // ScaledObjectGVR returns the GroupVersionResource for KEDA ScaledObjects.
@@ -224,7 +229,7 @@ func NewDynamicClient(opts Options) (dynamic.Interface, string, error) {
 
 // FindScaledObjectForHPA attempts to locate the ScaledObject that owns the given HPA.
 // It tries the label-based name first, then falls back to listing ScaledObjects in the namespace.
-func FindScaledObjectForHPA(ctx context.Context, dynClient dynamic.Interface, _ kubernetes.Interface, hpa *autoscalingv2.HorizontalPodAutoscaler) (*unstructured.Unstructured, error) {
+func FindScaledObjectForHPA(ctx context.Context, dynClient dynamic.Interface, hpa *autoscalingv2.HorizontalPodAutoscaler) (*unstructured.Unstructured, error) {
 	if det := DetectKEDA(hpa); det.Name != "" {
 		return FetchScaledObject(ctx, dynClient, hpa.Namespace, det.Name)
 	}

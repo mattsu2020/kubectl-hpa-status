@@ -79,7 +79,13 @@ func writeAIContextConditions(out io.Writer, conditions []hpaanalysis.Condition)
 		return fmt.Errorf("write ai context conditions header: %w", err)
 	}
 	for _, condition := range conditions {
-		if _, err := fmt.Fprintf(out, "  - %s=%s reason=%s message=%s\n", condition.Type, condition.Status, condition.Reason, condition.Message); err != nil {
+		// Kubernetes condition fields are cluster-controlled text; sanitize
+		// them so ANSI escape sequences cannot spoof the terminal output.
+		if _, err := fmt.Fprintf(out, "  - %s=%s reason=%s message=%s\n",
+			hpaanalysis.SanitizeTerminalText(condition.Type),
+			condition.Status,
+			hpaanalysis.SanitizeTerminalText(condition.Reason),
+			hpaanalysis.SanitizeTerminalText(condition.Message)); err != nil {
 			return fmt.Errorf("write ai context conditions: %w", err)
 		}
 	}
@@ -94,7 +100,12 @@ func writeAIContextMetrics(out io.Writer, metrics []hpaanalysis.Metric) error {
 		return fmt.Errorf("write ai context metrics header: %w", err)
 	}
 	for _, metric := range metrics {
-		if _, err := fmt.Fprintf(out, "  - %s/%s current=%s target=%s note=%s\n", metric.Type, metric.Name, metric.Current, metric.Target, metric.Note); err != nil {
+		if _, err := fmt.Fprintf(out, "  - %s/%s current=%s target=%s note=%s\n",
+			metric.Type,
+			hpaanalysis.SanitizeTerminalText(metric.Name),
+			metric.Current,
+			metric.Target,
+			hpaanalysis.SanitizeTerminalText(metric.Note)); err != nil {
 			return fmt.Errorf("write ai context metrics: %w", err)
 		}
 	}
@@ -109,7 +120,11 @@ func writeAIContextHiddenFactors(out io.Writer, factors []hpaanalysis.HiddenDeci
 		return fmt.Errorf("write ai context hidden factors header: %w", err)
 	}
 	for _, factor := range factors {
-		if _, err := fmt.Fprintf(out, "  - %s: %s impact=%s confidence=%s\n", factor.Name, factor.Status, factor.Impact, factor.Confidence); err != nil {
+		if _, err := fmt.Fprintf(out, "  - %s: %s impact=%s confidence=%s\n",
+			hpaanalysis.SanitizeTerminalText(factor.Name),
+			hpaanalysis.SanitizeTerminalText(factor.Status),
+			factor.Impact,
+			factor.Confidence); err != nil {
 			return fmt.Errorf("write ai context hidden factors: %w", err)
 		}
 	}

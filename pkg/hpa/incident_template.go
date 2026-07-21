@@ -79,7 +79,7 @@ func writeIncidentExecutiveSummary(buf *strings.Builder, reports []StatusReport)
 		buf.WriteString(fmt.Sprintf("| %s | %s | %s | %d | %d | %d | %d | %d |\n",
 			escapeMarkdown(a.Namespace),
 			escapeMarkdown(a.Name),
-			severityEmoji(a.Health),
+			severityPrefix(a.Health),
 			a.HealthScore,
 			a.Current,
 			a.Desired,
@@ -514,8 +514,8 @@ func severityHigher(a, b string) bool {
 	return order[a] > order[b]
 }
 
-// severityEmoji prefixes a visual marker for the health state.
-func severityEmoji(health string) string {
+// severityPrefix prefixes a visual marker for the health state.
+func severityPrefix(health string) string {
 	switch health {
 	case string(HealthError):
 		return "[ALERT] " + health
