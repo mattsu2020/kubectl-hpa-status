@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
@@ -61,6 +60,10 @@ func runGitOpsReview(_ context.Context, out io.Writer, opts *options, filePath s
 	})
 }
 
+// collectGitOpsReviewFiles walks the given path and returns the list of
+// YAML/JSON files to review. If filePath is a single file it is returned
+// as-is. Directory walks are bounded (depth, file count) by
+// collectManifestFiles.
 func collectGitOpsReviewFiles(filePath string) ([]string, error) {
 	info, err := os.Stat(filePath)
 	if err != nil {
@@ -71,24 +74,7 @@ func collectGitOpsReviewFiles(filePath string) ([]string, error) {
 		return []string{filePath}, nil
 	}
 
-	var files []string
-	err = filepath.Walk(filePath, func(path string, fi os.FileInfo, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if fi.IsDir() {
-			return nil
-		}
-		ext := strings.ToLower(filepath.Ext(path))
-		if ext == ".yaml" || ext == ".yml" || ext == ".json" {
-			files = append(files, path)
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("walking directory: %w", err)
-	}
-	return files, nil
+	return collectManifestFiles(filePath)
 }
 
 func decodeGitOpsReviewInputs(files []string) []hpaanalysis.GitOpsReviewInput {

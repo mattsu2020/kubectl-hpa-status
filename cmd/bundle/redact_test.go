@@ -135,6 +135,44 @@ spec:
 	}
 }
 
+// TestRedactStructuredBytes_RedactsValueFromRefs locks in redaction of Secret
+// and ConfigMap references under env[].valueFrom and envFrom[]. Without this
+// coverage a refactor of shouldRedactStructuredField could silently start
+// leaking referenced object names (reconnaissance material for attackers).
+func TestRedactStructuredBytes_RedactsValueFromRefs(t *testing.T) {
+	t.Parallel()
+	input := []byte(`apiVersion: apps/v1
+kind: Deployment
+spec:
+  template:
+    spec:
+      containers:
+      - name: app
+        env:
+        - name: FROM_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: prod-db-credentials
+              key: password
+        - name: FROM_CM
+          valueFrom:
+            configMapKeyRef:
+              name: prod-app-config
+              key: endpoint
+        envFrom:
+        - secretRef:
+            name: bulk-secret
+        - configMapRef:
+            name: bulk-config
+`)
+	got := string(RedactStructuredBytes(input))
+	for _, leaked := range []string{"prod-db-credentials", "prod-app-config", "bulk-secret", "bulk-config"} {
+		if strings.Contains(got, leaked) {
+			t.Errorf("reference name %q leaked in:\n%s", leaked, got)
+		}
+	}
+}
+
 // TestRedactString_HostnameWithIP verifies that combined patterns (an ip-
 // style hostname containing dashes) redact as a hostname, not partially.
 func TestRedactString_HostnameWithIP(t *testing.T) {

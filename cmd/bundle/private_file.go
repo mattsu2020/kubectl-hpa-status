@@ -1,6 +1,7 @@
 package bundle
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -19,11 +20,32 @@ func WritePrivateFile(path string, data []byte) error {
 	})
 }
 
+// validateOutputPath refuses to write through an existing symlink so a bundle
+// cannot be redirected onto an arbitrary file (for example a link planted in a
+// shared directory pointing at a sensitive path). A not-yet-existing target is
+// fine: WritePrivateFileAtomic creates it atomically.
+func validateOutputPath(path string) error {
+	fi, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect output path: %w", err)
+	}
+	if fi.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("refusing to write bundle through symlink %s", path)
+	}
+	return nil
+}
+
 // WritePrivateFileAtomic writes through a temporary file in the destination
 // directory, fsyncs and closes it, then renames it into place. The callback
 // must finish any nested writer (for example zip.Writer) before returning so
 // its footer errors are included in the result.
 func WritePrivateFileAtomic(path string, write func(io.Writer) error) (retErr error) {
+	if err := validateOutputPath(path); err != nil {
+		return err
+	}
 	dir := filepath.Dir(path)
 	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+"-*")
 	if err != nil {
