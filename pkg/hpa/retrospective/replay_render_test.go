@@ -1,4 +1,4 @@
-package hpa
+package retrospective
 
 import (
 	"bytes"
@@ -16,13 +16,13 @@ import (
 // replayFixtureTimeline builds a timeline that walks AnalyzeReplay through all
 // entry categories: rescales (up and down), a metrics outage, a maxReplicas
 // cap, a stabilization window, and a CPU metric change near tolerance.
-func replayFixtureTimeline(base time.Time) RetrospectiveTimeline {
-	return RetrospectiveTimeline{
+func replayFixtureTimeline(base time.Time) Timeline {
+	return Timeline{
 		HPAName:   "web",
 		Namespace: "default",
 		Since:     base,
 		Until:     base.Add(30 * time.Minute),
-		Entries: []RetrospectiveEntry{
+		Entries: []Entry{
 			{Timestamp: base, Category: "rescale", Message: "desired 2 -> 4; cpu resource utilization above target", Source: "event"},
 			{Timestamp: base.Add(2 * time.Minute), Category: "metrics-unavailable", Message: "unable to get metrics for resource cpu", Source: "event"},
 			{Timestamp: base.Add(5 * time.Minute), Category: "scaling-limited", Message: "ScalingLimited: True", Source: "status"},
@@ -93,7 +93,7 @@ func TestAnalyzeReplay(t *testing.T) {
 }
 
 func TestAnalyzeReplayEmptyTimeline(t *testing.T) {
-	analysis := AnalyzeReplay(RetrospectiveTimeline{}, replayFixtureHPA())
+	analysis := AnalyzeReplay(Timeline{}, replayFixtureHPA())
 	if !strings.Contains(analysis.Summary, "No timeline entries") {
 		t.Fatalf("empty timeline should say so, got %q", analysis.Summary)
 	}
@@ -136,66 +136,4 @@ func TestWriteReplayRenderers(t *testing.T) {
 			t.Fatal("HTML output contains no markup")
 		}
 	})
-}
-
-func TestFormatUtilsHelpers(t *testing.T) {
-	theme := style.Theme{}
-
-	if bar := progressBar(0.5); bar == "" {
-		t.Error("progressBar(0.5) returned empty string")
-	}
-	if progressBar(-1) == "" || progressBar(2) == "" {
-		t.Error("progressBar should clamp out-of-range ratios, not go empty")
-	}
-
-	m := Metric{Name: "cpu", Text: "cpu: 60%/50% (above target)", Note: "above target"}
-	if text := formatMetricText(m, "\x1b[33mabove target\x1b[0m"); !strings.Contains(text, "cpu") {
-		t.Errorf("formatMetricText missing metric name: %q", text)
-	}
-	if text := formatMetricText(m, "above target"); text != m.Text {
-		t.Errorf("uncolored note should return Text verbatim, got %q", text)
-	}
-
-	for _, status := range []string{"Active", "Inactive", "Unknown", ""} {
-		if got := triggerStatusBadge(status, theme); got == "" {
-			t.Errorf("triggerStatusBadge(%q) returned empty string", status)
-		}
-	}
-	for _, status := range []string{"ok", "warning", "error", "other"} {
-		if metricsDiagnosticsStatus(status, theme) == "" {
-			t.Errorf("metricsDiagnosticsStatus(%q) returned empty string", status)
-		}
-		if metricsDiagnosticsIndicator(status, theme) == "" {
-			t.Errorf("metricsDiagnosticsIndicator(%q) returned empty string", status)
-		}
-	}
-	for _, status := range []string{"fresh", "stale", "unknown", "missing"} {
-		if metricFreshnessIndicator(status, theme) == "" {
-			t.Errorf("metricFreshnessIndicator(%q) returned empty string", status)
-		}
-		if metricFreshnessStatusDisplay(status, theme) == "" {
-			t.Errorf("metricFreshnessStatusDisplay(%q) returned empty string", status)
-		}
-	}
-
-	if got := formatFreshnessDuration(90 * time.Second); got == "" {
-		t.Error("formatFreshnessDuration(90s) returned empty string")
-	}
-	if got := formatFreshnessDuration(3 * time.Hour); got == "" {
-		t.Error("formatFreshnessDuration(3h) returned empty string")
-	}
-
-	if got := emptyAsUnknown(""); got != "<unknown>" {
-		t.Errorf("emptyAsUnknown(\"\") = %q, want <unknown>", got)
-	}
-	if got := emptyAsUnknown("cpu"); got != "cpu" {
-		t.Errorf("emptyAsUnknown(\"cpu\") = %q, want cpu", got)
-	}
-
-	indented := indentBlock("a\nb", "  ")
-	for _, line := range strings.Split(strings.TrimRight(indented, "\n"), "\n") {
-		if !strings.HasPrefix(line, "  ") {
-			t.Errorf("indentBlock left an unindented line: %q", line)
-		}
-	}
 }

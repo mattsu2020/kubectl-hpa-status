@@ -1,4 +1,4 @@
-package hpa
+package retrospective
 
 import (
 	"fmt"
@@ -6,19 +6,21 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/clock"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
-// WriteRetrospectiveTimeline renders a RetrospectiveTimeline as a compact
+// WriteTimeline renders a Timeline as a compact
 // text timeline matching the user-facing output format:
 //
 //	10:01 desired 3 -> 5   cpu 142% over target
 //	10:02 scaleUp limited by policy: +2 pods / 60s
-func WriteRetrospectiveTimeline(w io.Writer, tl RetrospectiveTimeline, theme style.Theme) error {
+func WriteTimeline(w io.Writer, tl Timeline, theme style.Theme) error {
 	var out strings.Builder
 
 	header := fmt.Sprintf("HPA Scaling Timeline: %s (%s)  since %s ago",
-		tl.HPAName, tl.Namespace, formatDuration(now().Sub(tl.Since)))
+		tl.HPAName, tl.Namespace, formatDuration(clock.Now().Sub(tl.Since)))
 	out.WriteString(theme.Header.Render(header) + "\n\n")
 
 	if len(tl.Warnings) > 0 {
@@ -45,8 +47,8 @@ func WriteRetrospectiveTimeline(w io.Writer, tl RetrospectiveTimeline, theme sty
 	return err
 }
 
-// WriteRetrospectiveMarkdown renders a RetrospectiveTimeline as a Markdown document.
-func WriteRetrospectiveMarkdown(w io.Writer, tl RetrospectiveTimeline) error {
+// WriteMarkdown renders a Timeline as a Markdown document.
+func WriteMarkdown(w io.Writer, tl Timeline) error {
 	var out strings.Builder
 
 	out.WriteString(fmt.Sprintf("# HPA Scaling Timeline: %s/%s\n\n", tl.Namespace, tl.HPAName))
@@ -56,7 +58,7 @@ func WriteRetrospectiveMarkdown(w io.Writer, tl RetrospectiveTimeline) error {
 	if len(tl.Warnings) > 0 {
 		out.WriteString("## Warnings\n\n")
 		for _, warn := range tl.Warnings {
-			out.WriteString(fmt.Sprintf("- %s\n", escapeMarkdown(warn)))
+			out.WriteString(fmt.Sprintf("- %s\n", rendutil.EscapeMarkdown(warn)))
 		}
 		out.WriteString("\n")
 	}
@@ -68,21 +70,21 @@ func WriteRetrospectiveMarkdown(w io.Writer, tl RetrospectiveTimeline) error {
 			out.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s |\n",
 				entry.Timestamp.Format("15:04:05"),
 				entry.Category,
-				escapeMarkdown(entry.Message),
+				rendutil.EscapeMarkdown(entry.Message),
 				entry.Source,
 				entry.Confidence))
 		}
 		out.WriteString("\n")
 	}
 
-	out.WriteString(fmt.Sprintf("> %s\n", escapeMarkdown(tl.Disclaimer)))
+	out.WriteString(fmt.Sprintf("> %s\n", rendutil.EscapeMarkdown(tl.Disclaimer)))
 
 	_, err := io.WriteString(w, out.String())
 	return err
 }
 
-// WriteRetrospectiveHTML renders a RetrospectiveTimeline as a standalone HTML page.
-func WriteRetrospectiveHTML(w io.Writer, tl RetrospectiveTimeline) error {
+// WriteHTML renders a Timeline as a standalone HTML page.
+func WriteHTML(w io.Writer, tl Timeline) error {
 	var out strings.Builder
 
 	out.WriteString(`<!DOCTYPE html>
@@ -91,19 +93,19 @@ func WriteRetrospectiveHTML(w io.Writer, tl RetrospectiveTimeline) error {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>HPA Scaling Timeline: `)
-	out.WriteString(htmlEscape(tl.HPAName))
+	out.WriteString(rendutil.HTMLEscape(tl.HPAName))
 	out.WriteString("</title>\n<style>\n")
-	out.WriteString(htmlCSS())
+	out.WriteString(rendutil.HTMLCSS())
 	out.WriteString("</style>\n</head>\n<body>\n")
 
-	out.WriteString(fmt.Sprintf("<h1>HPA Scaling Timeline: %s/%s</h1>\n", htmlEscape(tl.Namespace), htmlEscape(tl.HPAName)))
+	out.WriteString(fmt.Sprintf("<h1>HPA Scaling Timeline: %s/%s</h1>\n", rendutil.HTMLEscape(tl.Namespace), rendutil.HTMLEscape(tl.HPAName)))
 	out.WriteString(fmt.Sprintf("<p>Since: %s | Until: %s | Entries: %d</p>\n",
 		tl.Since.Format(time.RFC3339), tl.Until.Format(time.RFC3339), len(tl.Entries)))
 
 	if len(tl.Warnings) > 0 {
 		out.WriteString("<h2>Warnings</h2>\n<ul>\n")
 		for _, warn := range tl.Warnings {
-			out.WriteString(fmt.Sprintf("<li>%s</li>\n", htmlEscape(warn)))
+			out.WriteString(fmt.Sprintf("<li>%s</li>\n", rendutil.HTMLEscape(warn)))
 		}
 		out.WriteString("</ul>\n")
 	}
@@ -113,16 +115,16 @@ func WriteRetrospectiveHTML(w io.Writer, tl RetrospectiveTimeline) error {
 		for _, entry := range tl.Entries {
 			out.WriteString("<tr>")
 			out.WriteString(fmt.Sprintf("<td>%s</td>", entry.Timestamp.Format("15:04:05")))
-			out.WriteString(fmt.Sprintf("<td>%s</td>", htmlEscape(entry.Category)))
-			out.WriteString(fmt.Sprintf("<td>%s</td>", htmlEscape(entry.Message)))
-			out.WriteString(fmt.Sprintf("<td>%s</td>", htmlEscape(entry.Source)))
-			out.WriteString(fmt.Sprintf("<td>%s</td>", htmlEscape(entry.Confidence)))
+			out.WriteString(fmt.Sprintf("<td>%s</td>", rendutil.HTMLEscape(entry.Category)))
+			out.WriteString(fmt.Sprintf("<td>%s</td>", rendutil.HTMLEscape(entry.Message)))
+			out.WriteString(fmt.Sprintf("<td>%s</td>", rendutil.HTMLEscape(entry.Source)))
+			out.WriteString(fmt.Sprintf("<td>%s</td>", rendutil.HTMLEscape(entry.Confidence)))
 			out.WriteString("</tr>\n")
 		}
 		out.WriteString("</table>\n")
 	}
 
-	out.WriteString(fmt.Sprintf("<p class=\"disclaimer\">%s</p>\n", htmlEscape(tl.Disclaimer)))
+	out.WriteString(fmt.Sprintf("<p class=\"disclaimer\">%s</p>\n", rendutil.HTMLEscape(tl.Disclaimer)))
 	out.WriteString("<footer>Generated by kubectl-hpa-status</footer>\n")
 	out.WriteString("</body>\n</html>\n")
 
@@ -161,7 +163,7 @@ func formatDuration(d time.Duration) string {
 
 // WriteReplayText renders a ReplayAnalysis as a text timeline with
 // bottleneck markers, control cycles, and stabilization windows.
-func WriteReplayText(w io.Writer, analysis *ReplayAnalysis, tl RetrospectiveTimeline, theme style.Theme) error {
+func WriteReplayText(w io.Writer, analysis *ReplayAnalysis, tl Timeline, theme style.Theme) error {
 	var out strings.Builder
 
 	out.WriteString(theme.Header.Render(fmt.Sprintf("HPA Replay Analysis: %s (%s)", tl.HPAName, tl.Namespace)) + "\n")
@@ -301,7 +303,7 @@ func replayToleranceEffectsText(analysis *ReplayAnalysis) string {
 }
 
 // WriteReplayMarkdown renders a ReplayAnalysis as a Markdown document.
-func WriteReplayMarkdown(w io.Writer, analysis *ReplayAnalysis, tl RetrospectiveTimeline) error {
+func WriteReplayMarkdown(w io.Writer, analysis *ReplayAnalysis, tl Timeline) error {
 	var out strings.Builder
 
 	out.WriteString(fmt.Sprintf("# HPA Replay Analysis: %s/%s\n\n", tl.Namespace, tl.HPAName))
@@ -325,7 +327,7 @@ func WriteReplayMarkdown(w io.Writer, analysis *ReplayAnalysis, tl Retrospective
 				b.Timestamp.Format("15:04"),
 				b.Type,
 				b.Severity,
-				escapeMarkdown(b.Message),
+				rendutil.EscapeMarkdown(b.Message),
 				durationStr))
 		}
 		out.WriteString("\n")
@@ -384,15 +386,15 @@ func WriteReplayMarkdown(w io.Writer, analysis *ReplayAnalysis, tl Retrospective
 	}
 
 	// Summary.
-	out.WriteString(fmt.Sprintf("## Summary\n\n%s\n\n", escapeMarkdown(analysis.Summary)))
-	out.WriteString(fmt.Sprintf("> %s\n", escapeMarkdown(tl.Disclaimer)))
+	out.WriteString(fmt.Sprintf("## Summary\n\n%s\n\n", rendutil.EscapeMarkdown(analysis.Summary)))
+	out.WriteString(fmt.Sprintf("> %s\n", rendutil.EscapeMarkdown(tl.Disclaimer)))
 
 	_, err := io.WriteString(w, out.String())
 	return err
 }
 
 // WriteReplayHTML renders a ReplayAnalysis as a standalone HTML page.
-func WriteReplayHTML(w io.Writer, analysis *ReplayAnalysis, tl RetrospectiveTimeline) error {
+func WriteReplayHTML(w io.Writer, analysis *ReplayAnalysis, tl Timeline) error {
 	var out strings.Builder
 
 	out.WriteString(`<!DOCTYPE html>
@@ -401,9 +403,9 @@ func WriteReplayHTML(w io.Writer, analysis *ReplayAnalysis, tl RetrospectiveTime
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>HPA Replay Analysis: `)
-	out.WriteString(htmlEscape(tl.HPAName))
+	out.WriteString(rendutil.HTMLEscape(tl.HPAName))
 	out.WriteString("</title>\n<style>\n")
-	out.WriteString(htmlCSS())
+	out.WriteString(rendutil.HTMLCSS())
 	out.WriteString(`
 .severity-high { color: #d32f2f; font-weight: bold; }
 .severity-medium { color: #f57c00; font-weight: bold; }
@@ -413,7 +415,7 @@ func WriteReplayHTML(w io.Writer, analysis *ReplayAnalysis, tl RetrospectiveTime
 `)
 	out.WriteString("</style>\n</head>\n<body>\n")
 
-	out.WriteString(fmt.Sprintf("<h1>HPA Replay Analysis: %s/%s</h1>\n", htmlEscape(tl.Namespace), htmlEscape(tl.HPAName)))
+	out.WriteString(fmt.Sprintf("<h1>HPA Replay Analysis: %s/%s</h1>\n", rendutil.HTMLEscape(tl.Namespace), rendutil.HTMLEscape(tl.HPAName)))
 	out.WriteString(fmt.Sprintf("<p>Period: %s - %s</p>\n",
 		tl.Since.Format(time.RFC3339), tl.Until.Format(time.RFC3339)))
 
@@ -436,9 +438,9 @@ func WriteReplayHTML(w io.Writer, analysis *ReplayAnalysis, tl RetrospectiveTime
 			}
 			out.WriteString("<tr>")
 			out.WriteString(fmt.Sprintf("<td>%s</td>", b.Timestamp.Format("15:04")))
-			out.WriteString(fmt.Sprintf("<td>%s</td>", htmlEscape(b.Type)))
-			out.WriteString(fmt.Sprintf("<td class=\"%s\">%s</td>", severityClass, htmlEscape(b.Severity)))
-			out.WriteString(fmt.Sprintf("<td>%s</td>", htmlEscape(b.Message)))
+			out.WriteString(fmt.Sprintf("<td>%s</td>", rendutil.HTMLEscape(b.Type)))
+			out.WriteString(fmt.Sprintf("<td class=\"%s\">%s</td>", severityClass, rendutil.HTMLEscape(b.Severity)))
+			out.WriteString(fmt.Sprintf("<td>%s</td>", rendutil.HTMLEscape(b.Message)))
 			out.WriteString(fmt.Sprintf("<td>%s</td>", durationStr))
 			out.WriteString("</tr>\n")
 		}
@@ -452,10 +454,10 @@ func WriteReplayHTML(w io.Writer, analysis *ReplayAnalysis, tl RetrospectiveTime
 			out.WriteString("<tr>")
 			out.WriteString(fmt.Sprintf("<td>%s</td>", c.Start.Format("15:04")))
 			out.WriteString(fmt.Sprintf("<td>%s</td>", c.End.Format("15:04")))
-			out.WriteString(fmt.Sprintf("<td>%s</td>", htmlEscape(c.Decision)))
+			out.WriteString(fmt.Sprintf("<td>%s</td>", rendutil.HTMLEscape(c.Decision)))
 			out.WriteString(fmt.Sprintf("<td>%d</td>", c.InputReplicas))
 			out.WriteString(fmt.Sprintf("<td>%d</td>", c.OutputReplicas))
-			out.WriteString(fmt.Sprintf("<td>%s</td>", htmlEscape(c.MetricDriver)))
+			out.WriteString(fmt.Sprintf("<td>%s</td>", rendutil.HTMLEscape(c.MetricDriver)))
 			out.WriteString("</tr>\n")
 		}
 		out.WriteString("</table>\n")
@@ -485,7 +487,7 @@ func WriteReplayHTML(w io.Writer, analysis *ReplayAnalysis, tl RetrospectiveTime
 			}
 			out.WriteString("<tr>")
 			out.WriteString(fmt.Sprintf("<td>%s</td>", te.Timestamp.Format("15:04")))
-			out.WriteString(fmt.Sprintf("<td>%s</td>", htmlEscape(te.MetricName)))
+			out.WriteString(fmt.Sprintf("<td>%s</td>", rendutil.HTMLEscape(te.MetricName)))
 			out.WriteString(fmt.Sprintf("<td>%.2f</td>", te.ActualRatio))
 			out.WriteString(fmt.Sprintf("<td>%.2f</td>", te.Tolerance))
 			out.WriteString(fmt.Sprintf("<td>%s</td>", suppressed))
@@ -495,8 +497,8 @@ func WriteReplayHTML(w io.Writer, analysis *ReplayAnalysis, tl RetrospectiveTime
 	}
 
 	// Summary.
-	out.WriteString(fmt.Sprintf("<h2>Summary</h2>\n<p>%s</p>\n", htmlEscape(analysis.Summary)))
-	out.WriteString(fmt.Sprintf("<p class=\"disclaimer\">%s</p>\n", htmlEscape(tl.Disclaimer)))
+	out.WriteString(fmt.Sprintf("<h2>Summary</h2>\n<p>%s</p>\n", rendutil.HTMLEscape(analysis.Summary)))
+	out.WriteString(fmt.Sprintf("<p class=\"disclaimer\">%s</p>\n", rendutil.HTMLEscape(tl.Disclaimer)))
 	out.WriteString("<footer>Generated by kubectl-hpa-status</footer>\n")
 	out.WriteString("</body>\n</html>\n")
 

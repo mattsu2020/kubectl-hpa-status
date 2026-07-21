@@ -6,6 +6,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/audit"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/retrospective"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
@@ -52,7 +53,7 @@ type fixState struct {
 // replayState holds the replay timeline viewer state.
 type replayState struct {
 	trace          *hpaanalysis.TimelineTrace
-	replayAnalysis *hpaanalysis.ReplayAnalysis
+	replayAnalysis *retrospective.ReplayAnalysis
 	scrollPos      int
 	err            error
 	loading        bool

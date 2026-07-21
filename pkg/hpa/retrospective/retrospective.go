@@ -1,4 +1,10 @@
-package hpa
+// Package retrospective reconstructs a best-effort timeline of past HPA
+// scaling decisions from Kubernetes events, and performs deeper replay
+// analysis (bottlenecks, control cycles, stabilization windows) on that
+// timeline. It depends only on pkg/hpa/internal leaf packages and
+// pkg/hpa/rendutil; the cmd/ and internal/tui layers call it directly
+// (retrospective.BuildTimeline, retrospective.AnalyzeReplay, etc.).
+package retrospective
 
 import (
 	"fmt"
@@ -6,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/clock"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/conditions"
 	eventutil "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/event"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -15,18 +23,18 @@ import (
 // metricReasonRegex extracts metric information from HPA rescale reason strings.
 var metricReasonRegex = regexp.MustCompile(`(?i)reason:\s*(.+)$`)
 
-// BuildRetrospectiveTimeline reconstructs a best-effort timeline of past scaling
+// BuildTimeline reconstructs a best-effort timeline of past scaling
 // decisions from Kubernetes events and the current HPA status. The result is an
 // estimate because the HPA controller's internal decision history is not fully
 // visible through the Kubernetes API.
 //
 // Precondition: events must be sorted in ascending chronological order.
-func BuildRetrospectiveTimeline(events []Event, hpa *autoscalingv2.HorizontalPodAutoscaler, since time.Time) RetrospectiveTimeline {
-	tl := RetrospectiveTimeline{
+func BuildTimeline(events []eventutil.Event, hpa *autoscalingv2.HorizontalPodAutoscaler, since time.Time) Timeline {
+	tl := Timeline{
 		HPAName:   hpa.Name,
 		Namespace: hpa.Namespace,
 		Since:     since,
-		Until:     now(),
+		Until:     clock.Now(),
 		Disclaimer: "Best-effort reconstruction from Kubernetes events and current HPA status. " +
 			"Internal controller calculations, exact metric values at decision time, and " +
 			"suppressed-but-not-logged decisions are not visible. Multi-metric winner is estimated.",
@@ -39,7 +47,7 @@ func BuildRetrospectiveTimeline(events []Event, hpa *autoscalingv2.HorizontalPod
 	}
 
 	prevDesired := hpa.Status.CurrentReplicas
-	var entries []RetrospectiveEntry
+	var entries []Entry
 
 	for _, event := range events {
 		entry := classifyEvent(event, prevDesired, hpa)
@@ -62,15 +70,15 @@ func BuildRetrospectiveTimeline(events []Event, hpa *autoscalingv2.HorizontalPod
 	return tl
 }
 
-// classifyEvent maps a Kubernetes event to a RetrospectiveEntry based on its
+// classifyEvent maps a Kubernetes event to a Entry based on its
 // reason and message content.
-func classifyEvent(event Event, prevDesired int32, hpa *autoscalingv2.HorizontalPodAutoscaler) *RetrospectiveEntry {
+func classifyEvent(event eventutil.Event, prevDesired int32, hpa *autoscalingv2.HorizontalPodAutoscaler) *Entry {
 	switch event.Reason {
 	case "SuccessfulRescale":
 		newSize := parseNewSize(event.Message)
 		if newSize == 0 {
 			// Fallback: cannot parse, emit raw message.
-			return &RetrospectiveEntry{
+			return &Entry{
 				Timestamp:  event.Timestamp,
 				Category:   "rescale",
 				Message:    event.Message,
@@ -86,7 +94,7 @@ func classifyEvent(event Event, prevDesired int32, hpa *autoscalingv2.Horizontal
 			msg = fmt.Sprintf("%s     desired %d -> %d", metricCtx, prevDesired, newSize)
 		}
 
-		return &RetrospectiveEntry{
+		return &Entry{
 			Timestamp:  event.Timestamp,
 			Category:   "rescale",
 			Message:    msg,
@@ -95,7 +103,7 @@ func classifyEvent(event Event, prevDesired int32, hpa *autoscalingv2.Horizontal
 		}
 
 	case "FailedRescale":
-		return &RetrospectiveEntry{
+		return &Entry{
 			Timestamp:  event.Timestamp,
 			Category:   "rescale",
 			Message:    fmt.Sprintf("failed to rescale: %s", truncateMessageRetro(event.Message, 80)),
@@ -104,7 +112,7 @@ func classifyEvent(event Event, prevDesired int32, hpa *autoscalingv2.Horizontal
 		}
 
 	case "FailedGetResourceMetric", "FailedGetExternalMetric", "FailedGetObjectMetric":
-		return &RetrospectiveEntry{
+		return &Entry{
 			Timestamp:  event.Timestamp,
 			Category:   "metrics-unavailable",
 			Message:    fmt.Sprintf("%s  metrics unavailable", event.Reason),
@@ -112,8 +120,8 @@ func classifyEvent(event Event, prevDesired int32, hpa *autoscalingv2.Horizontal
 			Confidence: "high",
 		}
 
-	case ConditionScalingLimited, "TooManyReplicas", "TooFewReplicas":
-		return &RetrospectiveEntry{
+	case conditions.ScalingLimited, "TooManyReplicas", "TooFewReplicas":
+		return &Entry{
 			Timestamp:  event.Timestamp,
 			Category:   "scaling-limited",
 			Message:    fmt.Sprintf("ScalingLimited=True      capped by maxReplicas=%d", hpa.Spec.MaxReplicas),
@@ -122,7 +130,7 @@ func classifyEvent(event Event, prevDesired int32, hpa *autoscalingv2.Horizontal
 		}
 
 	case "ScaleDownStabilized":
-		return &RetrospectiveEntry{
+		return &Entry{
 			Timestamp:  event.Timestamp,
 			Category:   "stabilized",
 			Message:    formatScaleDownStabilizedTimelineMessage(hpa, event.Timestamp),
@@ -133,7 +141,7 @@ func classifyEvent(event Event, prevDesired int32, hpa *autoscalingv2.Horizontal
 	default:
 		// Other event reasons (DesiredReplicasComputed, NewMetricValue, etc.)
 		// are treated as informational metric-change entries.
-		return &RetrospectiveEntry{
+		return &Entry{
 			Timestamp:  event.Timestamp,
 			Category:   "metric-change",
 			Message:    truncateMessageRetro(event.Reason+": "+event.Message, 80),
@@ -213,7 +221,7 @@ func compareInt32(current, target int32) string {
 
 func formatScaleDownStabilizedTimelineMessage(hpa *autoscalingv2.HorizontalPodAutoscaler, ts time.Time) string {
 	remaining := scaleDownStabilizationWindowSeconds(hpa)
-	cond := FindCondition(hpa, ConditionAbleToScale)
+	cond := conditions.Find(hpa, conditions.AbleToScale)
 	if cond != nil && !cond.LastTransitionTime.IsZero() && remaining > 0 {
 		elapsed := ts.Sub(cond.LastTransitionTime.Time)
 		left := time.Duration(remaining)*time.Second - elapsed
@@ -230,7 +238,7 @@ func formatScaleDownStabilizedTimelineMessage(hpa *autoscalingv2.HorizontalPodAu
 // insertSuppressionEntries adds estimated stabilization and policy-limited
 // entries between rescale events when the HPA spec and conditions suggest
 // that scaling was deliberately held back.
-func insertSuppressionEntries(entries []RetrospectiveEntry, hpa *autoscalingv2.HorizontalPodAutoscaler) []RetrospectiveEntry {
+func insertSuppressionEntries(entries []Entry, hpa *autoscalingv2.HorizontalPodAutoscaler) []Entry {
 	if len(entries) == 0 {
 		return entries
 	}
@@ -242,7 +250,7 @@ func insertSuppressionEntries(entries []RetrospectiveEntry, hpa *autoscalingv2.H
 	// Check for scale-up policies that could limit rate.
 	scaleUpPolicy := formatScaleUpPolicySummary(hpa)
 
-	var result []RetrospectiveEntry
+	var result []Entry
 
 	for i, entry := range entries {
 		result = append(result, entry)
@@ -265,7 +273,7 @@ func insertSuppressionEntries(entries []RetrospectiveEntry, hpa *autoscalingv2.H
 			remaining := gap.Seconds()
 			if remaining > float64(stabilizationWindow) {
 				suppressedAt := nextEntry.Timestamp.Add(-time.Duration(stabilizationWindow) * time.Second)
-				result = append(result, RetrospectiveEntry{
+				result = append(result, Entry{
 					Timestamp:  suppressedAt,
 					Category:   "stabilized",
 					Message:    fmt.Sprintf("scaleDown suppressed by stabilization window (%ds)", stabilizationWindow),
@@ -277,7 +285,7 @@ func insertSuppressionEntries(entries []RetrospectiveEntry, hpa *autoscalingv2.H
 
 		// If scale-up policies are limiting and the gap suggests policy delays.
 		if scaleUpPolicy != "" && isScaleUp && gap > 30*time.Second {
-			result = append(result, RetrospectiveEntry{
+			result = append(result, Entry{
 				Timestamp:  entry.Timestamp.Add(gap / 2),
 				Category:   "policy-limited",
 				Message:    fmt.Sprintf("scaleUp limited by policy: %s", scaleUpPolicy),
@@ -305,7 +313,7 @@ func scaleDownStabilizationWindowSeconds(hpa *autoscalingv2.HorizontalPodAutosca
 // hasScaleDownStabilizedCondition checks if the HPA currently has an
 // AbleToScale condition with the ScaleDownStabilized reason.
 func hasScaleDownStabilizedCondition(hpa *autoscalingv2.HorizontalPodAutoscaler) bool {
-	cond := FindCondition(hpa, ConditionAbleToScale)
+	cond := conditions.Find(hpa, conditions.AbleToScale)
 	return cond != nil && cond.Reason == "ScaleDownStabilized"
 }
 

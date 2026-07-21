@@ -1,15 +1,16 @@
-package hpa
+package retrospective
 
 import (
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 )
 
-// ReplayAnalysis holds the result of replay analysis on a RetrospectiveTimeline.
+// ReplayAnalysis holds the result of replay analysis on a Timeline.
 type ReplayAnalysis struct {
 	// Bottlenecks lists detected scaling bottlenecks with timestamps and severity.
 	Bottlenecks []BottleneckMarker
@@ -79,9 +80,9 @@ type ReplayToleranceEffect struct {
 	Suppressed bool
 }
 
-// AnalyzeReplay performs deep analysis on a RetrospectiveTimeline to extract
+// AnalyzeReplay performs deep analysis on a Timeline to extract
 // bottleneck markers, control cycles, stabilization windows, and tolerance effects.
-func AnalyzeReplay(tl RetrospectiveTimeline, hpa *autoscalingv2.HorizontalPodAutoscaler) *ReplayAnalysis {
+func AnalyzeReplay(tl Timeline, hpa *autoscalingv2.HorizontalPodAutoscaler) *ReplayAnalysis {
 	analysis := &ReplayAnalysis{
 		Bottlenecks:            []BottleneckMarker{},
 		ControlCycles:          []ControlCycle{},
@@ -130,7 +131,7 @@ func AnalyzeReplay(tl RetrospectiveTimeline, hpa *autoscalingv2.HorizontalPodAut
 
 // analyzeRescaleEntry extracts a control cycle from a rescale entry, detects maxReplicas capping,
 // and records any stabilization-suppressed scale-down. Returns updated rescale-tracking state.
-func analyzeRescaleEntry(analysis *ReplayAnalysis, tl RetrospectiveTimeline, hpa *autoscalingv2.HorizontalPodAutoscaler, i int, entry RetrospectiveEntry, lastRescaleTime time.Time, _ int32) (time.Time, int32) {
+func analyzeRescaleEntry(analysis *ReplayAnalysis, tl Timeline, hpa *autoscalingv2.HorizontalPodAutoscaler, i int, entry Entry, lastRescaleTime time.Time, _ int32) (time.Time, int32) {
 	from, to := extractRescaleReplicas(entry.Message)
 	decision, metricDriver := classifyRescaleDecision(entry.Message, from, to)
 	cycle := buildRescaleControlCycle(entry, tl, lastRescaleTime, from, to, decision, metricDriver)
@@ -197,7 +198,7 @@ func classifyRescaleDecision(message string, from, to int32) (decision, metricDr
 }
 
 // buildRescaleControlCycle assembles a ControlCycle, deriving its start from the previous rescale (or timeline start).
-func buildRescaleControlCycle(entry RetrospectiveEntry, tl RetrospectiveTimeline, lastRescaleTime time.Time, from, to int32, decision, metricDriver string) ControlCycle {
+func buildRescaleControlCycle(entry Entry, tl Timeline, lastRescaleTime time.Time, from, to int32, decision, metricDriver string) ControlCycle {
 	cycleStart := lastRescaleTime
 	if lastRescaleTime.IsZero() {
 		cycleStart = tl.Since
@@ -214,7 +215,7 @@ func buildRescaleControlCycle(entry RetrospectiveEntry, tl RetrospectiveTimeline
 
 // recordStabilizationSuppressedScaleDown records a stabilization window when a scale-down is delayed beyond 60s
 // and the HPA has a non-zero scale-down stabilization window configured.
-func recordStabilizationSuppressedScaleDown(analysis *ReplayAnalysis, tl RetrospectiveTimeline, hpa *autoscalingv2.HorizontalPodAutoscaler, i int, entry RetrospectiveEntry, decision string, lastRescaleTo, to int32) {
+func recordStabilizationSuppressedScaleDown(analysis *ReplayAnalysis, tl Timeline, hpa *autoscalingv2.HorizontalPodAutoscaler, i int, entry Entry, decision string, lastRescaleTo, to int32) {
 	if i == 0 {
 		return
 	}
@@ -240,7 +241,7 @@ func recordStabilizationSuppressedScaleDown(analysis *ReplayAnalysis, tl Retrosp
 }
 
 // bottleneckUntilNext builds a bottleneck marker whose duration spans from the current entry to the next entry (or zero if last).
-func bottleneckUntilNext(tl RetrospectiveTimeline, i int, entry RetrospectiveEntry, bType, message, severity string) BottleneckMarker {
+func bottleneckUntilNext(tl Timeline, i int, entry Entry, bType, message, severity string) BottleneckMarker {
 	duration := time.Duration(0)
 	if i+1 < len(tl.Entries) {
 		duration = tl.Entries[i+1].Timestamp.Sub(entry.Timestamp)
@@ -256,7 +257,7 @@ func bottleneckUntilNext(tl RetrospectiveTimeline, i int, entry RetrospectiveEnt
 
 // analyzeStabilizedEntry tracks stabilization windows across consecutive stabilized entries,
 // closing the window when the next entry is not stabilized. Returns updated stabilization state.
-func analyzeStabilizedEntry(analysis *ReplayAnalysis, tl RetrospectiveTimeline, i int, entry RetrospectiveEntry, stabilizationStart time.Time, stabilizedReplicas int32, lastRescaleTo int32) (time.Time, int32, int32) {
+func analyzeStabilizedEntry(analysis *ReplayAnalysis, tl Timeline, i int, entry Entry, stabilizationStart time.Time, stabilizedReplicas int32, lastRescaleTo int32) (time.Time, int32, int32) {
 	// Track stabilization window.
 	if stabilizationStart.IsZero() {
 		stabilizationStart = entry.Timestamp
@@ -281,7 +282,7 @@ func analyzeStabilizedEntry(analysis *ReplayAnalysis, tl RetrospectiveTimeline, 
 }
 
 // analyzeMetricChangeEntry detects CPU tolerance effects from a metric-change entry.
-func analyzeMetricChangeEntry(analysis *ReplayAnalysis, hpa *autoscalingv2.HorizontalPodAutoscaler, entry RetrospectiveEntry) {
+func analyzeMetricChangeEntry(analysis *ReplayAnalysis, hpa *autoscalingv2.HorizontalPodAutoscaler, entry Entry) {
 	// Detect tolerance effects from metric changes.
 	if !strings.Contains(entry.Message, "cpu") && !strings.Contains(entry.Message, "CPU") {
 		return
@@ -306,7 +307,7 @@ func isCPUResourceMetric(metric autoscalingv2.MetricStatus) bool {
 }
 
 // buildCPUToleranceEffect constructs a ReplayToleranceEffect for a CPU resource metric, returning ok=false when inputs are missing.
-func buildCPUToleranceEffect(entry RetrospectiveEntry, hpa *autoscalingv2.HorizontalPodAutoscaler, metric autoscalingv2.MetricStatus) (ReplayToleranceEffect, bool) {
+func buildCPUToleranceEffect(entry Entry, hpa *autoscalingv2.HorizontalPodAutoscaler, metric autoscalingv2.MetricStatus) (ReplayToleranceEffect, bool) {
 	ratio := float64(*metric.Resource.Current.AverageUtilization) / 100.0
 	target := resourceMetricTargetUtilization(hpa, metric.Resource.Name)
 	targetRatio := 0.5 // Default 50% target
@@ -314,8 +315,8 @@ func buildCPUToleranceEffect(entry RetrospectiveEntry, hpa *autoscalingv2.Horizo
 		targetRatio = float64(*target) / 100.0
 	}
 	metricRatio := ratio / targetRatio
-	tolerance, _ := directionalTolerance(hpa, metricRatio)
-	withinTolerance, _ := ratioWithinTolerance(hpa, metricRatio)
+	tolerance, _ := util.DirectionalTolerance(hpa, metricRatio)
+	withinTolerance, _ := util.RatioWithinTolerance(hpa, metricRatio)
 	return ReplayToleranceEffect{
 		Timestamp:   entry.Timestamp,
 		MetricName:  "cpu",

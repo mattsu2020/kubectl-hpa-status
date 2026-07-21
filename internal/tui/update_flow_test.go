@@ -10,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/audit"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/retrospective"
 )
 
 // pressTUIKey feeds a single key press through Update and returns the new model.
@@ -661,9 +662,9 @@ func TestView_ReplayView(t *testing.T) {
 				{Timestamp: now.Add(2 * time.Minute), Current: 5, Desired: 5, Health: "OK", Summary: "done"},
 			},
 		},
-		replayAnalysis: &hpaanalysis.ReplayAnalysis{
+		replayAnalysis: &retrospective.ReplayAnalysis{
 			Summary: "one scale-up detected",
-			Bottlenecks: []hpaanalysis.BottleneckMarker{
+			Bottlenecks: []retrospective.BottleneckMarker{
 				{Timestamp: now.Add(time.Minute), Type: "scheduling", Message: "pods pending", Severity: "high"},
 			},
 		},

@@ -1,4 +1,4 @@
-package hpa
+package retrospective
 
 import (
 	"strings"
@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
+	eventutil "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/event"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
@@ -14,13 +15,13 @@ import (
 func TestBuildRetrospectiveTimeline_BasicScaleUp(t *testing.T) {
 	now := time.Now()
 	hpa := buildRetrospectiveTestHPA("default", "web")
-	events := []Event{
+	events := []eventutil.Event{
 		{Reason: "SuccessfulRescale", Message: "New size: 5; reason: cpu resource utilization (percentage of request) above target", Timestamp: now.Add(-20 * time.Minute)},
 		{Reason: "SuccessfulRescale", Message: "New size: 7", Timestamp: now.Add(-10 * time.Minute)},
 	}
 
 	since := now.Add(-30 * time.Minute)
-	tl := BuildRetrospectiveTimeline(events, hpa, since)
+	tl := BuildTimeline(events, hpa, since)
 
 	if tl.HPAName != "web" {
 		t.Errorf("expected HPAName=web, got %q", tl.HPAName)
@@ -80,13 +81,13 @@ func TestBuildRetrospectiveTimeline_DecisionTimelineMessages(t *testing.T) {
 		},
 	}
 
-	events := []Event{
+	events := []eventutil.Event{
 		{Reason: "SuccessfulRescale", Message: "New size: 5; reason: cpu resource utilization above target", Timestamp: now.Add(-20 * time.Minute)},
 		{Reason: "ScalingLimited", Message: "desired replica count larger than max replica count", Timestamp: now.Add(-19 * time.Minute)},
 		{Reason: "FailedGetResourceMetric", Message: "missing request for cpu", Timestamp: now.Add(-10 * time.Minute)},
 	}
 
-	tl := BuildRetrospectiveTimeline(events, hpa, now.Add(-30*time.Minute))
+	tl := BuildTimeline(events, hpa, now.Add(-30*time.Minute))
 	if len(tl.Entries) != 3 {
 		t.Fatalf("expected 3 entries, got %#v", tl.Entries)
 	}
@@ -107,11 +108,11 @@ func TestBuildRetrospectiveTimeline_DecisionTimelineMessages(t *testing.T) {
 func TestBuildRetrospectiveTimeline_FailedRescale(t *testing.T) {
 	now := time.Now()
 	hpa := buildRetrospectiveTestHPA("default", "web")
-	events := []Event{
+	events := []eventutil.Event{
 		{Reason: "FailedRescale", Message: "missing request for cpu", Timestamp: now.Add(-5 * time.Minute)},
 	}
 
-	tl := BuildRetrospectiveTimeline(events, hpa, now.Add(-10*time.Minute))
+	tl := BuildTimeline(events, hpa, now.Add(-10*time.Minute))
 
 	if len(tl.Entries) != 1 {
 		t.Fatalf("expected 1 entry, got %d", len(tl.Entries))
@@ -127,11 +128,11 @@ func TestBuildRetrospectiveTimeline_FailedRescale(t *testing.T) {
 func TestBuildRetrospectiveTimeline_OtherEventReasons(t *testing.T) {
 	now := time.Now()
 	hpa := buildRetrospectiveTestHPA("default", "web")
-	events := []Event{
+	events := []eventutil.Event{
 		{Reason: "DesiredReplicasComputed", Message: "calculated 5", Timestamp: now.Add(-5 * time.Minute)},
 	}
 
-	tl := BuildRetrospectiveTimeline(events, hpa, now.Add(-10*time.Minute))
+	tl := BuildTimeline(events, hpa, now.Add(-10*time.Minute))
 
 	if len(tl.Entries) != 1 {
 		t.Fatalf("expected 1 entry, got %d", len(tl.Entries))
@@ -148,7 +149,7 @@ func TestBuildRetrospectiveTimeline_EmptyEvents(t *testing.T) {
 	now := time.Now()
 	hpa := buildRetrospectiveTestHPA("default", "web")
 
-	tl := BuildRetrospectiveTimeline(nil, hpa, now.Add(-30*time.Minute))
+	tl := BuildTimeline(nil, hpa, now.Add(-30*time.Minute))
 
 	if len(tl.Entries) != 0 {
 		t.Errorf("expected 0 entries, got %d", len(tl.Entries))
@@ -177,11 +178,11 @@ func TestBuildRetrospectiveTimeline_MetricContext(t *testing.T) {
 		},
 	}
 
-	events := []Event{
+	events := []eventutil.Event{
 		{Reason: "SuccessfulRescale", Message: "New size: 5; reason: cpu resource utilization (percentage of request) above target", Timestamp: now.Add(-5 * time.Minute)},
 	}
 
-	tl := BuildRetrospectiveTimeline(events, hpa, now.Add(-10*time.Minute))
+	tl := BuildTimeline(events, hpa, now.Add(-10*time.Minute))
 
 	if len(tl.Entries) < 1 {
 		t.Fatalf("expected at least 1 entry, got %d", len(tl.Entries))
@@ -206,12 +207,12 @@ func TestBuildRetrospectiveTimeline_Stabilization(t *testing.T) {
 		Reason: "ScaleDownStabilized",
 	})
 
-	events := []Event{
+	events := []eventutil.Event{
 		{Reason: "SuccessfulRescale", Message: "New size: 5", Timestamp: now.Add(-20 * time.Minute)},
 		{Reason: "SuccessfulRescale", Message: "New size: 3", Timestamp: now.Add(-5 * time.Minute)},
 	}
 
-	tl := BuildRetrospectiveTimeline(events, hpa, now.Add(-30*time.Minute))
+	tl := BuildTimeline(events, hpa, now.Add(-30*time.Minute))
 
 	// Should have at least the 2 rescale entries plus a possible stabilization entry.
 	foundStabilized := false
@@ -231,11 +232,11 @@ func TestBuildRetrospectiveTimeline_Stabilization(t *testing.T) {
 func TestBuildRetrospectiveTimeline_Disclaimer(t *testing.T) {
 	now := time.Now()
 	hpa := buildRetrospectiveTestHPA("default", "web")
-	events := []Event{
+	events := []eventutil.Event{
 		{Reason: "SuccessfulRescale", Message: "New size: 5", Timestamp: now.Add(-5 * time.Minute)},
 	}
 
-	tl := BuildRetrospectiveTimeline(events, hpa, now.Add(-30*time.Minute))
+	tl := BuildTimeline(events, hpa, now.Add(-30*time.Minute))
 
 	if tl.Disclaimer == "" {
 		t.Error("expected disclaimer to be set")
@@ -267,12 +268,12 @@ func TestParseNewSize(t *testing.T) {
 
 func TestWriteRetrospectiveTimeline_OutputFormat(t *testing.T) {
 	now := time.Now()
-	tl := RetrospectiveTimeline{
+	tl := Timeline{
 		HPAName:   "web",
 		Namespace: "production",
 		Since:     now.Add(-30 * time.Minute),
 		Until:     now,
-		Entries: []RetrospectiveEntry{
+		Entries: []Entry{
 			{Timestamp: now.Add(-20 * time.Minute), Category: "rescale", Message: "desired 3 -> 5   cpu 142%", Source: "event", Confidence: "high"},
 			{Timestamp: now.Add(-10 * time.Minute), Category: "stabilized", Message: "scaleDown suppressed by stabilization window (120s)", Source: "estimated", Confidence: "medium"},
 		},
@@ -280,9 +281,9 @@ func TestWriteRetrospectiveTimeline_OutputFormat(t *testing.T) {
 	}
 
 	var buf strings.Builder
-	err := WriteRetrospectiveTimeline(&buf, tl, style.NewTheme(false))
+	err := WriteTimeline(&buf, tl, style.NewTheme(false))
 	if err != nil {
-		t.Fatalf("WriteRetrospectiveTimeline returned error: %v", err)
+		t.Fatalf("WriteTimeline returned error: %v", err)
 	}
 
 	output := buf.String()
@@ -303,21 +304,21 @@ func TestWriteRetrospectiveTimeline_OutputFormat(t *testing.T) {
 
 func TestWriteRetrospectiveTimeline_Markdown(t *testing.T) {
 	now := time.Now()
-	tl := RetrospectiveTimeline{
+	tl := Timeline{
 		HPAName:   "web",
 		Namespace: "default",
 		Since:     now.Add(-30 * time.Minute),
 		Until:     now,
-		Entries: []RetrospectiveEntry{
+		Entries: []Entry{
 			{Timestamp: now.Add(-5 * time.Minute), Category: "rescale", Message: "desired 3 -> 5", Source: "event", Confidence: "high"},
 		},
 		Disclaimer: "Best-effort reconstruction.",
 	}
 
 	var buf strings.Builder
-	err := WriteRetrospectiveMarkdown(&buf, tl)
+	err := WriteMarkdown(&buf, tl)
 	if err != nil {
-		t.Fatalf("WriteRetrospectiveMarkdown returned error: %v", err)
+		t.Fatalf("WriteMarkdown returned error: %v", err)
 	}
 
 	output := buf.String()
@@ -331,21 +332,21 @@ func TestWriteRetrospectiveTimeline_Markdown(t *testing.T) {
 
 func TestWriteRetrospectiveTimeline_HTML(t *testing.T) {
 	now := time.Now()
-	tl := RetrospectiveTimeline{
+	tl := Timeline{
 		HPAName:   "web",
 		Namespace: "default",
 		Since:     now.Add(-30 * time.Minute),
 		Until:     now,
-		Entries: []RetrospectiveEntry{
+		Entries: []Entry{
 			{Timestamp: now.Add(-5 * time.Minute), Category: "rescale", Message: "desired 3 -> 5", Source: "event", Confidence: "high"},
 		},
 		Disclaimer: "Best-effort reconstruction.",
 	}
 
 	var buf strings.Builder
-	err := WriteRetrospectiveHTML(&buf, tl)
+	err := WriteHTML(&buf, tl)
 	if err != nil {
-		t.Fatalf("WriteRetrospectiveHTML returned error: %v", err)
+		t.Fatalf("WriteHTML returned error: %v", err)
 	}
 
 	output := buf.String()
