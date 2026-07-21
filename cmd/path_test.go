@@ -77,8 +77,10 @@ func TestRunPathShowsSchedulerBlocker(t *testing.T) {
 	client := testutil.NewFakeClientWithObjects(hpa, deploy, rs, pod, event)
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: client,
-			Namespace:      "default",
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: client,
+				Namespace:      "default",
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},

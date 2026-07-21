@@ -118,7 +118,11 @@ func TestExplainEnablesEventsUnlessExplicitlyConfigured(t *testing.T) {
 
 func TestValidateListApplyAcceptsExplicitHealthScoreZero(t *testing.T) {
 	opts := &options{
-		Common: commonOptions{Apply: true},
+		Common: commonOptions{
+			ApplyOptions: ApplyOptions{
+				Apply: true,
+			},
+		},
 		List: listOptions{
 			HealthScoreMin:           -1,
 			HealthScoreMax:           0,

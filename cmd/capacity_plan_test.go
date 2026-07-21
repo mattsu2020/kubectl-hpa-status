@@ -33,8 +33,12 @@ func TestRunCapacityPlan_JSONOutput(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
-			Output:         "json",
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
+			OutputOptions: OutputOptions{
+				Output: "json",
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -79,9 +83,13 @@ func TestRunCapacityPlan_TextOutput(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
-			Output:         "",
-			Color:          "never",
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
+			OutputOptions: OutputOptions{
+				Output: "",
+				Color:  "never",
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -119,8 +127,12 @@ func TestRunCapacityPlan_TargetMaxOverride(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
-			Output:         "json",
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
+			OutputOptions: OutputOptions{
+				Output: "json",
+			},
 		},
 		Status: statusOptions{
 			Events:    EventOption{Enabled: false},
@@ -172,8 +184,12 @@ func TestCapacityPlanFlagOnStatus(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
-			Output:         "json",
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
+			OutputOptions: OutputOptions{
+				Output: "json",
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},

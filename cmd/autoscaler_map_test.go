@@ -32,7 +32,14 @@ func TestRunAutoscalerMap_JSONShape(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: commonOptions{ClientOverride: fakeClient, Output: "json"},
+		Common: commonOptions{
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
+			OutputOptions: OutputOptions{
+				Output: "json",
+			},
+		},
 	}
 	err := runAutoscalerMap(context.Background(), &buf, opts, []string{"web"})
 	if err != nil {
@@ -54,7 +61,14 @@ func TestRunAutoscalerMap_MissingHPAPropagatesLookupError(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: commonOptions{ClientOverride: fakeClient, Output: "json"},
+		Common: commonOptions{
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
+			OutputOptions: OutputOptions{
+				Output: "json",
+			},
+		},
 	}
 	err := runAutoscalerMap(context.Background(), &buf, opts, []string{"nonexistent"})
 	if err == nil {

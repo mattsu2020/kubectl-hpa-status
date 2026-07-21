@@ -78,7 +78,9 @@ func TestRunStatus_ExplainPods(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -109,8 +111,12 @@ func TestRunStatus_ExplainPods_JSON(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
-			Output:         "json",
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
+			OutputOptions: OutputOptions{
+				Output: "json",
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -148,8 +154,12 @@ func TestRunStatus_Simulate(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
-			Output:         "json",
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
+			OutputOptions: OutputOptions{
+				Output: "json",
+			},
 		},
 		Status: statusOptions{
 			Events:   EventOption{Enabled: false},
@@ -192,7 +202,9 @@ func TestRunStatus_SimulateText(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 		Status: statusOptions{
 			Events:   EventOption{Enabled: false},
@@ -224,8 +236,12 @@ func TestRunStatus_CapacityContext(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
-			Output:         "json",
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
+			OutputOptions: OutputOptions{
+				Output: "json",
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},

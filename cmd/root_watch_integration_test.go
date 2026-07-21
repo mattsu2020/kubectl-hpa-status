@@ -17,7 +17,9 @@ func TestRunWatch_TimeoutExpires(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -51,7 +53,9 @@ func TestRunWatch_UntilCondition(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},

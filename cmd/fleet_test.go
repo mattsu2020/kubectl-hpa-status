@@ -141,7 +141,11 @@ func TestRunFleet_UnsupportedRiskRejected(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: commonOptions{ClientOverride: fakeClient},
+		Common: commonOptions{
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
+		},
 	}
 	err := runFleet(context.Background(), &buf, opts, "bogus-risk")
 	if err == nil {
@@ -161,7 +165,11 @@ func TestRunFleet_DefaultRiskIsMaxSurge(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{
-		Common: commonOptions{ClientOverride: fakeClient},
+		Common: commonOptions{
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
+		},
 	}
 	err := runFleet(context.Background(), &buf, opts, "")
 	if err != nil {
@@ -176,7 +184,11 @@ func TestRunFleet_ListErrorPropagates(t *testing.T) {
 	fakeClient.PrependReactor("list", "horizontalpodautoscalers", func(k8stesting.Action) (bool, runtime.Object, error) {
 		return true, nil, errors.New("injected list failure")
 	})
-	opts := &options{Common: commonOptions{ClientOverride: fakeClient}}
+	opts := &options{Common: commonOptions{
+		ConnectionOptions: ConnectionOptions{
+			ClientOverride: fakeClient,
+		},
+	}}
 	var buf bytes.Buffer
 	err := runFleet(context.Background(), &buf, opts, "max-surge")
 	if err == nil {

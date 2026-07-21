@@ -19,13 +19,20 @@ type Root struct {
 func DefaultRoot() Root {
 	return Root{
 		Common: Common{
-			Color:     "auto",
-			ChunkSize: 500,
-			DryRun:    true,
-			// RequestTimeout bounds each Kubernetes API request so an
-			// unresponsive API server fails the command instead of hanging
-			// it indefinitely. Users can pass --request-timeout=0 to disable.
-			RequestTimeout: 30 * time.Second,
+			ConnectionOptions: ConnectionOptions{
+				ChunkSize: 500,
+				// RequestTimeout bounds each Kubernetes API request so an
+				// unresponsive API server fails the command instead of
+				// hanging it indefinitely. Users can pass
+				// --request-timeout=0 to disable.
+				RequestTimeout: 30 * time.Second,
+			},
+			OutputOptions: OutputOptions{
+				Color: "auto",
+			},
+			ApplyOptions: ApplyOptions{
+				DryRun: true,
+			},
 		},
 		Status: Status{
 			// Plain status is deliberately HPA-only. Deeper presets and explicit

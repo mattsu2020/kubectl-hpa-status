@@ -68,7 +68,9 @@ func TestRunReplay_FromFile(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			Color: "never",
+			OutputOptions: OutputOptions{
+				Color: "never",
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -126,8 +128,10 @@ func TestRunReplay_Markdown(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			Output: "markdown",
-			Color:  "never",
+			OutputOptions: OutputOptions{
+				Output: "markdown",
+				Color:  "never",
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -149,7 +153,9 @@ func TestRunReplay_FileNotFound(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			Color: "never",
+			OutputOptions: OutputOptions{
+				Color: "never",
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -208,8 +214,12 @@ func TestRunReplayLab_FromRecordWithCandidate(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			Namespace: "prod",
-			Color:     "never",
+			ConnectionOptions: ConnectionOptions{
+				Namespace: "prod",
+			},
+			OutputOptions: OutputOptions{
+				Color: "never",
+			},
 		},
 	}
 	if err := runReplayLab(&buf, opts, "web", recordFile.Name(), candidateFile.Name(), nil); err != nil {
@@ -254,8 +264,12 @@ func TestRunReplayLab_FromRecordWithSetOverrides(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			Namespace: "prod",
-			Color:     "never",
+			ConnectionOptions: ConnectionOptions{
+				Namespace: "prod",
+			},
+			OutputOptions: OutputOptions{
+				Color: "never",
+			},
 		},
 	}
 	overrides := map[string]string{
@@ -418,7 +432,9 @@ func TestRunWhyNotScaleShowsObservedBlockersAndUnknowns(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 	}
 	if err := runWhyNotScale(context.Background(), &buf, opts, []string{"web"}); err != nil {
@@ -449,8 +465,12 @@ func TestRunWhyNotScaleJSON(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
-			Output:         "json",
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
+			OutputOptions: OutputOptions{
+				Output: "json",
+			},
 		},
 	}
 	if err := runWhyNotScale(context.Background(), &buf, opts, []string{"api"}); err != nil {
@@ -504,7 +524,9 @@ func TestAdvisorContainerResourceCommand(t *testing.T) {
 	var buf bytes.Buffer
 	runOpts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 	}
 	if err := runContainerAdvisor(context.Background(), &buf, runOpts, []string{"web"}); err != nil && !isExitCodeWarning(err) {
@@ -555,7 +577,9 @@ func TestOwnershipCommandDetectsReplicaFieldOwner(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 	}
 
@@ -579,7 +603,9 @@ func TestRunProfileDetectShowsAssumptions(t *testing.T) {
 	fakeClient := testutil.NewFakeClient()
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 	}
 
@@ -616,8 +642,12 @@ func TestRunTimeline_Retrospective(t *testing.T) {
 	var buf bytes.Buffer
 	err := runRetrospectiveTimeline(context.Background(), &buf, &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
-			Color:          "never",
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
+			OutputOptions: OutputOptions{
+				Color: "never",
+			},
 		},
 	}, "web", 30*time.Minute, false)
 	if err != nil {
@@ -651,8 +681,12 @@ func TestRunTimeline_Retrospective_JSON(t *testing.T) {
 	var buf bytes.Buffer
 	err := runRetrospectiveTimeline(context.Background(), &buf, &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
-			Output:         "json",
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
+			OutputOptions: OutputOptions{
+				Output: "json",
+			},
 		},
 	}, "web", 30*time.Minute, false)
 	if err != nil {
@@ -675,8 +709,12 @@ func TestRunTimeline_Retrospective_NoEvents(t *testing.T) {
 	var buf bytes.Buffer
 	err := runRetrospectiveTimeline(context.Background(), &buf, &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
-			Color:          "never",
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
+			OutputOptions: OutputOptions{
+				Color: "never",
+			},
 		},
 	}, "web", 30*time.Minute, false)
 	if err != nil {

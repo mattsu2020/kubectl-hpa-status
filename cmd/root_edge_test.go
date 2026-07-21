@@ -25,7 +25,9 @@ func TestRunStatus_ScalingInactiveWithExternalMetric(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "keda-worker", true)
@@ -54,7 +56,9 @@ func TestRunStatus_ImplicitMaxReplicas(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "capped", true)
@@ -79,7 +83,9 @@ func TestRunStatus_ScaleDownStabilized(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "stable", true)
@@ -107,7 +113,9 @@ func TestRunStatus_ExternalMetricPresent(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "queue-worker", true)
@@ -132,7 +140,9 @@ func TestRunStatus_KEDADetectionWithoutKEDAFlag(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "keda-hpa-worker", true)
@@ -158,8 +168,12 @@ func TestRunStatus_DebugMode(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
-			Debug:          true,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
+			OutputOptions: OutputOptions{
+				Debug: true,
+			},
 		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "web", true)
@@ -192,7 +206,9 @@ func TestRunList_MinScore(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 	}
 	err := runList(context.Background(), &buf, opts)
@@ -228,7 +244,9 @@ func TestRunList_MinScoreFiltersLow(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 		List: listOptions{
 			HealthScoreMin: 90,
@@ -258,7 +276,9 @@ func TestRunStatus_BehaviorWithStabilizationWindow(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 	}
 	err := runStatus(context.Background(), &buf, opts, "slow", true)
