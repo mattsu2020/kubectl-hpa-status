@@ -8,6 +8,7 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/audit"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/autoscalermap"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/churn"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/containeradvisor"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/gitops"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/lint"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
@@ -85,7 +86,7 @@ func TestRenderSmokeWriters(t *testing.T) {
 		{"GitOpsConflictText", func(w *bytes.Buffer) error { return gitops.WriteConflictText(w, &gitops.Conflict{}) }},
 		{"GitOpsConflictMarkdown", func(w *bytes.Buffer) error { return gitops.WriteConflictMarkdown(w, &gitops.Conflict{}) }},
 		{"GitOpsConflictHTML", func(w *bytes.Buffer) error { return gitops.WriteConflictHTML(w, &gitops.Conflict{}) }},
-		{"ContainerAdvisor", func(w *bytes.Buffer) error { return WriteContainerAdvisorText(w, &ContainerAdvisorResult{}, nil) }},
+		{"ContainerAdvisor", func(w *bytes.Buffer) error { return WriteContainerAdvisorText(w, &containeradvisor.Result{}, nil) }},
 		{"AssumptionsText", func(w *bytes.Buffer) error { return WriteAssumptionsText(w, &ControllerAssumptions{}, theme) }},
 		{"AssumptionsMarkdown", func(w *bytes.Buffer) error { return WriteAssumptionsMarkdown(w, &ControllerAssumptions{}) }},
 		{"AssumptionsExplain", func(w *bytes.Buffer) error {

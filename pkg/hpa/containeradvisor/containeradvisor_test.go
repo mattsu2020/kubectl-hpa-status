@@ -1,12 +1,15 @@
-package hpa
+package containeradvisor
 
 import (
 	"testing"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/confidence"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
+
+func int32Ptr(v int32) *int32 { return &v }
 
 func TestAnalyzeContainerAdvisor_SingleContainer(t *testing.T) {
 	hpa := &autoscalingv2.HorizontalPodAutoscaler{
@@ -26,13 +29,13 @@ func TestAnalyzeContainerAdvisor_SingleContainer(t *testing.T) {
 		},
 	}
 
-	input := ContainerAdvisorInput{
+	input := Input{
 		ContainerCount:     1,
 		ContainerNames:     []string{"app"},
 		UsesResourceMetric: true,
 	}
 
-	result := AnalyzeContainerAdvisor(hpa, input)
+	result := Analyze(hpa, input)
 	if result != nil {
 		t.Error("expected nil for single container pod")
 	}
@@ -56,17 +59,17 @@ func TestAnalyzeContainerAdvisor_MultiContainer_ResourceMetric(t *testing.T) {
 		},
 	}
 
-	input := ContainerAdvisorInput{
+	input := Input{
 		ContainerCount:     3,
 		ContainerNames:     []string{"app", "sidecar", "init"},
 		UsesResourceMetric: true,
 	}
 
-	result := AnalyzeContainerAdvisor(hpa, input)
+	result := Analyze(hpa, input)
 	if result == nil {
 		t.Fatal("expected non-nil result for multi-container pod with Resource metric")
 	}
-	if result.Confidence != ConfidenceMedium {
+	if result.Confidence != confidence.Medium {
 		t.Errorf("expected medium confidence, got %s", result.Confidence)
 	}
 	if result.Finding == "" {
@@ -96,14 +99,14 @@ func TestAnalyzeContainerAdvisor_AlreadyUsingContainerResource(t *testing.T) {
 		},
 	}
 
-	input := ContainerAdvisorInput{
+	input := Input{
 		ContainerCount:              3,
 		ContainerNames:              []string{"app", "sidecar", "init"},
 		UsesResourceMetric:          false,
 		UsesContainerResourceMetric: true,
 	}
 
-	result := AnalyzeContainerAdvisor(hpa, input)
+	result := Analyze(hpa, input)
 	if result != nil {
 		t.Error("expected nil when already using ContainerResource")
 	}
@@ -129,13 +132,13 @@ func TestAnalyzeContainerAdvisor_NoResourceMetric(t *testing.T) {
 		},
 	}
 
-	input := ContainerAdvisorInput{
+	input := Input{
 		ContainerCount:     3,
 		ContainerNames:     []string{"app", "sidecar", "init"},
 		UsesResourceMetric: false,
 	}
 
-	result := AnalyzeContainerAdvisor(hpa, input)
+	result := Analyze(hpa, input)
 	if result != nil {
 		t.Error("expected nil when no Resource metric is used")
 	}
@@ -159,13 +162,13 @@ func TestAnalyzeContainerAdvisor_PrefersAppContainer(t *testing.T) {
 		},
 	}
 
-	input := ContainerAdvisorInput{
+	input := Input{
 		ContainerCount:     3,
 		ContainerNames:     []string{"sidecar", "app", "init"},
 		UsesResourceMetric: true,
 	}
 
-	result := AnalyzeContainerAdvisor(hpa, input)
+	result := Analyze(hpa, input)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -192,23 +195,23 @@ func TestAnalyzeContainerAdvisorWithMetrics(t *testing.T) {
 		},
 	}
 
-	input := ContainerAdvisorInput{
+	input := Input{
 		ContainerCount:     3,
 		ContainerNames:     []string{"app", "sidecar", "init"},
 		UsesResourceMetric: true,
 	}
 
-	metrics := []ContainerUsageHint{
+	metrics := []UsageHint{
 		{Container: "app", CPUPercent: 80, MemoryPercent: 60},
 		{Container: "sidecar", CPUPercent: 15, MemoryPercent: 20},
 		{Container: "init", CPUPercent: 5, MemoryPercent: 10},
 	}
 
-	result := AnalyzeContainerAdvisorWithMetrics(hpa, input, metrics)
+	result := AnalyzeWithMetrics(hpa, input, metrics)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
-	if result.Confidence != ConfidenceHigh {
+	if result.Confidence != confidence.High {
 		t.Errorf("expected high confidence with metrics, got %s", result.Confidence)
 	}
 	if len(result.ContainerUsageHints) != 3 {

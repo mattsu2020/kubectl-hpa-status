@@ -3,10 +3,12 @@ package hpa
 import (
 	"fmt"
 	"io"
+
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/containeradvisor"
 )
 
-// WriteContainerAdvisorText renders a ContainerAdvisorResult as human-readable text.
-func WriteContainerAdvisorText(w io.Writer, result *ContainerAdvisorResult, provider LabelProvider) error {
+// WriteContainerAdvisorText renders a containeradvisor.Result as human-readable text.
+func WriteContainerAdvisorText(w io.Writer, result *containeradvisor.Result, provider LabelProvider) error {
 	if result == nil {
 		return nil
 	}
@@ -74,7 +76,7 @@ func writeSuggestedMetricLines(w io.Writer, suggestedMetric string) error {
 
 // writeContainerUsageHints writes the container usage section header and each
 // hint line.
-func writeContainerUsageHints(w io.Writer, hints []ContainerUsageHint) error {
+func writeContainerUsageHints(w io.Writer, hints []containeradvisor.UsageHint) error {
 	if _, err := fmt.Fprintf(w, "\n  Container usage:\n"); err != nil {
 		return err
 	}
@@ -104,7 +106,7 @@ func percentOrUnknown(value int) string {
 
 // AppendContainerAdvisorText appends the container advisor section to a byte buffer
 // (used by the main status text renderer).
-func AppendContainerAdvisorText(out *[]byte, result *ContainerAdvisorResult, labels labels) {
+func AppendContainerAdvisorText(out *[]byte, result *containeradvisor.Result, labels labels) {
 	if result == nil {
 		return
 	}

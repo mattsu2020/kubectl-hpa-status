@@ -6,6 +6,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/containeradvisor"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/gitops"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/suggestion"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
@@ -281,7 +282,7 @@ type Analysis struct {
 	// ContainerAdvisor holds the ContainerResource advisor result, suggesting
 	// ContainerResource metrics for multi-container workloads.
 	// Populated when --container-advisor is enabled.
-	ContainerAdvisor *ContainerAdvisorResult `json:"containerAdvisor,omitempty" yaml:"containerAdvisor,omitempty"`
+	ContainerAdvisor *containeradvisor.Result `json:"containerAdvisor,omitempty" yaml:"containerAdvisor,omitempty"`
 	// BehaviorAdvisor holds the behavior tuning advisor result, analyzing
 	// scaleUp/scaleDown policies, stabilization windows, and tolerance.
 	// Populated when --behavior-advisor is enabled.

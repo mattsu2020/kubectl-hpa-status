@@ -2,6 +2,7 @@ package hpa
 
 import (
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/containeradvisor"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/gitops"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/warmup"
@@ -246,7 +247,7 @@ func (a *Analysis) Stability() StabilityView {
 type AdvisoryView struct {
 	VPAConflict      *vpa.ConflictInfo
 	VPAAdvisory      *vpa.Advisory
-	ContainerAdvisor *ContainerAdvisorResult
+	ContainerAdvisor *containeradvisor.Result
 	BehaviorAdvisor  *BehaviorAdvisorResult
 }
 
