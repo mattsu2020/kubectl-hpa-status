@@ -5,6 +5,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
@@ -94,7 +95,7 @@ func appendCapacityDryRun(out *[]byte, plan *CapacityPlan) {
 func appendCapacityRecommendation(out *[]byte, plan *CapacityPlan, theme style.Theme) {
 	*out = append(*out, '\n')
 	*out = append(*out, "  Recommendation:\n"...)
-	for _, line := range wrapLines(plan.Recommendation, 76) {
+	for _, line := range rendutil.WrapLines(plan.Recommendation, 76) {
 		if plan.Safe {
 			*out = fmt.Appendf(*out, "    %s\n", theme.OK.Render(line))
 		} else {

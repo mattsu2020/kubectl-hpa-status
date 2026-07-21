@@ -1,4 +1,4 @@
-package hpa
+package gitops
 
 import (
 	"testing"
@@ -7,6 +7,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+func int32Ptr(v int32) *int32 { return &v }
 
 func TestAnalyzeGitOpsReview_MaxReplicasDecreased(t *testing.T) {
 	before := &autoscalingv2.HorizontalPodAutoscaler{
@@ -30,7 +32,7 @@ func TestAnalyzeGitOpsReview_MaxReplicasDecreased(t *testing.T) {
 	after := before.DeepCopy()
 	after.Spec.MaxReplicas = 5
 
-	review := AnalyzeGitOpsReview([]GitOpsReviewInput{
+	review := AnalyzeReview([]ReviewInput{
 		{Before: before, After: after, FilePath: "hpa.yaml"},
 	})
 
@@ -65,7 +67,7 @@ func TestAnalyzeGitOpsReview_StabilizationRemoved(t *testing.T) {
 	after := before.DeepCopy()
 	after.Spec.Behavior.ScaleDown.StabilizationWindowSeconds = int32Ptr(0)
 
-	review := AnalyzeGitOpsReview([]GitOpsReviewInput{
+	review := AnalyzeReview([]ReviewInput{
 		{Before: before, After: after, FilePath: "hpa.yaml"},
 	})
 
@@ -102,7 +104,7 @@ func TestAnalyzeGitOpsReview_CPUTargetChanged(t *testing.T) {
 	after := before.DeepCopy()
 	after.Spec.Metrics[0].Resource.Target.AverageUtilization = int32Ptr(95)
 
-	review := AnalyzeGitOpsReview([]GitOpsReviewInput{
+	review := AnalyzeReview([]ReviewInput{
 		{Before: before, After: after, FilePath: "hpa.yaml"},
 	})
 
@@ -148,7 +150,7 @@ func TestAnalyzeGitOpsReview_MetricRemoved(t *testing.T) {
 	after := before.DeepCopy()
 	after.Spec.Metrics = after.Spec.Metrics[:1] // remove memory metric
 
-	review := AnalyzeGitOpsReview([]GitOpsReviewInput{
+	review := AnalyzeReview([]ReviewInput{
 		{Before: before, After: after, FilePath: "hpa.yaml"},
 	})
 
@@ -173,7 +175,7 @@ func TestAnalyzeGitOpsReview_NewManifest_NoMetrics(t *testing.T) {
 		},
 	}
 
-	review := AnalyzeGitOpsReview([]GitOpsReviewInput{
+	review := AnalyzeReview([]ReviewInput{
 		{After: hpa, FilePath: "hpa.yaml"},
 	})
 
@@ -202,7 +204,7 @@ func TestAnalyzeGitOpsReview_NoChanges(t *testing.T) {
 		},
 	}
 
-	review := AnalyzeGitOpsReview([]GitOpsReviewInput{
+	review := AnalyzeReview([]ReviewInput{
 		{Before: hpa.DeepCopy(), After: hpa.DeepCopy(), FilePath: "hpa.yaml"},
 	})
 

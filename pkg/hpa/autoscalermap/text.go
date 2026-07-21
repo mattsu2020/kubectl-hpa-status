@@ -1,4 +1,4 @@
-package hpa
+package autoscalermap
 
 import (
 	"fmt"
@@ -8,8 +8,8 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
-// WriteAutoscalerMapText writes a standalone autoscaler map visualization.
-func WriteAutoscalerMapText(w io.Writer, am *AutoscalerMap, theme style.Theme) error {
+// WriteText writes a standalone autoscaler map visualization.
+func WriteText(w io.Writer, am *Map, theme style.Theme) error {
 	if am == nil {
 		return nil
 	}
@@ -29,7 +29,7 @@ func WriteAutoscalerMapText(w io.Writer, am *AutoscalerMap, theme style.Theme) e
 	return err
 }
 
-func writeAutoscalerMapLayers(buf *strings.Builder, am *AutoscalerMap, theme style.Theme) {
+func writeAutoscalerMapLayers(buf *strings.Builder, am *Map, theme style.Theme) {
 	for i, layer := range am.Layers {
 		prefix := "  -> "
 		if i == 0 {
@@ -49,7 +49,7 @@ func writeAutoscalerMapLayers(buf *strings.Builder, am *AutoscalerMap, theme sty
 	}
 }
 
-func writeAutoscalerMapRisk(buf *strings.Builder, am *AutoscalerMap, theme style.Theme) {
+func writeAutoscalerMapRisk(buf *strings.Builder, am *Map, theme style.Theme) {
 	if am.Risk == "" || am.Risk == "none" {
 		return
 	}
@@ -57,7 +57,7 @@ func writeAutoscalerMapRisk(buf *strings.Builder, am *AutoscalerMap, theme style
 	buf.WriteString(fmt.Sprintf("\nRisk: %s\n", riskBadge))
 }
 
-func writeAutoscalerMapBlockers(buf *strings.Builder, am *AutoscalerMap, theme style.Theme) {
+func writeAutoscalerMapBlockers(buf *strings.Builder, am *Map, theme style.Theme) {
 	if len(am.Blockers) == 0 {
 		return
 	}
@@ -73,7 +73,7 @@ func writeAutoscalerMapBlockers(buf *strings.Builder, am *AutoscalerMap, theme s
 	}
 }
 
-func writeAutoscalerMapRecommendation(buf *strings.Builder, am *AutoscalerMap) {
+func writeAutoscalerMapRecommendation(buf *strings.Builder, am *Map) {
 	if am.Recommendation == "" {
 		return
 	}
@@ -83,7 +83,7 @@ func writeAutoscalerMapRecommendation(buf *strings.Builder, am *AutoscalerMap) {
 	}
 }
 
-func writeAutoscalerMapNextActions(buf *strings.Builder, am *AutoscalerMap) {
+func writeAutoscalerMapNextActions(buf *strings.Builder, am *Map) {
 	if len(am.NextActions) == 0 {
 		return
 	}
@@ -93,7 +93,7 @@ func writeAutoscalerMapNextActions(buf *strings.Builder, am *AutoscalerMap) {
 	}
 }
 
-func writeAutoscalerMapNextChecks(buf *strings.Builder, am *AutoscalerMap) {
+func writeAutoscalerMapNextChecks(buf *strings.Builder, am *Map) {
 	if len(am.NextChecks) == 0 {
 		return
 	}

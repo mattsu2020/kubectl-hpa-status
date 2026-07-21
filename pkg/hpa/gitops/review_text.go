@@ -1,15 +1,16 @@
-package hpa
+package gitops
 
 import (
 	"fmt"
 	"io"
 	"strings"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
-// WriteGitOpsReviewText writes a standalone GitOps review report.
-func WriteGitOpsReviewText(w io.Writer, review *GitOpsReview, theme style.Theme) error {
+// WriteReviewText writes a standalone GitOps review report.
+func WriteReviewText(w io.Writer, review *Review, theme style.Theme) error {
 	if review == nil {
 		return nil
 	}
@@ -40,7 +41,7 @@ func WriteGitOpsReviewText(w io.Writer, review *GitOpsReview, theme style.Theme)
 			badge := reviewSeverityBadge(f.Severity, theme)
 			buf.WriteString(fmt.Sprintf("    %s [%s] %s\n", badge, f.Category, f.Message))
 			if f.Detail != "" {
-				for _, line := range wrapLines(f.Detail, 72) {
+				for _, line := range rendutil.WrapLines(f.Detail, 72) {
 					buf.WriteString(fmt.Sprintf("      %s\n", line))
 				}
 			}
@@ -55,7 +56,7 @@ func WriteGitOpsReviewText(w io.Writer, review *GitOpsReview, theme style.Theme)
 	// Recommendation.
 	if review.Recommendation != "" {
 		buf.WriteString("\nRecommendation:\n")
-		for _, line := range wrapLines(review.Recommendation, 76) {
+		for _, line := range rendutil.WrapLines(review.Recommendation, 76) {
 			buf.WriteString(fmt.Sprintf("  %s\n", line))
 		}
 	}

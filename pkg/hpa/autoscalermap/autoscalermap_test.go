@@ -1,12 +1,14 @@
-package hpa
+package autoscalermap
 
 import (
 	"strings"
 	"testing"
+
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
 )
 
 func TestAnalyzeAutoscalerMap_Healthy(t *testing.T) {
-	input := AutoscalerMapInput{
+	input := Input{
 		Namespace:               "production",
 		HPAName:                 "web",
 		Target:                  "Deployment/web",
@@ -15,13 +17,13 @@ func TestAnalyzeAutoscalerMap_Healthy(t *testing.T) {
 		MaxReplicas:             10,
 		WorkloadReadyReplicas:   5,
 		WorkloadDesiredReplicas: 5,
-		PodSummary: AutoscalerMapPodSummary{
+		PodSummary: PodSummary{
 			Total:   5,
 			Running: 5,
 			Pending: 0,
 			Ready:   5,
 		},
-		NodeSummary: AutoscalerMapNodeSummary{
+		NodeSummary: NodeSummary{
 			TotalNodes:        3,
 			AllocatableCPU:    "12",
 			AllocatableMemory: "48Gi",
@@ -30,7 +32,7 @@ func TestAnalyzeAutoscalerMap_Healthy(t *testing.T) {
 		ScalingActive:     true,
 	}
 
-	am := AnalyzeAutoscalerMap(input)
+	am := Analyze(input)
 
 	if am == nil {
 		t.Fatal("expected non-nil map")
@@ -57,7 +59,7 @@ func TestAnalyzeAutoscalerMap_Healthy(t *testing.T) {
 }
 
 func TestAnalyzeAutoscalerMap_NodeReadFailureIsUnknown(t *testing.T) {
-	input := AutoscalerMapInput{
+	input := Input{
 		Namespace:               "default",
 		HPAName:                 "web",
 		Target:                  "Deployment/web",
@@ -69,7 +71,7 @@ func TestAnalyzeAutoscalerMap_NodeReadFailureIsUnknown(t *testing.T) {
 		ScalingActive:           true,
 		NodeFetchError:          "nodes is forbidden",
 	}
-	am := AnalyzeAutoscalerMap(input)
+	am := Analyze(input)
 	for _, blocker := range am.Blockers {
 		if blocker.Message == "No schedulable nodes found in cluster" {
 			t.Fatalf("RBAC failure was converted into a confirmed blocker: %#v", blocker)
@@ -81,7 +83,7 @@ func TestAnalyzeAutoscalerMap_NodeReadFailureIsUnknown(t *testing.T) {
 }
 
 func TestAnalyzeAutoscalerMap_PendingPods(t *testing.T) {
-	input := AutoscalerMapInput{
+	input := Input{
 		Namespace:               "production",
 		HPAName:                 "web",
 		Target:                  "Deployment/web",
@@ -90,24 +92,24 @@ func TestAnalyzeAutoscalerMap_PendingPods(t *testing.T) {
 		MaxReplicas:             15,
 		WorkloadReadyReplicas:   8,
 		WorkloadDesiredReplicas: 10,
-		PodSummary: AutoscalerMapPodSummary{
+		PodSummary: PodSummary{
 			Total:   10,
 			Running: 8,
 			Pending: 2,
 			Ready:   8,
 		},
-		NodeSummary: AutoscalerMapNodeSummary{
+		NodeSummary: NodeSummary{
 			TotalNodes:     3,
 			AllocatableCPU: "12",
 		},
-		PendingPods: []PendingPodInfo{
+		PendingPods: []util.PendingPodInfo{
 			{Name: "web-1", Phase: "Pending", Unschedulable: true, Reasons: []string{"Insufficient CPU"}},
 			{Name: "web-2", Phase: "Pending", Unschedulable: true, Reasons: []string{"Insufficient memory"}},
 		},
 		ScalingActive: true,
 	}
 
-	am := AnalyzeAutoscalerMap(input)
+	am := Analyze(input)
 
 	if len(am.Blockers) == 0 {
 		t.Error("expected blockers for pending pods")
@@ -125,7 +127,7 @@ func TestAnalyzeAutoscalerMap_PendingPods(t *testing.T) {
 }
 
 func TestAnalyzeAutoscalerMap_NoAutoscaler(t *testing.T) {
-	input := AutoscalerMapInput{
+	input := Input{
 		Namespace:               "production",
 		HPAName:                 "web",
 		Target:                  "Deployment/web",
@@ -134,12 +136,12 @@ func TestAnalyzeAutoscalerMap_NoAutoscaler(t *testing.T) {
 		MaxReplicas:             10,
 		WorkloadReadyReplicas:   5,
 		WorkloadDesiredReplicas: 5,
-		PodSummary: AutoscalerMapPodSummary{
+		PodSummary: PodSummary{
 			Total:   5,
 			Running: 5,
 			Ready:   5,
 		},
-		NodeSummary: AutoscalerMapNodeSummary{
+		NodeSummary: NodeSummary{
 			TotalNodes: 3,
 		},
 		ClusterAutoscaler: false,
@@ -147,7 +149,7 @@ func TestAnalyzeAutoscalerMap_NoAutoscaler(t *testing.T) {
 		ScalingActive:     true,
 	}
 
-	am := AnalyzeAutoscalerMap(input)
+	am := Analyze(input)
 
 	// Autoscaler layer should not be healthy.
 	for _, layer := range am.Layers {
@@ -158,7 +160,7 @@ func TestAnalyzeAutoscalerMap_NoAutoscaler(t *testing.T) {
 }
 
 func TestAnalyzeAutoscalerMap_ScalingInactive(t *testing.T) {
-	input := AutoscalerMapInput{
+	input := Input{
 		Namespace:               "production",
 		HPAName:                 "web",
 		Target:                  "Deployment/web",
@@ -167,18 +169,18 @@ func TestAnalyzeAutoscalerMap_ScalingInactive(t *testing.T) {
 		MaxReplicas:             10,
 		WorkloadReadyReplicas:   5,
 		WorkloadDesiredReplicas: 5,
-		PodSummary: AutoscalerMapPodSummary{
+		PodSummary: PodSummary{
 			Total:   5,
 			Running: 5,
 			Ready:   5,
 		},
-		NodeSummary: AutoscalerMapNodeSummary{
+		NodeSummary: NodeSummary{
 			TotalNodes: 3,
 		},
 		ScalingActive: false,
 	}
 
-	am := AnalyzeAutoscalerMap(input)
+	am := Analyze(input)
 
 	foundHPABlocker := false
 	for _, b := range am.Blockers {
@@ -192,14 +194,14 @@ func TestAnalyzeAutoscalerMap_ScalingInactive(t *testing.T) {
 }
 
 func TestAnalyzeAutoscalerMap_LayerCount(t *testing.T) {
-	input := AutoscalerMapInput{
+	input := Input{
 		Namespace:  "default",
 		HPAName:    "test",
 		Target:     "Deployment/test",
-		PodSummary: AutoscalerMapPodSummary{},
+		PodSummary: PodSummary{},
 	}
 
-	am := AnalyzeAutoscalerMap(input)
+	am := Analyze(input)
 
 	if len(am.Layers) != 5 {
 		t.Errorf("expected 5 layers (hpa, workload, pods, nodes, autoscaler), got %d", len(am.Layers))
@@ -214,7 +216,7 @@ func TestAnalyzeAutoscalerMap_LayerCount(t *testing.T) {
 }
 
 func TestSummarizePendingPods(t *testing.T) {
-	pods := []PendingPodInfo{
+	pods := []util.PendingPodInfo{
 		{Name: "a", Unschedulable: true, Reasons: []string{"Insufficient CPU"}},
 		{Name: "b", Unschedulable: true, Reasons: []string{"Insufficient CPU", "node(s) had taints"}},
 		{Name: "c", Unschedulable: false, Reasons: nil},
@@ -245,21 +247,21 @@ func containsStr(slice []string, s string) bool {
 func TestAnalyzeAutoscalerMap_KEDALayer(t *testing.T) {
 	tests := []struct {
 		name       string
-		kedaInfo   *AutoscalerMapKEDAInfo
+		kedaInfo   *KEDAInfo
 		wantLayers int
 		wantRisk   string
-		check      func(t *testing.T, am *AutoscalerMap)
+		check      func(t *testing.T, am *Map)
 	}{
 		{
 			name: "active KEDA adds external-scaler layer",
-			kedaInfo: &AutoscalerMapKEDAInfo{
+			kedaInfo: &KEDAInfo{
 				ScaledObjectName: "web-orders",
 				TriggerCount:     2,
 				Active:           true,
 			},
 			wantLayers: 6,
 			wantRisk:   "none",
-			check: func(t *testing.T, am *AutoscalerMap) {
+			check: func(t *testing.T, am *Map) {
 				found := false
 				for _, l := range am.Layers {
 					if l.Name == "external-scaler" {
@@ -276,14 +278,14 @@ func TestAnalyzeAutoscalerMap_KEDALayer(t *testing.T) {
 		},
 		{
 			name: "inactive KEDA produces high severity blocker",
-			kedaInfo: &AutoscalerMapKEDAInfo{
+			kedaInfo: &KEDAInfo{
 				ScaledObjectName: "web-orders",
 				TriggerCount:     1,
 				Active:           false,
 			},
 			wantLayers: 6,
 			wantRisk:   "high",
-			check: func(t *testing.T, am *AutoscalerMap) {
+			check: func(t *testing.T, am *Map) {
 				found := false
 				for _, b := range am.Blockers {
 					if b.Layer == "external-scaler" && b.Severity == "high" {
@@ -299,19 +301,19 @@ func TestAnalyzeAutoscalerMap_KEDALayer(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			input := AutoscalerMapInput{
+			input := Input{
 				Namespace:               "prod",
 				HPAName:                 "web",
 				Target:                  "Deployment/web",
 				WorkloadReadyReplicas:   5,
 				WorkloadDesiredReplicas: 5,
-				PodSummary:              AutoscalerMapPodSummary{Total: 5, Running: 5, Ready: 5},
-				NodeSummary:             AutoscalerMapNodeSummary{TotalNodes: 3},
+				PodSummary:              PodSummary{Total: 5, Running: 5, Ready: 5},
+				NodeSummary:             NodeSummary{TotalNodes: 3},
 				ScalingActive:           true,
 				KEDAInfo:                tt.kedaInfo,
 			}
 
-			am := AnalyzeAutoscalerMap(input)
+			am := Analyze(input)
 			if len(am.Layers) != tt.wantLayers {
 				t.Errorf("expected %d layers, got %d", tt.wantLayers, len(am.Layers))
 			}
@@ -324,16 +326,16 @@ func TestAnalyzeAutoscalerMap_KEDALayer(t *testing.T) {
 }
 
 func TestAnalyzeAutoscalerMap_VPAConflict(t *testing.T) {
-	input := AutoscalerMapInput{
+	input := Input{
 		Namespace:               "prod",
 		HPAName:                 "web",
 		Target:                  "Deployment/web",
 		WorkloadReadyReplicas:   5,
 		WorkloadDesiredReplicas: 5,
-		PodSummary:              AutoscalerMapPodSummary{Total: 5, Running: 5, Ready: 5},
-		NodeSummary:             AutoscalerMapNodeSummary{TotalNodes: 3},
+		PodSummary:              PodSummary{Total: 5, Running: 5, Ready: 5},
+		NodeSummary:             NodeSummary{TotalNodes: 3},
 		ScalingActive:           true,
-		VPAInfo: &AutoscalerMapVPAInfo{
+		VPAInfo: &VPAInfo{
 			VPAName:             "web-vpa",
 			TargetRef:           "Deployment/web",
 			UpdateMode:          "Auto",
@@ -342,7 +344,7 @@ func TestAnalyzeAutoscalerMap_VPAConflict(t *testing.T) {
 		},
 	}
 
-	am := AnalyzeAutoscalerMap(input)
+	am := Analyze(input)
 
 	if am.Risk != "medium" {
 		t.Errorf("expected risk medium with VPA conflict, got %q", am.Risk)
@@ -370,25 +372,25 @@ func TestAnalyzeAutoscalerMap_VPAConflict(t *testing.T) {
 }
 
 func TestAnalyzeAutoscalerMap_QuotaAndPDB(t *testing.T) {
-	input := AutoscalerMapInput{
+	input := Input{
 		Namespace:               "prod",
 		HPAName:                 "web",
 		Target:                  "Deployment/web",
 		MaxReplicas:             50,
 		WorkloadReadyReplicas:   5,
 		WorkloadDesiredReplicas: 5,
-		PodSummary:              AutoscalerMapPodSummary{Total: 5, Running: 5, Ready: 5},
-		NodeSummary:             AutoscalerMapNodeSummary{TotalNodes: 3},
+		PodSummary:              PodSummary{Total: 5, Running: 5, Ready: 5},
+		NodeSummary:             NodeSummary{TotalNodes: 3},
 		ScalingActive:           true,
-		PDBs: []AutoscalerMapPDB{
+		PDBs: []PDB{
 			{Name: "web-pdb", MinAvailable: "80%"},
 		},
-		Quotas: []AutoscalerMapQuota{
+		Quotas: []Quota{
 			{Name: "compute", Resource: "limits.cpu", Used: "90", Hard: "100", Ratio: 0.9},
 		},
 	}
 
-	am := AnalyzeAutoscalerMap(input)
+	am := Analyze(input)
 
 	if am.Risk != "high" {
 		t.Errorf("expected risk high with quota at 90%%, got %q", am.Risk)

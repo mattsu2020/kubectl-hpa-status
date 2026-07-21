@@ -1,4 +1,4 @@
-package hpa
+package gitops
 
 import (
 	"fmt"
@@ -7,13 +7,13 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
-// AnalyzeGitOpsReview compares before and after HPA manifests to detect risky
+// AnalyzeReview compares before and after HPA manifests to detect risky
 // changes. It is a pure function with no Kubernetes API dependencies beyond
 // the typed HPA object.
-func AnalyzeGitOpsReview(inputs []GitOpsReviewInput) *GitOpsReview {
-	review := &GitOpsReview{
-		Files:    []GitOpsReviewFile{},
-		Findings: []GitOpsReviewFinding{},
+func AnalyzeReview(inputs []ReviewInput) *Review {
+	review := &Review{
+		Files:    []ReviewFile{},
+		Findings: []ReviewFinding{},
 	}
 
 	for _, input := range inputs {
@@ -21,7 +21,7 @@ func AnalyzeGitOpsReview(inputs []GitOpsReviewInput) *GitOpsReview {
 			continue
 		}
 
-		fileResult := GitOpsReviewFile{
+		fileResult := ReviewFile{
 			Path:    input.FilePath,
 			HPAName: input.After.Name,
 		}
@@ -44,12 +44,12 @@ func AnalyzeGitOpsReview(inputs []GitOpsReviewInput) *GitOpsReview {
 }
 
 // compareHPAManifests compares two HPA manifests for risky changes.
-func compareHPAManifests(before, after *autoscalingv2.HorizontalPodAutoscaler) []GitOpsReviewFinding {
-	var findings []GitOpsReviewFinding
+func compareHPAManifests(before, after *autoscalingv2.HorizontalPodAutoscaler) []ReviewFinding {
+	var findings []ReviewFinding
 
 	// maxReplicas decreased.
 	if after.Spec.MaxReplicas < before.Spec.MaxReplicas {
-		findings = append(findings, GitOpsReviewFinding{
+		findings = append(findings, ReviewFinding{
 			Severity: "high",
 			Category: "maxReplicas",
 			Message:  fmt.Sprintf("maxReplicas decreased from %d to %d", before.Spec.MaxReplicas, after.Spec.MaxReplicas),
@@ -59,7 +59,7 @@ func compareHPAManifests(before, after *autoscalingv2.HorizontalPodAutoscaler) [
 
 	// maxReplicas increased significantly.
 	if before.Spec.MaxReplicas > 0 && after.Spec.MaxReplicas > before.Spec.MaxReplicas*2 {
-		findings = append(findings, GitOpsReviewFinding{
+		findings = append(findings, ReviewFinding{
 			Severity: "medium",
 			Category: "maxReplicas",
 			Message:  fmt.Sprintf("maxReplicas increased from %d to %d (>2x)", before.Spec.MaxReplicas, after.Spec.MaxReplicas),
@@ -75,7 +75,7 @@ func compareHPAManifests(before, after *autoscalingv2.HorizontalPodAutoscaler) [
 		if afterMin > beforeMin {
 			severity = "medium"
 		}
-		findings = append(findings, GitOpsReviewFinding{
+		findings = append(findings, ReviewFinding{
 			Severity: severity,
 			Category: "minReplicas",
 			Message:  fmt.Sprintf("minReplicas changed from %d to %d", beforeMin, afterMin),
@@ -86,7 +86,7 @@ func compareHPAManifests(before, after *autoscalingv2.HorizontalPodAutoscaler) [
 	beforeCPU := extractCPUTarget(before)
 	afterCPU := extractCPUTarget(after)
 	if beforeCPU != "" && afterCPU != "" && beforeCPU != afterCPU {
-		findings = append(findings, GitOpsReviewFinding{
+		findings = append(findings, ReviewFinding{
 			Severity: "medium",
 			Category: "target",
 			Message:  fmt.Sprintf("CPU target changed from %s to %s", beforeCPU, afterCPU),
@@ -97,7 +97,7 @@ func compareHPAManifests(before, after *autoscalingv2.HorizontalPodAutoscaler) [
 	if len(after.Spec.Metrics) < len(before.Spec.Metrics) {
 		removed := findRemovedMetrics(before.Spec.Metrics, after.Spec.Metrics)
 		if len(removed) > 0 {
-			findings = append(findings, GitOpsReviewFinding{
+			findings = append(findings, ReviewFinding{
 				Severity: "medium",
 				Category: "metric",
 				Message:  fmt.Sprintf("metric(s) removed: %s", strings.Join(removed, ", ")),
@@ -110,7 +110,7 @@ func compareHPAManifests(before, after *autoscalingv2.HorizontalPodAutoscaler) [
 	beforeStab := extractScaleDownStabilization(before)
 	afterStab := extractScaleDownStabilization(after)
 	if beforeStab > 0 && afterStab == 0 {
-		findings = append(findings, GitOpsReviewFinding{
+		findings = append(findings, ReviewFinding{
 			Severity: "medium",
 			Category: "stabilization",
 			Message:  "scaleDown stabilization window removed",
@@ -120,7 +120,7 @@ func compareHPAManifests(before, after *autoscalingv2.HorizontalPodAutoscaler) [
 
 	// Behavior became more aggressive.
 	if behaviorMoreAggressive(before, after) {
-		findings = append(findings, GitOpsReviewFinding{
+		findings = append(findings, ReviewFinding{
 			Severity: "low",
 			Category: "behavior",
 			Message:  "behavior.scaleUp policy became more aggressive",
@@ -132,11 +132,11 @@ func compareHPAManifests(before, after *autoscalingv2.HorizontalPodAutoscaler) [
 }
 
 // reviewNewManifest flags risky defaults in a new HPA manifest.
-func reviewNewManifest(hpa *autoscalingv2.HorizontalPodAutoscaler) []GitOpsReviewFinding {
-	var findings []GitOpsReviewFinding
+func reviewNewManifest(hpa *autoscalingv2.HorizontalPodAutoscaler) []ReviewFinding {
+	var findings []ReviewFinding
 
 	if hpa.Spec.MaxReplicas < 5 {
-		findings = append(findings, GitOpsReviewFinding{
+		findings = append(findings, ReviewFinding{
 			Severity: "low",
 			Category: "maxReplicas",
 			Message:  fmt.Sprintf("maxReplicas is %d (< 5); consider whether this allows sufficient headroom", hpa.Spec.MaxReplicas),
@@ -147,7 +147,7 @@ func reviewNewManifest(hpa *autoscalingv2.HorizontalPodAutoscaler) []GitOpsRevie
 	if strings.HasSuffix(cpuTarget, "%") {
 		val := strings.TrimSuffix(cpuTarget, "%")
 		if val > "90" {
-			findings = append(findings, GitOpsReviewFinding{
+			findings = append(findings, ReviewFinding{
 				Severity: "medium",
 				Category: "target",
 				Message:  fmt.Sprintf("CPU target is %s (> 90%%); HPA may scale too aggressively", cpuTarget),
@@ -156,7 +156,7 @@ func reviewNewManifest(hpa *autoscalingv2.HorizontalPodAutoscaler) []GitOpsRevie
 	}
 
 	if len(hpa.Spec.Metrics) == 0 {
-		findings = append(findings, GitOpsReviewFinding{
+		findings = append(findings, ReviewFinding{
 			Severity: "high",
 			Category: "metric",
 			Message:  "no metrics defined; HPA cannot make scaling decisions",
@@ -167,7 +167,7 @@ func reviewNewManifest(hpa *autoscalingv2.HorizontalPodAutoscaler) []GitOpsRevie
 }
 
 // computeOverallRiskLevel determines risk level from findings.
-func computeOverallRiskLevel(findings []GitOpsReviewFinding) string {
+func computeOverallRiskLevel(findings []ReviewFinding) string {
 	hasHigh := false
 	hasMedium := false
 	for _, f := range findings {
@@ -191,7 +191,7 @@ func computeOverallRiskLevel(findings []GitOpsReviewFinding) string {
 }
 
 // buildReviewSummary creates a one-line summary.
-func buildReviewSummary(review *GitOpsReview) string {
+func buildReviewSummary(review *Review) string {
 	if len(review.Findings) == 0 {
 		return "no risky HPA changes detected"
 	}
@@ -212,7 +212,7 @@ func buildReviewSummary(review *GitOpsReview) string {
 }
 
 // buildReviewRecommendation creates an overall recommendation.
-func buildReviewRecommendation(review *GitOpsReview) string {
+func buildReviewRecommendation(review *Review) string {
 	switch review.RiskLevel {
 	case "high":
 		return "Do not merge: high-severity HPA changes require manual review."

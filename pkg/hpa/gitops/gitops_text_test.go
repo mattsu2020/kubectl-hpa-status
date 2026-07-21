@@ -1,4 +1,4 @@
-package hpa
+package gitops
 
 import (
 	"bytes"
@@ -7,11 +7,11 @@ import (
 )
 
 func TestWriteGitOpsConflictHTMLEscapesAllDynamicFields(t *testing.T) {
-	report := &GitOpsConflict{
+	report := &Conflict{
 		Namespace: `<script>namespace</script>`,
 		Name:      `<script>name</script>`,
 		Target:    `<script>target</script>`,
-		Conflicts: []GitOpsConflictEntry{{
+		Conflicts: []ConflictEntry{{
 			Severity:      `<script>severity</script>`,
 			Kind:          `<script>kind</script>`,
 			Name:          `<script>entry-name</script>`,
@@ -24,8 +24,8 @@ func TestWriteGitOpsConflictHTMLEscapesAllDynamicFields(t *testing.T) {
 		}},
 	}
 	var buf bytes.Buffer
-	if err := WriteGitOpsConflictHTML(&buf, report); err != nil {
-		t.Fatalf("WriteGitOpsConflictHTML: %v", err)
+	if err := WriteConflictHTML(&buf, report); err != nil {
+		t.Fatalf("WriteConflictHTML: %v", err)
 	}
 	if strings.Contains(buf.String(), "<script>") {
 		t.Fatalf("HTML contains unescaped dynamic input:\n%s", buf.String())

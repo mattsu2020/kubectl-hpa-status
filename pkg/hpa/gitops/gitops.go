@@ -1,9 +1,14 @@
-package hpa
+// Package gitops detects conflicts and reviews risky changes between
+// GitOps-managed manifests and live HPA state. It is a self-contained leaf
+// domain depending only on standard library and Kubernetes API types. The
+// cmd/ layer calls it directly (gitops.AnalyzeConflict, gitops.AnalyzeReview,
+// etc.).
+package gitops
 
 import "fmt"
 
-// GitOpsConflict holds the result of GitOps manifest conflict analysis.
-type GitOpsConflict struct {
+// Conflict holds the result of GitOps manifest conflict analysis.
+type Conflict struct {
 	// Namespace is the Kubernetes namespace of the HPA.
 	Namespace string `json:"namespace" yaml:"namespace"`
 	// Name is the HPA resource name.
@@ -11,7 +16,7 @@ type GitOpsConflict struct {
 	// Target is the scaleTargetRef in "Kind/Name" format.
 	Target string `json:"target" yaml:"target"`
 	// Conflicts lists all detected conflicts between manifests and HPA state.
-	Conflicts []GitOpsConflictEntry `json:"conflicts,omitempty" yaml:"conflicts,omitempty"`
+	Conflicts []ConflictEntry `json:"conflicts,omitempty" yaml:"conflicts,omitempty"`
 	// Warnings lists advisory findings that don't block GitOps sync.
 	Warnings []string `json:"warnings,omitempty" yaml:"warnings,omitempty"`
 	// Patches lists suggested manifest patches to resolve conflicts.
@@ -20,8 +25,8 @@ type GitOpsConflict struct {
 	Summary string `json:"summary" yaml:"summary"`
 }
 
-// GitOpsConflictEntry represents a single conflict or finding.
-type GitOpsConflictEntry struct {
+// ConflictEntry represents a single conflict or finding.
+type ConflictEntry struct {
 	// Kind is the resource kind (Deployment, StatefulSet).
 	Kind string `json:"kind" yaml:"kind"`
 	// Name is the resource name.
@@ -42,10 +47,10 @@ type GitOpsConflictEntry struct {
 	Remediation string `json:"remediation,omitempty" yaml:"remediation,omitempty"`
 }
 
-// GitOpsInput aggregates signals for GitOps conflict detection. The cmd layer
+// Input aggregates signals for GitOps conflict detection. The cmd layer
 // assembles this from manifest files and live K8s state, keeping pkg/hpa free
 // of Kubernetes client dependencies.
-type GitOpsInput struct {
+type Input struct {
 	// Namespace is the Kubernetes namespace of the HPA.
 	Namespace string
 	// HPAName is the HPA resource name.
@@ -68,22 +73,22 @@ type GitOpsInput struct {
 	KEDAManaged bool
 }
 
-// AnalyzeGitOpsConflict detects conflicts between GitOps manifests and HPA
+// AnalyzeConflict detects conflicts between GitOps manifests and HPA
 // scaling decisions. It examines manifest replicas, GitOps tool annotations,
 // and generates actionable remediation steps.
-func AnalyzeGitOpsConflict(input GitOpsInput) *GitOpsConflict {
-	result := &GitOpsConflict{
+func AnalyzeConflict(input Input) *Conflict {
+	result := &Conflict{
 		Namespace: input.Namespace,
 		Name:      input.HPAName,
 		Target:    fmt.Sprintf("%s/%s", input.TargetKind, input.TargetName),
-		Conflicts: make([]GitOpsConflictEntry, 0),
+		Conflicts: make([]ConflictEntry, 0),
 		Warnings:  make([]string, 0),
 		Patches:   make([]string, 0),
 	}
 
 	// Check for manifest replicas conflict
 	if input.ManifestReplicas != nil && input.DesiredReplicas != *input.ManifestReplicas {
-		result.Conflicts = append(result.Conflicts, GitOpsConflictEntry{
+		result.Conflicts = append(result.Conflicts, ConflictEntry{
 			Kind:          input.TargetKind,
 			Name:          input.TargetName,
 			Field:         "spec.replicas",
@@ -103,7 +108,7 @@ func AnalyzeGitOpsConflict(input GitOpsInput) *GitOpsConflict {
 	// Check for Argo CD annotations
 	if len(input.ArgoCDAnnotations) > 0 {
 		keys := annotationKeys(input.ArgoCDAnnotations)
-		result.Conflicts = append(result.Conflicts, GitOpsConflictEntry{
+		result.Conflicts = append(result.Conflicts, ConflictEntry{
 			Kind:        input.TargetKind,
 			Name:        input.TargetName,
 			Severity:    "info",
@@ -117,7 +122,7 @@ func AnalyzeGitOpsConflict(input GitOpsInput) *GitOpsConflict {
 	// Check for Flux annotations
 	if len(input.FluxAnnotations) > 0 {
 		keys := annotationKeys(input.FluxAnnotations)
-		result.Conflicts = append(result.Conflicts, GitOpsConflictEntry{
+		result.Conflicts = append(result.Conflicts, ConflictEntry{
 			Kind:        input.TargetKind,
 			Name:        input.TargetName,
 			Severity:    "info",
@@ -130,7 +135,7 @@ func AnalyzeGitOpsConflict(input GitOpsInput) *GitOpsConflict {
 
 	// Check for KEDA management
 	if input.KEDAManaged {
-		result.Conflicts = append(result.Conflicts, GitOpsConflictEntry{
+		result.Conflicts = append(result.Conflicts, ConflictEntry{
 			Kind:        input.TargetKind,
 			Name:        input.TargetName,
 			Severity:    "info",

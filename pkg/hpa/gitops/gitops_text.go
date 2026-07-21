@@ -1,4 +1,4 @@
-package hpa
+package gitops
 
 import (
 	"fmt"
@@ -8,22 +8,22 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
-// WriteGitOpsConflictText writes a GitOps conflict report in plain text.
-func WriteGitOpsConflictText(w io.Writer, report *GitOpsConflict) error {
+// WriteConflictText writes a GitOps conflict report in plain text.
+func WriteConflictText(w io.Writer, report *Conflict) error {
 	if report == nil {
 		_, err := fmt.Fprintln(w, "GitOps Conflict: No data available")
 		return err
 	}
 
 	var out []byte
-	AppendGitOpsConflictText(&out, report, style.Theme{})
+	AppendConflictText(&out, report, style.Theme{})
 	_, err := w.Write(out)
 	return err
 }
 
-// AppendGitOpsConflictText appends a GitOps conflict section to a byte slice.
+// AppendConflictText appends a GitOps conflict section to a byte slice.
 // This is used by the main text.go renderer.
-func AppendGitOpsConflictText(out *[]byte, report *GitOpsConflict, theme style.Theme) {
+func AppendConflictText(out *[]byte, report *Conflict, theme style.Theme) {
 	if report == nil {
 		*out = append(*out, "\nGitOps Conflict:\n  No GitOps conflict data available.\n"...)
 		return
@@ -74,7 +74,7 @@ func AppendGitOpsConflictText(out *[]byte, report *GitOpsConflict, theme style.T
 	}
 }
 
-func appendGitOpsConflictEntry(out *[]byte, c GitOpsConflictEntry, theme style.Theme) {
+func appendGitOpsConflictEntry(out *[]byte, c ConflictEntry, theme style.Theme) {
 	*out = append(*out, '\n')
 	switch c.Severity {
 	case "conflict":
@@ -138,8 +138,8 @@ func appendGitOpsConflictEntry(out *[]byte, c GitOpsConflictEntry, theme style.T
 	}
 }
 
-// WriteGitOpsConflictMarkdown writes a GitOps conflict report in Markdown format.
-func WriteGitOpsConflictMarkdown(w io.Writer, report *GitOpsConflict) error {
+// WriteConflictMarkdown writes a GitOps conflict report in Markdown format.
+func WriteConflictMarkdown(w io.Writer, report *Conflict) error {
 	if report == nil {
 		_, err := fmt.Fprintln(w, "## GitOps Conflict\n\nNo GitOps conflict data available.")
 		return err
@@ -168,7 +168,7 @@ func WriteGitOpsConflictMarkdown(w io.Writer, report *GitOpsConflict) error {
 	return writeGitOpsMarkdownPatches(w, report.Patches)
 }
 
-func writeGitOpsMarkdownConflicts(w io.Writer, conflicts []GitOpsConflictEntry) error {
+func writeGitOpsMarkdownConflicts(w io.Writer, conflicts []ConflictEntry) error {
 	if len(conflicts) == 0 {
 		return nil
 	}
@@ -236,8 +236,8 @@ func writeGitOpsMarkdownPatches(w io.Writer, patches []string) error {
 	return err
 }
 
-// WriteGitOpsConflictHTML writes a GitOps conflict report in HTML format.
-func WriteGitOpsConflictHTML(w io.Writer, report *GitOpsConflict) error {
+// WriteConflictHTML writes a GitOps conflict report in HTML format.
+func WriteConflictHTML(w io.Writer, report *Conflict) error {
 	if report == nil {
 		_, err := fmt.Fprintln(w, `<h2>GitOps Conflict</h2><p>No GitOps conflict data available.</p>`)
 		return err
@@ -267,7 +267,7 @@ func WriteGitOpsConflictHTML(w io.Writer, report *GitOpsConflict) error {
 	return writeGitOpsHTMLPatches(w, report.Patches)
 }
 
-func writeGitOpsHTMLConflicts(w io.Writer, conflicts []GitOpsConflictEntry) error {
+func writeGitOpsHTMLConflicts(w io.Writer, conflicts []ConflictEntry) error {
 	if len(conflicts) == 0 {
 		return nil
 	}

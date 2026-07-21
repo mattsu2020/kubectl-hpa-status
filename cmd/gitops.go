@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
-	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/gitops"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -20,7 +20,7 @@ import (
 // returns an error: manifest parse failures are logged as warnings and live
 // cluster fetch failures simply leave the corresponding fields empty, so the
 // caller always gets a (possibly empty) GitOpsConflict to render.
-func buildGitOpsConflict(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, manifestPath string) *hpaanalysis.GitOpsConflict {
+func buildGitOpsConflict(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, manifestPath string) *gitops.Conflict {
 	// Parse manifest path to extract spec.replicas
 	var manifestReplicas *int32
 	targetKind := hpa.Spec.ScaleTargetRef.Kind
@@ -80,7 +80,7 @@ func buildGitOpsConflict(ctx context.Context, client *kube.Client, hpa *autoscal
 	}
 
 	// Assemble input for pkg/hpa analysis
-	input := hpaanalysis.GitOpsInput{
+	input := gitops.Input{
 		Namespace:         hpa.Namespace,
 		HPAName:           hpa.Name,
 		TargetKind:        targetKind,
@@ -93,7 +93,7 @@ func buildGitOpsConflict(ctx context.Context, client *kube.Client, hpa *autoscal
 		KEDAManaged:       kedaManaged,
 	}
 
-	conflict := hpaanalysis.AnalyzeGitOpsConflict(input)
+	conflict := gitops.AnalyzeConflict(input)
 	conflict.Warnings = append(conflict.Warnings, liveFetchWarnings...)
 	return conflict
 }

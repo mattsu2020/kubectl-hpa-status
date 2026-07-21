@@ -6,6 +6,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/gitops"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/suggestion"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/warmup"
@@ -261,7 +262,7 @@ type Analysis struct {
 	MetricContract *MetricContractReport `json:"metricContract,omitempty" yaml:"metricContract,omitempty"`
 	// GitOpsConflict holds GitOps manifest conflict detection results, populated when
 	// --gitops-check is enabled or --manifest is provided.
-	GitOpsConflict *GitOpsConflict `json:"gitopsConflict,omitempty" yaml:"gitopsConflict,omitempty"`
+	GitOpsConflict *gitops.Conflict `json:"gitopsConflict,omitempty" yaml:"gitopsConflict,omitempty"`
 	// ChurnAnalysis holds the thrashing/churn detection result for the HPA timeline.
 	// Populated when --churn-detect is enabled or during doctor command.
 	ChurnAnalysis *ChurnAnalysis `json:"churnAnalysis,omitempty" yaml:"churnAnalysis,omitempty"`

@@ -1,12 +1,14 @@
-package hpa
+package autoscalermap
+
+import "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
 
 // ---------------------------------------------------------------------------
 // Autoscaler Map types (autoscaler-map command)
 // ---------------------------------------------------------------------------
 
-// AutoscalerMap holds the complete HPA-to-Node Autoscaler relationship
+// Map holds the complete HPA-to-Node Autoscaler relationship
 // visualization for a single HPA.
-type AutoscalerMap struct {
+type Map struct {
 	// Namespace is the Kubernetes namespace of the HPA.
 	Namespace string `json:"namespace" yaml:"namespace"`
 	// HPAName is the HPA resource name.
@@ -22,9 +24,9 @@ type AutoscalerMap struct {
 	// Summary is a one-line overall assessment.
 	Summary string `json:"summary" yaml:"summary"`
 	// Layers describes the HPA -> Deployment -> Pods -> Nodes -> Autoscaler layers.
-	Layers []AutoscalerMapLayer `json:"layers" yaml:"layers"`
+	Layers []Layer `json:"layers" yaml:"layers"`
 	// Blockers lists detected blockers in the autoscaling chain.
-	Blockers []AutoscalerMapBlocker `json:"blockers,omitempty" yaml:"blockers,omitempty"`
+	Blockers []Blocker `json:"blockers,omitempty" yaml:"blockers,omitempty"`
 	// Recommendation is the overall recommendation text.
 	Recommendation string `json:"recommendation,omitempty" yaml:"recommendation,omitempty"`
 	// NextActions lists concrete actions to take.
@@ -38,8 +40,8 @@ type AutoscalerMap struct {
 	Warnings []string `json:"warnings,omitempty" yaml:"warnings,omitempty"`
 }
 
-// AutoscalerMapLayer describes one layer in the autoscaling chain.
-type AutoscalerMapLayer struct {
+// Layer describes one layer in the autoscaling chain.
+type Layer struct {
 	// Name is the layer name: "hpa", "workload", "pods", "nodes", "autoscaler", "external-scaler", "constraints".
 	Name string `json:"name" yaml:"name"`
 	// Resource is the resource identifier at this layer.
@@ -52,8 +54,8 @@ type AutoscalerMapLayer struct {
 	Healthy bool `json:"healthy" yaml:"healthy"`
 }
 
-// AutoscalerMapBlocker represents a detected blocker in the autoscaling chain.
-type AutoscalerMapBlocker struct {
+// Blocker represents a detected blocker in the autoscaling chain.
+type Blocker struct {
 	// Layer is the layer where the blocker was detected.
 	Layer string `json:"layer" yaml:"layer"`
 	// Severity is the blocker severity: "high", "medium", "low".
@@ -64,9 +66,9 @@ type AutoscalerMapBlocker struct {
 	Detail string `json:"detail,omitempty" yaml:"detail,omitempty"`
 }
 
-// AutoscalerMapInput aggregates all observable signals for autoscaler map
+// Input aggregates all observable signals for autoscaler map
 // analysis. The cmd layer assembles this from Kubernetes API calls.
-type AutoscalerMapInput struct {
+type Input struct {
 	// Namespace is the Kubernetes namespace.
 	Namespace string
 	// HPAName is the HPA resource name.
@@ -84,9 +86,9 @@ type AutoscalerMapInput struct {
 	// WorkloadDesiredReplicas is the desired replica count from the workload.
 	WorkloadDesiredReplicas int32
 	// PodSummary holds pod-level summary information.
-	PodSummary AutoscalerMapPodSummary
+	PodSummary PodSummary
 	// NodeSummary holds node-level summary information.
-	NodeSummary AutoscalerMapNodeSummary
+	NodeSummary NodeSummary
 	// NodeFetchError distinguishes an unavailable node list from a confirmed
 	// empty cluster.
 	NodeFetchError string
@@ -95,21 +97,21 @@ type AutoscalerMapInput struct {
 	// Karpenter indicates whether Karpenter is detected.
 	Karpenter bool
 	// PendingPods lists pending pods for the scale target.
-	PendingPods []PendingPodInfo
+	PendingPods []util.PendingPodInfo
 	// ScalingActive indicates whether the HPA ScalingActive condition is True.
 	ScalingActive bool
 	// KEDAInfo holds KEDA ScaledObject information if detected.
-	KEDAInfo *AutoscalerMapKEDAInfo
+	KEDAInfo *KEDAInfo
 	// VPAInfo holds VPA conflict information if detected.
-	VPAInfo *AutoscalerMapVPAInfo
+	VPAInfo *VPAInfo
 	// PDBs lists PodDisruptionBudgets in the namespace affecting the scale target.
-	PDBs []AutoscalerMapPDB
+	PDBs []PDB
 	// Quotas lists ResourceQuotas near their limits in the namespace.
-	Quotas []AutoscalerMapQuota
+	Quotas []Quota
 }
 
-// AutoscalerMapKEDAInfo holds KEDA ScaledObject information for the autoscaler map.
-type AutoscalerMapKEDAInfo struct {
+// KEDAInfo holds KEDA ScaledObject information for the autoscaler map.
+type KEDAInfo struct {
 	// ScaledObjectName is the name of the KEDA ScaledObject.
 	ScaledObjectName string `json:"scaledObjectName" yaml:"scaledObjectName"`
 	// TriggerCount is the number of triggers configured.
@@ -118,8 +120,8 @@ type AutoscalerMapKEDAInfo struct {
 	Active bool `json:"active" yaml:"active"`
 }
 
-// AutoscalerMapVPAInfo holds VPA conflict information for the autoscaler map.
-type AutoscalerMapVPAInfo struct {
+// VPAInfo holds VPA conflict information for the autoscaler map.
+type VPAInfo struct {
 	// VPAName is the name of the conflicting VPA.
 	VPAName string `json:"vpaName" yaml:"vpaName"`
 	// TargetRef is the VPA target reference.
@@ -132,8 +134,8 @@ type AutoscalerMapVPAInfo struct {
 	ConflictResources []string `json:"conflictResources,omitempty" yaml:"conflictResources,omitempty"`
 }
 
-// AutoscalerMapPDB represents a PodDisruptionBudget relevant to the autoscaler map.
-type AutoscalerMapPDB struct {
+// PDB represents a PodDisruptionBudget relevant to the autoscaler map.
+type PDB struct {
 	// Name is the PDB name.
 	Name string `json:"name" yaml:"name"`
 	// MinAvailable is the minAvailable setting if set.
@@ -142,8 +144,8 @@ type AutoscalerMapPDB struct {
 	MaxUnavailable string `json:"maxUnavailable,omitempty" yaml:"maxUnavailable,omitempty"`
 }
 
-// AutoscalerMapQuota represents a ResourceQuota near its limit.
-type AutoscalerMapQuota struct {
+// Quota represents a ResourceQuota near its limit.
+type Quota struct {
 	// Name is the quota name.
 	Name string `json:"name" yaml:"name"`
 	// Resource is the resource type (e.g. "limits.cpu").
@@ -156,8 +158,8 @@ type AutoscalerMapQuota struct {
 	Ratio float64 `json:"ratio" yaml:"ratio"`
 }
 
-// AutoscalerMapPodSummary holds pod-level summary information.
-type AutoscalerMapPodSummary struct {
+// PodSummary holds pod-level summary information.
+type PodSummary struct {
 	// Total is the total number of pods.
 	Total int32 `json:"total" yaml:"total"`
 	// Running is the count of running pods.
@@ -168,8 +170,8 @@ type AutoscalerMapPodSummary struct {
 	Ready int32 `json:"ready" yaml:"ready"`
 }
 
-// AutoscalerMapNodeSummary holds node-level summary information.
-type AutoscalerMapNodeSummary struct {
+// NodeSummary holds node-level summary information.
+type NodeSummary struct {
 	// TotalNodes is the total number of nodes.
 	TotalNodes int32 `json:"totalNodes" yaml:"totalNodes"`
 	// AllocatableCPU is the total allocatable CPU across all nodes.

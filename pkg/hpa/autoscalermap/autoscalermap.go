@@ -1,22 +1,29 @@
-package hpa
+// Package autoscalermap visualizes the HPA-to-Node-Autoscaler relationship
+// chain (HPA -> workload -> pods -> nodes -> autoscaler), identifying
+// blockers at each layer. It depends only on pkg/hpa/internal/util for the
+// shared PendingPodInfo type; the cmd/ layer calls it directly
+// (autoscalermap.Analyze, autoscalermap.WriteText).
+package autoscalermap
 
 import (
 	"fmt"
 	"strings"
+
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
 )
 
-// AnalyzeAutoscalerMap produces a visualization of the HPA-to-Node Autoscaler
+// Analyze produces a visualization of the HPA-to-Node Autoscaler
 // relationship chain, identifying blockers at each layer.
-func AnalyzeAutoscalerMap(input AutoscalerMapInput) *AutoscalerMap {
-	am := &AutoscalerMap{
+func Analyze(input Input) *Map {
+	am := &Map{
 		Namespace:       input.Namespace,
 		HPAName:         input.HPAName,
 		Target:          input.Target,
 		CurrentReplicas: input.CurrentReplicas,
 		DesiredReplicas: input.DesiredReplicas,
 		MaxReplicas:     input.MaxReplicas,
-		Layers:          []AutoscalerMapLayer{},
-		Blockers:        []AutoscalerMapBlocker{},
+		Layers:          []Layer{},
+		Blockers:        []Blocker{},
 		NextActions:     []string{},
 		NextChecks:      []string{},
 		Warnings:        []string{},
@@ -50,8 +57,8 @@ func AnalyzeAutoscalerMap(input AutoscalerMapInput) *AutoscalerMap {
 }
 
 // buildHPALayer constructs the HPA layer and records a high-severity blocker when scaling is inactive.
-func buildHPALayer(input AutoscalerMapInput, am *AutoscalerMap) AutoscalerMapLayer {
-	hpaLayer := AutoscalerMapLayer{
+func buildHPALayer(input Input, am *Map) Layer {
+	hpaLayer := Layer{
 		Name:     "hpa",
 		Resource: fmt.Sprintf("%s/%s", input.Namespace, input.HPAName),
 		Status:   fmt.Sprintf("current=%d desired=%d max=%d", input.CurrentReplicas, input.DesiredReplicas, input.MaxReplicas),
@@ -59,7 +66,7 @@ func buildHPALayer(input AutoscalerMapInput, am *AutoscalerMap) AutoscalerMapLay
 	}
 	if !input.ScalingActive {
 		hpaLayer.Details = append(hpaLayer.Details, "ScalingActive is False")
-		am.Blockers = append(am.Blockers, AutoscalerMapBlocker{
+		am.Blockers = append(am.Blockers, Blocker{
 			Layer:    "hpa",
 			Severity: "high",
 			Message:  "HPA ScalingActive is False; cannot compute scaling recommendations",
@@ -69,9 +76,9 @@ func buildHPALayer(input AutoscalerMapInput, am *AutoscalerMap) AutoscalerMapLay
 }
 
 // buildWorkloadLayer constructs the workload layer and records a medium-severity blocker when pods are not converged.
-func buildWorkloadLayer(input AutoscalerMapInput, am *AutoscalerMap) AutoscalerMapLayer {
+func buildWorkloadLayer(input Input, am *Map) Layer {
 	workloadHealthy := input.WorkloadReadyReplicas >= input.WorkloadDesiredReplicas
-	workloadLayer := AutoscalerMapLayer{
+	workloadLayer := Layer{
 		Name:     "workload",
 		Resource: input.Target,
 		Status:   fmt.Sprintf("desired=%d ready=%d", input.WorkloadDesiredReplicas, input.WorkloadReadyReplicas),
@@ -80,7 +87,7 @@ func buildWorkloadLayer(input AutoscalerMapInput, am *AutoscalerMap) AutoscalerM
 	if !workloadHealthy {
 		workloadLayer.Details = append(workloadLayer.Details,
 			fmt.Sprintf("workload not converged: %d/%d pods ready", input.WorkloadReadyReplicas, input.WorkloadDesiredReplicas))
-		am.Blockers = append(am.Blockers, AutoscalerMapBlocker{
+		am.Blockers = append(am.Blockers, Blocker{
 			Layer:    "workload",
 			Severity: "medium",
 			Message:  fmt.Sprintf("Workload has %d ready pods but desires %d", input.WorkloadReadyReplicas, input.WorkloadDesiredReplicas),
@@ -90,9 +97,9 @@ func buildWorkloadLayer(input AutoscalerMapInput, am *AutoscalerMap) AutoscalerM
 }
 
 // buildPodsLayer constructs the pods layer and records a high-severity blocker when pods are pending.
-func buildPodsLayer(input AutoscalerMapInput, am *AutoscalerMap) AutoscalerMapLayer {
+func buildPodsLayer(input Input, am *Map) Layer {
 	podsHealthy := input.PodSummary.Pending == 0
-	podLayer := AutoscalerMapLayer{
+	podLayer := Layer{
 		Name:     "pods",
 		Resource: fmt.Sprintf("%d pods", input.PodSummary.Total),
 		Status:   fmt.Sprintf("running=%d pending=%d ready=%d", input.PodSummary.Running, input.PodSummary.Pending, input.PodSummary.Ready),
@@ -101,7 +108,7 @@ func buildPodsLayer(input AutoscalerMapInput, am *AutoscalerMap) AutoscalerMapLa
 	if input.PodSummary.Pending > 0 {
 		pendReasons := summarizePendingPods(input.PendingPods)
 		podLayer.Details = append(podLayer.Details, pendReasons...)
-		am.Blockers = append(am.Blockers, AutoscalerMapBlocker{
+		am.Blockers = append(am.Blockers, Blocker{
 			Layer:    "pods",
 			Severity: "high",
 			Message:  fmt.Sprintf("%d pods are Pending", input.PodSummary.Pending),
@@ -112,10 +119,10 @@ func buildPodsLayer(input AutoscalerMapInput, am *AutoscalerMap) AutoscalerMapLa
 }
 
 // buildNodesLayer constructs the nodes layer, including capacity details, tainted-node hints, and a blocker when no nodes are found.
-func buildNodesLayer(input AutoscalerMapInput, am *AutoscalerMap) AutoscalerMapLayer {
+func buildNodesLayer(input Input, am *Map) Layer {
 	if input.NodeFetchError != "" {
 		am.Warnings = append(am.Warnings, "node capacity unavailable: "+input.NodeFetchError)
-		return AutoscalerMapLayer{
+		return Layer{
 			Name:     "nodes",
 			Resource: "unknown",
 			Status:   "node data unavailable",
@@ -124,7 +131,7 @@ func buildNodesLayer(input AutoscalerMapInput, am *AutoscalerMap) AutoscalerMapL
 		}
 	}
 	nodesHealthy := input.NodeSummary.TotalNodes > 0
-	nodeLayer := AutoscalerMapLayer{
+	nodeLayer := Layer{
 		Name:     "nodes",
 		Resource: fmt.Sprintf("%d nodes", input.NodeSummary.TotalNodes),
 		Healthy:  nodesHealthy,
@@ -134,7 +141,7 @@ func buildNodesLayer(input AutoscalerMapInput, am *AutoscalerMap) AutoscalerMapL
 		nodeLayer.Details = append(nodeLayer.Details, nodeCapacityDetails(input.NodeSummary)...)
 	} else {
 		nodeLayer.Status = "no nodes found"
-		am.Blockers = append(am.Blockers, AutoscalerMapBlocker{
+		am.Blockers = append(am.Blockers, Blocker{
 			Layer:    "nodes",
 			Severity: "high",
 			Message:  "No schedulable nodes found in cluster",
@@ -144,7 +151,7 @@ func buildNodesLayer(input AutoscalerMapInput, am *AutoscalerMap) AutoscalerMapL
 }
 
 // nodeCapacityStatus builds the comma-separated allocatable capacity summary for the nodes layer.
-func nodeCapacityStatus(s AutoscalerMapNodeSummary) string {
+func nodeCapacityStatus(s NodeSummary) string {
 	parts := []string{}
 	if s.AllocatableCPU != "" {
 		parts = append(parts, fmt.Sprintf("CPU %s", s.AllocatableCPU))
@@ -156,7 +163,7 @@ func nodeCapacityStatus(s AutoscalerMapNodeSummary) string {
 }
 
 // nodeCapacityDetails builds human-readable detail lines covering taints, matching node pools, and per-pod requests.
-func nodeCapacityDetails(s AutoscalerMapNodeSummary) []string {
+func nodeCapacityDetails(s NodeSummary) []string {
 	var details []string
 	if s.TaintedNodes > 0 {
 		details = append(details, fmt.Sprintf("%d tainted node(s) with NoSchedule/NoExecute", s.TaintedNodes))
@@ -178,9 +185,9 @@ func nodeCapacityDetails(s AutoscalerMapNodeSummary) []string {
 }
 
 // buildAutoscalerLayer constructs the autoscaler layer and records a blocker when an autoscaler is missing despite pending pods.
-func buildAutoscalerLayer(input AutoscalerMapInput, am *AutoscalerMap) AutoscalerMapLayer {
+func buildAutoscalerLayer(input Input, am *Map) Layer {
 	autoscalerDetected := input.ClusterAutoscaler || input.Karpenter
-	autoscalerLayer := AutoscalerMapLayer{
+	autoscalerLayer := Layer{
 		Name:     "autoscaler",
 		Resource: detectAutoscalerType(input.ClusterAutoscaler, input.Karpenter),
 		Healthy:  autoscalerDetected,
@@ -196,7 +203,7 @@ func buildAutoscalerLayer(input AutoscalerMapInput, am *AutoscalerMap) Autoscale
 	} else {
 		autoscalerLayer.Status = "not detected"
 		if input.PodSummary.Pending > 0 {
-			am.Blockers = append(am.Blockers, AutoscalerMapBlocker{
+			am.Blockers = append(am.Blockers, Blocker{
 				Layer:    "autoscaler",
 				Severity: "medium",
 				Message:  "No node autoscaler detected; pending pods may not be scheduled",
@@ -208,11 +215,11 @@ func buildAutoscalerLayer(input AutoscalerMapInput, am *AutoscalerMap) Autoscale
 }
 
 // appendKEDALayer appends the KEDA external-scaler layer and records a high-severity blocker when triggers are inactive.
-func appendKEDALayer(input AutoscalerMapInput, am *AutoscalerMap) {
+func appendKEDALayer(input Input, am *Map) {
 	if input.KEDAInfo == nil {
 		return
 	}
-	kedaLayer := AutoscalerMapLayer{
+	kedaLayer := Layer{
 		Name:     "external-scaler",
 		Resource: fmt.Sprintf("ScaledObject/%s", input.KEDAInfo.ScaledObjectName),
 		Status:   fmt.Sprintf("triggers=%d active=%t", input.KEDAInfo.TriggerCount, input.KEDAInfo.Active),
@@ -220,7 +227,7 @@ func appendKEDALayer(input AutoscalerMapInput, am *AutoscalerMap) {
 	}
 	if !input.KEDAInfo.Active {
 		kedaLayer.Details = append(kedaLayer.Details, "KEDA ScaledObject triggers are inactive")
-		am.Blockers = append(am.Blockers, AutoscalerMapBlocker{
+		am.Blockers = append(am.Blockers, Blocker{
 			Layer:    "external-scaler",
 			Severity: "high",
 			Message:  fmt.Sprintf("KEDA ScaledObject %s triggers are inactive", input.KEDAInfo.ScaledObjectName),
@@ -234,7 +241,7 @@ func appendKEDALayer(input AutoscalerMapInput, am *AutoscalerMap) {
 }
 
 // appendConstraintsLayer appends the constraints layer (VPA, PDB, Quota) and records associated blockers and next-checks.
-func appendConstraintsLayer(input AutoscalerMapInput, am *AutoscalerMap) {
+func appendConstraintsLayer(input Input, am *Map) {
 	constraintDetails := []string{}
 	constraintHealthy := true
 
@@ -253,7 +260,7 @@ func appendConstraintsLayer(input AutoscalerMapInput, am *AutoscalerMap) {
 	}
 
 	if len(constraintDetails) > 0 || input.VPAInfo != nil || len(input.PDBs) > 0 || len(input.Quotas) > 0 {
-		constraintLayer := AutoscalerMapLayer{
+		constraintLayer := Layer{
 			Name:     "constraints",
 			Resource: "VPA, PDB, Quota",
 			Status:   fmt.Sprintf("vpa=%t pdbs=%d quotas=%d", input.VPAInfo != nil, len(input.PDBs), len(input.Quotas)),
@@ -267,12 +274,12 @@ func appendConstraintsLayer(input AutoscalerMapInput, am *AutoscalerMap) {
 	}
 }
 
-func appendVPAConstraint(input AutoscalerMapInput, am *AutoscalerMap, constraintDetails []string) []string {
+func appendVPAConstraint(input Input, am *Map, constraintDetails []string) []string {
 	conflictStr := strings.Join(input.VPAInfo.ConflictResources, ", ")
 	constraintDetails = append(constraintDetails,
 		fmt.Sprintf("VPA/%s (%s) controls %s — may conflict with HPA",
 			input.VPAInfo.VPAName, input.VPAInfo.UpdateMode, conflictStr))
-	am.Blockers = append(am.Blockers, AutoscalerMapBlocker{
+	am.Blockers = append(am.Blockers, Blocker{
 		Layer:    "constraints",
 		Severity: "medium",
 		Message: fmt.Sprintf("VPA/%s (%s mode) controls %s; may conflict with HPA CPU/memory targets",
@@ -284,7 +291,7 @@ func appendVPAConstraint(input AutoscalerMapInput, am *AutoscalerMap, constraint
 	return constraintDetails
 }
 
-func appendPDBConstraint(input AutoscalerMapInput, am *AutoscalerMap, constraintDetails []string, pdb AutoscalerMapPDB) []string {
+func appendPDBConstraint(input Input, am *Map, constraintDetails []string, pdb PDB) []string {
 	pdbDesc := pdb.Name
 	if pdb.MinAvailable != "" {
 		pdbDesc += fmt.Sprintf(" (minAvailable=%s)", pdb.MinAvailable)
@@ -294,7 +301,7 @@ func appendPDBConstraint(input AutoscalerMapInput, am *AutoscalerMap, constraint
 	}
 	constraintDetails = append(constraintDetails,
 		fmt.Sprintf("PDB %s may limit scale-down velocity", pdbDesc))
-	am.Blockers = append(am.Blockers, AutoscalerMapBlocker{
+	am.Blockers = append(am.Blockers, Blocker{
 		Layer:    "constraints",
 		Severity: "low",
 		Message:  fmt.Sprintf("PDB %s may block pod eviction during scale-down", pdb.Name),
@@ -304,13 +311,13 @@ func appendPDBConstraint(input AutoscalerMapInput, am *AutoscalerMap, constraint
 	return constraintDetails
 }
 
-func appendAutoscalerMapQuota(input AutoscalerMapInput, am *AutoscalerMap, constraintDetails []string, quota AutoscalerMapQuota, constraintHealthy bool) ([]string, bool) {
+func appendAutoscalerMapQuota(input Input, am *Map, constraintDetails []string, quota Quota, constraintHealthy bool) ([]string, bool) {
 	constraintDetails = append(constraintDetails,
 		fmt.Sprintf("Quota %s/%s at %.0f%% (%s/%s)", quota.Name, quota.Resource, quota.Ratio*100, quota.Used, quota.Hard))
 	if quota.Ratio < 0.9 {
 		return constraintDetails, constraintHealthy
 	}
-	am.Blockers = append(am.Blockers, AutoscalerMapBlocker{
+	am.Blockers = append(am.Blockers, Blocker{
 		Layer:    "constraints",
 		Severity: "high",
 		Message:  fmt.Sprintf("Quota %s/%s at %.0f%% — HPA scale-up may exceed quota", quota.Name, quota.Resource, quota.Ratio*100),
@@ -320,7 +327,7 @@ func appendAutoscalerMapQuota(input AutoscalerMapInput, am *AutoscalerMap, const
 }
 
 // summarizePendingPods extracts scheduling failure reasons from pending pods.
-func summarizePendingPods(pods []PendingPodInfo) []string {
+func summarizePendingPods(pods []util.PendingPodInfo) []string {
 	var reasons []string
 	seen := make(map[string]struct{})
 	for _, p := range pods {
@@ -356,7 +363,7 @@ func detectAutoscalerType(ca, karpenter bool) string {
 
 // buildAutoscalerMapSummaryEnhanced produces the overall summary, recommendation,
 // next actions, and risk assessment.
-func buildAutoscalerMapSummaryEnhanced(am *AutoscalerMap, input AutoscalerMapInput) (string, string, []string, string) {
+func buildAutoscalerMapSummaryEnhanced(am *Map, input Input) (string, string, []string, string) {
 	blockerCount := len(am.Blockers)
 	highCount, mediumCount, lowCount := countBlockerSeverities(am.Blockers)
 
@@ -395,7 +402,7 @@ func buildAutoscalerMapSummaryEnhanced(am *AutoscalerMap, input AutoscalerMapInp
 }
 
 // countBlockerSeverities tallies blockers by their high/medium/low severity.
-func countBlockerSeverities(blockers []AutoscalerMapBlocker) (high, medium, low int) {
+func countBlockerSeverities(blockers []Blocker) (high, medium, low int) {
 	for _, b := range blockers {
 		switch b.Severity {
 		case "high":

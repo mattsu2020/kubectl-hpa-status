@@ -2,6 +2,7 @@ package hpa
 
 import (
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/gitops"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/warmup"
 )
@@ -278,7 +279,7 @@ func (a *Analysis) Controllers() ControllersView {
 // BlockersView groups apply-time gating signals.
 type BlockersView struct {
 	BlockerReport  *blocker.Report
-	GitOpsConflict *GitOpsConflict
+	GitOpsConflict *gitops.Conflict
 }
 
 // Blockers returns the apply-time gating group view.

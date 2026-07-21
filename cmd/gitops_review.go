@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/gitops"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 	"github.com/spf13/cobra"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -50,13 +50,13 @@ func runGitOpsReview(_ context.Context, out io.Writer, opts *options, filePath s
 		return nil
 	}
 
-	review := hpaanalysis.AnalyzeGitOpsReview(inputs)
+	review := gitops.AnalyzeReview(inputs)
 
 	format, templateStr := selectOutputFromOptions(opts)
 
 	return writeOutput(out, format, templateStr, review, func() error {
 		theme := style.NewTheme(shouldColorize(opts.Color, out))
-		return hpaanalysis.WriteGitOpsReviewText(out, review, theme)
+		return gitops.WriteReviewText(out, review, theme)
 	})
 }
 
@@ -77,9 +77,9 @@ func collectGitOpsReviewFiles(filePath string) ([]string, error) {
 	return collectManifestFiles(filePath)
 }
 
-func decodeGitOpsReviewInputs(files []string) []hpaanalysis.GitOpsReviewInput {
+func decodeGitOpsReviewInputs(files []string) []gitops.ReviewInput {
 	decoder := serializer.NewCodecFactory(scheme.Scheme).UniversalDeserializer()
-	var inputs []hpaanalysis.GitOpsReviewInput
+	var inputs []gitops.ReviewInput
 
 	for _, f := range files {
 		data, readErr := os.ReadFile(f)
@@ -104,7 +104,7 @@ func decodeGitOpsReviewInputs(files []string) []hpaanalysis.GitOpsReviewInput {
 				continue
 			}
 
-			inputs = append(inputs, hpaanalysis.GitOpsReviewInput{
+			inputs = append(inputs, gitops.ReviewInput{
 				After:    hpa,
 				FilePath: f,
 			})

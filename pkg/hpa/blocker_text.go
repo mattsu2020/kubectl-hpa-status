@@ -6,6 +6,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
@@ -45,7 +46,7 @@ func AppendBlockerText(out *[]byte, report *blocker.Report, theme style.Theme, l
 		*out = append(*out, '\n')
 		*out = fmt.Appendf(*out, "  %s:\n", lbls.Interpretation)
 		// Wrap long interpretation lines at ~80 chars for readability.
-		for _, line := range wrapLines(report.Interpretation, 76) {
+		for _, line := range rendutil.WrapLines(report.Interpretation, 76) {
 			*out = fmt.Appendf(*out, "    %s\n", theme.InterpretationLine(line))
 		}
 	}

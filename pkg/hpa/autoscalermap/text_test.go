@@ -1,4 +1,4 @@
-package hpa
+package autoscalermap
 
 import (
 	"bytes"
@@ -10,7 +10,7 @@ import (
 
 func TestWriteAutoscalerMapText_Nil(t *testing.T) {
 	var buf bytes.Buffer
-	if err := WriteAutoscalerMapText(&buf, nil, style.NewTheme(false)); err != nil {
+	if err := WriteText(&buf, nil, style.NewTheme(false)); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if buf.Len() != 0 {
@@ -19,15 +19,15 @@ func TestWriteAutoscalerMapText_Nil(t *testing.T) {
 }
 
 func TestWriteAutoscalerMapText_Full(t *testing.T) {
-	am := &AutoscalerMap{
+	am := &Map{
 		Namespace: "default",
 		HPAName:   "web",
-		Layers: []AutoscalerMapLayer{
+		Layers: []Layer{
 			{Name: "hpa", Status: "scaling active", Healthy: true, Details: []string{"cpu target 70%"}},
 			{Name: "nodes", Status: "unschedulable pressure", Healthy: false},
 		},
 		Risk: "high",
-		Blockers: []AutoscalerMapBlocker{{
+		Blockers: []Blocker{{
 			Layer:    "nodes",
 			Severity: "high",
 			Message:  "insufficient cpu on nodes",
@@ -39,7 +39,7 @@ func TestWriteAutoscalerMapText_Full(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := WriteAutoscalerMapText(&buf, am, style.NewTheme(false)); err != nil {
+	if err := WriteText(&buf, am, style.NewTheme(false)); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	out := buf.String()
