@@ -24,44 +24,15 @@ func NewRootCommand() *cobra.Command {
 	*opts = defaultRootOptions()
 
 	root := &cobra.Command{
-		Use:           "kubectl-hpa-status",
-		Short:         "Inspect HorizontalPodAutoscaler status",
-		Version:       buildVersion(),
-		SilenceUsage:  true,
-		SilenceErrors: true,
-		Args:          cobra.ArbitraryArgs,
-		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-			if len(args) > 0 {
-				return nil, cobra.ShellCompDirectiveNoFileComp
-			}
-			return hpaNameCompletion(opts)(cmd, args, toComplete)
-		},
-		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
-			opts.Err = cmd.ErrOrStderr()
-			if err := applyConfigDefaults(cmd, opts); err != nil {
-				return err
-			}
-			if err := applyHealthWeightOverrides(opts); err != nil {
-				return err
-			}
-			opts.Normalize()
-			applyStatusDepthDefaults(cmd, opts)
-			opts.In = cmd.InOrStdin()
-			return validateEffectiveOptions(cmd, opts)
-		},
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) == 0 {
-				return cmd.Help()
-			}
-			includeInterpretation := (opts.Interpret || opts.Explain || opts.Suggest) && !opts.NoInterpret
-			if opts.Watch.Watch {
-				if len(args) != 1 {
-					return fmt.Errorf("--watch supports exactly one HPA name")
-				}
-				return runWatch(cmd.Context(), cmd.OutOrStdout(), opts, args[0], includeInterpretation)
-			}
-			return runStatusMany(cmd.Context(), cmd.OutOrStdout(), opts, args, includeInterpretation)
-		},
+		Use:               "kubectl-hpa-status",
+		Short:             "Inspect HorizontalPodAutoscaler status",
+		Version:           buildVersion(),
+		SilenceUsage:      true,
+		SilenceErrors:     true,
+		Args:              cobra.ArbitraryArgs,
+		ValidArgsFunction: rootValidArgsFunction(opts),
+		PersistentPreRunE: rootPersistentPreRunE(opts),
+		RunE:              rootRunE(opts),
 	}
 
 	registerCommonFlags(root, opts)
@@ -79,6 +50,47 @@ func NewRootCommand() *cobra.Command {
 	_ = root.MarkPersistentFlagFilename("config")
 
 	return root
+}
+
+func rootValidArgsFunction(opts *options) func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	return func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		if len(args) > 0 {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		return hpaNameCompletion(opts)(cmd, args, toComplete)
+	}
+}
+
+func rootPersistentPreRunE(opts *options) func(cmd *cobra.Command, _ []string) error {
+	return func(cmd *cobra.Command, _ []string) error {
+		opts.Err = cmd.ErrOrStderr()
+		if err := applyConfigDefaults(cmd, opts); err != nil {
+			return err
+		}
+		if err := applyHealthWeightOverrides(opts); err != nil {
+			return err
+		}
+		opts.Normalize()
+		applyStatusDepthDefaults(cmd, opts)
+		opts.In = cmd.InOrStdin()
+		return validateEffectiveOptions(cmd, opts)
+	}
+}
+
+func rootRunE(opts *options) func(cmd *cobra.Command, args []string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		if len(args) == 0 {
+			return cmd.Help()
+		}
+		includeInterpretation := (opts.Interpret || opts.Explain || opts.Suggest) && !opts.NoInterpret
+		if opts.Watch.Watch {
+			if len(args) != 1 {
+				return fmt.Errorf("--watch supports exactly one HPA name")
+			}
+			return runWatch(cmd.Context(), cmd.OutOrStdout(), opts, args[0], includeInterpretation)
+		}
+		return runStatusMany(cmd.Context(), cmd.OutOrStdout(), opts, args, includeInterpretation)
+	}
 }
 
 // commandGroup pairs a cobra help group with the constructors of the

@@ -18,23 +18,23 @@ import (
 // KEDAAnalysis is a type alias for keda.Analysis, the canonical KEDA summary
 // type. It preserves the historical hpaanalysis.KEDAAnalysis name.
 //
-// Deprecated: Use keda.Analysis instead.
+// Deprecated: Use keda.Analysis instead. Scheduled for removal in v3.0.0.
 type KEDAAnalysis = keda.Analysis
 
 // KEDATriggerSummary is a type alias for keda.TriggerSummary.
 //
-// Deprecated: Use keda.TriggerSummary instead.
+// Deprecated: Use keda.TriggerSummary instead. Scheduled for removal in v3.0.0.
 type KEDATriggerSummary = keda.TriggerSummary
 
 // KEDAFallbackInfo is a type alias for keda.FallbackInfo.
 //
-// Deprecated: Use keda.FallbackInfo instead.
+// Deprecated: Use keda.FallbackInfo instead. Scheduled for removal in v3.0.0.
 type KEDAFallbackInfo = keda.FallbackInfo
 
 // AnalyzeKEDA produces interpretation lines that cross-reference an HPA with
 // its KEDA ScaledObject. Delegates to keda.Analyze.
 //
-// Deprecated: Use keda.Analyze instead.
+// Deprecated: Use keda.Analyze instead. Scheduled for removal in v3.0.0.
 func AnalyzeKEDA(hpa *autoscalingv2.HorizontalPodAutoscaler, k *KEDAAnalysis) []string {
 	return keda.Analyze(hpa, k)
 }

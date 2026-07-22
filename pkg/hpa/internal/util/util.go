@@ -67,15 +67,25 @@ func HasKEDAValueFallback(m map[string]string) bool {
 	return false
 }
 
+// MarshalJSON serialises an internal patch value and returns the JSON string.
+// It returns an error if the value cannot be marshalled.
+func MarshalJSON(value any) (string, error) {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return "", fmt.Errorf("marshal internal JSON patch: %w", err)
+	}
+	return string(data), nil
+}
+
 // MustMarshalJSON serialises an internal patch value. Patch builders only pass
 // JSON-compatible maps; panicking on a programmer error is safer than silently
 // returning a valid-looking no-op patch.
 func MustMarshalJSON(value any) string {
-	data, err := json.Marshal(value)
+	s, err := MarshalJSON(value)
 	if err != nil {
-		panic(fmt.Sprintf("marshal internal JSON patch: %v", err))
+		panic(err)
 	}
-	return string(data)
+	return s
 }
 
 // DryRunMode controls whether the generated kubectl patch command runs against

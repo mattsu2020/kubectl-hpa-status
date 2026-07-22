@@ -1,8 +1,10 @@
-package hpa
+package healthtrend
 
 import (
 	"fmt"
 	"time"
+
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/flapping"
 )
 
 const (
@@ -43,12 +45,12 @@ const (
 // DetectAnomalies analyzes a sorted series of health snapshots and returns
 // any detected anomalies. Returns nil if fewer than anomalyMinSnapshots are
 // provided. The input slice is not modified.
-func DetectAnomalies(snapshots []HealthSnapshot) []AnomalyDetection {
+func DetectAnomalies(snapshots []HealthSnapshot) []flapping.AnomalyDetection {
 	if len(snapshots) < anomalyMinSnapshots {
 		return nil
 	}
 
-	var anomalies []AnomalyDetection
+	var anomalies []flapping.AnomalyDetection
 
 	anomalies = append(anomalies, detectSuddenDegradation(snapshots)...)
 	anomalies = append(anomalies, detectStuckState(snapshots)...)
@@ -59,8 +61,8 @@ func DetectAnomalies(snapshots []HealthSnapshot) []AnomalyDetection {
 
 // detectSuddenDegradation finds consecutive snapshots where the health score
 // drops by more than suddenDegradationThreshold within suddenDegradationMaxWindow.
-func detectSuddenDegradation(snapshots []HealthSnapshot) []AnomalyDetection {
-	var anomalies []AnomalyDetection
+func detectSuddenDegradation(snapshots []HealthSnapshot) []flapping.AnomalyDetection {
+	var anomalies []flapping.AnomalyDetection
 
 	for i := 1; i < len(snapshots); i++ {
 		prev := snapshots[i-1]
@@ -81,9 +83,9 @@ func detectSuddenDegradation(snapshots []HealthSnapshot) []AnomalyDetection {
 			severity = "critical"
 		}
 
-		anomalies = append(anomalies, AnomalyDetection{
+		anomalies = append(anomalies, flapping.AnomalyDetection{
 			Timestamp:     curr.Timestamp,
-			Type:          AnomalySuddenDegradation,
+			Type:          flapping.AnomalySuddenDegradation,
 			Severity:      severity,
 			ScoreBefore:   prev.HealthScore,
 			ScoreAfter:    curr.HealthScore,
@@ -98,18 +100,18 @@ func detectSuddenDegradation(snapshots []HealthSnapshot) []AnomalyDetection {
 
 // detectStuckState finds runs of consecutive snapshots where the health score
 // stays within stuckStateThreshold for more than stuckStateMinConsecutive.
-func detectStuckState(snapshots []HealthSnapshot) []AnomalyDetection {
+func detectStuckState(snapshots []HealthSnapshot) []flapping.AnomalyDetection {
 	if len(snapshots) < stuckStateMinConsecutive {
 		return nil
 	}
 
-	var anomalies []AnomalyDetection
+	var anomalies []flapping.AnomalyDetection
 
 	runStart := 0
 	for i := 1; i <= len(snapshots); i++ {
 		// Check if the current snapshot is still within threshold of the run start.
 		if i < len(snapshots) &&
-			abs(snapshots[i].HealthScore-snapshots[runStart].HealthScore) <= stuckStateThreshold {
+			absInt(snapshots[i].HealthScore-snapshots[runStart].HealthScore) <= stuckStateThreshold {
 			continue
 		}
 
@@ -119,9 +121,9 @@ func detectStuckState(snapshots []HealthSnapshot) []AnomalyDetection {
 			last := snapshots[i-1]
 			duration := last.Timestamp.Sub(first.Timestamp)
 
-			anomalies = append(anomalies, AnomalyDetection{
+			anomalies = append(anomalies, flapping.AnomalyDetection{
 				Timestamp:     last.Timestamp,
-				Type:          AnomalyStuckState,
+				Type:          flapping.AnomalyStuckState,
 				Severity:      "info",
 				ScoreBefore:   first.HealthScore,
 				ScoreAfter:    last.HealthScore,
@@ -139,7 +141,7 @@ func detectStuckState(snapshots []HealthSnapshot) []AnomalyDetection {
 
 // detectOscillationEscalation compares the variance of the last
 // oscillationWindow snapshots against the previous oscillationWindow.
-func detectOscillationEscalation(snapshots []HealthSnapshot) []AnomalyDetection {
+func detectOscillationEscalation(snapshots []HealthSnapshot) []flapping.AnomalyDetection {
 	minRequired := oscillationWindow * 2
 	if len(snapshots) < minRequired {
 		return nil
@@ -162,13 +164,13 @@ func detectOscillationEscalation(snapshots []HealthSnapshot) []AnomalyDetection 
 		// If the previous window had zero variance, any non-zero recent
 		// variance counts as escalation.
 		if recentVar > 0 {
-			return []AnomalyDetection{buildOscillationAnomaly(snapshots)}
+			return []flapping.AnomalyDetection{buildOscillationAnomaly(snapshots)}
 		}
 		return nil
 	}
 
 	if recentVar > prevVar*oscillationEscalationFactor {
-		return []AnomalyDetection{buildOscillationAnomaly(snapshots)}
+		return []flapping.AnomalyDetection{buildOscillationAnomaly(snapshots)}
 	}
 
 	return nil
@@ -176,15 +178,15 @@ func detectOscillationEscalation(snapshots []HealthSnapshot) []AnomalyDetection 
 
 // buildOscillationAnomaly creates an oscillation escalation anomaly from the
 // full snapshot series.
-func buildOscillationAnomaly(snapshots []HealthSnapshot) AnomalyDetection {
+func buildOscillationAnomaly(snapshots []HealthSnapshot) flapping.AnomalyDetection {
 	n := len(snapshots)
 	first := snapshots[n-oscillationWindow]
 	last := snapshots[n-1]
 	duration := last.Timestamp.Sub(first.Timestamp)
 
-	return AnomalyDetection{
+	return flapping.AnomalyDetection{
 		Timestamp:     last.Timestamp,
-		Type:          AnomalyOscillationEscalation,
+		Type:          flapping.AnomalyOscillationEscalation,
 		Severity:      "warning",
 		ScoreBefore:   first.HealthScore,
 		ScoreAfter:    last.HealthScore,
@@ -236,8 +238,8 @@ func formatDurationFromDuration(d time.Duration) string {
 	}
 }
 
-// abs returns the absolute value of an integer.
-func abs(x int) int {
+// absInt returns the absolute value of an integer.
+func absInt(x int) int {
 	if x < 0 {
 		return -x
 	}
