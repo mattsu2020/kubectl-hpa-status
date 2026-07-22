@@ -109,6 +109,71 @@ func TestWriteReport_TextAndMarkdown(t *testing.T) {
 	}
 }
 
+// singleCandidateReport builds a Report with at most one candidate so the
+// text/markdown renderers take the summary+impact branch rather than the
+// multi-candidate policy comparison table.
+func singleCandidateReport() Report {
+	return Report{
+		Namespace: "default",
+		Name:      "web",
+		ProposedConfig: map[string]string{
+			"maxReplicas":                "20",
+			"scaleDownStabilizationSecs": "600",
+		},
+		Current: Summary{
+			Snapshots: 12, ScaleEvents: 6, PeakReplicas: 9,
+			PodHours: 4.5, FlappingScore: "42",
+		},
+		CandidateResult: &Summary{
+			Snapshots: 12, ScaleEvents: 3, PeakReplicas: 8,
+			PodHours: 3.6, FlappingScore: "12",
+		},
+		Impact: &Impact{
+			ScaleEventReductionPct: 50,
+			PodHoursChangePct:      -20,
+			UnderProvisionFixed:    true,
+			NoMissedScaleUp:        true,
+			AdditionalWorstCase:    2,
+		},
+		Recommendation: "widen the scale-down stabilization window",
+		Limitations:    []string{"synthetic demand model"},
+	}
+}
+
+func TestWriteReport_SingleCandidateWithImpact(t *testing.T) {
+	t.Parallel()
+	for _, format := range []string{"", "markdown"} {
+		var buf bytes.Buffer
+		if err := WriteReport(&buf, format, singleCandidateReport()); err != nil {
+			t.Fatalf("WriteReport %q: %v", format, err)
+		}
+		out := buf.String()
+		for _, want := range []string{
+			"maxReplicas", "scaleDownStabilizationSecs",
+			"widen the scale-down stabilization window",
+			"synthetic demand model",
+		} {
+			if !strings.Contains(out, want) {
+				t.Errorf("format %q: expected %q in output:\n%s", format, want, out)
+			}
+		}
+		// Impact section: text and markdown use different phrasing, so check
+		// substrings common to both ("reduced by 50%" text vs "**50%**" markdown).
+		if !strings.Contains(out, "50%") {
+			t.Errorf("format %q: expected impact reduction percentage in output:\n%s", format, out)
+		}
+		if !strings.Contains(out, "under-provision") && !strings.Contains(out, "Under-provision") {
+			t.Errorf("format %q: expected under-provision-fixed line in output:\n%s", format, out)
+		}
+		if !strings.Contains(out, "missed scale-up") {
+			t.Errorf("format %q: expected no-missed-scale-up line in output:\n%s", format, out)
+		}
+		if !strings.Contains(out, "worst-case") {
+			t.Errorf("format %q: expected additional-worst-case line in output:\n%s", format, out)
+		}
+	}
+}
+
 func TestReplaySLORisk(t *testing.T) {
 	t.Parallel()
 	if got := replaySLORisk(Summary{MaxReplicasReached: 6}); got != "high" {
