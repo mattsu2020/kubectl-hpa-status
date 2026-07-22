@@ -17,21 +17,21 @@ import (
 type (
 	// ChurnLevel aliases churn.ChurnLevel.
 	//
-	// Deprecated: Use churn.ChurnLevel instead.
+	// Deprecated: Use churn.ChurnLevel instead. Scheduled for removal in v3.0.0.
 	ChurnLevel = churn.ChurnLevel
 	// ChurnAnalysis aliases churn.ChurnAnalysis.
 	//
-	// Deprecated: Use churn.ChurnAnalysis instead.
+	// Deprecated: Use churn.ChurnAnalysis instead. Scheduled for removal in v3.0.0.
 	ChurnAnalysis = churn.ChurnAnalysis
 	// ChurnRecommendation aliases churn.ChurnRecommendation.
 	//
-	// Deprecated: Use churn.ChurnRecommendation instead.
+	// Deprecated: Use churn.ChurnRecommendation instead. Scheduled for removal in v3.0.0.
 	ChurnRecommendation = churn.ChurnRecommendation
 )
 
 // Churn level constants.
 //
-// Deprecated: Use the canonical churn.ChurnLow/ChurnMedium/ChurnHigh/ChurnCritical constants instead.
+// Deprecated: Use the canonical churn.ChurnLow/ChurnMedium/ChurnHigh/ChurnCritical constants instead. Scheduled for removal in v3.0.0.
 const (
 	ChurnLow      = churn.ChurnLow
 	ChurnMedium   = churn.ChurnMedium
@@ -42,7 +42,7 @@ const (
 // AnalyzeChurnFromEvents detects thrashing/churn from HPA events. Delegates
 // to churn.AnalyzeChurnFromEvents.
 //
-// Deprecated: Use churn.AnalyzeChurnFromEvents instead.
+// Deprecated: Use churn.AnalyzeChurnFromEvents instead. Scheduled for removal in v3.0.0.
 func AnalyzeChurnFromEvents(events []Event, hpa *autoscalingv2.HorizontalPodAutoscaler) *ChurnAnalysis {
 	return churn.AnalyzeChurnFromEvents(events, hpa)
 }

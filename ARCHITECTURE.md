@@ -256,13 +256,24 @@ Refactoring notes:
     `readiness.Impact`, `readiness.DoctorInput`). Re-exported as
     `hpaanalysis.AnalyzeReadinessDoctor`, `hpaanalysis.ReadinessDoctorReport`,
     etc. Types drop the `Readiness` prefix in the canonical package.
+  - `pkg/hpa/healthtrend` — health score trend analysis, flapping detection,
+    anomaly detection, sparklines, and ASCII graph rendering
+    (`healthtrend.AnalyzeHealthTrend`, `healthtrend.DetectFlapping`,
+    `healthtrend.DetectAnomalies`, `healthtrend.RenderHealthTrendASCII`,
+    `healthtrend.FormatTrendText`, `healthtrend.HealthSnapshot`,
+    `healthtrend.HealthTrendResult`). Re-exported as
+    `hpaanalysis.AnalyzeHealthTrend`, `hpaanalysis.HealthSnapshot`,
+    `hpaanalysis.HealthTrendResult`, etc. The `HealthSnapshot` and
+    `HealthTrendResult` types moved from `workload_types.go` to the new
+    package; `pkg/hpa` keeps type aliases for backward compatibility.
+    The package imports `pkg/hpa/flapping` for `AnomalyDetection` types.
   Domains that depend on the shared clock (`now()`), labels machinery, or
   `FormatMetricStatus` (capacity, retrospective, timeline, metrics, decision,
   simulate) remain in `pkg/hpa` until those shared helpers are extracted into a
   core sub-package; that extraction is deferred until a domain that needs them
   is moved.
-- Audit, blocker, warmup, flapping, churn, policy, lint, readiness, keda, and
-  vpa have been extracted into self-contained sub-packages. The remaining
+- Audit, blocker, warmup, flapping, churn, policy, lint, readiness, keda,
+  vpa, and healthtrend have been extracted into self-contained sub-packages. The remaining
   domains (pod-analysis, events, capacity, simulate, decision, gitops, metrics,
   health, retrospective, timeline, behavior, container-advisor, assumptions,
   hidden-factors) each depend on one or more shared helpers that still span the

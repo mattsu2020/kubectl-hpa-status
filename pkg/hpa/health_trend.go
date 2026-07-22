@@ -1,209 +1,91 @@
 package hpa
 
 import (
-	"math"
-	"sort"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/healthtrend"
 )
 
+// This file is a thin re-export facade for the health trend domain, which now
+// lives in pkg/hpa/healthtrend. The functions below preserve the existing
+// hpaanalysis.* API surface so cmd/ and internal/ callers keep compiling
+// without changing their imports. The canonical implementations are in
+// pkg/hpa/healthtrend/.
+
 // AnalyzeHealthTrend computes trend statistics from a series of health snapshots.
-// Returns a HealthTrendResult with variance, min/max/mean, degradation rate,
-// and flapping detection.
+// Delegates to healthtrend.AnalyzeHealthTrend.
+//
+// Deprecated: Use healthtrend.AnalyzeHealthTrend instead. Scheduled for removal in v3.0.0.
 func AnalyzeHealthTrend(snapshots []HealthSnapshot) HealthTrendResult {
-	if len(snapshots) == 0 {
-		return HealthTrendResult{}
-	}
-
-	// Sort by timestamp.
-	sorted := make([]HealthSnapshot, len(snapshots))
-	copy(sorted, snapshots)
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].Timestamp.Before(sorted[j].Timestamp)
-	})
-
-	scores := make([]int, len(sorted))
-	for i, s := range sorted {
-		scores[i] = s.HealthScore
-	}
-
-	minScore, maxScore := minMax(scores)
-	mean := meanValue(scores)
-	variance := varianceValue(scores, mean)
-	degradation := computeDegradationRate(sorted)
-	flapping, severity := DetectFlapping(sorted)
-	sparkline := FormatHealthSparkline(scores, 15)
-
-	return HealthTrendResult{
-		Snapshots:        sorted,
-		Variance:         variance,
-		MinScore:         minScore,
-		MaxScore:         maxScore,
-		MeanScore:        mean,
-		DegradationRate:  degradation,
-		FlappingDetected: flapping,
-		FlappingSeverity: severity,
-		Sparkline:        sparkline,
-		Anomalies:        DetectAnomalies(sorted),
-	}
+	return healthtrend.AnalyzeHealthTrend(snapshots)
 }
 
-// DetectFlapping identifies rapid oscillation in health states. It looks for
-// repeated transitions between distinct health states (e.g., OK -> LIMITED -> OK)
-// within a short time window.
+// DetectFlapping identifies rapid oscillation in health states.
+// Delegates to healthtrend.DetectFlapping.
+//
+// Deprecated: Use healthtrend.DetectFlapping instead. Scheduled for removal in v3.0.0.
 func DetectFlapping(snapshots []HealthSnapshot) (bool, string) {
-	if len(snapshots) < 3 {
-		return false, ""
-	}
-
-	transitions := 0
-	seenStates := make(map[string]int)
-
-	for i := 1; i < len(snapshots); i++ {
-		prev := snapshots[i-1].HealthState
-		curr := snapshots[i].HealthState
-		seenStates[curr]++
-
-		if prev != curr {
-			transitions++
-		}
-	}
-	seenStates[snapshots[0].HealthState]++
-
-	// Flapping detection: more than 3 state transitions in the series.
-	if transitions < 4 {
-		return false, ""
-	}
-
-	// Severity based on transition count.
-	ratio := float64(transitions) / float64(len(snapshots)-1)
-	switch {
-	case ratio > 0.7:
-		return true, "CRITICAL"
-	case ratio > 0.5:
-		return true, "HIGH"
-	default:
-		return true, "MEDIUM"
-	}
+	return healthtrend.DetectFlapping(snapshots)
 }
 
 // ComputeHealthVariance returns the population variance of health scores.
+// Delegates to healthtrend.ComputeHealthVariance.
+//
+// Deprecated: Use healthtrend.ComputeHealthVariance instead. Scheduled for removal in v3.0.0.
 func ComputeHealthVariance(scores []int) float64 {
-	if len(scores) == 0 {
-		return 0
-	}
-	return varianceValue(scores, meanValue(scores))
-}
-
-// computeDegradationRate computes a linear regression slope of health scores
-// over time. A negative value indicates degradation. Returns score change
-// per hour.
-func computeDegradationRate(snapshots []HealthSnapshot) float64 {
-	if len(snapshots) < 2 {
-		return 0
-	}
-
-	n := float64(len(snapshots))
-
-	// Convert timestamps to hours from first snapshot.
-	startTime := snapshots[0].Timestamp.Unix()
-	var sumX, sumY, sumXY, sumX2 float64
-	for _, s := range snapshots {
-		x := float64(s.Timestamp.Unix()-startTime) / 3600.0
-		y := float64(s.HealthScore)
-		sumX += x
-		sumY += y
-		sumXY += x * y
-		sumX2 += x * x
-	}
-
-	denominator := n*sumX2 - sumX*sumX
-	if denominator == 0 {
-		return 0
-	}
-
-	slope := (n*sumXY - sumX*sumY) / denominator
-	return math.Round(slope*100) / 100
+	return healthtrend.ComputeHealthVariance(scores)
 }
 
 // FormatHealthSparkline renders a compact sparkline from health scores.
-// Uses block characters scaled to the score range.
+// Delegates to healthtrend.FormatHealthSparkline.
+//
+// Deprecated: Use healthtrend.FormatHealthSparkline instead. Scheduled for removal in v3.0.0.
 func FormatHealthSparkline(scores []int, width int) string {
-	if len(scores) == 0 || width <= 0 {
-		return ""
-	}
-
-	// Downsample if more scores than width.
-	display := scores
-	if len(scores) > width {
-		step := float64(len(scores)) / float64(width)
-		display = make([]int, 0, width)
-		for i := 0; i < width; i++ {
-			idx := int(float64(i) * step)
-			if idx >= len(scores) {
-				idx = len(scores) - 1
-			}
-			display = append(display, scores[idx])
-		}
-	}
-
-	_, maxVal := minMax(scores)
-	if maxVal == 0 {
-		maxVal = 100
-	}
-
-	chars := []rune{'▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}
-	var result string
-	for _, score := range display {
-		idx := int(float64(score) / float64(maxVal) * float64(len(chars)-1))
-		if idx < 0 {
-			idx = 0
-		}
-		if idx >= len(chars) {
-			idx = len(chars) - 1
-		}
-		result += string(chars[idx])
-	}
-
-	return result
+	return healthtrend.FormatHealthSparkline(scores, width)
 }
 
-// Helper functions.
-
-func minMax(values []int) (int, int) {
-	if len(values) == 0 {
-		return 0, 0
-	}
-	minVal := values[0]
-	maxVal := values[0]
-	for _, v := range values[1:] {
-		if v < minVal {
-			minVal = v
-		}
-		if v > maxVal {
-			maxVal = v
-		}
-	}
-	return minVal, maxVal
+// DetectAnomalies analyzes a sorted series of health snapshots and returns
+// any detected anomalies. Delegates to healthtrend.DetectAnomalies.
+//
+// Deprecated: Use healthtrend.DetectAnomalies instead. Scheduled for removal in v3.0.0.
+func DetectAnomalies(snapshots []HealthSnapshot) []AnomalyDetection {
+	return healthtrend.DetectAnomalies(snapshots)
 }
 
-func meanValue(values []int) float64 {
-	if len(values) == 0 {
-		return 0
-	}
-	sum := 0
-	for _, v := range values {
-		sum += v
-	}
-	return float64(sum) / float64(len(values))
+// RenderHealthTrendASCII renders a horizontal ASCII time-series graph.
+// Delegates to healthtrend.RenderHealthTrendASCII.
+//
+// Deprecated: Use healthtrend.RenderHealthTrendASCII instead. Scheduled for removal in v3.0.0.
+func RenderHealthTrendASCII(snapshots []HealthSnapshot, width int) string {
+	return healthtrend.RenderHealthTrendASCII(snapshots, width)
 }
 
-func varianceValue(values []int, mean float64) float64 {
-	if len(values) < 2 {
-		return 0
-	}
-	var sum float64
-	for _, v := range values {
-		diff := float64(v) - mean
-		sum += diff * diff
-	}
-	return sum / float64(len(values))
+// FormatTrendText renders a health trend summary for text output.
+// Delegates to healthtrend.FormatTrendText.
+//
+// Deprecated: Use healthtrend.FormatTrendText instead. Scheduled for removal in v3.0.0.
+func FormatTrendText(result HealthTrendResult) string {
+	return healthtrend.FormatTrendText(result)
+}
+
+// FormatTrendAnomalyText renders anomaly detection results as text.
+// Delegates to healthtrend.FormatTrendAnomalyText.
+//
+// Deprecated: Use healthtrend.FormatTrendAnomalyText instead. Scheduled for removal in v3.0.0.
+func FormatTrendAnomalyText(result HealthTrendResult) string {
+	return healthtrend.FormatTrendAnomalyText(result)
+}
+
+// FormatTrendAnomalyGraph renders the full trend text plus anomaly section
+// and ASCII graph. Delegates to healthtrend.FormatTrendAnomalyGraph.
+//
+// Deprecated: Use healthtrend.FormatTrendAnomalyGraph instead. Scheduled for removal in v3.0.0.
+func FormatTrendAnomalyGraph(result HealthTrendResult, graphWidth int) string {
+	return healthtrend.FormatTrendAnomalyGraph(result, graphWidth)
+}
+
+// FormatTrendListRow renders a compact trend indicator for list view.
+// Delegates to healthtrend.FormatTrendListRow.
+//
+// Deprecated: Use healthtrend.FormatTrendListRow instead. Scheduled for removal in v3.0.0.
+func FormatTrendListRow(result HealthTrendResult) string {
+	return healthtrend.FormatTrendListRow(result)
 }

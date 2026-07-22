@@ -1,4 +1,4 @@
-package hpa
+package healthtrend
 
 import (
 	"strings"

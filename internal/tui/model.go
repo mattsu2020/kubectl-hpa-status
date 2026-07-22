@@ -155,124 +155,86 @@ type keyMap struct {
 	Overview      key.Binding
 }
 
+// keyDef is a single row in the defaultKeys table.
+type keyDef struct {
+	keys []string
+	help string
+	desc string
+}
+
+// defaultKeyTable lists every binding in display order. The field order must
+// match keyMap's struct field order so the loop in defaultKeys can assign by
+// index.
+var defaultKeyTable = []keyDef{
+	{[]string{"up", "k"}, "↑/k", "up"},
+	{[]string{"down", "j"}, "↓/j", "down"},
+	{[]string{"enter"}, "enter", "detail"},
+	{[]string{"esc"}, "esc", "back"},
+	{[]string{"q", "ctrl+c"}, "q", "quit"},
+	{[]string{"r"}, "r", "refresh"},
+	{[]string{"p"}, "p", "pause"},
+	{[]string{"/"}, "/", "filter"},
+	{[]string{"?"}, "?", "help"},
+	{[]string{"S"}, "S", "sort cycle"},
+	{[]string{"g"}, "g", "jump to problems"},
+	{[]string{"m"}, "m", "metrics detail"},
+	{[]string{"space", " "}, "space", "toggle select"},
+	{[]string{"a"}, "a", "select all"},
+	{[]string{"A"}, "A", "deselect all"},
+	{[]string{"s"}, "s", "simulate"},
+	{[]string{"f"}, "f", "fix wizard"},
+	{[]string{"T"}, "T", "replay timeline"},
+	{[]string{"M"}, "M", "metric simulation"},
+	{[]string{"tab"}, "tab", "next field"},
+	{[]string{"shift+tab"}, "shift+tab", "previous field"},
+	{[]string{"d"}, "d", "server dry-run"},
+	{[]string{"+", "="}, "+/=", "faster refresh"},
+	{[]string{"-"}, "-", "slower refresh"},
+	{[]string{"B"}, "B", "batch auditor"},
+	{[]string{"x"}, "x", "preview/confirm batch apply"},
+	{[]string{"H"}, "H", "history/sparkline"},
+	{[]string{"h"}, "h", "metric hints"},
+	{[]string{"O"}, "O", "cluster overview"},
+}
+
 func defaultKeys() keyMap {
+	bindings := make([]key.Binding, len(defaultKeyTable))
+	for i, def := range defaultKeyTable {
+		bindings[i] = key.NewBinding(
+			key.WithKeys(def.keys...),
+			key.WithHelp(def.help, def.desc),
+		)
+	}
 	return keyMap{
-		Up: key.NewBinding(
-			key.WithKeys("up", "k"),
-			key.WithHelp("↑/k", "up"),
-		),
-		Down: key.NewBinding(
-			key.WithKeys("down", "j"),
-			key.WithHelp("↓/j", "down"),
-		),
-		Enter: key.NewBinding(
-			key.WithKeys("enter"),
-			key.WithHelp("enter", "detail"),
-		),
-		Escape: key.NewBinding(
-			key.WithKeys("esc"),
-			key.WithHelp("esc", "back"),
-		),
-		Quit: key.NewBinding(
-			key.WithKeys("q", "ctrl+c"),
-			key.WithHelp("q", "quit"),
-		),
-		Refresh: key.NewBinding(
-			key.WithKeys("r"),
-			key.WithHelp("r", "refresh"),
-		),
-		Pause: key.NewBinding(
-			key.WithKeys("p"),
-			key.WithHelp("p", "pause"),
-		),
-		Filter: key.NewBinding(
-			key.WithKeys("/"),
-			key.WithHelp("/", "filter"),
-		),
-		Help: key.NewBinding(
-			key.WithKeys("?"),
-			key.WithHelp("?", "help"),
-		),
-		Sort: key.NewBinding(
-			key.WithKeys("S"),
-			key.WithHelp("S", "sort cycle"),
-		),
-		JumpProblem: key.NewBinding(
-			key.WithKeys("g"),
-			key.WithHelp("g", "jump to problems"),
-		),
-		Metrics: key.NewBinding(
-			key.WithKeys("m"),
-			key.WithHelp("m", "metrics detail"),
-		),
-		ToggleSelect: key.NewBinding(
-			key.WithKeys("space", " "),
-			key.WithHelp("space", "toggle select"),
-		),
-		SelectAll: key.NewBinding(
-			key.WithKeys("a"),
-			key.WithHelp("a", "select all"),
-		),
-		DeselectAll: key.NewBinding(
-			key.WithKeys("A"),
-			key.WithHelp("A", "deselect all"),
-		),
-		Simulate: key.NewBinding(
-			key.WithKeys("s"),
-			key.WithHelp("s", "simulate"),
-		),
-		Fix: key.NewBinding(
-			key.WithKeys("f"),
-			key.WithHelp("f", "fix wizard"),
-		),
-		Replay: key.NewBinding(
-			key.WithKeys("T"),
-			key.WithHelp("T", "replay timeline"),
-		),
-		MetricMode: key.NewBinding(
-			key.WithKeys("M"),
-			key.WithHelp("M", "metric simulation"),
-		),
-		TabField: key.NewBinding(
-			key.WithKeys("tab"),
-			key.WithHelp("tab", "next field"),
-		),
-		ShiftTabField: key.NewBinding(
-			key.WithKeys("shift+tab"),
-			key.WithHelp("shift+tab", "previous field"),
-		),
-		DryRun: key.NewBinding(
-			key.WithKeys("d"),
-			key.WithHelp("d", "server dry-run"),
-		),
-		IntervalUp: key.NewBinding(
-			key.WithKeys("+", "="),
-			key.WithHelp("+/=", "faster refresh"),
-		),
-		IntervalDown: key.NewBinding(
-			key.WithKeys("-"),
-			key.WithHelp("-", "slower refresh"),
-		),
-		BatchAudit: key.NewBinding(
-			key.WithKeys("B"),
-			key.WithHelp("B", "batch auditor"),
-		),
-		BatchApply: key.NewBinding(
-			key.WithKeys("x"),
-			key.WithHelp("x", "preview/confirm batch apply"),
-		),
-		History: key.NewBinding(
-			key.WithKeys("H"),
-			key.WithHelp("H", "history/sparkline"),
-		),
-		Hints: key.NewBinding(
-			key.WithKeys("h"),
-			key.WithHelp("h", "metric hints"),
-		),
-		Overview: key.NewBinding(
-			key.WithKeys("O"),
-			key.WithHelp("O", "cluster overview"),
-		),
+		Up:            bindings[0],
+		Down:          bindings[1],
+		Enter:         bindings[2],
+		Escape:        bindings[3],
+		Quit:          bindings[4],
+		Refresh:       bindings[5],
+		Pause:         bindings[6],
+		Filter:        bindings[7],
+		Help:          bindings[8],
+		Sort:          bindings[9],
+		JumpProblem:   bindings[10],
+		Metrics:       bindings[11],
+		ToggleSelect:  bindings[12],
+		SelectAll:     bindings[13],
+		DeselectAll:   bindings[14],
+		Simulate:      bindings[15],
+		Fix:           bindings[16],
+		Replay:        bindings[17],
+		MetricMode:    bindings[18],
+		TabField:      bindings[19],
+		ShiftTabField: bindings[20],
+		DryRun:        bindings[21],
+		IntervalUp:    bindings[22],
+		IntervalDown:  bindings[23],
+		BatchAudit:    bindings[24],
+		BatchApply:    bindings[25],
+		History:       bindings[26],
+		Hints:         bindings[27],
+		Overview:      bindings[28],
 	}
 }
 

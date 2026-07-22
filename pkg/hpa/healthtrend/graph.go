@@ -1,10 +1,12 @@
-package hpa
+package healthtrend
 
 import (
 	"fmt"
 	"math"
 	"strings"
 	"time"
+
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/flapping"
 )
 
 const (
@@ -207,7 +209,7 @@ func evenlySpacedIndices(n int, count int) []int {
 
 // buildAnomalyIndexSet creates a set of snapshot indices that are near
 // detected anomalies, so the graph can render them with anomaly markers.
-func buildAnomalyIndexSet(snapshots []HealthSnapshot, anomalies []AnomalyDetection) map[int]bool {
+func buildAnomalyIndexSet(snapshots []HealthSnapshot, anomalies []flapping.AnomalyDetection) map[int]bool {
 	iface := make(map[int]bool)
 
 	for _, anomaly := range anomalies {

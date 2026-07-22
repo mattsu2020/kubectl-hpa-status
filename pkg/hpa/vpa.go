@@ -18,33 +18,33 @@ import (
 type (
 	// VPARecommendationInfo aliases vpa.RecommendationInfo.
 	//
-	// Deprecated: Use vpa.RecommendationInfo instead.
+	// Deprecated: Use vpa.RecommendationInfo instead. Scheduled for removal in v3.0.0.
 	VPARecommendationInfo = vpa.RecommendationInfo
 	// VPAInfo aliases vpa.Info.
 	//
-	// Deprecated: Use vpa.Info instead.
+	// Deprecated: Use vpa.Info instead. Scheduled for removal in v3.0.0.
 	VPAInfo = vpa.Info
 	// VPAConflictInfo aliases vpa.ConflictInfo.
 	//
-	// Deprecated: Use vpa.ConflictInfo instead.
+	// Deprecated: Use vpa.ConflictInfo instead. Scheduled for removal in v3.0.0.
 	VPAConflictInfo = vpa.ConflictInfo
 	// VPARecommendation aliases vpa.Recommendation.
 	//
-	// Deprecated: Use vpa.Recommendation instead.
+	// Deprecated: Use vpa.Recommendation instead. Scheduled for removal in v3.0.0.
 	VPARecommendation = vpa.Recommendation
 	// VPAConflictLevel aliases vpa.ConflictLevel.
 	//
-	// Deprecated: Use vpa.ConflictLevel instead.
+	// Deprecated: Use vpa.ConflictLevel instead. Scheduled for removal in v3.0.0.
 	VPAConflictLevel = vpa.ConflictLevel
 	// VPAAdvisory aliases vpa.Advisory.
 	//
-	// Deprecated: Use vpa.Advisory instead.
+	// Deprecated: Use vpa.Advisory instead. Scheduled for removal in v3.0.0.
 	VPAAdvisory = vpa.Advisory
 )
 
 // VPA conflict level constants (aliases for the canonical vpa.* values).
 //
-// Deprecated: Use the canonical vpa.ConflictNone/ConflictWarning/ConflictError constants instead.
+// Deprecated: Use the canonical vpa.ConflictNone/ConflictWarning/ConflictError constants instead. Scheduled for removal in v3.0.0.
 const (
 	VPAConflictNone    = vpa.ConflictNone
 	VPAConflictWarning = vpa.ConflictWarning
@@ -54,7 +54,7 @@ const (
 // AnalyzeVPA generates warning lines when VPA conflicts with HPA.
 // Delegates to vpa.Analyze.
 //
-// Deprecated: Use vpa.Analyze instead.
+// Deprecated: Use vpa.Analyze instead. Scheduled for removal in v3.0.0.
 func AnalyzeVPA(hpa *autoscalingv2.HorizontalPodAutoscaler, info *VPAInfo) []string {
 	return vpa.Analyze(hpa, info)
 }
@@ -62,7 +62,7 @@ func AnalyzeVPA(hpa *autoscalingv2.HorizontalPodAutoscaler, info *VPAInfo) []str
 // NewVPAConflictInfo converts extracted VPA data into the public analysis model.
 // Delegates to vpa.NewConflictInfo.
 //
-// Deprecated: Use vpa.NewConflictInfo instead.
+// Deprecated: Use vpa.NewConflictInfo instead. Scheduled for removal in v3.0.0.
 func NewVPAConflictInfo(info *VPAInfo) *VPAConflictInfo {
 	return vpa.NewConflictInfo(info)
 }
@@ -70,7 +70,7 @@ func NewVPAConflictInfo(info *VPAInfo) *VPAConflictInfo {
 // AnalyzeVPAAdvisory produces a structured VPA-HPA coexistence advisory.
 // Delegates to vpa.AnalyzeAdvisory.
 //
-// Deprecated: Use vpa.AnalyzeAdvisory instead.
+// Deprecated: Use vpa.AnalyzeAdvisory instead. Scheduled for removal in v3.0.0.
 func AnalyzeVPAAdvisory(hpa *autoscalingv2.HorizontalPodAutoscaler, info *VPAConflictInfo) *VPAAdvisory {
 	return vpa.AnalyzeAdvisory(hpa, info)
 }

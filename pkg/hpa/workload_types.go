@@ -1,6 +1,8 @@
 package hpa
 
-import "time"
+import (
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/healthtrend"
+)
 
 // ResourceCheckResult holds warnings about resource request/limit consistency with HPA targets.
 type ResourceCheckResult struct {
@@ -36,28 +38,14 @@ type PodResourceIssue struct {
 }
 
 // HealthSnapshot records a single health observation for trend tracking.
-type HealthSnapshot struct {
-	Timestamp       time.Time `json:"timestamp" yaml:"timestamp"`
-	HealthScore     int       `json:"healthScore" yaml:"healthScore"`
-	HealthState     string    `json:"healthState" yaml:"healthState"`
-	DesiredReplicas int32     `json:"desiredReplicas" yaml:"desiredReplicas"`
-	CurrentReplicas int32     `json:"currentReplicas" yaml:"currentReplicas"`
-	Stabilizing     bool      `json:"stabilizing,omitempty" yaml:"stabilizing,omitempty"`
-}
+//
+// Deprecated: Use healthtrend.HealthSnapshot instead. Scheduled for removal in v3.0.0.
+type HealthSnapshot = healthtrend.HealthSnapshot
 
 // HealthTrendResult holds the analysis of health score history over time.
-type HealthTrendResult struct {
-	Snapshots        []HealthSnapshot   `json:"snapshots" yaml:"snapshots"`
-	Variance         float64            `json:"variance" yaml:"variance"`
-	MinScore         int                `json:"minScore" yaml:"minScore"`
-	MaxScore         int                `json:"maxScore" yaml:"maxScore"`
-	MeanScore        float64            `json:"meanScore" yaml:"meanScore"`
-	DegradationRate  float64            `json:"degradationRate" yaml:"degradationRate"`
-	FlappingDetected bool               `json:"flappingDetected" yaml:"flappingDetected"`
-	FlappingSeverity string             `json:"flappingSeverity,omitempty" yaml:"flappingSeverity,omitempty"`
-	Sparkline        string             `json:"sparkline,omitempty" yaml:"sparkline,omitempty"`
-	Anomalies        []AnomalyDetection `json:"anomalies,omitempty" yaml:"anomalies,omitempty"`
-}
+//
+// Deprecated: Use healthtrend.HealthTrendResult instead. Scheduled for removal in v3.0.0.
+type HealthTrendResult = healthtrend.HealthTrendResult
 
 // ContainerCheck verifies that a ContainerResource metric target container exists in pods.
 type ContainerCheck struct {
