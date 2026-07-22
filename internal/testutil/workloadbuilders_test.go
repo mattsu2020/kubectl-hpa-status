@@ -257,3 +257,31 @@ func TestBuildHPA_GenerationAndScaleTarget(t *testing.T) {
 		t.Fatalf("unexpected scale target: %+v", hpa.Spec.ScaleTargetRef)
 	}
 }
+
+func TestWithContainers(t *testing.T) {
+	d := BuildDeployment("default", "web",
+		WithContainer(ContainerSpec{Name: "placeholder"}),
+		WithContainers(ContainerSpec{Name: "app"}, ContainerSpec{Name: "sidecar"}),
+	)
+	names := make([]string, len(d.Spec.Template.Spec.Containers))
+	for i, c := range d.Spec.Template.Spec.Containers {
+		names[i] = c.Name
+	}
+	if len(names) != 2 || names[0] != "app" || names[1] != "sidecar" {
+		t.Fatalf("expected WithContainers to replace the container list with [app sidecar], got %v", names)
+	}
+}
+
+func TestWithWorkloadLabels(t *testing.T) {
+	d := BuildDeployment("default", "web", WithWorkloadLabels(map[string]string{"team": "platform"}))
+	if d.Labels["team"] != "platform" {
+		t.Fatalf("expected workload label team=platform, got %+v", d.Labels)
+	}
+}
+
+func TestWithPodLabels(t *testing.T) {
+	p := BuildPod("default", "web-1", WithPodLabels(map[string]string{"app": "web"}))
+	if p.Labels["app"] != "web" {
+		t.Fatalf("expected pod label app=web, got %+v", p.Labels)
+	}
+}
