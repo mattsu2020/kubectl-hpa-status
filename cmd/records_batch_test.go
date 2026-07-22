@@ -103,7 +103,9 @@ func TestRunFlapFromRecordDetectsReplicaRange(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			Namespace: "prod",
+			ConnectionOptions: ConnectionOptions{
+				Namespace: "prod",
+			},
 		},
 	}
 	if err := runFlapFromRecord(&buf, opts, "web", tmp.Name()); err != nil {

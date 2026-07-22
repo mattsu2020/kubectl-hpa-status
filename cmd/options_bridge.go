@@ -26,6 +26,20 @@ type (
 	commandPresetOptions = cmdoptions.CommandPresetOptions
 )
 
+// ConnectionOptions, OutputOptions, ApplyOptions, and TrendOptions are the
+// concern-grouped sub-structs embedded in commonOptions; re-exported so
+// cmd/ struct literals can key into them directly.
+type (
+	// ConnectionOptions aliases cmdoptions.ConnectionOptions.
+	ConnectionOptions = cmdoptions.ConnectionOptions
+	// OutputOptions aliases cmdoptions.OutputOptions.
+	OutputOptions = cmdoptions.OutputOptions
+	// ApplyOptions aliases cmdoptions.ApplyOptions.
+	ApplyOptions = cmdoptions.ApplyOptions
+	// TrendOptions aliases cmdoptions.TrendOptions.
+	TrendOptions = cmdoptions.TrendOptions
+)
+
 // preset aliases the CommandPreset type so command files (e.g. preset_helpers.go)
 // can reference it without importing internal/cmdoptions directly, keeping the
 // bridge the single vocabulary for cmdoptions symbols inside cmd/.

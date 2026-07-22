@@ -70,8 +70,10 @@ func TestWriteOutputTemplate(t *testing.T) {
 func TestOutputSelectionUsesNamedConfigTemplate(t *testing.T) {
 	opts := &options{
 		Common: commonOptions{
-			Output:          "names",
-			OutputTemplates: map[string]outputTemplateConfig{"names": {Type: "go-template", Template: "{{ .Analysis.Namespace }}/{{ .Analysis.Name }}"}},
+			OutputOptions: OutputOptions{
+				Output:          "names",
+				OutputTemplates: map[string]outputTemplateConfig{"names": {Type: "go-template", Template: "{{ .Analysis.Namespace }}/{{ .Analysis.Name }}"}},
+			},
 		},
 	}
 
@@ -89,8 +91,10 @@ func TestOutputSelectionUsesNamedConfigTemplate(t *testing.T) {
 func TestOutputSelectionUsesNamedJSONPathTemplate(t *testing.T) {
 	opts := &options{
 		Common: commonOptions{
-			Output:          "jsonpath:summary",
-			OutputTemplates: map[string]outputTemplateConfig{"summary": {Template: "{.analysis.summary}"}},
+			OutputOptions: OutputOptions{
+				Output:          "jsonpath:summary",
+				OutputTemplates: map[string]outputTemplateConfig{"summary": {Template: "{.analysis.summary}"}},
+			},
 		},
 	}
 
@@ -108,7 +112,9 @@ func TestOutputSelectionUsesNamedJSONPathTemplate(t *testing.T) {
 func TestApplyHealthWeightOverrides(t *testing.T) {
 	opts := &options{
 		Common: commonOptions{
-			HealthWeightOverrides: []string{"scalingInactive=50", "atMinimumReplicas=0"},
+			TrendOptions: TrendOptions{
+				HealthWeightOverrides: []string{"scalingInactive=50", "atMinimumReplicas=0"},
+			},
 		},
 	}
 	if err := applyHealthWeightOverrides(opts); err != nil {
@@ -291,8 +297,12 @@ func TestApplyConfigDefaultsDoesNotOverrideExplicitFlags(t *testing.T) {
 
 	opts := &options{
 		Common: commonOptions{
-			Config: path,
-			Lang:   "en",
+			ConnectionOptions: ConnectionOptions{
+				Config: path,
+			},
+			OutputOptions: OutputOptions{
+				Lang: "en",
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: true, Limit: 5},

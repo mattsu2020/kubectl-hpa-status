@@ -33,8 +33,12 @@ func TestRunBlockersBasicOutput(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
-			Output:         "json",
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
+			OutputOptions: OutputOptions{
+				Output: "json",
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -81,8 +85,12 @@ func TestRunBlockersNoScaleOut(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
-			Output:         "json",
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
+			OutputOptions: OutputOptions{
+				Output: "json",
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -117,9 +125,13 @@ func TestRunBlockersTextOutput(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
-			Output:         "",
-			Color:          "never",
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
+			OutputOptions: OutputOptions{
+				Output: "",
+				Color:  "never",
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -150,8 +162,12 @@ func TestCapacityDeepFlagOnDoctor(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
-			Output:         "json",
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
+			OutputOptions: OutputOptions{
+				Output: "json",
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},

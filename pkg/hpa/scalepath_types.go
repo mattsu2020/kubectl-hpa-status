@@ -1,5 +1,7 @@
 package hpa
 
+import "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
+
 // ScalePath describes the visible scale-up path from the HPA recommendation
 // through the workload, ReplicaSets, pods, and scheduler-facing signals.
 type ScalePath struct {
@@ -98,12 +100,7 @@ type ScalePathInput struct {
 }
 
 // PendingPodInfo describes a pending pod and its scheduling constraints.
-type PendingPodInfo struct {
-	Name          string   `json:"name" yaml:"name"`
-	Phase         string   `json:"phase" yaml:"phase"`
-	Unschedulable bool     `json:"unschedulable" yaml:"unschedulable"`
-	Reasons       []string `json:"reasons,omitempty" yaml:"reasons,omitempty"`
-}
+type PendingPodInfo = util.PendingPodInfo
 
 // QuotaConstraint describes a ResourceQuota that limits the scale target.
 type QuotaConstraint struct {

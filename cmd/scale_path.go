@@ -6,6 +6,7 @@ import (
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/containeradvisor"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -159,7 +160,7 @@ func podUnschedulable(pod corev1.Pod) bool {
 }
 
 // buildContainerAdvisor builds the ContainerResource advisor result.
-func buildContainerAdvisor(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpaanalysis.ContainerAdvisorResult {
+func buildContainerAdvisor(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) *containeradvisor.Result {
 	resources, err := kube.FetchScaleTargetResources(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef.Kind, hpa.Spec.ScaleTargetRef.Name)
 	if err != nil || resources == nil {
 		return nil
@@ -182,12 +183,12 @@ func buildContainerAdvisor(ctx context.Context, client *kube.Client, hpa *autosc
 		}
 	}
 
-	input := hpaanalysis.ContainerAdvisorInput{
+	input := containeradvisor.Input{
 		ContainerCount:              containerCount,
 		ContainerNames:              containerNames,
 		UsesResourceMetric:          usesResource,
 		UsesContainerResourceMetric: usesContainerResource,
 	}
 
-	return hpaanalysis.AnalyzeContainerAdvisor(hpa, input)
+	return containeradvisor.Analyze(hpa, input)
 }

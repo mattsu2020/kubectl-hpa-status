@@ -50,8 +50,10 @@ func TestBundleMarkdownOutput(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
-			Namespace:      "default",
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+				Namespace:      "default",
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -116,8 +118,10 @@ func TestBundleZipOutput(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
-			Namespace:      "default",
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+				Namespace:      "default",
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -186,8 +190,10 @@ func TestBundleRedact(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
-			Namespace:      "default",
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+				Namespace:      "default",
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -229,8 +235,10 @@ func TestBundleDefaultFormat(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
-			Namespace:      "default",
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+				Namespace:      "default",
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -265,8 +273,10 @@ func TestBundleUnsupportedFormat(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
-			Namespace:      "default",
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+				Namespace:      "default",
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -295,8 +305,10 @@ func TestBundleIncludesDoctorAnalysis(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
-			Namespace:      "default",
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+				Namespace:      "default",
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -333,8 +345,10 @@ func TestBundleDefaultOutputPath(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
-			Namespace:      "default",
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+				Namespace:      "default",
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -367,8 +381,10 @@ func TestBundleHPANotFound(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
-			Namespace:      "default",
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+				Namespace:      "default",
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},

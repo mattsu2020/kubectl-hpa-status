@@ -26,14 +26,22 @@ func TestTargetReplicaObservationsEnricherGating(t *testing.T) {
 		readsScaleTarget bool
 	}{
 		{
-			label:            "plain status reads no scale target",
-			opts:             &options{Common: commonOptions{ClientOverride: fakeClient}},
+			label: "plain status reads no scale target",
+			opts: &options{Common: commonOptions{
+				ConnectionOptions: ConnectionOptions{
+					ClientOverride: fakeClient,
+				},
+			}},
 			readsScaleTarget: false,
 		},
 		{
 			label: "--explain reads scale target",
 			opts: &options{
-				Common: commonOptions{ClientOverride: fakeClient},
+				Common: commonOptions{
+					ConnectionOptions: ConnectionOptions{
+						ClientOverride: fakeClient,
+					},
+				},
 				Status: statusOptions{Features: feats("explain"), Events: EventOption{Enabled: false}},
 			},
 			readsScaleTarget: true,
@@ -41,7 +49,11 @@ func TestTargetReplicaObservationsEnricherGating(t *testing.T) {
 		{
 			label: "--explain-pods reads scale target",
 			opts: &options{
-				Common: commonOptions{ClientOverride: fakeClient},
+				Common: commonOptions{
+					ConnectionOptions: ConnectionOptions{
+						ClientOverride: fakeClient,
+					},
+				},
 				Status: statusOptions{Features: feats("explainPods"), Events: EventOption{Enabled: false}},
 			},
 			readsScaleTarget: true,
@@ -49,7 +61,11 @@ func TestTargetReplicaObservationsEnricherGating(t *testing.T) {
 		{
 			label: "--deep reads scale target",
 			opts: &options{
-				Common: commonOptions{ClientOverride: fakeClient},
+				Common: commonOptions{
+					ConnectionOptions: ConnectionOptions{
+						ClientOverride: fakeClient,
+					},
+				},
 				Status: statusOptions{Features: feats("deep"), Events: EventOption{Enabled: false}},
 			},
 			readsScaleTarget: true,
@@ -57,7 +73,11 @@ func TestTargetReplicaObservationsEnricherGating(t *testing.T) {
 		{
 			label: "--no-enrich reads no scale target and skips all enrichment",
 			opts: &options{
-				Common: commonOptions{ClientOverride: fakeClient},
+				Common: commonOptions{
+					ConnectionOptions: ConnectionOptions{
+						ClientOverride: fakeClient,
+					},
+				},
 				Status: statusOptions{Features: feats("noEnrich"), Events: EventOption{Enabled: false}},
 			},
 			readsScaleTarget: false,
@@ -65,7 +85,11 @@ func TestTargetReplicaObservationsEnricherGating(t *testing.T) {
 		{
 			label: "--hpa-only alias reads no scale target",
 			opts: &options{
-				Common: commonOptions{ClientOverride: fakeClient},
+				Common: commonOptions{
+					ConnectionOptions: ConnectionOptions{
+						ClientOverride: fakeClient,
+					},
+				},
 				Status: statusOptions{Features: feats("hpaOnly"), Events: EventOption{Enabled: false}},
 			},
 			readsScaleTarget: false,

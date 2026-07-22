@@ -21,7 +21,9 @@ func TestRunList_MultipleHPAs(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -51,7 +53,9 @@ func TestRunList_Filter(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -84,7 +88,9 @@ func TestRunListProblemFiltersVisibleIssues(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -117,7 +123,9 @@ func TestRunListHealthScoreThresholdFiltersByScore(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -147,7 +155,9 @@ func TestRunList_SortByDesired(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -181,8 +191,12 @@ func TestRunList_Wide(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			Wide:           true,
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
+			OutputOptions: OutputOptions{
+				Wide: true,
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -210,8 +224,10 @@ func TestRunList_LabelSelector(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			Selector:       "app=web",
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				Selector:       "app=web",
+				ClientOverride: fakeClient,
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -246,11 +262,15 @@ func TestRunListApplyBatchSummaryAndConfirmation(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
-			In:             io.Reader(strings.NewReader("")),
-			Apply:          true,
-			DryRun:         true,
-			Yes:            true,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+				In:             io.Reader(strings.NewReader("")),
+			},
+			ApplyOptions: ApplyOptions{
+				Apply:  true,
+				DryRun: true,
+				Yes:    true,
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -286,11 +306,15 @@ func TestRunListApplyBatchSkippedOnNoInput(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
-			In:             io.Reader(strings.NewReader("n\n")),
-			Apply:          true,
-			DryRun:         true,
-			Yes:            false,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+				In:             io.Reader(strings.NewReader("n\n")),
+			},
+			ApplyOptions: ApplyOptions{
+				Apply:  true,
+				DryRun: true,
+				Yes:    false,
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -319,11 +343,15 @@ func TestRunListApplyBatchNoPatchesFound(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
-			In:             io.Reader(strings.NewReader("")),
-			Apply:          true,
-			DryRun:         true,
-			Yes:            true,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+				In:             io.Reader(strings.NewReader("")),
+			},
+			ApplyOptions: ApplyOptions{
+				Apply:  true,
+				DryRun: true,
+				Yes:    true,
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},

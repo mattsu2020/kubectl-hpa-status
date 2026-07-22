@@ -5,7 +5,10 @@ package hpa
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/behavioradvisor"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/containeradvisor"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/gitops"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/suggestion"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/warmup"
@@ -261,7 +264,7 @@ type Analysis struct {
 	MetricContract *MetricContractReport `json:"metricContract,omitempty" yaml:"metricContract,omitempty"`
 	// GitOpsConflict holds GitOps manifest conflict detection results, populated when
 	// --gitops-check is enabled or --manifest is provided.
-	GitOpsConflict *GitOpsConflict `json:"gitopsConflict,omitempty" yaml:"gitopsConflict,omitempty"`
+	GitOpsConflict *gitops.Conflict `json:"gitopsConflict,omitempty" yaml:"gitopsConflict,omitempty"`
 	// ChurnAnalysis holds the thrashing/churn detection result for the HPA timeline.
 	// Populated when --churn-detect is enabled or during doctor command.
 	ChurnAnalysis *ChurnAnalysis `json:"churnAnalysis,omitempty" yaml:"churnAnalysis,omitempty"`
@@ -280,11 +283,11 @@ type Analysis struct {
 	// ContainerAdvisor holds the ContainerResource advisor result, suggesting
 	// ContainerResource metrics for multi-container workloads.
 	// Populated when --container-advisor is enabled.
-	ContainerAdvisor *ContainerAdvisorResult `json:"containerAdvisor,omitempty" yaml:"containerAdvisor,omitempty"`
+	ContainerAdvisor *containeradvisor.Result `json:"containerAdvisor,omitempty" yaml:"containerAdvisor,omitempty"`
 	// BehaviorAdvisor holds the behavior tuning advisor result, analyzing
 	// scaleUp/scaleDown policies, stabilization windows, and tolerance.
 	// Populated when --behavior-advisor is enabled.
-	BehaviorAdvisor *BehaviorAdvisorResult `json:"behaviorAdvisor,omitempty" yaml:"behaviorAdvisor,omitempty"`
+	BehaviorAdvisor *behavioradvisor.Result `json:"behaviorAdvisor,omitempty" yaml:"behaviorAdvisor,omitempty"`
 	// HealthTrend holds the health score trend analysis over time.
 	// Populated when --trend is enabled and sufficient history is available.
 	HealthTrend *HealthTrendResult `json:"healthTrend,omitempty" yaml:"healthTrend,omitempty"`

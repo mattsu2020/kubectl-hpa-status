@@ -3,6 +3,8 @@ package hpa
 import (
 	"strings"
 	"testing"
+
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/containeradvisor"
 )
 
 func TestDominantSuffix(t *testing.T) {
@@ -40,13 +42,13 @@ func TestAppendContainerAdvisorText_NilResult(t *testing.T) {
 
 func TestAppendContainerAdvisorText_FullResult(t *testing.T) {
 	lbls := resolveLabels(nil)
-	result := &ContainerAdvisorResult{
+	result := &containeradvisor.Result{
 		Finding:         "2 containers share one cpu metric",
 		Risk:            "noisy neighbor may starve the API container",
 		SuggestedMetric: "- type: ContainerResource\n  name: cpu",
 		Confidence:      ConfidenceHigh,
 		NextAction:      "switch to ContainerResource metrics",
-		ContainerUsageHints: []ContainerUsageHint{
+		ContainerUsageHints: []containeradvisor.UsageHint{
 			{Container: "api", CPUPercent: 82, MemoryPercent: -1, Dominant: true},
 			{Container: "sidecar", CPUPercent: -1, MemoryPercent: 12},
 		},

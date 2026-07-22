@@ -12,6 +12,7 @@ import (
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/retrospective"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 	"github.com/spf13/cobra"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -72,12 +73,12 @@ func runRetrospectiveTimeline(ctx context.Context, out io.Writer, opts *options,
 	events := hpaanalysis.EventsFromCore(coreEvents)
 
 	// 3. Build the retrospective timeline.
-	tl := hpaanalysis.BuildRetrospectiveTimeline(events, hpa, sinceTime)
+	tl := retrospective.BuildTimeline(events, hpa, sinceTime)
 
 	// 4. If replay mode is enabled, perform replay analysis.
-	var replayAnalysis *hpaanalysis.ReplayAnalysis
+	var replayAnalysis *retrospective.ReplayAnalysis
 	if replay {
-		replayAnalysis = hpaanalysis.AnalyzeReplay(tl, hpa)
+		replayAnalysis = retrospective.AnalyzeReplay(tl, hpa)
 	}
 
 	// 5. Render based on output format.
@@ -92,7 +93,7 @@ func runRetrospectiveTimeline(ctx context.Context, out io.Writer, opts *options,
 	return renderRetrospective(out, tl, format, opts)
 }
 
-func renderRetrospectiveReplay(out io.Writer, replayAnalysis *hpaanalysis.ReplayAnalysis, tl hpaanalysis.RetrospectiveTimeline, format string, opts *options) error {
+func renderRetrospectiveReplay(out io.Writer, replayAnalysis *retrospective.ReplayAnalysis, tl retrospective.Timeline, format string, opts *options) error {
 	switch format {
 	case "json":
 		encoder := json.NewEncoder(out)
@@ -106,16 +107,16 @@ func renderRetrospectiveReplay(out io.Writer, replayAnalysis *hpaanalysis.Replay
 		_, err := out.Write(data)
 		return err
 	case "markdown", "md":
-		return hpaanalysis.WriteReplayMarkdown(out, replayAnalysis, tl)
+		return retrospective.WriteReplayMarkdown(out, replayAnalysis, tl)
 	case "html":
-		return hpaanalysis.WriteReplayHTML(out, replayAnalysis, tl)
+		return retrospective.WriteReplayHTML(out, replayAnalysis, tl)
 	default:
 		theme := style.NewTheme(shouldColorize(opts.Color, out))
-		return hpaanalysis.WriteReplayText(out, replayAnalysis, tl, theme)
+		return retrospective.WriteReplayText(out, replayAnalysis, tl, theme)
 	}
 }
 
-func renderRetrospective(out io.Writer, tl hpaanalysis.RetrospectiveTimeline, format string, opts *options) error {
+func renderRetrospective(out io.Writer, tl retrospective.Timeline, format string, opts *options) error {
 	switch format {
 	case "json":
 		encoder := json.NewEncoder(out)
@@ -129,12 +130,12 @@ func renderRetrospective(out io.Writer, tl hpaanalysis.RetrospectiveTimeline, fo
 		_, err := out.Write(data)
 		return err
 	case "markdown", "md":
-		return hpaanalysis.WriteRetrospectiveMarkdown(out, tl)
+		return retrospective.WriteMarkdown(out, tl)
 	case "html":
-		return hpaanalysis.WriteRetrospectiveHTML(out, tl)
+		return retrospective.WriteHTML(out, tl)
 	default:
 		theme := style.NewTheme(shouldColorize(opts.Color, out))
-		return hpaanalysis.WriteRetrospectiveTimeline(out, tl, theme)
+		return retrospective.WriteTimeline(out, tl, theme)
 	}
 }
 

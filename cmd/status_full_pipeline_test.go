@@ -48,8 +48,12 @@ func TestRunStatusMany_AllEnrichersEnabled(t *testing.T) {
 
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
-			Output:         "json",
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
+			OutputOptions: OutputOptions{
+				Output: "json",
+			},
 		},
 	}
 	f := &opts.Features
@@ -119,7 +123,14 @@ func TestRunStatusMany_NoEnrich(t *testing.T) {
 	fakeClient := testutil.NewFakeClientWithObjects(fullPipelineCluster()...)
 
 	opts := &options{
-		Common: commonOptions{ClientOverride: fakeClient, Output: "json"},
+		Common: commonOptions{
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
+			OutputOptions: OutputOptions{
+				Output: "json",
+			},
+		},
 	}
 	opts.NoEnrich = true
 	opts.Normalize()

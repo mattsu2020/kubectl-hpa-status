@@ -27,7 +27,9 @@ func TestRunStatus_OK(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: true, Limit: 5},
@@ -60,7 +62,9 @@ func TestRunStatus_ScalingLimited(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -97,7 +101,9 @@ func TestRunStatusSuggestShowsPatchCommand(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -127,11 +133,15 @@ func TestRunStatusApplyPatchesHPA(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
-			In:             io.Reader(strings.NewReader("")),
-			Apply:          true,
-			DryRun:         false,
-			Yes:            true,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+				In:             io.Reader(strings.NewReader("")),
+			},
+			ApplyOptions: ApplyOptions{
+				Apply:  true,
+				DryRun: false,
+				Yes:    true,
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -161,11 +171,15 @@ func TestRunStatusApplyDefaultsToDryRun(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
-			In:             io.Reader(strings.NewReader("")),
-			Apply:          true,
-			DryRun:         true,
-			Yes:            true,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+				In:             io.Reader(strings.NewReader("")),
+			},
+			ApplyOptions: ApplyOptions{
+				Apply:  true,
+				DryRun: true,
+				Yes:    true,
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -194,7 +208,9 @@ func TestRunStatus_MetricsFetchFailure(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -219,7 +235,9 @@ func TestRunStatus_NotFound(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -244,8 +262,12 @@ func TestRunStatus_JSONOutput(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			Output:         "json",
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
+			OutputOptions: OutputOptions{
+				Output: "json",
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -276,7 +298,9 @@ func TestRunStatusMany_TextOutput(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -300,8 +324,12 @@ func TestRunStatusMany_JSONOutput(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			Output:         "json",
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
+			OutputOptions: OutputOptions{
+				Output: "json",
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -347,7 +375,9 @@ func TestRunStatusMany_PartialFailure_TextOutput(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -376,8 +406,12 @@ func TestRunStatusMany_PartialFailure_JSONOutput(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			Output:         "json",
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
+			OutputOptions: OutputOptions{
+				Output: "json",
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -414,8 +448,12 @@ func TestRunStatusMany_PartialFailure_YAMLOutput(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			Output:         "yaml",
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
+			OutputOptions: OutputOptions{
+				Output: "yaml",
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -441,8 +479,12 @@ func TestRunStatusMany_PartialFailure_AllFail(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			Output:         "json",
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
+			OutputOptions: OutputOptions{
+				Output: "json",
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -482,7 +524,9 @@ func TestRunStatusMany_PartialFailure_WarningAggregation(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -545,8 +589,12 @@ func TestRunStatus_YAMLOutput(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			Output:         "yaml",
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
+			OutputOptions: OutputOptions{
+				Output: "yaml",
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -577,7 +625,9 @@ func TestRunStatus_WithEvents(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: true, Limit: 5},
@@ -607,7 +657,9 @@ func TestRunStatus_ExitCode_HealthyHPA(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -629,7 +681,9 @@ func TestRunStatus_ExitCode_ScalingInactive(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -654,7 +708,9 @@ func TestRunStatus_ExitCode_NotFound(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -683,7 +739,9 @@ func TestRunStatus_ExitCode_ScalingLimited(t *testing.T) {
 	var buf bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},

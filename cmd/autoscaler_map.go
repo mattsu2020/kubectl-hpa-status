@@ -7,6 +7,7 @@ import (
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/autoscalermap"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 	"github.com/spf13/cobra"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -14,10 +15,10 @@ import (
 )
 
 type autoscalerMapOutput struct {
-	Namespace string                     `json:"namespace" yaml:"namespace"`
-	Name      string                     `json:"name" yaml:"name"`
-	Target    string                     `json:"target" yaml:"target"`
-	Map       *hpaanalysis.AutoscalerMap `json:"autoscalerMap" yaml:"autoscalerMap"`
+	Namespace string             `json:"namespace" yaml:"namespace"`
+	Name      string             `json:"name" yaml:"name"`
+	Target    string             `json:"target" yaml:"target"`
+	Map       *autoscalermap.Map `json:"autoscalerMap" yaml:"autoscalerMap"`
 }
 
 func newAutoscalerMapCommand(opts *options) *cobra.Command {
@@ -51,7 +52,7 @@ func runAutoscalerMap(ctx context.Context, out io.Writer, opts *options, names [
 		}
 
 		input := assembleAutoscalerMapInput(ctx, client, opts, hpa)
-		am := hpaanalysis.AnalyzeAutoscalerMap(input)
+		am := autoscalermap.Analyze(input)
 
 		outputs = append(outputs, autoscalerMapOutput{
 			Namespace: hpa.Namespace,
@@ -76,7 +77,7 @@ func runAutoscalerMap(ctx context.Context, out io.Writer, opts *options, names [
 					return fmt.Errorf("write autoscaler-map separator: %w", err)
 				}
 			}
-			if err := hpaanalysis.WriteAutoscalerMapText(out, o.Map, theme); err != nil {
+			if err := autoscalermap.WriteText(out, o.Map, theme); err != nil {
 				return fmt.Errorf("write autoscaler-map report for %s/%s: %w", o.Namespace, o.Name, err)
 			}
 		}
@@ -85,8 +86,8 @@ func runAutoscalerMap(ctx context.Context, out io.Writer, opts *options, names [
 }
 
 // assembleAutoscalerMapInput gathers all observable signals for autoscaler map.
-func assembleAutoscalerMapInput(ctx context.Context, client *kube.Client, opts *options, hpa *autoscalingv2.HorizontalPodAutoscaler) hpaanalysis.AutoscalerMapInput {
-	input := hpaanalysis.AutoscalerMapInput{
+func assembleAutoscalerMapInput(ctx context.Context, client *kube.Client, opts *options, hpa *autoscalingv2.HorizontalPodAutoscaler) autoscalermap.Input {
+	input := autoscalermap.Input{
 		Namespace:       hpa.Namespace,
 		HPAName:         hpa.Name,
 		CurrentReplicas: hpa.Status.CurrentReplicas,
@@ -120,7 +121,7 @@ func assembleAutoscalerMapInput(ctx context.Context, client *kube.Client, opts *
 					ready++
 				}
 			}
-			input.PodSummary = hpaanalysis.AutoscalerMapPodSummary{
+			input.PodSummary = autoscalermap.PodSummary{
 				Total:   int32(len(podInfos)),
 				Running: running,
 				Pending: pending,
@@ -140,7 +141,7 @@ func assembleAutoscalerMapInput(ctx context.Context, client *kube.Client, opts *
 		input.NodeFetchError = nodeErr.Error()
 	}
 	if nodeCap != nil {
-		input.NodeSummary = hpaanalysis.AutoscalerMapNodeSummary{
+		input.NodeSummary = autoscalermap.NodeSummary{
 			TotalNodes:        nodeCap.TotalNodes,
 			AllocatableCPU:    nodeCap.AllocCPU.String(),
 			AllocatableMemory: nodeCap.AllocMemory.String(),
@@ -181,7 +182,7 @@ func detectKarpenter(ctx context.Context, client *kube.Client) bool {
 }
 
 // fetchAutoscalerMapKEDA attempts to detect KEDA and fetch ScaledObject info.
-func fetchAutoscalerMapKEDA(ctx context.Context, opts *options, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpaanalysis.AutoscalerMapKEDAInfo {
+func fetchAutoscalerMapKEDA(ctx context.Context, opts *options, hpa *autoscalingv2.HorizontalPodAutoscaler) *autoscalermap.KEDAInfo {
 	detection := kube.DetectKEDA(hpa)
 	if !detection.Managed {
 		return nil
@@ -197,7 +198,7 @@ func fetchAutoscalerMapKEDA(ctx context.Context, opts *options, hpa *autoscaling
 
 	scaledObj, err := kube.FindScaledObjectForHPA(ctx, dynClient, hpa)
 	if err != nil || scaledObj == nil {
-		return &hpaanalysis.AutoscalerMapKEDAInfo{
+		return &autoscalermap.KEDAInfo{
 			ScaledObjectName: string(detection.Source),
 			Active:           false,
 		}
@@ -214,7 +215,7 @@ func fetchAutoscalerMapKEDA(ctx context.Context, opts *options, hpa *autoscaling
 		}
 	}
 
-	return &hpaanalysis.AutoscalerMapKEDAInfo{
+	return &autoscalermap.KEDAInfo{
 		ScaledObjectName: kedaInfo.ScaledObjectName,
 		TriggerCount:     len(kedaInfo.Triggers),
 		Active:           active,
@@ -222,7 +223,7 @@ func fetchAutoscalerMapKEDA(ctx context.Context, opts *options, hpa *autoscaling
 }
 
 // fetchAutoscalerMapVPA attempts to detect VPA conflicts with the HPA.
-func fetchAutoscalerMapVPA(ctx context.Context, opts *options, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpaanalysis.AutoscalerMapVPAInfo {
+func fetchAutoscalerMapVPA(ctx context.Context, opts *options, hpa *autoscalingv2.HorizontalPodAutoscaler) *autoscalermap.VPAInfo {
 	// Check if HPA uses resource metrics (CPU/memory) that VPA could conflict with.
 	hasResourceMetrics := false
 	for _, m := range hpa.Spec.Metrics {
@@ -248,7 +249,7 @@ func fetchAutoscalerMapVPA(ctx context.Context, opts *options, hpa *autoscalingv
 		return nil
 	}
 
-	return &hpaanalysis.AutoscalerMapVPAInfo{
+	return &autoscalermap.VPAInfo{
 		VPAName:             vpaInfo.Name,
 		TargetRef:           vpaInfo.TargetRef,
 		UpdateMode:          vpaInfo.UpdateMode,
@@ -258,15 +259,15 @@ func fetchAutoscalerMapVPA(ctx context.Context, opts *options, hpa *autoscalingv
 }
 
 // fetchAutoscalerMapPDBs fetches PodDisruptionBudgets in the namespace.
-func fetchAutoscalerMapPDBs(ctx context.Context, client *kube.Client, namespace string) []hpaanalysis.AutoscalerMapPDB {
+func fetchAutoscalerMapPDBs(ctx context.Context, client *kube.Client, namespace string) []autoscalermap.PDB {
 	pdbs, _ := kube.FetchPodDisruptionBudgets(ctx, client.Interface, namespace, "")
 	if len(pdbs) == 0 {
 		return nil
 	}
 
-	result := make([]hpaanalysis.AutoscalerMapPDB, 0, len(pdbs))
+	result := make([]autoscalermap.PDB, 0, len(pdbs))
 	for _, pdb := range pdbs {
-		p := hpaanalysis.AutoscalerMapPDB{
+		p := autoscalermap.PDB{
 			Name: pdb.Name,
 		}
 		if pdb.MinAvailable != "" {
@@ -281,18 +282,18 @@ func fetchAutoscalerMapPDBs(ctx context.Context, client *kube.Client, namespace 
 }
 
 // fetchAutoscalerMapQuotas fetches ResourceQuotas near their limits (ratio >= 0.7).
-func fetchAutoscalerMapQuotas(ctx context.Context, client *kube.Client, namespace string, _ int32) []hpaanalysis.AutoscalerMapQuota {
+func fetchAutoscalerMapQuotas(ctx context.Context, client *kube.Client, namespace string, _ int32) []autoscalermap.Quota {
 	quotas, _ := kube.FetchAllResourceQuotas(ctx, client.Interface, namespace)
 	if len(quotas) == 0 {
 		return nil
 	}
 
-	result := make([]hpaanalysis.AutoscalerMapQuota, 0, len(quotas))
+	result := make([]autoscalermap.Quota, 0, len(quotas))
 	for _, q := range quotas {
 		if q.Ratio < 0.7 {
 			continue
 		}
-		result = append(result, hpaanalysis.AutoscalerMapQuota{
+		result = append(result, autoscalermap.Quota{
 			Name:     q.Name,
 			Resource: q.Resource,
 			Used:     q.Used,

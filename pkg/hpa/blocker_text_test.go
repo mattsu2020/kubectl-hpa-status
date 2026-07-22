@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
@@ -133,7 +134,7 @@ func TestWrapLines(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			lines := wrapLines(tt.text, tt.maxLen)
+			lines := rendutil.WrapLines(tt.text, tt.maxLen)
 			if len(lines) != tt.want {
 				t.Errorf("expected %d lines, got %d: %v", tt.want, len(lines), lines)
 			}

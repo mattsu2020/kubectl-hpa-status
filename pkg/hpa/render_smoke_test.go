@@ -6,7 +6,11 @@ import (
 	"testing"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/audit"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/autoscalermap"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/behavioradvisor"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/churn"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/containeradvisor"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/gitops"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/lint"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
@@ -76,14 +80,14 @@ func TestRenderSmokeWriters(t *testing.T) {
 		render func(w *bytes.Buffer) error
 	}{
 		{"CapacityPlanEmpty", func(w *bytes.Buffer) error { return WriteCapacityPlanText(w, &CapacityPlan{}, theme) }},
-		{"AutoscalerMapEmpty", func(w *bytes.Buffer) error { return WriteAutoscalerMapText(w, &AutoscalerMap{}, theme) }},
+		{"AutoscalerMapEmpty", func(w *bytes.Buffer) error { return autoscalermap.WriteText(w, &autoscalermap.Map{}, theme) }},
 		{"MetricContractText", func(w *bytes.Buffer) error { return WriteMetricContractText(w, &MetricContractReport{}) }},
 		{"MetricContractMarkdown", func(w *bytes.Buffer) error { return WriteMetricContractMarkdown(w, &MetricContractReport{}) }},
 		{"MetricContractHTML", func(w *bytes.Buffer) error { return WriteMetricContractHTML(w, &MetricContractReport{}) }},
-		{"GitOpsConflictText", func(w *bytes.Buffer) error { return WriteGitOpsConflictText(w, &GitOpsConflict{}) }},
-		{"GitOpsConflictMarkdown", func(w *bytes.Buffer) error { return WriteGitOpsConflictMarkdown(w, &GitOpsConflict{}) }},
-		{"GitOpsConflictHTML", func(w *bytes.Buffer) error { return WriteGitOpsConflictHTML(w, &GitOpsConflict{}) }},
-		{"ContainerAdvisor", func(w *bytes.Buffer) error { return WriteContainerAdvisorText(w, &ContainerAdvisorResult{}, nil) }},
+		{"GitOpsConflictText", func(w *bytes.Buffer) error { return gitops.WriteConflictText(w, &gitops.Conflict{}) }},
+		{"GitOpsConflictMarkdown", func(w *bytes.Buffer) error { return gitops.WriteConflictMarkdown(w, &gitops.Conflict{}) }},
+		{"GitOpsConflictHTML", func(w *bytes.Buffer) error { return gitops.WriteConflictHTML(w, &gitops.Conflict{}) }},
+		{"ContainerAdvisor", func(w *bytes.Buffer) error { return WriteContainerAdvisorText(w, &containeradvisor.Result{}, nil) }},
 		{"AssumptionsText", func(w *bytes.Buffer) error { return WriteAssumptionsText(w, &ControllerAssumptions{}, theme) }},
 		{"AssumptionsMarkdown", func(w *bytes.Buffer) error { return WriteAssumptionsMarkdown(w, &ControllerAssumptions{}) }},
 		{"AssumptionsExplain", func(w *bytes.Buffer) error {
@@ -100,7 +104,7 @@ func TestRenderSmokeWriters(t *testing.T) {
 		{"ReadinessDoctorText", func(w *bytes.Buffer) error { return WriteReadinessDoctorText(w, &ReadinessDoctorReport{}, theme) }},
 		{"ReadinessDoctorMarkdown", func(w *bytes.Buffer) error { return WriteReadinessDoctorMarkdown(w, &ReadinessDoctorReport{}) }},
 		{"DecisionTrace", func(w *bytes.Buffer) error { return WriteDecisionTraceText(w, &DecisionTrace{}) }},
-		{"BehaviorAdvisor", func(w *bytes.Buffer) error { return WriteBehaviorAdvisorText(w, &BehaviorAdvisorResult{}, nil) }},
+		{"BehaviorAdvisor", func(w *bytes.Buffer) error { return WriteBehaviorAdvisorText(w, &behavioradvisor.Result{}, nil) }},
 		{"PolicyGuardPopulated", func(w *bytes.Buffer) error { return WritePolicyGuardText(w, populatedGuard) }},
 		{"AuditPopulated", func(w *bytes.Buffer) error { return WriteAuditText(w, populatedAudit, nil) }},
 	}

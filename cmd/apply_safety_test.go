@@ -30,7 +30,12 @@ func TestNewTUIApplyCallbacksRequiresExplicitPersistentMode(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			opts := &options{Common: commonOptions{Apply: tt.apply, DryRun: tt.dryRun}}
+			opts := &options{Common: commonOptions{
+				ApplyOptions: ApplyOptions{
+					Apply:  tt.apply,
+					DryRun: tt.dryRun,
+				},
+			}}
 			live, dryRun := newTUIApplyCallbacks(opts)
 			if (live != nil) != tt.wantLive {
 				t.Fatalf("live callback presence=%v, want %v", live != nil, tt.wantLive)
@@ -47,9 +52,13 @@ func TestTUIDryRunCallbackNeverSendsLivePatch(t *testing.T) {
 	hpa := testutil.BuildHPA("default", "web", testutil.WithMinMax(1, 10))
 	fakeClient := testutil.NewFakeClient(hpa)
 	opts := &options{Common: commonOptions{
-		ClientOverride: fakeClient,
-		Apply:          true,
-		DryRun:         false, // callback must override even a persistent caller
+		ConnectionOptions: ConnectionOptions{
+			ClientOverride: fakeClient,
+		},
+		ApplyOptions: ApplyOptions{
+			Apply:  true,
+			DryRun: false, // callback must override even a persistent caller
+		},
 	}}
 	_, dryRun := newTUIApplyCallbacks(opts)
 	err := dryRun(context.Background(), "default", "web", []hpaanalysis.Suggestion{{
@@ -82,7 +91,14 @@ func TestApplyDryRunValidatesCombinedFinalPatch(t *testing.T) {
 	t.Parallel()
 	hpa := testutil.BuildHPA("default", "web", testutil.WithMinMax(1, 10))
 	fakeClient := testutil.NewFakeClient(hpa)
-	opts := &options{Common: commonOptions{ClientOverride: fakeClient, DryRun: true}}
+	opts := &options{Common: commonOptions{
+		ConnectionOptions: ConnectionOptions{
+			ClientOverride: fakeClient,
+		},
+		ApplyOptions: ApplyOptions{
+			DryRun: true,
+		},
+	}}
 
 	var out bytes.Buffer
 	_, err := applySuggestionsInNamespace(context.Background(), &out, opts, "default", "web", []hpaanalysis.Suggestion{
@@ -133,9 +149,13 @@ func TestApplyRejectsObjectChangedAfterReview(t *testing.T) {
 	})
 
 	opts := &options{Common: commonOptions{
-		ClientOverride: fakeClient,
-		DryRun:         false,
-		Yes:            true,
+		ConnectionOptions: ConnectionOptions{
+			ClientOverride: fakeClient,
+		},
+		ApplyOptions: ApplyOptions{
+			DryRun: false,
+			Yes:    true,
+		},
 	}}
 	var out bytes.Buffer
 	_, err := applySuggestionsInNamespace(context.Background(), &out, opts, "default", "web", []hpaanalysis.Suggestion{{
@@ -178,7 +198,14 @@ rules:
 	}
 
 	opts := &options{
-		Common: commonOptions{ClientOverride: fakeClient, DryRun: true},
+		Common: commonOptions{
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
+			ApplyOptions: ApplyOptions{
+				DryRun: true,
+			},
+		},
 		Status: statusOptions{PolicyGuard: policyPath, PolicyGuardMode: "block"},
 	}
 	var out bytes.Buffer

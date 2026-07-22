@@ -14,9 +14,13 @@ func TestRunStatusMultipleKeepsMarkdownStdoutCleanOnItemFailure(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
-			Output:         "markdown",
-			Err:            &stderr,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+				Err:            &stderr,
+			},
+			OutputOptions: OutputOptions{
+				Output: "markdown",
+			},
 		},
 		Status: statusOptions{
 			KEDA: "off",
@@ -73,7 +77,11 @@ func TestRunStatusSingleEarlyOutputModesPreserveWarningExit(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			opts := &options{
-				Common: commonOptions{ClientOverride: testutil.NewFakeClient(hpa)},
+				Common: commonOptions{
+					ConnectionOptions: ConnectionOptions{
+						ClientOverride: testutil.NewFakeClient(hpa),
+					},
+				},
 				Status: statusOptions{Features: feats("noEnrich")},
 			}
 			tc.mutate(opts)

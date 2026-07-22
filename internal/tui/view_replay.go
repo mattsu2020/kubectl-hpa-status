@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/retrospective"
 )
 
 // renderReplayView renders the replay timeline visualization.
@@ -56,7 +57,7 @@ func appendReplayHeader(sb *strings.Builder, trace *hpaanalysis.TimelineTrace) {
 	sb.WriteString("\n\n")
 }
 
-func appendReplayAnalysisSummary(sb *strings.Builder, analysis *hpaanalysis.ReplayAnalysis) {
+func appendReplayAnalysisSummary(sb *strings.Builder, analysis *retrospective.ReplayAnalysis) {
 	if analysis == nil {
 		return
 	}
@@ -77,7 +78,7 @@ func appendReplayAnalysisSummary(sb *strings.Builder, analysis *hpaanalysis.Repl
 	sb.WriteString("\n")
 }
 
-func countBottlenecksBySeverity(bottlenecks []hpaanalysis.BottleneckMarker) (highCount, medCount int) {
+func countBottlenecksBySeverity(bottlenecks []retrospective.BottleneckMarker) (highCount, medCount int) {
 	for _, b := range bottlenecks {
 		switch b.Severity {
 		case "high":
@@ -126,7 +127,7 @@ func replayMaxReplicas(snapshots []hpaanalysis.TimelineSnapshot) int32 {
 	return maxReplicas
 }
 
-func replayBottleneckMarkers(analysis *hpaanalysis.ReplayAnalysis) map[string]string {
+func replayBottleneckMarkers(analysis *retrospective.ReplayAnalysis) map[string]string {
 	markers := make(map[string]string)
 	if analysis == nil {
 		return markers
@@ -183,7 +184,7 @@ func appendReplayTimelineRows(sb *strings.Builder, trace *hpaanalysis.TimelineTr
 	}
 }
 
-func appendReplayBottlenecksSection(sb *strings.Builder, analysis *hpaanalysis.ReplayAnalysis) {
+func appendReplayBottlenecksSection(sb *strings.Builder, analysis *retrospective.ReplayAnalysis) {
 	if analysis == nil || len(analysis.Bottlenecks) == 0 {
 		return
 	}

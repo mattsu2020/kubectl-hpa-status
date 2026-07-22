@@ -135,9 +135,13 @@ func TestExecuteBatchPatchesGroupsSuggestionsPerHPA(t *testing.T) {
 	fakeClient := testutil.NewFakeClient(hpa)
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
-			DryRun:         false,
-			Yes:            true,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
+			ApplyOptions: ApplyOptions{
+				DryRun: false,
+				Yes:    true,
+			},
 		},
 	}
 	entries := []batchEntry{{
@@ -186,9 +190,13 @@ func TestExecuteBatchPatchesReturnsAggregateFailure(t *testing.T) {
 
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
-			DryRun:         true,
-			Yes:            true,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
+			ApplyOptions: ApplyOptions{
+				DryRun: true,
+				Yes:    true,
+			},
 		},
 	}
 	entries := []batchEntry{

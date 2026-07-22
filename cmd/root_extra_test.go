@@ -126,7 +126,9 @@ func TestConfirmApply_YesResponse(t *testing.T) {
 	var out bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			In: strings.NewReader("y\n"),
+			ConnectionOptions: ConnectionOptions{
+				In: strings.NewReader("y\n"),
+			},
 		},
 	}
 	err := confirmApply(&out, opts, 1, "default", "web")
@@ -139,7 +141,9 @@ func TestConfirmApply_YesFullWord(t *testing.T) {
 	var out bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			In: strings.NewReader("yes\n"),
+			ConnectionOptions: ConnectionOptions{
+				In: strings.NewReader("yes\n"),
+			},
 		},
 	}
 	err := confirmApply(&out, opts, 1, "default", "web")
@@ -152,7 +156,9 @@ func TestConfirmApply_NoResponse(t *testing.T) {
 	var out bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			In: strings.NewReader("n\n"),
+			ConnectionOptions: ConnectionOptions{
+				In: strings.NewReader("n\n"),
+			},
 		},
 	}
 	err := confirmApply(&out, opts, 1, "default", "web")
@@ -168,7 +174,9 @@ func TestConfirmApply_EmptyResponse(t *testing.T) {
 	var out bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			In: strings.NewReader("\n"),
+			ConnectionOptions: ConnectionOptions{
+				In: strings.NewReader("\n"),
+			},
 		},
 	}
 	err := confirmApply(&out, opts, 1, "default", "web")
@@ -181,7 +189,9 @@ func TestConfirmApply_WritesWarning(t *testing.T) {
 	var out bytes.Buffer
 	opts := &options{
 		Common: commonOptions{
-			In: strings.NewReader("y\n"),
+			ConnectionOptions: ConnectionOptions{
+				In: strings.NewReader("y\n"),
+			},
 		},
 	}
 	_ = confirmApply(&out, opts, 2, "prod", "api")
@@ -281,7 +291,9 @@ func TestStatusOptions_Normalize(t *testing.T) {
 			name: "apply implies suggest and explain",
 			opts: options{
 				Common: commonOptions{
-					Apply: true,
+					ApplyOptions: ApplyOptions{
+						Apply: true,
+					},
 				},
 			},
 			wantSuggest: true,
@@ -291,7 +303,9 @@ func TestStatusOptions_Normalize(t *testing.T) {
 			name: "diff implies suggest",
 			opts: options{
 				Common: commonOptions{
-					Diff: true,
+					ApplyOptions: ApplyOptions{
+						Diff: true,
+					},
 				},
 			},
 			wantSuggest: true,

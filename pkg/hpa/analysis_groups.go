@@ -1,7 +1,10 @@
 package hpa
 
 import (
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/behavioradvisor"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/containeradvisor"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/gitops"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/warmup"
 )
@@ -245,8 +248,8 @@ func (a *Analysis) Stability() StabilityView {
 type AdvisoryView struct {
 	VPAConflict      *vpa.ConflictInfo
 	VPAAdvisory      *vpa.Advisory
-	ContainerAdvisor *ContainerAdvisorResult
-	BehaviorAdvisor  *BehaviorAdvisorResult
+	ContainerAdvisor *containeradvisor.Result
+	BehaviorAdvisor  *behavioradvisor.Result
 }
 
 // Advisory returns the VPA/container/behavior advisory group view.
@@ -278,7 +281,7 @@ func (a *Analysis) Controllers() ControllersView {
 // BlockersView groups apply-time gating signals.
 type BlockersView struct {
 	BlockerReport  *blocker.Report
-	GitOpsConflict *GitOpsConflict
+	GitOpsConflict *gitops.Conflict
 }
 
 // Blockers returns the apply-time gating group view.

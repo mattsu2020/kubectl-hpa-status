@@ -34,7 +34,9 @@ func TestRunBehavior_TextOutput(t *testing.T) {
 	fakeClient := testutil.NewFakeClient(hpa)
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 	}
 
@@ -53,7 +55,9 @@ func TestRunEstimate_TextOutput(t *testing.T) {
 	fakeClient := testutil.NewFakeClient(hpa)
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 	}
 
@@ -77,8 +81,10 @@ func TestRunConflictScanDetectsMultipleHPAsAndKEDA(t *testing.T) {
 	fakeClient := testutil.NewFakeClient(first, second)
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
-			Namespace:      "prod",
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+				Namespace:      "prod",
+			},
 		},
 		List: listOptions{
 			Conflicts: true,
@@ -102,7 +108,9 @@ func TestRunReadinessEnablesImpactSections(t *testing.T) {
 	fakeClient := testutil.NewFakeClient(hpa)
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -126,8 +134,10 @@ func TestRunFleetSummarizesMaxSurgeRisk(t *testing.T) {
 	fakeClient := testutil.NewFakeClient(web, api)
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
-			Namespace:      "prod",
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+				Namespace:      "prod",
+			},
 		},
 	}
 
@@ -152,7 +162,9 @@ func TestStatusHiddenFactorsText(t *testing.T) {
 	fakeClient := testutil.NewFakeClient(hpa)
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -180,7 +192,9 @@ func TestStatusStructuredFormat(t *testing.T) {
 	fakeClient := testutil.NewFakeClient(hpa)
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 		Status: statusOptions{
 			Events: EventOption{Enabled: false},
@@ -203,7 +217,9 @@ func TestRunTuneSuggest(t *testing.T) {
 	fakeClient := testutil.NewFakeClient(hpa)
 	opts := &options{
 		Common: commonOptions{
-			ClientOverride: fakeClient,
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+			},
 		},
 	}
 

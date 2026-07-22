@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"charm.land/lipgloss/v2"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
@@ -44,7 +45,7 @@ func AppendRolloutReportText(out *[]byte, report *RolloutReport, theme style.The
 			badge := rolloutRiskBadge(r.Severity, theme)
 			*out = fmt.Appendf(*out, "    %s %s: %s\n", badge, r.Category, r.Message)
 			if r.Detail != "" {
-				for _, line := range wrapLines(r.Detail, 72) {
+				for _, line := range rendutil.WrapLines(r.Detail, 72) {
 					*out = fmt.Appendf(*out, "      %s\n", line)
 				}
 			}
@@ -55,7 +56,7 @@ func AppendRolloutReportText(out *[]byte, report *RolloutReport, theme style.The
 	if report.Recommendation != "" {
 		*out = append(*out, '\n')
 		*out = append(*out, "  Recommendation:\n"...)
-		for _, line := range wrapLines(report.Recommendation, 76) {
+		for _, line := range rendutil.WrapLines(report.Recommendation, 76) {
 			*out = fmt.Appendf(*out, "    %s\n", line)
 		}
 	}
