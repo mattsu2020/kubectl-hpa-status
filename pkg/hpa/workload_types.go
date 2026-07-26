@@ -44,8 +44,8 @@ type HealthSnapshot = healthtrend.HealthSnapshot
 
 // HealthTrendResult holds the analysis of health score history over time.
 //
-// Deprecated: Use healthtrend.HealthTrendResult instead. Scheduled for removal in v3.0.0.
-type HealthTrendResult = healthtrend.HealthTrendResult
+// Deprecated: Use healthtrend.Result instead. Scheduled for removal in v3.0.0.
+type HealthTrendResult = healthtrend.Result
 
 // ContainerCheck verifies that a ContainerResource metric target container exists in pods.
 type ContainerCheck struct {

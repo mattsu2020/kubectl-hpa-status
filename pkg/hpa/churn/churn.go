@@ -89,8 +89,8 @@ func AnalyzeChurnFromEvents(events []event.Event, hpa *autoscalingv2.HorizontalP
 		if ev.Reason != "SuccessfulRescale" {
 			continue
 		}
-		size := parseRescaleSize(ev.Message)
-		if size == 0 {
+		size, ok := event.ParseNewSize(ev.Message)
+		if !ok {
 			continue
 		}
 		rescales = append(rescales, event.RescaleData{
@@ -335,12 +335,4 @@ func currentStabilizationWindowSeconds(hpa *autoscalingv2.HorizontalPodAutoscale
 		return 300
 	}
 	return *hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds
-}
-
-// parseRescaleSize extracts the new replica count from an HPA event message
-// containing the "New size: N" pattern. Returns 0 if the pattern cannot be
-// parsed.
-func parseRescaleSize(message string) int32 {
-	result, _ := event.ParseNewSize(message)
-	return result
 }

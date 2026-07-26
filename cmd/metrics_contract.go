@@ -4,11 +4,16 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/spf13/cobra"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/restmapper"
 )
 
 func newMetricsContractCommand(opts *options) *cobra.Command {
@@ -96,24 +101,114 @@ type metricsContractOutput struct {
 // buildMetricContractInput builds the input for metrics contract analysis.
 func buildMetricContractInput(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) hpaanalysis.MetricContractInput {
 	input := hpaanalysis.MetricContractInput{
-		Namespace: hpa.Namespace,
-		HPAName:   hpa.Name,
-		Target:    fmt.Sprintf("%s/%s", hpa.Spec.ScaleTargetRef.Kind, hpa.Spec.ScaleTargetRef.Name),
-		Metrics:   make([]hpaanalysis.MetricContractMetric, 0, len(hpa.Spec.Metrics)),
-		APIServices: map[string]hpaanalysis.APIServiceStatus{
-			"metrics.k8s.io/v1beta1":          checkAPIServiceAvailability(ctx, client, "metrics.k8s.io/v1beta1"),
-			"custom.metrics.k8s.io/v1beta1":   checkAPIServiceAvailability(ctx, client, "custom.metrics.k8s.io/v1beta1"),
-			"external.metrics.k8s.io/v1beta1": checkAPIServiceAvailability(ctx, client, "external.metrics.k8s.io/v1beta1"),
-		},
+		Namespace:   hpa.Namespace,
+		HPAName:     hpa.Name,
+		Target:      fmt.Sprintf("%s/%s", hpa.Spec.ScaleTargetRef.Kind, hpa.Spec.ScaleTargetRef.Name),
+		Metrics:     make([]hpaanalysis.MetricContractMetric, 0, len(hpa.Spec.Metrics)),
+		APIServices: make(map[string]hpaanalysis.APIServiceStatus),
 	}
+	resourceAPI := selectMetricAPIService(ctx, client, input.APIServices, "metrics.k8s.io/v1beta1")
+	customAPI := selectMetricAPIService(
+		ctx,
+		client,
+		input.APIServices,
+		"custom.metrics.k8s.io/v1beta2",
+		"custom.metrics.k8s.io/v1beta1",
+	)
+	externalAPI := selectMetricAPIService(ctx, client, input.APIServices, "external.metrics.k8s.io/v1beta1")
 
 	currentMetricMap := buildCurrentMetricDataMap(hpa)
+	objectResourceCache := make(map[string]customMetricResourceResolution)
+	var objectResourceResolver *customMetricResourceResolver
+	targetSelector := metricTargetSelectorResolution{}
+	if hasPodScopedContractMetric(hpa.Spec.Metrics) {
+		targetSelector = resolveMetricTargetSelector(ctx, client, hpa)
+	}
 
 	for _, m := range hpa.Spec.Metrics {
-		input.Metrics = append(input.Metrics, buildMetricContractMetric(m, currentMetricMap))
+		var objectResource *customMetricResourceResolution
+		if m.Object != nil {
+			if objectResourceResolver == nil {
+				objectResourceResolver = newCustomMetricResourceResolver(client)
+			}
+			key := m.Object.DescribedObject.APIVersion + "\x00" + m.Object.DescribedObject.Kind
+			resolution, ok := objectResourceCache[key]
+			if !ok {
+				resolution = objectResourceResolver.Resolve(m.Object.DescribedObject)
+				objectResourceCache[key] = resolution
+			}
+			objectResource = &resolution
+		}
+		metric := buildMetricContractMetric(m, currentMetricMap, objectResource)
+		switch m.Type {
+		case autoscalingv2.ResourceMetricSourceType,
+			autoscalingv2.ContainerResourceMetricSourceType,
+			autoscalingv2.PodsMetricSourceType:
+			if m.Type == autoscalingv2.PodsMetricSourceType {
+				metric.APIGroup = customAPI
+			} else {
+				metric.APIGroup = resourceAPI
+			}
+			metric.TargetSelector = targetSelector.Selector
+			if targetSelector.Err != nil {
+				metric.TargetSelectorResolutionError = targetSelector.Err.Error()
+			}
+		case autoscalingv2.ObjectMetricSourceType:
+			metric.APIGroup = customAPI
+		case autoscalingv2.ExternalMetricSourceType:
+			metric.APIGroup = externalAPI
+		}
+		input.Metrics = append(input.Metrics, metric)
 	}
 
 	return input
+}
+
+func hasPodScopedContractMetric(metrics []autoscalingv2.MetricSpec) bool {
+	for _, metric := range metrics {
+		switch metric.Type {
+		case autoscalingv2.ResourceMetricSourceType,
+			autoscalingv2.ContainerResourceMetricSourceType,
+			autoscalingv2.PodsMetricSourceType:
+			return true
+		}
+	}
+	return false
+}
+
+type metricTargetSelectorResolution struct {
+	Selector string
+	Err      error
+}
+
+func resolveMetricTargetSelector(
+	ctx context.Context,
+	client *kube.Client,
+	hpa *autoscalingv2.HorizontalPodAutoscaler,
+) metricTargetSelectorResolution {
+	if client == nil || client.Interface == nil {
+		return metricTargetSelectorResolution{Err: fmt.Errorf("kubernetes client is unavailable")}
+	}
+	info, err := kube.FetchScaleTargetInfo(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef)
+	if err != nil {
+		return metricTargetSelectorResolution{Err: fmt.Errorf("resolve scale target pod selector: %w", err)}
+	}
+	if info == nil {
+		return metricTargetSelectorResolution{
+			Err: fmt.Errorf("scale target kind %q is not supported for exact pod-selector verification", hpa.Spec.ScaleTargetRef.Kind),
+		}
+	}
+	if info.Selector == nil {
+		return metricTargetSelectorResolution{Err: fmt.Errorf("scale target has no pod selector")}
+	}
+	parsedSelector, err := metav1.LabelSelectorAsSelector(info.Selector)
+	if err != nil {
+		return metricTargetSelectorResolution{Err: fmt.Errorf("scale target has an invalid pod selector: %w", err)}
+	}
+	if parsedSelector.Empty() {
+		return metricTargetSelectorResolution{Err: fmt.Errorf("scale target has an empty pod selector")}
+	}
+	return metricTargetSelectorResolution{Selector: parsedSelector.String()}
 }
 
 // buildCurrentMetricDataMap builds a set of "Type/Name" keys for metrics that
@@ -121,25 +216,159 @@ func buildMetricContractInput(ctx context.Context, client *kube.Client, hpa *aut
 func buildCurrentMetricDataMap(hpa *autoscalingv2.HorizontalPodAutoscaler) map[string]bool {
 	currentMetricMap := make(map[string]bool)
 	for _, m := range hpa.Status.CurrentMetrics {
-		switch {
-		case m.Resource != nil:
-			currentMetricMap[fmt.Sprintf("Resource/%s", m.Resource.Name)] = true
-		case m.ContainerResource != nil:
-			currentMetricMap[fmt.Sprintf("ContainerResource/%s/%s", m.ContainerResource.Container, m.ContainerResource.Name)] = true
-		case m.Pods != nil:
-			currentMetricMap[fmt.Sprintf("Pods/%s", m.Pods.Metric.Name)] = true
-		case m.Object != nil:
-			currentMetricMap[fmt.Sprintf("Object/%s", m.Object.Metric.Name)] = true
-		case m.External != nil:
-			currentMetricMap[fmt.Sprintf("External/%s", m.External.Metric.Name)] = true
+		value, available := contractMetricStatusValue(m)
+		if !available || !contractMetricValueAvailable(value) {
+			continue
+		}
+		key := currentMetricContractIdentity(m)
+		if key != "" {
+			currentMetricMap[key] = true
 		}
 	}
 	return currentMetricMap
 }
 
+func currentMetricContractIdentity(m autoscalingv2.MetricStatus) string {
+	switch {
+	case m.Resource != nil:
+		return fmt.Sprintf("Resource/%s", m.Resource.Name)
+	case m.ContainerResource != nil:
+		return fmt.Sprintf("ContainerResource/%s/%s", m.ContainerResource.Container, m.ContainerResource.Name)
+	case m.Pods != nil:
+		return metricContractIdentity("Pods", m.Pods.Metric.Name,
+			canonicalMetricSelector(m.Pods.Metric.Selector))
+	case m.Object != nil:
+		return objectMetricContractIdentity(
+			m.Object.Metric.Name,
+			canonicalMetricSelector(m.Object.Metric.Selector),
+			m.Object.DescribedObject,
+		)
+	case m.External != nil:
+		return metricContractIdentity("External", m.External.Metric.Name,
+			canonicalMetricSelector(m.External.Metric.Selector))
+	default:
+		return ""
+	}
+}
+
+func contractMetricStatusValue(m autoscalingv2.MetricStatus) (autoscalingv2.MetricValueStatus, bool) {
+	switch {
+	case m.Resource != nil:
+		return m.Resource.Current, true
+	case m.ContainerResource != nil:
+		return m.ContainerResource.Current, true
+	case m.Pods != nil:
+		return m.Pods.Current, true
+	case m.Object != nil:
+		return m.Object.Current, true
+	case m.External != nil:
+		return m.External.Current, true
+	default:
+		return autoscalingv2.MetricValueStatus{}, false
+	}
+}
+
+func contractMetricValueAvailable(value autoscalingv2.MetricValueStatus) bool {
+	return value.AverageUtilization != nil || value.AverageValue != nil || value.Value != nil
+}
+
+func canonicalMetricSelector(selector *metav1.LabelSelector) string {
+	if selector == nil {
+		return ""
+	}
+	parsed, err := metav1.LabelSelectorAsSelector(selector)
+	if err != nil {
+		return ""
+	}
+	return parsed.String()
+}
+
+func metricContractIdentity(metricType, name, selector string) string {
+	return fmt.Sprintf("%s/%s|selector=%s", metricType, name, selector)
+}
+
+func objectMetricContractIdentity(name, selector string, ref autoscalingv2.CrossVersionObjectReference) string {
+	return fmt.Sprintf("Object/%s|selector=%s|object=%s/%s/%s",
+		name, selector, ref.APIVersion, ref.Kind, ref.Name)
+}
+
+type customMetricResourceResolution struct {
+	Resource   string
+	Namespaced bool
+	Err        error
+}
+
+type customMetricResourceResolver struct {
+	mapper meta.RESTMapper
+	err    error
+}
+
+// newCustomMetricResourceResolver builds the same discovery-backed RESTMapper
+// used by Kubernetes clients. This avoids deriving CRD resource names from
+// Kind, which is incorrect for irregular plural forms.
+func newCustomMetricResourceResolver(client *kube.Client) *customMetricResourceResolver {
+	if client == nil || client.Interface == nil {
+		return &customMetricResourceResolver{err: fmt.Errorf("kubernetes discovery client is unavailable")}
+	}
+	groupResources, err := restmapper.GetAPIGroupResources(client.Interface.Discovery())
+	if err != nil {
+		return &customMetricResourceResolver{err: fmt.Errorf("build discovery RESTMapper: %w", err)}
+	}
+	return &customMetricResourceResolver{mapper: restmapper.NewDiscoveryRESTMapper(groupResources)}
+}
+
+func (resolver *customMetricResourceResolver) Resolve(ref autoscalingv2.CrossVersionObjectReference) customMetricResourceResolution {
+	if resolver == nil || resolver.err != nil {
+		err := fmt.Errorf("kubernetes discovery RESTMapper is unavailable")
+		if resolver != nil && resolver.err != nil {
+			err = resolver.err
+		}
+		return customMetricResourceResolution{Err: err}
+	}
+	if strings.TrimSpace(ref.APIVersion) == "" || strings.TrimSpace(ref.Kind) == "" {
+		return customMetricResourceResolution{Err: fmt.Errorf("describedObject apiVersion and kind are required")}
+	}
+
+	groupVersion, err := schema.ParseGroupVersion(ref.APIVersion)
+	if err != nil {
+		return customMetricResourceResolution{Err: fmt.Errorf("invalid describedObject apiVersion %q: %w", ref.APIVersion, err)}
+	}
+	mapping, err := resolver.mapper.RESTMapping(groupVersion.WithKind(ref.Kind).GroupKind(), groupVersion.Version)
+	if err != nil {
+		return customMetricResourceResolution{
+			Err: fmt.Errorf("map describedObject %s %q to a resource: %w", ref.APIVersion, ref.Kind, err),
+		}
+	}
+	if mapping.Scope == nil {
+		return customMetricResourceResolution{
+			Err: fmt.Errorf("discovery mapping for %s %q has no resource scope", ref.APIVersion, ref.Kind),
+		}
+	}
+	switch mapping.Scope.Name() {
+	case meta.RESTScopeNameNamespace, meta.RESTScopeNameRoot:
+	default:
+		return customMetricResourceResolution{
+			Err: fmt.Errorf("discovery mapping for %s %q has unknown scope %q", ref.APIVersion, ref.Kind, mapping.Scope.Name()),
+		}
+	}
+	return customMetricResourceResolution{
+		Resource:   mapping.Resource.GroupResource().String(),
+		Namespaced: mapping.Scope.Name() == meta.RESTScopeNameNamespace,
+	}
+}
+
+// resolveCustomMetricResource is the one-shot form used by focused tests.
+func resolveCustomMetricResource(client *kube.Client, ref autoscalingv2.CrossVersionObjectReference) customMetricResourceResolution {
+	return newCustomMetricResourceResolver(client).Resolve(ref)
+}
+
 // buildMetricContractMetric converts a single HPA spec metric into a contract
 // metric and records its hasCurrentData flag against the provided map.
-func buildMetricContractMetric(m autoscalingv2.MetricSpec, currentMetricMap map[string]bool) hpaanalysis.MetricContractMetric {
+func buildMetricContractMetric(
+	m autoscalingv2.MetricSpec,
+	currentMetricMap map[string]bool,
+	objectResource *customMetricResourceResolution,
+) hpaanalysis.MetricContractMetric {
 	metric := hpaanalysis.MetricContractMetric{
 		Type: string(m.Type),
 	}
@@ -154,28 +383,69 @@ func buildMetricContractMetric(m autoscalingv2.MetricSpec, currentMetricMap map[
 	case m.Pods != nil:
 		metric.Name = m.Pods.Metric.Name
 		metric.APIGroup = "custom.metrics.k8s.io/v1beta1"
-		if m.Pods.Metric.Selector != nil {
-			metric.Selector = m.Pods.Metric.Selector.String()
-		}
+		metric.Resource = "pods"
+		metric.ResourceName = "*"
+		metric.ResourceNamespaced = boolPointer(true)
+		metric.Selector = canonicalMetricSelector(m.Pods.Metric.Selector)
 	case m.Object != nil:
 		metric.Name = m.Object.Metric.Name
 		metric.APIGroup = "custom.metrics.k8s.io/v1beta1"
-		if m.Object.Metric.Selector != nil {
-			metric.Selector = m.Object.Metric.Selector.String()
+		metric.ResourceName = m.Object.DescribedObject.Name
+		metric.Selector = canonicalMetricSelector(m.Object.Metric.Selector)
+		switch {
+		case objectResource == nil:
+			metric.ResourceResolutionError = "describedObject resource was not resolved"
+		case objectResource.Err != nil:
+			metric.ResourceResolutionError = objectResource.Err.Error()
+		default:
+			metric.Resource = objectResource.Resource
+			metric.ResourceNamespaced = boolPointer(objectResource.Namespaced)
 		}
 	case m.External != nil:
 		metric.Name = m.External.Metric.Name
 		metric.APIGroup = "external.metrics.k8s.io/v1beta1"
+		metric.Selector = canonicalMetricSelector(m.External.Metric.Selector)
 	}
 
 	// Check if current data exists
 	metricKey := fmt.Sprintf("%s/%s", metric.Type, metric.Name)
-	if metric.Type == "ContainerResource" && m.ContainerResource != nil {
+	switch {
+	case metric.Type == "ContainerResource" && m.ContainerResource != nil:
 		metricKey = fmt.Sprintf("%s/%s/%s", metric.Type, m.ContainerResource.Container, metric.Name)
+	case m.Pods != nil, m.External != nil:
+		metricKey = metricContractIdentity(metric.Type, metric.Name, metric.Selector)
+	case m.Object != nil:
+		metricKey = objectMetricContractIdentity(metric.Name, metric.Selector, m.Object.DescribedObject)
 	}
 	metric.HasCurrentData = currentMetricMap[metricKey]
 
 	return metric
+}
+
+func boolPointer(value bool) *bool {
+	return &value
+}
+
+// selectMetricAPIService chooses the first served API version and records each
+// attempted discovery result. Custom metrics candidates are ordered with
+// v1beta2 first, matching the versions supported by the Kubernetes client.
+func selectMetricAPIService(
+	ctx context.Context,
+	client *kube.Client,
+	statuses map[string]hpaanalysis.APIServiceStatus,
+	candidates ...string,
+) string {
+	for _, candidate := range candidates {
+		status := checkAPIServiceAvailability(ctx, client, candidate)
+		statuses[candidate] = status
+		if status.Available {
+			return candidate
+		}
+	}
+	if len(candidates) == 0 {
+		return ""
+	}
+	return candidates[0]
 }
 
 // checkAPIServiceAvailability checks if a metrics API is available via discovery.

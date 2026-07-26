@@ -55,7 +55,7 @@ jobs:
         # formatting errors. Mirrors the local `make fmt-check` target.
         if: matrix.os == 'ubuntu-latest'
         run: |
-          out=$(gofmt -l *.go cmd/ pkg/ internal/)
+          out=$(gofmt -l .)
           if [ -n "$out" ]; then
             echo "::error::gofmt would modify the following files; run 'gofmt -w' and commit:"
             echo "$out"
@@ -213,6 +213,7 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -268,6 +269,7 @@ jobs:
           kubectl patch deployment metrics-server -n kube-system --type='json' \
             -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
           kubectl wait --for=condition=available deployment/metrics-server -n kube-system --timeout=120s
+          kubectl wait --for=condition=Available apiservice/v1beta1.metrics.k8s.io --timeout=120s
 
       - name: Install KEDA and VPA CRDs
         # Install the optional CRDs so the CRD-present E2E branches (VPA
@@ -305,7 +307,16 @@ jobs:
             echo "::warning::VPA CRD install failed (${vpa_url}); CRD-present E2E tests will skip on this compatibility job"
           fi
 
+          if kubectl get crd/scaledobjects.keda.sh >/dev/null 2>&1; then
+            kubectl wait --for=condition=Established crd/scaledobjects.keda.sh --timeout=120s
+          fi
+          if kubectl get crd/verticalpodautoscalers.autoscaling.k8s.io >/dev/null 2>&1; then
+            kubectl wait --for=condition=Established crd/verticalpodautoscalers.autoscaling.k8s.io --timeout=120s
+          fi
+
       - name: Run E2E Tests
+        env:
+          E2E_REQUIRED: "1"
         run: |
           kubectl cluster-info
           go test -v -tags=e2e ./test/e2e/...

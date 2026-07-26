@@ -34,6 +34,9 @@ func metricsAPIAvailable(t *testing.T, client *kubernetes.Clientset) bool {
 	t.Helper()
 	groups, err := client.Discovery().ServerGroups()
 	if err != nil {
+		if e2eRequired() {
+			t.Fatalf("discovery failed while checking required metrics API: %v", err)
+		}
 		t.Logf("discovery failed while checking metrics API: %v", err)
 		return false
 	}
@@ -56,10 +59,10 @@ func runMetricsContract(t *testing.T, kubeconfig, namespace, hpaName string) str
 	rootCmd := cmd.NewRootCommand()
 	rootCmd.SetOut(buf)
 	rootCmd.SetErr(buf)
-	rootCmd.SetArgs([]string{"contract", hpaName, "-n", namespace, "--kubeconfig", kubeconfig})
+	rootCmd.SetArgs([]string{"metrics", "contract", hpaName, "-n", namespace, "--kubeconfig", kubeconfig})
 
 	if err := rootCmd.Execute(); err != nil {
-		t.Logf("metrics contract returned error: %v. Output:\n%s", err, buf.String())
+		t.Fatalf("metrics contract returned error: %v. Output:\n%s", err, buf.String())
 	}
 	return buf.String()
 }
@@ -125,6 +128,9 @@ func TestE2E_MaxReplicasCap(t *testing.T) {
 	_, client, nsName := setupTestNamespace(t, kubeconfig)
 
 	if !metricsAPIAvailable(t, client) {
+		if e2eRequired() {
+			t.Fatal("required metrics-server API metrics.k8s.io/v1beta1 is unavailable")
+		}
 		t.Skip("Skipping MaxReplicasCap: metrics-server (metrics.k8s.io/v1beta1) is not installed; cannot drive real HPA scaling")
 	}
 

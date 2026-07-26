@@ -75,6 +75,21 @@ func TestAnalyzeChurnFromEvents(t *testing.T) {
 			},
 		},
 		{
+			name: "parsed zero replica event participates in churn analysis",
+			events: []event.Event{
+				rescaleEvent(2, now.Add(-3*time.Minute)),
+				rescaleEvent(0, now.Add(-2*time.Minute)),
+				rescaleEvent(3, now.Add(-1*time.Minute)),
+			},
+			wantFlips: 1,
+			checkExtra: func(t *testing.T, got *ChurnAnalysis) {
+				if got.ScaleDownCount != 1 || got.ScaleUpCount != 1 {
+					t.Fatalf("scale counts = down %d, up %d; want 1 and 1",
+						got.ScaleDownCount, got.ScaleUpCount)
+				}
+			},
+		},
+		{
 			name: "triple direction flip returns HIGH",
 			events: []event.Event{
 				rescaleEvent(3, now.Add(-5*time.Minute)),

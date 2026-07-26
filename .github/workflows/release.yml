@@ -28,13 +28,44 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Test
-        run: go test ./...
-
       - name: Verify reproducible module inputs
         run: |
           go mod tidy
           git diff --exit-code go.mod go.sum
+
+      - name: Check gofmt
+        run: |
+          out=$(gofmt -l .)
+          if [ -n "$out" ]; then
+            echo "::error::gofmt would modify the following files:"
+            echo "$out"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+      - name: Race detector
+        run: go test -race ./pkg/... ./cmd/... ./internal/...
+
+      - name: Coverage gate
+        run: |
+          go test -coverprofile=coverage.out ./...
+          bash scripts/check-coverage.sh coverage.out
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12.2
+
+      - name: Vulnerability scan
+        uses: golang/govulncheck-action@v1
+        with:
+          go-version-file: go.mod
+          go-package: ./...
 
       # Install cosign for keyless sigstore signing of release artifacts.
       # COSIGN_EXPERIMENTAL=1 enables keyless (certificate-based) signing that

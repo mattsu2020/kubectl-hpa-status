@@ -173,6 +173,86 @@ spec:
 	}
 }
 
+func TestRedactStructuredBytes_RedactsCredentialsEmbeddedInCommandAndArgs(t *testing.T) {
+	t.Parallel()
+	input := []byte(`apiVersion: apps/v1
+kind: Deployment
+spec:
+  template:
+    spec:
+      containers:
+      - name: app
+        command:
+        - /bin/sh
+        - -c
+        - 'curl -H "Authorization: Bearer bearer-token" -H "Cookie: session=cookie-session; csrf=cookie-csrf" --password shell-password https://user:uri-password@service.invalid/login'
+        args:
+        - --token=flag-token
+        - --password
+        - separate-password
+        - --api-key api-key-value
+        - --credential=credential-value
+        - --client-secret=client-secret-value
+        - AWS_SECRET_ACCESS_KEY=aws-secret-value
+        - --google-application-credentials
+        - google-credentials-value
+        - --cookie
+        - separate-cookie-value
+        - 'Authorization="ApiKey authorization-api-key"'
+        - '{"apiKey":"json-api-key"}'
+        - https://metrics.invalid/read?token=url-token&mode=safe&api_key=url-api-key
+        - --config=/etc/app/config.yaml
+`)
+
+	got := string(RedactStructuredBytes(input))
+	for _, leaked := range []string{
+		"bearer-token",
+		"cookie-session",
+		"cookie-csrf",
+		"shell-password",
+		"uri-password",
+		"flag-token",
+		"separate-password",
+		"api-key-value",
+		"credential-value",
+		"client-secret-value",
+		"aws-secret-value",
+		"google-credentials-value",
+		"separate-cookie-value",
+		"authorization-api-key",
+		"json-api-key",
+		"url-token",
+		"url-api-key",
+	} {
+		if strings.Contains(got, leaked) {
+			t.Errorf("credential %q leaked in:\n%s", leaked, got)
+		}
+	}
+	for _, preserved := range []string{"mode=safe", "--config=/etc/app/config.yaml", "user:"} {
+		if !strings.Contains(got, preserved) {
+			t.Errorf("non-secret context %q was not preserved in:\n%s", preserved, got)
+		}
+	}
+	if count := strings.Count(got, "[REDACTED]"); count < 13 {
+		t.Fatalf("redaction placeholder count = %d, want at least 13:\n%s", count, got)
+	}
+}
+
+func TestRedactStructuredBytes_RedactsSensitiveURLQueryWithoutDroppingOtherParameters(t *testing.T) {
+	t.Parallel()
+	input := []byte(`endpoint: https://service.invalid/api?access_token=access-value&limit=20&client_secret=secret-value#results
+`)
+	got := string(RedactStructuredBytes(input))
+	for _, leaked := range []string{"access-value", "secret-value"} {
+		if strings.Contains(got, leaked) {
+			t.Errorf("URL credential %q leaked in %q", leaked, got)
+		}
+	}
+	if !strings.Contains(got, "limit=20") || !strings.Contains(got, "#results") {
+		t.Fatalf("non-secret URL components were not preserved: %q", got)
+	}
+}
+
 // TestRedactString_HostnameWithIP verifies that combined patterns (an ip-
 // style hostname containing dashes) redact as a hostname, not partially.
 func TestRedactString_HostnameWithIP(t *testing.T) {

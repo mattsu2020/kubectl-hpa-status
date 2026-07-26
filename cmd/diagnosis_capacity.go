@@ -9,7 +9,6 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func buildCapacityHeadroom(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, target string) *hpaanalysis.CapacityHeadroom {
@@ -40,37 +39,30 @@ func buildCapacityHeadroom(ctx context.Context, client *kube.Client, hpa *autosc
 		ClusterSchedulableHeadroom: "unknown",
 		Risk:                       "cluster schedulable headroom could not be confirmed from visible API data",
 	}
-	nodeCap, nodeErr := kube.FetchNodeCapacity(ctx, client.Interface)
-	usedCPU, usedMem, podErr := sumScheduledPodRequests(ctx, client)
-	if nodeErr != nil {
-		headroom.Evidence = append(headroom.Evidence, fmt.Sprintf("node capacity unavailable: %v", nodeErr))
+	clusterHeadroom, headroomErr := kube.FetchClusterResourceHeadroom(ctx, client.Interface)
+	if headroomErr != nil {
+		headroom.Evidence = append(headroom.Evidence, fmt.Sprintf("cluster request headroom unavailable: %v", headroomErr))
 	}
-	if podErr != nil {
-		headroom.Evidence = append(headroom.Evidence, fmt.Sprintf("scheduled pod requests unavailable: %v", podErr))
-	}
-	if nodeErr == nil && podErr == nil && nodeCap != nil {
-		assessClusterHeadroom(headroom, nodeCap, usedCPU, usedMem, addCPU, addMem, additional)
+	if headroomErr == nil && clusterHeadroom != nil {
+		assessClusterHeadroom(headroom, clusterHeadroom, addCPU, addMem, additional)
 	}
 	return headroom
 }
 
 // assessClusterHeadroom records node/pod evidence on the headroom report and
 // classifies whether the cluster can schedule the additional replicas.
-func assessClusterHeadroom(headroom *hpaanalysis.CapacityHeadroom, nodeCap *kube.NodeCapacityInfo, usedCPU, usedMem, addCPU, addMem resource.Quantity, additional int32) {
-	cpuRemaining := nodeCap.AllocCPU.DeepCopy()
-	cpuRemaining.Sub(usedCPU)
-	memRemaining := nodeCap.AllocMemory.DeepCopy()
-	memRemaining.Sub(usedMem)
+func assessClusterHeadroom(headroom *hpaanalysis.CapacityHeadroom, cluster *kube.ClusterResourceHeadroom, addCPU, addMem resource.Quantity, additional int32) {
+	nodeCap := cluster.NodeCapacity
 	headroom.Evidence = append(headroom.Evidence,
 		fmt.Sprintf("nodes=%d allocatable cpu=%s memory=%s", nodeCap.TotalNodes, nodeCap.AllocCPU.String(), nodeCap.AllocMemory.String()),
-		fmt.Sprintf("scheduled pod requests cpu=%s memory=%s", usedCPU.String(), usedMem.String()),
-		fmt.Sprintf("remaining request headroom cpu=%s memory=%s", cpuRemaining.String(), memRemaining.String()),
+		fmt.Sprintf("scheduled pod requests cpu=%s memory=%s", cluster.RequestedCPU.String(), cluster.RequestedMemory.String()),
+		fmt.Sprintf("remaining request headroom cpu=%s memory=%s", cluster.AvailableCPU.String(), cluster.AvailableMemory.String()),
 	)
 	switch {
 	case additional == 0:
 		headroom.ClusterSchedulableHeadroom = "none needed"
 		headroom.Risk = "HPA desiredReplicas is already at or above maxReplicas"
-	case quantityAtLeast(cpuRemaining, addCPU) && quantityAtLeast(memRemaining, addMem):
+	case quantityAtLeast(cluster.AvailableCPU, addCPU) && quantityAtLeast(cluster.AvailableMemory, addMem):
 		headroom.ClusterSchedulableHeadroom = "available"
 		headroom.Risk = "visible node allocatable request headroom appears sufficient; scheduler constraints may still apply"
 	default:
@@ -84,44 +76,14 @@ func sumPodTemplateRequests(tmpl *corev1.PodTemplateSpec) (resource.Quantity, re
 	if tmpl == nil {
 		return cpu, mem
 	}
-	for _, container := range tmpl.Spec.Containers {
-		if q, ok := container.Resources.Requests[corev1.ResourceCPU]; ok {
-			cpu.Add(q)
-		}
-		if q, ok := container.Resources.Requests[corev1.ResourceMemory]; ok {
-			mem.Add(q)
-		}
+	requests := kube.EffectivePodRequests(tmpl.Spec)
+	if q, ok := requests[corev1.ResourceCPU]; ok {
+		cpu = q.DeepCopy()
+	}
+	if q, ok := requests[corev1.ResourceMemory]; ok {
+		mem = q.DeepCopy()
 	}
 	return cpu, mem
-}
-
-func sumScheduledPodRequests(ctx context.Context, client *kube.Client) (resource.Quantity, resource.Quantity, error) {
-	var cpu, mem resource.Quantity
-	listOptions := metav1.ListOptions{Limit: 500}
-	for {
-		pods, err := client.Interface.CoreV1().Pods("").List(ctx, listOptions)
-		if err != nil {
-			return cpu, mem, fmt.Errorf("list cluster pods: %w", err)
-		}
-		for _, pod := range pods.Items {
-			if pod.Spec.NodeName == "" || pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
-				continue
-			}
-			for _, container := range pod.Spec.Containers {
-				if q, ok := container.Resources.Requests[corev1.ResourceCPU]; ok {
-					cpu.Add(q)
-				}
-				if q, ok := container.Resources.Requests[corev1.ResourceMemory]; ok {
-					mem.Add(q)
-				}
-			}
-		}
-		if pods.Continue == "" {
-			break
-		}
-		listOptions.Continue = pods.Continue
-	}
-	return cpu, mem, nil
 }
 
 func multiplyQuantity(q resource.Quantity, factor int32) resource.Quantity {

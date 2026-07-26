@@ -4,7 +4,6 @@ package kube
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"time"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -141,10 +140,6 @@ func newLoadingRules(opts Options) *clientcmd.ClientConfigLoadingRules {
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 	if opts.Kubeconfig != "" {
 		loadingRules.ExplicitPath = opts.Kubeconfig
-	} else if loadingRules.ExplicitPath == "" {
-		if home := homeDir(); home != "" {
-			loadingRules.ExplicitPath = filepath.Join(home, ".kube", "config")
-		}
 	}
 	return loadingRules
 }

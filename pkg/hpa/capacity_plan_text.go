@@ -60,7 +60,9 @@ func appendCapacityChecks(out *[]byte, plan *CapacityPlan, theme style.Theme) {
 	*out = append(*out, "  Checks:\n"...)
 	for _, c := range plan.Checks {
 		indicator := theme.OK.Render("✓")
-		if !c.Pass {
+		if c.Unknown {
+			indicator = theme.Warning.Render("?")
+		} else if !c.Pass {
 			indicator = theme.Error.Render("!")
 		}
 		*out = fmt.Appendf(*out, "    %s %s\n", indicator, c.Message)

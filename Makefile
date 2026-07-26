@@ -31,11 +31,11 @@ tidy:
 
 .PHONY: fmt
 fmt:
-	gofmt -w *.go cmd/ pkg/ internal/
+	gofmt -w .
 
 .PHONY: fmt-check
 fmt-check:
-	@out=$$(gofmt -l *.go cmd/ pkg/ internal/); \
+	@out=$$(gofmt -l .); \
 	if [ -n "$$out" ]; then \
 		echo "gofmt would modify the following files; run 'make fmt' and commit:"; \
 		echo "$$out"; \

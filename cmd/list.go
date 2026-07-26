@@ -13,6 +13,7 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/internal/history"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/healthtrend"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 	"github.com/spf13/cobra"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -267,7 +268,7 @@ func attachHealthTrend(store *history.HealthStore, analysis *hpaanalysis.Analysi
 	if store == nil || analysis == nil {
 		return
 	}
-	snapshot := hpaanalysis.HealthSnapshot{
+	snapshot := healthtrend.HealthSnapshot{
 		Timestamp:       time.Now(),
 		HealthScore:     analysis.HealthScore,
 		HealthState:     analysis.Health,
@@ -285,7 +286,7 @@ func attachHealthTrend(store *history.HealthStore, analysis *hpaanalysis.Analysi
 	if err != nil || len(snapshots) == 0 {
 		return
 	}
-	trend := hpaanalysis.AnalyzeHealthTrend(snapshots)
+	trend := healthtrend.AnalyzeHealthTrend(snapshots)
 	analysis.HealthTrend = &trend
 }
 

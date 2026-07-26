@@ -2,6 +2,7 @@ package hpa
 
 import (
 	"fmt"
+	"strings"
 )
 
 // MetricContractReport holds the result of metrics contract validation.
@@ -28,8 +29,22 @@ type MetricContractCheck struct {
 	MetricType string `json:"metricType" yaml:"metricType"`
 	// MetricName is the metric name (e.g., "cpu", "http_requests").
 	MetricName string `json:"metricName" yaml:"metricName"`
+	// Resource is the custom-metrics resource path segment (for example
+	// "pods" or "deployments.apps").
+	Resource string `json:"resource,omitempty" yaml:"resource,omitempty"`
+	// ResourceName is the described object name, or "*" for a Pods metric.
+	ResourceName string `json:"resourceName,omitempty" yaml:"resourceName,omitempty"`
+	// ResourceNamespaced reports whether the custom-metrics resource is
+	// namespace-scoped. Nil means the scope could not be resolved.
+	ResourceNamespaced *bool `json:"resourceNamespaced,omitempty" yaml:"resourceNamespaced,omitempty"`
 	// Selector is the label selector for Pods/Object metrics (if present).
 	Selector string `json:"selector,omitempty" yaml:"selector,omitempty"`
+	// TargetSelector is the scale target's pod selector. Resource and Pods
+	// metric verification commands use it as labelSelector.
+	TargetSelector string `json:"targetSelector,omitempty" yaml:"targetSelector,omitempty"`
+	// TargetSelectorResolutionError explains why an exact pod-scoped
+	// verification command could not be built.
+	TargetSelectorResolutionError string `json:"targetSelectorResolutionError,omitempty" yaml:"targetSelectorResolutionError,omitempty"`
 	// APIService is the metrics API that should serve this metric.
 	APIService string `json:"apiService" yaml:"apiService"`
 	// APIServiceAvailable indicates whether the APIService was discoverable.
@@ -68,8 +83,23 @@ type MetricContractMetric struct {
 	Type string
 	// Name is the metric name (e.g., "cpu", "memory", "http_requests").
 	Name string
+	// Resource is the custom-metrics resource path segment.
+	Resource string
+	// ResourceName is the described object name, or "*" for a Pods metric.
+	ResourceName string
+	// ResourceNamespaced reports the discovered scope of a custom-metrics
+	// resource. Nil means discovery could not resolve the resource.
+	ResourceNamespaced *bool
+	// ResourceResolutionError explains why an Object metric's described
+	// resource could not be resolved through API discovery.
+	ResourceResolutionError string
 	// Selector is the label selector for Pods/Object metrics (if present).
 	Selector string
+	// TargetSelector is the discovered pod selector for the HPA scale target.
+	TargetSelector string
+	// TargetSelectorResolutionError explains why the scale target selector
+	// could not be resolved.
+	TargetSelectorResolutionError string
 	// APIGroup is the metrics API group that should serve this metric.
 	APIGroup string
 	// HasCurrentData indicates whether current metric data exists in HPA status.
@@ -106,6 +136,7 @@ func AnalyzeMetricContract(input MetricContractInput) *MetricContractReport {
 
 	anyMissingAPI := false
 	anyMissingData := false
+	anyUnresolvedResource := false
 
 	for _, metric := range input.Metrics {
 		check := analyzeMetric(metric, input.APIServices)
@@ -116,6 +147,8 @@ func AnalyzeMetricContract(input MetricContractInput) *MetricContractReport {
 			anyMissingAPI = true
 		case "missing-data", "selector-mismatch":
 			anyMissingData = true
+		case "unresolved-resource", "unresolved-target-selector":
+			anyUnresolvedResource = true
 		}
 	}
 
@@ -125,6 +158,10 @@ func AnalyzeMetricContract(input MetricContractInput) *MetricContractReport {
 		report.OverallStatus = "broken"
 		report.Summary = "Metrics API unavailable; HPA cannot compute desired replicas"
 		report.Remediation = append(report.Remediation, "Install and configure the missing metrics adapter or metrics-server")
+	case anyUnresolvedResource:
+		report.OverallStatus = "degraded"
+		report.Summary = "One or more metric references could not be resolved for exact verification"
+		report.Remediation = append(report.Remediation, "Verify resource references, scale targets, and API discovery permissions")
 	case anyMissingData:
 		report.OverallStatus = "degraded"
 		report.Summary = "Metrics APIs are available but not returning current data"
@@ -146,12 +183,26 @@ func AnalyzeMetricContract(input MetricContractInput) *MetricContractReport {
 
 // analyzeMetric performs contract validation for a single metric.
 func analyzeMetric(metric MetricContractMetric, apiServices map[string]APIServiceStatus) MetricContractCheck {
-	apiSvc := metricsAPIForMetricType(metric.Type)
+	apiSvc := metric.APIGroup
+	if apiSvc == "" {
+		apiSvc = metricsAPIForMetricType(metric.Type)
+	}
 	check := MetricContractCheck{
-		MetricType: metric.Type,
-		MetricName: metric.Name,
-		Selector:   metric.Selector,
-		APIService: apiSvc,
+		MetricType:                    metric.Type,
+		MetricName:                    metric.Name,
+		Resource:                      metric.Resource,
+		ResourceName:                  metric.ResourceName,
+		ResourceNamespaced:            metric.ResourceNamespaced,
+		Selector:                      metric.Selector,
+		TargetSelector:                metric.TargetSelector,
+		TargetSelectorResolutionError: metric.TargetSelectorResolutionError,
+		APIService:                    apiSvc,
+		DataAvailable:                 metric.HasCurrentData,
+	}
+	if metric.HasCurrentData {
+		check.DataMessage = "current data is present in HPA status"
+	} else {
+		check.DataMessage = "no current data in HPA status"
 	}
 
 	// Check APIService availability
@@ -168,17 +219,27 @@ func analyzeMetric(metric MetricContractMetric, apiServices map[string]APIServic
 	check.APIServiceAvailable = true
 	check.APIServiceMessage = apiStatus.Message
 
+	if metric.ResourceResolutionError != "" {
+		check.Status = "unresolved-resource"
+		check.Detail = metric.ResourceResolutionError
+		check.Remediation = "Verify the Object metric describedObject apiVersion/kind and grant API discovery access"
+		return check
+	}
+	if metric.TargetSelectorResolutionError != "" {
+		check.Status = "unresolved-target-selector"
+		check.Detail = metric.TargetSelectorResolutionError
+		check.Remediation = "Verify the scale target exists and grant permission to read its pod selector"
+		return check
+	}
+
 	// Check data availability
 	if !metric.HasCurrentData {
-		check.DataAvailable = false
-		check.DataMessage = "no current data in HPA status"
 		check.Status = "missing-data"
 		check.Detail = "Metrics API is available but not returning data"
 		check.Remediation = fmt.Sprintf("Verify the %s metric source is healthy and exporting data", metric.Name)
 		return check
 	}
 
-	check.DataAvailable = true
 	check.Status = "ok"
 	check.Detail = "Metric is available and current"
 	return check
@@ -202,12 +263,12 @@ func metricsAPIForMetricType(metricType string) string {
 
 // remediationForMissingAPI returns a remediation message for a missing metrics API.
 func remediationForMissingAPI(apiService string) string {
-	switch apiService {
-	case "metrics.k8s.io/v1beta1":
+	switch {
+	case strings.HasPrefix(apiService, "metrics.k8s.io/"):
 		return "Install metrics-server: kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml"
-	case "custom.metrics.k8s.io/v1beta1":
+	case strings.HasPrefix(apiService, "custom.metrics.k8s.io/"):
 		return "Install and configure a metrics adapter (e.g., Prometheus Adapter) for custom.metrics.k8s.io"
-	case "external.metrics.k8s.io/v1beta1":
+	case strings.HasPrefix(apiService, "external.metrics.k8s.io/"):
 		return "Install and configure a metrics adapter (e.g., KEDA) for external.metrics.k8s.io"
 	default:
 		return fmt.Sprintf("Verify the %s APIService is installed and healthy", apiService)

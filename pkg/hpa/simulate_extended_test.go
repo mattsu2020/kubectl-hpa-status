@@ -126,6 +126,27 @@ func TestAssessExtendedRisk(t *testing.T) {
 	}
 }
 
+func TestSimulateExtendedRiskUsesOverriddenReplicaBounds(t *testing.T) {
+	t.Parallel()
+
+	hpa := buildMetricSimHPA(10, 10, 10, 100)
+	current := int32(150)
+	hpa.Status.CurrentMetrics[0].Resource.Current.AverageUtilization = &current
+
+	result, err := SimulateHPA(hpa, map[string]string{"maxReplicas": "20"}, HealthWeights{})
+	if err != nil {
+		t.Fatalf("SimulateHPA: %v", err)
+	}
+	if result.After.DesiredReplicas != 15 {
+		t.Fatalf("After.DesiredReplicas = %d, want 15", result.After.DesiredReplicas)
+	}
+	for _, warning := range result.RiskWarnings {
+		if strings.Contains(warning, "at maxReplicas=10") {
+			t.Fatalf("risk warning used the pre-override bound: %q", warning)
+		}
+	}
+}
+
 func TestProjectReplicaTrajectory(t *testing.T) {
 	original := buildTestHPAWithResourceMetric(5, 5, 1, 10, 50, 80)
 	modified := buildTestHPAWithResourceMetric(5, 5, 1, 20, 50, 80)

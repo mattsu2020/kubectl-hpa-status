@@ -3,6 +3,7 @@ package bundle
 import (
 	"encoding/json"
 	"net"
+	"regexp"
 	"strings"
 
 	"sigs.k8s.io/yaml"
@@ -77,13 +78,97 @@ func redactStructuredValue(value any, parentKey string) {
 				typed[key] = redactStructuredFieldValue(child)
 				continue
 			}
+			if text, ok := child.(string); ok {
+				typed[key] = redactSensitiveString(text)
+				continue
+			}
 			redactStructuredValue(child, normalized)
 		}
 	case []any:
-		for _, child := range typed {
+		redactNext := false
+		for i, child := range typed {
+			if text, ok := child.(string); ok {
+				if redactNext {
+					typed[i] = "[REDACTED]"
+					redactNext = false
+					continue
+				}
+				typed[i] = redactSensitiveString(text)
+				if (parentKey == "args" || parentKey == "command") && isStandaloneSensitiveFlag(text) {
+					redactNext = true
+				}
+				continue
+			}
+			redactNext = false
 			redactStructuredValue(child, parentKey)
 		}
 	}
+}
+
+const sensitiveNameCorePattern = `(?:access[-_]?token|auth[-_]?token|token|password|passwd|credential(?:s)?|api[-_]?key|apikey|client[-_]?secret|secret|access[-_]?key(?:[-_]?id)?|secret[-_]?access[-_]?key|authorization|proxy[-_]?authorization|cookie)`
+const sensitiveNamePattern = `(?:(?:[a-z0-9]+[-_])*` + sensitiveNameCorePattern + `)`
+
+var sensitiveStringPatterns = []struct {
+	re          *regexp.Regexp
+	replacement string
+}{
+	{
+		// Command-line flags embedded in command/args strings, including shell
+		// snippets such as "--password 'value with spaces'".
+		re:          regexp.MustCompile(`(?i)(--` + sensitiveNamePattern + `)(=|\s+)(?:"[^"]*"|'[^']*'|[^\s"',;]+)`),
+		replacement: `${1}${2}[REDACTED]`,
+	},
+	{
+		// Assignment and URL query forms: token=value, ?api_key=value, etc.
+		re:          regexp.MustCompile(`(?i)(\b` + sensitiveNamePattern + `\s*=\s*)(?:"[^"]*"|'[^']*'|[^&#\s,;]+)`),
+		replacement: `${1}[REDACTED]`,
+	},
+	{
+		// Inline JSON/YAML-like values embedded in a command string.
+		re:          regexp.MustCompile(`(?i)(["']?` + sensitiveNamePattern + `["']?\s*:\s*)(?:"[^"]*"|'[^']*'|[^,\s}\]]+)`),
+		replacement: `${1}[REDACTED]`,
+	},
+	{
+		// Authentication headers frequently appear in curl command strings.
+		// Redact the complete value regardless of authentication scheme.
+		re:          regexp.MustCompile(`(?i)(\b(?:authorization|proxy-authorization)\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^"'\r\n]+)`),
+		replacement: `${1}[REDACTED]`,
+	},
+	{
+		// Cookie headers are credentials even when their individual key names
+		// do not contain a credential marker. Redact every cookie pair and its
+		// attributes, not just the first semicolon-delimited value.
+		re:          regexp.MustCompile(`(?i)(\b(?:cookie|set-cookie)\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^"'\r\n]+)`),
+		replacement: `${1}[REDACTED]`,
+	},
+	{
+		// URI userinfo passwords: scheme://user:password@host/path.
+		re:          regexp.MustCompile(`(?i)(\b[a-z][a-z0-9+.-]*://[^:/@\s]+:)([^@\s/]+)(@)`),
+		replacement: `${1}[REDACTED]${3}`,
+	},
+}
+
+var standaloneSensitiveFlagPattern = regexp.MustCompile(`(?i)^` + sensitiveNamePattern + `$`)
+
+// redactSensitiveString removes credentials embedded inside otherwise
+// non-sensitive scalar values. Kubernetes command/args fields commonly encode
+// secrets as "--token=value" or URLs, so key-based structured redaction alone
+// cannot see them.
+func redactSensitiveString(value string) string {
+	for _, pattern := range sensitiveStringPatterns {
+		value = pattern.re.ReplaceAllString(value, pattern.replacement)
+	}
+	return value
+}
+
+func isStandaloneSensitiveFlag(value string) bool {
+	value = strings.Trim(strings.TrimSpace(value), `"'`)
+	if !strings.HasPrefix(value, "--") || strings.Contains(value, "=") {
+		return false
+	}
+	name := strings.ToLower(strings.TrimPrefix(value, "--"))
+	name = strings.ReplaceAll(name, "_", "-")
+	return standaloneSensitiveFlagPattern.MatchString(name)
 }
 
 // redactedParentKeys marks containers whose every child value is sensitive.

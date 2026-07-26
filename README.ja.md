@@ -123,7 +123,7 @@ kubectl krew install hpa-status
 ```sh
 kubectl hpa_status status <hpa-name> -n <namespace>
 kubectl hpa_status list -A --wide
-kubectl hpa_status <hpa-name> --suggest
+kubectl hpa_status status <hpa-name> --suggest
 ```
 
 Krew はプラグインを `hpa-status` として登録し、`kubectl hpa_status`（アンダースコア形式）で検出されます。これがスクリプトや運用手順で推奨される標準形式です。ネスト形式 `kubectl hpa status`（スペース形式）は、ネストプラグイン検出をサポートする kubectl では動作しますが、すべての環境で使えるとは限りません。動作しない場合は `kubectl hpa_status status <hpa-name>` または `kubectl-hpa-status status <hpa-name>` を使用してください。

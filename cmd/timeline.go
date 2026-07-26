@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -200,54 +201,198 @@ func runRecord(ctx context.Context, out io.Writer, opts *options, name string, i
 		interval = time.Second
 	}
 
-	file, err := os.OpenFile(outputPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
-	if err != nil {
-		return fmt.Errorf("failed to open record file: %w", err)
-	}
-	defer func() { _ = file.Close() }()
-
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
 	client, err := newClientOrDefault(opts)
 	if err != nil {
 		return err
 	}
 	ec := newEnrichmentContext(ctx, opts)
 	start := time.Now()
+	initialRecords, err := recordOnce(ctx, opts, client, name, interval, ec)
+	if err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if len(initialRecords) == 0 {
+		return fmt.Errorf("no HPAs matched the recording scope; record file was not modified")
+	}
+
+	file, err := initializeRecordFile(outputPath, initialRecords)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = file.Close() }()
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
 	counts := map[string]int{}
 	previous := map[string]hpaanalysis.TimelineSnapshot{}
 	interestingChanges := map[string][]string{}
+	trackRecordedSnapshots(initialRecords, counts, previous, interestingChanges)
+	_, _ = fmt.Fprintf(out, "Recorded %d snapshot(s) at %s\n", len(initialRecords), time.Now().Format(time.RFC3339))
 
 	for {
+		select {
+		case <-ctx.Done():
+			return syncAndWriteRecordSummary(file, out, outputPath, counts, interestingChanges, start)
+		case <-ticker.C:
+		}
+
 		records, err := recordOnce(ctx, opts, client, name, interval, ec)
 		if err != nil {
+			return err
+		}
+		if err := ensurePublishedRecordFile(file, outputPath); err != nil {
 			return err
 		}
 		for _, record := range records {
 			if err := writeRecordLine(file, record); err != nil {
 				return err
 			}
-			key := record.Namespace + "/" + record.HPAName
-			counts[key]++
-			if len(record.Snapshots) > 0 {
-				snapshot := record.Snapshots[0]
-				if prev, ok := previous[key]; ok {
-					for _, change := range hpaanalysis.DiffSnapshots(prev, snapshot) {
-						interestingChanges[key] = append(interestingChanges[key],
-							fmt.Sprintf("%s %s", snapshot.Timestamp.Format("15:04"), change))
-					}
-				}
-				previous[key] = snapshot
+		}
+		if err := file.Sync(); err != nil {
+			return fmt.Errorf("failed to sync record file: %w", err)
+		}
+		trackRecordedSnapshots(records, counts, previous, interestingChanges)
+		_, _ = fmt.Fprintf(out, "Recorded %d snapshot(s) at %s\n", len(records), time.Now().Format(time.RFC3339))
+	}
+}
+
+func syncAndWriteRecordSummary(
+	file *os.File,
+	out io.Writer,
+	outputPath string,
+	counts map[string]int,
+	interestingChanges map[string][]string,
+	start time.Time,
+) error {
+	if err := file.Sync(); err != nil {
+		return fmt.Errorf("failed to sync record file: %w", err)
+	}
+	return writeRecordSummary(out, outputPath, counts, interestingChanges, start)
+}
+
+// initializeRecordFile publishes the first successfully fetched batch
+// atomically. Existing files are untouched until the batch has been serialized
+// and synced. The published file always uses mode 0600. A final-path symlink
+// is rejected so recording never truncates the symlink target.
+func initializeRecordFile(outputPath string, records []hpaanalysis.TimelineTrace) (_ *os.File, retErr error) {
+	mode := os.FileMode(0o600)
+	var originalInfo os.FileInfo
+	targetExisted := false
+	info, err := os.Lstat(outputPath)
+	switch {
+	case err == nil:
+		if info.Mode()&os.ModeSymlink != 0 {
+			return nil, fmt.Errorf("refusing to replace symlink record file %q", outputPath)
+		}
+		if !info.Mode().IsRegular() {
+			return nil, fmt.Errorf("record file %q is not a regular file", outputPath)
+		}
+		originalInfo = info
+		targetExisted = true
+	case !os.IsNotExist(err):
+		return nil, fmt.Errorf("failed to inspect record file: %w", err)
+	}
+
+	dir := filepath.Dir(outputPath)
+	base := filepath.Base(outputPath)
+	file, err := os.CreateTemp(dir, "."+base+".tmp-*")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temporary record file: %w", err)
+	}
+	tempPath := file.Name()
+	published := false
+	defer func() {
+		if retErr != nil {
+			_ = file.Close()
+		}
+		if !published {
+			_ = os.Remove(tempPath)
+		}
+	}()
+
+	if err := file.Chmod(mode); err != nil {
+		return nil, fmt.Errorf("failed to preserve record file permissions: %w", err)
+	}
+	for _, record := range records {
+		if err := writeRecordLine(file, record); err != nil {
+			return nil, err
+		}
+	}
+	if err := file.Sync(); err != nil {
+		return nil, fmt.Errorf("failed to sync initial record file: %w", err)
+	}
+	if err := ensureRecordDestinationUnchanged(outputPath, originalInfo, targetExisted); err != nil {
+		return nil, err
+	}
+	if err := os.Rename(tempPath, outputPath); err != nil {
+		return nil, fmt.Errorf("failed to publish record file: %w", err)
+	}
+	published = true
+	if err := syncRecordDirectory(dir); err != nil {
+		return nil, fmt.Errorf("record file was published but its directory could not be synced: %w", err)
+	}
+	return file, nil
+}
+
+func ensureRecordDestinationUnchanged(path string, originalInfo os.FileInfo, originallyExisted bool) error {
+	currentInfo, err := os.Lstat(path)
+	if !originallyExisted {
+		switch {
+		case os.IsNotExist(err):
+			return nil
+		case err != nil:
+			return fmt.Errorf("failed to recheck record file: %w", err)
+		default:
+			return fmt.Errorf("record file %q appeared while preparing the recording; refusing to overwrite it", path)
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("record file %q changed while preparing the recording: %w", path, err)
+	}
+	if currentInfo.Mode()&os.ModeSymlink != 0 || !currentInfo.Mode().IsRegular() ||
+		!os.SameFile(originalInfo, currentInfo) ||
+		currentInfo.Size() != originalInfo.Size() ||
+		!currentInfo.ModTime().Equal(originalInfo.ModTime()) ||
+		currentInfo.Mode().Perm() != originalInfo.Mode().Perm() {
+		return fmt.Errorf("record file %q changed while preparing the recording; refusing to overwrite it", path)
+	}
+	return nil
+}
+
+func ensurePublishedRecordFile(file *os.File, path string) error {
+	openInfo, err := file.Stat()
+	if err != nil {
+		return fmt.Errorf("failed to inspect open record file: %w", err)
+	}
+	currentInfo, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("record file %q is no longer available: %w", path, err)
+	}
+	if currentInfo.Mode()&os.ModeSymlink != 0 || !currentInfo.Mode().IsRegular() || !os.SameFile(openInfo, currentInfo) {
+		return fmt.Errorf("record file %q was replaced while recording; refusing to write to a detached file", path)
+	}
+	return nil
+}
+
+func trackRecordedSnapshots(records []hpaanalysis.TimelineTrace, counts map[string]int, previous map[string]hpaanalysis.TimelineSnapshot, interestingChanges map[string][]string) {
+	for _, record := range records {
+		key := record.Namespace + "/" + record.HPAName
+		counts[key]++
+		if len(record.Snapshots) == 0 {
+			continue
+		}
+		snapshot := record.Snapshots[0]
+		if prev, ok := previous[key]; ok {
+			for _, change := range hpaanalysis.DiffSnapshots(prev, snapshot) {
+				interestingChanges[key] = append(interestingChanges[key],
+					fmt.Sprintf("%s %s", snapshot.Timestamp.Format("15:04"), change))
 			}
 		}
-		_, _ = fmt.Fprintf(out, "Recorded %d snapshot(s) at %s\n", len(records), time.Now().Format(time.RFC3339))
-
-		select {
-		case <-ctx.Done():
-			return writeRecordSummary(out, outputPath, counts, interestingChanges, start)
-		case <-ticker.C:
-		}
+		previous[key] = snapshot
 	}
 }
 

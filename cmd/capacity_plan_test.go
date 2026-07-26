@@ -4,10 +4,19 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
+	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	k8stesting "k8s.io/client-go/testing"
 )
 
 func TestNewCapacityPlanCommand(t *testing.T) {
@@ -222,5 +231,55 @@ func TestCapacityPlanFlagOnStatus(t *testing.T) {
 
 	if report.Analysis.CapacityPlan == nil {
 		t.Fatal("expected CapacityPlan to be populated with --capacity-plan flag")
+	}
+}
+
+func TestAssembleCapacityPlanInput_RecordsFetchErrorsAsUnknown(t *testing.T) {
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(5, 5),
+		testutil.WithMinMax(1, 5),
+	)
+	deployment := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "web"},
+		Spec: appsv1.DeploymentSpec{
+			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "web"}},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": "web"}},
+				Spec: corev1.PodSpec{Containers: []corev1.Container{{
+					Name: "app",
+					Resources: corev1.ResourceRequirements{Requests: corev1.ResourceList{
+						corev1.ResourceCPU: resource.MustParse("100m"),
+					}},
+				}}},
+			},
+		},
+	}
+	fakeClient := testutil.NewFakeClientWithObjects(hpa, deployment)
+	fakeClient.PrependReactor("list", "resourcequotas", func(k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, errors.New("forbidden")
+	})
+	client := &kube.Client{Interface: fakeClient, Namespace: "default"}
+	analysis := hpaanalysis.Analysis{
+		Namespace: "default",
+		Name:      "web",
+		Target:    "Deployment/web",
+		Current:   5,
+		Max:       5,
+	}
+
+	input := assembleCapacityPlanInput(context.Background(), client, hpa, analysis, 10)
+	plan := hpaanalysis.AnalyzeCapacityPlan(input)
+
+	if plan.Safe {
+		t.Fatal("ResourceQuota fetch failure must not produce a Safe plan")
+	}
+	foundUnknown := false
+	for _, check := range plan.Checks {
+		if check.Unknown && strings.Contains(check.Message, "ResourceQuotas unknown") {
+			foundUnknown = true
+		}
+	}
+	if !foundUnknown {
+		t.Fatalf("expected ResourceQuota fetch failure as unknown, got %+v", plan.Checks)
 	}
 }
