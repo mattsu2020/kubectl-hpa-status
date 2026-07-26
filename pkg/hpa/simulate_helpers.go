@@ -1,7 +1,6 @@
 package hpa
 
 import (
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -13,10 +12,10 @@ import (
 func parseNonNegativeInt32(value string, minVal int32, errMsg string) (int32, error) {
 	v, err := parseInt32(value)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("%w: %w", ErrInvalidSimulationValue, err)
 	}
 	if v < minVal {
-		return 0, errors.New(errMsg)
+		return 0, fmt.Errorf("%w: %s", ErrInvalidSimulationValue, errMsg)
 	}
 	return v, nil
 }
@@ -69,16 +68,16 @@ func ensureBehavior(hpa *autoscalingv2.HorizontalPodAutoscaler) {
 }
 
 // selectPolicy converts a string value to a valid scaling policy.
-func selectPolicy(value string) autoscalingv2.ScalingPolicySelect {
-	switch strings.ToLower(value) {
+func selectPolicy(value string) (autoscalingv2.ScalingPolicySelect, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "max":
-		return autoscalingv2.ScalingPolicySelect("Max")
+		return autoscalingv2.MaxChangePolicySelect, nil
 	case "min":
-		return autoscalingv2.ScalingPolicySelect("Min")
+		return autoscalingv2.MinChangePolicySelect, nil
 	case "disabled":
-		return autoscalingv2.ScalingPolicySelect("Disabled")
+		return autoscalingv2.DisabledPolicySelect, nil
 	default:
-		return autoscalingv2.ScalingPolicySelect(value)
+		return "", fmt.Errorf("%w: selectPolicy must be Max, Min, or Disabled, got %q", ErrInvalidSimulationValue, value)
 	}
 }
 

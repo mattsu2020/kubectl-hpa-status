@@ -20,6 +20,24 @@ func rescaleEvent(newSize int32, ts time.Time) event.Event {
 	}
 }
 
+func TestExtractRescaleEvents_IncludesParsedZero(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	got := extractRescaleEvents([]event.Event{
+		rescaleEvent(2, now),
+		rescaleEvent(0, now.Add(time.Minute)),
+		{Reason: "SuccessfulRescale", Message: "unparseable", Timestamp: now.Add(2 * time.Minute)},
+		rescaleEvent(3, now.Add(3*time.Minute)),
+	})
+
+	if len(got) != 3 {
+		t.Fatalf("got %d rescales, want 3", len(got))
+	}
+	if got[1].NewSize != 0 {
+		t.Fatalf("middle NewSize = %d, want 0", got[1].NewSize)
+	}
+}
+
 func TestAnalyzeFlappingPrevention(t *testing.T) {
 	now := time.Now()
 

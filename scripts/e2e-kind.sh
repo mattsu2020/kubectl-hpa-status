@@ -30,6 +30,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 MANIFEST_DIR="$PROJECT_DIR/testdata/manifests"
 BINARY="$PROJECT_DIR/kubectl-hpa-status"
+KUBECONFIG_FILE=""
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -44,6 +45,9 @@ cleanup() {
     if kind get clusters 2>/dev/null | grep -q "$CLUSTER_NAME"; then
         log "Deleting kind cluster $CLUSTER_NAME..."
         kind delete cluster --name "$CLUSTER_NAME"
+    fi
+    if [ -n "$KUBECONFIG_FILE" ] && [ -f "$KUBECONFIG_FILE" ]; then
+        rm -f "$KUBECONFIG_FILE"
     fi
 }
 trap cleanup EXIT
@@ -60,7 +64,10 @@ fi
 log "Creating kind cluster $CLUSTER_NAME with $KIND_NODE_IMAGE..."
 kind create cluster --name "$CLUSTER_NAME" --image "$KIND_NODE_IMAGE" --wait 60s
 
-export KUBECONFIG="$(kind get kubeconfig --name "$CLUSTER_NAME")"
+KUBECONFIG_FILE="$(mktemp "${TMPDIR:-/tmp}/hpa-status-e2e-kubeconfig.XXXXXX")"
+kind get kubeconfig --name "$CLUSTER_NAME" > "$KUBECONFIG_FILE"
+chmod 600 "$KUBECONFIG_FILE"
+export KUBECONFIG="$KUBECONFIG_FILE"
 
 # --- Install metrics-server ---
 log "Installing metrics-server..."
@@ -69,6 +76,7 @@ kubectl patch deployment metrics-server -n kube-system --type='json' \
     -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
 log "Waiting for metrics-server to be ready..."
 kubectl wait --for=condition=available deployment/metrics-server -n kube-system --timeout=120s
+kubectl wait --for=condition=Available apiservice/v1beta1.metrics.k8s.io --timeout=120s
 
 # --- Deploy test manifests ---
 log "Applying test manifests..."
@@ -82,8 +90,16 @@ kubectl wait --for=condition=available deployment/web -n default --timeout=60s |
 kubectl wait --for=condition=available deployment/web-multi -n default --timeout=60s || true
 
 # --- Wait for HPA to populate metrics ---
-log "Waiting for HPA metrics to populate (30s)..."
-sleep 30
+log "Waiting for HPA metrics to populate..."
+for attempt in $(seq 1 24); do
+    if kubectl get hpa web -n default -o jsonpath='{.status.currentMetrics[0].type}' 2>/dev/null | grep -q '[^[:space:]]'; then
+        break
+    fi
+    if [ "$attempt" -eq 24 ]; then
+        fail "HPA metrics did not populate within 120s"
+    fi
+    sleep 5
+done
 
 # --- Optional: Install KEDA CRDs ---
 if [ "$INSTALL_KEDA" = "true" ]; then

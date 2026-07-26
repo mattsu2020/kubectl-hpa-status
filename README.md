@@ -123,7 +123,7 @@ kubectl krew install hpa-status
 ```sh
 kubectl hpa_status status <hpa-name> -n <namespace>
 kubectl hpa_status list -A --wide
-kubectl hpa_status <hpa-name> --suggest
+kubectl hpa_status status <hpa-name> --suggest
 ```
 
 Krew registers the plugin as `hpa-status`, discovered via `kubectl hpa_status` (underscore form). This README uses `kubectl hpa status` as the recommended form where supported. If it doesn't work, use `kubectl hpa_status status <hpa-name>` or `kubectl-hpa-status status <hpa-name>`.

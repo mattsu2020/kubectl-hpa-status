@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -421,15 +422,34 @@ func countFailed(results []reportResult) int {
 	return n
 }
 
-// writeReportsGitOpsExport writes each report as a GitOps export, separated by blank lines.
+// writeReportsGitOpsExport writes a multi-HPA YAML export as a proper
+// multi-document stream. Kustomize and Helm values exports describe a single
+// target/file layout, so concatenating more than one would be ambiguous and is
+// rejected before anything is written.
 func writeReportsGitOpsExport(out io.Writer, exportFormat string, reports []hpaanalysis.StatusReport) error {
+	format, err := normalizeGitOpsExportFormat(exportFormat)
+	if err != nil {
+		return err
+	}
+	if len(reports) > 1 && format != "yaml" {
+		return fmt.Errorf("--export %s supports only a single HPA; use --export yaml for multi-HPA output or export each HPA separately", format)
+	}
+
+	rendered := make([][]byte, len(reports))
 	for i, report := range reports {
+		var buffer bytes.Buffer
+		if err := writeGitOpsExport(&buffer, format, report); err != nil {
+			return err
+		}
+		rendered[i] = buffer.Bytes()
+	}
+	for i, document := range rendered {
 		if i > 0 {
-			if _, err := fmt.Fprintln(out); err != nil {
+			if _, err := fmt.Fprintln(out, "---"); err != nil {
 				return err
 			}
 		}
-		if err := writeGitOpsExport(out, exportFormat, report); err != nil {
+		if _, err := out.Write(document); err != nil {
 			return err
 		}
 	}

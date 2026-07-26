@@ -81,6 +81,118 @@ func TestGenerateContractCommands(t *testing.T) {
 	}
 }
 
+func TestGenerateMetricCommand_CustomMetricResourcePaths(t *testing.T) {
+	tests := []struct {
+		name  string
+		check MetricContractCheck
+		want  string
+	}{
+		{
+			name: "Pods metric",
+			check: MetricContractCheck{
+				MetricType:   MetricTypePods,
+				MetricName:   "http_requests",
+				Resource:     "pods",
+				ResourceName: "*",
+				Selector:     "app=web",
+			},
+			want: `kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta1/namespaces/prod/pods/*/http_requests?metricLabelSelector=app%3Dweb"`,
+		},
+		{
+			name: "Pods metric combines target and metric selectors",
+			check: MetricContractCheck{
+				MetricType:     MetricTypePods,
+				MetricName:     "http_requests",
+				Resource:       "pods",
+				ResourceName:   "*",
+				Selector:       "series=frontend",
+				TargetSelector: "app=web",
+			},
+			want: `kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta1/namespaces/prod/pods/*/http_requests?labelSelector=app%3Dweb&metricLabelSelector=series%3Dfrontend"`,
+		},
+		{
+			name: "Object metric",
+			check: MetricContractCheck{
+				MetricType:   MetricTypeObject,
+				MetricName:   "queue_depth",
+				Resource:     "deployments.apps",
+				ResourceName: "web",
+			},
+			want: `kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta1/namespaces/prod/deployments.apps/web/queue_depth"`,
+		},
+		{
+			name: "Object metric uses discovered custom metrics version",
+			check: MetricContractCheck{
+				MetricType:   MetricTypeObject,
+				MetricName:   "queue_depth",
+				Resource:     "deployments.apps",
+				ResourceName: "web",
+				APIService:   "custom.metrics.k8s.io/v1beta2",
+			},
+			want: `kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta2/namespaces/prod/deployments.apps/web/queue_depth"`,
+		},
+		{
+			name: "cluster-scoped Object metric",
+			check: MetricContractCheck{
+				MetricType:         MetricTypeObject,
+				MetricName:         "node_load",
+				Resource:           "nodes",
+				ResourceName:       "worker-1",
+				ResourceNamespaced: boolPtr(false),
+			},
+			want: `kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta1/nodes/worker-1/node_load"`,
+		},
+		{
+			name: "Namespace Object metric uses HPA namespace",
+			check: MetricContractCheck{
+				MetricType:         MetricTypeObject,
+				MetricName:         "namespace_qps",
+				Resource:           "namespaces",
+				ResourceName:       "ignored-object-name",
+				ResourceNamespaced: boolPtr(false),
+			},
+			want: `kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta1/namespaces/prod/metrics/namespace_qps"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := generateMetricCommand("prod", tt.check); got != tt.want {
+				t.Fatalf("generateMetricCommand() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGenerateMetricCommand_ResourceMetricUsesTargetSelector(t *testing.T) {
+	t.Parallel()
+
+	check := MetricContractCheck{
+		MetricType:     MetricTypeResource,
+		MetricName:     "cpu",
+		TargetSelector: "app=web,tier in (api,worker)",
+	}
+	want := `kubectl get --raw "/apis/metrics.k8s.io/v1beta1/namespaces/prod/pods?labelSelector=app%3Dweb%2Ctier+in+%28api%2Cworker%29"`
+	if got := generateMetricCommand("prod", check); got != want {
+		t.Fatalf("generateMetricCommand() = %q, want %q", got, want)
+	}
+}
+
+func TestGenerateMetricCommand_SkipsUnresolvedTargetSelector(t *testing.T) {
+	t.Parallel()
+
+	check := MetricContractCheck{
+		MetricType:                    MetricTypePods,
+		MetricName:                    "requests",
+		Resource:                      "pods",
+		ResourceName:                  "*",
+		TargetSelectorResolutionError: "scale target is unavailable",
+	}
+	if got := generateMetricCommand("prod", check); got != "" {
+		t.Fatalf("generateMetricCommand() = %q, want no potentially broad query", got)
+	}
+}
+
 func TestGenerateContractYAML(t *testing.T) {
 	report := &MetricContractReport{
 		Namespace:     "prod",

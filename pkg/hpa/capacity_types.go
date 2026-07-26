@@ -51,6 +51,11 @@ type CapacityPlanInput struct {
 	// ContainerResources holds per-container CPU and memory requests from the
 	// scale target's pod template.
 	ContainerResources []CapacityContainerResources
+	// PodRequestCPU and PodRequestMemory are the effective scheduler requests
+	// for one target Pod, including init containers and Pod overhead. When
+	// empty, analysis falls back to summing ContainerResources.
+	PodRequestCPU    string
+	PodRequestMemory string
 	// Quotas holds all ResourceQuota entries (not just near-limit) so the
 	// analysis can compute remaining headroom.
 	Quotas []CapacityQuotaInfo
@@ -66,6 +71,15 @@ type CapacityPlanInput struct {
 	ClusterAutoscaler bool
 	// ReadyPods is the count of pods in Running/Ready state.
 	ReadyPods int32
+	// ObservationErrors records Kubernetes reads that failed. An observation
+	// error makes the overall recommendation unknown and therefore not Safe.
+	ObservationErrors []CapacityObservationError
+}
+
+// CapacityObservationError identifies an input that could not be observed.
+type CapacityObservationError struct {
+	Source  string `json:"source" yaml:"source"`
+	Message string `json:"message" yaml:"message"`
 }
 
 // CapacityContainerResources holds per-container resource requests for
@@ -151,6 +165,9 @@ type CapacityPlan struct {
 type CapacityCheckResult struct {
 	// Pass is true when the check succeeds.
 	Pass bool `json:"pass" yaml:"pass"`
+	// Unknown is true when the check could not be completed because an input
+	// observation failed. Unknown checks never produce a Safe recommendation.
+	Unknown bool `json:"unknown,omitempty" yaml:"unknown,omitempty"`
 	// Message describes the check outcome.
 	Message string `json:"message" yaml:"message"`
 }

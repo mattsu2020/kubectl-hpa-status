@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/healthtrend"
 )
 
 func TestHealthStoreAppendAndLoad(t *testing.T) {
@@ -19,7 +19,7 @@ func TestHealthStoreAppendAndLoad(t *testing.T) {
 	}
 
 	now := time.Now()
-	snapshots := []hpa.HealthSnapshot{
+	snapshots := []healthtrend.HealthSnapshot{
 		{Timestamp: now.Add(-2 * time.Hour), HealthScore: 100, HealthState: "OK", DesiredReplicas: 5, CurrentReplicas: 5},
 		{Timestamp: now.Add(-1 * time.Hour), HealthScore: 80, HealthState: "LIMITED", DesiredReplicas: 8, CurrentReplicas: 6},
 		{Timestamp: now, HealthScore: 90, HealthState: "OK", DesiredReplicas: 7, CurrentReplicas: 7},
@@ -62,7 +62,7 @@ func TestHealthStorePermissionsSortingAndCorruption(t *testing.T) {
 	}
 
 	now := time.Now()
-	for _, snap := range []hpa.HealthSnapshot{
+	for _, snap := range []healthtrend.HealthSnapshot{
 		{Timestamp: now, HealthScore: 90},
 		{Timestamp: now.Add(-time.Hour), HealthScore: 80},
 	} {
@@ -107,7 +107,7 @@ func TestHealthStoreConcurrentAppend(t *testing.T) {
 		wg.Add(1)
 		go func(score int) {
 			defer wg.Done()
-			errs <- store.Append("default", "concurrent", hpa.HealthSnapshot{
+			errs <- store.Append("default", "concurrent", healthtrend.HealthSnapshot{
 				Timestamp:   time.Now().Add(time.Duration(score) * time.Millisecond),
 				HealthScore: score,
 			})
@@ -153,8 +153,8 @@ func TestHealthStorePrune(t *testing.T) {
 	}
 
 	now := time.Now()
-	old := hpa.HealthSnapshot{Timestamp: now.Add(-48 * time.Hour), HealthScore: 50, HealthState: "ERROR"}
-	recent := hpa.HealthSnapshot{Timestamp: now.Add(-1 * time.Hour), HealthScore: 100, HealthState: "OK"}
+	old := healthtrend.HealthSnapshot{Timestamp: now.Add(-48 * time.Hour), HealthScore: 50, HealthState: "ERROR"}
+	recent := healthtrend.HealthSnapshot{Timestamp: now.Add(-1 * time.Hour), HealthScore: 100, HealthState: "OK"}
 
 	if err := store.Append("default", "my-app", old); err != nil {
 		t.Fatalf("Append() error: %v", err)
@@ -187,7 +187,7 @@ func TestHealthStoreEmptyNamespaceRejected(t *testing.T) {
 		t.Fatalf("NewHealthStoreWithDir() error: %v", err)
 	}
 
-	snap := hpa.HealthSnapshot{Timestamp: time.Now(), HealthScore: 100, HealthState: "OK"}
+	snap := healthtrend.HealthSnapshot{Timestamp: time.Now(), HealthScore: 100, HealthState: "OK"}
 	if err := store.Append("", "my-app", snap); err == nil {
 		t.Error("expected error for empty namespace")
 	}
@@ -204,8 +204,8 @@ func TestHealthStoreLoadMultiple(t *testing.T) {
 	}
 
 	now := time.Now()
-	_ = store.Append("default", "app-a", hpa.HealthSnapshot{Timestamp: now, HealthScore: 90, HealthState: "OK"})
-	_ = store.Append("default", "app-b", hpa.HealthSnapshot{Timestamp: now, HealthScore: 80, HealthState: "OK"})
+	_ = store.Append("default", "app-a", healthtrend.HealthSnapshot{Timestamp: now, HealthScore: 90, HealthState: "OK"})
+	_ = store.Append("default", "app-b", healthtrend.HealthSnapshot{Timestamp: now, HealthScore: 80, HealthState: "OK"})
 
 	keys := []struct{ NS, Name string }{
 		{NS: "default", Name: "app-a"},

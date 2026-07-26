@@ -432,3 +432,184 @@ func TestAnalyzeCapacityPlan_NoContainerResources(t *testing.T) {
 		t.Errorf("expected zero memory with no containers, got %q", plan.RequiredMemory)
 	}
 }
+
+func TestAnalyzeCapacityPlan_ObservationErrorIsUnknownAndUnsafe(t *testing.T) {
+	input := CapacityPlanInput{
+		Namespace:         "default",
+		HPAName:           "web",
+		Target:            "Deployment/web",
+		CurrentReplicas:   5,
+		MaxReplicas:       5,
+		TargetMaxReplicas: 10,
+		ContainerResources: []CapacityContainerResources{
+			{Name: "app", CPU: "100m", Memory: "128Mi"},
+		},
+		ObservationErrors: []CapacityObservationError{
+			{Source: "ResourceQuotas", Message: "forbidden"},
+		},
+	}
+
+	plan := AnalyzeCapacityPlan(input)
+
+	if plan.Safe {
+		t.Fatal("an unknown observation must not produce a Safe recommendation")
+	}
+	if !strings.Contains(plan.Recommendation, "Cannot confirm") {
+		t.Fatalf("expected unknown recommendation, got %q", plan.Recommendation)
+	}
+	foundUnknown := false
+	for _, check := range plan.Checks {
+		if check.Unknown && strings.Contains(check.Message, "ResourceQuotas unknown") {
+			foundUnknown = true
+		}
+		if strings.Contains(check.Message, "no namespace ResourceQuotas found") {
+			t.Fatalf("quota fetch failure must not be rendered as no quotas: %+v", plan.Checks)
+		}
+	}
+	if !foundUnknown {
+		t.Fatalf("expected an explicit unknown check, got %+v", plan.Checks)
+	}
+}
+
+func TestAnalyzeCapacityPlan_EvaluatesEveryQuotaConstraint(t *testing.T) {
+	input := CapacityPlanInput{
+		Namespace:         "production",
+		HPAName:           "web",
+		Target:            "Deployment/web",
+		CurrentReplicas:   10,
+		MaxReplicas:       10,
+		TargetMaxReplicas: 20,
+		ContainerResources: []CapacityContainerResources{
+			{Name: "app", CPU: "500m"},
+		},
+		Quotas: []CapacityQuotaInfo{
+			{Name: "loose", Resource: "requests.cpu", Used: "0", Hard: "10"},
+			{Name: "tight", Resource: "cpu", Used: "9", Hard: "10"},
+		},
+	}
+
+	plan := AnalyzeCapacityPlan(input)
+
+	if plan.Safe {
+		t.Fatal("the tightest applicable quota must block the plan")
+	}
+	foundTightFailure := false
+	for _, check := range plan.Checks {
+		if !check.Pass && strings.Contains(check.Message, `"tight"`) &&
+			strings.Contains(check.Message, "CPU remaining") {
+			foundTightFailure = true
+		}
+	}
+	if !foundTightFailure {
+		t.Fatalf("expected the tight quota to fail, got %+v", plan.Checks)
+	}
+}
+
+func TestAnalyzeCapacityPlan_PodCountQuotaShortfall(t *testing.T) {
+	input := CapacityPlanInput{
+		Namespace:         "production",
+		HPAName:           "web",
+		Target:            "Deployment/web",
+		CurrentReplicas:   8,
+		MaxReplicas:       8,
+		TargetMaxReplicas: 12,
+		ContainerResources: []CapacityContainerResources{
+			{Name: "app", CPU: "100m"},
+		},
+		Quotas: []CapacityQuotaInfo{
+			{Name: "object-counts", Resource: "pods", Used: "98", Hard: "100"},
+			{Name: "generic-object-counts", Resource: "count/pods", Used: "99", Hard: "100"},
+		},
+	}
+
+	plan := AnalyzeCapacityPlan(input)
+
+	if plan.Safe {
+		t.Fatal("Pod-count quota with only two slots must block four additional Pods")
+	}
+	foundPodQuotaFailures := map[string]bool{
+		"object-counts":         false,
+		"generic-object-counts": false,
+	}
+	for _, check := range plan.Checks {
+		if check.Pass || !strings.Contains(check.Message, "quota pods remaining") {
+			continue
+		}
+		for name := range foundPodQuotaFailures {
+			if strings.Contains(check.Message, `"`+name+`"`) {
+				foundPodQuotaFailures[name] = true
+			}
+		}
+	}
+	for name, found := range foundPodQuotaFailures {
+		if !found {
+			t.Fatalf("expected Pod-count quota failure for %q, got %+v", name, plan.Checks)
+		}
+	}
+}
+
+func TestAnalyzeCapacityPlan_UsesAvailableRequestHeadroom(t *testing.T) {
+	input := CapacityPlanInput{
+		Namespace:         "default",
+		HPAName:           "web",
+		Target:            "Deployment/web",
+		CurrentReplicas:   10,
+		MaxReplicas:       10,
+		TargetMaxReplicas: 20,
+		ContainerResources: []CapacityContainerResources{
+			{Name: "app", CPU: "500m", Memory: "128Mi"},
+		},
+		NodeCapacity: &blocker.NodeCapacitySummary{
+			TotalNodes:      3,
+			AllocCPU:        "100",
+			AllocMemory:     "100Gi",
+			RequestedCPU:    "99",
+			RequestedMemory: "99Gi",
+			AvailableCPU:    "1",
+			AvailableMemory: "1Gi",
+		},
+	}
+
+	plan := AnalyzeCapacityPlan(input)
+
+	if plan.Safe {
+		t.Fatal("large total allocatable must not hide exhausted request headroom")
+	}
+	foundHeadroomFailure := false
+	for _, check := range plan.Checks {
+		if !check.Pass && strings.Contains(check.Message, "after scheduled Pod requests") {
+			foundHeadroomFailure = true
+		}
+	}
+	if !foundHeadroomFailure {
+		t.Fatalf("expected request-headroom failure, got %+v", plan.Checks)
+	}
+	if plan.SchedulableNow != 2 {
+		t.Fatalf("SchedulableNow = %d, want 2 from 1 CPU / 500m", plan.SchedulableNow)
+	}
+}
+
+func TestAnalyzeCapacityPlan_UsesEffectivePodRequest(t *testing.T) {
+	input := CapacityPlanInput{
+		Namespace:         "default",
+		HPAName:           "web",
+		Target:            "Deployment/web",
+		CurrentReplicas:   2,
+		MaxReplicas:       2,
+		TargetMaxReplicas: 4,
+		ContainerResources: []CapacityContainerResources{
+			{Name: "app", CPU: "500m", Memory: "128Mi"},
+		},
+		PodRequestCPU:    "2",
+		PodRequestMemory: "1Gi",
+	}
+
+	plan := AnalyzeCapacityPlan(input)
+
+	if plan.RequiredCPU != "4" {
+		t.Fatalf("RequiredCPU = %q, want 4 from effective Pod request", plan.RequiredCPU)
+	}
+	if plan.RequiredMemory != "2Gi" {
+		t.Fatalf("RequiredMemory = %q, want 2Gi from effective Pod request", plan.RequiredMemory)
+	}
+}

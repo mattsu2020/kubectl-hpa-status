@@ -14,6 +14,9 @@ import (
 // applySimulationOverride modifies a single field on the HPA spec using dot-notation path.
 func applySimulationOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, path, value string) error {
 	normalizedPath := normalizeSimulationPath(path)
+	if strings.HasPrefix(normalizedPath, "scaleup.policies") || strings.HasPrefix(normalizedPath, "scaledown.policies") {
+		return fmt.Errorf("%w: rate-policy overrides need scaling-event history", ErrUnsupportedSimulationSemantics)
+	}
 	if strings.HasPrefix(normalizedPath, "metric.") && strings.HasSuffix(normalizedPath, ".target") {
 		name := strings.TrimSuffix(strings.TrimPrefix(normalizedPath, "metric."), ".target")
 		return applyMetricTargetOverride(hpa, name, value)
@@ -128,34 +131,109 @@ func applyReplicaSimulationOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, 
 func applyBehaviorSimulationOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, normalizedPath, value string) (bool, error) {
 	switch normalizedPath {
 	case "scaledown.stabilizationwindowseconds":
-		v, err := parseNonNegativeInt32(value, 0, "stabilizationWindowSeconds must be >= 0")
+		window, err := parseNonNegativeInt32(value, 0, "stabilizationWindowSeconds must be >= 0")
 		if err != nil {
 			return true, err
 		}
-		ensureBehavior(hpa)
-		hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds = &v
-		return true, nil
+		if window > 3600 {
+			return true, fmt.Errorf("%w: stabilizationWindowSeconds must be <= 3600", ErrInvalidSimulationValue)
+		}
+		return true, fmt.Errorf("%w: scaleDown stabilization cannot be projected without recommendation history", ErrUnsupportedSimulationSemantics)
 	case "scaleup.stabilizationwindowseconds":
-		v, err := parseNonNegativeInt32(value, 0, "stabilizationWindowSeconds must be >= 0")
+		window, err := parseNonNegativeInt32(value, 0, "stabilizationWindowSeconds must be >= 0")
+		if err != nil {
+			return true, err
+		}
+		if window > 3600 {
+			return true, fmt.Errorf("%w: stabilizationWindowSeconds must be <= 3600", ErrInvalidSimulationValue)
+		}
+		return true, fmt.Errorf("%w: scaleUp stabilization cannot be projected without recommendation history", ErrUnsupportedSimulationSemantics)
+	case "scaledown.selectpolicy":
+		p, err := selectPolicy(value)
 		if err != nil {
 			return true, err
 		}
 		ensureBehavior(hpa)
-		hpa.Spec.Behavior.ScaleUp.StabilizationWindowSeconds = &v
-		return true, nil
-	case "scaledown.selectpolicy":
-		ensureBehavior(hpa)
-		p := selectPolicy(value)
 		hpa.Spec.Behavior.ScaleDown.SelectPolicy = &p
 		return true, nil
 	case "scaleup.selectpolicy":
+		p, err := selectPolicy(value)
+		if err != nil {
+			return true, err
+		}
 		ensureBehavior(hpa)
-		p := selectPolicy(value)
 		hpa.Spec.Behavior.ScaleUp.SelectPolicy = &p
 		return true, nil
 	default:
 		return false, nil
 	}
+}
+
+func validateSimulatedHPA(hpa *autoscalingv2.HorizontalPodAutoscaler) error {
+	minReplicas := int32(1)
+	if hpa.Spec.MinReplicas != nil {
+		minReplicas = *hpa.Spec.MinReplicas
+	}
+	if minReplicas < 0 {
+		return fmt.Errorf("%w: minReplicas must be >= 0, got %d", ErrInvalidSimulationValue, minReplicas)
+	}
+	if hpa.Spec.MaxReplicas < 1 {
+		return fmt.Errorf("%w: maxReplicas must be >= 1, got %d", ErrInvalidSimulationValue, hpa.Spec.MaxReplicas)
+	}
+	if hpa.Spec.MaxReplicas < minReplicas {
+		return fmt.Errorf("%w: maxReplicas (%d) must be >= minReplicas (%d)",
+			ErrInvalidSimulationValue, hpa.Spec.MaxReplicas, minReplicas)
+	}
+	if hpa.Spec.Behavior == nil {
+		return nil
+	}
+	if err := validateSimulatedScalingRules("scaleUp", hpa.Spec.Behavior.ScaleUp); err != nil {
+		return err
+	}
+	return validateSimulatedScalingRules("scaleDown", hpa.Spec.Behavior.ScaleDown)
+}
+
+func validateSimulatedScalingRules(direction string, rules *autoscalingv2.HPAScalingRules) error {
+	if rules == nil {
+		return nil
+	}
+	if rules.StabilizationWindowSeconds != nil && *rules.StabilizationWindowSeconds < 0 {
+		return fmt.Errorf("%w: %s.stabilizationWindowSeconds must be >= 0", ErrInvalidSimulationValue, direction)
+	}
+	if rules.StabilizationWindowSeconds != nil && *rules.StabilizationWindowSeconds > 3600 {
+		return fmt.Errorf("%w: %s.stabilizationWindowSeconds must be <= 3600", ErrInvalidSimulationValue, direction)
+	}
+	if rules.SelectPolicy != nil {
+		if _, err := selectPolicy(string(*rules.SelectPolicy)); err != nil {
+			return fmt.Errorf("%s: %w", direction, err)
+		}
+	}
+	if rules.Policies != nil && len(rules.Policies) == 0 {
+		return fmt.Errorf("%w: %s.policies must contain at least one policy", ErrInvalidSimulationValue, direction)
+	}
+	for i, policy := range rules.Policies {
+		if err := validateSimulatedScalingPolicy(direction, i, policy); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateSimulatedScalingPolicy(direction string, index int, policy autoscalingv2.HPAScalingPolicy) error {
+	if policy.Type != autoscalingv2.PodsScalingPolicy && policy.Type != autoscalingv2.PercentScalingPolicy {
+		return fmt.Errorf("%w: %s.policies[%d].type must be Pods or Percent, got %q",
+			ErrInvalidSimulationValue, direction, index, policy.Type)
+	}
+	if policy.Value <= 0 {
+		return fmt.Errorf("%w: %s.policies[%d].value must be > 0", ErrInvalidSimulationValue, direction, index)
+	}
+	if policy.PeriodSeconds <= 0 {
+		return fmt.Errorf("%w: %s.policies[%d].periodSeconds must be > 0", ErrInvalidSimulationValue, direction, index)
+	}
+	if policy.PeriodSeconds > 1800 {
+		return fmt.Errorf("%w: %s.policies[%d].periodSeconds must be <= 1800", ErrInvalidSimulationValue, direction, index)
+	}
+	return nil
 }
 
 func applyToleranceOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, direction, value string) error {
@@ -164,8 +242,8 @@ func applyToleranceOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, directio
 		return fmt.Errorf("invalid tolerance %q: %w", value, err)
 	}
 	floatValue := tolerance.AsApproximateFloat64()
-	if math.IsNaN(floatValue) || math.IsInf(floatValue, 0) || floatValue < 0 || floatValue > 1 {
-		return fmt.Errorf("%w: tolerance must be between 0 and 1, got %q", ErrInvalidSimulationValue, value)
+	if math.IsNaN(floatValue) || math.IsInf(floatValue, 0) || floatValue < 0 {
+		return fmt.Errorf("%w: tolerance must be non-negative, got %q", ErrInvalidSimulationValue, value)
 	}
 	ensureBehavior(hpa)
 	if direction == "both" || direction == "up" {

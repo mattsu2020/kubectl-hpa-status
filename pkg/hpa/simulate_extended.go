@@ -15,7 +15,7 @@ func SimulateExtended(hpa *autoscalingv2.HorizontalPodAutoscaler, overrides map[
 
 // assessExtendedRisk generates risk warnings based on the simulation parameters
 // and results. It augments the base risk assessment with additional checks.
-func assessExtendedRisk(original *autoscalingv2.HorizontalPodAutoscaler, overrides map[string]string, result *SimulationResult) []string {
+func assessExtendedRisk(projected *autoscalingv2.HorizontalPodAutoscaler, overrides map[string]string, result *SimulationResult) []string {
 	var warnings []string
 
 	// Check for aggressive scale-down stabilization window.
@@ -38,12 +38,12 @@ func assessExtendedRisk(original *autoscalingv2.HorizontalPodAutoscaler, overrid
 
 	// Check for hitting min/max boundaries.
 	minReplicas := int32(1)
-	if original.Spec.MinReplicas != nil {
-		minReplicas = *original.Spec.MinReplicas
+	if projected.Spec.MinReplicas != nil {
+		minReplicas = *projected.Spec.MinReplicas
 	}
-	if result.After.DesiredReplicas >= original.Spec.MaxReplicas {
+	if result.After.DesiredReplicas >= projected.Spec.MaxReplicas {
 		warnings = append(warnings, fmt.Sprintf("Projected replicas=%d at maxReplicas=%d; further scale-out would be blocked",
-			result.After.DesiredReplicas, original.Spec.MaxReplicas))
+			result.After.DesiredReplicas, projected.Spec.MaxReplicas))
 	}
 	if result.After.DesiredReplicas <= minReplicas {
 		warnings = append(warnings, fmt.Sprintf("Projected replicas=%d at minReplicas=%d; further scale-in would be blocked",

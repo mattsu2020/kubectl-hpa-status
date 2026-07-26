@@ -145,53 +145,78 @@ func Template(out io.Writer, expression string, value any) error {
 func Prometheus(w io.Writer, value any) error {
 	switch report := value.(type) {
 	case hpaanalysis.ListReport:
+		if err := writePrometheusMetadata(w); err != nil {
+			return err
+		}
 		for _, item := range report.Items {
-			if err := PrometheusMetrics(w, item.Namespace, item.Name, item.HealthScore, item.Current, item.Desired, item.Min, item.Max); err != nil {
+			if err := writePrometheusSamples(w, item.Namespace, item.Name, item.HealthScore, item.Current, item.Desired, item.Min, item.Max); err != nil {
 				return err
 			}
 		}
+		return nil
 	case hpaanalysis.StatusReport:
 		a := report.Analysis
 		return PrometheusMetrics(w, a.Namespace, a.Name, a.HealthScore, a.Current, a.Desired, a.Min, a.Max)
 	default:
 		return fmt.Errorf("prometheus output requires a StatusReport or ListReport, got %T", value)
 	}
+}
+
+type prometheusMetricDefinition struct {
+	name string
+	help string
+}
+
+var prometheusMetricDefinitions = []prometheusMetricDefinition{
+	{name: "hpa_health_score", help: "Health score of an HPA (0-100)"},
+	{name: "hpa_current_replicas", help: "Current replica count"},
+	{name: "hpa_desired_replicas", help: "Desired replica count"},
+	{name: "hpa_min_replicas", help: "Minimum replica count"},
+	{name: "hpa_max_replicas", help: "Maximum replica count"},
+}
+
+func writePrometheusMetadata(w io.Writer) error {
+	for _, metric := range prometheusMetricDefinitions {
+		if _, err := fmt.Fprintf(w, "# HELP %s %s\n", metric.name, metric.help); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(w, "# TYPE %s gauge\n", metric.name); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
-// PrometheusMetrics writes a minimal Prometheus exposition for a single HPA.
-func PrometheusMetrics(w io.Writer, namespace, name string, healthScore int, current, desired, minR, maxR int32) error {
-	type metric struct {
-		name  string
-		help  string
-		value any
-	}
-	metrics := []metric{
-		{name: "hpa_health_score", help: "Health score of an HPA (0-100)", value: healthScore},
-		{name: "hpa_current_replicas", help: "Current replica count", value: current},
-		{name: "hpa_desired_replicas", help: "Desired replica count", value: desired},
-		{name: "hpa_min_replicas", help: "Minimum replica count", value: minR},
-		{name: "hpa_max_replicas", help: "Maximum replica count", value: maxR},
-	}
+func writePrometheusSamples(w io.Writer, namespace, name string, healthScore int, current, desired, minR, maxR int32) error {
+	values := []any{healthScore, current, desired, minR, maxR}
 	labels := fmt.Sprintf(`namespace="%s",name="%s"`, EscapePrometheusLabelValue(namespace), EscapePrometheusLabelValue(name))
-	for _, m := range metrics {
-		if _, err := fmt.Fprintf(w, "# HELP %s %s\n", m.name, m.help); err != nil {
-			return err
-		}
-		if _, err := fmt.Fprintf(w, "# TYPE %s gauge\n", m.name); err != nil {
-			return err
-		}
-		if _, err := fmt.Fprintf(w, "%s{%s} %v\n", m.name, labels, m.value); err != nil {
+	for i, metric := range prometheusMetricDefinitions {
+		if _, err := fmt.Fprintf(w, "%s{%s} %v\n", metric.name, labels, values[i]); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// PrometheusMetrics writes a complete minimal Prometheus exposition for a
+// single HPA. List rendering writes the shared HELP/TYPE metadata once and then
+// calls writePrometheusSamples for each item.
+func PrometheusMetrics(w io.Writer, namespace, name string, healthScore int, current, desired, minR, maxR int32) error {
+	if err := writePrometheusMetadata(w); err != nil {
+		return err
+	}
+	return writePrometheusSamples(w, namespace, name, healthScore, current, desired, minR, maxR)
 }
 
 // EscapePrometheusLabelValue escapes a string for safe inclusion in a
-// Prometheus label value (per the exposition format rules).
+// Prometheus label value (per the exposition format rules). Newlines must be
+// represented as the two-byte sequence "\n"; leaving them literal would allow
+// a label to inject an additional exposition line.
 func EscapePrometheusLabelValue(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
 	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, "\n", `\n`)
 	s = strings.ReplaceAll(s, `"`, `\"`)
 	return s
 }

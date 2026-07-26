@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/healthtrend"
 )
 
 // HealthStore manages file-based persistence of health snapshots.
@@ -69,7 +69,7 @@ func NewHealthStoreWithDir(dir string) (*HealthStore, error) {
 }
 
 // Append records a health snapshot for the given HPA.
-func (s *HealthStore) Append(namespace, name string, snapshot hpa.HealthSnapshot) error {
+func (s *HealthStore) Append(namespace, name string, snapshot healthtrend.HealthSnapshot) error {
 	if namespace == "" || name == "" {
 		return fmt.Errorf("namespace and name must not be empty")
 	}
@@ -112,7 +112,7 @@ func (s *HealthStore) Append(namespace, name string, snapshot hpa.HealthSnapshot
 
 // Load reads health snapshots for the given HPA within the specified time window.
 // Returns snapshots sorted by timestamp (oldest first).
-func (s *HealthStore) Load(namespace, name string, since time.Duration) ([]hpa.HealthSnapshot, error) {
+func (s *HealthStore) Load(namespace, name string, since time.Duration) ([]healthtrend.HealthSnapshot, error) {
 	path := s.filePath(namespace, name)
 	release, err := acquireLock(path)
 	if err != nil {
@@ -122,7 +122,7 @@ func (s *HealthStore) Load(namespace, name string, since time.Duration) ([]hpa.H
 	return loadHistoryFile(path, since)
 }
 
-func loadHistoryFile(path string, since time.Duration) ([]hpa.HealthSnapshot, error) {
+func loadHistoryFile(path string, since time.Duration) ([]healthtrend.HealthSnapshot, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -133,7 +133,7 @@ func loadHistoryFile(path string, since time.Duration) ([]hpa.HealthSnapshot, er
 	defer func() { _ = f.Close() }()
 
 	cutoff := time.Now().Add(-since)
-	var snapshots []hpa.HealthSnapshot
+	var snapshots []healthtrend.HealthSnapshot
 
 	scanner := bufio.NewScanner(f)
 	// Raise the per-line limit to 1MB so that large snapshot lines (big
@@ -149,7 +149,7 @@ func loadHistoryFile(path string, since time.Duration) ([]hpa.HealthSnapshot, er
 			continue
 		}
 
-		var snap hpa.HealthSnapshot
+		var snap healthtrend.HealthSnapshot
 		if err := json.Unmarshal([]byte(line), &snap); err != nil {
 			corruptLines = append(corruptLines, lineNum)
 			continue
@@ -175,8 +175,8 @@ func loadHistoryFile(path string, since time.Duration) ([]hpa.HealthSnapshot, er
 
 // LoadMultiple loads health snapshots for multiple HPAs in batch.
 // Returns a map keyed by "namespace/name".
-func (s *HealthStore) LoadMultiple(keys []struct{ NS, Name string }, since time.Duration) (map[string][]hpa.HealthSnapshot, error) {
-	result := make(map[string][]hpa.HealthSnapshot)
+func (s *HealthStore) LoadMultiple(keys []struct{ NS, Name string }, since time.Duration) (map[string][]healthtrend.HealthSnapshot, error) {
+	result := make(map[string][]healthtrend.HealthSnapshot)
 	for _, k := range keys {
 		snapshots, err := s.Load(k.NS, k.Name, since)
 		if err != nil {

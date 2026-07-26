@@ -43,7 +43,7 @@ func AnalyzeCapacityPlan(input CapacityPlanInput) *CapacityPlan {
 		additionalPods = 0
 	}
 
-	perPodCPU, perPodMemory := sumContainerResources(input.ContainerResources)
+	perPodCPU, perPodMemory := effectivePerPodResources(input)
 	totalCPU := multiplyQuantity(perPodCPU, int64(additionalPods))
 	totalMemory := multiplyQuantity(perPodMemory, int64(additionalPods))
 
@@ -66,12 +66,7 @@ func AnalyzeCapacityPlan(input CapacityPlanInput) *CapacityPlan {
 	}
 
 	// Run all checks.
-	plan.Checks = append(plan.Checks, checkQuotaHeadroom(input.Quotas, totalCPU, totalMemory)...)
-	plan.Checks = append(plan.Checks, checkLimitRanges(input.LimitRanges, input.ContainerResources)...)
-	plan.Checks = append(plan.Checks, checkNodeCapacity(input.NodeCapacity, totalCPU, totalMemory, input.ClusterAutoscaler)...)
-	plan.Checks = append(plan.Checks, checkPendingPods(input.PendingPods)...)
-	plan.Checks = append(plan.Checks, checkPDBs(input.PDBs)...)
-	plan.Checks = append(plan.Checks, checkClusterAutoscaler(input.ClusterAutoscaler)...)
+	appendCapacityAnalysisChecks(plan, input, totalCPU, totalMemory, additionalPods)
 
 	// Estimate schedulable now from remaining node capacity.
 	plan.SchedulableNow = computeSchedulableNow(input.NodeCapacity, perPodCPU, perPodMemory, input.ReadyPods, input.ContainerResources)
@@ -89,6 +84,53 @@ func AnalyzeCapacityPlan(input CapacityPlanInput) *CapacityPlan {
 	plan.Safe, plan.Recommendation, plan.NextActions = buildRecommendation(plan, input)
 
 	return plan
+}
+
+func appendCapacityAnalysisChecks(plan *CapacityPlan, input CapacityPlanInput, totalCPU, totalMemory resource.Quantity, additionalPods int32) {
+	plan.Checks = append(plan.Checks, checkObservationErrors(input.ObservationErrors)...)
+	resourceInputsUnknown := hasObservationSource(input.ObservationErrors, "scale target") ||
+		hasObservationSource(input.ObservationErrors, "Pod resource requests")
+	if !resourceInputsUnknown && !hasObservationSource(input.ObservationErrors, "ResourceQuotas") {
+		plan.Checks = append(plan.Checks, checkQuotaHeadroom(input.Quotas, totalCPU, totalMemory, additionalPods)...)
+	}
+	if !resourceInputsUnknown && !hasObservationSource(input.ObservationErrors, "LimitRanges") {
+		plan.Checks = append(plan.Checks, checkLimitRanges(input.LimitRanges, input.ContainerResources)...)
+	}
+	if !resourceInputsUnknown && !hasObservationSource(input.ObservationErrors, "cluster request headroom") {
+		plan.Checks = append(plan.Checks, checkNodeCapacity(input.NodeCapacity, totalCPU, totalMemory, input.ClusterAutoscaler)...)
+	}
+	if !hasObservationSourcePrefix(input.ObservationErrors, "scale target") {
+		plan.Checks = append(plan.Checks, checkPendingPods(input.PendingPods)...)
+	}
+	if !hasObservationSource(input.ObservationErrors, "PodDisruptionBudgets") {
+		plan.Checks = append(plan.Checks, checkPDBs(input.PDBs)...)
+	}
+	plan.Checks = append(plan.Checks, checkClusterAutoscaler(input.ClusterAutoscaler)...)
+}
+
+func hasObservationSource(observationErrors []CapacityObservationError, source string) bool {
+	for _, observationErr := range observationErrors {
+		if observationErr.Source == source {
+			return true
+		}
+	}
+	return false
+}
+
+func hasObservationSourcePrefix(observationErrors []CapacityObservationError, prefix string) bool {
+	for _, observationErr := range observationErrors {
+		if strings.HasPrefix(observationErr.Source, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func effectivePerPodResources(input CapacityPlanInput) (resource.Quantity, resource.Quantity) {
+	if input.PodRequestCPU != "" || input.PodRequestMemory != "" {
+		return parseQuantityOrZero(input.PodRequestCPU), parseQuantityOrZero(input.PodRequestMemory)
+	}
+	return sumContainerResources(input.ContainerResources)
 }
 
 // computeTargetMax returns a default target maxReplicas using the same doubling
@@ -148,17 +190,19 @@ func computeSchedulableNow(nc *blocker.NodeCapacitySummary, perPodCPU, perPodMem
 		return 0
 	}
 
-	allocCPU := parseQuantityOrZero(nc.AllocCPU)
-	allocMem := parseQuantityOrZero(nc.AllocMemory)
-
-	// Subtract resources consumed by already-running pods.
-	usedCPU := multiplyQuantity(perPodCPU, int64(readyPods))
-	usedMem := multiplyQuantity(perPodMemory, int64(readyPods))
-
-	remainingCPU := allocCPU.DeepCopy()
-	remainingCPU.Sub(usedCPU)
-	remainingMem := allocMem.DeepCopy()
-	remainingMem.Sub(usedMem)
+	var remainingCPU, remainingMem resource.Quantity
+	if nc.AvailableCPU != "" || nc.AvailableMemory != "" {
+		remainingCPU = parseQuantityOrZero(nc.AvailableCPU)
+		remainingMem = parseQuantityOrZero(nc.AvailableMemory)
+	} else {
+		// Compatibility fallback for callers that only supply aggregate
+		// allocatable capacity. Live collection always supplies Available*,
+		// based on all scheduled Pods.
+		remainingCPU = parseQuantityOrZero(nc.AllocCPU)
+		remainingMem = parseQuantityOrZero(nc.AllocMemory)
+		remainingCPU.Sub(multiplyQuantity(perPodCPU, int64(readyPods)))
+		remainingMem.Sub(multiplyQuantity(perPodMemory, int64(readyPods)))
+	}
 
 	// Compute how many additional pods fit based on each resource dimension.
 	var cpuFit, memFit int32
@@ -189,7 +233,7 @@ func computeSchedulableNow(nc *blocker.NodeCapacitySummary, perPodCPU, perPodMem
 // insufficient node allocatable CPU or memory.
 func hasNodeCapacityShortfall(checks []CapacityCheckResult) bool {
 	for _, c := range checks {
-		if !c.Pass && strings.HasPrefix(c.Message, "node allocatable") {
+		if !c.Pass && !c.Unknown && strings.HasPrefix(c.Message, "node allocatable") {
 			return true
 		}
 	}
@@ -208,82 +252,81 @@ func buildDryRunCommand(namespace, hpaName string, targetMax int32) string {
 // Check functions
 // ---------------------------------------------------------------------------
 
-func checkQuotaHeadroom(quotas []CapacityQuotaInfo, requiredCPU, requiredMemory resource.Quantity) []CapacityCheckResult {
+func checkObservationErrors(observationErrors []CapacityObservationError) []CapacityCheckResult {
+	results := make([]CapacityCheckResult, 0, len(observationErrors))
+	for _, observationErr := range observationErrors {
+		source := strings.TrimSpace(observationErr.Source)
+		if source == "" {
+			source = "capacity input"
+		}
+		message := strings.TrimSpace(observationErr.Message)
+		if message == "" {
+			message = "unavailable"
+		}
+		results = append(results, CapacityCheckResult{
+			Pass:    false,
+			Unknown: true,
+			Message: fmt.Sprintf("%s unknown: %s", source, message),
+		})
+	}
+	return results
+}
+
+func checkQuotaHeadroom(quotas []CapacityQuotaInfo, requiredCPU, requiredMemory resource.Quantity, additionalPods int32) []CapacityCheckResult {
 	if len(quotas) == 0 {
 		return []CapacityCheckResult{
 			{Pass: true, Message: "no namespace ResourceQuotas found"},
 		}
 	}
 
-	// Build a map of remaining (hard - used) per resource.
-	remaining := make(map[string]resource.Quantity)
+	var results []CapacityCheckResult
+	constrained := false
+	requiredPods := *resource.NewQuantity(int64(additionalPods), resource.DecimalSI)
 	for _, q := range quotas {
+		display, required, ok := quotaResourceRequirement(q.Resource, requiredCPU, requiredMemory, requiredPods)
+		if !ok {
+			continue
+		}
+		constrained = true
 		hard := parseQuantityOrZero(q.Hard)
 		used := parseQuantityOrZero(q.Used)
 		rem := hard.DeepCopy()
 		rem.Sub(used)
-		// Keep the largest remaining for each resource type (multiple quotas).
-		if existing, ok := remaining[q.Resource]; !ok || rem.Cmp(existing) > 0 {
-			remaining[q.Resource] = rem
-		}
-	}
-
-	var results []CapacityCheckResult
-
-	// Check CPU quota.
-	cpuRem := findMatchingRemaining(remaining, "cpu")
-	if cpuRem != nil {
-		if cpuRem.Cmp(requiredCPU) >= 0 {
+		if rem.Cmp(required) >= 0 {
 			results = append(results, CapacityCheckResult{
 				Pass:    true,
-				Message: "namespace quota has enough CPU",
+				Message: fmt.Sprintf("namespace quota %s remaining in %q is sufficient (%s)", display, q.Name, rem.String()),
 			})
 		} else {
 			results = append(results, CapacityCheckResult{
 				Pass:    false,
-				Message: fmt.Sprintf("namespace quota CPU remaining: %s, required: %s", cpuRem.String(), requiredCPU.String()),
-			})
-		}
-	}
-
-	// Check memory quota.
-	memRem := findMatchingRemaining(remaining, "memory")
-	if memRem != nil {
-		if memRem.Cmp(requiredMemory) >= 0 {
-			results = append(results, CapacityCheckResult{
-				Pass:    true,
-				Message: "namespace quota has enough memory",
-			})
-		} else {
-			results = append(results, CapacityCheckResult{
-				Pass:    false,
-				Message: fmt.Sprintf("namespace quota memory remaining: %s, required: %s", memRem.String(), requiredMemory.String()),
+				Message: fmt.Sprintf("namespace quota %s remaining in %q: %s, required: %s", display, q.Name, rem.String(), required.String()),
 			})
 		}
 	}
 
 	// If no cpu/memory quota found, report pass.
-	if len(results) == 0 {
+	if !constrained {
 		results = append(results, CapacityCheckResult{
 			Pass:    true,
-			Message: "namespace quota does not constrain cpu/memory",
+			Message: "namespace quota does not constrain cpu, memory, or pods",
 		})
 	}
 
 	return results
 }
 
-// findMatchingRemaining looks up remaining quota for a resource type,
-// matching both plain names ("cpu") and request-prefixed names
-// ("requests.cpu").
-func findMatchingRemaining(remaining map[string]resource.Quantity, resourceType string) *resource.Quantity {
-	if q, ok := remaining[resourceType]; ok {
-		return &q
+func quotaResourceRequirement(name string, requiredCPU, requiredMemory, requiredPods resource.Quantity) (display string, required resource.Quantity, ok bool) {
+	switch name {
+	case "cpu", "requests.cpu":
+		return "CPU", requiredCPU, true
+	case "memory", "requests.memory":
+		return "memory", requiredMemory, true
+	case "pods", "count/pods":
+		return "pods", requiredPods, true
+	default:
+		return "", resource.Quantity{}, false
 	}
-	if q, ok := remaining["requests."+resourceType]; ok {
-		return &q
-	}
-	return nil
 }
 
 func checkLimitRanges(limitRanges []LimitRangeConstraint, containers []CapacityContainerResources) []CapacityCheckResult {
@@ -388,12 +431,24 @@ func checkNodeCapacity(nc *blocker.NodeCapacitySummary, requiredCPU, requiredMem
 	var results []CapacityCheckResult
 	cpuOK := true
 	memOK := true
+	cpuHeadroom := nc.AllocCPU
+	memoryHeadroom := nc.AllocMemory
+	headroomDescription := "allocatable"
+	if nc.AvailableCPU != "" || nc.AvailableMemory != "" {
+		cpuHeadroom = nc.AvailableCPU
+		memoryHeadroom = nc.AvailableMemory
+		headroomDescription = "allocatable CPU headroom after scheduled Pod requests"
+	}
 
 	if !requiredCPU.IsZero() {
-		allocCPU := parseQuantityOrZero(nc.AllocCPU)
+		allocCPU := parseQuantityOrZero(cpuHeadroom)
 		if allocCPU.Cmp(requiredCPU) < 0 {
 			cpuOK = false
-			msg := fmt.Sprintf("node allocatable CPU: %s, required for additional pods: %s", nc.AllocCPU, requiredCPU.String())
+			label := "node allocatable CPU"
+			if headroomDescription != "allocatable" {
+				label = "node " + headroomDescription
+			}
+			msg := fmt.Sprintf("%s: %s, required for additional pods: %s", label, cpuHeadroom, requiredCPU.String())
 			if hasCA {
 				msg += " (Cluster Autoscaler may provision nodes)"
 			}
@@ -401,10 +456,14 @@ func checkNodeCapacity(nc *blocker.NodeCapacitySummary, requiredCPU, requiredMem
 		}
 	}
 	if !requiredMemory.IsZero() {
-		allocMem := parseQuantityOrZero(nc.AllocMemory)
+		allocMem := parseQuantityOrZero(memoryHeadroom)
 		if allocMem.Cmp(requiredMemory) < 0 {
 			memOK = false
-			msg := fmt.Sprintf("node allocatable memory: %s, required for additional pods: %s", nc.AllocMemory, requiredMemory.String())
+			label := "node allocatable memory"
+			if headroomDescription != "allocatable" {
+				label = "node allocatable memory headroom after scheduled Pod requests"
+			}
+			msg := fmt.Sprintf("%s: %s, required for additional pods: %s", label, memoryHeadroom, requiredMemory.String())
 			if hasCA {
 				msg += " (Cluster Autoscaler may provision nodes)"
 			}
@@ -495,9 +554,19 @@ func checkClusterAutoscaler(detected bool) []CapacityCheckResult {
 
 func buildRecommendation(plan *CapacityPlan, input CapacityPlanInput) (bool, string, []string) {
 	failedChecks := 0
+	unknownChecks := 0
 	for _, c := range plan.Checks {
 		if !c.Pass {
 			failedChecks++
+		}
+		if c.Unknown {
+			unknownChecks++
+		}
+	}
+
+	if unknownChecks > 0 {
+		return false, fmt.Sprintf("Cannot confirm that raising maxReplicas to %d is safe because %d capacity observation(s) are unknown.", plan.TargetMaxReplicas, unknownChecks), []string{
+			"Restore Kubernetes API access and rerun the capacity plan",
 		}
 	}
 
@@ -532,6 +601,7 @@ func capacityRemediationActions(checks []CapacityCheckResult) []string {
 	}{
 		{"quota CPU remaining", "Increase namespace CPU quota or reduce pod CPU requests"},
 		{"quota memory remaining", "Increase namespace memory quota or reduce pod memory requests"},
+		{"quota pods remaining", "Increase namespace Pod quota or lower the proposed maxReplicas"},
 		{"exceeds LimitRange", "Adjust pod requests or LimitRange constraints"},
 		{"below LimitRange", "Raise container requests to meet LimitRange minimums"},
 		{"no schedulable nodes", "Add nodes or remove blocking taints"},
@@ -539,7 +609,7 @@ func capacityRemediationActions(checks []CapacityCheckResult) []string {
 	}
 	var actions []string
 	for _, c := range checks {
-		if c.Pass {
+		if c.Pass || c.Unknown {
 			continue
 		}
 		for _, r := range remediations {
@@ -555,7 +625,7 @@ func capacityRemediationActions(checks []CapacityCheckResult) []string {
 func countFailingByPrefix(checks []CapacityCheckResult, prefix string) int {
 	count := 0
 	for _, c := range checks {
-		if !c.Pass && strings.HasPrefix(c.Message, prefix) {
+		if !c.Pass && !c.Unknown && strings.HasPrefix(c.Message, prefix) {
 			count++
 		}
 	}

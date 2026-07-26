@@ -6,7 +6,7 @@ import (
 )
 
 // FormatTrendText renders a health trend summary for text output.
-func FormatTrendText(result HealthTrendResult) string {
+func FormatTrendText(result Result) string {
 	if len(result.Snapshots) == 0 {
 		return ""
 	}
@@ -41,7 +41,7 @@ func FormatTrendText(result HealthTrendResult) string {
 
 // FormatTrendAnomalyText renders anomaly detection results as text.
 // Returns an empty string if no anomalies were detected.
-func FormatTrendAnomalyText(result HealthTrendResult) string {
+func FormatTrendAnomalyText(result Result) string {
 	if len(result.Anomalies) == 0 {
 		return ""
 	}
@@ -72,7 +72,7 @@ func FormatTrendAnomalyText(result HealthTrendResult) string {
 
 // FormatTrendAnomalyGraph renders the full trend text plus anomaly section
 // and ASCII graph. Returns an empty string if no snapshots are available.
-func FormatTrendAnomalyGraph(result HealthTrendResult, graphWidth int) string {
+func FormatTrendAnomalyGraph(result Result, graphWidth int) string {
 	trendText := FormatTrendText(result)
 	if trendText == "" {
 		return ""
@@ -95,7 +95,7 @@ func FormatTrendAnomalyGraph(result HealthTrendResult, graphWidth int) string {
 }
 
 // FormatTrendListRow renders a compact trend indicator for list view.
-func FormatTrendListRow(result HealthTrendResult) string {
+func FormatTrendListRow(result Result) string {
 	if len(result.Snapshots) == 0 {
 		return ""
 	}

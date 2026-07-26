@@ -22,26 +22,32 @@ type HealthSnapshot struct {
 	Stabilizing     bool      `json:"stabilizing,omitempty" yaml:"stabilizing,omitempty"`
 }
 
-// HealthTrendResult holds the analysis of health score history over time.
-type HealthTrendResult struct {
-	Snapshots        []HealthSnapshot          `json:"snapshots" yaml:"snapshots"`
-	Variance         float64                   `json:"variance" yaml:"variance"`
-	MinScore         int                       `json:"minScore" yaml:"minScore"`
-	MaxScore         int                       `json:"maxScore" yaml:"maxScore"`
-	MeanScore        float64                   `json:"meanScore" yaml:"meanScore"`
-	DegradationRate  float64                   `json:"degradationRate" yaml:"degradationRate"`
-	FlappingDetected bool                      `json:"flappingDetected" yaml:"flappingDetected"`
-	FlappingSeverity string                    `json:"flappingSeverity,omitempty" yaml:"flappingSeverity,omitempty"`
-	Sparkline        string                    `json:"sparkline,omitempty" yaml:"sparkline,omitempty"`
+// Result holds the analysis of health score history over time.
+type Result struct {
+	Snapshots        []HealthSnapshot            `json:"snapshots" yaml:"snapshots"`
+	Variance         float64                     `json:"variance" yaml:"variance"`
+	MinScore         int                         `json:"minScore" yaml:"minScore"`
+	MaxScore         int                         `json:"maxScore" yaml:"maxScore"`
+	MeanScore        float64                     `json:"meanScore" yaml:"meanScore"`
+	DegradationRate  float64                     `json:"degradationRate" yaml:"degradationRate"`
+	FlappingDetected bool                        `json:"flappingDetected" yaml:"flappingDetected"`
+	FlappingSeverity string                      `json:"flappingSeverity,omitempty" yaml:"flappingSeverity,omitempty"`
+	Sparkline        string                      `json:"sparkline,omitempty" yaml:"sparkline,omitempty"`
 	Anomalies        []flapping.AnomalyDetection `json:"anomalies,omitempty" yaml:"anomalies,omitempty"`
 }
 
+// HealthTrendResult is kept as a source-compatible alias for callers that used
+// the original exported name before the healthtrend package was extracted.
+//
+// Deprecated: Use Result instead. Scheduled for removal in v3.0.0.
+type HealthTrendResult = Result //nolint:revive // compatibility alias; removing it would break the public API
+
 // AnalyzeHealthTrend computes trend statistics from a series of health snapshots.
-// Returns a HealthTrendResult with variance, min/max/mean, degradation rate,
+// Returns a Result with variance, min/max/mean, degradation rate,
 // and flapping detection.
-func AnalyzeHealthTrend(snapshots []HealthSnapshot) HealthTrendResult {
+func AnalyzeHealthTrend(snapshots []HealthSnapshot) Result {
 	if len(snapshots) == 0 {
-		return HealthTrendResult{}
+		return Result{}
 	}
 
 	// Sort by timestamp.
@@ -63,7 +69,7 @@ func AnalyzeHealthTrend(snapshots []HealthSnapshot) HealthTrendResult {
 	flappingDetected, severity := DetectFlapping(sorted)
 	sparkline := FormatHealthSparkline(scores, 15)
 
-	return HealthTrendResult{
+	return Result{
 		Snapshots:        sorted,
 		Variance:         variance,
 		MinScore:         minScore,

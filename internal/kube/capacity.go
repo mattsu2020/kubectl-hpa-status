@@ -2,9 +2,11 @@ package kube
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
@@ -212,23 +214,45 @@ func FetchAllResourceQuotas(ctx context.Context, client kubernetes.Interface, na
 // Deployment named "cluster-autoscaler" in kube-system. Returns true if either
 // signal is found. This is best-effort and may produce false negatives.
 func DetectClusterAutoscaler(ctx context.Context, client kubernetes.Interface) bool {
+	detected, _ := DetectClusterAutoscalerWithError(ctx, client)
+	return detected
+}
+
+// DetectClusterAutoscalerWithError performs the same detection while
+// preserving read failures. A NotFound deployment is an expected negative
+// signal; RBAC, transport, and node-list failures make a negative result
+// unknown.
+func DetectClusterAutoscalerWithError(ctx context.Context, client kubernetes.Interface) (bool, error) {
 	// Check nodes for CA annotation.
-	nodes, err := listNodes(ctx, client, metav1.ListOptions{})
-	if err == nil {
+	nodes, nodeErr := listNodes(ctx, client, metav1.ListOptions{})
+	if nodeErr == nil {
 		for _, node := range nodes {
 			if _, ok := node.Annotations["cluster-autoscaler.kubernetes.io/safe-to-evict"]; ok {
-				return true
+				return true, nil
 			}
 		}
 	}
 
 	// Check for CA deployment in kube-system.
-	deploy, err := client.AppsV1().Deployments("kube-system").Get(ctx, "cluster-autoscaler", metav1.GetOptions{})
-	if err == nil && deploy != nil {
-		return true
+	deploy, deployErr := client.AppsV1().Deployments("kube-system").Get(ctx, "cluster-autoscaler", metav1.GetOptions{})
+	if deployErr == nil && deploy != nil {
+		return true, nil
+	}
+	if apierrors.IsNotFound(deployErr) {
+		deployErr = nil
 	}
 
-	return false
+	var detectionErrors []error
+	if nodeErr != nil {
+		detectionErrors = append(detectionErrors, fmt.Errorf("list nodes: %w", nodeErr))
+	}
+	if deployErr != nil {
+		detectionErrors = append(detectionErrors, fmt.Errorf("get kube-system/cluster-autoscaler: %w", deployErr))
+	}
+	if len(detectionErrors) > 0 {
+		return false, errors.Join(detectionErrors...)
+	}
+	return false, nil
 }
 
 // GenerateNodeHints produces capacity hints based on pending pods and quota state.

@@ -31,22 +31,67 @@ func GenerateContractCommands(report *MetricContractReport) []string {
 func generateMetricCommand(namespace string, check MetricContractCheck) string {
 	switch check.MetricType {
 	case MetricTypeResource, "ContainerResource":
+		if check.TargetSelectorResolutionError != "" {
+			return ""
+		}
 		return fmt.Sprintf(
-			"kubectl get --raw \"/apis/metrics.k8s.io/v1beta1/namespaces/%s/pods\"",
-			namespace,
+			"kubectl get --raw \"/apis/%s/namespaces/%s/pods%s\"",
+			metricAPIService(check.APIService, "metrics.k8s.io", "metrics.k8s.io/v1beta1"),
+			url.PathEscape(namespace),
+			metricSelectorSuffix(check.TargetSelector),
 		)
-	case MetricTypePods, "Object":
+	case MetricTypePods, MetricTypeObject:
+		if check.MetricType == MetricTypePods && check.TargetSelectorResolutionError != "" {
+			return ""
+		}
+		resourceName := check.ResourceName
+		resourceNamePath := url.PathEscape(resourceName)
+		if resourceName == "*" {
+			resourceNamePath = "*"
+		}
+		if check.Resource == "" || resourceName == "" || check.MetricName == "" {
+			return ""
+		}
+		var metricPath string
+		switch {
+		case check.ResourceNamespaced == nil || *check.ResourceNamespaced:
+			metricPath = fmt.Sprintf(
+				"namespaces/%s/%s/%s/%s",
+				url.PathEscape(namespace),
+				url.PathEscape(check.Resource),
+				resourceNamePath,
+				url.PathEscape(check.MetricName),
+			)
+		case check.Resource == "namespaces":
+			// Namespace Object metrics use the custom metrics API's special
+			// /namespaces/{HPA namespace}/metrics/{metric} endpoint. The HPA
+			// controller intentionally ignores describedObject.name here so an
+			// Object metric cannot escape the HPA's namespace.
+			metricPath = fmt.Sprintf(
+				"namespaces/%s/metrics/%s",
+				url.PathEscape(namespace),
+				url.PathEscape(check.MetricName),
+			)
+		default:
+			metricPath = fmt.Sprintf(
+				"%s/%s/%s",
+				url.PathEscape(check.Resource),
+				resourceNamePath,
+				url.PathEscape(check.MetricName),
+			)
+		}
 		return fmt.Sprintf(
-			"kubectl get --raw \"/apis/custom.metrics.k8s.io/v1beta1/namespaces/%s/%s%s\"",
-			namespace,
-			strings.ToLower(check.MetricType),
-			metricSelectorSuffix(check.Selector),
+			"kubectl get --raw \"/apis/%s/%s%s\"",
+			metricAPIService(check.APIService, "custom.metrics.k8s.io", "custom.metrics.k8s.io/v1beta1"),
+			metricPath,
+			customMetricSelectorSuffix(check.TargetSelector, check.Selector),
 		)
 	case MetricTypeExternal:
 		metricName := url.PathEscape(check.MetricName)
 		return fmt.Sprintf(
-			"kubectl get --raw \"/apis/external.metrics.k8s.io/v1beta1/namespaces/%s/%s%s\"",
-			namespace,
+			"kubectl get --raw \"/apis/%s/namespaces/%s/%s%s\"",
+			metricAPIService(check.APIService, "external.metrics.k8s.io", "external.metrics.k8s.io/v1beta1"),
+			url.PathEscape(namespace),
 			metricName,
 			metricSelectorSuffix(check.Selector),
 		)
@@ -55,12 +100,35 @@ func generateMetricCommand(namespace string, check MetricContractCheck) string {
 	}
 }
 
+func metricAPIService(configured, group, fallback string) string {
+	if strings.HasPrefix(configured, group+"/") {
+		return configured
+	}
+	return fallback
+}
+
 // metricSelectorSuffix returns a URL-encoded label selector suffix if a selector is present.
 func metricSelectorSuffix(selector string) string {
 	if selector == "" {
 		return ""
 	}
 	return "?labelSelector=" + url.QueryEscape(selector)
+}
+
+// customMetricSelectorSuffix keeps the object-selection labelSelector distinct
+// from the metric-series metricLabelSelector, as required by custom metrics.
+func customMetricSelectorSuffix(objectSelector, metricSelector string) string {
+	values := url.Values{}
+	if objectSelector != "" {
+		values.Set("labelSelector", objectSelector)
+	}
+	if metricSelector != "" {
+		values.Set("metricLabelSelector", metricSelector)
+	}
+	if len(values) == 0 {
+		return ""
+	}
+	return "?" + values.Encode()
 }
 
 // contractTestYAML is a lightweight struct for YAML test contract generation.
@@ -82,12 +150,16 @@ type contractTestSpec struct {
 }
 
 type contractTestMetric struct {
-	Name           string `json:"name" yaml:"name"`
-	Type           string `json:"type" yaml:"type"`
-	APIService     string `json:"apiService" yaml:"apiService"`
-	Selector       string `json:"selector,omitempty" yaml:"selector,omitempty"`
-	ExpectedStatus string `json:"expectedStatus" yaml:"expectedStatus"`
-	Verification   string `json:"verification" yaml:"verification"`
+	Name               string `json:"name" yaml:"name"`
+	Type               string `json:"type" yaml:"type"`
+	Resource           string `json:"resource,omitempty" yaml:"resource,omitempty"`
+	ResourceName       string `json:"resourceName,omitempty" yaml:"resourceName,omitempty"`
+	ResourceNamespaced *bool  `json:"resourceNamespaced,omitempty" yaml:"resourceNamespaced,omitempty"`
+	APIService         string `json:"apiService" yaml:"apiService"`
+	Selector           string `json:"selector,omitempty" yaml:"selector,omitempty"`
+	TargetSelector     string `json:"targetSelector,omitempty" yaml:"targetSelector,omitempty"`
+	ExpectedStatus     string `json:"expectedStatus" yaml:"expectedStatus"`
+	Verification       string `json:"verification" yaml:"verification"`
 }
 
 // GenerateContractYAML produces a YAML test contract document from the report.
@@ -116,12 +188,16 @@ func GenerateContractYAML(report *MetricContractReport) ([]byte, error) {
 		}
 
 		contract.Spec.Metrics = append(contract.Spec.Metrics, contractTestMetric{
-			Name:           check.MetricName,
-			Type:           check.MetricType,
-			APIService:     check.APIService,
-			Selector:       check.Selector,
-			ExpectedStatus: expectedStatus,
-			Verification:   generateMetricCommand(report.Namespace, check),
+			Name:               check.MetricName,
+			Type:               check.MetricType,
+			Resource:           check.Resource,
+			ResourceName:       check.ResourceName,
+			ResourceNamespaced: check.ResourceNamespaced,
+			APIService:         check.APIService,
+			Selector:           check.Selector,
+			TargetSelector:     check.TargetSelector,
+			ExpectedStatus:     expectedStatus,
+			Verification:       generateMetricCommand(report.Namespace, check),
 		})
 	}
 

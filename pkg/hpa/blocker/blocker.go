@@ -87,6 +87,14 @@ type NodeCapacitySummary struct {
 	AllocCPU string `json:"allocatableCpu,omitempty" yaml:"allocatableCpu,omitempty"`
 	// AllocMemory is the sum of allocatable memory across all nodes.
 	AllocMemory string `json:"allocatableMemory,omitempty" yaml:"allocatableMemory,omitempty"`
+	// RequestedCPU and RequestedMemory are effective requests of all scheduled,
+	// non-terminal Pods visible in the cluster.
+	RequestedCPU    string `json:"requestedCpu,omitempty" yaml:"requestedCpu,omitempty"`
+	RequestedMemory string `json:"requestedMemory,omitempty" yaml:"requestedMemory,omitempty"`
+	// AvailableCPU and AvailableMemory are allocatable resources minus
+	// RequestedCPU/RequestedMemory.
+	AvailableCPU    string `json:"availableCpu,omitempty" yaml:"availableCpu,omitempty"`
+	AvailableMemory string `json:"availableMemory,omitempty" yaml:"availableMemory,omitempty"`
 	// TaintedNodes is the count of nodes with at least one taint that has NoSchedule or NoExecute effect.
 	TaintedNodes int32 `json:"taintedNodes,omitempty" yaml:"taintedNodes,omitempty"`
 	// Hints provides actionable hints based on node capacity analysis.

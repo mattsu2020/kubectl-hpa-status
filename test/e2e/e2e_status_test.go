@@ -37,17 +37,17 @@ func TestE2E_HPAStatus(t *testing.T) {
 	}
 
 	if _, err := os.Stat(kubeconfig); os.IsNotExist(err) {
-		t.Skipf("Skipping E2E test: kubeconfig file %q does not exist", kubeconfig)
+		skipOrFailf(t, "E2E kubeconfig file %q does not exist", kubeconfig)
 	}
 
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
-		t.Skipf("Skipping E2E test: failed to build config from kubeconfig %q: %v", kubeconfig, err)
+		skipOrFailf(t, "E2E failed to build config from kubeconfig %q: %v", kubeconfig, err)
 	}
 
 	client, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		t.Skipf("Skipping E2E test: failed to create clientset: %v", err)
+		skipOrFailf(t, "E2E failed to create clientset: %v", err)
 	}
 
 	// Verify connectivity
@@ -55,7 +55,7 @@ func TestE2E_HPAStatus(t *testing.T) {
 	defer cancel()
 	_, err = client.Discovery().ServerVersion()
 	if err != nil {
-		t.Skipf("Skipping E2E test: API server is unreachable: %v", err)
+		skipOrFailf(t, "E2E API server is unreachable: %v", err)
 	}
 
 	// 2. Create a temporary namespace

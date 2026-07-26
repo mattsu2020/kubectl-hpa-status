@@ -392,17 +392,24 @@ func buildMetricSimulation(original, modified *autoscalingv2.HorizontalPodAutosc
 	_, ratio := metricImpactRatio(modified, modified.Status.CurrentMetrics[modifiedIdx])
 	if ratio != nil {
 		ms.ProjectedRatio = ratio
-		projected := estimatedDesiredForRatio(modified, *ratio)
+		projected, projectable := estimatedSimulatedMetricDesired(
+			modified,
+			modified.Status.CurrentMetrics[modifiedIdx],
+			*ratio,
+		)
+		if !projectable {
+			return ms
+		}
 		minReplicas := int32(1)
 		if modified.Spec.MinReplicas != nil {
 			minReplicas = *modified.Spec.MinReplicas
 		}
-		if projected < minReplicas {
-			projected = minReplicas
-		}
-		if projected > modified.Spec.MaxReplicas {
-			projected = modified.Spec.MaxReplicas
-		}
+		projected, _, _ = normalizeSimulatedDesired(
+			modified,
+			projected,
+			minReplicas,
+			modified.Spec.MaxReplicas,
+		)
 		ms.ProjectedReplicas = projected
 		within, tolerance := ratioWithinTolerance(modified, *ratio)
 		if within {

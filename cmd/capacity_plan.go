@@ -85,22 +85,32 @@ func runCapacityPlan(ctx context.Context, out io.Writer, opts *options, names []
 // buildCapacityPlan assembles CapacityPlanInput from various fetchers and runs
 // the capacity plan analysis.
 func buildCapacityPlan(ctx context.Context, opts *options, analysis hpaanalysis.Analysis, name string) *hpaanalysis.CapacityPlan {
-	// Best-effort client: a client-creation failure here is not fatal to the
-	// overall status report; returning nil lets the caller skip the capacity
-	// plan section and record a warning instead of aborting. Bypasses the
-	// standard "failed to create Kubernetes client" wrapper for that reason.
 	client, err := opts.NewClient()
 	if err != nil {
-		return nil
+		return hpaanalysis.AnalyzeCapacityPlan(capacityPlanInputFromAnalysis(analysis, opts.TargetMax,
+			hpaanalysis.CapacityObservationError{Source: "Kubernetes client", Message: err.Error()}))
 	}
 
 	hpa, err := kube.GetHPAFromClient(ctx, client, name)
 	if err != nil {
-		return nil
+		return hpaanalysis.AnalyzeCapacityPlan(capacityPlanInputFromAnalysis(analysis, opts.TargetMax,
+			hpaanalysis.CapacityObservationError{Source: "HPA", Message: err.Error()}))
 	}
 
 	input := assembleCapacityPlanInput(ctx, client, hpa, analysis, opts.TargetMax)
 	return hpaanalysis.AnalyzeCapacityPlan(input)
+}
+
+func capacityPlanInputFromAnalysis(analysis hpaanalysis.Analysis, targetMax int32, observationErrors ...hpaanalysis.CapacityObservationError) hpaanalysis.CapacityPlanInput {
+	return hpaanalysis.CapacityPlanInput{
+		Namespace:         analysis.Namespace,
+		HPAName:           analysis.Name,
+		Target:            analysis.Target,
+		CurrentReplicas:   analysis.Current,
+		MaxReplicas:       analysis.Max,
+		TargetMaxReplicas: targetMax,
+		ObservationErrors: observationErrors,
+	}
 }
 
 // buildCapacityPlanForStatus builds a CapacityPlan within an existing
@@ -129,62 +139,128 @@ func assembleCapacityPlanInput(ctx context.Context, client *kube.Client, hpa *au
 		MaxReplicas:       hpa.Spec.MaxReplicas,
 		TargetMaxReplicas: targetMax,
 	}
+	collectScaleTargetCapacity(ctx, client, hpa, &input)
+	collectCapacityQuotas(ctx, client, hpa.Namespace, &input)
+	collectCapacityLimitRanges(ctx, client, hpa.Namespace, &input)
+	collectCapacityClusterHeadroom(ctx, client, &input)
+	collectCapacityPDBs(ctx, client, hpa, &input)
+	collectCapacityAutoscaler(ctx, client, &input)
+	return input
+}
 
-	// Resolve scale target info and pod template resources.
+func addCapacityObservationError(input *hpaanalysis.CapacityPlanInput, source string, err error) {
+	if err == nil {
+		return
+	}
+	input.ObservationErrors = append(input.ObservationErrors, hpaanalysis.CapacityObservationError{
+		Source:  source,
+		Message: err.Error(),
+	})
+}
+
+func collectScaleTargetCapacity(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, input *hpaanalysis.CapacityPlanInput) {
 	ref := hpa.Spec.ScaleTargetRef
 	info, err := kube.FetchScaleTargetInfo(ctx, client.Interface, hpa.Namespace, ref)
-	if err == nil && info != nil {
-		selector := info.SelectorStr
-		if selector != "" {
-			// Fetch pod info for ready count.
-			podInfos, _ := kube.FetchPodInfosForSelector(ctx, client.Interface, hpa.Namespace, selector)
-			var ready int32
-			for _, p := range podInfos {
-				if p.Ready {
-					ready++
-				}
-			}
-			input.ReadyPods = ready
+	switch {
+	case err != nil:
+		addCapacityObservationError(input, "scale target", err)
+	case info == nil:
+		addCapacityObservationError(input, "scale target", fmt.Errorf("resource information is unavailable for %s/%s", ref.Kind, ref.Name))
+	default:
+		collectScaleTargetResources(info, ref.Kind, ref.Name, input)
+		collectScaleTargetPods(ctx, client, hpa.Namespace, info.SelectorStr, input)
+	}
+}
 
-			// Fetch pending pod details.
-			pendingDetails, _ := kube.FetchPendingPodDetails(ctx, client.Interface, hpa.Namespace, selector)
-			input.PendingPods = convertPendingPodInfos(pendingDetails)
+func collectScaleTargetResources(info *kube.ScaleTargetInfo, kind, name string, input *hpaanalysis.CapacityPlanInput) {
+	resources := kube.ResourceRequestsFromPodTemplate(info.PodTemplate)
+	if resources == nil {
+		addCapacityObservationError(input, "Pod resource requests", fmt.Errorf("pod template is unavailable for %s/%s", kind, name))
+		return
+	}
+	input.ContainerResources = convertToCapacityContainerResources(resources)
+	input.PodRequestCPU = resources.PodRequests["cpu"]
+	input.PodRequestMemory = resources.PodRequests["memory"]
+}
+
+func collectScaleTargetPods(ctx context.Context, client *kube.Client, namespace, selector string, input *hpaanalysis.CapacityPlanInput) {
+	if selector == "" {
+		addCapacityObservationError(input, "scale target Pod selector", fmt.Errorf("selector is empty"))
+		return
+	}
+	podInfos, err := kube.FetchPodInfosForSelector(ctx, client.Interface, namespace, selector)
+	if err != nil {
+		addCapacityObservationError(input, "scale target Pods", err)
+		return
+	}
+	for _, pod := range podInfos {
+		if pod.Ready {
+			input.ReadyPods++
+		}
+		if pod.Phase == "Pending" {
+			input.PendingPods = append(input.PendingPods, hpaanalysis.PendingPodInfo{
+				Name:          pod.Name,
+				Phase:         pod.Phase,
+				Unschedulable: pod.Unschedulable,
+				Reasons:       pod.Reasons,
+			})
 		}
 	}
+}
 
-	// Fetch container resources from pod template.
-	resources, err := kube.FetchScaleTargetResources(ctx, client.Interface, hpa.Namespace, ref.Kind, ref.Name)
-	if err == nil && resources != nil {
-		input.ContainerResources = convertToCapacityContainerResources(resources)
+func collectCapacityQuotas(ctx context.Context, client *kube.Client, namespace string, input *hpaanalysis.CapacityPlanInput) {
+	quotaInfos, quotaErr := kube.FetchAllResourceQuotas(ctx, client.Interface, namespace)
+	if quotaErr != nil {
+		addCapacityObservationError(input, "ResourceQuotas", quotaErr)
+	} else {
+		input.Quotas = convertToCapacityQuotas(quotaInfos)
 	}
+}
 
-	// Fetch all ResourceQuotas (not just near-limit).
-	quotaInfos, _ := kube.FetchAllResourceQuotas(ctx, client.Interface, hpa.Namespace)
-	input.Quotas = convertToCapacityQuotas(quotaInfos)
+func collectCapacityLimitRanges(ctx context.Context, client *kube.Client, namespace string, input *hpaanalysis.CapacityPlanInput) {
+	lrInfos, limitRangeErr := kube.FetchLimitRanges(ctx, client.Interface, namespace)
+	if limitRangeErr != nil {
+		addCapacityObservationError(input, "LimitRanges", limitRangeErr)
+	} else {
+		input.LimitRanges = convertToCapacityLimitRanges(lrInfos)
+	}
+}
 
-	// Fetch LimitRanges.
-	lrInfos, _ := kube.FetchLimitRanges(ctx, client.Interface, hpa.Namespace)
-	input.LimitRanges = convertToCapacityLimitRanges(lrInfos)
-
-	// Fetch node capacity.
-	nodeCap, _ := kube.FetchNodeCapacity(ctx, client.Interface)
-	if nodeCap != nil {
+func collectCapacityClusterHeadroom(ctx context.Context, client *kube.Client, input *hpaanalysis.CapacityPlanInput) {
+	clusterHeadroom, headroomErr := kube.FetchClusterResourceHeadroom(ctx, client.Interface)
+	if headroomErr != nil {
+		addCapacityObservationError(input, "cluster request headroom", headroomErr)
+	} else if clusterHeadroom != nil && clusterHeadroom.NodeCapacity != nil {
+		nodeCap := clusterHeadroom.NodeCapacity
 		input.NodeCapacity = &blocker.NodeCapacitySummary{
-			TotalNodes:   nodeCap.TotalNodes,
-			AllocCPU:     nodeCap.AllocCPU.String(),
-			AllocMemory:  nodeCap.AllocMemory.String(),
-			TaintedNodes: nodeCap.TaintedNodes,
+			TotalNodes:      nodeCap.TotalNodes,
+			AllocCPU:        nodeCap.AllocCPU.String(),
+			AllocMemory:     nodeCap.AllocMemory.String(),
+			RequestedCPU:    clusterHeadroom.RequestedCPU.String(),
+			RequestedMemory: clusterHeadroom.RequestedMemory.String(),
+			AvailableCPU:    clusterHeadroom.AvailableCPU.String(),
+			AvailableMemory: clusterHeadroom.AvailableMemory.String(),
+			TaintedNodes:    nodeCap.TaintedNodes,
 		}
 	}
+}
 
-	// Fetch PDBs.
-	pdbInfos, _ := kube.FetchPodDisruptionBudgets(ctx, client.Interface, hpa.Namespace, hpa.UID)
-	input.PDBs = convertPDBsPlain(pdbInfos)
+func collectCapacityPDBs(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, input *hpaanalysis.CapacityPlanInput) {
+	pdbInfos, pdbErr := kube.FetchPodDisruptionBudgets(ctx, client.Interface, hpa.Namespace, hpa.UID)
+	if pdbErr != nil {
+		addCapacityObservationError(input, "PodDisruptionBudgets", pdbErr)
+	} else {
+		input.PDBs = convertPDBsPlain(pdbInfos)
+	}
+}
 
-	// Detect Cluster Autoscaler.
-	input.ClusterAutoscaler = kube.DetectClusterAutoscaler(ctx, client.Interface)
-
-	return input
+func collectCapacityAutoscaler(ctx context.Context, client *kube.Client, input *hpaanalysis.CapacityPlanInput) {
+	clusterAutoscaler, autoscalerErr := kube.DetectClusterAutoscalerWithError(ctx, client.Interface)
+	if autoscalerErr != nil {
+		addCapacityObservationError(input, "Cluster Autoscaler detection", autoscalerErr)
+	} else {
+		input.ClusterAutoscaler = clusterAutoscaler
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -195,8 +271,9 @@ func convertToCapacityContainerResources(rr *kube.ResourceRequests) []hpaanalysi
 	if rr == nil {
 		return nil
 	}
-	result := make([]hpaanalysis.CapacityContainerResources, 0, len(rr.Containers))
-	for _, c := range rr.Containers {
+	result := make([]hpaanalysis.CapacityContainerResources, 0, len(rr.Containers)+len(rr.InitContainers))
+	containers := append(append([]kube.ContainerResources(nil), rr.Containers...), rr.InitContainers...)
+	for _, c := range containers {
 		result = append(result, hpaanalysis.CapacityContainerResources{
 			Name:   c.Name,
 			CPU:    c.Requests["cpu"],

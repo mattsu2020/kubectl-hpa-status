@@ -167,6 +167,82 @@ func TestAnalyzeMetricFreshness(t *testing.T) {
 	}
 }
 
+func TestAnalyzeMetricFreshness_ZeroAndUnavailableValues(t *testing.T) {
+	t.Parallel()
+
+	newHPA := func(current autoscalingv2.MetricValueStatus) *autoscalingv2.HorizontalPodAutoscaler {
+		hpa := buildHPAWithResourceSpecOnly("default", "web", "cpu")
+		hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{{
+			Type: autoscalingv2.ResourceMetricSourceType,
+			Resource: &autoscalingv2.ResourceMetricStatus{
+				Name:    "cpu",
+				Current: current,
+			},
+		}}
+		return hpa
+	}
+
+	zero := int32(0)
+	tests := []struct {
+		name    string
+		current autoscalingv2.MetricValueStatus
+		want    MetricFreshnessStatus
+	}{
+		{
+			name:    "populated zero is valid current data",
+			current: autoscalingv2.MetricValueStatus{AverageUtilization: &zero},
+			want:    FreshnessOK,
+		},
+		{
+			name:    "all nil value is unavailable",
+			current: autoscalingv2.MetricValueStatus{},
+			want:    FreshnessMissing,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := AnalyzeMetricFreshness(newHPA(tt.current), nil)
+			if len(got) != 1 {
+				t.Fatalf("got %d entries, want 1", len(got))
+			}
+			if got[0].Status != string(tt.want) {
+				t.Fatalf("Status = %q, want %q", got[0].Status, tt.want)
+			}
+		})
+	}
+}
+
+func TestAnalyzeMetricFreshness_SkipsUnavailableDuplicateStatus(t *testing.T) {
+	t.Parallel()
+
+	hpa := buildHPAWithResourceSpecOnly("default", "web", "cpu")
+	zero := int32(0)
+	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{
+		{
+			Type: autoscalingv2.ResourceMetricSourceType,
+			Resource: &autoscalingv2.ResourceMetricStatus{
+				Name: "cpu",
+			},
+		},
+		{
+			Type: autoscalingv2.ResourceMetricSourceType,
+			Resource: &autoscalingv2.ResourceMetricStatus{
+				Name: "cpu",
+				Current: autoscalingv2.MetricValueStatus{
+					AverageUtilization: &zero,
+				},
+			},
+		},
+	}
+
+	got := AnalyzeMetricFreshness(hpa, nil)
+	if len(got) != 1 || got[0].Status != string(FreshnessOK) {
+		t.Fatalf("AnalyzeMetricFreshness() = %+v, want one OK entry", got)
+	}
+}
+
 func TestMetricSourceAPI(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -407,7 +483,7 @@ func TestIsMetricValueZero(t *testing.T) {
 			},
 		}
 		if !isMetricValueZero(spec, currentMetrics) {
-			t.Error("expected zero value to be detected as stale")
+			t.Error("expected populated zero value to be detected")
 		}
 	})
 
@@ -453,8 +529,8 @@ func TestIsMetricValueZero(t *testing.T) {
 				},
 			},
 		}
-		if !isMetricValueZero(spec, currentMetrics) {
-			t.Error("expected nil value fields to be detected as stale")
+		if isMetricValueZero(spec, currentMetrics) {
+			t.Error("expected unavailable value fields not to be treated as numeric zero")
 		}
 	})
 }

@@ -68,11 +68,11 @@ func analyzeSingleMetricFreshness(
 		entry.Evidence = scanEventsForEvidence(events, metricName, metricType)
 		entry.NextSteps = buildFreshnessNextSteps(FreshnessMissing, spec)
 
-	case isMetricValueZero(spec, currentMetrics):
-		entry.Status = string(FreshnessStale)
-		entry.Risk = "Metric value is zero; HPA may use conservative assumptions"
-		entry.Evidence = []string{fmt.Sprintf("%s metric %q reports zero or nil current value", metricType, metricName)}
-		entry.NextSteps = buildFreshnessNextSteps(FreshnessStale, spec)
+	case !hasMetricCurrentValue(spec, currentMetrics):
+		entry.Status = string(FreshnessMissing)
+		entry.Risk = "HPA has a status entry for this metric, but no current value is available"
+		entry.Evidence = []string{fmt.Sprintf("%s metric %q has no current value", metricType, metricName)}
+		entry.NextSteps = buildFreshnessNextSteps(FreshnessMissing, spec)
 
 	default:
 		entry.Status = string(FreshnessOK)
@@ -244,9 +244,10 @@ func buildStaleNextSteps(spec autoscalingv2.MetricSpec) []string {
 	}
 }
 
-// isMetricValueZero checks whether a matching current metric has a zero or nil
-// value, which may indicate staleness.
-func isMetricValueZero(spec autoscalingv2.MetricSpec, currentMetrics []autoscalingv2.MetricStatus) bool {
+// hasMetricCurrentValue reports whether a matching current metric has at least
+// one populated value field. A populated zero is valid metric data; only an
+// all-nil MetricValueStatus is considered unavailable.
+func hasMetricCurrentValue(spec autoscalingv2.MetricSpec, currentMetrics []autoscalingv2.MetricStatus) bool {
 	for _, current := range currentMetrics {
 		if spec.Type != current.Type {
 			continue
@@ -254,23 +255,58 @@ func isMetricValueZero(spec autoscalingv2.MetricSpec, currentMetrics []autoscali
 		if !handlerFor(spec.Type).MatchesCurrent(spec, current) {
 			continue
 		}
-		return isCurrentValueZero(current)
+		value, ok := currentMetricValueStatus(current)
+		if ok && hasMetricValueStatus(value) {
+			return true
+		}
 	}
 	return false
 }
 
-// isCurrentValueZero checks if a metric status has a zero or nil value.
+// isMetricValueZero checks whether a matching current metric has a populated
+// value whose numeric value is zero.
+func isMetricValueZero(spec autoscalingv2.MetricSpec, currentMetrics []autoscalingv2.MetricStatus) bool {
+	foundValue := false
+	for _, current := range currentMetrics {
+		if spec.Type != current.Type {
+			continue
+		}
+		if !handlerFor(spec.Type).MatchesCurrent(spec, current) {
+			continue
+		}
+		value, ok := currentMetricValueStatus(current)
+		if !ok || !hasMetricValueStatus(value) {
+			continue
+		}
+		foundValue = true
+		if !isMetricValueStatusZero(value) {
+			return false
+		}
+	}
+	return foundValue
+}
+
+// isCurrentValueZero checks if a metric status has a populated zero value.
 func isCurrentValueZero(status autoscalingv2.MetricStatus) bool {
 	value, ok := currentMetricValueStatus(status)
-	if !ok {
-		return true
+	if !ok || !hasMetricValueStatus(value) {
+		return false
 	}
 	return isMetricValueStatusZero(value)
 }
 
-// isMetricValueStatusZero returns true if all value fields in a MetricValueStatus
-// are nil or zero.
+// hasMetricValueStatus reports whether any value field is present.
+func hasMetricValueStatus(v autoscalingv2.MetricValueStatus) bool {
+	return v.AverageUtilization != nil || v.AverageValue != nil || v.Value != nil
+}
+
+// isMetricValueStatusZero returns true if all populated value fields in a
+// MetricValueStatus are zero. Callers that need to distinguish an all-nil value
+// must first use hasMetricValueStatus.
 func isMetricValueStatusZero(v autoscalingv2.MetricValueStatus) bool {
+	if !hasMetricValueStatus(v) {
+		return false
+	}
 	if v.AverageUtilization != nil && *v.AverageUtilization != 0 {
 		return false
 	}

@@ -20,6 +20,19 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
+func e2eRequired() bool {
+	value := strings.TrimSpace(os.Getenv("E2E_REQUIRED"))
+	return value == "1" || strings.EqualFold(value, "true")
+}
+
+func skipOrFailf(t *testing.T, format string, args ...any) {
+	t.Helper()
+	if e2eRequired() {
+		t.Fatalf(format, args...)
+	}
+	t.Skipf(format, args...)
+}
+
 // resolveKubeconfig finds the kubeconfig path or skips the test.
 func resolveKubeconfig(t *testing.T) string {
 	t.Helper()
@@ -31,7 +44,7 @@ func resolveKubeconfig(t *testing.T) string {
 		}
 	}
 	if _, err := os.Stat(kubeconfig); os.IsNotExist(err) {
-		t.Skipf("Skipping E2E test: kubeconfig file %q does not exist", kubeconfig)
+		skipOrFailf(t, "E2E kubeconfig file %q does not exist", kubeconfig)
 	}
 	return kubeconfig
 }
@@ -43,18 +56,18 @@ func setupTestNamespace(t *testing.T, kubeconfig string) (*rest.Config, *kuberne
 
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
-		t.Skipf("Skipping E2E test: failed to build config from kubeconfig %q: %v", kubeconfig, err)
+		skipOrFailf(t, "E2E failed to build config from kubeconfig %q: %v", kubeconfig, err)
 	}
 
 	client, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		t.Skipf("Skipping E2E test: failed to create clientset: %v", err)
+		skipOrFailf(t, "E2E failed to create clientset: %v", err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if _, err := client.Discovery().ServerVersion(); err != nil {
-		t.Skipf("Skipping E2E test: API server is unreachable: %v", err)
+		skipOrFailf(t, "E2E API server is unreachable: %v", err)
 	}
 
 	ns := &corev1.Namespace{

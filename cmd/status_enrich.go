@@ -8,6 +8,7 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/behavioradvisor"
 	hpachurn "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/churn"
 	hpaflapping "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/flapping"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/healthtrend"
 	hpavpa "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/history"
@@ -313,7 +314,7 @@ func recordHealthSnapshotAndTrend(_ context.Context, opts *options, hpa *autosca
 		report.Analysis.Warnings = append(report.Analysis.Warnings, fmt.Sprintf("health trend store unavailable: %v", storeErr))
 		return
 	}
-	snapshot := hpaanalysis.HealthSnapshot{
+	snapshot := healthtrend.HealthSnapshot{
 		Timestamp:       time.Now(),
 		HealthScore:     report.Analysis.HealthScore,
 		HealthState:     report.Analysis.Health,
@@ -333,7 +334,7 @@ func recordHealthSnapshotAndTrend(_ context.Context, opts *options, hpa *autosca
 		report.Analysis.Warnings = append(report.Analysis.Warnings, fmt.Sprintf("health trend load warning: %v", loadErr))
 	}
 	if len(snapshots) > 0 {
-		trend := hpaanalysis.AnalyzeHealthTrend(snapshots)
+		trend := healthtrend.AnalyzeHealthTrend(snapshots)
 		report.Analysis.HealthTrend = &trend
 	}
 }

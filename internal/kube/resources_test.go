@@ -288,3 +288,77 @@ func TestFetchScaleTargetResources_EmptyContainers(t *testing.T) {
 		t.Fatal("expected nil result for deployment with no containers")
 	}
 }
+
+func TestEffectivePodRequests_IncludesInitContainersAndOverhead(t *testing.T) {
+	always := corev1.ContainerRestartPolicyAlways
+	spec := corev1.PodSpec{
+		Containers: []corev1.Container{
+			{
+				Name: "app",
+				Resources: corev1.ResourceRequirements{Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("500m"),
+					corev1.ResourceMemory: resource.MustParse("256Mi"),
+				}},
+			},
+		},
+		InitContainers: []corev1.Container{
+			{
+				Name:          "sidecar-init",
+				RestartPolicy: &always,
+				Resources: corev1.ResourceRequirements{Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("250m"),
+					corev1.ResourceMemory: resource.MustParse("128Mi"),
+				}},
+			},
+			{
+				Name: "migration",
+				Resources: corev1.ResourceRequirements{Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("2"),
+					corev1.ResourceMemory: resource.MustParse("1Gi"),
+				}},
+			},
+		},
+		Overhead: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("100m"),
+			corev1.ResourceMemory: resource.MustParse("64Mi"),
+		},
+	}
+
+	requests := EffectivePodRequests(spec)
+
+	if got := requests[corev1.ResourceCPU]; got.Cmp(resource.MustParse("2350m")) != 0 {
+		t.Fatalf("effective CPU = %s, want 2350m", got.String())
+	}
+	if got := requests[corev1.ResourceMemory]; got.Cmp(resource.MustParse("1216Mi")) != 0 {
+		t.Fatalf("effective memory = %s, want 1216Mi", got.String())
+	}
+}
+
+func TestResourceRequestsFromPodTemplate_ExposesEffectiveRequests(t *testing.T) {
+	template := &corev1.PodTemplateSpec{Spec: corev1.PodSpec{
+		Containers: []corev1.Container{{
+			Name: "app",
+			Resources: corev1.ResourceRequirements{Requests: corev1.ResourceList{
+				corev1.ResourceCPU: resource.MustParse("100m"),
+			}},
+		}},
+		InitContainers: []corev1.Container{{
+			Name: "init",
+			Resources: corev1.ResourceRequirements{Requests: corev1.ResourceList{
+				corev1.ResourceCPU: resource.MustParse("1"),
+			}},
+		}},
+		Overhead: corev1.ResourceList{
+			corev1.ResourceCPU: resource.MustParse("50m"),
+		},
+	}}
+
+	result := ResourceRequestsFromPodTemplate(template)
+
+	if len(result.InitContainers) != 1 || result.InitContainers[0].Name != "init" {
+		t.Fatalf("expected init-container details, got %+v", result.InitContainers)
+	}
+	if result.PodRequests["cpu"] != "1050m" {
+		t.Fatalf("effective Pod CPU = %q, want 1050m", result.PodRequests["cpu"])
+	}
+}
