@@ -24,6 +24,8 @@ type (
 	featuresOptions      = cmdoptions.Features
 	outputTemplateConfig = cmdoptions.OutputTemplateConfig
 	commandPresetOptions = cmdoptions.CommandPresetOptions
+	statusRequest        = cmdoptions.StatusRequest
+	listRequest          = cmdoptions.ListRequest
 )
 
 // ConnectionOptions, OutputOptions, ApplyOptions, and TrendOptions are the
@@ -73,6 +75,18 @@ const (
 
 func copyOptions(opts *options) options {
 	return opts.Copy()
+}
+
+func snapshotStatusRequest(opts *options, names []string) statusRequest {
+	return cmdoptions.NewStatusRequest(*opts, names)
+}
+
+func snapshotListRequest(opts *options) listRequest {
+	return cmdoptions.NewListRequest(*opts)
+}
+
+func snapshotScanRequest(opts *options) listRequest {
+	return cmdoptions.NewScanRequest(*opts)
 }
 
 func applyCommandPreset(opts *options, preset cmdoptions.CommandPreset, extra ...commandPresetOptions) options {

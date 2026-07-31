@@ -58,8 +58,8 @@ func TestAnalyzeVPA_CPUConflict(t *testing.T) {
 	if !containsVPALine(lines, "conflicting") {
 		t.Fatalf("expected conflicting warning, got %v", lines)
 	}
-	if !containsVPALine(lines, "Recommender") {
-		t.Fatalf("expected Recommender suggestion, got %v", lines)
+	if !containsVPALine(lines, "updateMode to \"Off\"") {
+		t.Fatalf("expected valid Off-mode suggestion, got %v", lines)
 	}
 	if !containsVPALine(lines, "Auto") {
 		t.Fatalf("expected Auto mode warning, got %v", lines)
@@ -101,7 +101,7 @@ func TestAnalyzeVPA_MemoryConflict(t *testing.T) {
 		TargetRef:  "Deployment/app",
 		TargetKind: "Deployment",
 		TargetName: "app",
-		UpdateMode: "Recommender",
+		UpdateMode: "Initial",
 	}
 
 	lines := AnalyzeVPA(hpa, vpa)
@@ -111,9 +111,10 @@ func TestAnalyzeVPA_MemoryConflict(t *testing.T) {
 	if !containsVPALine(lines, "conflicting") {
 		t.Fatalf("expected conflicting warning, got %v", lines)
 	}
-	// Should NOT contain Auto-specific warning since mode is Recommender
+	// Initial mode does not evict existing pods, so it should not get the
+	// Auto-specific eviction warning.
 	if containsVPALine(lines, "evict and resize pods") {
-		t.Fatalf("should not contain Auto eviction warning for Recommender mode, got %v", lines)
+		t.Fatalf("should not contain Auto eviction warning for Initial mode, got %v", lines)
 	}
 }
 

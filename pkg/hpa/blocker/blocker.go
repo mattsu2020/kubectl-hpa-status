@@ -55,6 +55,9 @@ type Report struct {
 	DesiredReplicas int32 `json:"desiredReplicas" yaml:"desiredReplicas"`
 	// ReadyReplicas is the count of ready pods on the scale target.
 	ReadyReplicas int32 `json:"readyReplicas" yaml:"readyReplicas"`
+	// ReadyReplicasKnown distinguishes an observed zero from a scale target
+	// that could not be inspected.
+	ReadyReplicasKnown bool `json:"readyReplicasKnown" yaml:"readyReplicasKnown"`
 	// Summary is a one-line summary of the blocker analysis.
 	Summary string `json:"summary" yaml:"summary"`
 	// Blockers lists all detected blocker findings sorted by severity.
@@ -63,7 +66,22 @@ type Report struct {
 	Interpretation string `json:"interpretation,omitempty" yaml:"interpretation,omitempty"`
 	// NextCommands lists suggested kubectl commands for further investigation.
 	NextCommands []string `json:"nextCommands" yaml:"nextCommands"`
+	// Warnings records observations that were unavailable. An empty blocker
+	// list is not authoritative when this field is populated.
+	Warnings []string `json:"warnings,omitempty" yaml:"warnings,omitempty"`
 }
+
+// ObservationStatus records whether a blocker input was observed. The empty
+// value is treated as known for compatibility with callers that construct
+// Input directly.
+type ObservationStatus string
+
+const ( //nolint:revive // ObservationStatus documentation describes this enum.
+	// ObservationKnown means the input was observed successfully.
+	ObservationKnown         ObservationStatus = "known"
+	ObservationUnavailable   ObservationStatus = "unavailable"    //nolint:revive // Observation status value.
+	ObservationNotApplicable ObservationStatus = "not-applicable" //nolint:revive // Observation status value.
+)
 
 // ContainerStatusSummary holds container-level status for blocker detection.
 type ContainerStatusSummary struct {
@@ -83,22 +101,46 @@ type ContainerStatusSummary struct {
 type NodeCapacitySummary struct {
 	// TotalNodes is the total number of nodes in the cluster.
 	TotalNodes int32 `json:"totalNodes" yaml:"totalNodes"`
+	// SchedulableNodes is the number of Ready, uncordoned nodes without a
+	// blocking taint. SchedulableNodesKnown distinguishes live collection
+	// from legacy callers that only supplied TotalNodes.
+	SchedulableNodes      int32 `json:"schedulableNodes,omitempty" yaml:"schedulableNodes,omitempty"`
+	SchedulableNodesKnown bool  `json:"schedulableNodesKnown,omitempty" yaml:"schedulableNodesKnown,omitempty"`
 	// AllocCPU is the sum of allocatable CPU across all nodes.
 	AllocCPU string `json:"allocatableCpu,omitempty" yaml:"allocatableCpu,omitempty"`
 	// AllocMemory is the sum of allocatable memory across all nodes.
 	AllocMemory string `json:"allocatableMemory,omitempty" yaml:"allocatableMemory,omitempty"`
-	// RequestedCPU and RequestedMemory are effective requests of all scheduled,
-	// non-terminal Pods visible in the cluster.
+	// RequestedCPU and RequestedMemory are effective requests of scheduled,
+	// non-terminal Pods on nodes included in this capacity summary.
 	RequestedCPU    string `json:"requestedCpu,omitempty" yaml:"requestedCpu,omitempty"`
 	RequestedMemory string `json:"requestedMemory,omitempty" yaml:"requestedMemory,omitempty"`
 	// AvailableCPU and AvailableMemory are allocatable resources minus
 	// RequestedCPU/RequestedMemory.
 	AvailableCPU    string `json:"availableCpu,omitempty" yaml:"availableCpu,omitempty"`
 	AvailableMemory string `json:"availableMemory,omitempty" yaml:"availableMemory,omitempty"`
+	// PodCapacityKnown distinguishes a missing allocatable.pods observation
+	// from an observed zero. RequestedPods and AvailablePods count scheduled
+	// non-terminal Pods and remaining scheduler slots on eligible nodes.
+	PodCapacityKnown bool  `json:"podCapacityKnown,omitempty" yaml:"podCapacityKnown,omitempty"`
+	AllocPods        int64 `json:"allocatablePods,omitempty" yaml:"allocatablePods,omitempty"`
+	RequestedPods    int64 `json:"requestedPods,omitempty" yaml:"requestedPods,omitempty"`
+	AvailablePods    int64 `json:"availablePods,omitempty" yaml:"availablePods,omitempty"`
 	// TaintedNodes is the count of nodes with at least one taint that has NoSchedule or NoExecute effect.
 	TaintedNodes int32 `json:"taintedNodes,omitempty" yaml:"taintedNodes,omitempty"`
+	// NodeHeadrooms preserves per-node available resources so scheduling
+	// estimates account for fragmentation instead of relying on cluster sums.
+	NodeHeadrooms []NodeResourceHeadroom `json:"nodeHeadrooms,omitempty" yaml:"nodeHeadrooms,omitempty"`
 	// Hints provides actionable hints based on node capacity analysis.
 	Hints []string `json:"hints,omitempty" yaml:"hints,omitempty"`
+}
+
+// NodeResourceHeadroom is the request headroom on one schedulable node.
+type NodeResourceHeadroom struct {
+	Name             string `json:"name" yaml:"name"`
+	AvailableCPU     string `json:"availableCpu,omitempty" yaml:"availableCpu,omitempty"`
+	AvailableMemory  string `json:"availableMemory,omitempty" yaml:"availableMemory,omitempty"`
+	PodCapacityKnown bool   `json:"podCapacityKnown,omitempty" yaml:"podCapacityKnown,omitempty"`
+	AvailablePods    int64  `json:"availablePods,omitempty" yaml:"availablePods,omitempty"`
 }
 
 // Input aggregates all observable signals for scale-out blocker analysis.
@@ -119,6 +161,11 @@ type Input struct {
 	TargetReadyReplicas int32
 	// TargetDesiredReplicas is the desired replica count from the scale target.
 	TargetDesiredReplicas int32
+	// TargetObservation and PodObservation prevent absent API data from being
+	// interpreted as an observed zero. Empty means known for source
+	// compatibility with existing direct callers.
+	TargetObservation ObservationStatus
+	PodObservation    ObservationStatus
 	// PendingPods lists pods in Pending phase with scheduling details.
 	PendingPods []PodInfo
 	// ReadyPods is the count of pods in Running/Ready state.
@@ -179,13 +226,14 @@ func AnalyzeBlockers(input Input) *Report {
 	allFindings = sortFindingsBySeverity(allFindings)
 
 	report := &Report{
-		HPAWantsScale:   hpaWantsScale,
-		DesiredReplicas: input.DesiredReplicas,
-		ReadyReplicas:   input.TargetReadyReplicas,
-		Summary:         buildBlockerSummary(input, hpaWantsScale, allFindings),
-		Blockers:        allFindings,
-		Interpretation:  buildBlockerInterpretation(input, hpaWantsScale, allFindings),
-		NextCommands:    buildBlockerNextCommands(input, allFindings),
+		HPAWantsScale:      hpaWantsScale,
+		DesiredReplicas:    input.DesiredReplicas,
+		ReadyReplicas:      input.TargetReadyReplicas,
+		ReadyReplicasKnown: observationKnown(input.TargetObservation),
+		Summary:            buildBlockerSummary(input, hpaWantsScale, allFindings),
+		Blockers:           allFindings,
+		Interpretation:     buildBlockerInterpretation(input, hpaWantsScale, allFindings),
+		NextCommands:       buildBlockerNextCommands(input, allFindings),
 	}
 
 	return report
@@ -226,6 +274,13 @@ func buildBlockerSummary(input Input, hpaWantsScale bool, findings []Finding) st
 			input.CurrentReplicas, input.DesiredReplicas)
 	}
 
+	if !observationKnown(input.TargetObservation) {
+		return fmt.Sprintf(
+			"HPA wants %d replicas, but scale-target readiness could not be observed.",
+			input.DesiredReplicas,
+		)
+	}
+
 	gap := input.DesiredReplicas - input.TargetReadyReplicas
 	if gap <= 0 {
 		return fmt.Sprintf("HPA wants %d replicas and %d are Ready. Scale-out appears to be in progress.",
@@ -237,7 +292,7 @@ func buildBlockerSummary(input Input, hpaWantsScale bool, findings []Finding) st
 
 // buildBlockerInterpretation creates a human-readable interpretation of the
 // overall blocker situation.
-func buildBlockerInterpretation(_ Input, hpaWantsScale bool, findings []Finding) string {
+func buildBlockerInterpretation(input Input, hpaWantsScale bool, findings []Finding) string {
 	if !hpaWantsScale {
 		return "HPA is not requesting scale-out. The current replica count matches or exceeds the desired count."
 	}
@@ -245,12 +300,19 @@ func buildBlockerInterpretation(_ Input, hpaWantsScale bool, findings []Finding)
 	cats := blockerCategoryFlags(findings)
 
 	parts := []string{"HPA appears to be working correctly."}
+	if !observationKnown(input.TargetObservation) || !observationKnown(input.PodObservation) {
+		parts = []string{"HPA is requesting scale-out, but workload readiness or Pod observations are incomplete."}
+	}
 	parts = appendBlockerApplicationPart(parts, cats.application)
 	parts = appendBlockerSchedulingPart(parts, cats.scheduling, cats.quota)
 	parts = appendBlockerReadinessPart(parts, cats.readiness)
 	parts = appendBlockerNonePart(parts, cats)
 
 	return strings.Join(parts, " ")
+}
+
+func observationKnown(status ObservationStatus) bool {
+	return status == "" || status == ObservationKnown
 }
 
 // blockerCategorySet holds booleans for each blocker category detected in findings.

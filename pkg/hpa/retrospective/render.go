@@ -258,10 +258,18 @@ func replayDecisionText(c ControlCycle) string {
 func replayStabilizationNote(end time.Time, windows []StabilizationWindow) string {
 	for _, sw := range windows {
 		if end.After(sw.Start) && end.Before(sw.End) {
-			return fmt.Sprintf(" (stabilization active, suppressed: -%d)", sw.SuppressedScaleDown)
+			return " (stabilization active, suppressed replicas: " +
+				suppressedScaleDownText(sw.SuppressedScaleDown) + ")"
 		}
 	}
 	return ""
+}
+
+func suppressedScaleDownText(value *int32) string {
+	if value == nil {
+		return "unknown"
+	}
+	return fmt.Sprintf("%d", *value)
 }
 
 // replayStabilizationWindowsText renders the Stabilization Windows section.
@@ -275,8 +283,8 @@ func replayStabilizationWindowsText(analysis *ReplayAnalysis) string {
 		startStr := sw.Start.Format("15:04")
 		endStr := sw.End.Format("15:04")
 		durationStr := formatDuration(sw.Duration)
-		out.WriteString(fmt.Sprintf("  %s - %s (%s) — suppressed scale-down of %d replicas\n",
-			startStr, endStr, durationStr, sw.SuppressedScaleDown))
+		out.WriteString(fmt.Sprintf("  %s - %s (%s) — suppressed scale-down replicas: %s\n",
+			startStr, endStr, durationStr, suppressedScaleDownText(sw.SuppressedScaleDown)))
 	}
 	out.WriteString("\n")
 	return out.String()
@@ -356,11 +364,11 @@ func WriteReplayMarkdown(w io.Writer, analysis *ReplayAnalysis, tl Timeline) err
 		out.WriteString("| Start | End | Duration | Suppressed Scale-Down |\n")
 		out.WriteString("|-------|-----|----------|----------------------|\n")
 		for _, sw := range analysis.StabilizationWindows {
-			out.WriteString(fmt.Sprintf("| %s | %s | %s | %d |\n",
+			out.WriteString(fmt.Sprintf("| %s | %s | %s | %s |\n",
 				sw.Start.Format("15:04"),
 				sw.End.Format("15:04"),
 				formatDuration(sw.Duration),
-				sw.SuppressedScaleDown))
+				suppressedScaleDownText(sw.SuppressedScaleDown)))
 		}
 		out.WriteString("\n")
 	}
@@ -471,7 +479,7 @@ func WriteReplayHTML(w io.Writer, analysis *ReplayAnalysis, tl Timeline) error {
 			out.WriteString(fmt.Sprintf("<td>%s</td>", sw.Start.Format("15:04")))
 			out.WriteString(fmt.Sprintf("<td>%s</td>", sw.End.Format("15:04")))
 			out.WriteString(fmt.Sprintf("<td>%s</td>", formatDuration(sw.Duration)))
-			out.WriteString(fmt.Sprintf("<td>%d</td>", sw.SuppressedScaleDown))
+			out.WriteString(fmt.Sprintf("<td>%s</td>", suppressedScaleDownText(sw.SuppressedScaleDown)))
 			out.WriteString("</tr>\n")
 		}
 		out.WriteString("</table>\n")

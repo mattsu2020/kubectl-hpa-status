@@ -208,10 +208,15 @@ func TestVPAInfo(t *testing.T) {
 		in := &kube.VPAInfo{
 			Name:                "v1",
 			TargetRef:           "Deployment/web",
+			TargetAPIVersion:    "apps/v1",
 			TargetKind:          "Deployment",
 			TargetName:          "web",
 			UpdateMode:          "Auto",
 			ControlledResources: []string{"cpu", "memory"},
+			ContainerPolicies: []kube.VPAContainerPolicy{{
+				ContainerName: "app", Mode: "Off",
+				ControlledResources: []string{"memory"}, ControlledResourcesSpecified: true,
+			}},
 			Recommendations: []kube.VPARecommendationInfo{
 				{Container: "app", Resource: "cpu", Target: "500m", Lower: "250m", Upper: "1"},
 			},
@@ -220,7 +225,7 @@ func TestVPAInfo(t *testing.T) {
 		if got == nil {
 			t.Fatalf("VPAInfo returned nil for non-nil input")
 		}
-		if got.Name != "v1" || got.TargetRef != "Deployment/web" || got.UpdateMode != "Auto" {
+		if got.Name != "v1" || got.TargetRef != "Deployment/web" || got.TargetAPIVersion != "apps/v1" || got.UpdateMode != "Auto" {
 			t.Fatalf("scalar fields wrong: %+v", got)
 		}
 		if len(got.ControlledResources) != 2 || got.ControlledResources[0] != "cpu" {
@@ -230,6 +235,10 @@ func TestVPAInfo(t *testing.T) {
 		got.ControlledResources[0] = "mutated"
 		if in.ControlledResources[0] != "cpu" {
 			t.Fatalf("input ControlledResources mutated: %v", in.ControlledResources)
+		}
+		got.ContainerPolicies[0].ControlledResources[0] = "mutated"
+		if in.ContainerPolicies[0].ControlledResources[0] != "memory" {
+			t.Fatal("input ContainerPolicies resources were mutated")
 		}
 		if len(got.Recommendations) != 1 {
 			t.Fatalf("Recommendations = %v", got.Recommendations)

@@ -5,11 +5,11 @@ import (
 	"fmt"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/observation"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/containeradvisor"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // This file holds the scale-path and container-advisor builders that feed
@@ -19,14 +19,22 @@ import (
 
 // buildScalePath gathers pods, ReplicaSets, and events around the HPA's
 // scale target and hands them to hpaanalysis.AnalyzeScalePath for diagnosis.
-func buildScalePath(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpaanalysis.ScalePath {
+func buildScalePath(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpaanalysis.ScalePath { //nolint:unused // Retained compatibility wrapper.
+	return buildScalePathWithSnapshot(ctx, client, hpa, observation.New(client.Interface, hpa))
+}
+
+func buildScalePathWithSnapshot(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, snapshot *observation.Snapshot) *hpaanalysis.ScalePath {
 	input := hpaanalysis.ScalePathInput{}
-	info, err := kube.FetchScaleTargetInfo(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef)
 	var collectionWarnings []string
-	if err != nil {
-		collectionWarnings = append(collectionWarnings, fmt.Sprintf("scale target unavailable: %v", err))
+	if snapshot == nil {
+		snapshot = observation.New(client.Interface, hpa)
 	}
-	if err == nil && info != nil {
+	target := snapshot.ScaleTarget(ctx)
+	if target.State == observation.StateUnavailable {
+		collectionWarnings = append(collectionWarnings, fmt.Sprintf("scale target unavailable: %v", target.Err))
+	}
+	if target.Known() {
+		info := target.Data
 		input.Target = &hpaanalysis.ScalePathTarget{
 			Kind:            info.Kind,
 			Name:            info.Name,
@@ -34,10 +42,12 @@ func buildScalePath(ctx context.Context, client *kube.Client, hpa *autoscalingv2
 			CurrentReplicas: info.Replicas,
 			ReadyReplicas:   info.ReadyReplicas,
 		}
-		if pods, podErr := kube.FetchPodInfosForSelector(ctx, client.Interface, hpa.Namespace, info.SelectorStr); podErr == nil {
-			input.Pods = convertScalePathPods(pods)
-		} else {
-			collectionWarnings = append(collectionWarnings, fmt.Sprintf("pods unavailable: %v", podErr))
+		pods := snapshot.PodInfos(ctx)
+		switch pods.State {
+		case observation.StateKnown:
+			input.Pods = convertScalePathPods(pods.Data)
+		case observation.StateUnavailable:
+			collectionWarnings = append(collectionWarnings, fmt.Sprintf("pods unavailable: %v", pods.Err))
 		}
 		if replicaSets, rsErr := kube.FetchReplicaSetsForScaleTarget(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef, info.SelectorStr); rsErr == nil {
 			input.ReplicaSets = convertScalePathReplicaSets(replicaSets)
@@ -111,43 +121,52 @@ func scalePathEventObjectNames(hpa *autoscalingv2.HorizontalPodAutoscaler, pods 
 	return names
 }
 
-func fetchTargetReplicaInfo(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpaanalysis.TargetReplicaInfo {
-	info, err := kube.FetchScaleTargetInfo(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef)
-	if err != nil || info == nil {
-		return nil
-	}
+func fetchTargetReplicaInfo(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpaanalysis.TargetReplicaInfo { //nolint:unused // Retained compatibility wrapper.
+	info, _ := fetchTargetReplicaInfoFromSnapshot(ctx, observation.New(client.Interface, hpa), hpa)
+	return info
+}
 
+func fetchTargetReplicaInfoFromSnapshot(ctx context.Context, snapshot *observation.Snapshot, _ *autoscalingv2.HorizontalPodAutoscaler) (*hpaanalysis.TargetReplicaInfo, string) {
+	if snapshot == nil {
+		return nil, "target replica observation unavailable: observation snapshot is not configured"
+	}
+	target := snapshot.ScaleTarget(ctx)
+	if target.State == observation.StateUnavailable {
+		return nil, fmt.Sprintf("target replica observation unavailable: %v", target.Err)
+	}
+	if !target.Known() {
+		return nil, ""
+	}
+	info := target.Data
 	notReady := info.Replicas - info.ReadyReplicas
 	result := &hpaanalysis.TargetReplicaInfo{
 		TotalReplicas: info.Replicas,
 		ReadyReplicas: info.ReadyReplicas,
 		NotReady:      notReady,
 	}
-	enrichPendingPods(ctx, client, hpa.Namespace, info.SelectorStr, result)
-	if result.NotReady <= 0 && result.Pending <= 0 && result.Unschedulable <= 0 {
-		return nil
+	pods := snapshot.PodInfos(ctx)
+	if pods.State == observation.StateUnavailable {
+		return result, fmt.Sprintf("target Pod observation unavailable: %v", pods.Err)
 	}
-	return result
-}
-
-func enrichPendingPods(ctx context.Context, client *kube.Client, namespace string, selector string, info *hpaanalysis.TargetReplicaInfo) {
-	if selector == "" || info == nil {
-		return
-	}
-	pods, err := client.Interface.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: selector})
-	if err != nil {
-		return
-	}
-	for _, pod := range pods.Items {
-		if pod.Status.Phase == corev1.PodPending {
-			info.Pending++
-			if podUnschedulable(pod) {
-				info.Unschedulable++
+	if pods.Known() {
+		for _, pod := range pods.Data {
+			if pod.Phase == "Pending" {
+				result.Pending++
+				if pod.Unschedulable {
+					result.Unschedulable++
+				}
 			}
 		}
 	}
+	if result.NotReady <= 0 && result.Pending <= 0 && result.Unschedulable <= 0 {
+		return nil, ""
+	}
+	return result, ""
 }
 
+// podUnschedulable is retained as the command-layer compatibility helper used
+// by existing callers and tests. Request-scoped analysis derives the same
+// signal from observation.Snapshot without another Pod list.
 func podUnschedulable(pod corev1.Pod) bool {
 	for _, condition := range pod.Status.Conditions {
 		if condition.Type == corev1.PodScheduled &&

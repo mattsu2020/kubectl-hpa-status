@@ -21,9 +21,13 @@ func TestCRDReason(t *testing.T) {
 	})
 }
 
-func TestToAnalysisStatus(t *testing.T) {
+func TestCanonicalStatusClone(t *testing.T) {
+	clone := func(status Status) *Status {
+		out := status.Clone()
+		return &out
+	}
 	t.Run("empty status yields zero-value pointer", func(t *testing.T) {
-		out := Status{}.ToAnalysisStatus()
+		out := clone(Status{})
 		if out == nil {
 			t.Fatal("expected non-nil EnrichmentStatus")
 		}
@@ -36,7 +40,7 @@ func TestToAnalysisStatus(t *testing.T) {
 		s := Status{
 			KEDA: &Entry{Source: "keda", State: StateError, Reason: "CRD missing"},
 		}
-		out := s.ToAnalysisStatus()
+		out := clone(s)
 		if out.KEDA == nil {
 			t.Fatal("expected non-nil KEDA entry")
 		}
@@ -58,7 +62,7 @@ func TestToAnalysisStatus(t *testing.T) {
 		s := Status{
 			VPA: &Entry{Source: "vpa", State: StateActive, Reason: ""},
 		}
-		out := s.ToAnalysisStatus()
+		out := clone(s)
 		if out.VPA == nil {
 			t.Fatal("expected non-nil VPA entry")
 		}
@@ -75,7 +79,7 @@ func TestToAnalysisStatus(t *testing.T) {
 			KEDA: &Entry{Source: "keda", State: StateActive, Reason: "ready"},
 			VPA:  &Entry{Source: "vpa", State: StateError, Reason: "conflict"},
 		}
-		out := s.ToAnalysisStatus()
+		out := clone(s)
 		if out.KEDA == nil || out.VPA == nil {
 			t.Fatal("expected both entries mapped")
 		}

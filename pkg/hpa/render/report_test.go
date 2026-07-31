@@ -102,6 +102,9 @@ func TestWriteMarkdownReportEmptyFields(t *testing.T) {
 	}
 	output := buf.String()
 
+	if !strings.Contains(output, "**Health:** OK (0/100)") {
+		t.Errorf("expected zero health score to be displayed, got:\n%s", output)
+	}
 	if !strings.Contains(output, "_No summary available._") {
 		t.Errorf("expected empty summary placeholder, got:\n%s", output)
 	}

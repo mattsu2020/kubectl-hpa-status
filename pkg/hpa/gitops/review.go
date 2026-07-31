@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // AnalyzeReview compares before and after HPA manifests to detect risky
@@ -143,16 +144,13 @@ func reviewNewManifest(hpa *autoscalingv2.HorizontalPodAutoscaler) []ReviewFindi
 		})
 	}
 
-	cpuTarget := extractCPUTarget(hpa)
-	if strings.HasSuffix(cpuTarget, "%") {
-		val := strings.TrimSuffix(cpuTarget, "%")
-		if val > "90" {
-			findings = append(findings, ReviewFinding{
-				Severity: "medium",
-				Category: "target",
-				Message:  fmt.Sprintf("CPU target is %s (> 90%%); HPA may scale too aggressively", cpuTarget),
-			})
-		}
+	if cpuTarget, ok := extractCPUTargetUtilization(hpa); ok && cpuTarget > 90 {
+		findings = append(findings, ReviewFinding{
+			Severity: "medium",
+			Category: "target",
+			Message:  fmt.Sprintf("CPU target is %d%% (> 90%%); HPA may scale too late", cpuTarget),
+			Detail:   "A high utilization target reduces replica headroom and can delay scale-out under sudden load.",
+		})
 	}
 
 	if len(hpa.Spec.Metrics) == 0 {
@@ -227,20 +225,28 @@ func buildReviewRecommendation(review *Review) string {
 
 // extractCPUTarget returns the CPU target utilization as a string (e.g. "70%").
 func extractCPUTarget(hpa *autoscalingv2.HorizontalPodAutoscaler) string {
+	target, ok := extractCPUTargetUtilization(hpa)
+	if !ok {
+		return ""
+	}
+	return fmt.Sprintf("%d%%", target)
+}
+
+func extractCPUTargetUtilization(hpa *autoscalingv2.HorizontalPodAutoscaler) (int32, bool) {
 	for _, metric := range hpa.Spec.Metrics {
 		if metric.Type == autoscalingv2.ResourceMetricSourceType &&
 			metric.Resource != nil &&
 			metric.Resource.Target.AverageUtilization != nil {
-			return fmt.Sprintf("%d%%", *metric.Resource.Target.AverageUtilization)
+			return *metric.Resource.Target.AverageUtilization, true
 		}
 	}
-	return ""
+	return 0, false
 }
 
 // extractScaleDownStabilization returns the scaleDown stabilization window seconds.
 func extractScaleDownStabilization(hpa *autoscalingv2.HorizontalPodAutoscaler) int32 {
 	if hpa.Spec.Behavior == nil || hpa.Spec.Behavior.ScaleDown == nil {
-		return 0
+		return 300
 	}
 	if hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds == nil {
 		return 300 // Kubernetes default.
@@ -256,33 +262,50 @@ func behaviorMoreAggressive(before, after *autoscalingv2.HorizontalPodAutoscaler
 	if before.Spec.Behavior == nil || before.Spec.Behavior.ScaleUp == nil {
 		return false
 	}
-	beforePolicies := before.Spec.Behavior.ScaleUp.Policies
-	afterPolicies := after.Spec.Behavior.ScaleUp.Policies
-	if len(afterPolicies) > len(beforePolicies) {
+	beforeRules := before.Spec.Behavior.ScaleUp
+	afterRules := after.Spec.Behavior.ScaleUp
+	if effectiveSelectPolicy(afterRules.SelectPolicy) == autoscalingv2.MaxChangePolicySelect &&
+		effectiveSelectPolicy(beforeRules.SelectPolicy) == autoscalingv2.MinChangePolicySelect {
 		return true
 	}
-	for _, ap := range afterPolicies {
-		for _, bp := range beforePolicies {
-			if ap.Type == bp.Type && ap.Value > bp.Value {
-				return true
-			}
+	beforeByType := make(map[autoscalingv2.HPAScalingPolicyType]autoscalingv2.HPAScalingPolicy, len(beforeRules.Policies))
+	for _, policy := range beforeRules.Policies {
+		beforeByType[policy.Type] = policy
+	}
+	for _, afterPolicy := range afterRules.Policies {
+		beforePolicy, exists := beforeByType[afterPolicy.Type]
+		if !exists {
+			return true
+		}
+		if afterPolicy.Value > beforePolicy.Value ||
+			(afterPolicy.Value == beforePolicy.Value && afterPolicy.PeriodSeconds < beforePolicy.PeriodSeconds) {
+			return true
 		}
 	}
 	return false
 }
 
+func effectiveSelectPolicy(policy *autoscalingv2.ScalingPolicySelect) autoscalingv2.ScalingPolicySelect {
+	if policy == nil {
+		return autoscalingv2.MaxChangePolicySelect
+	}
+	return *policy
+}
+
 // findRemovedMetrics identifies metrics present in before but not in after.
 func findRemovedMetrics(before, after []autoscalingv2.MetricSpec) []string {
-	afterSet := make(map[string]struct{}, len(after))
+	afterSet := make(map[string]int, len(after))
 	for _, m := range after {
-		afterSet[metricKey(m)] = struct{}{}
+		afterSet[metricKey(m)]++
 	}
 	var removed []string
 	for _, m := range before {
 		key := metricKey(m)
-		if _, ok := afterSet[key]; !ok {
+		if afterSet[key] == 0 {
 			removed = append(removed, key)
+			continue
 		}
+		afterSet[key]--
 	}
 	return removed
 }
@@ -300,14 +323,26 @@ func metricKey(m autoscalingv2.MetricSpec) string {
 		}
 	case autoscalingv2.PodsMetricSourceType:
 		if m.Pods != nil {
-			return fmt.Sprintf("Pods/%s", m.Pods.Metric.Name)
+			return fmt.Sprintf("Pods/%s/%s", m.Pods.Metric.Name, selectorKey(m.Pods.Metric.Selector))
 		}
 	case autoscalingv2.ExternalMetricSourceType:
 		if m.External != nil {
-			return fmt.Sprintf("External/%s", m.External.Metric.Name)
+			return fmt.Sprintf("External/%s/%s", m.External.Metric.Name, selectorKey(m.External.Metric.Selector))
+		}
+	case autoscalingv2.ObjectMetricSourceType:
+		if m.Object != nil {
+			object := m.Object.DescribedObject
+			return fmt.Sprintf("Object/%s/%s/%s/%s/%s", object.APIVersion, object.Kind, object.Name, m.Object.Metric.Name, selectorKey(m.Object.Metric.Selector))
 		}
 	}
 	return string(m.Type)
+}
+
+func selectorKey(selector *metav1.LabelSelector) string {
+	if selector == nil {
+		return ""
+	}
+	return metav1.FormatLabelSelector(selector)
 }
 
 // int32OrDefault returns the value or the default if nil.

@@ -274,6 +274,32 @@ func TestReadinessStalledRule(t *testing.T) {
 	})
 }
 
+func TestReadinessStalledRuleRequiresObservedTargetAndPods(t *testing.T) {
+	base := Input{
+		DesiredReplicas:     5,
+		CurrentReplicas:     3,
+		TargetReadyReplicas: 0,
+	}
+	for _, tt := range []struct {
+		name   string
+		target ObservationStatus
+		pods   ObservationStatus
+	}{
+		{name: "target unavailable", target: ObservationUnavailable, pods: ObservationUnavailable},
+		{name: "target unsupported", target: ObservationNotApplicable, pods: ObservationNotApplicable},
+		{name: "pods unavailable", target: ObservationKnown, pods: ObservationUnavailable},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			input := base
+			input.TargetObservation = tt.target
+			input.PodObservation = tt.pods
+			if findings := readinessStalledRule(input); len(findings) != 0 {
+				t.Fatalf("unknown observation produced readiness finding: %+v", findings)
+			}
+		})
+	}
+}
+
 func TestNodeCapacityRule(t *testing.T) {
 	t.Run("no nodes", func(t *testing.T) {
 		input := Input{

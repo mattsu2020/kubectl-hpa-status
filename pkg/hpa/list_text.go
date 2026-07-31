@@ -108,9 +108,6 @@ func NewListItem(src Analysis) ListItem {
 	conditions := compactConditions(src.Conditions)
 	metrics := compactMetrics(src.Metrics)
 	behavior := compactBehavior(src.Behavior)
-	if src.HealthScore == 0 {
-		_, src.HealthScore = healthFromAnalysis(src)
-	}
 
 	return ListItem{
 		Namespace:          src.Namespace,
@@ -197,7 +194,7 @@ func trendFlappingFromAnalysis(trend *HealthTrendResult) bool {
 	return trend != nil && trend.FlappingDetected
 }
 
-func healthFromAnalysis(src Analysis) (string, int) {
+func healthFromAnalysis(src Analysis) (string, int) { //nolint:unused // Retained compatibility helper for downstream migrations.
 	score := 100
 	switch src.Health {
 	case string(HealthError):

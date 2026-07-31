@@ -34,6 +34,25 @@ func TestShouldColorize(t *testing.T) {
 	}
 }
 
+type testWriterWrapper struct {
+	io.Writer
+}
+
+func (w testWriterWrapper) Unwrap() io.Writer {
+	return w.Writer
+}
+
+func TestUnwrapWriterReachesOriginalDestination(t *testing.T) {
+	original := os.Stdout
+	wrapped := testWriterWrapper{Writer: testWriterWrapper{Writer: original}}
+	if got := unwrapWriter(wrapped); got != original {
+		t.Fatalf("unwrapWriter() = %T, want original *os.File", got)
+	}
+	if got, want := ShouldColorize("auto", wrapped), ShouldColorize("auto", original); got != want {
+		t.Fatalf("wrapped auto color = %v, original = %v", got, want)
+	}
+}
+
 func TestStdinIsTerminal(t *testing.T) {
 	t.Run("nil reader returns false", func(t *testing.T) {
 		if StdinIsTerminal(nil) {

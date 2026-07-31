@@ -166,6 +166,9 @@ func quotaNearLimitRule(input Input) []Finding {
 // readinessStalledRule detects when ReadyReplicas is stuck below DesiredReplicas
 // but no pods are Pending (suggesting readinessProbe or startup issues).
 func readinessStalledRule(input Input) []Finding {
+	if !observationKnown(input.TargetObservation) || !observationKnown(input.PodObservation) {
+		return nil
+	}
 	if input.TargetReadyReplicas >= input.DesiredReplicas {
 		return nil
 	}
@@ -197,13 +200,13 @@ func nodeCapacityRule(input Input) []Finding {
 	var findings []Finding
 	nc := input.NodeCapacity
 
-	if nc.TotalNodes == 0 {
+	if nc.TotalNodes == 0 || (nc.SchedulableNodesKnown && nc.SchedulableNodes == 0) {
 		findings = append(findings, Finding{
 			ID:          "no-nodes",
 			Severity:    BlockerHigh,
 			Category:    "scheduling",
-			Message:     "No nodes found in the cluster",
-			Detail:      "The cluster has no schedulable nodes. Scale-out will always fail until nodes are added.",
+			Message:     "No schedulable nodes found in the cluster",
+			Detail:      "The cluster has no Ready, uncordoned, untainted nodes for this conservative check. Scale-out requires eligible nodes or matching tolerations.",
 			NextCommand: "kubectl get nodes",
 		})
 		return findings

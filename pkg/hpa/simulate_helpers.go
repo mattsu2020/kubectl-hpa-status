@@ -98,7 +98,7 @@ func originalValue(hpa *autoscalingv2.HorizontalPodAutoscaler, path string) stri
 	}
 	if strings.HasPrefix(normalizedPath, "metric.") && strings.HasSuffix(normalizedPath, ".target") {
 		name := strings.TrimSuffix(strings.TrimPrefix(normalizedPath, "metric."), ".target")
-		if spec, found := resolveMetricSpec(hpa, name); found {
+		if spec, err := resolveMetricSpecUnique(hpa, name); err == nil {
 			if target := metricTargetPointer(&spec); target != nil {
 				return FormatMetricTarget(*target)
 			}

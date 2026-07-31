@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -24,7 +25,7 @@ func TestWriteOutputJSONPath(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := writeOutput(&out, "jsonpath={.analysis.summary}", "", report, nil); err != nil {
+	if err := render.Format(&out, "jsonpath={.analysis.summary}", "", report, nil); err != nil {
 		t.Fatal(err)
 	}
 	if strings.TrimSpace(out.String()) != "HPA currently keeps the replica count unchanged." {
@@ -33,7 +34,7 @@ func TestWriteOutputJSONPath(t *testing.T) {
 
 	// Test separate jsonpath format and template argument
 	out.Reset()
-	if err := writeOutput(&out, "jsonpath", "{.analysis.summary}", report, nil); err != nil {
+	if err := render.Format(&out, "jsonpath", "{.analysis.summary}", report, nil); err != nil {
 		t.Fatal(err)
 	}
 	if strings.TrimSpace(out.String()) != "HPA currently keeps the replica count unchanged." {
@@ -50,7 +51,7 @@ func TestWriteOutputTemplate(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := writeOutput(&out, "template={{ .Analysis.Namespace }}/{{ .Analysis.Name }}", "", report, nil); err != nil {
+	if err := render.Format(&out, "template={{ .Analysis.Namespace }}/{{ .Analysis.Name }}", "", report, nil); err != nil {
 		t.Fatal(err)
 	}
 	if strings.TrimSpace(out.String()) != "default/web" {
@@ -59,7 +60,7 @@ func TestWriteOutputTemplate(t *testing.T) {
 
 	// Test separate template format and template argument
 	out.Reset()
-	if err := writeOutput(&out, "go-template", "{{ .Analysis.Namespace }}/{{ .Analysis.Name }}", report, nil); err != nil {
+	if err := render.Format(&out, "go-template", "{{ .Analysis.Namespace }}/{{ .Analysis.Name }}", report, nil); err != nil {
 		t.Fatal(err)
 	}
 	if strings.TrimSpace(out.String()) != "default/web" {
@@ -338,7 +339,7 @@ func TestWriteOutputPrometheus(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := writeOutput(&out, "prometheus", "", report, nil); err != nil {
+	if err := render.Format(&out, "prometheus", "", report, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -390,7 +391,7 @@ func TestWriteOutputPrometheusStatusReport(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := writeOutput(&out, "prometheus", "", report, nil); err != nil {
+	if err := render.Format(&out, "prometheus", "", report, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -411,7 +412,7 @@ func TestWriteOutputPrometheusLabelEscaping(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := writeOutput(&out, "prometheus", "", report, nil); err != nil {
+	if err := render.Format(&out, "prometheus", "", report, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -426,7 +427,7 @@ func TestWriteOutputPrometheusLabelEscaping(t *testing.T) {
 
 func TestWriteOutputPrometheusUnknownType(t *testing.T) {
 	var out bytes.Buffer
-	err := writeOutput(&out, "prometheus", "", "not a report", nil)
+	err := render.Format(&out, "prometheus", "", "not a report", nil)
 	if err == nil {
 		t.Fatal("expected error for unsupported type")
 	}
@@ -437,7 +438,7 @@ func TestWriteOutputPrometheusUnknownType(t *testing.T) {
 
 func TestWriteErrorJSON(t *testing.T) {
 	var out bytes.Buffer
-	writeError(&out, "json", fmt.Errorf("HPA not found"))
+	render.Error(&out, "json", fmt.Errorf("HPA not found"))
 	output := strings.TrimSpace(out.String())
 	if !strings.Contains(output, `"error"`) {
 		t.Fatalf("expected JSON error key, got %q", output)
@@ -449,7 +450,7 @@ func TestWriteErrorJSON(t *testing.T) {
 
 func TestWriteErrorYAML(t *testing.T) {
 	var out bytes.Buffer
-	writeError(&out, "yaml", fmt.Errorf("HPA not found"))
+	render.Error(&out, "yaml", fmt.Errorf("HPA not found"))
 	output := strings.TrimSpace(out.String())
 	if !strings.Contains(output, "error:") {
 		t.Fatalf("expected YAML error key, got %q", output)
@@ -461,7 +462,7 @@ func TestWriteErrorYAML(t *testing.T) {
 
 func TestWriteErrorText(t *testing.T) {
 	var out bytes.Buffer
-	writeError(&out, "", fmt.Errorf("HPA not found"))
+	render.Error(&out, "", fmt.Errorf("HPA not found"))
 	output := strings.TrimSpace(out.String())
 	if !strings.Contains(output, "Error: HPA not found") {
 		t.Fatalf("expected plain text error, got %q", output)

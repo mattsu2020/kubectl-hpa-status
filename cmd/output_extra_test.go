@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
 
@@ -333,10 +335,11 @@ func TestOutputSelection_TemplatePrefix(t *testing.T) {
 
 func TestWriteOutput_Table(t *testing.T) {
 	var out bytes.Buffer
-	err := writeOutput(&out, "table", "", "test", func() error {
-		_, err := out.WriteString("table output")
+	err := render.Format(&out, "table", "", "test", func(out io.Writer) error {
+		_, err := io.WriteString(out, "table output")
 		return err
 	})
+
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -347,10 +350,11 @@ func TestWriteOutput_Table(t *testing.T) {
 
 func TestWriteOutput_Wide(t *testing.T) {
 	var out bytes.Buffer
-	err := writeOutput(&out, "wide", "", nil, func() error {
-		_, err := out.WriteString("wide output")
+	err := render.Format(&out, "wide", "", nil, func(out io.Writer) error {
+		_, err := io.WriteString(out, "wide output")
 		return err
 	})
+
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -358,9 +362,10 @@ func TestWriteOutput_Wide(t *testing.T) {
 
 func TestWriteOutput_JA(t *testing.T) {
 	var out bytes.Buffer
-	err := writeOutput(&out, "ja", "", nil, func() error {
+	err := render.Format(&out, "ja", "", nil, func(_ io.Writer) error {
 		return nil
 	})
+
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -371,7 +376,7 @@ func TestWriteOutput_JSON(t *testing.T) {
 		Analysis: hpaanalysis.Analysis{Name: "web"},
 	}
 	var out bytes.Buffer
-	err := writeOutput(&out, "json", "", report, nil)
+	err := render.Format(&out, "json", "", report, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -385,7 +390,7 @@ func TestWriteOutput_YAML(t *testing.T) {
 		Analysis: hpaanalysis.Analysis{Name: "web"},
 	}
 	var out bytes.Buffer
-	err := writeOutput(&out, "yaml", "", report, nil)
+	err := render.Format(&out, "yaml", "", report, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -399,7 +404,7 @@ func TestWriteOutput_JsonpathPrefix(t *testing.T) {
 		Analysis: hpaanalysis.Analysis{Name: "web", Summary: "OK"},
 	}
 	var out bytes.Buffer
-	err := writeOutput(&out, "jsonpath={.analysis.name}", "", report, nil)
+	err := render.Format(&out, "jsonpath={.analysis.name}", "", report, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -413,7 +418,7 @@ func TestWriteOutput_TemplatePrefix(t *testing.T) {
 		Analysis: hpaanalysis.Analysis{Name: "web"},
 	}
 	var out bytes.Buffer
-	err := writeOutput(&out, "template={{ .Analysis.Name }}", "", report, nil)
+	err := render.Format(&out, "template={{ .Analysis.Name }}", "", report, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -424,7 +429,7 @@ func TestWriteOutput_TemplatePrefix(t *testing.T) {
 
 func TestWriteOutput_Unsupported(t *testing.T) {
 	var out bytes.Buffer
-	err := writeOutput(&out, "xml", "", nil, nil)
+	err := render.Format(&out, "xml", "", nil, nil)
 	if err == nil {
 		t.Fatal("expected error for unsupported format")
 	}
@@ -438,7 +443,7 @@ func TestWriteOutput_GoTemplateEquals(t *testing.T) {
 		Analysis: hpaanalysis.Analysis{Name: "web"},
 	}
 	var out bytes.Buffer
-	err := writeOutput(&out, "go-template={{ .Analysis.Name }}", "", report, nil)
+	err := render.Format(&out, "go-template={{ .Analysis.Name }}", "", report, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -82,14 +82,8 @@ func rootRunE(opts *options) func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 {
 			return cmd.Help()
 		}
-		includeInterpretation := (opts.Interpret || opts.Explain || opts.Suggest) && !opts.NoInterpret
-		if opts.Watch.Watch {
-			if len(args) != 1 {
-				return fmt.Errorf("--watch supports exactly one HPA name")
-			}
-			return runWatch(cmd.Context(), cmd.OutOrStdout(), opts, args[0], includeInterpretation)
-		}
-		return runStatusMany(cmd.Context(), cmd.OutOrStdout(), opts, args, includeInterpretation)
+		request := snapshotStatusRequest(opts, args)
+		return executeStatusRequest(cmd.Context(), cmd.OutOrStdout(), request)
 	}
 }
 

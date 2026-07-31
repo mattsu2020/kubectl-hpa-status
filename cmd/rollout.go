@@ -5,14 +5,16 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
-	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 	"github.com/spf13/cobra"
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
+	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
 type rolloutOutput struct {
@@ -61,7 +63,7 @@ func runRollout(ctx context.Context, out io.Writer, opts *options, names []strin
 
 	format, templateStr := selectOutputFromOptions(&local)
 
-	return writeOutput(out, format, templateStr, value, func() error {
+	return render.Format(out, format, templateStr, value, func(out io.Writer) error {
 		theme := style.NewTheme(shouldColorize(local.Color, out))
 		for i, o := range outputs {
 			if i > 0 {
@@ -75,6 +77,7 @@ func runRollout(ctx context.Context, out io.Writer, opts *options, names []strin
 		}
 		return nil
 	})
+
 }
 
 // buildRolloutReport assembles RolloutInput and runs the rollout analysis.

@@ -1,12 +1,14 @@
 package vpa
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/yaml"
 )
 
 func hpaWithResourceMetric(resource corev1.ResourceName) *autoscalingv2.HorizontalPodAutoscaler {
@@ -48,6 +50,185 @@ func TestControlledResourcesMustOverlapHPA(t *testing.T) {
 	info.ControlledResources = nil
 	if lines := Analyze(hpa, info); len(lines) == 0 {
 		t.Fatal("omitted controlledResources should use the VPA cpu/memory defaults")
+	}
+}
+
+func TestContainerPoliciesResolveExactWildcardAndDefaults(t *testing.T) {
+	hpa := hpaWithContainerResourceMetric(corev1.ResourceCPU)
+	tests := []struct {
+		name     string
+		policies []ContainerPolicy
+		conflict bool
+	}{
+		{
+			name: "exact Off overrides wildcard",
+			policies: []ContainerPolicy{
+				{ContainerName: "*"},
+				{ContainerName: "app", Mode: "Off"},
+			},
+		},
+		{
+			name: "other container does not overlap when wildcard is Off",
+			policies: []ContainerPolicy{
+				{ContainerName: "*", Mode: "Off"},
+				{ContainerName: "sidecar", ControlledResources: []string{"cpu"}, ControlledResourcesSpecified: true},
+			},
+		},
+		{
+			name:     "omitted resources default to cpu and memory",
+			policies: []ContainerPolicy{{ContainerName: "app"}},
+			conflict: true,
+		},
+		{
+			name: "exact cpu overlaps",
+			policies: []ContainerPolicy{{
+				ContainerName: "app", ControlledResources: []string{"cpu"}, ControlledResourcesSpecified: true,
+			}},
+			conflict: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			info := &Info{
+				Name: "vpa", TargetKind: "Deployment", TargetName: "web", UpdateMode: "Recreate",
+				ContainerPolicies: tt.policies,
+			}
+			got := Analyze(hpa, info)
+			if (len(got) > 0) != tt.conflict {
+				t.Fatalf("Analyze() conflict=%v, want %v: %v", len(got) > 0, tt.conflict, got)
+			}
+			conflictInfo := NewConflictInfoForHPA(hpa, info)
+			if (len(conflictInfo.ControlledResources) > 0) != tt.conflict {
+				t.Fatalf("NewConflictInfoForHPA resources=%v, want conflict=%v", conflictInfo.ControlledResources, tt.conflict)
+			}
+		})
+	}
+}
+
+func TestNewConflictInfoForHPAKeepsResolvedNoOverlapEmpty(t *testing.T) {
+	hpa := hpaWithContainerResourceMetric(corev1.ResourceCPU)
+	info := &Info{
+		Name: "vpa", TargetKind: "Deployment", TargetName: "web", UpdateMode: "Recreate",
+		ContainerPolicies: []ContainerPolicy{{
+			ContainerName: "app", ControlledResources: []string{"memory"},
+			ControlledResourcesSpecified: true,
+		}},
+	}
+
+	conflict := NewConflictInfoForHPA(hpa, info)
+	if conflict == nil || len(conflict.ControlledResources) != 0 {
+		t.Fatalf("expected resolved empty overlap, got %+v", conflict)
+	}
+	if conflict.Warning != "" {
+		t.Fatalf("resolved no-overlap result must not claim a conflict: %q", conflict.Warning)
+	}
+	advisory := AnalyzeAdvisory(hpa, conflict)
+	if advisory.Level != ConflictNone || len(advisory.ConflictResources) != 0 {
+		t.Fatalf("resolved empty overlap must not regain cpu+memory defaults: %+v", advisory)
+	}
+
+	encoded, err := json.Marshal(conflict)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var restored ConflictInfo
+	if err := json.Unmarshal(encoded, &restored); err != nil {
+		t.Fatal(err)
+	}
+	advisory = AnalyzeAdvisory(hpa, &restored)
+	if advisory.Level != ConflictNone || len(advisory.ConflictResources) != 0 {
+		t.Fatalf("serialized resolved empty overlap regained defaults: JSON=%s advisory=%+v", encoded, advisory)
+	}
+}
+
+func TestNewConflictInfoForHPATargetMismatchDoesNotConflict(t *testing.T) {
+	hpa := hpaWithResourceMetric(corev1.ResourceCPU)
+	hpa.Spec.ScaleTargetRef.APIVersion = "apps/v1"
+	info := &Info{
+		Name: "vpa", TargetAPIVersion: "example.io/v1", TargetKind: "Deployment",
+		TargetName: "web", UpdateMode: "Recreate",
+	}
+
+	conflict := NewConflictInfoForHPA(hpa, info)
+	if conflict.Warning != "" {
+		t.Fatalf("target mismatch must not claim overlapping metrics: %q", conflict.Warning)
+	}
+	advisory := AnalyzeAdvisory(hpa, conflict)
+	if advisory.Level != ConflictNone {
+		t.Fatalf("different target apiVersion must not conflict: %+v", advisory)
+	}
+}
+
+func TestCompatibilityConflictInfoRetainsContainerPolicySemantics(t *testing.T) {
+	hpa := hpaWithContainerResourceMetric(corev1.ResourceCPU)
+	info := &Info{
+		Name: "vpa", TargetKind: "Deployment", TargetName: "web", UpdateMode: "Recreate",
+		ContainerPolicies: []ContainerPolicy{
+			{ContainerName: "*"},
+			{ContainerName: "app", Mode: "Off"},
+		},
+	}
+
+	conflict := NewConflictInfo(info)
+	// Mutating the source after conversion must not change the advisory.
+	info.ContainerPolicies[1].Mode = ""
+	advisory := AnalyzeAdvisory(hpa, conflict)
+	if advisory.Level != ConflictNone || len(advisory.ConflictResources) != 0 {
+		t.Fatalf("exact Off policy must override wildcard through compatibility conversion: %+v", advisory)
+	}
+}
+
+func TestContainerPolicyControlledResourcesSpecifiedRoundTrip(t *testing.T) {
+	t.Parallel()
+	original := Info{
+		Name: "vpa", TargetKind: "Deployment", TargetName: "web", UpdateMode: "Auto",
+		ContainerPolicies: []ContainerPolicy{{
+			ContainerName:                "app",
+			ControlledResources:          []string{},
+			ControlledResourcesSpecified: true,
+		}},
+	}
+	tests := []struct {
+		name      string
+		marshal   func(any) ([]byte, error)
+		unmarshal func([]byte, any) error
+	}{
+		{name: "JSON", marshal: json.Marshal, unmarshal: json.Unmarshal},
+		{
+			name:    "YAML",
+			marshal: yaml.Marshal,
+			unmarshal: func(data []byte, target any) error {
+				return yaml.Unmarshal(data, target)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			encoded, err := tt.marshal(original)
+			if err != nil {
+				t.Fatalf("marshal: %v", err)
+			}
+			if !strings.Contains(string(encoded), "controlledResourcesSpecified") {
+				t.Fatalf("wire sentinel missing from %s: %s", tt.name, encoded)
+			}
+
+			var restored Info
+			if err := tt.unmarshal(encoded, &restored); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			if len(restored.ContainerPolicies) != 1 ||
+				!restored.ContainerPolicies[0].ControlledResourcesSpecified ||
+				len(restored.ContainerPolicies[0].ControlledResources) != 0 {
+				t.Fatalf("explicit empty policy was not preserved: %#v", restored.ContainerPolicies)
+			}
+
+			conflict := NewConflictInfoForHPA(hpaWithContainerResourceMetric(corev1.ResourceCPU), &restored)
+			if len(conflict.ControlledResources) != 0 || conflict.Warning != "" {
+				t.Fatalf("explicit empty policy regained default resources: %+v", conflict)
+			}
+		})
 	}
 }
 
@@ -150,6 +331,39 @@ func TestAnalyze_Branches(t *testing.T) {
 			t.Fatalf("expected conflict lines for container resource metric")
 		}
 	})
+	t.Run("ContainerResource recommendation only describes the target container", func(t *testing.T) {
+		hpa := hpaWithContainerResourceMetric(corev1.ResourceCPU)
+		v := &Info{
+			Name: "v1", UpdateMode: "Auto", TargetKind: "Deployment", TargetName: "web",
+			Recommendations: []RecommendationInfo{
+				{Container: "app", Resource: "cpu", Target: "500m"},
+				{Container: "sidecar", Resource: "cpu", Target: "100m"},
+			},
+		}
+		joined := strings.Join(Analyze(hpa, v), "\n")
+		if !strings.Contains(joined, "container \"app\"") {
+			t.Fatalf("target-container recommendation missing:\n%s", joined)
+		}
+		if strings.Contains(joined, "container \"sidecar\"") {
+			t.Fatalf("different-container recommendation must be excluded:\n%s", joined)
+		}
+	})
+	t.Run("aggregate Resource recommendation may describe every controlled container", func(t *testing.T) {
+		hpa := hpaWithResourceMetric(corev1.ResourceCPU)
+		v := &Info{
+			Name: "v1", UpdateMode: "Auto", TargetKind: "Deployment", TargetName: "web",
+			Recommendations: []RecommendationInfo{
+				{Container: "app", Resource: "cpu", Target: "500m"},
+				{Container: "sidecar", Resource: "cpu", Target: "100m"},
+			},
+		}
+		joined := strings.Join(Analyze(hpa, v), "\n")
+		for _, container := range []string{"app", "sidecar"} {
+			if !strings.Contains(joined, "container \""+container+"\"") {
+				t.Fatalf("aggregate recommendation for %q missing:\n%s", container, joined)
+			}
+		}
+	})
 	t.Run("Auto with empty recommendation Target renders unknown", func(t *testing.T) {
 		hpa := hpaWithResourceMetric(corev1.ResourceCPU)
 		v := &Info{
@@ -199,6 +413,9 @@ func TestNewConflictInfo(t *testing.T) {
 		if got.Warning == "" || !strings.Contains(got.Warning, "VPA v1") {
 			t.Fatalf("Warning not formatted: %q", got.Warning)
 		}
+		if strings.Contains(strings.ToLower(got.Warning), "overlapping") {
+			t.Fatalf("HPA-unspecified compatibility warning must remain neutral: %q", got.Warning)
+		}
 	})
 }
 
@@ -227,12 +444,12 @@ func TestAnalyzeAdvisory_AllLevels(t *testing.T) {
 		}
 	})
 
-	t.Run("Recommender mode -> NONE", func(t *testing.T) {
+	t.Run("unknown active mode fails closed", func(t *testing.T) {
 		hpa := hpaWithResourceMetric(corev1.ResourceCPU)
 		v := &ConflictInfo{VPAName: "v1", UpdateMode: "Recommender", ControlledResources: []string{"cpu"}}
 		got := AnalyzeAdvisory(hpa, v)
-		if got.Level != ConflictNone {
-			t.Fatalf("Level = %s, want NONE", got.Level)
+		if got.Level != ConflictError || got.SafeCoexistence {
+			t.Fatalf("unknown mode must not be treated as recommendation-only: %+v", got)
 		}
 	})
 

@@ -8,6 +8,7 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestAnalyzeMetricHints(t *testing.T) {
@@ -141,6 +142,118 @@ func TestAnalyzeMetricHints(t *testing.T) {
 				tt.assertHint(t, got.Hints)
 			}
 		})
+	}
+}
+
+func TestAnalyzeMetricHintsCorrelatesFreshnessByCanonicalSelectorIdentity(t *testing.T) {
+	t.Parallel()
+
+	target := resource.MustParse("100")
+	externalSpec := func(queue string) autoscalingv2.MetricSpec {
+		return autoscalingv2.MetricSpec{
+			Type: autoscalingv2.ExternalMetricSourceType,
+			External: &autoscalingv2.ExternalMetricSource{
+				Metric: autoscalingv2.MetricIdentifier{
+					Name: "queue_depth",
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{"queue": queue},
+					},
+				},
+				Target: autoscalingv2.MetricTarget{
+					Type:  autoscalingv2.ValueMetricType,
+					Value: &target,
+				},
+			},
+		}
+	}
+	hpa := buildExternalMetricHPA("unused")
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{
+		externalSpec("critical"),
+		externalSpec("bulk"),
+	}
+
+	freshness := AnalyzeMetricFreshness(hpa, nil)
+	if len(freshness) != 2 {
+		t.Fatalf("AnalyzeMetricFreshness() returned %d entries, want 2", len(freshness))
+	}
+	freshness[0].Status = string(FreshnessStale)
+	freshness[1].Status = string(FreshnessOK)
+
+	report := AnalyzeMetricHints(hpa, nil, freshness, nil)
+	staleHints := 0
+	for _, hint := range report.Hints {
+		if hint.Pattern == "external-metric-stale" {
+			staleHints++
+		}
+	}
+	if staleHints != 1 {
+		t.Fatalf("selector-specific stale hints = %d, want 1: %+v", staleHints, report.Hints)
+	}
+}
+
+func TestAnalyzeMetricHintsCorrelatesContractByCanonicalSelectorIdentity(t *testing.T) {
+	t.Parallel()
+
+	target := resource.MustParse("100")
+	externalSpec := func(queue string) autoscalingv2.MetricSpec {
+		return autoscalingv2.MetricSpec{
+			Type: autoscalingv2.ExternalMetricSourceType,
+			External: &autoscalingv2.ExternalMetricSource{
+				Metric: autoscalingv2.MetricIdentifier{
+					Name: "queue_depth",
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{"queue": queue},
+					},
+				},
+				Target: autoscalingv2.MetricTarget{
+					Type:  autoscalingv2.ValueMetricType,
+					Value: &target,
+				},
+			},
+		}
+	}
+	critical := externalSpec("critical")
+	bulk := externalSpec("bulk")
+	hpa := buildExternalMetricHPA("unused")
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{critical, bulk}
+
+	criticalID, err := MetricIDFromSpec(critical)
+	if err != nil {
+		t.Fatalf("MetricIDFromSpec(critical): %v", err)
+	}
+	bulkID, err := MetricIDFromSpec(bulk)
+	if err != nil {
+		t.Fatalf("MetricIDFromSpec(bulk): %v", err)
+	}
+	contract := AnalyzeMetricContract(MetricContractInput{
+		Metrics: []MetricContractMetric{
+			WithMetricContractIdentity(MetricContractMetric{
+				Type:           string(autoscalingv2.ExternalMetricSourceType),
+				Name:           "queue_depth",
+				APIGroup:       "external.metrics.k8s.io/v1beta1",
+				HasCurrentData: false,
+			}, criticalID),
+			WithMetricContractIdentity(MetricContractMetric{
+				Type:           string(autoscalingv2.ExternalMetricSourceType),
+				Name:           "queue_depth",
+				APIGroup:       "external.metrics.k8s.io/v1beta1",
+				HasCurrentData: true,
+			}, bulkID),
+		},
+		APIServices: map[string]APIServiceStatus{
+			"external.metrics.k8s.io/v1beta1": {Available: true},
+		},
+	})
+
+	report := AnalyzeMetricHints(hpa, nil, nil, contract)
+	missingHints := 0
+	for _, hint := range report.Hints {
+		if hint.Pattern == "missing-metric-in-status" {
+			missingHints++
+		}
+	}
+	if missingHints != 1 {
+		t.Fatalf("selector-specific missing hints = %d, want 1: %+v", missingHints, report.Hints)
 	}
 }
 

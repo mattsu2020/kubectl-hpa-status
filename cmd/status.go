@@ -6,14 +6,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
-	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+
+	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/observation"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
+	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
 func newStatusCommand(opts *options) *cobra.Command {
@@ -23,14 +27,8 @@ func newStatusCommand(opts *options) *cobra.Command {
 		Args:              cobra.MinimumNArgs(1),
 		ValidArgsFunction: hpaNameCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			includeInterpretation := (opts.Interpret || opts.Explain || opts.Suggest) && !opts.NoInterpret
-			if opts.Watch.Watch {
-				if len(args) != 1 {
-					return fmt.Errorf("--watch supports exactly one HPA name")
-				}
-				return runWatch(cmd.Context(), cmd.OutOrStdout(), opts, args[0], includeInterpretation)
-			}
-			return runStatusMany(cmd.Context(), cmd.OutOrStdout(), opts, args, includeInterpretation)
+			request := snapshotStatusRequest(opts, args)
+			return executeStatusRequest(cmd.Context(), cmd.OutOrStdout(), request)
 		},
 	}
 
@@ -44,6 +42,18 @@ func newStatusCommand(opts *options) *cobra.Command {
 	}
 
 	return cmd
+}
+
+func executeStatusRequest(ctx context.Context, out io.Writer, request statusRequest) error {
+	names := request.Names()
+	executionOptions := request.Options()
+	if request.WatchEnabled() {
+		if len(names) != 1 {
+			return fmt.Errorf("--watch supports exactly one HPA name")
+		}
+		return runWatch(ctx, out, &executionOptions, names[0], request.IncludeInterpretation())
+	}
+	return runStatusMany(ctx, out, &executionOptions, names, request.IncludeInterpretation())
 }
 
 func runStatus(ctx context.Context, out io.Writer, opts *options, name string, includeInterpretation bool) error {
@@ -74,9 +84,18 @@ func runStatusSingle(ctx context.Context, out io.Writer, opts *options, name str
 	if !opts.NoEnrich {
 		ec = newEnrichmentContext(ctx, opts)
 	}
-	report, err := buildStatusReportWithClient(ctx, opts, name, includeInterpretation, ec)
+	client, err := newClientOrDefault(opts)
 	if err != nil {
-		writeErrorIfStructured(out, opts.Output, err)
+		if outputErr := writeStatusError(out, opts, unresolvedStatusNamespace(opts), name, err); outputErr != nil {
+			return outputErr
+		}
+		return err
+	}
+	report, err := buildStatusReport(ctx, opts, client, name, includeInterpretation, ec)
+	if err != nil {
+		if outputErr := writeStatusError(out, opts, client.Namespace, name, err); outputErr != nil {
+			return outputErr
+		}
 		return err
 	}
 	if opts.Format == "structured" {
@@ -84,7 +103,7 @@ func runStatusSingle(ctx context.Context, out io.Writer, opts *options, name str
 			report.Analysis.StructuredDecisionTrace = hpaanalysis.ExportStructuredDecisionTrace(nil, report.Analysis)
 		}
 		return joinOutputAndExit(
-			writeOutput(out, "json", "", report.Analysis.StructuredDecisionTrace, nil),
+			render.Format(out, "json", "", report.Analysis.StructuredDecisionTrace, nil),
 			warningExitCode(report.Analysis.Health, report.Analysis.Name, report.Analysis.Namespace, watchMode),
 		)
 	}
@@ -109,12 +128,38 @@ func runStatusSingle(ctx context.Context, out io.Writer, opts *options, name str
 	}
 
 	format, templateStr := selectOutputFromOptions(opts)
-	if err := writeOutput(out, format, templateStr, report, func() error {
+	if err := render.Format(out, format, templateStr, statusOutputValue(opts, report), func(out io.Writer) error {
 		return hpaanalysis.WriteStatusTextWithOptions(out, report, statusTextOptions(opts, out))
 	}); err != nil {
 		return err
 	}
 	return warningExitCode(report.Analysis.Health, report.Analysis.Name, report.Analysis.Namespace, watchMode)
+}
+
+func unresolvedStatusNamespace(opts *options) string {
+	if opts != nil && strings.TrimSpace(opts.Namespace) != "" {
+		return opts.Namespace
+	}
+	return "<unknown>"
+}
+
+func writeStatusError(out io.Writer, opts *options, namespace, name string, reportErr error) error {
+	if opts == nil {
+		return nil
+	}
+	if opts.OutputSchema != "v2" {
+		writeErrorIfStructured(out, opts.Output, reportErr)
+		return nil
+	}
+	format, templateStr := selectOutputFromOptions(opts)
+	record := hpaanalysis.StatusRecordV2{
+		APIVersion: hpaanalysis.SchemaVersionV2,
+		Namespace:  namespace,
+		Name:       name,
+		Status:     hpaanalysis.StatusRecordErrorV2,
+		Error:      reportErr.Error(),
+	}
+	return render.Format(out, format, templateStr, record, nil)
 }
 
 // runStatusMultiple handles the multi-HPA status path. Unlike the single-HPA
@@ -158,7 +203,7 @@ func runStatusMultiple(ctx context.Context, out io.Writer, opts *options, names 
 			}
 			traces = append(traces, tr)
 		}
-		if err := writeOutput(out, "json", "", traces, nil); err != nil {
+		if err := render.Format(out, "json", "", traces, nil); err != nil {
 			return err
 		}
 		return aggregateBatchExitCode(results, watchMode)
@@ -172,7 +217,7 @@ func runStatusMultiple(ctx context.Context, out io.Writer, opts *options, names 
 
 	format, templateStr := selectOutputFromOptions(opts)
 	reports := successReports(results)
-	if err := writeOutput(out, format, templateStr, batchValue(opts, results, reports), func() error {
+	if err := render.Format(out, format, templateStr, batchValue(opts, results, reports), func(out io.Writer) error {
 		return writeReportsStatusText(out, opts, results)
 	}); err != nil {
 		return err
@@ -196,6 +241,8 @@ func batchOutputCarriesErrors(opts *options) bool {
 	switch opts.Output {
 	case "json", "yaml":
 		return true // StatusBatch envelope carries per-item errors.
+	case "jsonl":
+		return opts.OutputSchema == "v2" // v2 records carry partial errors; v1 keeps the historical success-report array.
 	case "", "table", "wide", "ja":
 		return true // text path renders an "Error:" row per failed item.
 	default:
@@ -206,16 +253,39 @@ func batchOutputCarriesErrors(opts *options) bool {
 }
 
 // batchValue picks the value passed to render.Format for the multi-HPA path.
-// json/yaml carry the StatusBatch envelope so failed items are visible; all
-// other formats render only the successful []StatusReport slice (their
-// renderers have no per-item error slot).
+// json/yaml carry the StatusBatch envelope so failed items are visible. v2
+// JSONL emits canonical StatusRecordV2 values one per line; v1 JSONL keeps
+// its historical one-line successful-report array. Other formats render only
+// successful reports.
 func batchValue(opts *options, results []reportResult, reports []hpaanalysis.StatusReport) any {
 	switch opts.Output {
 	case "json", "yaml":
-		return buildStatusBatch(results)
+		batch := buildStatusBatch(results)
+		if opts.OutputSchema == "v2" {
+			return hpaanalysis.ProjectStatusBatchV2(batch)
+		}
+		return batch
+	case "jsonl":
+		if opts.OutputSchema == "v2" {
+			return hpaanalysis.ProjectStatusRecordsV2(buildStatusBatch(results))
+		}
+		return reports
 	default:
+		if opts.OutputSchema == "v2" {
+			return hpaanalysis.ProjectStatusReportsV2(reports)
+		}
 		return reports
 	}
+}
+
+func statusOutputValue(opts *options, report hpaanalysis.StatusReport) any {
+	if opts != nil && opts.OutputSchema == "v2" {
+		if opts.Output == "jsonl" {
+			return hpaanalysis.ProjectStatusRecordV2(report)
+		}
+		return hpaanalysis.ProjectStatusReportV2(report)
+	}
+	return report
 }
 
 // buildStatusBatch assembles the StatusBatch envelope from per-item results,
@@ -524,7 +594,11 @@ func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, 
 	// only the HPA object. This is the RBAC-light path: no Pod, Deployment,
 	// ReplicaSet, Event, KEDA, or VPA reads, making status usable in audited
 	// or restricted-permission environments where those reads are denied.
-	pipeline := &PipelineContext{Client: client, EC: ec}
+	pipeline := &PipelineContext{
+		Client:       client,
+		EC:           ec,
+		Observations: observation.New(client.Interface, hpa),
+	}
 	if !opts.NoEnrich {
 		if err := runEnrichers(ctx, buildStatusEnrichers(opts), pipeline, hpa, &report); err != nil {
 			return hpaanalysis.StatusReport{}, err

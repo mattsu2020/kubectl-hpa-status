@@ -104,7 +104,7 @@ func specMetricIdentity(spec autoscalingv2.MetricSpec) (string, string) {
 // in the current metrics status.
 func findMatchingCurrentMetric(spec autoscalingv2.MetricSpec, currentMetrics []autoscalingv2.MetricStatus) bool {
 	for _, current := range currentMetrics {
-		if spec.Type == current.Type && handlerFor(spec.Type).MatchesCurrent(spec, current) {
+		if metricIdentityMatches(spec, current) {
 			return true
 		}
 	}
@@ -156,7 +156,7 @@ func currentMetricValueStatus(metric autoscalingv2.MetricStatus) (autoscalingv2.
 func matchingMetricTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, current autoscalingv2.MetricStatus) (*autoscalingv2.MetricTarget, bool) {
 	for i := range hpa.Spec.Metrics {
 		spec := &hpa.Spec.Metrics[i]
-		if spec.Type == current.Type && handlerFor(spec.Type).MatchesCurrent(*spec, current) {
+		if metricIdentityMatches(*spec, current) {
 			if target := metricTargetPointer(spec); target != nil {
 				return target, true
 			}
@@ -184,7 +184,9 @@ func specMetricSelector(spec autoscalingv2.MetricSpec) string {
 // Both nil selectors are considered equal. Non-nil selectors are compared
 // by formatting them into stable string representations.
 func selectorsEqual(a, b *metav1.LabelSelector) bool {
-	return FormatMetricSelector(a) == FormatMetricSelector(b)
+	left, leftErr := canonicalMetricSelector(a)
+	right, rightErr := canonicalMetricSelector(b)
+	return leftErr == nil && rightErr == nil && left == right
 }
 
 // appendRatioAndNote appends the standard " ratio=%.3f" and " note=%q" suffixes
@@ -312,7 +314,13 @@ func FindPodsTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, name string, sel
 // FindObjectTargetSpec finds the MetricTarget for an Object metric by name, selector, and described object.
 func FindObjectTargetSpec(hpa *autoscalingv2.HorizontalPodAutoscaler, name string, selector *metav1.LabelSelector, describedObject autoscalingv2.CrossVersionObjectReference) autoscalingv2.MetricTarget {
 	for _, m := range hpa.Spec.Metrics {
-		if m.Type == autoscalingv2.ObjectMetricSourceType && m.Object != nil && m.Object.Metric.Name == name && selectorsEqual(m.Object.Metric.Selector, selector) && m.Object.DescribedObject.Kind == describedObject.Kind && m.Object.DescribedObject.Name == describedObject.Name {
+		if m.Type == autoscalingv2.ObjectMetricSourceType &&
+			m.Object != nil &&
+			m.Object.Metric.Name == name &&
+			selectorsEqual(m.Object.Metric.Selector, selector) &&
+			m.Object.DescribedObject.APIVersion == describedObject.APIVersion &&
+			m.Object.DescribedObject.Kind == describedObject.Kind &&
+			m.Object.DescribedObject.Name == describedObject.Name {
 			return m.Object.Target
 		}
 	}
@@ -370,6 +378,7 @@ func currentObjectMetric(hpa *autoscalingv2.HorizontalPodAutoscaler, name string
 			metric.Object != nil &&
 			metric.Object.Metric.Name == name &&
 			selectorsEqual(metric.Object.Metric.Selector, selector) &&
+			metric.Object.DescribedObject.APIVersion == describedObject.APIVersion &&
 			metric.Object.DescribedObject.Kind == describedObject.Kind &&
 			metric.Object.DescribedObject.Name == describedObject.Name {
 			return metric, true

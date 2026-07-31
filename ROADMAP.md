@@ -7,15 +7,23 @@ This roadmap tracks planned work that is visible to users and contributors. It i
 - **E2E scenario coverage:** Expand kind E2E coverage for multi-metric HPAs, KEDA-style external metrics, VPA conflict detection, and stabilization boundary cases. Behavior-policy visualization is covered by `TestE2E_BehaviorPolicies`.
 - **README sync quality gate:** Keep `README.md` and `README.ja.md` structurally aligned through `make docs-check` and CI.
 
-## Done in 2.0
+## Done in Unreleased 2.x
 
 - **Removed deprecated `analyze` command:** The `analyze` (alias `diagnose`) subcommand was removed. Use `status NAME --explain`.
 - **Removed deprecated flag aliases:** `--recommend` (use `--suggest`), `--export-patch` (use `--export`), and the list flag `--max-score` (use `--health-score`) were removed.
 - **Removed deprecated top-level `alpha` aliases:** Operational and experimental commands (`policy`, `gitops`, `bundle`, `incident-bundle`, `support-bundle`, `capacity`, `capacity-gap`, `autoscaler-map`, `analyze-record`, `flap`) now live exclusively under the `alpha` parent; the historical top-level paths were removed. Use `alpha <cmd>`.
-- **`Analysis` additive grouping:** Added full read-only group-view methods for all 13 ROADMAP groups (`Meta`, `Replicas`, `Decision`, `MetricsGroup`, `ConditionsGroup`, `Capacity`, `ScaleToZeroGroup`, `Stability`, `Advisory`, `Controllers`, `Blockers`, `ActionsGroup`, `Lifecycle`) as step 1 of the v2 grouping. Also added `Analysis.HealthState()` for typed access while keeping `Health` as a JSON string. The flat fields and JSON shape are unchanged; a future major version will retire the flat fields.
+- **Versioned status schema:** Added all 13 read-only `Analysis` group views and the opt-in `--output-schema=v2` projection for status JSON, YAML, JSONL, JSONPath, and Go templates. v1 remains the default compatible flat contract; v2 has its own checked-in JSON schema and preserves multi-HPA item errors.
 - **Actions SSOT:** `RecommendedActions` and `buildStructuredActions` share `collectActionCases` so human and structured action lists cannot diverge on the core analyze path.
 - **`cmd/` sub-package extraction (phase 1):** Lifted shared helpers into `cmd/internal/{errs,client,output}` and extracted the bundle renderer layer into `cmd/bundle`, following the facade-then-migrate pattern. Further groups (`replay`, `alerts`/`completion`/`compat`/`version`) remain in `cmd/`.
 - **Status enricher phases:** `buildStatusEnrichers` is split into named dependency phases (`core` → `metricsPods` → `capacity` → `advisors`) with a pinned name order test.
+- **Shared analysis and observation boundaries:** Added `internal/analysis` for list/TUI finalization and `internal/observation` for request-scoped, memoized scale-target/Pod reads with typed availability states.
+- **Shared history service:** Status and list now use one clock-injected recorder for append, retention pruning, load, and health-trend analysis.
+- **Canonical metric identity:** Spec/status correlation and simulation identify metrics by source, name, container, canonical selector, and described object. Ambiguous name-only overrides fail closed instead of selecting the first metric.
+- **Typed capacity and retrospective decisions:** Capacity rule checks use stable IDs/status enums instead of display-text matching, malformed quantities remain explicitly unknown, and retrospective rescale entries retain parsed replica ranges (including scale-from-zero).
+- **Unified enrichment:** The generic pipeline engine lives in `internal/enrichment`; internal status types alias the canonical public model, and health penalties upsert their signals idempotently.
+- **Immutable command requests:** Status/list/scan snapshot mutable Cobra options into deep-copied request DTOs before execution.
+- **Direct rendering and conversion boundaries:** Command call sites now import `internal/render` and `internal/kubeconv` directly. The obsolete `cmd/converters.go` and render forwarding functions were removed, and text write errors are propagated.
+- **Compatibility-facade gate:** `make facade-check` and CI reject new in-tree uses of deprecated public facades; ARCHITECTURE.md records the v3 removal criteria.
 - **`client.LookupHPA`:** The create-client + fetch-HPA helper lives in `cmd/internal/client` (cmd facade retained).
 - **Error sentinel hygiene:** Added `ErrNoRecordedSnapshots`, `ErrPolicyViolations`, `ErrPolicyGuardBlocked`, and `ErrInvalidCandidateSpec` so exit paths are matchable via `errors.Is`.
 - **Nil-safety:** Guarded `*deploy.Spec.Replicas` / `*sts.Spec.Replicas` dereferences in the GitOps conflict path.
@@ -37,49 +45,17 @@ user-visible behavior change.
 - **Split `cmd/` into sub-packages:** `cmd/` currently holds ~110 files in one
   `package cmd`. Extract self-contained groups (`bundle_*`, `replay`, then
   shallower commands like `alerts`/`completion`/`compat`/`version`) into
-  sub-packages. Prerequisite: lift the ~10 unexported helpers they share
-  (`newClientOrDefault`, `applyCommandPreset`, `fetchSnapshot*`,
-  `capacitySelector`, `redactBytes`, `outputSelection`, `writeOutput`, ...) into
-  a shared `cmd/internal` package first, then migrate callers and shrink the
-  `cmd/converters.go` / `cmd/output.go` facades.
+  sub-packages. Conversion and rendering callers are already on
+  `internal/kubeconv` / `internal/render`, and immutable request DTOs now bound
+  option mutation. The remaining prerequisite is to narrow command-only
+  helpers such as snapshot loading, capacity selectors, output selection, and
+  completion callbacks into explicit package contracts.
 - **Slim the `Analysis` god-struct:** `pkg/hpa.Analysis` has 65 fields
-  accumulated feature-by-feature. Plan a JSON-schema v2 grouping so related
-  fields travel together. This is a breaking JSON change and must ride a major
-  version bump with additive migration.
-
-  **Proposed v2 grouping (work-in-progress, subject to design review):**
-
-  | Group | Fields (current) | Notes |
-  |---|---|---|
-  | `Meta` | `Namespace`, `Name`, `Target`, `CreationTimestamp` | HPA identity; stable, top-level today |
-  | `Replicas` | `Current`, `Desired`, `Min`, `Max`, `TargetReplicas` | Core scaling envelope |
-  | `Decision` | `Health`, `HealthScore`, `HealthResult`, `DecisionTrace`, `MetricDecisionTrace`, `StructuredDecisionTrace`, `DecisionSignals`, `ImpactMetric`, `Summary`, `SummaryKey` | Why this replica count |
-  | `Metrics` | `Metrics`, `MetricsDiagnostics`, `MetricFreshnessEntries`, `MetricContract`, `MetricHints`, `AdapterDiagnostics` | Metric pipeline health |
-  | `Conditions` | `Conditions`, `Behavior`, `StabilizationWindowSeconds`, `StabilizationSource`, `StabilizationConfidence`, `StabilizationRemaining` | HPA controller conditions + behavior |
-  | `Capacity` | `CapacityContext`, `CapacityHeadroom`, `CapacityPlan`, `ResourceCheck`, `PodAnalysis`, `ScalePath`, `ReadinessImpact` | Scheduling/capacity picture |
-  | `ScaleToZero` | `ScaleToZero`, `WarmupAnalysis` | Scale-to-zero subsystem (shared cold-start theme) |
-  | `Stability` | `FlappingSimulation`, `FlappingPrevention`, `FlappingDiagnosis`, `ChurnAnalysis` | Flapping/churn diagnosis |
-  | `Advisory` | `VPAConflict`, `VPAAdvisory`, `ContainerAdvisor`, `BehaviorAdvisor` | VPA/container tuning advice |
-  | `Controllers` | `KEDAInfo`, `RolloutDiagnosis`, `ControllerProfile` | External controller integrations |
-  | `Blockers` | `BlockerReport`, `GitOpsConflict` | Apply-time gating |
-  | `Actions` | `Actions`, `Suggestions`, `StructuredActions`, `StructuredInterpretation`, `Interpretation`, `Assumptions`, `Warnings` | Recommendations + explainability |
-  | `Lifecycle` | `StaleStatus`, `HealthTrend`, `EnrichmentStatus`, `Debug`, `HiddenFactors` | Freshness/trend/telemetry |
-
-  **Migration strategy (additive):**
-  1. ~~Introduce nested structs / group views alongside the flat fields.~~
-     **Done (read-only group views for all 13 groups + `HealthState()`).**
-     Nested *storage* (fields on `Analysis` itself) remains a later step.
-  2. Add accessors that read from nested storage when present, falling back
-     to the flat field — keeps internal callers working during migration.
-     Group-view methods already provide the read path over flat storage.
-  3. Emit JSON with both flat (v1) and nested (v2) keys for one minor release,
-     behind `--output-schema v2`.
-  4. Flip the default and drop the flat keys at a future major bump.
-
-  Step 1 (views) is landed; step 2 can proceed incrementally; step 3+4 are
-  the breaking boundary. The grouping above mirrors the existing
-  `pkg/hpa/{keda,vpa,blocker,warmup,flapping,churn,policy,lint,readiness}`
-  sub-package boundaries so each group maps to one owning sub-package.
+  accumulated feature-by-feature. The additive migration boundary is now
+  complete: v1 keeps the flat storage and default wire shape, while explicit
+  v2 output uses 13 nested group views. Remaining work is a v3 design decision:
+  make grouped values primary in-memory storage, flip the default only with
+  migration notes, then retire the flat v1 fields in that major release.
 - **Re-evaluate testutil SA1019 suppressions:** `internal/testutil` uses
   `fake.NewSimpleClientset` (deprecated, no applyconfig replacement). Re-check
   on each client-go upgrade and remove the `//nolint:staticcheck` once an
@@ -97,22 +73,13 @@ user-visible behavior change.
   `pkg/hpa/capacity/` (with `blocker.nodeCapacityRule` re-homed to capacity),
   keeping deprecated re-export facades in `pkg/hpa` until the facade-removal
   policy below clears them.
-- **Unify the enrichment layer:** `internal/enrichment.Status` is hand-mirrored
-  into `pkg/hpa.EnrichmentStatus`; the enricher pipeline engine
-  (`cmd/enricher.go`) is not cmd-specific. Move the pipeline into
-  `internal/enrichment`, collapse the Status mirror, and split per-source
-  enrichers into `internal/enrichment/{keda,vpa,churn}`.
-- **TUI sub-models per view mode:** `internal/tui.Model` permanently holds six
-  independent state machines and switches over 11 view modes in three files.
-  Extract each view mode into its own `tea.Model` (state + key handlers +
-  render) and let the top-level Model delegate to `currentView`, turning
-  "edit 3 files to add a view" into "add 1 file".
-- **Facade removal policy:** Deprecated re-export facades (`pkg/hpa/keda.go`,
-  `vpa.go`, `churn.go`, `policy.go`, `readiness.go`, `flapping_advisor.go`,
-  `cmd/converters.go`, `cmd/output.go`) have no removal deadline. Add a CI
-  check that fails when an in-tree call site uses a `// Deprecated:` facade,
-  and record a removal condition per facade (e.g. zero external importers for
-  one release) in ARCHITECTURE.md.
+- **TUI sub-models per view mode:** The first delegation boundary is in place:
+  a mode-to-controller registry now owns rendering, view-local cursor movement,
+  and Enter/Escape handling, with exhaustive registration tests and a safe
+  fallback for unknown modes. `internal/tui.Model` still permanently holds six
+  independent state machines. Move those states behind dedicated sub-models
+  and narrow the remaining global key handling so adding a view becomes an
+  isolated change.
 - **Consolidate advisor/doctor command surfaces (user-visible):** `advisor`,
   `recommend`, and `container-advisor` overlap, as do `doctor`,
   `readiness-doctor`, and the `diagnosis-*` family. Plan subcommand grouping

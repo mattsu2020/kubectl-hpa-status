@@ -9,6 +9,7 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestSimulateHPA_NilHPA(t *testing.T) {
@@ -600,6 +601,130 @@ func TestSimulateScenarioToleranceOnlyChangesProjection(t *testing.T) {
 	}
 	if tightResult.After.DesiredReplicas != 11 {
 		t.Fatalf("0.05 tolerance should project 11, got %d", tightResult.After.DesiredReplicas)
+	}
+}
+
+func TestRecomputeSimulatedDesiredRequiresOneToOneCanonicalMetricsForDownscale(t *testing.T) {
+	t.Parallel()
+
+	target := resource.MustParse("100")
+	current := resource.MustParse("50")
+	selector := func(queue string) *metav1.LabelSelector {
+		return &metav1.LabelSelector{MatchLabels: map[string]string{"queue": queue}}
+	}
+	spec := func(queue string) autoscalingv2.MetricSpec {
+		return autoscalingv2.MetricSpec{
+			Type: autoscalingv2.ExternalMetricSourceType,
+			External: &autoscalingv2.ExternalMetricSource{
+				Metric: autoscalingv2.MetricIdentifier{
+					Name:     "queue_depth",
+					Selector: selector(queue),
+				},
+				Target: autoscalingv2.MetricTarget{
+					Type:  autoscalingv2.ValueMetricType,
+					Value: &target,
+				},
+			},
+		}
+	}
+	status := func(queue string) autoscalingv2.MetricStatus {
+		return autoscalingv2.MetricStatus{
+			Type: autoscalingv2.ExternalMetricSourceType,
+			External: &autoscalingv2.ExternalMetricStatus{
+				Metric: autoscalingv2.MetricIdentifier{
+					Name:     "queue_depth",
+					Selector: selector(queue),
+				},
+				Current: autoscalingv2.MetricValueStatus{Value: &current},
+			},
+		}
+	}
+
+	base := buildSimHPA(10, 10, 20)
+	base.Spec.Metrics = []autoscalingv2.MetricSpec{spec("critical"), spec("bulk")}
+	base.Status.CurrentMetrics = []autoscalingv2.MetricStatus{status("critical"), status("bulk")}
+	if !hasOneToOneCanonicalMetricStatus(base) {
+		t.Fatal("selector-distinct complete metric set must be recognized as one-to-one")
+	}
+	recomputeSimulatedDesired(base)
+	if base.Status.DesiredReplicas != 5 {
+		t.Fatalf("complete metric set projected desiredReplicas = %d, want 5", base.Status.DesiredReplicas)
+	}
+
+	duplicate := base.DeepCopy()
+	duplicate.Status.DesiredReplicas = 10
+	duplicate.Status.CurrentMetrics = []autoscalingv2.MetricStatus{status("critical"), status("critical")}
+	if hasOneToOneCanonicalMetricStatus(duplicate) {
+		t.Fatal("duplicate status identity must not satisfy a selector-distinct spec metric")
+	}
+	recomputeSimulatedDesired(duplicate)
+	if duplicate.Status.DesiredReplicas != duplicate.Status.CurrentReplicas {
+		t.Fatalf(
+			"duplicate/missing identity projected downscale to %d, want conservative hold at %d",
+			duplicate.Status.DesiredReplicas,
+			duplicate.Status.CurrentReplicas,
+		)
+	}
+
+	malformed := base.DeepCopy()
+	malformed.Status.CurrentMetrics[1].External.Metric.Selector = &metav1.LabelSelector{
+		MatchExpressions: []metav1.LabelSelectorRequirement{{
+			Key:      "queue",
+			Operator: metav1.LabelSelectorOperator("Bogus"),
+		}},
+	}
+	if hasOneToOneCanonicalMetricStatus(malformed) {
+		t.Fatal("malformed current metric selector must fail the canonical completeness check")
+	}
+	recomputeSimulatedDesired(malformed)
+	if malformed.Status.DesiredReplicas != malformed.Status.CurrentReplicas {
+		t.Fatalf(
+			"malformed identity projected downscale to %d, want conservative hold at %d",
+			malformed.Status.DesiredReplicas,
+			malformed.Status.CurrentReplicas,
+		)
+	}
+
+	wrongShape := base.DeepCopy()
+	wrongShape.Status.DesiredReplicas = 5
+	wrongShape.Status.CurrentMetrics[0].External.Current.Value = nil
+	wrongShape.Status.CurrentMetrics[0].External.Current.AverageValue = &current
+	if hasOneToOneCanonicalMetricStatus(wrongShape) {
+		t.Fatal("status value for a different target type must fail the completeness check")
+	}
+	recomputeSimulatedDesired(wrongShape)
+	if wrongShape.Status.DesiredReplicas != wrongShape.Status.CurrentReplicas {
+		t.Fatalf(
+			"wrong target shape projected downscale to %d, want conservative hold at %d",
+			wrongShape.Status.DesiredReplicas,
+			wrongShape.Status.CurrentReplicas,
+		)
+	}
+}
+
+func TestRecomputeSimulatedDesiredBlocksDownscaleWithoutMetricEvidence(t *testing.T) {
+	hpa := buildSimHPA(10, 5, 20)
+	target := int32(50)
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{{
+		Type: autoscalingv2.ResourceMetricSourceType,
+		Resource: &autoscalingv2.ResourceMetricSource{
+			Name: corev1.ResourceCPU,
+			Target: autoscalingv2.MetricTarget{
+				Type:               autoscalingv2.UtilizationMetricType,
+				AverageUtilization: &target,
+			},
+		},
+	}}
+	hpa.Status.CurrentMetrics = nil
+
+	recomputeSimulatedDesired(hpa)
+
+	if hpa.Status.DesiredReplicas != hpa.Status.CurrentReplicas {
+		t.Fatalf(
+			"missing metric evidence projected downscale to %d, want conservative hold at %d",
+			hpa.Status.DesiredReplicas,
+			hpa.Status.CurrentReplicas,
+		)
 	}
 }
 

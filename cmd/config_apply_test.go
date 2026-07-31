@@ -62,6 +62,20 @@ func TestApplyHealthScoreConfigSkipsExplicitAliasFlag(t *testing.T) {
 	}
 }
 
+func TestApplyPersistentConfigOutputSchemaPrecedence(t *testing.T) {
+	opts := &options{}
+	applyPersistentConfig(opts, configFile{OutputSchema: "v2"}, neverChanged)
+	if opts.OutputSchema != "v2" {
+		t.Fatalf("expected output schema from config, got %q", opts.OutputSchema)
+	}
+
+	opts.OutputSchema = "v1"
+	applyPersistentConfig(opts, configFile{OutputSchema: "v2"}, alwaysChanged)
+	if opts.OutputSchema != "v1" {
+		t.Fatalf("expected explicit flag to win, got %q", opts.OutputSchema)
+	}
+}
+
 func neverChanged(string) bool {
 	return false
 }

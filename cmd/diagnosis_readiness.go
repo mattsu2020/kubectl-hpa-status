@@ -9,17 +9,17 @@ import (
 	hpareadiness "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/readiness"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/observation"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const (
 	defaultCPUInitializationPeriod = 5 * time.Minute
 )
 
-func buildReadinessImpact(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpareadiness.Impact {
+func buildReadinessImpactWithSnapshot(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, snapshot *observation.Snapshot) *hpareadiness.Impact {
 	if client == nil || hpa == nil {
 		return nil
 	}
@@ -32,24 +32,35 @@ func buildReadinessImpact(ctx context.Context, client *kube.Client, hpa *autosca
 			fmt.Sprintf("kubectl top pod -n %s -l <scale-target-selector>", hpa.Namespace),
 		},
 	}
-	info, err := kube.FetchScaleTargetInfo(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef)
-	if err != nil || info == nil || info.SelectorStr == "" {
+	if snapshot == nil {
+		snapshot = observation.New(client.Interface, hpa)
+	}
+	target := snapshot.ScaleTarget(ctx)
+	if target.State == observation.StateUnavailable {
+		impact.Evidence = append(impact.Evidence, fmt.Sprintf("scale target selector could not be resolved: %v", target.Err))
+		return impact
+	}
+	if !target.Known() || target.Data.SelectorStr == "" {
 		impact.Evidence = append(impact.Evidence, "scale target selector could not be resolved")
 		return impact
 	}
+	info := target.Data
 	impact.NextChecks = []string{
 		fmt.Sprintf("kubectl get pod -n %s -l %q", hpa.Namespace, info.SelectorStr),
 		fmt.Sprintf("kubectl top pod -n %s -l %q", hpa.Namespace, info.SelectorStr),
 	}
-	pods, err := client.Interface.CoreV1().Pods(hpa.Namespace).List(ctx, metav1.ListOptions{LabelSelector: info.SelectorStr})
-	if err != nil {
-		impact.Evidence = append(impact.Evidence, fmt.Sprintf("failed to list pods: %v", err))
+	pods := snapshot.Pods(ctx)
+	if pods.State == observation.StateUnavailable {
+		impact.Evidence = append(impact.Evidence, fmt.Sprintf("failed to list pods: %v", pods.Err))
+		return impact
+	}
+	if !pods.Known() {
 		return impact
 	}
 	now := time.Now()
-	impact.TotalPods = int32(len(pods.Items))
-	countNotYetReadyPods(impact, pods.Items, hpa.Namespace, now)
-	countMissingMetricPods(ctx, impact, client, hpa.Namespace, info.SelectorStr, pods.Items)
+	impact.TotalPods = int32(len(pods.Data))
+	countNotYetReadyPods(impact, pods.Data, hpa.Namespace, now)
+	countMissingMetricPods(ctx, impact, client, hpa.Namespace, info.SelectorStr, pods.Data)
 	finalizeReadinessImpact(impact)
 	return impact
 }

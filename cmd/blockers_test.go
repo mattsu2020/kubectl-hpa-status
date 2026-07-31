@@ -73,6 +73,26 @@ func TestRunBlockersBasicOutput(t *testing.T) {
 	if len(output.Report.Blockers) == 0 {
 		t.Error("expected at least one blocker finding")
 	}
+	if output.Report.ReadyReplicasKnown {
+		t.Fatal("missing scale target must not be reported as an observed zero ready replicas")
+	}
+	if len(output.Report.Warnings) == 0 {
+		t.Fatal("expected the unavailable scale-target observation to be surfaced")
+	}
+	for _, finding := range output.Report.Blockers {
+		if finding.ID == "readiness-stalled" {
+			t.Fatalf("unavailable workload observation produced a false readiness blocker: %+v", finding)
+		}
+	}
+	hpaGets := 0
+	for _, action := range fakeClient.Actions() {
+		if action.Matches("get", "horizontalpodautoscalers") {
+			hpaGets++
+		}
+	}
+	if hpaGets != 1 {
+		t.Fatalf("dedicated blockers path fetched the HPA %d times, want 1", hpaGets)
+	}
 }
 
 func TestRunBlockersNoScaleOut(t *testing.T) {

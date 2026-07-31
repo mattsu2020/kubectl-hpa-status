@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/enrichment"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/observation"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
@@ -15,8 +17,9 @@ import (
 // plain parameters to the enrichXxx functions. This keeps the enrichment
 // pipeline independent of the options God Object.
 type PipelineContext struct {
-	Client *kube.Client
-	EC     *enrichmentContext
+	Client       *kube.Client
+	EC           *enrichmentContext
+	Observations *observation.Snapshot
 }
 
 // Enricher is one step of the status-report enrichment pipeline. Enrichers are
@@ -216,7 +219,7 @@ func enricherPhaseMetricsPods(opts *options) []enricherSpec {
 					opts.ReadinessImpact || opts.Deep
 			},
 			run: func(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
-				enrichTargetReplicaObservations(ctx, p.Client, hpa, report)
+				enrichTargetReplicaObservations(ctx, p.Observations, hpa, report)
 				return nil
 			},
 		},
@@ -224,7 +227,7 @@ func enricherPhaseMetricsPods(opts *options) []enricherSpec {
 			name:    "pod-analysis",
 			enabled: func() bool { return opts.ExplainPods },
 			run: func(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
-				enrichPodAnalysis(ctx, p.Client, hpa, report)
+				enrichPodAnalysis(ctx, p.Observations, hpa, report)
 				return nil
 			},
 		},
@@ -256,7 +259,7 @@ func enricherPhaseCapacity(opts *options) []enricherSpec {
 				return opts.CapacityContext || opts.CapacityHeadroom || opts.ReadinessImpact || opts.ScalePath
 			},
 			run: func(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
-				enrichCapacityAnalysis(ctx, p.Client, hpa, report, CapacityAnalysisConfig{
+				enrichCapacityAnalysis(ctx, p.Client, p.Observations, hpa, report, CapacityAnalysisConfig{
 					CapacityContext:  opts.CapacityContext,
 					CapacityHeadroom: opts.CapacityHeadroom,
 					ReadinessImpact:  opts.ReadinessImpact,
@@ -271,7 +274,7 @@ func enricherPhaseCapacity(opts *options) []enricherSpec {
 				return opts.Rollout || opts.RolloutImpact || opts.CapacityDeep || opts.ScaleoutBlockers
 			},
 			run: func(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
-				enrichRolloutAndBlockers(ctx, p.Client, hpa, report, RolloutAndBlockersConfig{
+				enrichRolloutAndBlockers(ctx, p.Client, p.Observations, hpa, report, RolloutAndBlockersConfig{
 					Rollout:          opts.Rollout,
 					RolloutImpact:    opts.RolloutImpact,
 					CapacityDeep:     opts.CapacityDeep,
@@ -294,7 +297,7 @@ func enricherPhaseCapacity(opts *options) []enricherSpec {
 			name:    "capacity-plan",
 			enabled: func() bool { return opts.CapacityPlan },
 			run: func(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
-				enrichCapacityPlan(ctx, p.Client, hpa, report, opts.TargetMax)
+				enrichCapacityPlan(ctx, p.Client, p.Observations, hpa, report, opts.TargetMax)
 				return nil
 			},
 		},
@@ -371,17 +374,20 @@ func enricherPhaseAdvisors(opts *options) []enricherSpec {
 // immediately so the caller can abort (matching the historical behavior for
 // enrichSimulations).
 func runEnrichers(ctx context.Context, enrichers []Enricher, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
+	tasks := make([]enrichment.PipelineTask, 0, len(enrichers))
 	for _, e := range enrichers {
-		if !e.Enabled() {
-			continue
-		}
-		if err := e.Run(ctx, p, hpa, report); err != nil {
-			report.Analysis.Warnings = append(report.Analysis.Warnings,
-				fmt.Sprintf("enrichment %q failed: %v", e.Name(), err))
-			if e.AbortOnError() {
-				return err
-			}
-		}
+		enricher := e
+		tasks = append(tasks, enrichment.PipelineTask{
+			Name:         enricher.Name(),
+			Enabled:      enricher.Enabled(),
+			AbortOnError: enricher.AbortOnError(),
+			Run: func(ctx context.Context) error {
+				return enricher.Run(ctx, p, hpa, report)
+			},
+		})
 	}
-	return nil
+	return enrichment.RunPipeline(ctx, tasks, func(name string, err error) {
+		report.Analysis.Warnings = append(report.Analysis.Warnings,
+			fmt.Sprintf("enrichment %q failed: %v", name, err))
+	})
 }

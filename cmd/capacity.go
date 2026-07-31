@@ -5,6 +5,8 @@ import (
 	"fmt"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/kubeconv"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/observation"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -14,39 +16,47 @@ import (
 // the HPA scale target: pending pods, ResourceQuota limits, PDB interference,
 // and node capacity hints.
 func buildCapacityContext(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpaanalysis.CapacityContext {
+	return buildCapacityContextWithSnapshot(ctx, client, hpa, observation.New(client.Interface, hpa))
+}
+
+func buildCapacityContextWithSnapshot(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, snapshot *observation.Snapshot) *hpaanalysis.CapacityContext {
 	result := &hpaanalysis.CapacityContext{}
 
-	selector, err := capacitySelectorWithError(ctx, client, hpa)
-	if err != nil {
-		result.Warnings = append(result.Warnings, fmt.Sprintf("scale target selector unavailable: %v", err))
+	if snapshot == nil {
+		snapshot = observation.New(client.Interface, hpa)
+	}
+	target := snapshot.ScaleTarget(ctx)
+	if target.State == observation.StateUnavailable {
+		result.Warnings = append(result.Warnings, fmt.Sprintf("scale target selector unavailable: %v", target.Err))
 		return result
 	}
-	if selector == "" {
+	if !target.Known() || target.Data.SelectorStr == "" {
 		return result
 	}
 
-	pendingDetails, pendingErr := kube.FetchPendingPodDetails(ctx, client.Interface, hpa.Namespace, selector)
-	if pendingErr != nil {
-		result.Warnings = append(result.Warnings, fmt.Sprintf("pending pods unavailable: %v", pendingErr))
-	} else {
-		result.PendingPods = convertPendingPodInfos(pendingDetails)
+	pending := snapshot.PendingPods(ctx)
+	switch pending.State {
+	case observation.StateKnown:
+		result.PendingPods = kubeconv.PendingPodInfos(pending.Data)
+	case observation.StateUnavailable:
+		result.Warnings = append(result.Warnings, fmt.Sprintf("pending pods unavailable: %v", pending.Err))
 	}
 
 	quotaInfos, quotaErr := kube.FetchResourceQuotas(ctx, client.Interface, hpa.Namespace)
 	if quotaErr != nil {
 		result.Warnings = append(result.Warnings, fmt.Sprintf("resource quotas unavailable: %v", quotaErr))
 	} else {
-		result.QuotaConstraints = convertQuotas(quotaInfos)
+		result.QuotaConstraints = kubeconv.Quotas(quotaInfos)
 	}
 
 	pdbInfos, pdbErr := kube.FetchPodDisruptionBudgets(ctx, client.Interface, hpa.Namespace, hpa.UID)
 	if pdbErr != nil {
 		result.Warnings = append(result.Warnings, fmt.Sprintf("pod disruption budgets unavailable: %v", pdbErr))
 	} else {
-		result.PDBInterference = convertPDBs(pdbInfos)
+		result.PDBInterference = kubeconv.PDBs(pdbInfos)
 	}
 
-	result.NodeHints = kube.GenerateNodeHints(pendingDetails, quotaInfos)
+	result.NodeHints = kube.GenerateNodeHints(pending.Data, quotaInfos)
 
 	return result
 }

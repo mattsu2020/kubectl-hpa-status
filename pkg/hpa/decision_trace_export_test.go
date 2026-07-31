@@ -2,6 +2,7 @@ package hpa
 
 import (
 	"encoding/json"
+	"math"
 	"testing"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
@@ -56,6 +57,44 @@ func TestResourceAverageValueParticipatesInDecisionTrace(t *testing.T) {
 	}
 	if *result.Metrics[0].Ratio != 1.5 || result.WinnerMetric != "memory" {
 		t.Fatalf("unexpected AverageValue decision trace: %+v", result)
+	}
+}
+
+func TestDecisionTraceSaturatesReplicaProjectionOverflow(t *testing.T) {
+	t.Parallel()
+
+	target := int32(1)
+	current := int32(math.MaxInt32)
+	hpa := testutil.BuildHPA("default", "overflow",
+		testutil.WithReplicas(math.MaxInt32, math.MaxInt32),
+		testutil.WithMinMax(1, math.MaxInt32),
+	)
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{{
+		Type: autoscalingv2.ResourceMetricSourceType,
+		Resource: &autoscalingv2.ResourceMetricSource{
+			Name: corev1.ResourceCPU,
+			Target: autoscalingv2.MetricTarget{
+				Type:               autoscalingv2.UtilizationMetricType,
+				AverageUtilization: &target,
+			},
+		},
+	}}
+	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{{
+		Type: autoscalingv2.ResourceMetricSourceType,
+		Resource: &autoscalingv2.ResourceMetricStatus{
+			Name: corev1.ResourceCPU,
+			Current: autoscalingv2.MetricValueStatus{
+				AverageUtilization: &current,
+			},
+		},
+	}}
+
+	trace := BuildDecisionTrace(hpa, 1)
+	if len(trace.Metrics) != 1 || trace.Metrics[0].RawDesired == nil {
+		t.Fatalf("BuildDecisionTrace() metric = %+v, want a projected value", trace.Metrics)
+	}
+	if got := *trace.Metrics[0].RawDesired; got != math.MaxInt32 {
+		t.Fatalf("RawDesired = %d, want saturated MaxInt32", got)
 	}
 }
 

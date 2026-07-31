@@ -175,6 +175,55 @@ func TestBatchVPA_MatchesActiveVPA(t *testing.T) {
 	}
 }
 
+func TestBatchVPA_MatchesContainerResourceMetric(t *testing.T) {
+	scheme := runtime.NewScheme()
+	dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme,
+		map[schema.GroupVersionResource]string{vpaGVRForTest: "VerticalPodAutoscalerList"},
+		vpaUnstructured("default", "web-vpa", "Deployment", "web", "Auto"),
+	)
+	ec := &Context{vpaEnabled: true, dynClient: dyn}
+	hpa := hpaWithResourceMetric("default", "web", "web")
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{{
+		Type: autoscalingv2.ContainerResourceMetricSourceType,
+		ContainerResource: &autoscalingv2.ContainerResourceMetricSource{
+			Name:      corev1.ResourceMemory,
+			Container: "app",
+		},
+	}}
+
+	results, warnings := BatchVPA(context.Background(), ec, []autoscalingv2.HorizontalPodAutoscaler{*hpa})
+	if len(warnings) != 0 {
+		t.Fatalf("expected no warnings, got %v", warnings)
+	}
+	if _, ok := results["default/web"]; !ok {
+		t.Fatalf("expected a conflict for the container memory metric, got %v", results)
+	}
+}
+
+func TestBatchVPA_RequiresControlledResourceOverlap(t *testing.T) {
+	scheme := runtime.NewScheme()
+	vpa := vpaUnstructured("default", "web-vpa", "Deployment", "web", "Auto")
+	spec := vpa.Object["spec"].(map[string]any)
+	spec["resourcePolicy"] = map[string]any{
+		"containerPolicies": []any{
+			map[string]any{"containerName": "*", "controlledResources": []any{"memory"}},
+		},
+	}
+	dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme,
+		map[schema.GroupVersionResource]string{vpaGVRForTest: "VerticalPodAutoscalerList"},
+		vpa,
+	)
+	ec := &Context{vpaEnabled: true, dynClient: dyn}
+	hpas := []autoscalingv2.HorizontalPodAutoscaler{
+		*hpaWithResourceMetric("default", "web", "web"),
+	}
+
+	results, _ := BatchVPA(context.Background(), ec, hpas)
+	if len(results) != 0 {
+		t.Fatalf("memory-only VPA must not conflict with a CPU-only HPA, got %v", results)
+	}
+}
+
 func TestBatchVPA_SkipsOffModeVPA(t *testing.T) {
 	scheme := runtime.NewScheme()
 	dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme,

@@ -16,6 +16,7 @@ type KubeClientConfig interface {
 // OutputConfig is the minimal surface for format routing.
 type OutputConfig interface {
 	OutputFormat() string
+	OutputSchemaVersion() string
 	OutputTemplate() string
 	NamedOutputTemplates() map[string]OutputTemplateConfig
 	ReportFormat() string
@@ -66,6 +67,9 @@ func (r *Root) GetClientOverride() kubernetes.Interface { return r.ClientOverrid
 
 // OutputFormat returns the selected output format string.
 func (r *Root) OutputFormat() string { return r.Output }
+
+// OutputSchemaVersion returns the selected public output projection.
+func (r *Root) OutputSchemaVersion() string { return r.OutputSchema }
 
 // OutputTemplate returns the raw Go template string for template output.
 func (r *Root) OutputTemplate() string { return r.Template }

@@ -9,8 +9,10 @@ import (
 	"sort"
 	"time"
 
-	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/spf13/cobra"
+
+	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
+	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
 
 type recordAnalysis struct {
@@ -101,7 +103,7 @@ func runAnalyzeRecordFlapping(out io.Writer, opts *options, path string) error {
 	})
 
 	format, templateStr := selectOutputFromOptions(opts)
-	return writeOutput(out, format, templateStr, result, func() error {
+	return render.Format(out, format, templateStr, result, func(out io.Writer) error {
 		if len(result.Items) == 0 {
 			_, err := fmt.Fprintln(out, "No HPA flapping detected.")
 			return err
@@ -119,6 +121,7 @@ func runAnalyzeRecordFlapping(out io.Writer, opts *options, path string) error {
 		}
 		return nil
 	})
+
 }
 
 func loadAllRecordedTraces(path string) (map[string]hpaanalysis.TimelineTrace, error) {

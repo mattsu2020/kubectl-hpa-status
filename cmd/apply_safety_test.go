@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	analysisservice "github.com/mattsu2020/kubectl-hpa-status/internal/analysis"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -44,6 +45,30 @@ func TestNewTUIApplyCallbacksRequiresExplicitPersistentMode(t *testing.T) {
 				t.Fatal("server-side dry-run callback must always be available")
 			}
 		})
+	}
+}
+
+func TestMergeEnrichmentWarnings(t *testing.T) {
+	merged := analysisservice.MergeNamespaceWarnings(
+		map[string][]string{
+			"default": {"KEDA list failed: forbidden"},
+		},
+		map[string][]string{
+			"default": {"VPA list failed: forbidden"},
+			"prod":    {"VPA list failed: timeout"},
+		},
+	)
+
+	if got := merged["default"]; len(got) != 2 ||
+		got[0] != "KEDA list failed: forbidden" ||
+		got[1] != "VPA list failed: forbidden" {
+		t.Fatalf("unexpected default warnings: %v", got)
+	}
+	if got := merged["prod"]; len(got) != 1 || got[0] != "VPA list failed: timeout" {
+		t.Fatalf("unexpected prod warnings: %v", got)
+	}
+	if got := analysisservice.MergeNamespaceWarnings(nil, map[string][]string{}); got != nil {
+		t.Fatalf("empty warning groups should remain nil, got %v", got)
 	}
 }
 

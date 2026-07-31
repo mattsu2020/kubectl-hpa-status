@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/observation"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -12,7 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func buildRolloutDiagnosis(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpaanalysis.RolloutDiagnosis {
+func buildRolloutDiagnosisWithSnapshot(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, snapshot *observation.Snapshot) *hpaanalysis.RolloutDiagnosis {
 	if client == nil || hpa == nil {
 		return nil
 	}
@@ -36,7 +37,7 @@ func buildRolloutDiagnosis(ctx context.Context, client *kube.Client, hpa *autosc
 		for _, condition := range deploy.Status.Conditions {
 			diag.Conditions = append(diag.Conditions, fmt.Sprintf("%s=%s reason=%s", condition.Type, condition.Status, condition.Reason))
 		}
-		fillRolloutReasonAndPods(ctx, client, hpa, diag)
+		fillRolloutReasonAndPods(ctx, client, hpa, snapshot, diag)
 		return diag
 	case "StatefulSet":
 		sts, err := client.Interface.AppsV1().StatefulSets(hpa.Namespace).Get(ctx, ref.Name, metav1.GetOptions{})
@@ -53,7 +54,7 @@ func buildRolloutDiagnosis(ctx context.Context, client *kube.Client, hpa *autosc
 			UnavailableReplicas: sts.Status.Replicas - sts.Status.ReadyReplicas,
 			InProgress:          sts.Status.UpdatedReplicas < replicasOrDefault(sts.Spec.Replicas) || sts.Status.ReadyReplicas < replicasOrDefault(sts.Spec.Replicas),
 		}
-		fillRolloutReasonAndPods(ctx, client, hpa, diag)
+		fillRolloutReasonAndPods(ctx, client, hpa, snapshot, diag)
 		return diag
 	default:
 		return nil
@@ -71,7 +72,7 @@ func deploymentRolloutInProgress(deploy *appsv1.Deployment) bool {
 		deploy.Generation != deploy.Status.ObservedGeneration
 }
 
-func fillRolloutReasonAndPods(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, diag *hpaanalysis.RolloutDiagnosis) {
+func fillRolloutReasonAndPods(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, snapshot *observation.Snapshot, diag *hpaanalysis.RolloutDiagnosis) {
 	if diag == nil {
 		return
 	}
@@ -81,15 +82,18 @@ func fillRolloutReasonAndPods(ctx context.Context, client *kube.Client, hpa *aut
 	} else {
 		diag.Reason = "rollout is not visibly blocking HPA scale-out"
 	}
-	info, err := kube.FetchScaleTargetInfo(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef)
-	if err != nil || info == nil || info.SelectorStr == "" {
+	if snapshot == nil {
+		snapshot = observation.New(client.Interface, hpa)
+	}
+	target := snapshot.ScaleTarget(ctx)
+	if !target.Known() || target.Data.SelectorStr == "" {
 		return
 	}
-	pods, err := client.Interface.CoreV1().Pods(hpa.Namespace).List(ctx, metav1.ListOptions{LabelSelector: info.SelectorStr})
-	if err != nil {
+	pods := snapshot.Pods(ctx)
+	if !pods.Known() {
 		return
 	}
-	for _, pod := range pods.Items {
+	for _, pod := range pods.Data {
 		for _, cs := range append(pod.Status.InitContainerStatuses, pod.Status.ContainerStatuses...) {
 			if cs.State.Waiting == nil {
 				continue

@@ -370,6 +370,57 @@ func TestObjectMetricMatching_DistinguishesDescribedObject(t *testing.T) {
 	}
 }
 
+func TestObjectMetricMatching_DistinguishesDescribedAPIVersion(t *testing.T) {
+	v1Target := resource.MustParse("100")
+	v2Target := resource.MustParse("20")
+	current := resource.MustParse("40")
+	hpa := baseHPA()
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{
+		{
+			Type: autoscalingv2.ObjectMetricSourceType,
+			Object: &autoscalingv2.ObjectMetricSource{
+				DescribedObject: autoscalingv2.CrossVersionObjectReference{APIVersion: "example.io/v1", Kind: "Queue", Name: "jobs"},
+				Metric:          autoscalingv2.MetricIdentifier{Name: "depth"},
+				Target:          autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType, Value: &v1Target},
+			},
+		},
+		{
+			Type: autoscalingv2.ObjectMetricSourceType,
+			Object: &autoscalingv2.ObjectMetricSource{
+				DescribedObject: autoscalingv2.CrossVersionObjectReference{APIVersion: "example.io/v2", Kind: "Queue", Name: "jobs"},
+				Metric:          autoscalingv2.MetricIdentifier{Name: "depth"},
+				Target:          autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType, Value: &v2Target},
+			},
+		},
+	}
+	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{{
+		Type: autoscalingv2.ObjectMetricSourceType,
+		Object: &autoscalingv2.ObjectMetricStatus{
+			DescribedObject: autoscalingv2.CrossVersionObjectReference{APIVersion: "example.io/v2", Kind: "Queue", Name: "jobs"},
+			Metric:          autoscalingv2.MetricIdentifier{Name: "depth"},
+			Current:         autoscalingv2.MetricValueStatus{Value: &current},
+		},
+	}}
+
+	formatted := FormatMetricStatus(hpa, hpa.Status.CurrentMetrics[0])
+	if formatted.Target != "20" || formatted.Ratio == nil || *formatted.Ratio != 2 {
+		t.Fatalf("formatted v2 object metric = %+v, want target=20 ratio=2", formatted)
+	}
+	pipeline := DiagnoseMetricsPipeline(hpa)
+	var healthy, missing int
+	for _, check := range pipeline.PerMetricChecks {
+		switch check.Status {
+		case "healthy":
+			healthy++
+		case "missing":
+			missing++
+		}
+	}
+	if healthy != 1 || missing != 1 {
+		t.Fatalf("object API version matching healthy=%d missing=%d: %+v", healthy, missing, pipeline.PerMetricChecks)
+	}
+}
+
 func TestPodsMetricMatching_DistinguishesSelector(t *testing.T) {
 	averageTarget := resource.MustParse("100m")
 	averageCurrentA := resource.MustParse("120m")

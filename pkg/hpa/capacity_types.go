@@ -45,7 +45,8 @@ type CapacityPlanInput struct {
 	CurrentReplicas int32
 	// MaxReplicas is the current maxReplicas from HPA spec.
 	MaxReplicas int32
-	// TargetMaxReplicas is the proposed new maxReplicas (default: maxReplicas*2, capped at 200).
+	// TargetMaxReplicas is the proposed new maxReplicas (default:
+	// maxReplicas*2, with a 200-replica soft cap for HPAs currently below it).
 	TargetMaxReplicas int32
 
 	// ContainerResources holds per-container CPU and memory requests from the
@@ -56,6 +57,16 @@ type CapacityPlanInput struct {
 	// empty, analysis falls back to summing ContainerResources.
 	PodRequestCPU    string
 	PodRequestMemory string
+	// PodLimitCPU and PodLimitMemory are the effective whole-Pod limits used
+	// by limits.* ResourceQuota checks.
+	PodLimitCPU    string
+	PodLimitMemory string
+	// PodLevel* preserve spec.resources declarations. ResourceQuota accepts
+	// these without requiring every container to repeat the same dimension.
+	PodLevelRequestCPU    string
+	PodLevelRequestMemory string
+	PodLevelLimitCPU      string
+	PodLevelLimitMemory   string
 	// Quotas holds all ResourceQuota entries (not just near-limit) so the
 	// analysis can compute remaining headroom.
 	Quotas []CapacityQuotaInfo
@@ -71,16 +82,40 @@ type CapacityPlanInput struct {
 	ClusterAutoscaler bool
 	// ReadyPods is the count of pods in Running/Ready state.
 	ReadyPods int32
-	// ObservationErrors records Kubernetes reads that failed. An observation
-	// error makes the overall recommendation unknown and therefore not Safe.
+	// ObservationErrors records unavailable or invalid inputs. Errors in
+	// decision-relevant scale-up domains make the recommendation unknown;
+	// advisory-only domains remain visible without blocking an otherwise
+	// supported recommendation.
 	ObservationErrors []CapacityObservationError
 }
 
 // CapacityObservationError identifies an input that could not be observed.
 type CapacityObservationError struct {
-	Source  string `json:"source" yaml:"source"`
-	Message string `json:"message" yaml:"message"`
+	// Domain identifies the analysis input affected by this error. Source is
+	// retained as a human-readable label and for compatibility with callers
+	// written before typed domains were introduced.
+	Domain  CapacityObservationDomain `json:"domain,omitempty" yaml:"domain,omitempty"`
+	Source  string                    `json:"source" yaml:"source"`
+	Message string                    `json:"message" yaml:"message"`
 }
+
+// CapacityObservationDomain identifies a set of capacity inputs whose
+// dependent checks must be skipped when observation or validation fails.
+type CapacityObservationDomain string
+
+const ( //nolint:revive // CapacityObservationDomain documentation describes this enum.
+	// CapacityObservationPlanInput identifies validation of the plan request itself.
+	CapacityObservationPlanInput          CapacityObservationDomain = "plan-input"
+	CapacityObservationScaleTarget        CapacityObservationDomain = "scale-target" //nolint:revive // Domain enum value.
+	CapacityObservationPodResources       CapacityObservationDomain = "pod-resources"
+	CapacityObservationPendingPods        CapacityObservationDomain = "pending-pods"
+	CapacityObservationResourceQuotas     CapacityObservationDomain = "resource-quotas"
+	CapacityObservationLimitRanges        CapacityObservationDomain = "limit-ranges"
+	CapacityObservationLimitRangeDefaults CapacityObservationDomain = "limit-range-defaults"
+	CapacityObservationNodeCapacity       CapacityObservationDomain = "node-capacity"
+	CapacityObservationPDBs               CapacityObservationDomain = "pod-disruption-budgets"
+	CapacityObservationClusterAutoscaler  CapacityObservationDomain = "cluster-autoscaler"
+)
 
 // CapacityContainerResources holds per-container resource requests for
 // capacity projection.
@@ -91,6 +126,10 @@ type CapacityContainerResources struct {
 	CPU string
 	// Memory is the memory request as a quantity string (e.g. "512Mi").
 	Memory string
+	// LimitCPU and LimitMemory preserve configured container limits for
+	// ResourceQuota projection.
+	LimitCPU    string
+	LimitMemory string
 }
 
 // CapacityQuotaInfo holds full ResourceQuota usage so the capacity plan can
@@ -104,6 +143,15 @@ type CapacityQuotaInfo struct {
 	Used string
 	// Hard is the hard limit as a string.
 	Hard string
+	// UsageObserved is nil for compatibility callers, true when status.used
+	// contained this resource, and false when quota status was not yet synced.
+	UsageObserved *bool
+	// HardObserved is nil for compatibility callers, true when status.hard
+	// contained this resource, and false while the quota controller has not
+	// synchronized spec.hard into status.
+	HardObserved *bool
+	// Scoped is true when scopes/scopeSelector make applicability Pod-specific.
+	Scoped bool
 }
 
 // LimitRangeConstraint describes a LimitRange min/max that applies to pods or
@@ -119,6 +167,11 @@ type LimitRangeConstraint struct {
 	Min string
 	// Max is the maximum allowed value (empty if no maximum).
 	Max string
+	// Default and DefaultRequest are admission-time container defaults.
+	Default        string
+	DefaultRequest string
+	// MaxLimitRequestRatio constrains the limit-to-request ratio.
+	MaxLimitRequestRatio string
 }
 
 // CapacityPlan holds the result of a capacity plan analysis, diagnosing
@@ -161,12 +214,58 @@ type CapacityPlan struct {
 	NextActions []string `json:"nextActions,omitempty" yaml:"nextActions,omitempty"`
 }
 
+// CapacityCheckID identifies the constraint evaluated by a capacity check.
+type CapacityCheckID string
+
+const ( //nolint:revive // CapacityCheckID documentation describes this enum.
+	// CapacityCheckObservation records whether required inputs were observable.
+	CapacityCheckObservation       CapacityCheckID = "observation"
+	CapacityCheckQuota             CapacityCheckID = "quota" //nolint:revive // Check identifier.
+	CapacityCheckQuotaCPU          CapacityCheckID = "quota-cpu"
+	CapacityCheckQuotaMemory       CapacityCheckID = "quota-memory"
+	CapacityCheckQuotaPods         CapacityCheckID = "quota-pods"
+	CapacityCheckQuotaLimitCPU     CapacityCheckID = "quota-limit-cpu"
+	CapacityCheckQuotaLimitMemory  CapacityCheckID = "quota-limit-memory"
+	CapacityCheckLimitRange        CapacityCheckID = "limit-range"
+	CapacityCheckLimitRangeMaximum CapacityCheckID = "limit-range-maximum"
+	CapacityCheckLimitRangeMinimum CapacityCheckID = "limit-range-minimum"
+	CapacityCheckLimitRangeRatio   CapacityCheckID = "limit-range-ratio"
+	CapacityCheckNodeCapacity      CapacityCheckID = "node-capacity"
+	CapacityCheckNodeCPU           CapacityCheckID = "node-cpu"
+	CapacityCheckNodeMemory        CapacityCheckID = "node-memory"
+	CapacityCheckNodePods          CapacityCheckID = "node-pods"
+	CapacityCheckNodeSchedulable   CapacityCheckID = "node-schedulable"
+	CapacityCheckPendingPods       CapacityCheckID = "pending-pods"
+	CapacityCheckPDB               CapacityCheckID = "pod-disruption-budget"
+	CapacityCheckClusterAutoscaler CapacityCheckID = "cluster-autoscaler"
+)
+
+// CapacityCheckStatus is the machine-readable outcome of a capacity check.
+type CapacityCheckStatus string
+
+const ( //nolint:revive // CapacityCheckStatus documentation describes this enum.
+	// CapacityCheckPass means the constraint is satisfied.
+	CapacityCheckPass    CapacityCheckStatus = "pass"
+	CapacityCheckFail    CapacityCheckStatus = "fail" //nolint:revive // Check status value.
+	CapacityCheckUnknown CapacityCheckStatus = "unknown"
+)
+
 // CapacityCheckResult holds a single check result for the capacity plan.
 type CapacityCheckResult struct {
+	// CheckID and Status are typed decision metadata. Pass and Unknown remain
+	// populated for compatibility with existing JSON/YAML consumers.
+	CheckID CapacityCheckID     `json:"checkId,omitempty" yaml:"checkId,omitempty"`
+	Status  CapacityCheckStatus `json:"status,omitempty" yaml:"status,omitempty"`
+	// ObservationDomain identifies the unavailable input behind an unknown
+	// observation check. Decision logic uses it to distinguish required
+	// scale-up evidence from advisory-only observations.
+	ObservationDomain CapacityObservationDomain `json:"observationDomain,omitempty" yaml:"observationDomain,omitempty"`
 	// Pass is true when the check succeeds.
 	Pass bool `json:"pass" yaml:"pass"`
 	// Unknown is true when the check could not be completed because an input
-	// observation failed. Unknown checks never produce a Safe recommendation.
+	// observation failed. Decision-relevant unknown checks prevent a Safe
+	// recommendation; advisory-only observations stay visible without
+	// blocking an otherwise-supported scale-up.
 	Unknown bool `json:"unknown,omitempty" yaml:"unknown,omitempty"`
 	// Message describes the check outcome.
 	Message string `json:"message" yaml:"message"`

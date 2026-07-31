@@ -2,6 +2,7 @@ package hpa
 
 import (
 	"errors"
+	"math"
 	"strings"
 	"testing"
 
@@ -264,6 +265,9 @@ func TestParseRelativeValue(t *testing.T) {
 		{"decrease 50%", "-50%", 100, 50, false},
 		{"invalid no percent", "+20", 50, 0, true},
 		{"invalid format", "abc", 50, 0, true},
+		{"NaN", "NaN%", 50, 0, true},
+		{"positive infinity", "+Inf%", 50, 0, true},
+		{"int32 overflow", "+100%", math.MaxInt32, 0, true},
 	}
 
 	for _, tt := range tests {
@@ -300,6 +304,10 @@ func TestComputeProjectedReplicas(t *testing.T) {
 		{"bounded by max", 4, 5.0, 1, 10, 10},
 		{"bounded by min", 4, 0.1, 3, 10, 3},
 		{"large ratio", 10, 3.0, 1, 100, 30},
+		{"NaN preserves current", 4, math.NaN(), 1, 10, 4},
+		{"negative preserves current", 4, -1, 1, 10, 4},
+		{"positive infinity bounded by max", 4, math.Inf(1), 1, 10, 10},
+		{"int32 overflow bounded by max", math.MaxInt32, 2, 1, math.MaxInt32, math.MaxInt32},
 	}
 
 	for _, tt := range tests {
@@ -319,41 +327,51 @@ func TestApplyMetricOverride_ExternalMetric(t *testing.T) {
 		overrideValue  string
 		hasLabels      bool
 		hasAvgValue    bool
+		targetAverage  bool
 		wantValueField bool // true = Value set, false = AverageValue set
 	}{
 		{
-			name:           "external metric value override without labels",
+			name:           "Value target wins over existing AverageValue",
 			overrideValue:  "500",
 			hasLabels:      false,
 			hasAvgValue:    true,
-			wantValueField: false, // AverageValue because hasAvgValue && !hasLabels
+			wantValueField: true,
 		},
 		{
-			name:           "external metric value override without labels no avg",
+			name:           "Value target without labels",
 			overrideValue:  "500",
-			hasLabels:      false,
-			hasAvgValue:    false,
-			wantValueField: true, // Value because !hasLabels && !hasAvgValue
-		},
-		{
-			name:           "external metric value override with labels",
-			overrideValue:  "1000",
-			hasLabels:      true,
-			hasAvgValue:    true,
-			wantValueField: true, // Value because hasLabels
-		},
-		{
-			name:           "external metric quantity override",
-			overrideValue:  "2k",
 			hasLabels:      false,
 			hasAvgValue:    false,
 			wantValueField: true,
+		},
+		{
+			name:           "AverageValue target with labels",
+			overrideValue:  "1000",
+			hasLabels:      true,
+			hasAvgValue:    true,
+			targetAverage:  true,
+			wantValueField: false,
+		},
+		{
+			name:           "AverageValue target without labels",
+			overrideValue:  "2k",
+			hasLabels:      false,
+			hasAvgValue:    false,
+			targetAverage:  true,
+			wantValueField: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			hpa := buildExternalMetricSimHPA(4, 4, 10, tt.hasLabels, tt.hasAvgValue)
+			if tt.targetAverage {
+				target := resource.MustParse("250")
+				hpa.Spec.Metrics[0].External.Target = autoscalingv2.MetricTarget{
+					Type:         autoscalingv2.AverageValueMetricType,
+					AverageValue: &target,
+				}
+			}
 
 			err := applyMetricOverride(hpa, "http_requests", tt.overrideValue)
 			if err != nil {
@@ -370,12 +388,12 @@ func TestApplyMetricOverride_ExternalMetric(t *testing.T) {
 			}
 
 			if tt.wantValueField {
-				if ext.Current.Value == nil {
-					t.Error("expected Value to be set")
+				if ext.Current.Value == nil || ext.Current.AverageValue != nil {
+					t.Errorf("expected only Value to be set: %+v", ext.Current)
 				}
 			} else {
-				if ext.Current.AverageValue == nil {
-					t.Error("expected AverageValue to be set")
+				if ext.Current.AverageValue == nil || ext.Current.Value != nil {
+					t.Errorf("expected only AverageValue to be set: %+v", ext.Current)
 				}
 			}
 		})
@@ -445,6 +463,13 @@ func TestApplyRelativeOverride_External(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			hpa := buildExternalMetricSimHPA(4, 4, 10, false, false)
+			if !tt.useValueField {
+				target := resource.MustParse("100")
+				hpa.Spec.Metrics[0].External.Target = autoscalingv2.MetricTarget{
+					Type:         autoscalingv2.AverageValueMetricType,
+					AverageValue: &target,
+				}
+			}
 
 			// Clear external status if testing no-current-value case
 			if tt.currentQty == "" {
@@ -490,8 +515,12 @@ func TestApplyRelativeOverride_External(t *testing.T) {
 			if ext == nil {
 				t.Fatal("expected external metric status to be set")
 			}
-			if ext.Current.Value == nil {
-				t.Error("expected Value to be set after relative override")
+			if tt.useValueField {
+				if ext.Current.Value == nil || ext.Current.AverageValue != nil {
+					t.Errorf("expected only Value after relative override: %+v", ext.Current)
+				}
+			} else if ext.Current.AverageValue == nil || ext.Current.Value != nil {
+				t.Errorf("expected only AverageValue after relative override: %+v", ext.Current)
 			}
 		})
 	}
@@ -515,6 +544,8 @@ func TestParseRelativeQuantity(t *testing.T) {
 		{"too short", "+", 1000, 0, true},
 		{"invalid format", "abc%", 1000, 0, true},
 		{"empty string", "", 1000, 0, true},
+		{"NaN", "NaN%", 1000, 0, true},
+		{"positive infinity", "+Inf%", 1000, 0, true},
 	}
 
 	for _, tt := range tests {
@@ -534,6 +565,24 @@ func TestParseRelativeQuantity(t *testing.T) {
 				t.Errorf("parseRelativeQuantity(%q, %d) = %d, want %d", tt.value, tt.current, got.Value(), tt.want)
 			}
 		})
+	}
+}
+
+func TestParseRelativeQuantityRejectsInt64Overflow(t *testing.T) {
+	t.Parallel()
+
+	current := resource.NewMilliQuantity(math.MaxInt64/2+1, resource.DecimalSI)
+	if _, err := parseRelativeQuantity("+100%", current); err == nil {
+		t.Fatal("parseRelativeQuantity() accepted an int64-overflowing result")
+	}
+}
+
+func TestParseRelativeQuantityRejectsBaselineOutsideMilliRange(t *testing.T) {
+	t.Parallel()
+
+	current := resource.MustParse("1E18")
+	if _, err := parseRelativeQuantity("-50%", &current); err == nil {
+		t.Fatal("parseRelativeQuantity() accepted a baseline whose MilliValue would overflow")
 	}
 }
 
@@ -814,6 +863,46 @@ func TestResolveMetricSpec(t *testing.T) {
 	}
 }
 
+func TestSimulateMetricChangeRejectsAmbiguousNameOnlyOverride(t *testing.T) {
+	hpa := baseHPA()
+	selectorA := &metav1.LabelSelector{MatchLabels: map[string]string{"queue": "a"}}
+	selectorB := &metav1.LabelSelector{MatchLabels: map[string]string{"queue": "b"}}
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{
+		{
+			Type: autoscalingv2.ExternalMetricSourceType,
+			External: &autoscalingv2.ExternalMetricSource{
+				Metric: autoscalingv2.MetricIdentifier{Name: "queue_depth", Selector: selectorA},
+				Target: autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType, Value: resource.NewQuantity(10, resource.DecimalSI)},
+			},
+		},
+		{
+			Type: autoscalingv2.ExternalMetricSourceType,
+			External: &autoscalingv2.ExternalMetricSource{
+				Metric: autoscalingv2.MetricIdentifier{Name: "queue_depth", Selector: selectorB},
+				Target: autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType, Value: resource.NewQuantity(10, resource.DecimalSI)},
+			},
+		},
+	}
+
+	_, err := SimulateMetricChange(hpa, map[string]string{"queue_depth": "20"}, HealthWeights{})
+	if !errors.Is(err, ErrMetricAmbiguous) {
+		t.Fatalf("SimulateMetricChange() error = %v, want ErrMetricAmbiguous", err)
+	}
+
+	before := hpa.DeepCopy()
+	err = applyMetricTargetOverride(hpa, "queue_depth", "25")
+	if !errors.Is(err, ErrMetricAmbiguous) {
+		t.Fatalf("applyMetricTargetOverride() error = %v, want ErrMetricAmbiguous", err)
+	}
+	for i := range hpa.Spec.Metrics {
+		got := hpa.Spec.Metrics[i].External.Target.Value
+		want := before.Spec.Metrics[i].External.Target.Value
+		if got == nil || want == nil || got.Cmp(*want) != 0 {
+			t.Fatalf("ambiguous target override mutated metric %d: got=%v want=%v", i, got, want)
+		}
+	}
+}
+
 // ptrQuantity parses a quantity string and returns a pointer to it.
 func ptrQuantity(s string) *resource.Quantity {
 	q := resource.MustParse(s)
@@ -929,6 +1018,10 @@ func buildObjectMetricSimHPA(current, desired, maxReplicas int32) *autoscalingv2
 			Object: &autoscalingv2.ObjectMetricStatus{
 				Metric: autoscalingv2.MetricIdentifier{
 					Name: "hits",
+				},
+				DescribedObject: autoscalingv2.CrossVersionObjectReference{
+					Kind: "Ingress",
+					Name: "main-ingress",
 				},
 				Current: autoscalingv2.MetricValueStatus{
 					Value: &currentVal,

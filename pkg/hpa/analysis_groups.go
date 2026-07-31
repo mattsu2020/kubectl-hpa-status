@@ -10,11 +10,10 @@ import (
 )
 
 // This file provides additive, read-only "group views" over the flat Analysis
-// struct, implementing the first step of the v2 grouping migration tracked in
-// ROADMAP.md ("Migration strategy (additive)"). The flat fields and their JSON
-// tags are unchanged, preserving the existing serialization contract. New code
-// can reach related fields through these view methods so the logical grouping
-// is expressed in code even before the flat fields are retired at a future
+// struct. The flat fields and their JSON tags remain the default v1 contract;
+// ProjectStatusReportV2 uses these views for the opt-in nested v2 contract.
+// Keeping projection separate from storage lets both schemas share one
+// analysis implementation until the v1 wire shape can be retired in a future
 // major version.
 //
 // Each view is a plain value struct (no methods, no mutation) returned by a
@@ -22,16 +21,16 @@ import (
 // and share pointer/slice backing arrays (read-only by convention). Callers
 // must not mutate the returned views' slice/map fields.
 //
-// The groups match the ROADMAP "Proposed v2 grouping" table. When the flat
-// fields are eventually removed, the migration is to make these views the
-// primary storage and delete the flat fields in one breaking change.
+// The groups match the documented v2 schema. When the flat fields are
+// eventually removed, the migration is to make these views the primary storage
+// and delete the flat fields in one breaking change.
 
 // MetaView groups HPA identity fields: namespace, name, target, creation time.
 type MetaView struct {
-	Namespace         string
-	Name              string
-	Target            string
-	CreationTimestamp string // RFC3339 of a.CreationTimestamp
+	Namespace         string `json:"namespace" yaml:"namespace"`
+	Name              string `json:"name" yaml:"name"`
+	Target            string `json:"target" yaml:"target"`
+	CreationTimestamp string `json:"creationTimestamp,omitempty" yaml:"creationTimestamp,omitempty"` // RFC3339 of a.CreationTimestamp
 }
 
 // Meta returns the identity group view.
@@ -50,11 +49,11 @@ func (a *Analysis) Meta() MetaView {
 
 // ReplicasView groups the core scaling envelope.
 type ReplicasView struct {
-	Current        int32
-	Desired        int32
-	Min            int32
-	Max            int32
-	TargetReplicas *TargetReplicaInfo
+	Current        int32              `json:"currentReplicas" yaml:"currentReplicas"`
+	Desired        int32              `json:"desiredReplicas" yaml:"desiredReplicas"`
+	Min            int32              `json:"minReplicas" yaml:"minReplicas"`
+	Max            int32              `json:"maxReplicas" yaml:"maxReplicas"`
+	TargetReplicas *TargetReplicaInfo `json:"targetReplicas,omitempty" yaml:"targetReplicas,omitempty"`
 }
 
 // Replicas returns the core scaling-envelope group view.
@@ -70,16 +69,16 @@ func (a *Analysis) Replicas() ReplicasView {
 
 // DecisionView groups the "why this replica count" signals.
 type DecisionView struct {
-	Health                  string
-	HealthScore             int
-	HealthResult            *HealthResult
-	Summary                 string
-	SummaryKey              string
-	ImpactMetric            *MetricImpactGuess
-	DecisionTrace           *DecisionTrace
-	MetricDecisionTrace     *MetricDecisionTrace
-	StructuredDecisionTrace *StructuredDecisionTrace
-	DecisionSignals         []DecisionSignal
+	Health                  string                   `json:"health" yaml:"health"`
+	HealthScore             int                      `json:"healthScore" yaml:"healthScore"`
+	HealthResult            *HealthResult            `json:"healthResult,omitempty" yaml:"healthResult,omitempty"`
+	Summary                 string                   `json:"summary" yaml:"summary"`
+	SummaryKey              string                   `json:"summaryKey,omitempty" yaml:"summaryKey,omitempty"`
+	ImpactMetric            *MetricImpactGuess       `json:"impactMetric,omitempty" yaml:"impactMetric,omitempty"`
+	DecisionTrace           *DecisionTrace           `json:"decisionTrace,omitempty" yaml:"decisionTrace,omitempty"`
+	MetricDecisionTrace     *MetricDecisionTrace     `json:"metricDecisionTrace,omitempty" yaml:"metricDecisionTrace,omitempty"`
+	StructuredDecisionTrace *StructuredDecisionTrace `json:"structuredDecisionTrace,omitempty" yaml:"structuredDecisionTrace,omitempty"`
+	DecisionSignals         []DecisionSignal         `json:"decisionSignals,omitempty" yaml:"decisionSignals,omitempty"`
 }
 
 // Decision returns the decision/health group view.
@@ -100,12 +99,12 @@ func (a *Analysis) Decision() DecisionView {
 
 // MetricsView groups the metric-pipeline health signals.
 type MetricsView struct {
-	Metrics            []Metric
-	MetricsDiagnostics *MetricsPipelineDiagnostics
-	MetricFreshness    []MetricFreshness
-	MetricContract     *MetricContractReport
-	MetricHints        *MetricHintsReport
-	AdapterDiagnostics *AdapterDiagnosticsReport
+	Metrics            []Metric                    `json:"metrics,omitempty" yaml:"metrics,omitempty"`
+	MetricsDiagnostics *MetricsPipelineDiagnostics `json:"metricsDiagnostics,omitempty" yaml:"metricsDiagnostics,omitempty"`
+	MetricFreshness    []MetricFreshness           `json:"metricFreshness,omitempty" yaml:"metricFreshness,omitempty"`
+	MetricContract     *MetricContractReport       `json:"metricContract,omitempty" yaml:"metricContract,omitempty"`
+	MetricHints        *MetricHintsReport          `json:"metricHints,omitempty" yaml:"metricHints,omitempty"`
+	AdapterDiagnostics *AdapterDiagnosticsReport   `json:"adapterDiagnostics,omitempty" yaml:"adapterDiagnostics,omitempty"`
 }
 
 // MetricsGroup returns the metric-pipeline group view. The method name avoids
@@ -123,12 +122,12 @@ func (a *Analysis) MetricsGroup() MetricsView {
 
 // ConditionsView groups HPA controller conditions and behavior configuration.
 type ConditionsView struct {
-	Conditions                 []Condition
-	Behavior                   []BehaviorRule
-	StabilizationWindowSeconds *int32
-	StabilizationSource        string
-	StabilizationConfidence    string
-	StabilizationRemaining     *int64
+	Conditions                 []Condition    `json:"conditions,omitempty" yaml:"conditions,omitempty"`
+	Behavior                   []BehaviorRule `json:"behavior,omitempty" yaml:"behavior,omitempty"`
+	StabilizationWindowSeconds *int32         `json:"stabilizationWindowSeconds,omitempty" yaml:"stabilizationWindowSeconds,omitempty"`
+	StabilizationSource        string         `json:"stabilizationSource,omitempty" yaml:"stabilizationSource,omitempty"`
+	StabilizationConfidence    string         `json:"stabilizationConfidence,omitempty" yaml:"stabilizationConfidence,omitempty"`
+	StabilizationRemaining     *int64         `json:"stabilizationRemaining,omitempty" yaml:"stabilizationRemaining,omitempty"`
 }
 
 // ConditionsGroup returns the conditions/behavior group view.
@@ -145,13 +144,13 @@ func (a *Analysis) ConditionsGroup() ConditionsView {
 
 // ActionsView groups the recommendation/explainability output.
 type ActionsView struct {
-	Actions                  []string
-	Suggestions              []Suggestion
-	StructuredActions        []StructuredMessage
-	StructuredInterpretation []StructuredMessage
-	Interpretation           []string
-	Assumptions              []Assumption
-	Warnings                 []string
+	Actions                  []string            `json:"recommendedActions,omitempty" yaml:"recommendedActions,omitempty"`
+	Suggestions              []Suggestion        `json:"suggestions,omitempty" yaml:"suggestions,omitempty"`
+	StructuredActions        []StructuredMessage `json:"structuredActions,omitempty" yaml:"structuredActions,omitempty"`
+	StructuredInterpretation []StructuredMessage `json:"structuredInterpretation,omitempty" yaml:"structuredInterpretation,omitempty"`
+	Interpretation           []string            `json:"interpretation,omitempty" yaml:"interpretation,omitempty"`
+	Assumptions              []Assumption        `json:"assumptions,omitempty" yaml:"assumptions,omitempty"`
+	Warnings                 []string            `json:"warnings,omitempty" yaml:"warnings,omitempty"`
 }
 
 // ActionsGroup returns the recommendations/explainability group view.
@@ -169,11 +168,11 @@ func (a *Analysis) ActionsGroup() ActionsView {
 
 // LifecycleView groups freshness/trend/telemetry signals.
 type LifecycleView struct {
-	StaleStatus      *StaleStatusInfo
-	HealthTrend      *HealthTrendResult
-	Debug            []string
-	HiddenFactors    []HiddenDecisionFactor
-	EnrichmentStatus *EnrichmentStatus
+	StaleStatus      *StaleStatusInfo       `json:"staleStatus,omitempty" yaml:"staleStatus,omitempty"`
+	HealthTrend      *HealthTrendResult     `json:"healthTrend,omitempty" yaml:"healthTrend,omitempty"`
+	Debug            []string               `json:"debug,omitempty" yaml:"debug,omitempty"`
+	HiddenFactors    []HiddenDecisionFactor `json:"hiddenFactors,omitempty" yaml:"hiddenFactors,omitempty"`
+	EnrichmentStatus *EnrichmentStatus      `json:"enrichmentStatus,omitempty" yaml:"enrichmentStatus,omitempty"`
 }
 
 // Lifecycle returns the freshness/trend group view.
@@ -189,13 +188,13 @@ func (a *Analysis) Lifecycle() LifecycleView {
 
 // CapacityView groups scheduling and cluster capacity signals.
 type CapacityView struct {
-	CapacityContext  *CapacityContext
-	CapacityHeadroom *CapacityHeadroom
-	CapacityPlan     *CapacityPlan
-	ResourceCheck    *ResourceCheckResult
-	PodAnalysis      *PodAnalysis
-	ScalePath        *ScalePath
-	ReadinessImpact  *ReadinessImpact
+	CapacityContext  *CapacityContext     `json:"capacityContext,omitempty" yaml:"capacityContext,omitempty"`
+	CapacityHeadroom *CapacityHeadroom    `json:"capacityHeadroom,omitempty" yaml:"capacityHeadroom,omitempty"`
+	CapacityPlan     *CapacityPlan        `json:"capacityPlan,omitempty" yaml:"capacityPlan,omitempty"`
+	ResourceCheck    *ResourceCheckResult `json:"resourceCheck,omitempty" yaml:"resourceCheck,omitempty"`
+	PodAnalysis      *PodAnalysis         `json:"podAnalysis,omitempty" yaml:"podAnalysis,omitempty"`
+	ScalePath        *ScalePath           `json:"scalePath,omitempty" yaml:"scalePath,omitempty"`
+	ReadinessImpact  *ReadinessImpact     `json:"readinessImpact,omitempty" yaml:"readinessImpact,omitempty"`
 }
 
 // Capacity returns the scheduling/capacity group view.
@@ -213,8 +212,8 @@ func (a *Analysis) Capacity() CapacityView {
 
 // ScaleToZeroView groups scale-to-zero and cold-start/warmup signals.
 type ScaleToZeroView struct {
-	ScaleToZero    *ScaleToZeroInfo
-	WarmupAnalysis *warmup.Analysis
+	ScaleToZero    *ScaleToZeroInfo `json:"scaleToZero,omitempty" yaml:"scaleToZero,omitempty"`
+	WarmupAnalysis *warmup.Analysis `json:"warmupAnalysis,omitempty" yaml:"warmupAnalysis,omitempty"`
 }
 
 // ScaleToZeroGroup returns the scale-to-zero/warmup group view. The method
@@ -228,10 +227,10 @@ func (a *Analysis) ScaleToZeroGroup() ScaleToZeroView {
 
 // StabilityView groups flapping and churn diagnosis signals.
 type StabilityView struct {
-	FlappingSimulation *SimulationResult
-	FlappingPrevention *FlappingPreventionReport
-	FlappingDiagnosis  *FlappingDiagnosis
-	ChurnAnalysis      *ChurnAnalysis
+	FlappingSimulation *SimulationResult         `json:"simulation,omitempty" yaml:"simulation,omitempty"`
+	FlappingPrevention *FlappingPreventionReport `json:"flappingPrevention,omitempty" yaml:"flappingPrevention,omitempty"`
+	FlappingDiagnosis  *FlappingDiagnosis        `json:"flappingDiagnosis,omitempty" yaml:"flappingDiagnosis,omitempty"`
+	ChurnAnalysis      *ChurnAnalysis            `json:"churnAnalysis,omitempty" yaml:"churnAnalysis,omitempty"`
 }
 
 // Stability returns the flapping/churn group view.
@@ -246,10 +245,10 @@ func (a *Analysis) Stability() StabilityView {
 
 // AdvisoryView groups VPA and container/behavior tuning advice.
 type AdvisoryView struct {
-	VPAConflict      *vpa.ConflictInfo
-	VPAAdvisory      *vpa.Advisory
-	ContainerAdvisor *containeradvisor.Result
-	BehaviorAdvisor  *behavioradvisor.Result
+	VPAConflict      *vpa.ConflictInfo        `json:"vpaConflict,omitempty" yaml:"vpaConflict,omitempty"`
+	VPAAdvisory      *vpa.Advisory            `json:"vpaAdvisory,omitempty" yaml:"vpaAdvisory,omitempty"`
+	ContainerAdvisor *containeradvisor.Result `json:"containerAdvisor,omitempty" yaml:"containerAdvisor,omitempty"`
+	BehaviorAdvisor  *behavioradvisor.Result  `json:"behaviorAdvisor,omitempty" yaml:"behaviorAdvisor,omitempty"`
 }
 
 // Advisory returns the VPA/container/behavior advisory group view.
@@ -264,9 +263,9 @@ func (a *Analysis) Advisory() AdvisoryView {
 
 // ControllersView groups external controller integrations.
 type ControllersView struct {
-	KEDAInfo          *KEDAAnalysis
-	RolloutDiagnosis  *RolloutDiagnosis
-	ControllerProfile *ControllerProfile
+	KEDAInfo          *KEDAAnalysis      `json:"keda,omitempty" yaml:"keda,omitempty"`
+	RolloutDiagnosis  *RolloutDiagnosis  `json:"rolloutDiagnosis,omitempty" yaml:"rolloutDiagnosis,omitempty"`
+	ControllerProfile *ControllerProfile `json:"controllerProfile,omitempty" yaml:"controllerProfile,omitempty"`
 }
 
 // Controllers returns the external-controller group view.
@@ -280,8 +279,8 @@ func (a *Analysis) Controllers() ControllersView {
 
 // BlockersView groups apply-time gating signals.
 type BlockersView struct {
-	BlockerReport  *blocker.Report
-	GitOpsConflict *gitops.Conflict
+	BlockerReport  *blocker.Report  `json:"blockerReport,omitempty" yaml:"blockerReport,omitempty"`
+	GitOpsConflict *gitops.Conflict `json:"gitOpsConflict,omitempty" yaml:"gitOpsConflict,omitempty"`
 }
 
 // Blockers returns the apply-time gating group view.
@@ -292,10 +291,9 @@ func (a *Analysis) Blockers() BlockersView {
 	}
 }
 
-// GroupedAnalysis is the additive nested representation used as the migration
-// boundary for the future v2 output schema. The existing flat Analysis remains
-// the v1 wire contract; new serializers can consume this value without
-// learning the 65-field layout.
+// GroupedAnalysis is the nested representation used by the v2 output schema.
+// The existing flat Analysis remains the v1 wire contract; serializers can
+// consume this value without learning the flat field layout.
 type GroupedAnalysis struct {
 	Meta        MetaView        `json:"meta" yaml:"meta"`
 	Replicas    ReplicasView    `json:"replicas" yaml:"replicas"`

@@ -14,6 +14,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	analysisservice "github.com/mattsu2020/kubectl-hpa-status/internal/analysis"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
@@ -36,6 +37,7 @@ const (
 	historyView    // History/sparkline view for scaling trends
 	overviewView   // Cluster-wide health overview
 	hintsView      // Metric hints troubleshooting
+	viewModeCount  // Sentinel used to verify controller registry coverage.
 )
 
 // Model is the top-level bubbletea model for the TUI dashboard.
@@ -100,6 +102,7 @@ type Options struct {
 	EnrichHPAs func(ctx context.Context, hpas []autoscalingv2.HorizontalPodAutoscaler) (
 		kedaResults map[string]*hpakeda.Analysis,
 		vpaResults map[string]*hpavpa.ConflictInfo,
+		warnings map[string][]string,
 	)
 
 	// HealthWeights holds user-configured penalty weights for enrichment
@@ -432,38 +435,26 @@ func fetchHPAs(m Model) tea.Cmd {
 		// Run optional batched KEDA/VPA enrichment.
 		var kedaResults map[string]*hpakeda.Analysis
 		var vpaResults map[string]*hpavpa.ConflictInfo
+		var enrichmentWarnings map[string][]string
 		if cfg.opts.EnrichHPAs != nil {
-			kedaResults, vpaResults = cfg.opts.EnrichHPAs(cfg.ctx, hpas.Items)
+			kedaResults, vpaResults, enrichmentWarnings = cfg.opts.EnrichHPAs(cfg.ctx, hpas.Items)
 		}
 
-		items := make([]hpaanalysis.ListItem, 0, len(hpas.Items))
-		reports := make(map[string]*hpaanalysis.StatusReport, len(hpas.Items))
-		for i := range hpas.Items {
-			analysis := hpaanalysis.AnalyzeWithOptions(&hpas.Items[i], true, hpaanalysis.AnalysisOptions{
-				Debug:         cfg.opts.Debug,
-				HealthWeights: cfg.opts.HealthWeights,
-			})
-
-			// Apply enrichment data from batched results.
-			key := analysis.Namespace + "/" + analysis.Name
-			if kedaResults != nil {
-				if keda, ok := kedaResults[key]; ok {
-					analysis.KEDAInfo = keda
-				}
-			}
-			if vpaResults != nil {
-				if vpa, ok := vpaResults[key]; ok {
-					analysis.VPAConflict = vpa
-				}
-			}
-			if analysis.KEDAInfo != nil || analysis.VPAConflict != nil {
-				hpaanalysis.ApplyEnrichmentPenalties(&analysis, cfg.opts.HealthWeights)
-			}
-			analysis = hpaanalysis.FinalizeAnalysis(analysis)
-
-			item := hpaanalysis.NewListItem(analysis)
-			items = append(items, item)
-			reports[key] = &hpaanalysis.StatusReport{APIVersion: hpaanalysis.SchemaVersion, Analysis: analysis}
+		analyzed := analysisservice.AnalyzeBatch(hpas.Items, analysisservice.Options{
+			IncludeInterpretation: true,
+			Debug:                 cfg.opts.Debug,
+			HealthWeights:         cfg.opts.HealthWeights,
+		}, analysisservice.BatchEnrichment{
+			KEDA:     kedaResults,
+			VPA:      vpaResults,
+			Warnings: enrichmentWarnings,
+		})
+		items := make([]hpaanalysis.ListItem, 0, len(analyzed))
+		reports := make(map[string]*hpaanalysis.StatusReport, len(analyzed))
+		for i := range analyzed {
+			items = append(items, analyzed[i].ListItem)
+			report := analyzed[i].Report
+			reports[analyzed[i].Key] = &report
 		}
 
 		return fetchResultMsg{items: items, reports: reports}

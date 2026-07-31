@@ -4,10 +4,12 @@ import (
 	"context"
 	"io"
 
+	"github.com/spf13/cobra"
+
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/audit"
-	"github.com/spf13/cobra"
 )
 
 func newRecommendCommand(opts *options) *cobra.Command {
@@ -55,7 +57,7 @@ func runRecommend(ctx context.Context, out io.Writer, opts *options, args []stri
 		}
 
 		format, templateStr := selectOutputFromOptions(opts)
-		if err := writeOutput(out, format, templateStr, report, func() error {
+		if err := render.Format(out, format, templateStr, report, func(out io.Writer) error {
 			return hpaanalysis.WriteAuditText(out, report, labelProviderForLang(opts.Lang, opts.Output))
 		}); err != nil {
 			return err

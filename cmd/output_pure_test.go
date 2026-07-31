@@ -2,14 +2,13 @@ package cmd
 
 import (
 	"testing"
+
+	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 )
 
-// These tests cover pure-logic helpers in output.go that are NOT exercised by
-// root_test.go / root_extra_test.go: parsePrefixedFormat (all six prefixes and
-// the no-match case) and reportFormatSelection (every alias including the
-// report-format pins). outputLang, normalizeSelector, normalizeTemplateType,
-// outputSelection, analysisOptions, escapePrometheusLabelValue, and
-// reportHasCondition already have coverage in root_extra_test.go.
+// These tests cover format-prefix parsing in internal/render and the pure
+// report-format selection helpers in output.go. Other output selection and
+// labeling helpers are covered in root_extra_test.go.
 
 func TestParsePrefixedFormat(t *testing.T) {
 	tests := []struct {
@@ -31,7 +30,7 @@ func TestParsePrefixedFormat(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			expr, kind, ok := parsePrefixedFormat(tc.format)
+			expr, kind, ok := render.ParsePrefixedFormat(tc.format)
 			if expr != tc.wantExpr || kind != tc.wantKind || ok != tc.wantOK {
 				t.Fatalf("parsePrefixedFormat(%q) = (%q, %q, %v), want (%q, %q, %v)",
 					tc.format, expr, kind, ok, tc.wantExpr, tc.wantKind, tc.wantOK)

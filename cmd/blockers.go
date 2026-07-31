@@ -5,12 +5,16 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/spf13/cobra"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
+
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/kubeconv"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/observation"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
-	"github.com/spf13/cobra"
-	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
 type blockerOutput struct {
@@ -33,31 +37,37 @@ func newBlockersCommand(opts *options) *cobra.Command {
 }
 
 func runBlockers(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	// Enable the data sources needed for blocker analysis. Take a copy so the
-	// shared process-wide opts is not mutated. copyOptions deep-copies data
-	// fields (slices, maps, HealthWeights); only the input-port fields
-	// (ClientOverride, In) are shared, which is what we want here.
+	// Keep command execution isolated from the shared root options. The
+	// dedicated blocker path gathers only the observations it needs, so it
+	// does not run the full status pipeline or record an unrelated health
+	// history sample.
 	local := copyOptions(opts)
-	local.CapacityContext = true
-	local.ExplainPods = true
-	local.Events = EventOption{Enabled: true, Limit: 10}
+	client, err := newClientOrDefault(&local)
+	if err != nil {
+		writeErrorIfStructured(out, local.Output, err)
+		return err
+	}
 
 	outputs := make([]blockerOutput, 0, len(names))
 	for _, name := range names {
-		report, err := buildStatusReportWithClient(ctx, &local, name, false, nil)
+		hpa, err := fetchHPA(ctx, client, name)
 		if err != nil {
 			writeErrorIfStructured(out, local.Output, err)
 			return err
 		}
-
-		// Build the blocker report from assembled data.
-		blockerReport := buildBlockerReport(ctx, &local, report.Analysis, report.Analysis.Namespace, name)
-		report.Analysis.BlockerReport = blockerReport
+		analysis := hpaanalysis.AnalyzeWithOptions(hpa, false, analysisOptions(local.HealthWeights, local.Debug))
+		blockerReport := buildBlockerReportForStatusWithSnapshot(
+			ctx,
+			client,
+			hpa,
+			analysis.Target,
+			observation.New(client.Interface, hpa),
+		)
 
 		outputs = append(outputs, blockerOutput{
-			Namespace: report.Analysis.Namespace,
-			Name:      report.Analysis.Name,
-			Target:    report.Analysis.Target,
+			Namespace: analysis.Namespace,
+			Name:      analysis.Name,
+			Target:    analysis.Target,
 			Report:    blockerReport,
 		})
 	}
@@ -69,7 +79,7 @@ func runBlockers(ctx context.Context, out io.Writer, opts *options, names []stri
 
 	format, templateStr := selectOutputFromOptions(&local)
 
-	return writeOutput(out, format, templateStr, value, func() error {
+	return render.Format(out, format, templateStr, value, func(out io.Writer) error {
 		theme := style.NewTheme(shouldColorize(local.Color, out))
 		for i, o := range outputs {
 			if i > 0 {
@@ -85,47 +95,30 @@ func runBlockers(ctx context.Context, out io.Writer, opts *options, names []stri
 	})
 }
 
-// buildBlockerReport assembles BlockerInput from various fetchers and runs
-// the blocker analysis engine.
-func buildBlockerReport(ctx context.Context, opts *options, analysis hpaanalysis.Analysis, namespace, name string) *blocker.Report {
-	// Best-effort client: a client-creation failure here is not fatal to the
-	// overall status report; returning nil lets the caller skip the blocker
-	// section and record a warning instead of aborting. Bypasses the standard
-	// "failed to create Kubernetes client" wrapper for that reason.
-	client, err := opts.NewClient()
-	if err != nil {
-		return nil
-	}
-
-	// Get the HPA object for the input.
-	hpa, err := kube.GetHPAFromClient(ctx, client, name)
-	if err != nil {
-		return nil
-	}
-
-	input := assembleBlockerInput(ctx, client, hpa)
-	report := blocker.AnalyzeBlockers(input)
-	report.Namespace = namespace
-	report.Name = name
-	report.Target = analysis.Target
-
-	return report
-}
-
 // buildBlockerReportForStatus builds a BlockerReport within an existing
 // buildStatusReport call, reusing the already-created client.
-func buildBlockerReportForStatus(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, target string) *blocker.Report {
-	input := assembleBlockerInput(ctx, client, hpa)
+func buildBlockerReportForStatus(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, target string) *blocker.Report { //nolint:unused // Retained compatibility wrapper.
+	return buildBlockerReportForStatusWithSnapshot(ctx, client, hpa, target, observation.New(client.Interface, hpa))
+}
+
+func buildBlockerReportForStatusWithSnapshot(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, target string, snapshot *observation.Snapshot) *blocker.Report {
+	input, warnings := assembleBlockerInputWithSnapshot(ctx, client, hpa, snapshot)
 	report := blocker.AnalyzeBlockers(input)
 	report.Namespace = hpa.Namespace
 	report.Name = hpa.Name
 	report.Target = target
+	report.Warnings = warnings
 
 	return report
 }
 
 // assembleBlockerInput gathers all observable signals for blocker analysis.
-func assembleBlockerInput(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) blocker.Input {
+func assembleBlockerInput(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) blocker.Input { //nolint:unused // Retained compatibility wrapper.
+	input, _ := assembleBlockerInputWithSnapshot(ctx, client, hpa, observation.New(client.Interface, hpa))
+	return input
+}
+
+func assembleBlockerInputWithSnapshot(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, snapshot *observation.Snapshot) (blocker.Input, []string) {
 	input := blocker.Input{
 		Namespace:       hpa.Namespace,
 		DesiredReplicas: hpa.Status.DesiredReplicas,
@@ -134,51 +127,84 @@ func assembleBlockerInput(ctx context.Context, client *kube.Client, hpa *autosca
 		MaxReplicas:     hpa.Spec.MaxReplicas,
 		ScalingActive:   hpaanalysis.IsScalingActive(hpa),
 	}
+	var warnings []string
 
 	// Resolve scale target info.
-	ref := hpa.Spec.ScaleTargetRef
-	info, err := kube.FetchScaleTargetInfo(ctx, client.Interface, hpa.Namespace, ref)
-	if err == nil && info != nil {
+	if snapshot == nil {
+		snapshot = observation.New(client.Interface, hpa)
+	}
+	target := snapshot.ScaleTarget(ctx)
+	input.TargetObservation = blocker.ObservationStatus(target.State)
+	switch target.State {
+	case observation.StateUnavailable:
+		warnings = append(warnings, fmt.Sprintf("scale target unavailable: %v", target.Err))
+		input.PodObservation = blocker.ObservationUnavailable
+	case observation.StateNotApplicable:
+		warnings = append(warnings, fmt.Sprintf(
+			"scale target readiness is not observable for %s/%s",
+			hpa.Spec.ScaleTargetRef.Kind,
+			hpa.Spec.ScaleTargetRef.Name,
+		))
+		input.PodObservation = blocker.ObservationNotApplicable
+	}
+	if target.Known() {
+		info := target.Data
 		input.TargetReadyReplicas = info.ReadyReplicas
 		input.TargetDesiredReplicas = info.DesiredReplicas
 
 		selector := info.SelectorStr
 		if selector != "" {
-			// Fetch pod-level details.
-			podInfos, _ := kube.FetchPodInfosForSelector(ctx, client.Interface, hpa.Namespace, selector)
-			input = enrichBlockerInputFromPods(input, podInfos)
-
-			// Fetch pending pod details.
-			pendingDetails, _ := kube.FetchPendingPodDetails(ctx, client.Interface, hpa.Namespace, selector)
-			input.PendingPods = convertToBlockerPodInfos(pendingDetails)
-
-			// Fetch container statuses.
-			containerStatuses, _ := kube.FetchContainerStatuses(ctx, client.Interface, hpa.Namespace, selector)
-			input.ContainerStatuses = convertToBlockerContainerStatuses(containerStatuses)
+			podInfos := snapshot.PodInfos(ctx)
+			input.PodObservation = blocker.ObservationStatus(podInfos.State)
+			if podInfos.Known() {
+				input = enrichBlockerInputFromPods(input, podInfos.Data)
+			} else if podInfos.State == observation.StateUnavailable {
+				warnings = append(warnings, fmt.Sprintf("pods unavailable: %v", podInfos.Err))
+			}
+			pendingDetails := snapshot.PendingPods(ctx)
+			if pendingDetails.Known() {
+				input.PendingPods = kubeconv.ToBlockerPodInfos(pendingDetails.Data)
+			}
+			containerStatuses := snapshot.ContainerStatuses(ctx)
+			if containerStatuses.Known() {
+				input.ContainerStatuses = convertToBlockerContainerStatuses(containerStatuses.Data)
+			}
 
 			// Fetch events for the scale target and pods.
-			objectNames := blockerEventObjectNames(hpa, podInfos)
+			objectNames := blockerEventObjectNames(hpa, podInfos.Data)
 			events := kube.FetchRecentEventsForObjects(ctx, client.Interface, hpa.Namespace, objectNames, 20)
 			input.FailedSchedulingEvents = extractFailedSchedulingMessages(events)
+		} else {
+			input.PodObservation = blocker.ObservationNotApplicable
+			warnings = append(warnings, "scale target Pod selector is unavailable")
 		}
 	}
 
 	// Fetch ResourceQuotas.
-	quotaInfos, _ := kube.FetchResourceQuotas(ctx, client.Interface, hpa.Namespace)
-	input.Quotas = convertToBlockerQuotas(quotaInfos)
+	quotaInfos, quotaErr := kube.FetchResourceQuotas(ctx, client.Interface, hpa.Namespace)
+	if quotaErr != nil {
+		warnings = append(warnings, fmt.Sprintf("resource quotas unavailable: %v", quotaErr))
+	} else {
+		input.Quotas = convertToBlockerQuotas(quotaInfos)
+	}
 
 	// Fetch node capacity (deep mode).
-	nodeCap, _ := kube.FetchNodeCapacity(ctx, client.Interface)
+	nodeCap, nodeErr := kube.FetchNodeCapacity(ctx, client.Interface)
+	if nodeErr != nil {
+		warnings = append(warnings, fmt.Sprintf("node capacity unavailable: %v", nodeErr))
+	}
 	if nodeCap != nil {
 		input.NodeCapacity = &blocker.NodeCapacitySummary{
-			TotalNodes:   nodeCap.TotalNodes,
-			AllocCPU:     nodeCap.AllocCPU.String(),
-			AllocMemory:  nodeCap.AllocMemory.String(),
-			TaintedNodes: nodeCap.TaintedNodes,
+			TotalNodes:            nodeCap.TotalNodes,
+			SchedulableNodes:      nodeCap.SchedulableNodes,
+			SchedulableNodesKnown: true,
+			AllocCPU:              nodeCap.AllocCPU.String(),
+			AllocMemory:           nodeCap.AllocMemory.String(),
+			TaintedNodes:          nodeCap.TaintedNodes,
 		}
 	}
 
-	return input
+	return input, warnings
 }
 
 // enrichBlockerInputFromPods counts ready/total pods from PodInfo slice.
@@ -217,7 +243,7 @@ func convertToBlockerContainerStatuses(details []kube.ContainerStatusDetail) []b
 // convertToBlockerQuotas converts internal QuotaInfo to BlockerQuotaInfo,
 // computing the usage ratio.
 func convertToBlockerQuotas(infos []kube.QuotaInfo) []blocker.QuotaInfo {
-	return convertQuotaDetail(infos, func(q kube.QuotaInfo) blocker.QuotaInfo {
+	return kubeconv.QuotaDetail(infos, func(q kube.QuotaInfo) blocker.QuotaInfo {
 		return blocker.QuotaInfo{
 			Name:     q.Name,
 			Resource: q.Resource,

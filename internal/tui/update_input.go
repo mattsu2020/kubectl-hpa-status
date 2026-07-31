@@ -1,10 +1,6 @@
 package tui
 
-import (
-	"fmt"
-
-	tea "charm.land/bubbletea/v2"
-)
+import tea "charm.land/bubbletea/v2"
 
 func (m Model) handleSimFieldInput(msg tea.KeyMsg) (tea.Model, bool) {
 	if m.simState == nil || len(m.simState.fields) == 0 {
@@ -36,77 +32,6 @@ func (m Model) handleSimFieldInput(msg tea.KeyMsg) (tea.Model, bool) {
 		}
 		return m, changed
 	}
-}
-
-// handleEnter processes the Enter key based on the current view mode.
-func (m Model) handleEnter() (tea.Model, tea.Cmd) {
-	switch m.viewMode {
-	case listView:
-		filtered := m.filteredItems()
-		if m.cursor >= 0 && m.cursor < len(filtered) {
-			m.viewMode = detailView
-		}
-		return m, nil
-
-	case simView:
-		if m.simState == nil {
-			return m, nil
-		}
-		return m, m.runSimulation()
-
-	case fixView:
-		if m.fixState == nil || len(m.fixState.suggestions) == 0 {
-			return m, nil
-		}
-		if m.opts.ApplyFn == nil {
-			m.fixState.applyConfirm = false
-			m.fixState.applied = true
-			m.fixState.applyErr = fmt.Errorf("live apply is disabled; restart with --apply --dry-run=false")
-			return m, nil
-		}
-		if !m.fixState.applyConfirm {
-			m.fixState.applyConfirm = true
-			m.fixState.applied = false
-			m.fixState.applyErr = nil
-			return m, nil
-		}
-		m.fixState.applyConfirm = false
-		return m, m.applyFix()
-	}
-
-	return m, nil
-}
-
-// handleEscape processes the Escape key based on the current view mode.
-func (m Model) handleEscape() (tea.Model, tea.Cmd) {
-	switch m.viewMode {
-	case listView:
-		m.batchApplyConfirm = false
-		m.batchApplyPreview = nil
-	case helpView, detailView, metricsView:
-		m.viewMode = listView
-		m.batchApplyConfirm = false
-		m.batchApplyPreview = nil
-	case simView, fixView, replayView:
-		m.simState = nil
-		m.fixState = nil
-		m.replayState = nil
-		m.viewMode = detailView
-	case historyView:
-		m.historyState = nil
-		m.viewMode = detailView
-	case hintsView:
-		m.hintsState = nil
-		m.viewMode = detailView
-	case batchAuditView:
-		m.batchAuditState = nil
-		m.viewMode = listView
-	case overviewView:
-		m.viewMode = listView
-	default:
-		return m, nil
-	}
-	return m, nil
 }
 
 func (m Model) handleFilterInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {

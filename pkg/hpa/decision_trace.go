@@ -2,8 +2,8 @@ package hpa
 
 import (
 	"fmt"
-	"math"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
@@ -65,7 +65,11 @@ func buildDecisionTraceMetric(hpa *autoscalingv2.HorizontalPodAutoscaler, metric
 		entry.Confidence = ConfidenceLow
 		return entry
 	}
-	raw := int32(math.Ceil(float64(hpa.Status.CurrentReplicas) * *ratio))
+	raw, usable := util.ProjectedReplicasForRatio(hpa.Status.CurrentReplicas, *ratio)
+	if !usable {
+		entry.Confidence = ConfidenceLow
+		return entry
+	}
 	entry.Ratio = ratio
 	entry.RawDesired = &raw
 	entry.Direction = "none"

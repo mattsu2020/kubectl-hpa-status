@@ -17,8 +17,9 @@ func TestExtractVPAInfo(t *testing.T) {
 			},
 			"spec": map[string]any{
 				"targetRef": map[string]any{
-					"kind": "Deployment",
-					"name": "web",
+					"apiVersion": "apps/v1",
+					"kind":       "Deployment",
+					"name":       "web",
 				},
 				"updatePolicy": map[string]any{
 					"updateMode": "Auto",
@@ -34,6 +35,9 @@ func TestExtractVPAInfo(t *testing.T) {
 	}
 	if info.TargetRef != "Deployment/web" {
 		t.Fatalf("expected targetRef 'Deployment/web', got %q", info.TargetRef)
+	}
+	if info.TargetAPIVersion != "apps/v1" {
+		t.Fatalf("expected target apiVersion apps/v1, got %q", info.TargetAPIVersion)
 	}
 	if info.TargetKind != "Deployment" {
 		t.Fatalf("expected targetKind 'Deployment', got %q", info.TargetKind)
@@ -77,6 +81,10 @@ func TestExtractVPAInfo_RecommendationsAndControlledResources(t *testing.T) {
 	if len(info.ControlledResources) != 2 || info.ControlledResources[0] != "cpu" || info.ControlledResources[1] != "memory" {
 		t.Fatalf("unexpected controlled resources: %#v", info.ControlledResources)
 	}
+	if len(info.ContainerPolicies) != 1 ||
+		info.ContainerPolicies[0].ControlledResourcesSpecified != true {
+		t.Fatalf("unexpected container policies: %#v", info.ContainerPolicies)
+	}
 	if len(info.Recommendations) != 2 {
 		t.Fatalf("expected cpu and memory recommendations, got %#v", info.Recommendations)
 	}
@@ -85,7 +93,38 @@ func TestExtractVPAInfo_RecommendationsAndControlledResources(t *testing.T) {
 	}
 }
 
-func TestExtractVPAInfo_RecommenderMode(t *testing.T) {
+func TestExtractVPAInfoPreservesPerContainerDefaultsAndModes(t *testing.T) {
+	u := &unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "web-vpa"},
+		"spec": map[string]any{
+			"resourcePolicy": map[string]any{"containerPolicies": []any{
+				map[string]any{
+					"containerName":       "app",
+					"mode":                "Off",
+					"controlledResources": []any{"memory"},
+				},
+				map[string]any{"containerName": "sidecar"},
+			}},
+		},
+	}}
+	info := ExtractVPAInfo(u)
+	if len(info.ContainerPolicies) != 2 {
+		t.Fatalf("container policies = %#v", info.ContainerPolicies)
+	}
+	if info.ContainerPolicies[0].Mode != "Off" {
+		t.Fatalf("app mode = %q", info.ContainerPolicies[0].Mode)
+	}
+	if info.ContainerPolicies[1].ControlledResourcesSpecified {
+		t.Fatal("omitted sidecar controlledResources was not preserved")
+	}
+	if len(info.ControlledResources) != 2 ||
+		info.ControlledResources[0] != "cpu" ||
+		info.ControlledResources[1] != "memory" {
+		t.Fatalf("effective aggregate resources = %v, want cpu+memory", info.ControlledResources)
+	}
+}
+
+func TestExtractVPAInfo_PreservesUnknownUpdateMode(t *testing.T) {
 	u := &unstructured.Unstructured{
 		Object: map[string]any{
 			"metadata": map[string]any{
@@ -105,7 +144,7 @@ func TestExtractVPAInfo_RecommenderMode(t *testing.T) {
 
 	info := ExtractVPAInfo(u)
 	if info.UpdateMode != "Recommender" {
-		t.Fatalf("expected updateMode 'Recommender', got %q", info.UpdateMode)
+		t.Fatalf("expected unknown updateMode to be preserved, got %q", info.UpdateMode)
 	}
 }
 
@@ -230,6 +269,24 @@ func TestHasResourceMetrics_MemoryMetric(t *testing.T) {
 	}
 }
 
+func TestHasResourceMetrics_ContainerResourceMetric(t *testing.T) {
+	hpa := &autoscalingv2.HorizontalPodAutoscaler{
+		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+			Metrics: []autoscalingv2.MetricSpec{{
+				Type: autoscalingv2.ContainerResourceMetricSourceType,
+				ContainerResource: &autoscalingv2.ContainerResourceMetricSource{
+					Name:      corev1.ResourceMemory,
+					Container: "app",
+				},
+			}},
+		},
+	}
+
+	if !hasResourceMetrics(hpa) {
+		t.Fatal("expected hasResourceMetrics=true for a container memory metric")
+	}
+}
+
 func TestHasResourceMetrics_ExternalOnly(t *testing.T) {
 	hpa := &autoscalingv2.HorizontalPodAutoscaler{
 		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
@@ -272,5 +329,162 @@ func TestVPAControlsHPAResourceRequiresIntersection(t *testing.T) {
 	}
 	if !vpaControlsHPAResource(hpa, nil) {
 		t.Fatal("omitted controlledResources defaults to cpu and memory")
+	}
+}
+
+func TestVPAConflictsWithHPA(t *testing.T) {
+	resourceMetric := func(name corev1.ResourceName) autoscalingv2.MetricSpec {
+		return autoscalingv2.MetricSpec{
+			Type:     autoscalingv2.ResourceMetricSourceType,
+			Resource: &autoscalingv2.ResourceMetricSource{Name: name},
+		}
+	}
+	containerResourceMetric := func(name corev1.ResourceName) autoscalingv2.MetricSpec {
+		return autoscalingv2.MetricSpec{
+			Type: autoscalingv2.ContainerResourceMetricSourceType,
+			ContainerResource: &autoscalingv2.ContainerResourceMetricSource{
+				Name:      name,
+				Container: "app",
+			},
+		}
+	}
+	externalMetric := autoscalingv2.MetricSpec{
+		Type: autoscalingv2.ExternalMetricSourceType,
+		External: &autoscalingv2.ExternalMetricSource{
+			Metric: autoscalingv2.MetricIdentifier{Name: "queue-depth"},
+		},
+	}
+	hpaFor := func(metrics ...autoscalingv2.MetricSpec) *autoscalingv2.HorizontalPodAutoscaler {
+		return &autoscalingv2.HorizontalPodAutoscaler{
+			Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+				ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
+					Kind: "Deployment",
+					Name: "web",
+				},
+				Metrics: metrics,
+			},
+		}
+	}
+	vpaFor := func(mode string, controlled ...string) *VPAInfo {
+		return &VPAInfo{
+			TargetKind:          "Deployment",
+			TargetName:          "web",
+			UpdateMode:          mode,
+			ControlledResources: controlled,
+		}
+	}
+
+	tests := []struct {
+		name string
+		hpa  *autoscalingv2.HorizontalPodAutoscaler
+		vpa  *VPAInfo
+		want bool
+	}{
+		{
+			name: "resource CPU uses VPA defaults",
+			hpa:  hpaFor(resourceMetric(corev1.ResourceCPU)),
+			vpa:  vpaFor("Auto"),
+			want: true,
+		},
+		{
+			name: "container memory overlaps controlled memory",
+			hpa:  hpaFor(containerResourceMetric(corev1.ResourceMemory)),
+			vpa:  vpaFor("Auto", "memory"),
+			want: true,
+		},
+		{
+			name: "different target API version does not match",
+			hpa: func() *autoscalingv2.HorizontalPodAutoscaler {
+				h := hpaFor(resourceMetric(corev1.ResourceCPU))
+				h.Spec.ScaleTargetRef.APIVersion = "apps/v1"
+				return h
+			}(),
+			vpa: &VPAInfo{
+				TargetAPIVersion:    "extensions/v1beta1",
+				TargetKind:          "Deployment",
+				TargetName:          "web",
+				UpdateMode:          "Auto",
+				ControlledResources: []string{"cpu"},
+			},
+		},
+		{
+			name: "container exact Off overrides active wildcard",
+			hpa:  hpaFor(containerResourceMetric(corev1.ResourceCPU)),
+			vpa: &VPAInfo{
+				TargetKind: "Deployment", TargetName: "web", UpdateMode: "Auto",
+				ContainerPolicies: []VPAContainerPolicy{
+					{ContainerName: "*"},
+					{ContainerName: "app", Mode: "Off"},
+				},
+			},
+		},
+		{
+			name: "different container policy does not create false positive",
+			hpa:  hpaFor(containerResourceMetric(corev1.ResourceCPU)),
+			vpa: &VPAInfo{
+				TargetKind: "Deployment", TargetName: "web", UpdateMode: "Auto",
+				ContainerPolicies: []VPAContainerPolicy{
+					{ContainerName: "*", Mode: "Off"},
+					{ContainerName: "sidecar", ControlledResources: []string{"cpu"}, ControlledResourcesSpecified: true},
+				},
+			},
+		},
+		{
+			name: "omitted resources default per container",
+			hpa:  hpaFor(containerResourceMetric(corev1.ResourceCPU)),
+			vpa: &VPAInfo{
+				TargetKind: "Deployment", TargetName: "web", UpdateMode: "Auto",
+				ContainerPolicies: []VPAContainerPolicy{
+					{ContainerName: "app"},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "controlled resources do not overlap",
+			hpa:  hpaFor(resourceMetric(corev1.ResourceCPU)),
+			vpa:  vpaFor("Auto", "memory"),
+		},
+		{
+			name: "Off mode is recommendation only",
+			hpa:  hpaFor(resourceMetric(corev1.ResourceCPU)),
+			vpa:  vpaFor("Off", "cpu"),
+		},
+		{
+			name: "target does not match",
+			hpa:  hpaFor(resourceMetric(corev1.ResourceCPU)),
+			vpa: &VPAInfo{
+				TargetKind:          "StatefulSet",
+				TargetName:          "web",
+				UpdateMode:          "Auto",
+				ControlledResources: []string{"cpu"},
+			},
+		},
+		{
+			name: "external metric is not a resource conflict",
+			hpa:  hpaFor(externalMetric),
+			vpa:  vpaFor("Auto", "cpu"),
+		},
+		{
+			name: "non CPU or memory resource is ignored",
+			hpa:  hpaFor(resourceMetric(corev1.ResourceEphemeralStorage)),
+			vpa:  vpaFor("Auto", string(corev1.ResourceEphemeralStorage)),
+		},
+		{
+			name: "nil HPA",
+			vpa:  vpaFor("Auto", "cpu"),
+		},
+		{
+			name: "nil VPA",
+			hpa:  hpaFor(resourceMetric(corev1.ResourceCPU)),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := VPAConflictsWithHPA(tt.hpa, tt.vpa); got != tt.want {
+				t.Fatalf("VPAConflictsWithHPA() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

@@ -1,6 +1,7 @@
 package util
 
 import (
+	"math"
 	"testing"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -134,5 +135,43 @@ func TestEstimatedDesiredForRatio(t *testing.T) {
 	// Outside tolerance: scales proportionally.
 	if got := EstimatedDesiredForRatio(hpa, 2.0); got != 8 {
 		t.Errorf("ratio=2.0 with current=4: got %d, want 8", got)
+	}
+	if got := EstimatedDesiredForRatio(hpa, math.NaN()); got != hpa.Status.CurrentReplicas {
+		t.Errorf("NaN ratio: got %d, want current replicas %d", got, hpa.Status.CurrentReplicas)
+	}
+	if got := EstimatedDesiredForRatio(hpa, -1); got != hpa.Status.CurrentReplicas {
+		t.Errorf("negative ratio: got %d, want current replicas %d", got, hpa.Status.CurrentReplicas)
+	}
+	if got := EstimatedDesiredForRatio(hpa, math.Inf(1)); got != math.MaxInt32 {
+		t.Errorf("infinite ratio: got %d, want MaxInt32", got)
+	}
+}
+
+func TestProjectedReplicasForRatioNumericSafety(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		current    int32
+		ratio      float64
+		want       int32
+		wantUsable bool
+	}{
+		{name: "ordinary", current: 4, ratio: 1.25, want: 5, wantUsable: true},
+		{name: "NaN preserves current", current: 4, ratio: math.NaN(), want: 4, wantUsable: false},
+		{name: "negative preserves current", current: 4, ratio: -1, want: 4, wantUsable: false},
+		{name: "positive infinity saturates", current: 4, ratio: math.Inf(1), want: math.MaxInt32, wantUsable: true},
+		{name: "finite overflow saturates", current: math.MaxInt32, ratio: 2, want: math.MaxInt32, wantUsable: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, usable := ProjectedReplicasForRatio(tt.current, tt.ratio)
+			if got != tt.want || usable != tt.wantUsable {
+				t.Fatalf("ProjectedReplicasForRatio(%d, %v) = (%d, %v), want (%d, %v)",
+					tt.current, tt.ratio, got, usable, tt.want, tt.wantUsable)
+			}
+		})
 	}
 }

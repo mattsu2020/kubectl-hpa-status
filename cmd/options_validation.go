@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	"github.com/spf13/cobra"
 )
 
@@ -38,6 +39,7 @@ func validateEffectiveOptions(cmd *cobra.Command, opts *options) error {
 	checks := []func() error{
 		func() error { return validateNumericRanges(opts) },
 		func() error { return validateEnumModes(opts) },
+		func() error { return validateOutputSchemaOption(cmd, opts) },
 		func() error { return validateCommandOutputModes(cmd, opts) },
 		func() error { return validateConfiguredHealthWeights(opts) },
 		func() error { return validateOutputOption(cmd, opts) },
@@ -115,6 +117,7 @@ func validateEnumModes(opts *options) error {
 		{"--decision-trace-format", opts.DecisionTraceFormat, []string{"", "text", "json", "yaml"}},
 		{"--report", opts.Report, []string{"", "markdown", "md", "html", "incident", "junit", "sarif"}},
 		{"--export", opts.Export, []string{"", "yaml", "kustomize", "helm-values", "directory"}},
+		{"--output-schema", opts.OutputSchema, []string{"", "v1", "v2"}},
 	}
 	for _, mode := range modes {
 		if err := validateMode(mode.flag, mode.value, mode.accepted...); err != nil {
@@ -122,6 +125,32 @@ func validateEnumModes(opts *options) error {
 		}
 	}
 	return nil
+}
+
+func validateOutputSchemaOption(cmd *cobra.Command, opts *options) error {
+	if opts.OutputSchema == "" || opts.OutputSchema == "v1" {
+		return nil
+	}
+	if cmd != nil && cmd.Parent() != nil && cmd.Name() != "status" && cmd.Name() != "watch" {
+		// outputSchema is a global config key so users can make structured
+		// status/watch output their default without breaking unrelated
+		// commands. An explicit flag on an unsupported command remains an
+		// actionable error instead of being silently ignored.
+		if flagChanged(cmd, "output-schema") {
+			return fmt.Errorf("--output-schema=v2 is supported by status and watch output only")
+		}
+		return nil
+	}
+	format, _ := selectOutputFromOptions(opts)
+	switch normalizeOutputFormat(format) {
+	case "json", "jsonl", "yaml", "jsonpath", "go-template", "template":
+		return nil
+	default:
+		if _, kind, ok := render.ParsePrefixedFormat(format); ok && (kind == "jsonpath" || kind == "go-template") {
+			return nil
+		}
+		return fmt.Errorf("--output-schema=v2 requires json, yaml, jsonl, jsonpath, or go-template output")
+	}
 }
 
 func validateListCommandOptions(cmd *cobra.Command, opts *options) error {
@@ -185,7 +214,7 @@ func validateOutputOption(cmd *cobra.Command, opts *options) error {
 		}
 		return nil
 	default:
-		if expression, _, ok := parsePrefixedFormat(format); ok {
+		if expression, _, ok := render.ParsePrefixedFormat(format); ok {
 			if strings.TrimSpace(expression) == "" {
 				return fmt.Errorf("--output=%q has an empty template expression", opts.Output)
 			}
@@ -205,6 +234,7 @@ func normalizeEffectiveEnums(opts *options) {
 	opts.DecisionTraceFormat = strings.ToLower(strings.TrimSpace(opts.DecisionTraceFormat))
 	opts.Report = strings.ToLower(strings.TrimSpace(opts.Report))
 	opts.Export = strings.ToLower(strings.TrimSpace(opts.Export))
+	opts.OutputSchema = strings.ToLower(strings.TrimSpace(opts.OutputSchema))
 	if normalizeOutputFormat(opts.Output) == "gotemplate" {
 		opts.Output = "go-template"
 	}

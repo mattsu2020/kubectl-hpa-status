@@ -135,6 +135,7 @@ func attachHealth(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler, minRep
 	a.Health = string(healthResult.State)
 	a.HealthScore = healthResult.Score
 	a.HealthResult = &healthResult
+	a.dynamicHealthBaseline = newDynamicHealthBaseline(healthResult.Score, healthResult.State, healthResult.Signals)
 	return a
 }
 

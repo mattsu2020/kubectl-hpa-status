@@ -1,0 +1,327 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mattsu2020/kubectl-hpa-status/docs/output-schema-v2.json",
+  "title": "kubectl-hpa-status grouped status output",
+  "description": "JSON schema for hpa-status/v2 single-status, multi-status, and JSONL record envelopes",
+  "oneOf": [
+    { "$ref": "#/$defs/statusReportV2" },
+    { "$ref": "#/$defs/statusBatchV2" },
+    { "$ref": "#/$defs/statusRecordV2" }
+  ],
+  "$defs": {
+    "statusReportV2": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "apiVersion": { "type": "string", "const": "hpa-status/v2" },
+        "analysis": { "$ref": "#/$defs/groupedAnalysis" },
+        "events": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/event" }
+        }
+      },
+      "required": ["apiVersion", "analysis"]
+    },
+    "statusBatchV2": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "apiVersion": { "type": "string", "const": "hpa-status/v2" },
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/statusBatchItemV2" }
+        }
+      },
+      "required": ["apiVersion", "items"]
+    },
+    "statusBatchItemV2": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "namespace": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "status": { "type": "string", "enum": ["ok", "warning", "error"] },
+        "error": { "type": "string", "minLength": 1 },
+        "report": { "$ref": "#/$defs/statusReportV2" }
+      },
+      "required": ["namespace", "name", "status"],
+      "oneOf": [
+        {
+          "properties": {
+            "status": { "enum": ["ok", "warning"] }
+          },
+          "required": ["report"],
+          "not": { "required": ["error"] }
+        },
+        {
+          "properties": {
+            "status": { "const": "error" }
+          },
+          "required": ["error"],
+          "not": { "required": ["report"] }
+        }
+      ]
+    },
+    "statusRecordV2": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "apiVersion": { "type": "string", "const": "hpa-status/v2" },
+        "namespace": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "status": { "type": "string", "enum": ["success", "warning", "error"] },
+        "error": { "type": "string", "minLength": 1 },
+        "report": { "$ref": "#/$defs/statusReportV2" }
+      },
+      "required": ["apiVersion", "namespace", "name", "status"],
+      "oneOf": [
+        {
+          "properties": {
+            "status": { "enum": ["success", "warning"] }
+          },
+          "required": ["report"],
+          "not": { "required": ["error"] }
+        },
+        {
+          "properties": {
+            "status": { "const": "error" }
+          },
+          "required": ["error"],
+          "not": { "required": ["report"] }
+        }
+      ]
+    },
+    "groupedAnalysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "meta": { "$ref": "#/$defs/meta" },
+        "replicas": { "$ref": "#/$defs/replicas" },
+        "decision": { "$ref": "#/$defs/decision" },
+        "metrics": { "$ref": "#/$defs/metricsGroup" },
+        "conditions": { "$ref": "#/$defs/conditionsGroup" },
+        "capacity": { "$ref": "#/$defs/capacity" },
+        "scaleToZero": { "$ref": "#/$defs/scaleToZeroGroup" },
+        "stability": { "$ref": "#/$defs/stability" },
+        "advisory": { "$ref": "#/$defs/advisory" },
+        "controllers": { "$ref": "#/$defs/controllers" },
+        "blockers": { "$ref": "#/$defs/blockers" },
+        "actions": { "$ref": "#/$defs/actions" },
+        "lifecycle": { "$ref": "#/$defs/lifecycle" }
+      },
+      "required": [
+        "meta",
+        "replicas",
+        "decision",
+        "metrics",
+        "conditions",
+        "capacity",
+        "scaleToZero",
+        "stability",
+        "advisory",
+        "controllers",
+        "blockers",
+        "actions",
+        "lifecycle"
+      ]
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "namespace": { "type": "string" },
+        "name": { "type": "string" },
+        "target": { "type": "string" },
+        "creationTimestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["namespace", "name", "target"]
+    },
+    "replicas": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "currentReplicas": { "type": "integer" },
+        "desiredReplicas": { "type": "integer" },
+        "minReplicas": { "type": "integer" },
+        "maxReplicas": { "type": "integer" },
+        "targetReplicas": { "type": "object" }
+      },
+      "required": ["currentReplicas", "desiredReplicas", "minReplicas", "maxReplicas"]
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "health": { "type": "string", "enum": ["OK", "STABILIZED", "LIMITED", "ERROR"] },
+        "healthScore": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "healthResult": { "type": "object" },
+        "summary": { "type": "string" },
+        "summaryKey": { "type": "string" },
+        "impactMetric": { "type": "object" },
+        "decisionTrace": { "type": "object" },
+        "metricDecisionTrace": { "type": "object" },
+        "structuredDecisionTrace": { "type": "object" },
+        "decisionSignals": {
+          "type": "array",
+          "items": { "type": "object" }
+        }
+      },
+      "required": ["health", "healthScore", "summary"]
+    },
+    "metricsGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "metrics": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "metricsDiagnostics": { "type": "object" },
+        "metricFreshness": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "metricContract": { "type": "object" },
+        "metricHints": { "type": "object" },
+        "adapterDiagnostics": { "type": "object" }
+      }
+    },
+    "conditionsGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "conditions": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "behavior": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "stabilizationWindowSeconds": { "type": "integer" },
+        "stabilizationSource": { "type": "string" },
+        "stabilizationConfidence": { "type": "string" },
+        "stabilizationRemaining": { "type": "integer" }
+      }
+    },
+    "capacity": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "capacityContext": { "type": "object" },
+        "capacityHeadroom": { "type": "object" },
+        "capacityPlan": { "type": "object" },
+        "resourceCheck": { "type": "object" },
+        "podAnalysis": { "type": "object" },
+        "scalePath": { "type": "object" },
+        "readinessImpact": { "type": "object" }
+      }
+    },
+    "scaleToZeroGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "scaleToZero": { "type": "object" },
+        "warmupAnalysis": { "type": "object" }
+      }
+    },
+    "stability": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "simulation": { "type": "object" },
+        "flappingPrevention": { "type": "object" },
+        "flappingDiagnosis": { "type": "object" },
+        "churnAnalysis": { "type": "object" }
+      }
+    },
+    "advisory": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "vpaConflict": { "type": "object" },
+        "vpaAdvisory": { "type": "object" },
+        "containerAdvisor": { "type": "object" },
+        "behaviorAdvisor": { "type": "object" }
+      }
+    },
+    "controllers": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "keda": { "type": "object" },
+        "rolloutDiagnosis": { "type": "object" },
+        "controllerProfile": { "type": "object" }
+      }
+    },
+    "blockers": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "blockerReport": { "type": "object" },
+        "gitOpsConflict": { "type": "object" }
+      }
+    },
+    "actions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "recommendedActions": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "suggestions": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "structuredActions": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "structuredInterpretation": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "interpretation": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "assumptions": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "warnings": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "staleStatus": { "type": "object" },
+        "healthTrend": { "type": "object" },
+        "debug": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "hiddenFactors": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "enrichmentStatus": { "type": "object" }
+      }
+    },
+    "event": {
+      "type": "object",
+      "properties": {
+        "reason": { "type": "string" },
+        "message": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["reason", "message"]
+    }
+  }
+}

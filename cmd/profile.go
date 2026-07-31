@@ -6,6 +6,8 @@ import (
 	"io"
 
 	"github.com/spf13/cobra"
+
+	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 )
 
 func newProfileCommand(opts *options) *cobra.Command {
@@ -34,7 +36,7 @@ func runProfile(ctx context.Context, out io.Writer, opts *options) error {
 		return err
 	}
 	profile := buildControllerProfile(ctx, client, opts.AssumeProfile, opts.ControllerProfileFile)
-	return writeOutput(out, opts.Output, opts.Template, profile, func() error {
+	return render.Format(out, opts.Output, opts.Template, profile, func(out io.Writer) error {
 		_, err := fmt.Fprintf(out, "Controller profile:\n  source: %s\n  sync period: %s\n  downscale stabilization: %s\n  initial readiness delay: %s\n  cpu initialization period: %s\n  tolerance: %s\n",
 			profile.Source,
 			profile.SyncPeriod,
@@ -53,6 +55,7 @@ func runProfile(ctx context.Context, out io.Writer, opts *options) error {
 		}
 		return nil
 	})
+
 }
 
 func runProfileDetect(ctx context.Context, out io.Writer, opts *options) error {
@@ -61,7 +64,7 @@ func runProfileDetect(ctx context.Context, out io.Writer, opts *options) error {
 		return err
 	}
 	profile := buildControllerProfile(ctx, client, opts.AssumeProfile, opts.ControllerProfileFile)
-	return writeOutput(out, opts.Output, opts.Template, profile, func() error {
+	return render.Format(out, opts.Output, opts.Template, profile, func(out io.Writer) error {
 		confidence := "medium"
 		if profile.Source == "defaults" || len(profile.Warnings) > 0 {
 			confidence = "low"
@@ -89,4 +92,5 @@ func runProfileDetect(ctx context.Context, out io.Writer, opts *options) error {
 		_, err = fmt.Fprintln(out, "\nNext:\n  pass --controller-profile-file profile.yaml for more accurate analysis when controller-manager flags are hidden")
 		return err
 	})
+
 }

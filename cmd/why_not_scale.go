@@ -6,8 +6,10 @@ import (
 	"io"
 	"strings"
 
-	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/spf13/cobra"
+
+	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
+	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
 
 type whyNotScaleReport struct {
@@ -52,7 +54,7 @@ func runWhyNotScale(ctx context.Context, out io.Writer, opts *options, names []s
 
 	format, templateStr := selectOutputFromOptions(&local)
 
-	return writeOutput(out, format, templateStr, value, func() error {
+	return render.Format(out, format, templateStr, value, func(out io.Writer) error {
 		for i, report := range reports {
 			if i > 0 {
 				if _, err := fmt.Fprintln(out); err != nil {
@@ -65,6 +67,7 @@ func runWhyNotScale(ctx context.Context, out io.Writer, opts *options, names []s
 		}
 		return nil
 	})
+
 }
 
 // collectWhyNotScaleObservations gathers human-readable signals (summary,

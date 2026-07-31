@@ -23,18 +23,20 @@ Inference should be labeled with confidence language and covered by tests.
 
 | Path | Responsibility |
 | --- | --- |
-| `cmd/` | Cobra commands, flags, Kubernetes client orchestration, output format routing (~80 files, one feature/subcommand per file) |
+| `cmd/` | Cobra commands, flags, request construction, and Kubernetes client orchestration (one feature/subcommand per file) |
 | `pkg/hpa/` | Importable analysis model: HPA signal extraction, health scoring, suggestions, diagnostics, and text/Markdown/HTML/SARIF rendering |
 | `pkg/hpa/render/` | Shared report renderers (Markdown/HTML/list/incident) extracted from the root `pkg/hpa` `*_text.go` files |
 | `pkg/style/` | Terminal color and semantic styling (shared by cmd and pkg/hpa renderers) |
+| `internal/analysis/` | Deterministic application service shared by list and TUI; turns HPAs plus observed enrichment into finalized reports/list items |
+| `internal/observation/` | Request-scoped, memoized workload snapshot with explicit known/unavailable/not-applicable states |
 | `internal/kube/` | kubeconfig resolution, client construction, KEDA/VPA/node/quota reads, scale-target and pod info |
 | `internal/kubeconv/` | DTO translation `internal/kube` → `pkg/hpa` analysis types; the boundary layer that keeps `internal/kube` free of `pkg/hpa` imports |
-| `internal/enrichment/` | Batched KEDA/VPA enrichment context and status tracking |
-| `internal/cmdoptions/` | Structured CLI option model + presets + normalization, decoupled from cobra; accessed from `cmd/` only through `cmd/options_bridge.go` |
-| `internal/render/` | Pure output-format routing (json/yaml/jsonpath/template/prometheus/markdown/html/incident), with `cmd/output.go` as a thin facade |
+| `internal/enrichment/` | Ordered enrichment pipeline plus batched KEDA/VPA collection; status types alias the canonical public analysis model |
+| `internal/cmdoptions/` | Structured CLI option model, immutable per-command request snapshots, presets, and normalization, decoupled from cobra |
+| `internal/render/` | Output-format routing and serialization (json/yaml/jsonl/jsonpath/template/prometheus/markdown/html/incident), including write-error propagation |
 | `internal/patch/` | RFC 7396 JSON merge patch helpers for suggestions |
 | `internal/tui/` | Bubble Tea dashboard: model/update/view plus per-view renderers |
-| `internal/history/` | Health snapshot store for trend/sparkline replay |
+| `internal/history/` | Clock-injected recorder/store shared by status/list history collection and trend replay |
 | `internal/i18n/` | Embedded locale bundles (en/ja), dynamically loaded from `locales/` |
 | `internal/testutil/` | Shared fake-client/HPA/workload builders used by `cmd/`, `internal/`, and `pkg/hpa` tests |
 | `cmd/internal/{client,errs,output}` | Lifted helpers (client construction, sentinel errors, output predicates) following the facade-then-migrate pattern |
@@ -67,8 +69,9 @@ Refactoring notes:
 - `status.go` was split into per-enrichment helpers (`enrichXxx` functions
   extracted from `buildStatusReport`); KEDA/VPA data fetching still lives in
   `internal/kube/`.
-- `output.go` handles format routing; config loading lives in `config.go` /
-  `config_apply.go`.
+- Command code calls `internal/render` directly for format routing; `output.go`
+  now contains only command-specific output selection, labeling, and structured
+  error policy. Config loading lives in `config.go` / `config_apply.go`.
 - HPA fetch (`kube.GetHPAFromClient`) and event conversion
   (`hpaanalysis.EventsFromCore`) are centralized in `internal/kube/hpa.go` and
   `pkg/hpa/events.go` respectively; commands call them instead of inlining the
@@ -82,9 +85,10 @@ Refactoring notes:
   structured JSON/YAML output must stay schema-clean, shell completion must
   stay silent, client failure is non-fatal). See `client_helpers.go` for the
   full rationale.
-- `EnrichmentStatus` on `Analysis` is now a typed `*hpaanalysis.EnrichmentStatus`
-  (mirror of `internal/enrichment.Status` via `Status.ToAnalysisStatus`) instead
-  of `interface{}`.
+- `EnrichmentStatus` on `Analysis` is a typed
+  `*hpaanalysis.EnrichmentStatus`. `internal/enrichment` aliases that canonical
+  model, so internal and public output cannot drift through hand-maintained
+  mirror structs.
 - Config-file accepted values for color/output/lang are defined once in
   `config.go` (`validColorValues` / `validOutputValues` / `validLangValues`)
   and reused by both `validateConfig` and the flag descriptions in
@@ -93,21 +97,21 @@ Refactoring notes:
   `WriteHTMLReport`) delegate to per-section renderers (`text_extras.go`,
   `diff_text_sections.go`, `report_html_sections.go`) so no `//nolint:gocyclo`
   exemption is needed on the orchestrator body.
-- The `options` struct in `root.go` is shared across all commands. Per-command
-  option splits are partial: the option model lives in `internal/cmdoptions`
-  (re-exported through `cmd/options_bridge.go`), while command wiring stays in
-  `cmd/`. The `cmd/` sub-package split is in progress (v2.0 phase 1 landed):
-  shared helpers were lifted into `cmd/internal/{errs,client,output}` and the
-  bundle renderer layer moved to `cmd/bundle`, both following the
-  facade-then-migrate pattern. Further groups (`replay`,
-  `alerts`/`completion`/`compat`/`version`) remain in `cmd/`.
+- The mutable `options` struct is used only while Cobra resolves configuration
+  and flags. Each command snapshots it into an immutable
+  `internal/cmdoptions.StatusRequest` or `ListRequest` (with deep-copied
+  slices/maps/weights) before execution, so concurrent commands and callbacks
+  cannot observe later option mutation. Command wiring remains in `cmd/`;
+  further groups (`replay`, `alerts`/`completion`/`compat`/`version`) can move
+  once their remaining command-specific dependencies are narrowed.
 - Several cobra-free layers have been extracted out of `cmd/`:
-  `internal/kubeconv` (kube.* -> pkg/hpa DTO conversion, with `cmd/converters.go`
-  as a thin facade), `internal/render` (output format routing and
-  serialization, with `cmd/output.go` as a thin facade), and the v2.0
-  `cmd/internal/{errs,client,output}` + `cmd/bundle` extractions. When the
-  remaining `cmd/` split lands, callers migrate to these packages directly and
-  the facades shrink.
+  `internal/kubeconv` (kube.* -> pkg/hpa DTO conversion), `internal/render`
+  (output format routing and serialization), `internal/analysis` (shared
+  list/TUI finalization), `internal/observation` (request-scoped API reads),
+  and the v2.0 `cmd/internal/{errs,client,output}` + `cmd/bundle` extractions.
+  All command call sites now import `kubeconv` and `render` directly; the
+  obsolete unexported `cmd/converters.go` and render-forwarding functions were
+  deleted.
 - `pkg/hpa/render` extraction of the report renderers is complete: the
   Markdown/HTML/list/incident report files (`report_markdown.go`,
   `report_html.go`, `report_html_sections.go`, `report_list.go`,
@@ -131,6 +135,36 @@ Refactoring notes:
   or RBAC denial is visible to operators instead of silently degrading to an
   empty sub-report. New enrichment steps should append to `Warnings` on
   best-effort failure rather than swallowing the error.
+- `internal/analysis.AnalyzeOne` / `AnalyzeBatch` are the canonical
+  application-level finalization path for list and TUI workflows. Optional
+  controller observations are passed in explicitly; the service applies
+  enrichment penalties exactly once, finalizes derived output, and produces
+  the report and list item from the same `Analysis`.
+- A single-HPA status request creates one `internal/observation.Snapshot`.
+  Scale-target and Pod reads are memoized with `sync.Once`, and every derived
+  view (pod info, pending details, container state) reuses those objects. The
+  typed state distinguishes a successful empty result from an unavailable API
+  read and from a workload kind where the observation is not applicable.
+- Metric lookup and simulation use `MetricID`, whose identity includes source
+  type, metric name, container, canonical selector, and described object
+  reference. Name-only overrides are accepted only when they resolve to one
+  metric; ambiguous matches return `ErrMetricAmbiguous` instead of silently
+  selecting the first status entry.
+- Capacity checks carry stable `CapacityCheckID` and `CapacityCheckStatus`
+  values. Decision rules use those typed fields rather than localized display
+  messages; legacy serialized records without IDs remain readable.
+- `internal/history.Recorder` owns append/prune/load/analyze behavior with an
+  injected clock. Status and list use this service instead of independently
+  reimplementing retention and trend analysis.
+- `internal/enrichment.RunPipeline` owns task ordering, enablement,
+  best-effort warning callbacks, and fail-fast behavior. Per-source enrichers
+  bind their typed inputs in task closures; the pipeline itself stays free of
+  Cobra and Kubernetes DTO concerns.
+- Structured status output defaults to the compatible flat
+  `hpa-status/v1` shape. `--output-schema=v2` explicitly projects the same
+  analysis into the 13 nested groups defined by `GroupedAnalysis`; no domain
+  calculation is duplicated. Multi-HPA JSON/YAML uses a versioned batch
+  envelope, and JSONL emits one projected item per line, including failures.
 - Sentinel errors live in `pkg/hpa/errors.go`, `internal/kube/errors.go`, and
   `cmd/errors.go`. Wrap them with `fmt.Errorf("...: %w", ErrXxx)` at the call
   site so callers can match with `errors.Is` instead of substring-matching the
@@ -167,7 +201,8 @@ Refactoring notes:
 - The metric dispatch layer lives in `metrics_handler.go` (the
   `MetricHandler` interface + the public `FormatMetricStatus` /
   `FormatMetricTarget` / `FormatMetricSelector` API and the spec/status lookup
-  helpers). Each `MetricSourceType` has its own handler file
+  helpers). Canonical identity and ambiguity handling live in
+  `metric_identity.go`. Each `MetricSourceType` has its own handler file
   (`metric_handler_resource.go`, `metric_handler_container.go`,
   `metric_handler_pods.go`, `metric_handler_object.go`,
   `metric_handler_external.go`). Add a new metric type by implementing
@@ -198,13 +233,12 @@ Refactoring notes:
   `hpaanalysis.*` public API stable via type aliases and thin wrapper functions
   in `pkg/hpa`, so `cmd/` and `internal/` callers keep compiling without new
   imports. The re-export facades (`policy.go`, `flapping_advisor.go`,
-  `churn.go`, `keda.go`, `vpa.go`, `readiness.go`) carry `Deprecated:` markers
-  pointing at the canonical sub-package symbols; they exist only for external
-  importers of `pkg/hpa`. All in-tree callers already use the canonical
-  sub-package symbols directly (verified: zero `hpaanalysis.<deprecated>`
-  references under `cmd/` and `internal/`), so the facades are removal
-  candidates for the next major version (v3.0.0). Until then they stay as a
-  compatibility layer; do not add new usages of the deprecated aliases.
+  `churn.go`, `keda.go`, `vpa.go`, `readiness.go`, `health_trend.go`, and
+  `report_list.go`) carry `Deprecated:` markers pointing at canonical
+  sub-package symbols; they exist only for external importers of `pkg/hpa`.
+  The `facade-check` CI target rejects new repository-internal selector uses.
+  They remain available throughout v2 and are scheduled for removal in v3;
+  do not add new usages of the deprecated aliases.
   Completed so far:
   - `pkg/hpa/keda` — KEDA ScaledObject analysis (`keda.Analysis`, `keda.Analyze`).
     Re-exported as `hpaanalysis.KEDAAnalysis`, `hpaanalysis.AnalyzeKEDA`, etc.
@@ -302,15 +336,12 @@ Refactoring notes:
     with their constants). `pkg/hpa` re-exports as `Severity` /
     `ConfidenceHigh` / etc.
 - The `cmd/bundle` and `cmd/replay` sub-package extractions were assessed and
-  deferred. Both groups depend on 10+ unexported `cmd/`-package helpers
+  deferred. Both groups still depend on multiple unexported `cmd/` helpers
   (`newClientOrDefault`, `applyCommandPreset`, `fetchSnapshot*`,
   `capacitySelector`, `redactBytes`, `loadRecordedTrace`, `traceReplicaRange`,
-  `parseSimulateOverrides`, `outputSelection`, `writeOutput`,
-  `hpaNameCompletion`) that are scattered across `snapshot.go`, `capacity.go`,
-  `timeline.go`, `output.go`, `client_helpers.go`, `options_bridge.go`,
-  `enrich.go`, `status.go`, and `completion.go`. Extracting these helpers into
-  a shared sub-package is the prerequisite; until then, bundle/replay stay in
-  `package cmd` alongside the rest of the command wiring.
+  `parseSimulateOverrides`, `outputSelection`, and `hpaNameCompletion`).
+  Narrowing these command contracts is the prerequisite; until then,
+  bundle/replay stay in `package cmd` alongside the rest of the command wiring.
 - README badges are organised with 5 primary badges (CI, Go Reference, Go
   Report Card, Release, License) shown inline, and the remaining 8
   (CodeQL, Release workflow, Stars, GoReleaser, golangci-lint, Krew,
@@ -321,13 +352,37 @@ Refactoring notes:
 `pkg/hpa` is kept importable so downstream tools can reuse the analysis model
 without depending on Cobra command wiring.
 
+### Compatibility facade removal policy
+
+Every public facade scheduled for v3 removal must satisfy all of these
+conditions before deletion:
+
+1. Its canonical replacement is public, documented, and covered by tests.
+2. The facade has carried a Go `Deprecated:` marker for the remainder of the
+   v2 major line and the v3 migration notes name the replacement.
+3. `make facade-check` reports no repository-internal selector use.
+4. Removal happens only in v3 or later; no v2 patch/minor release deletes it.
+
+The policy applies to the root `pkg/hpa` KEDA, VPA, churn, readiness,
+health-trend, and list-report facades, plus any later domain facade added to the
+checker. The former unexported `cmd/converters.go` and rendering forwarders were
+not public compatibility APIs and have already been removed after all call
+sites migrated.
+
 ## Analysis Flow
 
-1. `cmd` loads one or more HPAs through the Kubernetes client.
-2. `pkg/hpa.Analyze` converts raw HPA objects into a structured `Analysis`.
-3. Conditions, metrics, behavior, health, interpretation, and suggestions are
-   attached to the same model.
-4. Output writers render text, JSON, YAML, JSONPath, or templates.
+1. Cobra resolves config and flags, then snapshots mutable options into an
+   immutable command request.
+2. `cmd` loads one or more HPAs. Single-status workflows collect dependent
+   workload data through one request-scoped observation snapshot.
+3. `pkg/hpa.AnalyzeWithOptions` converts visible HPA signals into a structured
+   `Analysis`; optional KEDA/VPA data is observed separately.
+4. `internal/analysis` attaches optional observations, applies enrichment
+   penalties, finalizes derived fields, and creates reports/list items.
+5. Status-only enrichers run through the ordered enrichment pipeline and append
+   warnings when best-effort observations are unavailable.
+6. `internal/render` emits text or the selected structured schema. v1 is the
+   default; v2 is an explicit nested projection of the same finalized model.
 
 ## Health Score Algorithm
 

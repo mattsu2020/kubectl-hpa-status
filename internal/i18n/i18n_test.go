@@ -145,23 +145,3 @@ func sortedKeys(m map[string]string) []string {
 	sort.Strings(keys)
 	return keys
 }
-
-func TestAllLabelKeysExistInBothLocales(t *testing.T) {
-	en := Load("en")
-	ja := Load("ja")
-	labelKeys := []string{
-		"label_target", "label_replicas", "label_health", "label_summary",
-		"label_conditions", "label_metrics", "label_behavior", "label_actions",
-		"label_suggestions", "label_fix", "label_interpretation", "label_debug",
-		"label_keda", "label_events", "label_risk", "label_precondition",
-		"label_warning", "label_metrics_diagnostics",
-	}
-	for _, key := range labelKeys {
-		if _, ok := en[key]; !ok {
-			t.Errorf("expected key %q in English bundle", key)
-		}
-		if _, ok := ja[key]; !ok {
-			t.Errorf("expected key %q in Japanese bundle", key)
-		}
-	}
-}

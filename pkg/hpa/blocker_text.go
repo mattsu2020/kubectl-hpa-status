@@ -59,6 +59,14 @@ func AppendBlockerText(out *[]byte, report *blocker.Report, theme style.Theme, l
 			*out = fmt.Appendf(*out, "    - %s\n", cmd)
 		}
 	}
+
+	if len(report.Warnings) > 0 {
+		*out = append(*out, '\n')
+		*out = append(*out, "  Warnings:\n"...)
+		for _, warning := range report.Warnings {
+			*out = fmt.Appendf(*out, "    - %s\n", warning)
+		}
+	}
 }
 
 // WriteBlockerText writes a standalone blocker report (used by the blockers

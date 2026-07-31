@@ -33,10 +33,20 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) keyHandlers() []keyBindingHandler {
 	return []keyBindingHandler{
 		{m.keys.Quit, func(m Model) (tea.Model, tea.Cmd) { return m, tea.Quit }},
-		{m.keys.Up, func(m Model) (tea.Model, tea.Cmd) { return m.moveCursor(-1), nil }},
-		{m.keys.Down, func(m Model) (tea.Model, tea.Cmd) { return m.moveCursor(+1), nil }},
-		{m.keys.Enter, func(m Model) (tea.Model, tea.Cmd) { return m.handleEnter() }},
-		{m.keys.Escape, func(m Model) (tea.Model, tea.Cmd) { return m.handleEscape() }},
+		{m.keys.Up, func(m Model) (tea.Model, tea.Cmd) {
+			return controllerForMode(m.viewMode).MoveCursor(m, -1), nil
+		}},
+		{m.keys.Down, func(m Model) (tea.Model, tea.Cmd) {
+			return controllerForMode(m.viewMode).MoveCursor(m, +1), nil
+		}},
+		{m.keys.Enter, func(m Model) (tea.Model, tea.Cmd) {
+			next, cmd := controllerForMode(m.viewMode).HandleEnter(m)
+			return next, cmd
+		}},
+		{m.keys.Escape, func(m Model) (tea.Model, tea.Cmd) {
+			next, cmd := controllerForMode(m.viewMode).HandleEscape(m)
+			return next, cmd
+		}},
 		{m.keys.Refresh, func(m Model) (tea.Model, tea.Cmd) {
 			m.loading = true
 			return m, fetchHPAs(m)
@@ -284,37 +294,6 @@ func (m Model) handleIntervalKey(delta int) Model {
 		}
 	}
 	m.interval = newInterval
-	return m
-}
-
-// moveCursor advances the active view's selection/scroll cursor by delta
-// (negative for up, positive for down), clamping at both ends. It centralizes
-// the per-view cursor math that previously inlined two near-identical nested
-// switches in handleKey. The lower bound is always 0; only the upper bound
-// (list length) varies per view.
-func (m Model) moveCursor(delta int) Model {
-	switch m.viewMode {
-	case listView:
-		filtered := m.filteredItems()
-		m.cursor = clampCursor(m.cursor+delta, len(filtered)-1)
-	case fixView:
-		if m.fixState != nil {
-			m.fixState.selected = clampCursor(m.fixState.selected+delta, len(m.fixState.suggestions)-1)
-			m.fixState.applyConfirm = false
-		}
-	case replayView:
-		if m.replayState != nil && m.replayState.trace != nil {
-			m.replayState.scrollPos = clampCursor(m.replayState.scrollPos+delta, maxInt(0, len(m.replayState.trace.Snapshots)-1))
-		}
-	case historyView:
-		if m.historyState != nil {
-			m.historyState.scrollPos = clampCursor(m.historyState.scrollPos+delta, maxInt(0, len(m.historyState.snapshots)-1))
-		}
-	case hintsView:
-		if m.hintsState != nil {
-			m.hintsState.selected = clampCursor(m.hintsState.selected+delta, len(m.hintsState.flows)-1)
-		}
-	}
 	return m
 }
 

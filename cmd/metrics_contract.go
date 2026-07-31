@@ -6,14 +6,16 @@ import (
 	"io"
 	"strings"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
-	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/spf13/cobra"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/restmapper"
+
+	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
+	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
 
 func newMetricsContractCommand(opts *options) *cobra.Command {
@@ -84,9 +86,10 @@ func runMetricsContract(ctx context.Context, out io.Writer, opts *options, name 
 			Contract:  report,
 		}
 
-		return writeOutput(out, format, templateStr, output, func() error {
+		return render.Format(out, format, templateStr, output, func(out io.Writer) error {
 			return hpaanalysis.WriteMetricContractText(out, report)
 		})
+
 	}
 }
 
@@ -418,6 +421,9 @@ func buildMetricContractMetric(
 		metricKey = objectMetricContractIdentity(metric.Name, metric.Selector, m.Object.DescribedObject)
 	}
 	metric.HasCurrentData = currentMetricMap[metricKey]
+	if identity, err := hpaanalysis.MetricIDFromSpec(m); err == nil {
+		metric = hpaanalysis.WithMetricContractIdentity(metric, identity)
+	}
 
 	return metric
 }

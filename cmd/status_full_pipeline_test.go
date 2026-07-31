@@ -115,6 +115,16 @@ func TestRunStatusMany_AllEnrichersEnabled(t *testing.T) {
 	if report.Analysis.CapacityContext == nil {
 		t.Error("expected CapacityContext to be populated with --capacity-context")
 	}
+
+	namespacedPodLists := 0
+	for _, action := range fakeClient.Actions() {
+		if action.Matches("list", "pods") && action.GetNamespace() == "default" {
+			namespacedPodLists++
+		}
+	}
+	if namespacedPodLists != 1 {
+		t.Errorf("request-scoped enrichers listed target Pods %d times, want 1", namespacedPodLists)
+	}
 }
 
 // TestRunStatusMany_NoEnrich verifies the --no-enrich tier still renders a

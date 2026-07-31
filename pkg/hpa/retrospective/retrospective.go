@@ -9,6 +9,7 @@ package retrospective
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,7 +18,6 @@ import (
 	eventutil "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/event"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
-	corev1 "k8s.io/api/core/v1"
 )
 
 // metricReasonRegex extracts metric information from HPA rescale reason strings.
@@ -35,7 +35,8 @@ func BuildTimeline(events []eventutil.Event, hpa *autoscalingv2.HorizontalPodAut
 		Namespace: hpa.Namespace,
 		Since:     since,
 		Until:     clock.Now(),
-		Disclaimer: "Best-effort reconstruction from Kubernetes events and current HPA status. " +
+		Disclaimer: "Best-effort reconstruction from Kubernetes events. " +
+			"Current HPA configuration is shown only when explicitly labeled and is not projected backward. " +
 			"Internal controller calculations, exact metric values at decision time, and " +
 			"suppressed-but-not-logged decisions are not visible. Multi-metric winner is estimated.",
 	}
@@ -46,7 +47,7 @@ func BuildTimeline(events []eventutil.Event, hpa *autoscalingv2.HorizontalPodAut
 		return tl
 	}
 
-	prevDesired := hpa.Status.CurrentReplicas
+	var prevDesired *int32
 	var entries []Entry
 
 	for _, event := range events {
@@ -55,16 +56,13 @@ func BuildTimeline(events []eventutil.Event, hpa *autoscalingv2.HorizontalPodAut
 			continue
 		}
 		entries = append(entries, *entry)
-		if entry.Category == "rescale" {
-			newSize := parseNewSize(event.Message)
-			if newSize > 0 {
-				prevDesired = newSize
+		if event.Reason == "SuccessfulRescale" {
+			newSize, ok := parseNewSize(event.Message)
+			if ok {
+				prevDesired = int32Pointer(newSize)
 			}
 		}
 	}
-
-	// Insert estimated stabilization/policy suppression entries where possible.
-	entries = insertSuppressionEntries(entries, hpa)
 
 	tl.Entries = entries
 	return tl
@@ -72,11 +70,11 @@ func BuildTimeline(events []eventutil.Event, hpa *autoscalingv2.HorizontalPodAut
 
 // classifyEvent maps a Kubernetes event to a Entry based on its
 // reason and message content.
-func classifyEvent(event eventutil.Event, prevDesired int32, hpa *autoscalingv2.HorizontalPodAutoscaler) *Entry {
+func classifyEvent(event eventutil.Event, prevDesired *int32, hpa *autoscalingv2.HorizontalPodAutoscaler) *Entry {
 	switch event.Reason {
 	case "SuccessfulRescale":
-		newSize := parseNewSize(event.Message)
-		if newSize == 0 {
+		newSize, ok := parseNewSize(event.Message)
+		if !ok {
 			// Fallback: cannot parse, emit raw message.
 			return &Entry{
 				Timestamp:  event.Timestamp,
@@ -87,19 +85,39 @@ func classifyEvent(event eventutil.Event, prevDesired int32, hpa *autoscalingv2.
 			}
 		}
 
-		metricCtx := formatMetricContext(event.Message, hpa)
+		metricCtx := formatMetricContext(event.Message)
 
-		msg := fmt.Sprintf("desired %d -> %d", prevDesired, newSize)
+		if prevDesired == nil {
+			msg := fmt.Sprintf("desired <unknown> -> %d", newSize)
+			if metricCtx != "" {
+				msg = fmt.Sprintf("%s     desired <unknown> -> %d", metricCtx, newSize)
+			}
+			return &Entry{
+				Timestamp:     event.Timestamp,
+				Category:      "rescale",
+				Message:       msg,
+				Source:        "event",
+				Confidence:    "low",
+				ToReplicas:    int32Pointer(newSize),
+				MetricContext: metricCtx,
+			}
+		}
+
+		msg := fmt.Sprintf("desired %d -> %d", *prevDesired, newSize)
 		if metricCtx != "" {
-			msg = fmt.Sprintf("%s     desired %d -> %d", metricCtx, prevDesired, newSize)
+			msg = fmt.Sprintf("%s     desired %d -> %d", metricCtx, *prevDesired, newSize)
 		}
 
 		return &Entry{
-			Timestamp:  event.Timestamp,
-			Category:   "rescale",
-			Message:    msg,
-			Source:     "event",
-			Confidence: "high",
+			Timestamp:     event.Timestamp,
+			Category:      "rescale",
+			Message:       msg,
+			Source:        "event",
+			Confidence:    "high",
+			FromReplicas:  int32Pointer(*prevDesired),
+			ToReplicas:    int32Pointer(newSize),
+			ParseValid:    true,
+			MetricContext: metricCtx,
 		}
 
 	case "FailedRescale":
@@ -120,11 +138,33 @@ func classifyEvent(event eventutil.Event, prevDesired int32, hpa *autoscalingv2.
 			Confidence: "high",
 		}
 
-	case conditions.ScalingLimited, "TooManyReplicas", "TooFewReplicas":
+	case conditions.ScalingLimited:
+		message := "ScalingLimited      scaling constraint recorded; exact historical limit unavailable"
+		if strings.TrimSpace(event.Message) != "" {
+			message = "ScalingLimited      " + truncateMessageRetro(event.Message, 80)
+		}
 		return &Entry{
 			Timestamp:  event.Timestamp,
 			Category:   "scaling-limited",
-			Message:    fmt.Sprintf("ScalingLimited=True      capped by maxReplicas=%d", hpa.Spec.MaxReplicas),
+			Message:    message,
+			Source:     "event",
+			Confidence: "medium",
+		}
+
+	case "TooManyReplicas":
+		return &Entry{
+			Timestamp:  event.Timestamp,
+			Category:   "scaling-limited",
+			Message:    "TooManyReplicas      constrained by maxReplicas; historical value unavailable",
+			Source:     "event",
+			Confidence: "medium",
+		}
+
+	case "TooFewReplicas":
+		return &Entry{
+			Timestamp:  event.Timestamp,
+			Category:   "scaling-limited",
+			Message:    "TooFewReplicas      constrained by minReplicas; historical value unavailable",
 			Source:     "event",
 			Confidence: "medium",
 		}
@@ -133,7 +173,7 @@ func classifyEvent(event eventutil.Event, prevDesired int32, hpa *autoscalingv2.
 		return &Entry{
 			Timestamp:  event.Timestamp,
 			Category:   "stabilized",
-			Message:    formatScaleDownStabilizedTimelineMessage(hpa, event.Timestamp),
+			Message:    formatScaleDownStabilizedTimelineMessage(hpa),
 			Source:     "event",
 			Confidence: "medium",
 		}
@@ -152,218 +192,79 @@ func classifyEvent(event eventutil.Event, prevDesired int32, hpa *autoscalingv2.
 }
 
 // parseNewSize extracts the new replica count from an HPA event message.
-func parseNewSize(message string) int32 {
-	result, _ := eventutil.ParseNewSize(message)
-	return result
+func parseNewSize(message string) (int32, bool) {
+	return eventutil.ParseNewSize(message)
 }
 
-// formatMetricContext attempts to extract the metric reason from a rescale
-// event message and enrich it with current metric ratio data.
-func formatMetricContext(message string, hpa *autoscalingv2.HorizontalPodAutoscaler) string {
+// formatMetricContext extracts only the reason recorded on the historical
+// event. Current HPA metric values must not be projected backwards onto an
+// earlier controller decision.
+func formatMetricContext(message string) string {
 	match := metricReasonRegex.FindStringSubmatch(message)
 	if len(match) < 2 {
 		return ""
 	}
 	reason := strings.TrimSpace(match[1])
-
-	// Try to match the reason text with a known metric name from the HPA spec.
-	reasonLower := strings.ToLower(reason)
-	for _, metric := range hpa.Status.CurrentMetrics {
-		if metric.Type == autoscalingv2.ResourceMetricSourceType && metric.Resource != nil {
-			name := strings.ToLower(string(metric.Resource.Name))
-			if strings.Contains(reasonLower, name) {
-				if metric.Resource.Current.AverageUtilization != nil {
-					if target := resourceMetricTargetUtilization(hpa, metric.Resource.Name); target != nil {
-						return fmt.Sprintf("%s %d%% %s target %d%%",
-							strings.ToUpper(string(metric.Resource.Name)),
-							*metric.Resource.Current.AverageUtilization,
-							compareInt32(*metric.Resource.Current.AverageUtilization, *target),
-							*target)
-					}
-					return fmt.Sprintf("%s %d%%", strings.ToUpper(string(metric.Resource.Name)), *metric.Resource.Current.AverageUtilization)
-				}
-			}
-		}
-	}
-
-	// Could not correlate with a specific metric; return the raw reason.
 	if len(reason) > 50 {
 		reason = reason[:47] + "..."
 	}
 	return reason
 }
 
-func resourceMetricTargetUtilization(hpa *autoscalingv2.HorizontalPodAutoscaler, name corev1.ResourceName) *int32 {
-	if hpa == nil {
-		return nil
-	}
-	for _, spec := range hpa.Spec.Metrics {
-		if spec.Type != autoscalingv2.ResourceMetricSourceType || spec.Resource == nil {
-			continue
-		}
-		if spec.Resource.Name == name {
-			return spec.Resource.Target.AverageUtilization
-		}
-	}
-	return nil
+func formatScaleDownStabilizedTimelineMessage(hpa *autoscalingv2.HorizontalPodAutoscaler) string {
+	currentWindow := scaleDownStabilizationWindowSeconds(hpa)
+	return fmt.Sprintf(
+		"ScaleDownStabilized      suppression recorded; current effective window=%ds; historical duration unavailable",
+		currentWindow,
+	)
 }
 
-func compareInt32(current, target int32) string {
-	switch {
-	case current > target:
-		return ">"
-	case current < target:
-		return "<"
-	default:
-		return "="
-	}
-}
+const defaultScaleDownStabilizationWindowSeconds int32 = 300
 
-func formatScaleDownStabilizedTimelineMessage(hpa *autoscalingv2.HorizontalPodAutoscaler, ts time.Time) string {
-	remaining := scaleDownStabilizationWindowSeconds(hpa)
-	cond := conditions.Find(hpa, conditions.AbleToScale)
-	if cond != nil && !cond.LastTransitionTime.IsZero() && remaining > 0 {
-		elapsed := ts.Sub(cond.LastTransitionTime.Time)
-		left := time.Duration(remaining)*time.Second - elapsed
-		if left > 0 {
-			return fmt.Sprintf("ScaleDownStabilized      scale-down suppressed, ~%ds remaining", int(left.Seconds()))
-		}
-	}
-	if remaining > 0 {
-		return fmt.Sprintf("ScaleDownStabilized      scale-down suppressed, ~%ds remaining", remaining)
-	}
-	return "ScaleDownStabilized      scale-down suppressed"
-}
-
-// insertSuppressionEntries adds estimated stabilization and policy-limited
-// entries between rescale events when the HPA spec and conditions suggest
-// that scaling was deliberately held back.
-func insertSuppressionEntries(entries []Entry, hpa *autoscalingv2.HorizontalPodAutoscaler) []Entry {
-	if len(entries) == 0 {
-		return entries
-	}
-
-	// Check for active scale-down stabilization.
-	stabilizationWindow := scaleDownStabilizationWindowSeconds(hpa)
-	isStabilized := hasScaleDownStabilizedCondition(hpa)
-
-	// Check for scale-up policies that could limit rate.
-	scaleUpPolicy := formatScaleUpPolicySummary(hpa)
-
-	var result []Entry
-
-	for i, entry := range entries {
-		result = append(result, entry)
-
-		// After a rescale event, check if suppression might have occurred
-		// before the next event.
-		if entry.Category != "rescale" || i >= len(entries)-1 {
-			continue
-		}
-		nextEntry := entries[i+1]
-		gap := nextEntry.Timestamp.Sub(entry.Timestamp)
-
-		// Detect direction from the "desired A -> B" message format.
-		isScaleUp := isScaleUpEntry(entry.Message)
-		nextIsScaleDown := isScaleDownEntry(nextEntry.Message)
-
-		// If the next entry is a scale-down and stabilization is active,
-		// insert a stabilization suppression entry before it.
-		if isStabilized && stabilizationWindow > 0 && nextIsScaleDown {
-			remaining := gap.Seconds()
-			if remaining > float64(stabilizationWindow) {
-				suppressedAt := nextEntry.Timestamp.Add(-time.Duration(stabilizationWindow) * time.Second)
-				result = append(result, Entry{
-					Timestamp:  suppressedAt,
-					Category:   "stabilized",
-					Message:    fmt.Sprintf("scaleDown suppressed by stabilization window (%ds)", stabilizationWindow),
-					Source:     "estimated",
-					Confidence: "medium",
-				})
-			}
-		}
-
-		// If scale-up policies are limiting and the gap suggests policy delays.
-		if scaleUpPolicy != "" && isScaleUp && gap > 30*time.Second {
-			result = append(result, Entry{
-				Timestamp:  entry.Timestamp.Add(gap / 2),
-				Category:   "policy-limited",
-				Message:    fmt.Sprintf("scaleUp limited by policy: %s", scaleUpPolicy),
-				Source:     "estimated",
-				Confidence: "low",
-			})
-		}
-	}
-
-	return result
-}
-
-// scaleDownStabilizationWindowSeconds returns the scale-down stabilization
-// window in seconds, or 0 if not configured.
+// scaleDownStabilizationWindowSeconds returns the current effective
+// scale-down stabilization window. Kubernetes defaults an unspecified value
+// to 300 seconds. This current setting must not be used to reconstruct a past
+// event's remaining duration.
 func scaleDownStabilizationWindowSeconds(hpa *autoscalingv2.HorizontalPodAutoscaler) int32 {
-	if hpa.Spec.Behavior == nil || hpa.Spec.Behavior.ScaleDown == nil {
-		return 0
+	if hpa == nil || hpa.Spec.Behavior == nil || hpa.Spec.Behavior.ScaleDown == nil {
+		return defaultScaleDownStabilizationWindowSeconds
 	}
 	if hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds == nil {
-		return 0
+		return defaultScaleDownStabilizationWindowSeconds
 	}
 	return *hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds
 }
 
-// hasScaleDownStabilizedCondition checks if the HPA currently has an
-// AbleToScale condition with the ScaleDownStabilized reason.
-func hasScaleDownStabilizedCondition(hpa *autoscalingv2.HorizontalPodAutoscaler) bool {
-	cond := conditions.Find(hpa, conditions.AbleToScale)
-	return cond != nil && cond.Reason == "ScaleDownStabilized"
+func entryReplicaRange(entry Entry) (int32, int32, bool) {
+	if entry.ParseValid && entry.FromReplicas != nil && entry.ToReplicas != nil {
+		return *entry.FromReplicas, *entry.ToReplicas, true
+	}
+	return parseDesiredRange(entry.Message)
 }
 
-// isScaleDownEntry detects whether the entry represents a scale-down
-// by parsing the "desired A -> B" format and checking B < A.
-func isScaleDownEntry(msg string) bool {
-	from, to := parseDesiredRange(msg)
-	return from > 0 && to > 0 && to < from
-}
-
-// isScaleUpEntry detects whether the entry represents a scale-up
-// by parsing the "desired A -> B" format and checking B > A.
-func isScaleUpEntry(msg string) bool {
-	from, to := parseDesiredRange(msg)
-	return from > 0 && to > from
+func int32Pointer(value int32) *int32 {
+	return &value
 }
 
 // desiredRangeRegex extracts "desired A -> B" from a message.
 var desiredRangeRegex = regexp.MustCompile(`desired (\d+) -> (\d+)`)
 
-// parseDesiredRange extracts the from/to replica counts from a "desired A -> B" message.
-func parseDesiredRange(msg string) (from, to int32) {
+// parseDesiredRange extracts bounded, non-negative replica counts from a
+// "desired A -> B" message.
+func parseDesiredRange(msg string) (from, to int32, ok bool) {
 	match := desiredRangeRegex.FindStringSubmatch(msg)
 	if len(match) < 3 {
-		return 0, 0
+		return 0, 0, false
 	}
-	if _, err := fmt.Sscanf(match[1], "%d", &from); err != nil {
-		return 0, 0
+	parsedFrom, err := strconv.ParseInt(match[1], 10, 32)
+	if err != nil {
+		return 0, 0, false
 	}
-	if _, err := fmt.Sscanf(match[2], "%d", &to); err != nil {
-		return 0, 0
+	parsedTo, err := strconv.ParseInt(match[2], 10, 32)
+	if err != nil {
+		return 0, 0, false
 	}
-	return from, to
-}
-
-// formatScaleUpPolicySummary returns a compact summary of the first scale-up
-// behavior policy, e.g. "+2 pods / 60s". Returns empty string if none configured.
-func formatScaleUpPolicySummary(hpa *autoscalingv2.HorizontalPodAutoscaler) string {
-	if hpa.Spec.Behavior == nil || hpa.Spec.Behavior.ScaleUp == nil {
-		return ""
-	}
-	for _, policy := range hpa.Spec.Behavior.ScaleUp.Policies {
-		if policy.Type == autoscalingv2.PodsScalingPolicy {
-			return fmt.Sprintf("+%d pods / %ds", policy.Value, policy.PeriodSeconds)
-		}
-		if policy.Type == autoscalingv2.PercentScalingPolicy {
-			return fmt.Sprintf("+%d%% / %ds", policy.Value, policy.PeriodSeconds)
-		}
-	}
-	return ""
+	return int32(parsedFrom), int32(parsedTo), true
 }
 
 // truncateMessageRetro truncates a message to maxLen terminal columns.

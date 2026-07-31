@@ -113,16 +113,26 @@ func (s *HealthStore) Append(namespace, name string, snapshot healthtrend.Health
 // Load reads health snapshots for the given HPA within the specified time window.
 // Returns snapshots sorted by timestamp (oldest first).
 func (s *HealthStore) Load(namespace, name string, since time.Duration) ([]healthtrend.HealthSnapshot, error) {
+	return s.LoadAt(namespace, name, since, time.Now())
+}
+
+// LoadAt reads health snapshots relative to the supplied time. Application
+// services use this form so one command run has a consistent, testable clock.
+func (s *HealthStore) LoadAt(namespace, name string, since time.Duration, now time.Time) ([]healthtrend.HealthSnapshot, error) {
 	path := s.filePath(namespace, name)
 	release, err := acquireLock(path)
 	if err != nil {
 		return nil, err
 	}
 	defer release()
-	return loadHistoryFile(path, since)
+	return loadHistoryFileAt(path, since, now)
 }
 
-func loadHistoryFile(path string, since time.Duration) ([]healthtrend.HealthSnapshot, error) {
+func loadHistoryFile(path string, since time.Duration) ([]healthtrend.HealthSnapshot, error) { //nolint:unused // Retained compatibility wrapper.
+	return loadHistoryFileAt(path, since, time.Now())
+}
+
+func loadHistoryFileAt(path string, since time.Duration, now time.Time) ([]healthtrend.HealthSnapshot, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -132,7 +142,7 @@ func loadHistoryFile(path string, since time.Duration) ([]healthtrend.HealthSnap
 	}
 	defer func() { _ = f.Close() }()
 
-	cutoff := time.Now().Add(-since)
+	cutoff := now.Add(-since)
 	var snapshots []healthtrend.HealthSnapshot
 
 	scanner := bufio.NewScanner(f)
@@ -191,6 +201,11 @@ func (s *HealthStore) LoadMultiple(keys []struct{ NS, Name string }, since time.
 
 // Prune removes entries older than the retention period from the HPA's file.
 func (s *HealthStore) Prune(namespace, name string, retention time.Duration) error {
+	return s.PruneAt(namespace, name, retention, time.Now())
+}
+
+// PruneAt removes entries older than retention relative to the supplied time.
+func (s *HealthStore) PruneAt(namespace, name string, retention time.Duration, now time.Time) error {
 	path := s.filePath(namespace, name)
 	release, err := acquireLock(path)
 	if err != nil {
@@ -198,7 +213,7 @@ func (s *HealthStore) Prune(namespace, name string, retention time.Duration) err
 	}
 	defer release()
 
-	snapshots, loadErr := loadHistoryFile(path, retention)
+	snapshots, loadErr := loadHistoryFileAt(path, retention, now)
 	var corruptErr *CorruptLinesError
 	if loadErr != nil && !errors.As(loadErr, &corruptErr) {
 		return loadErr

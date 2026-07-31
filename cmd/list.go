@@ -9,15 +9,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/enrichment"
-	"github.com/mattsu2020/kubectl-hpa-status/internal/history"
-	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
-	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/healthtrend"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 	"github.com/spf13/cobra"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	analysisservice "github.com/mattsu2020/kubectl-hpa-status/internal/analysis"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/enrichment"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/history"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
+	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
 func newListCommand(opts *options) *cobra.Command {
@@ -27,10 +29,8 @@ func newListCommand(opts *options) *cobra.Command {
 		Short:   "List HPAs and highlight visible issues",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if opts.Watch.Watch {
-				return runWatchList(cmd.Context(), cmd.OutOrStdout(), opts)
-			}
-			return runList(cmd.Context(), cmd.OutOrStdout(), opts)
+			request := snapshotListRequest(opts)
+			return executeListRequest(cmd.Context(), cmd.OutOrStdout(), request)
 		},
 	}
 	cmd.Flags().StringVar(&opts.SortBy, "sort-by", "", "sort list by namespace, name, current, desired, diff, health-score, or issue")
@@ -49,19 +49,22 @@ func newScanCommand(opts *options) *cobra.Command {
 		Short:   "Scan all namespaces for HPAs with visible problems",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			// Shallow copy to avoid mutating shared state.
-			// NOTE: reference fields (clientOverride, outputTemplates, etc.) are shared.
-			// This is safe because runList does not mutate them.
-			scanOpts := copyOptions(opts)
-			scanOpts.AllNamespaces = true
-			scanOpts.Problem = true
-			scanOpts.Wide = true
-			return runList(cmd.Context(), cmd.OutOrStdout(), &scanOpts)
+			request := snapshotScanRequest(opts)
+			executionOptions := request.Options()
+			return runList(cmd.Context(), cmd.OutOrStdout(), &executionOptions)
 		},
 	}
 	cmd.Flags().BoolVar(&opts.Summary, "summary", false, "include cluster summary and prioritized actions in markdown/html reports")
 	cmd.Flags().BoolVar(&opts.Conflicts, "conflicts", false, "detect HPAs and related controllers that may conflict on the same scale target")
 	return cmd
+}
+
+func executeListRequest(ctx context.Context, out io.Writer, request listRequest) error {
+	executionOptions := request.Options()
+	if request.WatchEnabled() {
+		return runWatchList(ctx, out, &executionOptions)
+	}
+	return runList(ctx, out, &executionOptions)
 }
 
 func runList(ctx context.Context, out io.Writer, opts *options) error {
@@ -214,11 +217,12 @@ func buildListItems(ctx context.Context, opts *options, hpas []autoscalingv2.Hor
 	ec := newEnrichmentContext(ctx, opts)
 	kedaResults, kedaWarnings := enrichListKEDA(ctx, ec, hpas)
 	vpaResults, vpaWarnings := enrichListVPA(ctx, ec, hpas)
-	var store *history.HealthStore
+	enrichmentWarnings := analysisservice.MergeNamespaceWarnings(kedaWarnings, vpaWarnings)
+	var recorder *history.Recorder
 	if opts.Trend {
 		s, err := history.NewHealthStore()
 		if err == nil {
-			store = s
+			recorder = history.NewRecorder(s, nil)
 		} else {
 			// Surface the init failure so --trend silently producing no trend data
 			// (e.g. an unwritable cache dir) is not mistaken for "no history yet".
@@ -226,33 +230,21 @@ func buildListItems(ctx context.Context, opts *options, hpas []autoscalingv2.Hor
 		}
 	}
 
+	results := analysisservice.AnalyzeBatch(hpas, analysisservice.Options{
+		IncludeInterpretation: opts.Apply,
+		Debug:                 opts.Debug,
+		HealthWeights:         opts.HealthWeights,
+	}, analysisservice.BatchEnrichment{
+		KEDA:     kedaResults,
+		VPA:      vpaResults,
+		Warnings: enrichmentWarnings,
+	})
+
 	var items []hpaanalysis.ListItem
-	for i := range hpas {
-		analysis := hpaanalysis.AnalyzeWithOptions(&hpas[i], opts.Apply, analysisOptions(opts.HealthWeights, opts.Debug))
-
-		// Surface per-namespace KEDA/VPA list failures on the affected HPAs so a
-		// permissions error is distinguishable from "no objects found". The same
-		// warning appears on every HPA in the failing namespace, which is the
-		// intended signal: operators see it on the rows they are inspecting.
-		analysis.Warnings = append(analysis.Warnings, kedaWarnings[analysis.Namespace]...)
-		analysis.Warnings = append(analysis.Warnings, vpaWarnings[analysis.Namespace]...)
-
-		key := analysis.Namespace + "/" + analysis.Name
-		if kedaResults != nil {
-			if keda, ok := kedaResults[key]; ok {
-				analysis.KEDAInfo = keda
-			}
-		}
-		if vpaResults != nil {
-			if vpa, ok := vpaResults[key]; ok {
-				analysis.VPAConflict = vpa
-			}
-		}
-		if analysis.KEDAInfo != nil || analysis.VPAConflict != nil {
-			hpaanalysis.ApplyEnrichmentPenalties(&analysis, opts.HealthWeights)
-		}
-		if store != nil {
-			attachHealthTrend(store, &analysis, opts.TrendSince, opts.TrendRetain)
+	for _, result := range results {
+		analysis := result.Analysis
+		if recorder != nil {
+			attachHealthTrend(recorder, &analysis, opts.TrendSince, opts.TrendRetain)
 		}
 		analysis = hpaanalysis.FinalizeAnalysis(analysis)
 
@@ -264,30 +256,23 @@ func buildListItems(ctx context.Context, opts *options, hpas []autoscalingv2.Hor
 	return items
 }
 
-func attachHealthTrend(store *history.HealthStore, analysis *hpaanalysis.Analysis, since, retention time.Duration) {
-	if store == nil || analysis == nil {
+func attachHealthTrend(recorder *history.Recorder, analysis *hpaanalysis.Analysis, since, retention time.Duration) {
+	if recorder == nil || analysis == nil {
 		return
 	}
-	snapshot := healthtrend.HealthSnapshot{
-		Timestamp:       time.Now(),
+	result := recorder.RecordAndAnalyze(history.RecordInput{
+		Namespace:       analysis.Namespace,
+		Name:            analysis.Name,
 		HealthScore:     analysis.HealthScore,
 		HealthState:     analysis.Health,
 		DesiredReplicas: analysis.Desired,
 		CurrentReplicas: analysis.Current,
 		Stabilizing:     analysis.StabilizationRemaining != nil && *analysis.StabilizationRemaining > 0,
-	}
-	if err := store.Append(analysis.Namespace, analysis.Name, snapshot); err != nil {
-		analysis.Warnings = append(analysis.Warnings, fmt.Sprintf("health trend append failed: %v", err))
-	}
-	if err := store.Prune(analysis.Namespace, analysis.Name, retention); err != nil {
-		analysis.Warnings = append(analysis.Warnings, fmt.Sprintf("health trend prune failed: %v", err))
-	}
-	snapshots, err := store.Load(analysis.Namespace, analysis.Name, since)
-	if err != nil || len(snapshots) == 0 {
-		return
-	}
-	trend := healthtrend.AnalyzeHealthTrend(snapshots)
-	analysis.HealthTrend = &trend
+		Since:           since,
+		Retention:       retention,
+	})
+	analysis.Warnings = append(analysis.Warnings, result.Warnings...)
+	analysis.HealthTrend = result.Trend
 }
 
 // writeListResult renders the list report in the selected output format.
@@ -306,7 +291,7 @@ func writeListResult(out io.Writer, opts *options, report hpaanalysis.ListReport
 	if format == "sarif" {
 		return writeListSARIF(out, report)
 	}
-	return writeOutput(out, format, templateStr, report, func() error {
+	return render.Format(out, format, templateStr, report, func(out io.Writer) error {
 		if err := hpaanalysis.WriteListText(out, report, hpaanalysis.ListTextOptions{
 			Wide:              wide,
 			Color:             shouldColorize(opts.Color, out),
@@ -329,6 +314,7 @@ func writeListResult(out io.Writer, opts *options, report hpaanalysis.ListReport
 		}
 		return nil
 	})
+
 }
 
 func buildGitOpsDriftSignals(hpas []autoscalingv2.HorizontalPodAutoscaler) []hpaanalysis.GitOpsDriftSignal {

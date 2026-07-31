@@ -9,12 +9,14 @@ import (
 	"os"
 	"strings"
 
-	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/lint"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8syaml "k8s.io/apimachinery/pkg/util/yaml"
 	"sigs.k8s.io/yaml"
+
+	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
+	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/lint"
 )
 
 // collectLintFiles walks the given path and returns the list of YAML/JSON
@@ -222,7 +224,7 @@ func emitLintOutput(out io.Writer, allResults []lintFileResult, filePath, output
 		return writeGitHubLintAnnotations(out, allResults)
 	}
 	if outputFmt == "json" || outputFmt == "yaml" {
-		if err := writeOutput(out, outputFmt, "", buildLintReport(filePath, allResults), nil); err != nil {
+		if err := render.Format(out, outputFmt, "", buildLintReport(filePath, allResults), nil); err != nil {
 			return err
 		}
 		return nil

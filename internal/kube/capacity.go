@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -26,6 +27,12 @@ type QuotaInfo struct {
 	Used     string
 	Hard     string
 	Ratio    float64
+	// HardKnown reports whether status.hard contained this resource. Scoped
+	// reports quotas whose Pod applicability is not universal.
+	HardKnown bool
+	Scoped    bool
+	// UsageKnown reports whether status.used contained this hard resource.
+	UsageKnown bool
 }
 
 // PDBInfo holds information about a PodDisruptionBudget.
@@ -47,7 +54,12 @@ func FetchPendingPodDetails(ctx context.Context, client kubernetes.Interface, na
 	if err != nil {
 		return nil, fmt.Errorf("list pending pods: %w", err)
 	}
+	return PendingPodDetailsFromPods(pods), nil
+}
 
+// PendingPodDetailsFromPods derives pending scheduling details from an
+// already-fetched workload snapshot.
+func PendingPodDetailsFromPods(pods []corev1.Pod) []PendingPodDetail {
 	var pending []PendingPodDetail
 	for _, pod := range pods {
 		if pod.Status.Phase != corev1.PodPending {
@@ -66,7 +78,7 @@ func FetchPendingPodDetails(ctx context.Context, client kubernetes.Interface, na
 		}
 		pending = append(pending, detail)
 	}
-	return pending, nil
+	return pending
 }
 
 // FetchResourceQuotas lists ResourceQuotas in the namespace and returns
@@ -80,8 +92,11 @@ func FetchResourceQuotas(ctx context.Context, client kubernetes.Interface, names
 
 	var constraints []QuotaInfo
 	for _, quota := range quotas.Items {
-		for resourceName, hard := range quota.Spec.Hard {
-			used := quota.Status.Used[resourceName]
+		for resourceName, hard := range quota.Status.Hard {
+			used, usageKnown := quota.Status.Used[resourceName]
+			if !usageKnown {
+				continue
+			}
 			if used.IsZero() && hard.IsZero() {
 				continue
 			}
@@ -89,11 +104,14 @@ func FetchResourceQuotas(ctx context.Context, client kubernetes.Interface, names
 				ratio := used.AsApproximateFloat64() / hard.AsApproximateFloat64()
 				if ratio >= 0.8 {
 					constraints = append(constraints, QuotaInfo{
-						Name:     quota.Name,
-						Resource: string(resourceName),
-						Used:     used.String(),
-						Hard:     hard.String(),
-						Ratio:    ratio,
+						Name:       quota.Name,
+						Resource:   string(resourceName),
+						Used:       used.String(),
+						Hard:       hard.String(),
+						Ratio:      ratio,
+						HardKnown:  true,
+						Scoped:     quotaIsScoped(quota),
+						UsageKnown: true,
 					})
 				}
 			}
@@ -130,15 +148,18 @@ func FetchPodDisruptionBudgets(ctx context.Context, client kubernetes.Interface,
 
 // LimitRangeInfo holds parsed LimitRange constraints relevant to pod scheduling.
 type LimitRangeInfo struct {
-	Name     string
-	Type     string // "Container" or "Pod"
-	Resource string // "cpu", "memory", etc.
-	Min      string // empty if no minimum
-	Max      string // empty if no maximum
+	Name                 string
+	Type                 string // "Container" or "Pod"
+	Resource             string // "cpu", "memory", etc.
+	Min                  string // empty if no minimum
+	Max                  string // empty if no maximum
+	Default              string // default container limit
+	DefaultRequest       string // default container request
+	MaxLimitRequestRatio string // empty if no ratio constraint
 }
 
 // FetchLimitRanges lists LimitRange objects in the namespace and returns
-// min/max constraints for Container and Pod types.
+// all resource constraints for Container and Pod types.
 func FetchLimitRanges(ctx context.Context, client kubernetes.Interface, namespace string) ([]LimitRangeInfo, error) {
 	ranges, err := client.CoreV1().LimitRanges(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
@@ -152,31 +173,51 @@ func FetchLimitRanges(ctx context.Context, client kubernetes.Interface, namespac
 			if lrType != "Container" && lrType != "Pod" {
 				continue
 			}
-			for resourceName, minVal := range item.Min {
-				maxVal := item.Max[resourceName]
-				constraints = append(constraints, LimitRangeInfo{
-					Name:     lr.Name,
-					Type:     lrType,
-					Resource: string(resourceName),
-					Min:      minVal.String(),
-					Max:      maxVal.String(),
-				})
+			resourceNames := make(map[corev1.ResourceName]struct{})
+			for resourceName := range item.Min {
+				resourceNames[resourceName] = struct{}{}
 			}
-			// Also include max-only constraints (no min defined).
-			for resourceName, maxVal := range item.Max {
-				if _, hasMin := item.Min[resourceName]; hasMin {
-					continue // already added above
-				}
+			for resourceName := range item.Max {
+				resourceNames[resourceName] = struct{}{}
+			}
+			for resourceName := range item.Default {
+				resourceNames[resourceName] = struct{}{}
+			}
+			for resourceName := range item.DefaultRequest {
+				resourceNames[resourceName] = struct{}{}
+			}
+			for resourceName := range item.MaxLimitRequestRatio {
+				resourceNames[resourceName] = struct{}{}
+			}
+			sortedResourceNames := make([]string, 0, len(resourceNames))
+			for resourceName := range resourceNames {
+				sortedResourceNames = append(sortedResourceNames, string(resourceName))
+			}
+			sort.Strings(sortedResourceNames)
+			for _, resourceNameString := range sortedResourceNames {
+				resourceName := corev1.ResourceName(resourceNameString)
 				constraints = append(constraints, LimitRangeInfo{
-					Name:     lr.Name,
-					Type:     lrType,
-					Resource: string(resourceName),
-					Max:      maxVal.String(),
+					Name:                 lr.Name,
+					Type:                 lrType,
+					Resource:             resourceNameString,
+					Min:                  quantityString(item.Min, resourceName),
+					Max:                  quantityString(item.Max, resourceName),
+					Default:              quantityString(item.Default, resourceName),
+					DefaultRequest:       quantityString(item.DefaultRequest, resourceName),
+					MaxLimitRequestRatio: quantityString(item.MaxLimitRequestRatio, resourceName),
 				})
 			}
 		}
 	}
 	return constraints, nil
+}
+
+func quantityString(resources corev1.ResourceList, name corev1.ResourceName) string {
+	quantity, ok := resources[name]
+	if !ok {
+		return ""
+	}
+	return quantity.String()
 }
 
 // FetchAllResourceQuotas lists all ResourceQuotas in the namespace regardless
@@ -190,22 +231,52 @@ func FetchAllResourceQuotas(ctx context.Context, client kubernetes.Interface, na
 
 	var all []QuotaInfo
 	for _, quota := range quotas.Items {
-		for resourceName, hard := range quota.Spec.Hard {
-			used := quota.Status.Used[resourceName]
+		resourceNames := quotaResourceNames(quota)
+		for _, resourceName := range resourceNames {
+			hard, hardKnown := quota.Status.Hard[resourceName]
+			used, usageKnown := quota.Status.Used[resourceName]
 			var ratio float64
-			if !hard.IsZero() {
+			if hardKnown && usageKnown && !hard.IsZero() {
 				ratio = used.AsApproximateFloat64() / hard.AsApproximateFloat64()
 			}
 			all = append(all, QuotaInfo{
-				Name:     quota.Name,
-				Resource: string(resourceName),
-				Used:     used.String(),
-				Hard:     hard.String(),
-				Ratio:    ratio,
+				Name:       quota.Name,
+				Resource:   string(resourceName),
+				Used:       used.String(),
+				Hard:       hard.String(),
+				Ratio:      ratio,
+				HardKnown:  hardKnown,
+				Scoped:     quotaIsScoped(quota),
+				UsageKnown: usageKnown,
 			})
 		}
 	}
 	return all, nil
+}
+
+func quotaResourceNames(quota corev1.ResourceQuota) []corev1.ResourceName {
+	names := make(map[string]struct{}, len(quota.Spec.Hard)+len(quota.Status.Hard))
+	for name := range quota.Spec.Hard {
+		names[string(name)] = struct{}{}
+	}
+	for name := range quota.Status.Hard {
+		names[string(name)] = struct{}{}
+	}
+	sorted := make([]string, 0, len(names))
+	for name := range names {
+		sorted = append(sorted, name)
+	}
+	sort.Strings(sorted)
+	result := make([]corev1.ResourceName, len(sorted))
+	for i := range sorted {
+		result[i] = corev1.ResourceName(sorted[i])
+	}
+	return result
+}
+
+func quotaIsScoped(quota corev1.ResourceQuota) bool {
+	return len(quota.Spec.Scopes) > 0 ||
+		(quota.Spec.ScopeSelector != nil && len(quota.Spec.ScopeSelector.MatchExpressions) > 0)
 }
 
 // DetectClusterAutoscaler attempts to detect whether Cluster Autoscaler is

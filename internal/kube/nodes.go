@@ -8,45 +8,138 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/klog/v2"
 )
 
 // NodeCapacityInfo holds aggregated node-level capacity information.
 type NodeCapacityInfo struct {
-	TotalNodes   int32
-	AllocCPU     resource.Quantity
-	AllocMemory  resource.Quantity
-	TaintedNodes int32
+	TotalNodes         int32
+	SchedulableNodes   int32
+	AllocCPU           resource.Quantity
+	AllocMemory        resource.Quantity
+	AllocPods          int64
+	PodCapacityKnown   bool
+	TaintedNodes       int32
+	NotReadyNodes      int32
+	UnschedulableNodes int32
 }
 
 // FetchNodeCapacity lists all nodes and returns an aggregate capacity summary.
-// It sums allocatable CPU and memory and counts tainted nodes (NoSchedule/NoExecute).
+// Allocatable CPU and memory include only Ready, uncordoned nodes without a
+// blocking NoSchedule/NoExecute taint; excluded-node counts remain visible.
 func FetchNodeCapacity(ctx context.Context, client kubernetes.Interface) (*NodeCapacityInfo, error) {
 	nodes, err := listNodes(ctx, client, metav1.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list nodes: %w", err)
 	}
 
-	var totalCPU, totalMemory resource.Quantity
-	var taintedNodes int32
+	return summarizeNodeCapacity(nodes), nil
+}
 
-	for _, node := range nodes {
+func summarizeNodeCapacity(nodes []corev1.Node) *NodeCapacityInfo {
+	return summarizeNodeCapacityForPod(nodes, nil)
+}
+
+func summarizeNodeCapacityForPod(nodes []corev1.Node, podSpec *corev1.PodSpec) *NodeCapacityInfo {
+	info := &NodeCapacityInfo{TotalNodes: int32(len(nodes))}
+	for i := range nodes {
+		node := &nodes[i]
+		ready := nodeReady(node)
+		tainted := hasBlockingTaint(node.Spec.Taints)
+		if !ready {
+			info.NotReadyNodes++
+		}
+		if node.Spec.Unschedulable {
+			info.UnschedulableNodes++
+		}
+		if tainted {
+			info.TaintedNodes++
+		}
+		if !nodeEligibleForPod(node, podSpec) {
+			continue
+		}
+		info.SchedulableNodes++
 		if cpu, ok := node.Status.Allocatable[corev1.ResourceCPU]; ok {
-			totalCPU.Add(cpu)
+			info.AllocCPU.Add(cpu)
 		}
-		if mem, ok := node.Status.Allocatable[corev1.ResourceMemory]; ok {
-			totalMemory.Add(mem)
+		if memory, ok := node.Status.Allocatable[corev1.ResourceMemory]; ok {
+			info.AllocMemory.Add(memory)
 		}
-		if hasBlockingTaint(node.Spec.Taints) {
-			taintedNodes++
+		if pods, ok := node.Status.Allocatable[corev1.ResourcePods]; ok {
+			info.AllocPods += pods.Value()
+		} else {
+			info.PodCapacityKnown = false
 		}
 	}
+	if info.SchedulableNodes > 0 {
+		info.PodCapacityKnown = true
+		for i := range nodes {
+			if !nodeEligibleForPod(&nodes[i], podSpec) {
+				continue
+			}
+			if _, ok := nodes[i].Status.Allocatable[corev1.ResourcePods]; !ok {
+				info.PodCapacityKnown = false
+				break
+			}
+		}
+	}
+	return info
+}
 
-	return &NodeCapacityInfo{
-		TotalNodes:   int32(len(nodes)),
-		AllocCPU:     totalCPU,
-		AllocMemory:  totalMemory,
-		TaintedNodes: taintedNodes,
-	}, nil
+func nodeReady(node *corev1.Node) bool {
+	if node == nil {
+		return false
+	}
+	for _, condition := range node.Status.Conditions {
+		if condition.Type == corev1.NodeReady {
+			return condition.Status == corev1.ConditionTrue
+		}
+	}
+	return false
+}
+
+func nodeEligibleForUntoleratedPod(node *corev1.Node) bool { //nolint:unused // Compatibility helper retained for package-local callers.
+	return nodeEligibleForPod(node, nil)
+}
+
+// nodeEligibleForPod evaluates the scheduling constraints that can be decided
+// from a Node and PodSpec alone. Constraints that need other cluster objects
+// (affinity peers, topology domains, RuntimeClass, volumes, custom schedulers)
+// are reported separately by UnmodeledPodSchedulingConstraints.
+func nodeEligibleForPod(node *corev1.Node, podSpec *corev1.PodSpec) bool { //nolint:gocyclo // Mirrors independent Kubernetes scheduling predicates.
+	if !nodeReady(node) || node.Spec.Unschedulable {
+		return false
+	}
+	if podSpec != nil {
+		if podSpec.NodeName != "" && podSpec.NodeName != node.Name {
+			return false
+		}
+		for key, value := range podSpec.NodeSelector {
+			nodeValue, exists := node.Labels[key]
+			if !exists || nodeValue != value {
+				return false
+			}
+		}
+	}
+	for i := range node.Spec.Taints {
+		taint := &node.Spec.Taints[i]
+		if taint.Effect != corev1.TaintEffectNoSchedule && taint.Effect != corev1.TaintEffectNoExecute {
+			continue
+		}
+		tolerated := false
+		if podSpec != nil {
+			for j := range podSpec.Tolerations {
+				if podSpec.Tolerations[j].ToleratesTaint(klog.Background(), taint, true) {
+					tolerated = true
+					break
+				}
+			}
+		}
+		if !tolerated {
+			return false
+		}
+	}
+	return true
 }
 
 func listNodes(ctx context.Context, client kubernetes.Interface, opts metav1.ListOptions) ([]corev1.Node, error) {

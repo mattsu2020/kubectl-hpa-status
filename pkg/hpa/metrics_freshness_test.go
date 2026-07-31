@@ -183,6 +183,7 @@ func TestAnalyzeMetricFreshness_ZeroAndUnavailableValues(t *testing.T) {
 	}
 
 	zero := int32(0)
+	wrongShapeZero := resource.MustParse("0")
 	tests := []struct {
 		name    string
 		current autoscalingv2.MetricValueStatus
@@ -196,6 +197,11 @@ func TestAnalyzeMetricFreshness_ZeroAndUnavailableValues(t *testing.T) {
 		{
 			name:    "all nil value is unavailable",
 			current: autoscalingv2.MetricValueStatus{},
+			want:    FreshnessMissing,
+		},
+		{
+			name:    "value for a different target shape is unavailable",
+			current: autoscalingv2.MetricValueStatus{AverageValue: &wrongShapeZero},
 			want:    FreshnessMissing,
 		},
 	}
@@ -289,6 +295,32 @@ func TestMetricWindow(t *testing.T) {
 	}
 }
 
+func TestBuildStaleNextStepsUsesMetricSpecificAPI(t *testing.T) {
+	t.Parallel()
+
+	external := buildStaleNextSteps(autoscalingv2.MetricSpec{
+		Type: autoscalingv2.ExternalMetricSourceType,
+	})
+	externalText := strings.Join(external, "\n")
+	if !strings.Contains(externalText, "/apis/external.metrics.k8s.io/v1beta1") ||
+		strings.Contains(externalText, "/apis/custom.metrics.k8s.io/") {
+		t.Fatalf("External stale next steps use the wrong API: %v", external)
+	}
+
+	custom := buildStaleNextSteps(autoscalingv2.MetricSpec{
+		Type: autoscalingv2.PodsMetricSourceType,
+	})
+	customText := strings.Join(custom, "\n")
+	for _, version := range []string{
+		"/apis/custom.metrics.k8s.io/v1beta2",
+		"/apis/custom.metrics.k8s.io/v1beta1",
+	} {
+		if !strings.Contains(customText, version) {
+			t.Fatalf("Custom stale next steps %v do not mention candidate %q", custom, version)
+		}
+	}
+}
+
 func TestScanEventsForEvidence(t *testing.T) {
 	t.Parallel()
 	events := []Event{
@@ -352,7 +384,8 @@ func TestBuildFreshnessNextSteps(t *testing.T) {
 		spec := autoscalingv2.MetricSpec{
 			Type: autoscalingv2.ResourceMetricSourceType,
 			Resource: &autoscalingv2.ResourceMetricSource{
-				Name: "cpu",
+				Name:   "cpu",
+				Target: autoscalingv2.MetricTarget{Type: autoscalingv2.UtilizationMetricType},
 			},
 		}
 		steps := buildFreshnessNextSteps(FreshnessMissing, spec)
@@ -467,7 +500,8 @@ func TestIsMetricValueZero(t *testing.T) {
 		spec := autoscalingv2.MetricSpec{
 			Type: autoscalingv2.ResourceMetricSourceType,
 			Resource: &autoscalingv2.ResourceMetricSource{
-				Name: "cpu",
+				Name:   "cpu",
+				Target: autoscalingv2.MetricTarget{Type: autoscalingv2.UtilizationMetricType},
 			},
 		}
 		zero := int32(0)
@@ -518,6 +552,7 @@ func TestIsMetricValueZero(t *testing.T) {
 			Type: autoscalingv2.ExternalMetricSourceType,
 			External: &autoscalingv2.ExternalMetricSource{
 				Metric: autoscalingv2.MetricIdentifier{Name: "queue_depth"},
+				Target: autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType},
 			},
 		}
 		currentMetrics := []autoscalingv2.MetricStatus{
