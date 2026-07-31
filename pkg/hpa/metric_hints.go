@@ -9,6 +9,9 @@ import (
 
 // MetricHint holds a troubleshooting hint for a custom or external metric issue.
 type MetricHint struct {
+	// identity distinguishes selector/container/object variants internally.
+	// It stays out of JSON/YAML to preserve the established wire format.
+	identity     MetricID
 	MetricType   string   `json:"metricType" yaml:"metricType"`
 	MetricName   string   `json:"metricName" yaml:"metricName"`
 	Pattern      string   `json:"pattern" yaml:"pattern"`
@@ -44,15 +47,22 @@ func AnalyzeMetricHints(
 	var hints []MetricHint
 	cur := hpa.Status.CurrentMetrics
 	for _, spec := range hpa.Spec.Metrics {
-		hints = append(hints, concatHints(
+		allowLegacyFallback := hasUniqueDisplayMetricIdentity(hpa.Spec.Metrics, spec)
+		metricHints := concatHints(
 			checkExternalMetricMissing(spec, events),
-			checkExternalMetricStale(spec, freshness),
-			checkCustomAPIServiceUnavailable(spec, freshness),
-			checkExternalAPIServiceUnavailable(spec, freshness),
+			checkExternalMetricStale(spec, freshness, allowLegacyFallback),
+			checkCustomAPIServiceUnavailable(spec, freshness, allowLegacyFallback),
+			checkExternalAPIServiceUnavailable(spec, freshness, allowLegacyFallback),
 			checkMetricValueZero(spec, cur),
 			checkObjectMetricTargetNotFound(spec, events),
-			checkMissingMetricInStatus(spec, cur, freshness, contract),
-		)...)
+			checkMissingMetricInStatus(spec, cur, freshness, contract, allowLegacyFallback),
+		)
+		if identity, err := MetricIDFromSpec(spec); err == nil {
+			for i := range metricHints {
+				metricHints[i].identity = identity
+			}
+		}
+		hints = append(hints, metricHints...)
 	}
 	summary := "All metrics appear healthy"
 	if len(hints) > 0 {
@@ -95,12 +105,16 @@ func checkExternalMetricMissing(spec autoscalingv2.MetricSpec, events []Event) [
 	}}
 }
 
-func checkExternalMetricStale(spec autoscalingv2.MetricSpec, freshness []MetricFreshness) []MetricHint {
+func checkExternalMetricStale(
+	spec autoscalingv2.MetricSpec,
+	freshness []MetricFreshness,
+	allowLegacyFallback bool,
+) []MetricHint {
 	if spec.Type != autoscalingv2.ExternalMetricSourceType || spec.External == nil {
 		return nil
 	}
 	name := spec.External.Metric.Name
-	entry := findFreshnessEntry(freshness, "External", name)
+	entry := findFreshnessEntryForSpec(freshness, spec, allowLegacyFallback)
 	if entry == nil || entry.Status != "Stale" {
 		return nil
 	}
@@ -117,7 +131,11 @@ func checkExternalMetricStale(spec autoscalingv2.MetricSpec, freshness []MetricF
 	}}
 }
 
-func checkCustomAPIServiceUnavailable(spec autoscalingv2.MetricSpec, freshness []MetricFreshness) []MetricHint {
+func checkCustomAPIServiceUnavailable(
+	spec autoscalingv2.MetricSpec,
+	freshness []MetricFreshness,
+	allowLegacyFallback bool,
+) []MetricHint {
 	if spec.Type != autoscalingv2.PodsMetricSourceType && spec.Type != autoscalingv2.ObjectMetricSourceType {
 		return nil
 	}
@@ -127,7 +145,7 @@ func checkCustomAPIServiceUnavailable(spec autoscalingv2.MetricSpec, freshness [
 	} else if spec.Type == autoscalingv2.ObjectMetricSourceType && spec.Object != nil {
 		name = spec.Object.Metric.Name
 	}
-	entry := findFreshnessEntry(freshness, string(spec.Type), name)
+	entry := findFreshnessEntryForSpec(freshness, spec, allowLegacyFallback)
 	if entry == nil || entry.Source != "custom.metrics.k8s.io" || entry.APIServiceAvailable == nil || *entry.APIServiceAvailable {
 		return nil
 	}
@@ -141,12 +159,16 @@ func checkCustomAPIServiceUnavailable(spec autoscalingv2.MetricSpec, freshness [
 	}}
 }
 
-func checkExternalAPIServiceUnavailable(spec autoscalingv2.MetricSpec, freshness []MetricFreshness) []MetricHint {
+func checkExternalAPIServiceUnavailable(
+	spec autoscalingv2.MetricSpec,
+	freshness []MetricFreshness,
+	allowLegacyFallback bool,
+) []MetricHint {
 	if spec.Type != autoscalingv2.ExternalMetricSourceType || spec.External == nil {
 		return nil
 	}
 	name := spec.External.Metric.Name
-	entry := findFreshnessEntry(freshness, "External", name)
+	entry := findFreshnessEntryForSpec(freshness, spec, allowLegacyFallback)
 	if entry == nil || entry.APIServiceAvailable == nil || *entry.APIServiceAvailable {
 		return nil
 	}
@@ -200,15 +222,16 @@ func checkMissingMetricInStatus(
 	currentMetrics []autoscalingv2.MetricStatus,
 	freshness []MetricFreshness,
 	contract *MetricContractReport,
+	allowLegacyFallback bool,
 ) []MetricHint {
 	_, name := specMetricIdentity(spec)
 	if findMatchingCurrentMetric(spec, currentMetrics) {
 		return nil
 	}
-	if entry := findFreshnessEntry(freshness, string(spec.Type), name); entry != nil && entry.Status != "" {
+	if entry := findFreshnessEntryForSpec(freshness, spec, allowLegacyFallback); entry != nil && entry.Status != "" {
 		return nil
 	}
-	if contractHasMetricIssue(contract, string(spec.Type), name) {
+	if contractHasMetricIssueForSpec(contract, spec, allowLegacyFallback) {
 		return nil
 	}
 	return []MetricHint{{
@@ -232,13 +255,47 @@ func hasEventWithReason(events []Event, reason, metricName string) bool {
 	return false
 }
 
-func findFreshnessEntry(entries []MetricFreshness, metricType, metricName string) *MetricFreshness {
-	for i := range entries {
-		if entries[i].Type == metricType && entries[i].Name == metricName {
-			return &entries[i]
-		}
+func findFreshnessEntryForSpec(
+	entries []MetricFreshness,
+	spec autoscalingv2.MetricSpec,
+	allowLegacyFallback bool,
+) *MetricFreshness {
+	identity, err := MetricIDFromSpec(spec)
+	if err != nil {
+		return nil
 	}
-	return nil
+
+	var exact *MetricFreshness
+	for i := range entries {
+		if entries[i].identity != identity {
+			continue
+		}
+		if exact != nil {
+			return nil
+		}
+		exact = &entries[i]
+	}
+	if exact != nil {
+		return exact
+	}
+	if !allowLegacyFallback {
+		return nil
+	}
+
+	metricType, metricName := specMetricIdentity(spec)
+	var fallback *MetricFreshness
+	for i := range entries {
+		if entries[i].identity != (MetricID{}) ||
+			entries[i].Type != metricType ||
+			entries[i].Name != metricName {
+			continue
+		}
+		if fallback != nil {
+			return nil
+		}
+		fallback = &entries[i]
+	}
+	return fallback
 }
 
 func specMetricName(spec autoscalingv2.MetricSpec) string {
@@ -275,30 +332,80 @@ func hasNonZeroTarget(spec autoscalingv2.MetricSpec) bool {
 }
 
 func hasZeroCurrentValue(spec autoscalingv2.MetricSpec, currentMetrics []autoscalingv2.MetricStatus) bool {
-	for _, cur := range currentMetrics {
-		if spec.Type == cur.Type && handlerFor(spec.Type).MatchesCurrent(spec, cur) {
-			return isCurrentValueZero(cur)
-		}
-	}
-	return false
+	return isMetricValueZero(spec, currentMetrics)
 }
 
-func contractHasMetricIssue(contract *MetricContractReport, metricType, metricName string) bool {
+func contractHasMetricIssueForSpec(
+	contract *MetricContractReport,
+	spec autoscalingv2.MetricSpec,
+	allowLegacyFallback bool,
+) bool {
 	if contract == nil {
 		return false
 	}
-	for _, check := range contract.Checks {
-		if check.MetricType == metricType && check.MetricName == metricName && check.Status != "ok" {
-			return true
+	identity, err := MetricIDFromSpec(spec)
+	if err != nil {
+		return false
+	}
+
+	exact := -1
+	for i := range contract.Checks {
+		if contract.Checks[i].identity != identity {
+			continue
+		}
+		if exact >= 0 {
+			return false
+		}
+		exact = i
+	}
+	if exact >= 0 {
+		return contract.Checks[exact].Status != "ok"
+	}
+	if !allowLegacyFallback {
+		return false
+	}
+
+	metricType, metricName := specMetricIdentity(spec)
+	fallback := -1
+	for i := range contract.Checks {
+		check := contract.Checks[i]
+		if check.identity != (MetricID{}) ||
+			check.MetricType != metricType ||
+			check.MetricName != metricName {
+			continue
+		}
+		if fallback >= 0 {
+			return false
+		}
+		fallback = i
+	}
+	return fallback >= 0 && contract.Checks[fallback].Status != "ok"
+}
+
+func hasUniqueDisplayMetricIdentity(
+	metrics []autoscalingv2.MetricSpec,
+	target autoscalingv2.MetricSpec,
+) bool {
+	targetType, targetName := specMetricIdentity(target)
+	matches := 0
+	for _, metric := range metrics {
+		metricType, metricName := specMetricIdentity(metric)
+		if metricType == targetType && metricName == targetName {
+			matches++
 		}
 	}
-	return false
+	return matches == 1
 }
 
 func uniqueMetricCount(hints []MetricHint) int {
-	seen := make(map[string]struct{})
+	seenCanonical := make(map[MetricID]struct{})
+	seenLegacy := make(map[string]struct{})
 	for _, h := range hints {
-		seen[h.MetricType+"/"+h.MetricName] = struct{}{}
+		if h.identity != (MetricID{}) {
+			seenCanonical[h.identity] = struct{}{}
+			continue
+		}
+		seenLegacy[h.MetricType+"/"+h.MetricName] = struct{}{}
 	}
-	return len(seen)
+	return len(seenCanonical) + len(seenLegacy)
 }

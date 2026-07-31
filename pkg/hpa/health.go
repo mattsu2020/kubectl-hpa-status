@@ -7,6 +7,12 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
+const (
+	enrichmentPenaltyKEDAInactive = "KEDA trigger inactive"
+	enrichmentPenaltyVPAConflict  = "VPA conflict detected"
+	enrichmentPenaltyChurn        = "High replica churn (thrashing) detected"
+)
+
 // Health computes the health state and score using default penalty weights.
 func Health(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) (string, int) {
 	result := HealthWithWeights(hpa, minReplicas, HealthWeights{})
@@ -182,93 +188,141 @@ func weightOr(w *int, defaultVal int) int {
 	return defaultVal
 }
 
-// ApplyEnrichmentPenalties adjusts the health score and state based on
-// KEDA and VPA enrichment data populated after AnalyzeWithOptions.
-func ApplyEnrichmentPenalties(a *Analysis, weights HealthWeights) {
-	if a == nil {
-		return
-	}
-	w := resolveWeights(weights)
+type dynamicHealthBaseline struct {
+	score   int
+	state   HealthState
+	signals []HealthSignal
+}
 
-	acc := NewHealthAccumulator(a.HealthScore)
-	if a.HealthResult != nil {
-		acc.result.Signals = append(acc.result.Signals, a.HealthResult.Signals...)
-	}
-
-	currentState := HealthState(a.Health)
-	finalState := currentState
-
-	if a.KEDAInfo != nil {
-		for _, t := range a.KEDAInfo.Triggers {
-			if strings.EqualFold(t.Status, "Inactive") || strings.EqualFold(t.Status, "False") {
-				acc.AddPenalty("KEDA trigger inactive", w.kedaInactiveTrigger, HealthLimited)
-				if currentState != HealthError {
-					finalState = HealthLimited
-				}
-				break
-			}
-		}
-	}
-
-	if a.VPAConflict != nil {
-		acc.AddPenalty("VPA conflict detected", w.vpaConflict, HealthLimited)
-		if currentState == HealthOK || currentState == HealthStabilized {
-			finalState = HealthLimited
-		}
-	}
-
-	acc.SetState(finalState)
-	enrichedResult := acc.Result()
-	if enrichedResult.Score < 0 {
-		enrichedResult.Score = 0
-	}
-	a.HealthScore = enrichedResult.Score
-	a.Health = string(enrichedResult.State)
-	if a.HealthResult != nil {
-		a.HealthResult.Score = enrichedResult.Score
-		a.HealthResult.State = enrichedResult.State
-		a.HealthResult.Signals = enrichedResult.Signals
+func newDynamicHealthBaseline(score int, state HealthState, signals []HealthSignal) *dynamicHealthBaseline {
+	return &dynamicHealthBaseline{
+		score:   score,
+		state:   state,
+		signals: append([]HealthSignal(nil), signals...),
 	}
 }
 
-// ApplyChurnPenalty adjusts the health score when high replica churn (thrashing)
-// is detected. It uses the resolved churn weight and only applies a penalty when
-// the ChurnAnalysis level is HIGH or CRITICAL.
+func isDynamicHealthSignal(reason string) bool {
+	switch reason {
+	case enrichmentPenaltyKEDAInactive, enrichmentPenaltyVPAConflict, enrichmentPenaltyChurn:
+		return true
+	default:
+		return false
+	}
+}
+
+func ensureDynamicHealthBaseline(a *Analysis) *dynamicHealthBaseline {
+	if a.dynamicHealthBaseline != nil {
+		return a.dynamicHealthBaseline
+	}
+	score := a.HealthScore
+	state := HealthState(a.Health)
+	var signals []HealthSignal
+	removedDynamicSignal := false
+	if a.HealthResult != nil {
+		for _, signal := range a.HealthResult.Signals {
+			if isDynamicHealthSignal(signal.Reason) {
+				// Best-effort recovery for a value produced by an older
+				// in-memory caller that did not retain a baseline.
+				score += signal.Penalty
+				removedDynamicSignal = true
+				continue
+			}
+			signals = append(signals, signal)
+		}
+	}
+	if removedDynamicSignal {
+		state = healthStateFromSignals(signals)
+	}
+	if score > healthScoreMax {
+		score = healthScoreMax
+	}
+	a.dynamicHealthBaseline = newDynamicHealthBaseline(score, state, signals)
+	return a.dynamicHealthBaseline
+}
+
+func healthStateFromSignals(signals []HealthSignal) HealthState {
+	state := HealthOK
+	for _, signal := range signals {
+		switch signal.Severity {
+		case HealthError:
+			return HealthError
+		case HealthLimited:
+			if state != HealthError {
+				state = HealthLimited
+			}
+		case HealthStabilized:
+			if state == HealthOK {
+				state = HealthStabilized
+			}
+		}
+	}
+	return state
+}
+
+func hasInactiveKEDATrigger(a *Analysis) bool {
+	if a.KEDAInfo == nil {
+		return false
+	}
+	for _, trigger := range a.KEDAInfo.Triggers {
+		if strings.EqualFold(trigger.Status, "Inactive") || strings.EqualFold(trigger.Status, "False") {
+			return true
+		}
+	}
+	return false
+}
+
+func hasHighChurn(a *Analysis) bool {
+	return a.ChurnAnalysis != nil &&
+		(a.ChurnAnalysis.Level == ChurnHigh || a.ChurnAnalysis.Level == ChurnCritical)
+}
+
+func reconcileDynamicHealthPenalties(a *Analysis, weights HealthWeights) {
+	if a == nil {
+		return
+	}
+	baseline := ensureDynamicHealthBaseline(a)
+	resolved := resolveWeights(weights)
+	acc := NewHealthAccumulator(baseline.score)
+	acc.result.Signals = append(acc.result.Signals, baseline.signals...)
+
+	hasDynamicPenalty := false
+	if hasInactiveKEDATrigger(a) {
+		acc.AddPenalty(enrichmentPenaltyKEDAInactive, resolved.kedaInactiveTrigger, HealthLimited)
+		hasDynamicPenalty = true
+	}
+	if a.VPAConflict != nil {
+		acc.AddPenalty(enrichmentPenaltyVPAConflict, resolved.vpaConflict, HealthLimited)
+		hasDynamicPenalty = true
+	}
+	if hasHighChurn(a) {
+		acc.AddPenalty(enrichmentPenaltyChurn, resolved.churn, HealthLimited)
+		hasDynamicPenalty = true
+	}
+
+	state := baseline.state
+	if hasDynamicPenalty && state != HealthError {
+		state = HealthLimited
+	}
+	acc.SetState(state)
+	result := acc.Result()
+	if result.Score < 0 {
+		result.Score = 0
+	}
+	a.HealthScore = result.Score
+	a.Health = string(result.State)
+	a.HealthResult = &result
+}
+
+// ApplyEnrichmentPenalties reconciles KEDA and VPA enrichment data with the
+// immutable base health result. Repeated calls, changed weights, and signals
+// becoming inactive all produce a fresh deterministic result.
+func ApplyEnrichmentPenalties(a *Analysis, weights HealthWeights) {
+	reconcileDynamicHealthPenalties(a, weights)
+}
+
+// ApplyChurnPenalty reconciles the churn signal with all dynamic health
+// penalties. Calling it after churn subsides removes the previous penalty.
 func ApplyChurnPenalty(a *Analysis, weights HealthWeights) {
-	if a == nil || a.ChurnAnalysis == nil {
-		return
-	}
-
-	level := a.ChurnAnalysis.Level
-	if level != ChurnHigh && level != ChurnCritical {
-		return
-	}
-
-	w := resolveWeights(weights)
-
-	acc := NewHealthAccumulator(a.HealthScore)
-	if a.HealthResult != nil {
-		acc.result.Signals = append(acc.result.Signals, a.HealthResult.Signals...)
-	}
-
-	currentState := HealthState(a.Health)
-	finalState := currentState
-
-	acc.AddPenalty("High replica churn (thrashing) detected", w.churn, HealthLimited)
-	if currentState == HealthOK || currentState == HealthStabilized {
-		finalState = HealthLimited
-	}
-
-	acc.SetState(finalState)
-	enrichedResult := acc.Result()
-	if enrichedResult.Score < 0 {
-		enrichedResult.Score = 0
-	}
-	a.HealthScore = enrichedResult.Score
-	a.Health = string(enrichedResult.State)
-	if a.HealthResult != nil {
-		a.HealthResult.Score = enrichedResult.Score
-		a.HealthResult.State = enrichedResult.State
-		a.HealthResult.Signals = enrichedResult.Signals
-	}
+	reconcileDynamicHealthPenalties(a, weights)
 }

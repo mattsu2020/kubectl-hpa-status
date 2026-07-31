@@ -26,4 +26,8 @@ var (
 	// ErrMetricNotFound is returned when a simulation override references a
 	// metric name that does not appear in the HPA spec.
 	ErrMetricNotFound = errors.New("metric not found in HPA spec")
+
+	// ErrMetricAmbiguous is returned when a name-only metric reference matches
+	// more than one canonical MetricID.
+	ErrMetricAmbiguous = errors.New("metric name is ambiguous")
 )

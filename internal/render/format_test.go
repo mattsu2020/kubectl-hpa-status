@@ -3,6 +3,7 @@ package render
 import (
 	"bytes"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 
@@ -36,9 +37,9 @@ func TestFormat_TextVariantsInvokeWriteText(t *testing.T) {
 		t.Run(fmtStr, func(t *testing.T) {
 			var buf bytes.Buffer
 			called := false
-			err := Format(&buf, fmtStr, "", sampleStatusReport(), func() error {
+			err := Format(&buf, fmtStr, "", sampleStatusReport(), func(out io.Writer) error {
 				called = true
-				_, werr := buf.WriteString("TEXT")
+				_, werr := io.WriteString(out, "TEXT")
 				return werr
 			})
 			if err != nil {
@@ -54,9 +55,32 @@ func TestFormat_TextVariantsInvokeWriteText(t *testing.T) {
 	}
 }
 
+func TestFormat_TextTracksIgnoredWriterError(t *testing.T) {
+	sentinel := errors.New("write failed")
+	err := Format(failingWriter{err: sentinel}, "table", "", nil, func(out io.Writer) error {
+		_, _ = io.WriteString(out, "ignored error")
+		return nil
+	})
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("Format() error = %v, want %v", err, sentinel)
+	}
+}
+
+func TestErrorTrackingWriterExposesOriginalDestination(t *testing.T) {
+	var destination bytes.Buffer
+	writer := &errorTrackingWriter{writer: &destination}
+	if writer.Unwrap() != &destination {
+		t.Fatal("Unwrap() did not return the original destination")
+	}
+}
+
+type failingWriter struct{ err error }
+
+func (w failingWriter) Write([]byte) (int, error) { return 0, w.err }
+
 func TestFormat_JSON(t *testing.T) {
 	var buf bytes.Buffer
-	if err := Format(&buf, "json", "", sampleStatusReport(), func() error { return nil }); err != nil {
+	if err := Format(&buf, "json", "", sampleStatusReport(), func(_ io.Writer) error { return nil }); err != nil {
 		t.Fatalf("Format(json): %v", err)
 	}
 	if !strings.Contains(buf.String(), `"apiVersion": "hpa-status/v1"`) {
@@ -68,7 +92,7 @@ func TestFormat_JSON(t *testing.T) {
 // object per list item, newline-delimited, and NOT wrapped in a JSON array.
 func TestFormat_JSONL_ListReport(t *testing.T) {
 	var buf bytes.Buffer
-	if err := Format(&buf, "jsonl", "", sampleListReport(), func() error { return nil }); err != nil {
+	if err := Format(&buf, "jsonl", "", sampleListReport(), func(_ io.Writer) error { return nil }); err != nil {
 		t.Fatalf("Format(jsonl): %v", err)
 	}
 	output := buf.String()
@@ -89,11 +113,43 @@ func TestFormat_JSONL_ListReport(t *testing.T) {
 	}
 }
 
+func TestJSONLinesStatusCollections(t *testing.T) {
+	t.Run("v1 reports preserve one-line array compatibility", func(t *testing.T) {
+		reports := []hpaanalysis.StatusReport{sampleStatusReport(), sampleStatusReport()}
+		var buf bytes.Buffer
+		if err := JSONLines(&buf, reports); err != nil {
+			t.Fatal(err)
+		}
+		lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+		if len(lines) != 1 || !strings.HasPrefix(lines[0], "[") {
+			t.Fatalf("v1 JSONL = %q, want one JSON-array line", buf.String())
+		}
+	})
+
+	t.Run("v2 records preserve uniform envelopes", func(t *testing.T) {
+		records := []hpaanalysis.StatusRecordV2{
+			{APIVersion: hpaanalysis.SchemaVersionV2, Name: "ok", Status: hpaanalysis.StatusRecordSuccessV2},
+			{APIVersion: hpaanalysis.SchemaVersionV2, Name: "missing", Status: hpaanalysis.StatusRecordErrorV2, Error: "not found"},
+		}
+		var buf bytes.Buffer
+		if err := JSONLines(&buf, records); err != nil {
+			t.Fatal(err)
+		}
+		lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+		if len(lines) != 2 ||
+			!strings.Contains(lines[0], `"status":"success"`) ||
+			!strings.Contains(lines[1], `"status":"error"`) ||
+			!strings.Contains(lines[1], `"error":"not found"`) {
+			t.Fatalf("unexpected v2 JSONL: %s", buf.String())
+		}
+	})
+}
+
 // TestFormat_JSONL_StatusReport verifies a single StatusReport is emitted as
 // one jsonl line.
 func TestFormat_JSONL_StatusReport(t *testing.T) {
 	var buf bytes.Buffer
-	if err := Format(&buf, "jsonl", "", sampleStatusReport(), func() error { return nil }); err != nil {
+	if err := Format(&buf, "jsonl", "", sampleStatusReport(), func(_ io.Writer) error { return nil }); err != nil {
 		t.Fatalf("Format(jsonl): %v", err)
 	}
 	output := buf.String()
@@ -108,7 +164,7 @@ func TestFormat_JSONL_StatusReport(t *testing.T) {
 
 func TestFormat_YAML(t *testing.T) {
 	var buf bytes.Buffer
-	if err := Format(&buf, "yaml", "", sampleStatusReport(), func() error { return nil }); err != nil {
+	if err := Format(&buf, "yaml", "", sampleStatusReport(), func(_ io.Writer) error { return nil }); err != nil {
 		t.Fatalf("Format(yaml): %v", err)
 	}
 	if !strings.Contains(buf.String(), "apiVersion: hpa-status/v1") {
@@ -118,7 +174,7 @@ func TestFormat_YAML(t *testing.T) {
 
 func TestFormat_JSONPath_Prefixed(t *testing.T) {
 	var buf bytes.Buffer
-	err := Format(&buf, "jsonpath={.apiVersion}", "", sampleStatusReport(), func() error { return nil })
+	err := Format(&buf, "jsonpath={.apiVersion}", "", sampleStatusReport(), func(_ io.Writer) error { return nil })
 	if err != nil {
 		t.Fatalf("Format(jsonpath=): %v", err)
 	}
@@ -129,7 +185,7 @@ func TestFormat_JSONPath_Prefixed(t *testing.T) {
 
 func TestFormat_Template_Prefixed(t *testing.T) {
 	var buf bytes.Buffer
-	err := Format(&buf, "template={{.APIVersion}}", "", sampleStatusReport(), func() error { return nil })
+	err := Format(&buf, "template={{.APIVersion}}", "", sampleStatusReport(), func(_ io.Writer) error { return nil })
 	if err != nil {
 		t.Fatalf("Format(template=): %v", err)
 	}
@@ -141,7 +197,7 @@ func TestFormat_Template_Prefixed(t *testing.T) {
 func TestFormat_Prometheus(t *testing.T) {
 	t.Run("status report", func(t *testing.T) {
 		var buf bytes.Buffer
-		if err := Format(&buf, "prometheus", "", sampleStatusReport(), func() error { return nil }); err != nil {
+		if err := Format(&buf, "prometheus", "", sampleStatusReport(), func(_ io.Writer) error { return nil }); err != nil {
 			t.Fatalf("Format(prometheus): %v", err)
 		}
 		out := buf.String()
@@ -153,7 +209,7 @@ func TestFormat_Prometheus(t *testing.T) {
 	})
 	t.Run("list report", func(t *testing.T) {
 		var buf bytes.Buffer
-		if err := Format(&buf, "prometheus", "", sampleListReport(), func() error { return nil }); err != nil {
+		if err := Format(&buf, "prometheus", "", sampleListReport(), func(_ io.Writer) error { return nil }); err != nil {
 			t.Fatalf("Format(prometheus list): %v", err)
 		}
 		out := buf.String()
@@ -165,7 +221,7 @@ func TestFormat_Prometheus(t *testing.T) {
 
 func TestFormat_Markdown(t *testing.T) {
 	var buf bytes.Buffer
-	if err := Format(&buf, "markdown", "", sampleStatusReport(), func() error { return nil }); err != nil {
+	if err := Format(&buf, "markdown", "", sampleStatusReport(), func(_ io.Writer) error { return nil }); err != nil {
 		t.Fatalf("Format(markdown): %v", err)
 	}
 	if buf.Len() == 0 {
@@ -173,14 +229,14 @@ func TestFormat_Markdown(t *testing.T) {
 	}
 	// md alias should behave identically.
 	var buf2 bytes.Buffer
-	if err := Format(&buf2, "md", "", sampleStatusReport(), func() error { return nil }); err != nil {
+	if err := Format(&buf2, "md", "", sampleStatusReport(), func(_ io.Writer) error { return nil }); err != nil {
 		t.Fatalf("Format(md): %v", err)
 	}
 }
 
 func TestFormat_HTML(t *testing.T) {
 	var buf bytes.Buffer
-	if err := Format(&buf, "html", "", sampleStatusReport(), func() error { return nil }); err != nil {
+	if err := Format(&buf, "html", "", sampleStatusReport(), func(_ io.Writer) error { return nil }); err != nil {
 		t.Fatalf("Format(html): %v", err)
 	}
 	if !strings.Contains(buf.String(), "<") {
@@ -190,7 +246,7 @@ func TestFormat_HTML(t *testing.T) {
 
 func TestFormat_Incident(t *testing.T) {
 	var buf bytes.Buffer
-	if err := Format(&buf, "incident", "", sampleStatusReport(), func() error { return nil }); err != nil {
+	if err := Format(&buf, "incident", "", sampleStatusReport(), func(_ io.Writer) error { return nil }); err != nil {
 		t.Fatalf("Format(incident): %v", err)
 	}
 	if buf.Len() == 0 {
@@ -200,7 +256,7 @@ func TestFormat_Incident(t *testing.T) {
 
 func TestFormat_Unknown(t *testing.T) {
 	var buf bytes.Buffer
-	err := Format(&buf, "csv", "", sampleStatusReport(), func() error { return nil })
+	err := Format(&buf, "csv", "", sampleStatusReport(), func(_ io.Writer) error { return nil })
 	if err == nil || !strings.Contains(err.Error(), "unsupported output format") {
 		t.Fatalf("expected unsupported-format error, got %v", err)
 	}

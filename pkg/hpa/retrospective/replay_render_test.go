@@ -99,6 +99,196 @@ func TestAnalyzeReplayEmptyTimeline(t *testing.T) {
 	}
 }
 
+func TestAnalyzeReplayUsesTypedReplicaRangeAndRejectsInvalidRescale(t *testing.T) {
+	base := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+	from, to := int32(0), int32(3)
+	timeline := Timeline{
+		Since: base,
+		Entries: []Entry{
+			{
+				Timestamp: base.Add(time.Minute), Category: "rescale",
+				Message:      "localized message without replica numbers",
+				FromReplicas: &from, ToReplicas: &to, ParseValid: true,
+			},
+			{
+				Timestamp: base.Add(2 * time.Minute), Category: "rescale",
+				Message: "failed to parse legacy event",
+			},
+		},
+	}
+
+	analysis := AnalyzeReplay(timeline, replayFixtureHPA())
+	if len(analysis.ControlCycles) != 1 {
+		t.Fatalf("control cycles = %d, want only typed rescale", len(analysis.ControlCycles))
+	}
+	if analysis.ControlCycles[0].Decision != "scale-up" ||
+		analysis.ControlCycles[0].InputReplicas != 0 ||
+		analysis.ControlCycles[0].OutputReplicas != 3 {
+		t.Fatalf("typed control cycle = %+v", analysis.ControlCycles[0])
+	}
+	if len(analysis.Bottlenecks) != 1 || analysis.Bottlenecks[0].Type != "rescale" {
+		t.Fatalf("invalid rescale bottleneck missing: %+v", analysis.Bottlenecks)
+	}
+}
+
+func TestAnalyzeReplayTreatsDestinationOnlyFirstRescaleAsBoundary(t *testing.T) {
+	base := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+	firstTo, secondFrom, secondTo := int32(4), int32(4), int32(7)
+	timeline := Timeline{
+		Since: base,
+		Entries: []Entry{
+			{
+				Timestamp: base.Add(time.Minute), Category: "rescale",
+				Message: "desired <unknown> -> 4", ToReplicas: &firstTo,
+			},
+			{
+				Timestamp: base.Add(2 * time.Minute), Category: "rescale",
+				Message: "desired 4 -> 7", FromReplicas: &secondFrom,
+				ToReplicas: &secondTo, ParseValid: true,
+			},
+		},
+	}
+
+	analysis := AnalyzeReplay(timeline, replayFixtureHPA())
+	if len(analysis.Bottlenecks) != 0 {
+		t.Fatalf("destination-only boundary must not be a bottleneck: %+v", analysis.Bottlenecks)
+	}
+	if len(analysis.ControlCycles) != 1 {
+		t.Fatalf("control cycles = %d, want 1", len(analysis.ControlCycles))
+	}
+	cycle := analysis.ControlCycles[0]
+	if !cycle.Start.Equal(timeline.Entries[0].Timestamp) || cycle.InputReplicas != 4 || cycle.OutputReplicas != 7 {
+		t.Fatalf("unexpected control cycle after boundary: %+v", cycle)
+	}
+}
+
+func TestAnalyzeReplayDoesNotInferPastToleranceFromCurrentStatus(t *testing.T) {
+	base := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+	hpa := replayFixtureHPA()
+	current := int32(52)
+	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{{
+		Type: autoscalingv2.ResourceMetricSourceType,
+		Resource: &autoscalingv2.ResourceMetricStatus{
+			Name: corev1.ResourceCPU,
+			Current: autoscalingv2.MetricValueStatus{
+				AverageUtilization: &current,
+			},
+		},
+	}}
+	timeline := Timeline{
+		Since: base,
+		Entries: []Entry{{
+			Timestamp: base.Add(time.Minute), Category: "metric-change",
+			Message: "cpu utilization changed", Source: "event",
+		}},
+	}
+
+	analysis := AnalyzeReplay(timeline, hpa)
+	if len(analysis.ReplayToleranceEffects) != 0 {
+		t.Fatalf("current snapshot must not be used as past metric evidence: %+v", analysis.ReplayToleranceEffects)
+	}
+}
+
+func TestAnalyzeReplayCreatesOneUnknownStabilizationWindow(t *testing.T) {
+	base := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+	timeline := replayFixtureTimeline(base)
+	analysis := AnalyzeReplay(timeline, replayFixtureHPA())
+
+	if len(analysis.StabilizationWindows) != 1 {
+		t.Fatalf("stabilization windows = %d, want 1: %+v",
+			len(analysis.StabilizationWindows), analysis.StabilizationWindows)
+	}
+	if analysis.StabilizationWindows[0].SuppressedScaleDown != nil {
+		t.Fatalf("successful rescale does not reveal suppressed replica count: %+v",
+			analysis.StabilizationWindows[0])
+	}
+}
+
+func TestAnalyzeReplayDoesNotTreatReachingMaxAsCapEvidence(t *testing.T) {
+	base := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+	from, to := int32(4), int32(10)
+	timeline := Timeline{
+		Since: base,
+		Until: base.Add(10 * time.Minute),
+		Entries: []Entry{{
+			Timestamp: base.Add(time.Minute), Category: "rescale",
+			Message: "desired 4 -> 10", FromReplicas: &from, ToReplicas: &to, ParseValid: true,
+		}},
+	}
+
+	analysis := AnalyzeReplay(timeline, replayFixtureHPA())
+	if len(analysis.ControlCycles) != 1 || analysis.ControlCycles[0].Decision != "scale-up" {
+		t.Fatalf("reaching max without cap evidence must remain scale-up: %+v", analysis.ControlCycles)
+	}
+	if len(analysis.Bottlenecks) != 0 {
+		t.Fatalf("reaching max alone must not create a bottleneck: %+v", analysis.Bottlenecks)
+	}
+}
+
+func TestAnalyzeReplayMarksCapOnlyWithRecordedEvidence(t *testing.T) {
+	base := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+	from, to := int32(4), int32(10)
+	timeline := Timeline{
+		Since: base,
+		Until: base.Add(10 * time.Minute),
+		Entries: []Entry{{
+			Timestamp: base.Add(time.Minute), Category: "rescale",
+			Message:      "desired 4 -> 10; requested replicas=12, maxReplicas=10",
+			FromReplicas: &from, ToReplicas: &to, ParseValid: true,
+		}},
+	}
+
+	analysis := AnalyzeReplay(timeline, replayFixtureHPA())
+	if len(analysis.ControlCycles) != 1 || analysis.ControlCycles[0].Decision != "capped" {
+		t.Fatalf("recorded cap evidence must classify the cycle as capped: %+v", analysis.ControlCycles)
+	}
+	if len(analysis.Bottlenecks) != 1 || !strings.Contains(analysis.Bottlenecks[0].Message, "recorded") {
+		t.Fatalf("recorded cap evidence must create a policy bottleneck: %+v", analysis.Bottlenecks)
+	}
+}
+
+func TestAnalyzeReplayPreservesMinimumConstraintEvidence(t *testing.T) {
+	base := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+	timeline := Timeline{
+		Since: base,
+		Until: base.Add(10 * time.Minute),
+		Entries: []Entry{{
+			Timestamp: base.Add(time.Minute), Category: "scaling-limited",
+			Message: "TooFewReplicas      constrained by minReplicas", Source: "event",
+		}},
+	}
+
+	analysis := AnalyzeReplay(timeline, replayFixtureHPA())
+	if len(analysis.Bottlenecks) != 1 {
+		t.Fatalf("bottlenecks = %d, want 1: %+v", len(analysis.Bottlenecks), analysis.Bottlenecks)
+	}
+	message := analysis.Bottlenecks[0].Message
+	if !strings.Contains(message, "minReplicas") || strings.Contains(message, "maxReplicas") {
+		t.Fatalf("minimum constraint evidence was rewritten incorrectly: %q", message)
+	}
+}
+
+func TestAnalyzeReplayObservesFinalStabilizationUntilTimelineEnd(t *testing.T) {
+	base := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+	timeline := Timeline{
+		Since: base,
+		Until: base.Add(10 * time.Minute),
+		Entries: []Entry{{
+			Timestamp: base.Add(4 * time.Minute), Category: "stabilized",
+			Message: "ScaleDownStabilized", Source: "event",
+		}},
+	}
+
+	analysis := AnalyzeReplay(timeline, replayFixtureHPA())
+	if len(analysis.StabilizationWindows) != 1 {
+		t.Fatalf("stabilization windows = %d, want 1", len(analysis.StabilizationWindows))
+	}
+	window := analysis.StabilizationWindows[0]
+	if !window.End.Equal(timeline.Until) || window.Duration != 6*time.Minute {
+		t.Fatalf("final stabilization observation = %+v, want end=%s duration=6m", window, timeline.Until)
+	}
+}
+
 func TestWriteReplayRenderers(t *testing.T) {
 	base := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
 	tl := replayFixtureTimeline(base)

@@ -658,8 +658,8 @@ func TestRunTimeline_Retrospective(t *testing.T) {
 	if !strings.Contains(output, "HPA Scaling Timeline: web (default)") {
 		t.Errorf("expected timeline header in output, got:\n%s", output)
 	}
-	if !strings.Contains(output, "desired 3 -> 5") {
-		t.Errorf("expected scale-up entry in output, got:\n%s", output)
+	if !strings.Contains(output, "desired <unknown> -> 5") {
+		t.Errorf("expected destination-only first rescale entry in output, got:\n%s", output)
 	}
 	if !strings.Contains(output, "Best-effort") {
 		t.Errorf("expected disclaimer in output, got:\n%s", output)

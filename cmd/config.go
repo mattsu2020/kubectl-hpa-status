@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/spf13/cobra"
 	"sigs.k8s.io/yaml"
@@ -18,8 +19,9 @@ import (
 // values are kept in canonical (normalized) form because validateConfig
 // normalizes user input before comparison.
 var (
-	validColorValues  = []string{"auto", "always", "never"}
-	validOutputValues = []string{
+	validColorValues        = []string{"auto", "always", "never"}
+	validOutputSchemaValues = []string{"v1", "v2"}
+	validOutputValues       = []string{
 		"table", "wide", "json", "jsonl", "yaml", "jsonpath", "template", "gotemplate",
 		"markdown", "md", "html", "incident", "prometheus", "junit", "sarif", "github",
 	}
@@ -61,6 +63,7 @@ type configFile struct {
 	Namespace       string                          `json:"namespace" yaml:"namespace"`
 	AllNamespaces   *bool                           `json:"allNamespaces" yaml:"allNamespaces"`
 	Output          string                          `json:"output" yaml:"output"`
+	OutputSchema    string                          `json:"outputSchema" yaml:"outputSchema"`
 	Wide            *bool                           `json:"wide" yaml:"wide"`
 	Selector        string                          `json:"selector" yaml:"selector"`
 	SortBy          string                          `json:"sortBy" yaml:"sortBy"`
@@ -153,6 +156,9 @@ func validateConfigSelectors(cfg configFile) error {
 	if !isAcceptedConfigOutput(cfg.Output, cfg.Templates) {
 		return fmt.Errorf("config output must be one of %s; got %q", strings.Join(validOutputValues, ", "), cfg.Output)
 	}
+	if !isAcceptedNormalized(strings.ToLower(cfg.OutputSchema), validOutputSchemaValues) {
+		return fmt.Errorf("config outputSchema must be one of %s; got %q", strings.Join(validOutputSchemaValues, ", "), cfg.OutputSchema)
+	}
 
 	if !isAcceptedNormalized(strings.ToLower(cfg.Lang), validLangValues) {
 		return fmt.Errorf("config lang must be one of %s; got %q", strings.Join(validLangValues, ", "), cfg.Lang)
@@ -184,7 +190,7 @@ func isAcceptedConfigOutput(value string, templates map[string]outputTemplateCon
 	if _, ok := templates[value]; ok {
 		return true
 	}
-	if name, _, ok := parsePrefixedFormat(value); ok {
+	if name, _, ok := render.ParsePrefixedFormat(value); ok {
 		_, exists := templates[name]
 		return exists
 	}

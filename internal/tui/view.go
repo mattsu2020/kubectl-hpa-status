@@ -32,39 +32,10 @@ func (m Model) viewContent() string {
 		return errorStyle.Render(fmt.Sprintf("Error: %v", m.err)) + "\n\nPress q to quit."
 	}
 
-	content := m.renderViewByMode()
+	content := controllerForMode(m.viewMode).Render(m)
 	statusBar := m.renderStatusBar()
 
 	return content + "\n" + statusBar
-}
-
-// renderViewByMode dispatches to the renderer for the current view mode.
-func (m Model) renderViewByMode() string {
-	switch m.viewMode {
-	case listView:
-		return m.renderListView()
-	case detailView:
-		return m.renderDetailView()
-	case helpView:
-		return m.renderHelpView()
-	case metricsView:
-		return m.renderMetricsView()
-	case simView:
-		return m.renderSimView()
-	case fixView:
-		return m.renderFixView()
-	case replayView:
-		return m.renderReplayView()
-	case batchAuditView:
-		return m.renderBatchAuditView()
-	case historyView:
-		return m.renderHistoryView()
-	case overviewView:
-		return m.renderOverviewView()
-	case hintsView:
-		return m.renderHintsView()
-	}
-	return ""
 }
 
 func (m Model) renderHelpView() string {

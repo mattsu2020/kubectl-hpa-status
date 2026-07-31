@@ -24,6 +24,18 @@ type RecommendationInfo struct {
 	Upper     string `json:"upper,omitempty" yaml:"upper,omitempty"`
 }
 
+// ContainerPolicy preserves the VPA policy that applies to one named
+// container (or "*" for the wildcard/default policy).
+type ContainerPolicy struct {
+	ContainerName       string   `json:"containerName" yaml:"containerName"`
+	Mode                string   `json:"mode,omitempty" yaml:"mode,omitempty"`
+	ControlledResources []string `json:"controlledResources,omitempty" yaml:"controlledResources,omitempty"`
+	// ControlledResourcesSpecified distinguishes an omitted field (which uses
+	// the VPA cpu+memory defaults) from an explicitly empty resource list. It is
+	// part of the public wire model so JSON/YAML persistence retains that choice.
+	ControlledResourcesSpecified bool `json:"controlledResourcesSpecified,omitempty" yaml:"controlledResourcesSpecified,omitempty"`
+}
+
 // Info holds the parsed fields of a VerticalPodAutoscaler relevant to HPA
 // conflict analysis. This type lives in pkg/hpa/vpa (canonical) and is
 // re-exported as hpaanalysis.VPAInfo via a type alias; internal/kube has its
@@ -32,10 +44,12 @@ type RecommendationInfo struct {
 type Info struct {
 	Name                string               `json:"name" yaml:"name"`
 	TargetRef           string               `json:"targetRef" yaml:"targetRef"`
+	TargetAPIVersion    string               `json:"targetApiVersion,omitempty" yaml:"targetApiVersion,omitempty"`
 	TargetKind          string               `json:"targetKind" yaml:"targetKind"`
 	TargetName          string               `json:"targetName" yaml:"targetName"`
 	UpdateMode          string               `json:"updateMode" yaml:"updateMode"`
 	ControlledResources []string             `json:"controlledResources,omitempty" yaml:"controlledResources,omitempty"`
+	ContainerPolicies   []ContainerPolicy    `json:"containerPolicies,omitempty" yaml:"containerPolicies,omitempty"`
 	Recommendations     []RecommendationInfo `json:"recommendations,omitempty" yaml:"recommendations,omitempty"`
 }
 
@@ -48,6 +62,15 @@ type ConflictInfo struct {
 	ControlledResources []string         `json:"controlledResources,omitempty" yaml:"controlledResources,omitempty"`
 	Recommendations     []Recommendation `json:"recommendations,omitempty" yaml:"recommendations,omitempty"`
 	Warning             string           `json:"warning" yaml:"warning"`
+	// ControlledResourcesResolved distinguishes an intentionally empty
+	// HPA-specific overlap from an omitted VPA controlledResources field,
+	// whose API default is cpu+memory. It is serialized so a no-overlap result
+	// remains no-overlap after JSON/YAML persistence.
+	ControlledResourcesResolved bool `json:"controlledResourcesResolved,omitempty" yaml:"controlledResourcesResolved,omitempty"`
+	// sourceInfo retains policy and target identity for callers that use the
+	// compatibility NewConflictInfo -> AnalyzeAdvisory path. It stays out of
+	// the wire model; emitted ConflictResources remains the public result.
+	sourceInfo *Info
 }
 
 // Recommendation is the display/API model for one visible VPA recommendation.
@@ -67,11 +90,14 @@ func Analyze(hpa *autoscalingv2.HorizontalPodAutoscaler, v *Info) []string {
 	}
 
 	// Skip if VPA is in "Off" mode — it only recommends, never applies changes.
-	if v.UpdateMode == "Off" {
+	if strings.EqualFold(v.UpdateMode, "Off") {
+		return nil
+	}
+	if !infoTargetsHPA(hpa, v) {
 		return nil
 	}
 
-	conflictResources := overlappingResources(hpa, v.ControlledResources)
+	conflictResources := conflictResourcesForInfo(hpa, v)
 	if len(conflictResources) == 0 {
 		return nil
 	}
@@ -80,13 +106,18 @@ func Analyze(hpa *autoscalingv2.HorizontalPodAutoscaler, v *Info) []string {
 
 	lines = append(lines, fmt.Sprintf("[observed] VPA %q targets the same resource %s/%s as this HPA.", v.Name, v.TargetKind, v.TargetName))
 	lines = append(lines, fmt.Sprintf("[observed] Both VPA and HPA manage the overlapping resource(s) %s; this can cause conflicting scaling decisions and instability.", strings.Join(conflictResources, ", ")))
-	lines = append(lines, "[observed] Consider setting the VPA updateMode to \"Recommender\" so it only provides recommendations without applying pod overrides, or remove the overlapping resource metric from one of the autoscalers.")
+	lines = append(lines, "[observed] Consider setting the VPA updateMode to \"Off\" so it only provides recommendations without applying pod overrides, or remove the overlapping resource metric from one of the autoscalers.")
 
-	if v.UpdateMode == "Auto" {
-		lines = append(lines, fmt.Sprintf("[observed] VPA %q is in \"Auto\" mode, which will evict and resize pods — this directly conflicts with HPA replica-based scaling.", v.Name))
+	switch {
+	case strings.EqualFold(v.UpdateMode, "Auto"):
+		lines = append(lines, fmt.Sprintf("[observed] VPA %q is in \"Auto\" mode, which can evict and resize pods — this directly conflicts with HPA replica-based scaling.", v.Name))
+	case !strings.EqualFold(v.UpdateMode, "Initial"):
+		mode := valueOrUnknown(v.UpdateMode)
+		lines = append(lines, fmt.Sprintf("[observed] VPA %q is in active update mode %q, which can resize pod requests — this directly conflicts with HPA replica-based scaling.", v.Name, mode))
 	}
 	for _, rec := range v.Recommendations {
-		if !containsResource(conflictResources, rec.Resource) {
+		if !containsResource(conflictResources, rec.Resource) ||
+			!recommendationOverlapsHPA(hpa, v, rec) {
 			continue
 		}
 		lines = append(lines, fmt.Sprintf("[estimated] VPA %q recommends %s target=%s for container %q while HPA also scales on %s; compare requests, limits, and HPA target utilization before applying both controllers.", v.Name, rec.Resource, valueOrUnknown(rec.Target), rec.Container, rec.Resource))
@@ -106,7 +137,8 @@ func NewConflictInfo(v *Info) *ConflictInfo {
 		TargetName:          v.TargetName,
 		UpdateMode:          v.UpdateMode,
 		ControlledResources: append([]string(nil), v.ControlledResources...),
-		Warning:             fmt.Sprintf("VPA %s and HPA both target %s/%s with overlapping resource metrics", v.Name, v.TargetKind, v.TargetName),
+		Warning:             fmt.Sprintf("VPA %s targets %s/%s; compare it with a specific HPA before classifying resource conflicts", v.Name, v.TargetKind, v.TargetName),
+		sourceInfo:          cloneInfo(v),
 	}
 	for _, rec := range v.Recommendations {
 		info.Recommendations = append(info.Recommendations, Recommendation(rec))
@@ -114,12 +146,52 @@ func NewConflictInfo(v *Info) *ConflictInfo {
 	return info
 }
 
+func cloneInfo(source *Info) *Info {
+	if source == nil {
+		return nil
+	}
+	clone := *source
+	clone.ControlledResources = append([]string(nil), source.ControlledResources...)
+	clone.ContainerPolicies = make([]ContainerPolicy, len(source.ContainerPolicies))
+	for i := range source.ContainerPolicies {
+		clone.ContainerPolicies[i] = source.ContainerPolicies[i]
+		clone.ContainerPolicies[i].ControlledResources =
+			append([]string(nil), source.ContainerPolicies[i].ControlledResources...)
+	}
+	clone.Recommendations = append([]RecommendationInfo(nil), source.Recommendations...)
+	return &clone
+}
+
+// NewConflictInfoForHPA converts extracted VPA data while retaining only the
+// resources that actually overlap this HPA after container policy resolution.
+func NewConflictInfoForHPA(hpa *autoscalingv2.HorizontalPodAutoscaler, v *Info) *ConflictInfo {
+	info := NewConflictInfo(v)
+	if info == nil {
+		return nil
+	}
+	info.ControlledResources = conflictResourcesForInfo(hpa, v)
+	info.ControlledResourcesResolved = true
+	if len(info.ControlledResources) == 0 {
+		info.Warning = ""
+		return info
+	}
+	targetKind := v.TargetKind
+	targetName := v.TargetName
+	if hpa != nil {
+		targetKind = hpa.Spec.ScaleTargetRef.Kind
+		targetName = hpa.Spec.ScaleTargetRef.Name
+	}
+	info.Warning = fmt.Sprintf(
+		"VPA %s and HPA both target %s/%s with overlapping resource metrics: %s",
+		v.Name, targetKind, targetName, strings.Join(info.ControlledResources, ", "),
+	)
+	return info
+}
+
 func hpaUsesResourceMetric(hpa *autoscalingv2.HorizontalPodAutoscaler, resource string) bool {
 	for _, m := range hpa.Spec.Metrics {
-		if m.Type == autoscalingv2.ResourceMetricSourceType && m.Resource != nil && string(m.Resource.Name) == resource {
-			return true
-		}
-		if m.Type == autoscalingv2.ContainerResourceMetricSourceType && m.ContainerResource != nil && string(m.ContainerResource.Name) == resource {
+		metricResource, _, _, ok := resourceMetricIdentity(m)
+		if ok && metricResource == resource {
 			return true
 		}
 	}
@@ -189,7 +261,7 @@ func AnalyzeAdvisory(hpa *autoscalingv2.HorizontalPodAutoscaler, v *ConflictInfo
 func determineConflictLevel(hpa *autoscalingv2.HorizontalPodAutoscaler, v *ConflictInfo) ConflictLevel {
 	mode := v.UpdateMode
 
-	if mode == "Off" || mode == "Recommender" {
+	if strings.EqualFold(mode, "Off") {
 		return ConflictNone
 	}
 
@@ -197,7 +269,7 @@ func determineConflictLevel(hpa *autoscalingv2.HorizontalPodAutoscaler, v *Confl
 		return ConflictNone
 	}
 
-	if mode == "Initial" {
+	if strings.EqualFold(mode, "Initial") {
 		return ConflictWarning
 	}
 
@@ -208,6 +280,12 @@ func determineConflictLevel(hpa *autoscalingv2.HorizontalPodAutoscaler, v *Confl
 // identifyConflictResources returns the subset of VPA-controlled resources
 // that the HPA also scales on.
 func identifyConflictResources(hpa *autoscalingv2.HorizontalPodAutoscaler, v *ConflictInfo) []string {
+	if v.sourceInfo != nil {
+		return conflictResourcesForInfo(hpa, v.sourceInfo)
+	}
+	if v.ControlledResourcesResolved && len(v.ControlledResources) == 0 {
+		return nil
+	}
 	return overlappingResources(hpa, v.ControlledResources)
 }
 
@@ -232,6 +310,177 @@ func overlappingResources(hpa *autoscalingv2.HorizontalPodAutoscaler, controlled
 	}
 	sort.Strings(conflicts)
 	return conflicts
+}
+
+func infoTargetsHPA(hpa *autoscalingv2.HorizontalPodAutoscaler, info *Info) bool {
+	if hpa == nil || info == nil {
+		return false
+	}
+	ref := hpa.Spec.ScaleTargetRef
+	if info.TargetKind != "" && info.TargetKind != ref.Kind {
+		return false
+	}
+	if info.TargetName != "" && info.TargetName != ref.Name {
+		return false
+	}
+	return info.TargetAPIVersion == "" ||
+		ref.APIVersion == "" ||
+		strings.EqualFold(info.TargetAPIVersion, ref.APIVersion)
+}
+
+func conflictResourcesForInfo(hpa *autoscalingv2.HorizontalPodAutoscaler, info *Info) []string {
+	if hpa == nil || info == nil || !infoTargetsHPA(hpa, info) {
+		return nil
+	}
+	if len(info.ContainerPolicies) == 0 {
+		return overlappingResources(hpa, info.ControlledResources)
+	}
+	conflicts := map[string]struct{}{}
+	for _, metric := range hpa.Spec.Metrics {
+		resource, container, aggregate, ok := resourceMetricIdentity(metric)
+		if !ok || (resource != "cpu" && resource != "memory") {
+			continue
+		}
+		var controlled bool
+		if aggregate {
+			controlled = policiesControlAggregate(info.ContainerPolicies, resource)
+		} else {
+			controlled = policiesControlContainer(info.ContainerPolicies, container, resource)
+		}
+		if controlled {
+			conflicts[resource] = struct{}{}
+		}
+	}
+	resources := make([]string, 0, len(conflicts))
+	for resource := range conflicts {
+		resources = append(resources, resource)
+	}
+	sort.Strings(resources)
+	return resources
+}
+
+// recommendationOverlapsHPA reports whether a VPA recommendation describes a
+// resource/container pair that this HPA actually scales on and that the VPA's
+// effective container policy controls. Aggregate Resource metrics may match
+// recommendations for any controlled container; ContainerResource metrics
+// only match their named container.
+func recommendationOverlapsHPA(
+	hpa *autoscalingv2.HorizontalPodAutoscaler,
+	info *Info,
+	recommendation RecommendationInfo,
+) bool {
+	if hpa == nil || info == nil {
+		return false
+	}
+	resource := strings.ToLower(recommendation.Resource)
+	for _, metric := range hpa.Spec.Metrics {
+		metricResource, metricContainer, aggregate, ok := resourceMetricIdentity(metric)
+		if !ok || metricResource != resource {
+			continue
+		}
+		if !aggregate && recommendation.Container != metricContainer {
+			continue
+		}
+		if len(info.ContainerPolicies) > 0 {
+			if policiesControlContainer(info.ContainerPolicies, recommendation.Container, resource) {
+				return true
+			}
+			continue
+		}
+		if containsResource(effectiveTopLevelResources(info.ControlledResources), resource) {
+			return true
+		}
+	}
+	return false
+}
+
+func effectiveTopLevelResources(controlledResources []string) []string {
+	if len(controlledResources) == 0 {
+		return []string{"cpu", "memory"}
+	}
+	return controlledResources
+}
+
+func resourceMetricIdentity(metric autoscalingv2.MetricSpec) (resource, container string, aggregate, ok bool) {
+	switch metric.Type {
+	case autoscalingv2.ResourceMetricSourceType:
+		if metric.Resource != nil && isUtilizationTarget(metric.Resource.Target) {
+			return strings.ToLower(string(metric.Resource.Name)), "", true, true
+		}
+	case autoscalingv2.ContainerResourceMetricSourceType:
+		if metric.ContainerResource != nil && isUtilizationTarget(metric.ContainerResource.Target) {
+			return strings.ToLower(string(metric.ContainerResource.Name)), metric.ContainerResource.Container, false, true
+		}
+	}
+	return "", "", false, false
+}
+
+func isUtilizationTarget(target autoscalingv2.MetricTarget) bool {
+	return target.Type == autoscalingv2.UtilizationMetricType || target.Type == ""
+}
+
+func effectiveResources(policy ContainerPolicy) []string {
+	if !policy.ControlledResourcesSpecified {
+		return []string{"cpu", "memory"}
+	}
+	return policy.ControlledResources
+}
+
+func containerPolicyControls(policy ContainerPolicy, resource string) bool {
+	if strings.EqualFold(policy.Mode, "Off") {
+		return false
+	}
+	for _, controlled := range effectiveResources(policy) {
+		if strings.EqualFold(controlled, resource) {
+			return true
+		}
+	}
+	return false
+}
+
+func anyContainerPolicyControls(policies []ContainerPolicy, resource string) bool {
+	for _, policy := range policies {
+		if containerPolicyControls(policy, resource) {
+			return true
+		}
+	}
+	return false
+}
+
+func policiesControlContainer(policies []ContainerPolicy, container, resource string) bool {
+	var exact, wildcard []ContainerPolicy
+	for _, policy := range policies {
+		switch policy.ContainerName {
+		case container:
+			exact = append(exact, policy)
+		case "*":
+			wildcard = append(wildcard, policy)
+		}
+	}
+	if len(exact) > 0 {
+		return anyContainerPolicyControls(exact, resource)
+	}
+	if len(wildcard) > 0 {
+		return anyContainerPolicyControls(wildcard, resource)
+	}
+	return resource == "cpu" || resource == "memory"
+}
+
+func policiesControlAggregate(policies []ContainerPolicy, resource string) bool {
+	var wildcard []ContainerPolicy
+	for _, policy := range policies {
+		if policy.ContainerName == "*" {
+			wildcard = append(wildcard, policy)
+			continue
+		}
+		if containerPolicyControls(policy, resource) {
+			return true
+		}
+	}
+	if len(wildcard) > 0 {
+		return anyContainerPolicyControls(wildcard, resource)
+	}
+	return resource == "cpu" || resource == "memory"
 }
 
 func containsResource(resources []string, wanted string) bool {
@@ -314,7 +563,7 @@ func buildExplanation(level ConflictLevel, v *ConflictInfo, conflictResources []
 			v.TargetKind, v.TargetName,
 		)
 	case ConflictNone:
-		if v.UpdateMode == "Off" {
+		if strings.EqualFold(v.UpdateMode, "Off") {
 			return fmt.Sprintf(
 				"VPA %q is in %q mode targeting %s/%s: it provides recommendations only "+
 					"without applying any changes to pods, so there is no conflict with HPA.",
@@ -355,7 +604,7 @@ func generateVPAActions(level ConflictLevel, v *ConflictInfo) []string {
 	case ConflictError:
 		return []string{
 			fmt.Sprintf("Change VPA %q updateMode from %q to 'Initial' to prevent pod evictions", v.VPAName, v.UpdateMode),
-			"Alternatively, set updateMode to 'Off' or 'Recommender' to disable active resource management",
+			"Alternatively, set updateMode to 'Off' to disable active resource management while retaining recommendations",
 		}
 	case ConflictWarning:
 		return []string{

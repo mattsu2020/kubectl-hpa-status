@@ -5,15 +5,14 @@ package churn
 
 import (
 	"fmt"
-
 	"sort"
+	"strings"
 	"time"
-
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/event"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
 )
 
 // ChurnLevel classifies the severity of HPA replica thrashing.
@@ -30,6 +29,14 @@ const (
 	ChurnHigh ChurnLevel = "HIGH"
 	// ChurnCritical indicates severe oscillation requiring immediate remediation (score 76-100).
 	ChurnCritical ChurnLevel = "CRITICAL"
+
+	// maxChurnTransitionGap bounds a continuous burst of HPA activity. Replica
+	// changes separated by more than an hour are independent observations, not
+	// evidence of an active oscillation.
+	maxChurnTransitionGap = time.Hour
+	// fullChurnTransitionsPerHour is the activity rate at which an oscillation
+	// receives its full severity score. Slower patterns are discounted.
+	fullChurnTransitionsPerHour = 4.0
 )
 
 // ChurnAnalysis holds the result of thrashing/churn detection for HPA scaling events.
@@ -62,7 +69,7 @@ type ChurnAnalysis struct {
 //
 //nolint:revive // stutter is intentional: matches ChurnAnalysis/ChurnLevel naming
 type ChurnRecommendation struct {
-	// Type categorizes the recommendation (e.g. "stabilization-window", "tolerance", "behavior-policy").
+	// Type categorizes the recommendation (e.g. "stabilization-window" or "behavior-policy").
 	Type string `json:"type" yaml:"type"`
 	// CurrentValue describes the current HPA configuration value.
 	CurrentValue string `json:"currentValue" yaml:"currentValue"`
@@ -80,9 +87,9 @@ type ChurnRecommendation struct {
 // examining SuccessfulRescale events. It extracts the new replica count from
 // each event message, tracks direction changes, and produces a churn score.
 //
-// Returns nil if fewer than 3 rescale events are available (insufficient data
-// to establish a thrashing pattern). The function is pure: it does not modify
-// the input slices or depend on external state.
+// Returns nil if fewer than 3 unambiguous rescale observations are available
+// (insufficient data to establish a thrashing pattern). The function is pure:
+// it does not modify the input slices or depend on external state.
 func AnalyzeChurnFromEvents(events []event.Event, hpa *autoscalingv2.HorizontalPodAutoscaler) *ChurnAnalysis {
 	var rescales []event.RescaleData
 	for _, ev := range events {
@@ -99,47 +106,33 @@ func AnalyzeChurnFromEvents(events []event.Event, hpa *autoscalingv2.HorizontalP
 		})
 	}
 
-	if len(rescales) < 3 {
-		return nil
-	}
-
-	// Sort by timestamp ascending to establish chronological order.
-	sort.Slice(rescales, func(i, j int) bool {
-		return rescales[i].Timestamp.Before(rescales[j].Timestamp)
-	})
-
 	return buildChurnAnalysis(rescales, hpa)
 }
 
-// AnalyzeFromRescales runs thrashing/churn patterns in HPA scaling by
-// examining changes in TimelineSnapshot.Desired values. It tracks direction
-// changes and produces a churn score using the same algorithm as
-// AnalyzeChurnFromEvents.
-//
-// Returns nil if fewer than 3 snapshots with distinct Desired values are
-// available. The function is pure: it does not modify the input slices or
-// depend on external state.
 // AnalyzeFromRescales runs the churn analysis on a pre-extracted slice of
 // rescale data. This is the canonical entry point for callers that already
 // have rescale data (e.g. converted from TimelineSnapshots in the pkg/hpa
-// facade). It sorts the input by timestamp ascending before analysis.
+// facade). It normalizes a copy into deterministic timestamp order before
+// analysis and leaves the caller's slice unchanged.
 func AnalyzeFromRescales(rescales []event.RescaleData, hpa *autoscalingv2.HorizontalPodAutoscaler) *ChurnAnalysis {
+	return buildChurnAnalysis(rescales, hpa)
+}
+
+// buildChurnAnalysis computes the churn analysis from rescale data points.
+// It first creates a deterministic chronological copy and discards ambiguous
+// same-timestamp observations, because Kubernetes events with identical
+// timestamps do not reveal an ordering from which direction changes can be
+// reconstructed safely.
+func buildChurnAnalysis(rescales []event.RescaleData, hpa *autoscalingv2.HorizontalPodAutoscaler) *ChurnAnalysis {
+	rescales = normalizeRescaleObservations(rescales)
+	if len(rescales) < 3 {
+		return nil
+	}
+	rescales = latestContinuousRescaleSegment(rescales)
 	if len(rescales) < 3 {
 		return nil
 	}
 
-	// Sort by timestamp ascending to establish chronological order.
-	sort.Slice(rescales, func(i, j int) bool {
-		return rescales[i].Timestamp.Before(rescales[j].Timestamp)
-	})
-
-	return buildChurnAnalysis(rescales, hpa)
-}
-
-// buildChurnAnalysis computes the churn analysis from an ordered sequence of
-// rescale data points. Both AnalyzeChurnFromEvents and AnalyzeChurnFromSnapshots
-// delegate to this function after extracting and sorting their rescale data.
-func buildChurnAnalysis(rescales []event.RescaleData, hpa *autoscalingv2.HorizontalPodAutoscaler) *ChurnAnalysis {
 	scaleUpCount := 0
 	scaleDownCount := 0
 	directionFlips := 0
@@ -189,7 +182,9 @@ func buildChurnAnalysis(rescales []event.RescaleData, hpa *autoscalingv2.Horizon
 	timeWindow := rescales[len(rescales)-1].Timestamp.Sub(rescales[0].Timestamp)
 
 	oscillationRate := float64(directionFlips) / float64(totalEvents)
-	score := directionFlips*15 + int(oscillationRate*40)
+	baseScore := float64(directionFlips*15) + oscillationRate*40
+	activityFactor := churnActivityFactor(totalEvents, timeWindow)
+	score := int(baseScore*activityFactor + 0.5)
 	if score > 100 {
 		score = 100
 	}
@@ -208,6 +203,73 @@ func buildChurnAnalysis(rescales []event.RescaleData, hpa *autoscalingv2.Horizon
 		TimeWindow:      timeWindow,
 		Recommendations: recommendations,
 	}
+}
+
+// normalizeRescaleObservations returns a sorted copy with at most one usable
+// observation per timestamp. Exact duplicates collapse to one observation. A
+// timestamp containing different replica sizes is omitted because there is no
+// reliable ordering or final value, and choosing one would invent transitions.
+func normalizeRescaleObservations(rescales []event.RescaleData) []event.RescaleData {
+	if len(rescales) == 0 {
+		return nil
+	}
+
+	ordered := append([]event.RescaleData(nil), rescales...)
+	sort.Slice(ordered, func(i, j int) bool {
+		if ordered[i].Timestamp.Equal(ordered[j].Timestamp) {
+			return ordered[i].NewSize < ordered[j].NewSize
+		}
+		return ordered[i].Timestamp.Before(ordered[j].Timestamp)
+	})
+
+	normalized := make([]event.RescaleData, 0, len(ordered))
+	for start := 0; start < len(ordered); {
+		end := start + 1
+		ambiguous := false
+		for end < len(ordered) && ordered[end].Timestamp.Equal(ordered[start].Timestamp) {
+			if ordered[end].NewSize != ordered[start].NewSize {
+				ambiguous = true
+			}
+			end++
+		}
+		if !ambiguous {
+			normalized = append(normalized, ordered[start])
+		}
+		start = end
+	}
+	return normalized
+}
+
+// latestContinuousRescaleSegment returns the most recent uninterrupted burst
+// of rescale observations. Using the latest segment prevents old, sparse
+// changes from being reported as current churn.
+func latestContinuousRescaleSegment(rescales []event.RescaleData) []event.RescaleData {
+	if len(rescales) == 0 {
+		return nil
+	}
+	start := len(rescales) - 1
+	for start > 0 {
+		gap := rescales[start].Timestamp.Sub(rescales[start-1].Timestamp)
+		if gap > maxChurnTransitionGap {
+			break
+		}
+		start--
+	}
+	return rescales[start:]
+}
+
+func churnActivityFactor(transitions int, window time.Duration) float64 {
+	if transitions <= 0 {
+		return 0
+	}
+	if window <= 0 {
+		return 1
+	}
+	ratePerHour := float64(transitions) / window.Hours()
+	if ratePerHour >= fullChurnTransitionsPerHour {
+		return 1
+	}
+	return ratePerHour / fullChurnTransitionsPerHour
 }
 
 // churnLevelFromScore maps a numeric churn score to a ChurnLevel.
@@ -233,23 +295,33 @@ func generateChurnRecommendations(level ChurnLevel, hpa *autoscalingv2.Horizonta
 
 	var recommendations []ChurnRecommendation
 
-	// For MEDIUM and above: recommend increasing the stabilization window.
-	recommendations = append(recommendations, stabilizationWindowRecommendation(hpa))
+	// For MEDIUM and above: recommend increasing the stabilization window when
+	// it is still possible to do so within the Kubernetes API limit.
+	if recommendation, ok := stabilizationWindowRecommendation(hpa); ok {
+		recommendations = append(recommendations, recommendation)
+	}
 
-	// For HIGH and above: recommend adding tolerance.
+	// Configurable directional tolerance is feature-gated and the default 0.1
+	// would be a no-op, so churn analysis does not emit an automatic tolerance
+	// patch. For HIGH and above, consider a scale-down policy only when doing so
+	// cannot replace an existing explicit policy.
 	if level == ChurnHigh || level == ChurnCritical {
-		recommendations = append(recommendations, toleranceRecommendation())
 		recommendations = append(recommendations, behaviorPolicyRecommendation(hpa))
 	}
 
 	return recommendations
 }
 
-// stabilizationWindowRecommendation recommends doubling the current scale-down
-// stabilization window to reduce oscillation.
-func stabilizationWindowRecommendation(hpa *autoscalingv2.HorizontalPodAutoscaler) ChurnRecommendation {
+// stabilizationWindowRecommendation recommends increasing the current
+// scale-down stabilization window without exceeding the Kubernetes API limit.
+// An explicitly disabled window starts at 300 seconds. No recommendation is
+// returned when the window is already at or above the maximum.
+func stabilizationWindowRecommendation(hpa *autoscalingv2.HorizontalPodAutoscaler) (ChurnRecommendation, bool) {
 	currentWindow := currentStabilizationWindowSeconds(hpa)
-	recommendedWindow := currentWindow * 2
+	recommendedWindow, ok := nextStabilizationWindowSeconds(currentWindow)
+	if !ok {
+		return ChurnRecommendation{}, false
+	}
 
 	patch := util.MustMarshalJSON(map[string]any{
 		"spec": map[string]any{
@@ -268,43 +340,60 @@ func stabilizationWindowRecommendation(hpa *autoscalingv2.HorizontalPodAutoscale
 		Rationale:        "Increasing the scale-down stabilization window gives the HPA more time to observe sustained metric changes before reversing a scaling decision, reducing oscillation.",
 		Patch:            patch,
 		Confidence:       "medium",
-	}
+	}, true
 }
 
-// toleranceRecommendation recommends adding explicit tolerance to dampen
-// small metric fluctuations that trigger unnecessary rescales.
-func toleranceRecommendation() ChurnRecommendation {
-	patch := util.MustMarshalJSON(map[string]any{
-		"spec": map[string]any{
-			"behavior": map[string]any{
-				"scaleDown": map[string]any{
-					"tolerance": "0.1",
-				},
-			},
-		},
-	})
-
-	return ChurnRecommendation{
-		Type:             "tolerance",
-		CurrentValue:     "default (0.1)",
-		RecommendedValue: "0.1 (explicit)",
-		Rationale:        "Adding an explicit tolerance dampens small metric fluctuations, preventing the HPA from reacting to noise near the target threshold.",
-		Patch:            patch,
-		Confidence:       "medium",
+func nextStabilizationWindowSeconds(current int32) (int32, bool) {
+	const (
+		initialWindow = int64(300)
+		maximumWindow = int64(3600)
+	)
+	if int64(current) >= maximumWindow {
+		return 0, false
 	}
+	if current <= 0 {
+		return int32(initialWindow), true
+	}
+	next := int64(current) * 2
+	if next > maximumWindow {
+		next = maximumWindow
+	}
+	if next <= int64(current) {
+		return 0, false
+	}
+	return int32(next), true
 }
 
-// behaviorPolicyRecommendation recommends adding explicit scale-down behavior
-// policies to bound the rate of replica removal.
+// behaviorPolicyRecommendation recommends an explicit scale-down policy only
+// when no policy is already configured. Replacing an existing policy requires
+// workload-specific comparison of Pods/Percent periods and selectPolicy, so the
+// safe fallback is patch-free review guidance.
 func behaviorPolicyRecommendation(hpa *autoscalingv2.HorizontalPodAutoscaler) ChurnRecommendation {
-	stabilizationSeconds := currentStabilizationWindowSeconds(hpa)
+	rules := scaleDownRules(hpa)
+	if rules != nil && rules.SelectPolicy != nil && *rules.SelectPolicy == autoscalingv2.DisabledPolicySelect {
+		return ChurnRecommendation{
+			Type:             "behavior-policy",
+			CurrentValue:     "scale-down disabled",
+			RecommendedValue: "keep the existing disabled policy and investigate metric noise",
+			Rationale:        "Scale-down is already disabled, which is stricter than a 50% rate limit. No automatic patch is emitted because enabling scale-down could increase churn or change availability behavior.",
+			Confidence:       "high",
+		}
+	}
+	if rules != nil && len(rules.Policies) > 0 {
+		current := formatScaleDownPolicies(rules)
+		return ChurnRecommendation{
+			Type:             "behavior-policy",
+			CurrentValue:     current,
+			RecommendedValue: "keep the existing policy; review it with scaling history before changing it",
+			Rationale:        "An explicit scale-down policy is already configured. Replacing it with a generic 50%/60s policy could loosen an existing stricter limit, so no automatic patch is emitted.",
+			Confidence:       "medium",
+		}
+	}
 
 	patch := util.MustMarshalJSON(map[string]any{
 		"spec": map[string]any{
 			"behavior": map[string]any{
 				"scaleDown": map[string]any{
-					"stabilizationWindowSeconds": stabilizationSeconds,
-					"selectPolicy":               "Max",
 					"policies": []map[string]any{
 						{"type": "Percent", "value": 50, "periodSeconds": 60},
 					},
@@ -315,12 +404,44 @@ func behaviorPolicyRecommendation(hpa *autoscalingv2.HorizontalPodAutoscaler) Ch
 
 	return ChurnRecommendation{
 		Type:             "behavior-policy",
-		CurrentValue:     "implicit (no explicit scaleDown policies)",
-		RecommendedValue: "Max selectPolicy with 50%/60s policy",
-		Rationale:        "Explicit scale-down policies bound the rate of replica removal, preventing rapid downscale followed by immediate upscale cycles.",
+		CurrentValue:     "default scale-down policy (up to 100%/15s)",
+		RecommendedValue: "50%/60s scale-down limit",
+		Rationale:        "No explicit scale-down policy is present. A 50%/60s limit is more conservative than the Kubernetes default and bounds rapid replica removal without changing other behavior fields.",
 		Patch:            patch,
 		Confidence:       "medium",
 	}
+}
+
+func scaleDownRules(hpa *autoscalingv2.HorizontalPodAutoscaler) *autoscalingv2.HPAScalingRules {
+	if hpa == nil || hpa.Spec.Behavior == nil {
+		return nil
+	}
+	return hpa.Spec.Behavior.ScaleDown
+}
+
+func formatScaleDownPolicies(rules *autoscalingv2.HPAScalingRules) string {
+	if rules == nil || len(rules.Policies) == 0 {
+		return "default scale-down policy (up to 100%/15s)"
+	}
+	selectPolicy := autoscalingv2.MaxChangePolicySelect
+	if rules.SelectPolicy != nil {
+		selectPolicy = *rules.SelectPolicy
+	}
+	policies := make([]string, 0, len(rules.Policies))
+	for _, policy := range rules.Policies {
+		var value string
+		switch policy.Type {
+		case autoscalingv2.PercentScalingPolicy:
+			value = fmt.Sprintf("%d%%/%ds", policy.Value, policy.PeriodSeconds)
+		case autoscalingv2.PodsScalingPolicy:
+			value = fmt.Sprintf("%d pods/%ds", policy.Value, policy.PeriodSeconds)
+		default:
+			value = fmt.Sprintf("%s %d/%ds", policy.Type, policy.Value, policy.PeriodSeconds)
+		}
+		policies = append(policies, value)
+	}
+	sort.Strings(policies)
+	return fmt.Sprintf("%s selectPolicy: %s", selectPolicy, strings.Join(policies, ", "))
 }
 
 // currentStabilizationWindowSeconds returns the configured scale-down

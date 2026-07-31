@@ -9,21 +9,26 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
 
 type outputSchemaNode struct {
-	Ref        string                      `json:"$ref"`
-	Type       string                      `json:"type"`
-	Properties map[string]outputSchemaNode `json:"properties"`
-	Required   []string                    `json:"required"`
-	Items      *outputSchemaNode           `json:"items"`
-	Enum       []any                       `json:"enum"`
-	OneOf      []outputSchemaNode          `json:"oneOf"`
-	Minimum    *float64                    `json:"minimum"`
-	Maximum    *float64                    `json:"maximum"`
-	MinItems   *int                        `json:"minItems"`
+	Ref                  string                      `json:"$ref"`
+	Type                 string                      `json:"type"`
+	Properties           map[string]outputSchemaNode `json:"properties"`
+	Required             []string                    `json:"required"`
+	Items                *outputSchemaNode           `json:"items"`
+	Enum                 []any                       `json:"enum"`
+	OneOf                []outputSchemaNode          `json:"oneOf"`
+	Const                string                      `json:"const"`
+	Minimum              *float64                    `json:"minimum"`
+	Maximum              *float64                    `json:"maximum"`
+	MinItems             *int                        `json:"minItems"`
+	MinLength            *int                        `json:"minLength"`
+	AdditionalProperties *bool                       `json:"additionalProperties"`
+	Not                  *outputSchemaNode           `json:"not"`
 }
 
 // outputSchema contains both the documented definitions and the top-level
@@ -34,14 +39,18 @@ type outputSchema struct {
 }
 
 func loadOutputSchema(t *testing.T) outputSchema {
+	return loadOutputSchemaFile(t, "docs/output-schema.json")
+}
+
+func loadOutputSchemaFile(t *testing.T, schemaPath string) outputSchema {
 	t.Helper()
-	data, err := os.ReadFile("docs/output-schema.json")
+	data, err := os.ReadFile(schemaPath)
 	if err != nil {
-		t.Fatalf("read docs/output-schema.json: %v", err)
+		t.Fatalf("read %s: %v", schemaPath, err)
 	}
 	var schema outputSchema
 	if err := json.Unmarshal(data, &schema); err != nil {
-		t.Fatalf("parse docs/output-schema.json: %v", err)
+		t.Fatalf("parse %s: %v", schemaPath, err)
 	}
 	return schema
 }
@@ -66,29 +75,28 @@ func jsonTagSet(t *testing.T, typ reflect.Type) map[string]struct{} {
 	return tags
 }
 
-// TestOutputSchemaFieldsExistInStructs verifies that every property documented
-// in docs/output-schema.json still exists as a JSON field on the Go structs
-// that produce the output. The schema documents the stable core subset (the
-// structs may emit additional fields), so the check is one-directional:
-// schema ⊆ struct. A failure means a documented field was renamed or removed,
-// which is a breaking change for JSON consumers and requires either restoring
-// the field or updating the schema plus bumping hpaanalysis.SchemaVersion.
+// TestOutputSchemaFieldsExistInStructs verifies that every documented property
+// still exists on its Go struct. Public envelope types are checked in both
+// directions so additive fields cannot silently ship without documentation.
+// Analysis remains a documented stable-core subset because its optional feature
+// domains are intentionally broader than this interoperability schema.
 func TestOutputSchemaFieldsExistInStructs(t *testing.T) {
 	schema := loadOutputSchema(t)
 
 	cases := []struct {
-		def string
-		typ reflect.Type
+		def   string
+		typ   reflect.Type
+		exact bool
 	}{
-		{"statusReport", reflect.TypeOf(hpaanalysis.StatusReport{})},
-		{"statusBatch", reflect.TypeOf(hpaanalysis.StatusBatch{})},
-		{"statusBatchItem", reflect.TypeOf(hpaanalysis.StatusBatchItem{})},
-		{"listReport", reflect.TypeOf(hpaanalysis.ListReport{})},
-		{"analysis", reflect.TypeOf(hpaanalysis.Analysis{})},
-		{"listItem", reflect.TypeOf(hpaanalysis.ListItem{})},
-		{"structuredEntry", reflect.TypeOf(hpaanalysis.StructuredMessage{})},
-		{"decisionSignal", reflect.TypeOf(hpaanalysis.DecisionSignal{})},
-		{"impactMetric", reflect.TypeOf(hpaanalysis.MetricImpactGuess{})},
+		{"statusReport", reflect.TypeOf(hpaanalysis.StatusReport{}), true},
+		{"statusBatch", reflect.TypeOf(hpaanalysis.StatusBatch{}), true},
+		{"statusBatchItem", reflect.TypeOf(hpaanalysis.StatusBatchItem{}), true},
+		{"listReport", reflect.TypeOf(hpaanalysis.ListReport{}), true},
+		{"analysis", reflect.TypeOf(hpaanalysis.Analysis{}), false},
+		{"listItem", reflect.TypeOf(hpaanalysis.ListItem{}), true},
+		{"structuredEntry", reflect.TypeOf(hpaanalysis.StructuredMessage{}), false},
+		{"decisionSignal", reflect.TypeOf(hpaanalysis.DecisionSignal{}), false},
+		{"impactMetric", reflect.TypeOf(hpaanalysis.MetricImpactGuess{}), false},
 	}
 	for _, tc := range cases {
 		def, ok := schema.Defs[tc.def]
@@ -102,11 +110,102 @@ func TestOutputSchemaFieldsExistInStructs(t *testing.T) {
 				t.Errorf("$defs.%s documents property %q but %s has no matching json tag", tc.def, prop, tc.typ)
 			}
 		}
+		if tc.exact {
+			for tag := range tags {
+				if _, ok := def.Properties[tag]; !ok {
+					t.Errorf("%s emits property %q but $defs.%s does not document it", tc.typ, tag, tc.def)
+				}
+			}
+		}
 		for _, req := range def.Required {
 			if _, ok := def.Properties[req]; !ok {
 				t.Errorf("$defs.%s requires %q but does not define it in properties", tc.def, req)
 			}
 		}
+	}
+}
+
+// TestOutputSchemaAPIVersionMatchesCode derives the output variants from the
+// schema's top-level oneOf and ensures each pins the same version emitted by the
+// code. This catches a SchemaVersion bump that forgets the published schema.
+func TestOutputSchemaAPIVersionMatchesCode(t *testing.T) {
+	assertOutputSchemaVersion(t, loadOutputSchema(t), hpaanalysis.SchemaVersion)
+}
+
+func assertOutputSchemaVersion(t *testing.T, schema outputSchema, want string) {
+	t.Helper()
+	const refPrefix = "#/$defs/"
+	for _, variant := range schema.OneOf {
+		if !strings.HasPrefix(variant.Ref, refPrefix) {
+			t.Errorf("top-level output variant has unsupported reference %q", variant.Ref)
+			continue
+		}
+		name := strings.TrimPrefix(variant.Ref, refPrefix)
+		def, ok := schema.Defs[name]
+		if !ok {
+			t.Errorf("top-level output variant references missing definition %q", name)
+			continue
+		}
+		apiVersion, ok := def.Properties["apiVersion"]
+		if !ok {
+			t.Errorf("$defs.%s does not document apiVersion", name)
+			continue
+		}
+		if apiVersion.Const != want {
+			t.Errorf("$defs.%s apiVersion const=%q, want %q", name, apiVersion.Const, want)
+		}
+	}
+}
+
+func TestOutputSchemaV2MatchesProjectionTypes(t *testing.T) {
+	schema := loadOutputSchemaFile(t, "docs/output-schema-v2.json")
+	assertOutputSchemaVersion(t, schema, hpaanalysis.SchemaVersionV2)
+
+	cases := []struct {
+		def string
+		typ reflect.Type
+	}{
+		{"statusReportV2", reflect.TypeOf(hpaanalysis.StatusReportV2{})},
+		{"statusBatchV2", reflect.TypeOf(hpaanalysis.StatusBatchV2{})},
+		{"statusBatchItemV2", reflect.TypeOf(hpaanalysis.StatusBatchItemV2{})},
+		{"groupedAnalysis", reflect.TypeOf(hpaanalysis.GroupedAnalysis{})},
+		{"meta", reflect.TypeOf(hpaanalysis.MetaView{})},
+		{"replicas", reflect.TypeOf(hpaanalysis.ReplicasView{})},
+		{"decision", reflect.TypeOf(hpaanalysis.DecisionView{})},
+		{"metricsGroup", reflect.TypeOf(hpaanalysis.MetricsView{})},
+		{"conditionsGroup", reflect.TypeOf(hpaanalysis.ConditionsView{})},
+		{"capacity", reflect.TypeOf(hpaanalysis.CapacityView{})},
+		{"scaleToZeroGroup", reflect.TypeOf(hpaanalysis.ScaleToZeroView{})},
+		{"stability", reflect.TypeOf(hpaanalysis.StabilityView{})},
+		{"advisory", reflect.TypeOf(hpaanalysis.AdvisoryView{})},
+		{"controllers", reflect.TypeOf(hpaanalysis.ControllersView{})},
+		{"blockers", reflect.TypeOf(hpaanalysis.BlockersView{})},
+		{"actions", reflect.TypeOf(hpaanalysis.ActionsView{})},
+		{"lifecycle", reflect.TypeOf(hpaanalysis.LifecycleView{})},
+	}
+	for _, tc := range cases {
+		t.Run(tc.def, func(t *testing.T) {
+			def, ok := schema.Defs[tc.def]
+			if !ok {
+				t.Fatalf("docs/output-schema-v2.json is missing $defs.%s", tc.def)
+			}
+			tags := jsonTagSet(t, tc.typ)
+			for property := range def.Properties {
+				if _, ok := tags[property]; !ok {
+					t.Errorf("$defs.%s documents %q but %s has no matching json tag", tc.def, property, tc.typ)
+				}
+			}
+			for tag := range tags {
+				if _, ok := def.Properties[tag]; !ok {
+					t.Errorf("%s emits %q but $defs.%s does not document it", tc.typ, tag, tc.def)
+				}
+			}
+			for _, required := range def.Required {
+				if _, ok := def.Properties[required]; !ok {
+					t.Errorf("$defs.%s requires undefined property %q", tc.def, required)
+				}
+			}
+		})
 	}
 }
 
@@ -153,7 +252,12 @@ func validateOutputSchemaNode(schema outputSchema, node outputSchemaNode, value 
 		if matches != 1 {
 			return []string{fmt.Sprintf("%s: oneOf matched %d alternatives (want exactly one); %s", path, matches, strings.Join(failures, "; "))}
 		}
-		return nil
+	}
+
+	if node.Not != nil {
+		if errs := validateOutputSchemaNode(schema, *node.Not, value, path); len(errs) == 0 {
+			return []string{fmt.Sprintf("%s: value matches a forbidden schema", path)}
+		}
 	}
 
 	if len(node.Enum) > 0 {
@@ -169,7 +273,18 @@ func validateOutputSchemaNode(schema outputSchema, node outputSchemaNode, value 
 		}
 	}
 
-	switch node.Type {
+	if node.Const != "" && value != node.Const {
+		return []string{fmt.Sprintf("%s: value %#v does not equal const %q", path, value, node.Const)}
+	}
+
+	nodeType := node.Type
+	// JSON Schema object keywords apply even when a subschema omits an
+	// explicit type (for example inside oneOf/not conditions).
+	if nodeType == "" && (len(node.Properties) > 0 || len(node.Required) > 0 || node.AdditionalProperties != nil) {
+		nodeType = "object"
+	}
+
+	switch nodeType {
 	case "":
 		return nil
 	case "object":
@@ -186,6 +301,13 @@ func validateOutputSchemaNode(schema outputSchema, node outputSchemaNode, value 
 		for name, property := range node.Properties {
 			if propertyValue, exists := object[name]; exists {
 				errs = append(errs, validateOutputSchemaNode(schema, property, propertyValue, path+"."+name)...)
+			}
+		}
+		if node.AdditionalProperties != nil && !*node.AdditionalProperties {
+			for name := range object {
+				if _, documented := node.Properties[name]; !documented {
+					errs = append(errs, fmt.Sprintf("%s: undocumented property %q", path, name))
+				}
 			}
 		}
 		return errs
@@ -206,8 +328,12 @@ func validateOutputSchemaNode(schema outputSchema, node outputSchemaNode, value 
 		}
 		return errs
 	case "string":
-		if _, ok := value.(string); !ok {
+		stringValue, ok := value.(string)
+		if !ok {
 			return []string{fmt.Sprintf("%s: got %T, want string", path, value)}
+		}
+		if node.MinLength != nil && utf8.RuneCountInString(stringValue) < *node.MinLength {
+			return []string{fmt.Sprintf("%s: string length is below minLength %d", path, *node.MinLength)}
 		}
 		return nil
 	case "boolean":
@@ -370,6 +496,71 @@ func TestOutputSchemaValidatesSerializedOutputVariants(t *testing.T) {
 			serialized := decodeSerializedJSON(t, sample.value)
 			if errs := validateOutputSchemaNode(schema, topLevel, serialized, "$"); len(errs) > 0 {
 				t.Fatalf("serialized %T does not satisfy docs/output-schema.json:\n%s", sample.value, strings.Join(errs, "\n"))
+			}
+		})
+	}
+}
+
+func TestOutputSchemaV2ValidatesProjectedOutputVariants(t *testing.T) {
+	schema := loadOutputSchemaFile(t, "docs/output-schema-v2.json")
+	status := hpaanalysis.StatusReport{
+		APIVersion: hpaanalysis.SchemaVersion,
+		Analysis: hpaanalysis.Analysis{
+			Namespace:   "default",
+			Name:        "web",
+			Target:      "Deployment/web",
+			Current:     3,
+			Desired:     4,
+			Min:         1,
+			Max:         10,
+			Health:      string(hpaanalysis.HealthOK),
+			HealthScore: 90,
+			Summary:     "HPA is healthy",
+			Conditions:  []hpaanalysis.Condition{{Type: "AbleToScale", Status: "True"}},
+			Metrics:     []hpaanalysis.Metric{{Type: "Resource", Name: "cpu", Text: "50% / 70%"}},
+		},
+		Events: []hpaanalysis.Event{{Reason: "SuccessfulRescale", Message: "New size: 4"}},
+	}
+	batchReport := status
+	batch := hpaanalysis.StatusBatch{
+		APIVersion: hpaanalysis.SchemaVersion,
+		Items: []hpaanalysis.StatusBatchItem{
+			{
+				Namespace: "default",
+				Name:      "web",
+				Status:    hpaanalysis.BatchStatusOK,
+				Report:    &batchReport,
+			},
+			{
+				Namespace: "default",
+				Name:      "missing",
+				Status:    hpaanalysis.BatchStatusError,
+				Error:     "horizontalpodautoscaler not found",
+			},
+		},
+	}
+
+	samples := []struct {
+		name  string
+		value any
+	}{
+		{name: "single status v2", value: hpaanalysis.ProjectStatusReportV2(status)},
+		{name: "status batch v2", value: hpaanalysis.ProjectStatusBatchV2(batch)},
+		{name: "status record v2", value: hpaanalysis.ProjectStatusRecordV2(status)},
+		{name: "error record v2", value: hpaanalysis.StatusRecordV2{
+			APIVersion: hpaanalysis.SchemaVersionV2,
+			Namespace:  "default",
+			Name:       "missing",
+			Status:     hpaanalysis.StatusRecordErrorV2,
+			Error:      "not found",
+		}},
+	}
+	topLevel := outputSchemaNode{OneOf: schema.OneOf}
+	for _, sample := range samples {
+		t.Run(sample.name, func(t *testing.T) {
+			serialized := decodeSerializedJSON(t, sample.value)
+			if errs := validateOutputSchemaNode(schema, topLevel, serialized, "$"); len(errs) > 0 {
+				t.Fatalf("serialized %T does not satisfy docs/output-schema-v2.json:\n%s", sample.value, strings.Join(errs, "\n"))
 			}
 		})
 	}

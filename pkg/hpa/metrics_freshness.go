@@ -51,6 +51,9 @@ func analyzeSingleMetricFreshness(
 		Source: source,
 		Window: window,
 	}
+	if identity, err := MetricIDFromSpec(spec); err == nil {
+		entry.identity = identity
+	}
 
 	found := findMatchingCurrentMetric(spec, currentMetrics)
 
@@ -236,18 +239,30 @@ func buildStaleNextSteps(spec autoscalingv2.MetricSpec) []string {
 			"kubectl logs -n kube-system -l k8s-app=metrics-server",
 			"kubectl get --raw /apis/metrics.k8s.io/v1beta1",
 		}
-	default:
+	case autoscalingv2.ExternalMetricSourceType:
 		return []string{
 			"kubectl logs -n <adapter-namespace> -l app=<adapter-name>",
+			"kubectl get --raw /apis/external.metrics.k8s.io/v1beta1",
+		}
+	case autoscalingv2.PodsMetricSourceType, autoscalingv2.ObjectMetricSourceType:
+		return []string{
+			"kubectl logs -n <adapter-namespace> -l app=<adapter-name>",
+			"kubectl get --raw /apis/custom.metrics.k8s.io/v1beta2",
 			"kubectl get --raw /apis/custom.metrics.k8s.io/v1beta1",
 		}
+	default:
+		return []string{"kubectl describe hpa <name>"}
 	}
 }
 
-// hasMetricCurrentValue reports whether a matching current metric has at least
-// one populated value field. A populated zero is valid metric data; only an
-// all-nil MetricValueStatus is considered unavailable.
+// hasMetricCurrentValue reports whether a matching current metric has the
+// value field required by its configured target type. A populated zero is
+// valid metric data.
 func hasMetricCurrentValue(spec autoscalingv2.MetricSpec, currentMetrics []autoscalingv2.MetricStatus) bool {
+	target := metricTargetPointer(&spec)
+	if target == nil {
+		return false
+	}
 	for _, current := range currentMetrics {
 		if spec.Type != current.Type {
 			continue
@@ -256,7 +271,7 @@ func hasMetricCurrentValue(spec autoscalingv2.MetricSpec, currentMetrics []autos
 			continue
 		}
 		value, ok := currentMetricValueStatus(current)
-		if ok && hasMetricValueStatus(value) {
+		if ok && hasMetricValueForTarget(value, target.Type) {
 			return true
 		}
 	}
@@ -266,6 +281,10 @@ func hasMetricCurrentValue(spec autoscalingv2.MetricSpec, currentMetrics []autos
 // isMetricValueZero checks whether a matching current metric has a populated
 // value whose numeric value is zero.
 func isMetricValueZero(spec autoscalingv2.MetricSpec, currentMetrics []autoscalingv2.MetricStatus) bool {
+	target := metricTargetPointer(&spec)
+	if target == nil {
+		return false
+	}
 	foundValue := false
 	for _, current := range currentMetrics {
 		if spec.Type != current.Type {
@@ -275,48 +294,41 @@ func isMetricValueZero(spec autoscalingv2.MetricSpec, currentMetrics []autoscali
 			continue
 		}
 		value, ok := currentMetricValueStatus(current)
-		if !ok || !hasMetricValueStatus(value) {
+		if !ok || !hasMetricValueForTarget(value, target.Type) {
 			continue
 		}
 		foundValue = true
-		if !isMetricValueStatusZero(value) {
+		if !isMetricValueForTargetZero(value, target.Type) {
 			return false
 		}
 	}
 	return foundValue
 }
 
-// isCurrentValueZero checks if a metric status has a populated zero value.
-func isCurrentValueZero(status autoscalingv2.MetricStatus) bool {
-	value, ok := currentMetricValueStatus(status)
-	if !ok || !hasMetricValueStatus(value) {
+func hasMetricValueForTarget(v autoscalingv2.MetricValueStatus, targetType autoscalingv2.MetricTargetType) bool {
+	switch targetType {
+	case autoscalingv2.UtilizationMetricType:
+		return v.AverageUtilization != nil
+	case autoscalingv2.AverageValueMetricType:
+		return v.AverageValue != nil
+	case autoscalingv2.ValueMetricType:
+		return v.Value != nil
+	default:
 		return false
 	}
-	return isMetricValueStatusZero(value)
 }
 
-// hasMetricValueStatus reports whether any value field is present.
-func hasMetricValueStatus(v autoscalingv2.MetricValueStatus) bool {
-	return v.AverageUtilization != nil || v.AverageValue != nil || v.Value != nil
-}
-
-// isMetricValueStatusZero returns true if all populated value fields in a
-// MetricValueStatus are zero. Callers that need to distinguish an all-nil value
-// must first use hasMetricValueStatus.
-func isMetricValueStatusZero(v autoscalingv2.MetricValueStatus) bool {
-	if !hasMetricValueStatus(v) {
+func isMetricValueForTargetZero(v autoscalingv2.MetricValueStatus, targetType autoscalingv2.MetricTargetType) bool {
+	switch targetType {
+	case autoscalingv2.UtilizationMetricType:
+		return v.AverageUtilization != nil && *v.AverageUtilization == 0
+	case autoscalingv2.AverageValueMetricType:
+		return v.AverageValue != nil && v.AverageValue.IsZero()
+	case autoscalingv2.ValueMetricType:
+		return v.Value != nil && v.Value.IsZero()
+	default:
 		return false
 	}
-	if v.AverageUtilization != nil && *v.AverageUtilization != 0 {
-		return false
-	}
-	if v.AverageValue != nil && !v.AverageValue.IsZero() {
-		return false
-	}
-	if v.Value != nil && !v.Value.IsZero() {
-		return false
-	}
-	return true
 }
 
 // truncateMessage truncates a message to maxLen characters, appending "..." if

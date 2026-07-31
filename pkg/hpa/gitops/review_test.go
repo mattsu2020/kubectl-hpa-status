@@ -184,6 +184,51 @@ func TestAnalyzeGitOpsReview_NewManifest_NoMetrics(t *testing.T) {
 	}
 }
 
+func TestAnalyzeGitOpsReview_NewManifestCPUTargetThresholdIsNumeric(t *testing.T) {
+	tests := []struct {
+		name        string
+		target      int32
+		wantFinding bool
+	}{
+		{name: "at threshold", target: 90, wantFinding: false},
+		{name: "above threshold", target: 91, wantFinding: true},
+		{name: "three digit target", target: 100, wantFinding: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			hpa := &autoscalingv2.HorizontalPodAutoscaler{
+				ObjectMeta: metav1.ObjectMeta{Name: "web"},
+				Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+					MaxReplicas: 10,
+					Metrics: []autoscalingv2.MetricSpec{
+						{
+							Type: autoscalingv2.ResourceMetricSourceType,
+							Resource: &autoscalingv2.ResourceMetricSource{
+								Name: "cpu",
+								Target: autoscalingv2.MetricTarget{
+									AverageUtilization: int32Ptr(tc.target),
+								},
+							},
+						},
+					},
+				},
+			}
+
+			review := AnalyzeReview([]ReviewInput{{After: hpa, FilePath: "hpa.yaml"}})
+			gotFinding := false
+			for _, finding := range review.Findings {
+				if finding.Category == "target" {
+					gotFinding = true
+				}
+			}
+			if gotFinding != tc.wantFinding {
+				t.Fatalf("target finding = %t, want %t for CPU target %d%%", gotFinding, tc.wantFinding, tc.target)
+			}
+		})
+	}
+}
+
 func TestAnalyzeGitOpsReview_NoChanges(t *testing.T) {
 	hpa := &autoscalingv2.HorizontalPodAutoscaler{
 		ObjectMeta: metav1.ObjectMeta{Name: "web"},

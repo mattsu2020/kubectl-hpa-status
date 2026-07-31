@@ -9,6 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
+
+	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 )
 
 type behaviorOutput struct {
@@ -59,9 +61,10 @@ func runBehavior(ctx context.Context, out io.Writer, opts *options, name string)
 
 	result := buildBehaviorOutput(hpa)
 	format, templateStr := selectOutputFromOptions(opts)
-	return writeOutput(out, format, templateStr, result, func() error {
+	return render.Format(out, format, templateStr, result, func(out io.Writer) error {
 		return writeBehaviorText(out, result)
 	})
+
 }
 
 func buildBehaviorOutput(hpa *autoscalingv2.HorizontalPodAutoscaler) behaviorOutput {

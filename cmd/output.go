@@ -95,38 +95,12 @@ func normalizeOutputFormat(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
 }
 
-// --- render facade ---
-// The pure format-routing/serialization functions now live in internal/render.
-// These unexported wrappers keep the historical cmd/ call sites compiling; they
-// should migrate to render.* directly when the cmd/ sub-package split lands.
-// Only the functions actually called from cmd/ are re-exported.
-
-func writeOutput(out io.Writer, format string, templateStr string, value any, writeText func() error) error {
-	return render.Format(out, format, templateStr, value, writeText)
-}
-
-func parsePrefixedFormat(format string) (expr string, kind string, ok bool) {
-	return render.ParsePrefixedFormat(format)
-}
-
-func writePrometheusMetrics(w io.Writer, namespace, name string, healthScore int, current, desired, minR, maxR int32) error {
-	return render.PrometheusMetrics(w, namespace, name, healthScore, current, desired, minR, maxR)
-}
-
-func escapePrometheusLabelValue(s string) string {
-	return render.EscapePrometheusLabelValue(s)
-}
-
-func writeError(out io.Writer, format string, err error) {
-	render.Error(out, format, err)
-}
-
 // writeErrorIfStructured emits an error in the requested structured format
 // (json/yaml) and is a no-op for text output. It collapses the repeated
-// `if output == "json" || output == "yaml" { writeError(...) }` idiom.
+// structured-error branch at command boundaries.
 func writeErrorIfStructured(out io.Writer, output string, err error) {
 	if output == "json" || output == "yaml" {
-		writeError(out, output, err)
+		render.Error(out, output, err)
 	}
 }
 

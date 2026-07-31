@@ -5,11 +5,15 @@ import "time"
 // Entry represents a single estimated scaling decision event reconstructed
 // from Kubernetes events and HPA status signals.
 type Entry struct {
-	Timestamp  time.Time `json:"timestamp" yaml:"timestamp"`
-	Category   string    `json:"category" yaml:"category"`
-	Message    string    `json:"message" yaml:"message"`
-	Source     string    `json:"source" yaml:"source"`
-	Confidence string    `json:"confidence,omitempty" yaml:"confidence,omitempty"`
+	Timestamp     time.Time `json:"timestamp" yaml:"timestamp"`
+	Category      string    `json:"category" yaml:"category"`
+	Message       string    `json:"message" yaml:"message"`
+	Source        string    `json:"source" yaml:"source"`
+	Confidence    string    `json:"confidence,omitempty" yaml:"confidence,omitempty"`
+	FromReplicas  *int32    `json:"fromReplicas,omitempty" yaml:"fromReplicas,omitempty"`
+	ToReplicas    *int32    `json:"toReplicas,omitempty" yaml:"toReplicas,omitempty"`
+	ParseValid    bool      `json:"parseValid,omitempty" yaml:"parseValid,omitempty"`
+	MetricContext string    `json:"metricContext,omitempty" yaml:"metricContext,omitempty"`
 }
 
 // Timeline holds the result of reconstructing past scaling decisions from

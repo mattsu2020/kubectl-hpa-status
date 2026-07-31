@@ -1,8 +1,11 @@
 package hpa
 
 import (
+	"sort"
 	"strings"
 	"testing"
+
+	"github.com/mattsu2020/kubectl-hpa-status/internal/i18n"
 )
 
 func TestDefaultLabels_Get(t *testing.T) {
@@ -18,23 +21,6 @@ func TestDefaultLabels_UnknownKey(t *testing.T) {
 	got := dl.Get("nonexistent_key")
 	if got != "nonexistent_key" {
 		t.Errorf("expected key as fallback, got %q", got)
-	}
-}
-
-func TestDefaultLabels_AllKeysPresent(t *testing.T) {
-	dl := DefaultLabels{}
-	keys := []string{
-		"label_target", "label_replicas", "label_health", "label_summary",
-		"label_conditions", "label_metrics", "label_behavior", "label_actions",
-		"label_suggestions", "label_fix", "label_interpretation", "label_debug",
-		"label_keda", "label_events", "label_risk", "label_precondition",
-		"label_warning", "label_metrics_diagnostics",
-	}
-	for _, key := range keys {
-		got := dl.Get(key)
-		if got == key {
-			t.Errorf("expected a real label for key %q, got key back (missing from defaults)", key)
-		}
 	}
 }
 
@@ -84,24 +70,8 @@ func TestResolveLabels_CustomProvider(t *testing.T) {
 func TestResolveLabels_JapaneseProvider(t *testing.T) {
 	jaProvider := mockLabelProvider{
 		values: map[string]string{
-			"label_target":              "対象",
-			"label_replicas":            "レプリカ",
-			"label_health":              "ヘルススコア",
-			"label_summary":             "要約",
-			"label_conditions":          "状態",
-			"label_metrics":             "メトリクス",
-			"label_behavior":            "挙動",
-			"label_actions":             "推奨アクション",
-			"label_suggestions":         "推奨コマンド",
-			"label_fix":                 "修正プラン",
-			"label_interpretation":      "解釈",
-			"label_debug":               "デバッグ",
-			"label_keda":                "KEDA",
-			"label_events":              "最近のイベント",
-			"label_risk":                "リスク",
-			"label_precondition":        "前提条件",
-			"label_warning":             "警告",
-			"label_metrics_diagnostics": "メトリクス診断",
+			"label_target":  "対象",
+			"label_actions": "推奨アクション",
 		},
 	}
 	labels := resolveLabels(jaProvider)
@@ -110,5 +80,67 @@ func TestResolveLabels_JapaneseProvider(t *testing.T) {
 	}
 	if labels.Actions != "推奨アクション" {
 		t.Errorf("expected Japanese '推奨アクション', got %q", labels.Actions)
+	}
+}
+
+type recordingLabelProvider struct {
+	keys []string
+}
+
+func (p *recordingLabelProvider) Get(key string) string {
+	p.keys = append(p.keys, key)
+	return key
+}
+
+// TestResolvedLabelCatalogIsSynchronized derives the required key catalog by
+// exercising resolveLabels itself. This avoids maintaining a second hand-written
+// key list and locks the renderer, English defaults, and every locale together.
+func TestResolvedLabelCatalogIsSynchronized(t *testing.T) {
+	recorder := &recordingLabelProvider{}
+	resolveLabels(recorder)
+
+	required := make(map[string]struct{}, len(recorder.keys))
+	for _, key := range recorder.keys {
+		if _, duplicate := required[key]; duplicate {
+			t.Errorf("resolveLabels looks up %q more than once", key)
+		}
+		required[key] = struct{}{}
+	}
+
+	keys := make([]string, 0, len(required))
+	for key := range required {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	defaults := DefaultLabels{}
+	en := i18n.Load("en")
+	ja := i18n.Load("ja")
+	for _, key := range keys {
+		defaultValue := defaults.Get(key)
+		if defaultValue == "" || defaultValue == key {
+			t.Errorf("DefaultLabels is missing required key %q", key)
+		}
+		if got, ok := en[key]; !ok || got == "" {
+			t.Errorf("English locale is missing required key %q", key)
+		} else if got != defaultValue {
+			t.Errorf("English locale %q=%q differs from DefaultLabels value %q", key, got, defaultValue)
+		}
+		if got, ok := ja[key]; !ok || got == "" {
+			t.Errorf("Japanese locale is missing required key %q", key)
+		}
+	}
+
+	// DefaultLabels also carries a few standalone renderer labels that do not
+	// live in the labels struct. They must remain localized as well.
+	for key, defaultValue := range defaultLabelValues {
+		if got, ok := en[key]; !ok || got == "" {
+			t.Errorf("English locale is missing DefaultLabels key %q", key)
+		} else if got != defaultValue {
+			t.Errorf("English locale %q=%q differs from DefaultLabels value %q", key, got, defaultValue)
+		}
+		if got, ok := ja[key]; !ok || got == "" {
+			t.Errorf("Japanese locale is missing DefaultLabels key %q", key)
+		}
 	}
 }

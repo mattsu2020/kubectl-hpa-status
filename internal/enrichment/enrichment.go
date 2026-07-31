@@ -308,7 +308,7 @@ func EnrichVPA(ctx context.Context, ec *Context, hpa *autoscalingv2.HorizontalPo
 	}
 
 	analysisVPA := convertVPAInfo(vpaInfo)
-	report.Analysis.VPAConflict = hpavpa.NewConflictInfo(analysisVPA)
+	report.Analysis.VPAConflict = hpavpa.NewConflictInfoForHPA(hpa, analysisVPA)
 	report.Analysis.Interpretation = append(report.Analysis.Interpretation, hpavpa.Analyze(hpa, analysisVPA)...)
 	entry.State = StateActive
 	return entry
@@ -344,7 +344,7 @@ func EnrichReport(ctx context.Context, ec *Context, hpa *autoscalingv2.Horizonta
 	}
 
 	// Attach enrichment status to analysis for diagnostic output.
-	report.Analysis.EnrichmentStatus = status.ToAnalysisStatus()
+	report.Analysis.EnrichmentStatus = &status
 }
 
 // BatchKEDA performs batched KEDA enrichment for multiple HPAs.
@@ -440,16 +440,9 @@ func BatchVPA(ctx context.Context, ec *Context, hpas []autoscalingv2.HorizontalP
 	for i := range hpas {
 		hpa := &hpas[i]
 
-		if !hasHPAResourceMetrics(hpa) {
-			continue
-		}
-
 		for _, vpa := range allVPAs[hpa.Namespace] {
-			if vpa.UpdateMode == "Off" {
-				continue
-			}
-			if vpaTargetMatchesHPA(vpa, hpa) {
-				results[hpa.Namespace+"/"+hpa.Name] = hpavpa.NewConflictInfo(convertVPAInfo(&vpa))
+			if kube.VPAConflictsWithHPA(hpa, &vpa) {
+				results[hpa.Namespace+"/"+hpa.Name] = hpavpa.NewConflictInfoForHPA(hpa, convertVPAInfo(&vpa))
 				break
 			}
 		}
@@ -482,20 +475,4 @@ func scaledObjectMatchesHPA(so *unstructured.Unstructured, hpa *autoscalingv2.Ho
 	}
 
 	return hpa.Spec.ScaleTargetRef.Kind == soKind && hpa.Spec.ScaleTargetRef.Name == soName
-}
-
-// vpaTargetMatchesHPA checks if a VPA's targetRef matches the HPA's scaleTargetRef.
-func vpaTargetMatchesHPA(vpa kube.VPAInfo, hpa *autoscalingv2.HorizontalPodAutoscaler) bool {
-	return vpa.TargetKind == hpa.Spec.ScaleTargetRef.Kind &&
-		vpa.TargetName == hpa.Spec.ScaleTargetRef.Name
-}
-
-// hasHPAResourceMetrics returns true if the HPA uses CPU or memory resource metrics.
-func hasHPAResourceMetrics(hpa *autoscalingv2.HorizontalPodAutoscaler) bool {
-	for _, metric := range hpa.Spec.Metrics {
-		if metric.Type == autoscalingv2.ResourceMetricSourceType {
-			return true
-		}
-	}
-	return false
 }

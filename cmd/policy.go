@@ -8,11 +8,13 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	hpapolicy "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/policy"
 
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
 type policyCommandOptions struct {
@@ -182,7 +184,7 @@ func runPolicy(ctx context.Context, out io.Writer, opts *options, policyOpts *po
 
 	report := policyListReport{Items: reports}
 	format, templateStr := selectOutputFromOptions(opts)
-	if err := writeOutput(out, format, templateStr, report, func() error {
+	if err := render.Format(out, format, templateStr, report, func(out io.Writer) error {
 		return writePolicyText(out, report, style.NewTheme(shouldColorize(opts.Color, out)))
 	}); err != nil {
 		return err

@@ -5,16 +5,16 @@ import (
 	"testing"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/kubeconv"
 )
 
-// Converter unit tests (convertPendingPodInfos, convertToBlockerPodInfos,
-// convertPDBs*, convertQuotas, pdbDisruptionMessage). Split out of the former
-// root_extra_test.go grab-bag so each helper's tests live next to converters.go.
+// Converter unit tests exercise the canonical kubeconv boundary from the cmd
+// package's fixtures.
 
 // --- convertPendingPodInfos tests ---
 
 func TestConvertPendingPodInfos_Empty(t *testing.T) {
-	result := convertPendingPodInfos(nil)
+	result := kubeconv.PendingPodInfos(nil)
 	if result != nil {
 		t.Fatalf("expected nil for empty input, got %v", result)
 	}
@@ -25,7 +25,7 @@ func TestConvertPendingPodInfos_WithData(t *testing.T) {
 		{Name: "pod-1", Unschedulable: true, Reasons: []string{"Insufficient cpu"}},
 		{Name: "pod-2", Unschedulable: false, Reasons: nil},
 	}
-	result := convertPendingPodInfos(details)
+	result := kubeconv.PendingPodInfos(details)
 	if len(result) != 2 {
 		t.Fatalf("expected 2 items, got %d", len(result))
 	}
@@ -46,7 +46,7 @@ func TestConvertPendingPodInfos_WithData(t *testing.T) {
 // --- convertToBlockerPodInfos tests (shared conversion path) ---
 
 func TestConvertToBlockerPodInfos_Empty(t *testing.T) {
-	result := convertToBlockerPodInfos(nil)
+	result := kubeconv.ToBlockerPodInfos(nil)
 	if result != nil {
 		t.Fatalf("expected nil for empty input, got %v", result)
 	}
@@ -56,7 +56,7 @@ func TestConvertToBlockerPodInfos_WithData(t *testing.T) {
 	details := []kube.PendingPodDetail{
 		{Name: "pod-1", Unschedulable: true, Reasons: []string{"Insufficient memory"}},
 	}
-	result := convertToBlockerPodInfos(details)
+	result := kubeconv.ToBlockerPodInfos(details)
 	if len(result) != 1 {
 		t.Fatalf("expected 1 item, got %d", len(result))
 	}
@@ -75,7 +75,7 @@ func TestConvertToBlockerPodInfos_WithData(t *testing.T) {
 
 func TestConvertPDBsPlain_NoDisruption(t *testing.T) {
 	infos := []kube.PDBInfo{{Name: "web-pdb", MinAvailable: "3"}}
-	result := convertPDBsPlain(infos)
+	result := kubeconv.PDBsPlain(infos)
 	if len(result) != 1 {
 		t.Fatalf("expected 1 item, got %d", len(result))
 	}
@@ -101,7 +101,7 @@ func TestPDBDisruptionMessage(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := pdbDisruptionMessage(tc.pdb)
+			got := kubeconv.PDBDisruptionMessage(tc.pdb)
 			if !strings.Contains(got, tc.want) {
 				t.Fatalf("pdbDisruptionMessage(%+v) = %q, want substring %q", tc.pdb, got, tc.want)
 			}
@@ -112,7 +112,7 @@ func TestPDBDisruptionMessage(t *testing.T) {
 // --- convertQuotas tests ---
 
 func TestConvertQuotas_Empty(t *testing.T) {
-	result := convertQuotas(nil)
+	result := kubeconv.Quotas(nil)
 	if result != nil {
 		t.Fatalf("expected nil for empty input, got %v", result)
 	}
@@ -122,7 +122,7 @@ func TestConvertQuotas_WithData(t *testing.T) {
 	infos := []kube.QuotaInfo{
 		{Name: "compute-quota", Resource: "cpu", Used: "4", Hard: "8"},
 	}
-	result := convertQuotas(infos)
+	result := kubeconv.Quotas(infos)
 	if len(result) != 1 {
 		t.Fatalf("expected 1 item, got %d", len(result))
 	}
@@ -140,7 +140,7 @@ func TestConvertQuotas_WithData(t *testing.T) {
 // --- convertPDBs tests ---
 
 func TestConvertPDBs_Empty(t *testing.T) {
-	result := convertPDBs(nil)
+	result := kubeconv.PDBs(nil)
 	if result != nil {
 		t.Fatalf("expected nil for empty input, got %v", result)
 	}
@@ -150,7 +150,7 @@ func TestConvertPDBs_MinAvailable(t *testing.T) {
 	infos := []kube.PDBInfo{
 		{Name: "web-pdb", MinAvailable: "3"},
 	}
-	result := convertPDBs(infos)
+	result := kubeconv.PDBs(infos)
 	if len(result) != 1 {
 		t.Fatalf("expected 1 item, got %d", len(result))
 	}
@@ -166,7 +166,7 @@ func TestConvertPDBs_MaxUnavailable(t *testing.T) {
 	infos := []kube.PDBInfo{
 		{Name: "api-pdb", MaxUnavailable: "1"},
 	}
-	result := convertPDBs(infos)
+	result := kubeconv.PDBs(infos)
 	if len(result) != 1 {
 		t.Fatalf("expected 1 item, got %d", len(result))
 	}
@@ -179,7 +179,7 @@ func TestConvertPDBs_NoConstraints(t *testing.T) {
 	infos := []kube.PDBInfo{
 		{Name: "empty-pdb"},
 	}
-	result := convertPDBs(infos)
+	result := kubeconv.PDBs(infos)
 	if !strings.Contains(result[0].Disruption, "no availability constraint") {
 		t.Fatalf("expected default message, got %q", result[0].Disruption)
 	}

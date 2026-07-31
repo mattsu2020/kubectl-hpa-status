@@ -3,16 +3,16 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/behavioradvisor"
 	hpachurn "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/churn"
 	hpaflapping "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/flapping"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/healthtrend"
 	hpavpa "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/history"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/kubeconv"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/observation"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
@@ -114,12 +114,16 @@ func enrichResourceCheck(ctx context.Context, client *kube.Client, hpa *autoscal
 		return
 	}
 	if resources != nil {
-		report.Analysis.ResourceCheck = hpaanalysis.CheckResourceConsistency(hpa, convertResourceRequests(resources))
+		report.Analysis.ResourceCheck = hpaanalysis.CheckResourceConsistency(hpa, kubeconv.ResourceRequests(resources))
 	}
 }
 
-func enrichTargetReplicaObservations(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
-	report.Analysis.TargetReplicas = fetchTargetReplicaInfo(ctx, client, hpa)
+func enrichTargetReplicaObservations(ctx context.Context, snapshot *observation.Snapshot, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
+	targetReplicas, warning := fetchTargetReplicaInfoFromSnapshot(ctx, snapshot, hpa)
+	if warning != "" {
+		report.Analysis.Warnings = append(report.Analysis.Warnings, warning)
+	}
+	report.Analysis.TargetReplicas = targetReplicas
 	if report.Analysis.TargetReplicas == nil {
 		return
 	}
@@ -156,8 +160,18 @@ func appendPendingTargetObservations(report *hpaanalysis.StatusReport) {
 	}
 }
 
-func enrichPodAnalysis(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
-	report.Analysis.PodAnalysis = fetchAndAnalyzePods(ctx, client, hpa)
+func enrichPodAnalysis(ctx context.Context, snapshot *observation.Snapshot, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
+	if snapshot == nil {
+		report.Analysis.Warnings = append(report.Analysis.Warnings, "pod analysis unavailable: observation snapshot is not configured")
+		return
+	}
+	pods := snapshot.Pods(ctx)
+	switch pods.State {
+	case observation.StateKnown:
+		report.Analysis.PodAnalysis = hpaanalysis.AnalyzePods(pods.Data, hpa)
+	case observation.StateUnavailable:
+		report.Analysis.Warnings = append(report.Analysis.Warnings, fmt.Sprintf("pod analysis unavailable: %v", pods.Err))
+	}
 }
 
 func enrichSimulations(_ context.Context, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, cfg SimulationConfig) error {
@@ -216,33 +230,33 @@ func applyMetricSimulation(hpa *autoscalingv2.HorizontalPodAutoscaler, report *h
 	return nil
 }
 
-func enrichCapacityAnalysis(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, cfg CapacityAnalysisConfig) {
+func enrichCapacityAnalysis(ctx context.Context, client *kube.Client, snapshot *observation.Snapshot, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, cfg CapacityAnalysisConfig) {
 	if cfg.CapacityContext {
-		report.Analysis.CapacityContext = buildCapacityContext(ctx, client, hpa)
+		report.Analysis.CapacityContext = buildCapacityContextWithSnapshot(ctx, client, hpa, snapshot)
 	}
 	if cfg.CapacityHeadroom {
-		report.Analysis.CapacityHeadroom = buildCapacityHeadroom(ctx, client, hpa, report.Analysis.Target)
+		report.Analysis.CapacityHeadroom = buildCapacityHeadroomWithSnapshot(ctx, client, hpa, report.Analysis.Target, snapshot)
 	}
 	if cfg.ReadinessImpact {
-		report.Analysis.ReadinessImpact = buildReadinessImpact(ctx, client, hpa)
+		report.Analysis.ReadinessImpact = buildReadinessImpactWithSnapshot(ctx, client, hpa, snapshot)
 	}
 	if cfg.ScalePath {
-		report.Analysis.ScalePath = buildScalePath(ctx, client, hpa)
+		report.Analysis.ScalePath = buildScalePathWithSnapshot(ctx, client, hpa, snapshot)
 	}
 }
 
-func enrichRolloutAndBlockers(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, cfg RolloutAndBlockersConfig) {
+func enrichRolloutAndBlockers(ctx context.Context, client *kube.Client, snapshot *observation.Snapshot, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, cfg RolloutAndBlockersConfig) {
 	if cfg.Rollout || cfg.RolloutImpact {
-		report.Analysis.RolloutDiagnosis = buildRolloutDiagnosis(ctx, client, hpa)
+		report.Analysis.RolloutDiagnosis = buildRolloutDiagnosisWithSnapshot(ctx, client, hpa, snapshot)
 	}
 	if cfg.CapacityDeep || cfg.ScaleoutBlockers {
-		report.Analysis.BlockerReport = buildBlockerReportForStatus(ctx, client, hpa, report.Analysis.Target)
+		report.Analysis.BlockerReport = buildBlockerReportForStatusWithSnapshot(ctx, client, hpa, report.Analysis.Target, snapshot)
 	}
 }
 
-func enrichCapacityPlan(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, targetMax int32) {
+func enrichCapacityPlan(ctx context.Context, client *kube.Client, snapshot *observation.Snapshot, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, targetMax int32) {
 	if hpa.Status.CurrentReplicas >= hpa.Spec.MaxReplicas {
-		report.Analysis.CapacityPlan = buildCapacityPlanForStatus(ctx, client, hpa, report.Analysis.Target, targetMax)
+		report.Analysis.CapacityPlan = buildCapacityPlanForStatusWithSnapshot(ctx, client, hpa, report.Analysis.Target, targetMax, snapshot)
 	}
 }
 
@@ -314,27 +328,18 @@ func recordHealthSnapshotAndTrend(_ context.Context, opts *options, hpa *autosca
 		report.Analysis.Warnings = append(report.Analysis.Warnings, fmt.Sprintf("health trend store unavailable: %v", storeErr))
 		return
 	}
-	snapshot := healthtrend.HealthSnapshot{
-		Timestamp:       time.Now(),
+	recorder := history.NewRecorder(store, nil)
+	result := recorder.RecordAndAnalyze(history.RecordInput{
+		Namespace:       hpa.Namespace,
+		Name:            hpa.Name,
 		HealthScore:     report.Analysis.HealthScore,
 		HealthState:     report.Analysis.Health,
 		DesiredReplicas: report.Analysis.Desired,
 		CurrentReplicas: report.Analysis.Current,
 		Stabilizing:     report.Analysis.StabilizationRemaining != nil && *report.Analysis.StabilizationRemaining > 0,
-	}
-	if err := store.Append(hpa.Namespace, hpa.Name, snapshot); err != nil {
-		report.Analysis.Warnings = append(report.Analysis.Warnings, fmt.Sprintf("health trend append failed: %v", err))
-	}
-	if err := store.Prune(hpa.Namespace, hpa.Name, opts.TrendRetain); err != nil {
-		report.Analysis.Warnings = append(report.Analysis.Warnings, fmt.Sprintf("health trend prune failed: %v", err))
-	}
-
-	snapshots, loadErr := store.Load(hpa.Namespace, hpa.Name, opts.TrendSince)
-	if loadErr != nil {
-		report.Analysis.Warnings = append(report.Analysis.Warnings, fmt.Sprintf("health trend load warning: %v", loadErr))
-	}
-	if len(snapshots) > 0 {
-		trend := healthtrend.AnalyzeHealthTrend(snapshots)
-		report.Analysis.HealthTrend = &trend
-	}
+		Since:           opts.TrendSince,
+		Retention:       opts.TrendRetain,
+	})
+	report.Analysis.Warnings = append(report.Analysis.Warnings, result.Warnings...)
+	report.Analysis.HealthTrend = result.Trend
 }

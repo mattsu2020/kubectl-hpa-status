@@ -21,7 +21,7 @@ test-race:
 	$(GO) test -race ./...
 
 .PHONY: ci
-ci: tidy build vet lint fmt-check test test-race coverage-check docs-check
+ci: tidy build vet lint fmt-check facade-check test test-race coverage-check docs-check
 	@echo "local CI checks passed"
 
 .PHONY: tidy
@@ -41,6 +41,10 @@ fmt-check:
 		echo "$$out"; \
 		exit 1; \
 	fi
+
+.PHONY: facade-check
+facade-check:
+	$(GO) run ./scripts/check-deprecated-facades
 
 .PHONY: coverage
 coverage:

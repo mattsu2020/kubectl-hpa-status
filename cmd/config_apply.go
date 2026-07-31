@@ -41,6 +41,7 @@ func applyPersistentConfig(opts *options, cfg configFile, changed flagChangedFun
 	applyStringConfig(cfg.Namespace, "namespace", changed, &opts.Namespace)
 	applyPtrConfig(cfg.AllNamespaces, "all-namespaces", changed, &opts.AllNamespaces)
 	applyStringConfig(cfg.Output, "output", changed, &opts.Output)
+	applyStringConfig(cfg.OutputSchema, "output-schema", changed, &opts.OutputSchema)
 	applyPtrConfig(cfg.Wide, "wide", changed, &opts.Wide)
 	applyStringConfig(cfg.Selector, "selector", changed, &opts.Selector)
 	applyStringConfig(cfg.Color, "color", changed, &opts.Color)

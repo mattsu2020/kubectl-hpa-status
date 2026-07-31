@@ -3,6 +3,7 @@ package churn
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -117,6 +118,31 @@ func TestAnalyzeChurnFromEvents(t *testing.T) {
 			wantFlips: 6,
 		},
 		{
+			name: "slow oscillation is discounted by activity rate",
+			events: []event.Event{
+				rescaleEvent(2, now.Add(-150*time.Minute)),
+				rescaleEvent(8, now.Add(-120*time.Minute)),
+				rescaleEvent(2, now.Add(-90*time.Minute)),
+				rescaleEvent(9, now.Add(-60*time.Minute)),
+				rescaleEvent(2, now.Add(-30*time.Minute)),
+				rescaleEvent(10, now),
+			},
+			wantLevel: ChurnMedium,
+			wantFlips: 4,
+		},
+		{
+			name: "widely separated rescales are not a continuous churn burst",
+			events: []event.Event{
+				rescaleEvent(2, now.Add(-150*24*time.Hour)),
+				rescaleEvent(8, now.Add(-120*24*time.Hour)),
+				rescaleEvent(2, now.Add(-90*24*time.Hour)),
+				rescaleEvent(9, now.Add(-60*24*time.Hour)),
+				rescaleEvent(2, now.Add(-30*24*time.Hour)),
+				rescaleEvent(10, now),
+			},
+			wantNil: true,
+		},
+		{
 			name: "non-rescale events are ignored",
 			events: []event.Event{
 				{Reason: "FailedGetResourceMetric", Message: "missing metrics", Timestamp: now.Add(-3 * time.Minute)},
@@ -163,8 +189,8 @@ func TestAnalyzeChurnFromEvents(t *testing.T) {
 				if !types["stabilization-window"] {
 					t.Error("expected stabilization-window recommendation")
 				}
-				if !types["tolerance"] {
-					t.Error("expected tolerance recommendation")
+				if types["tolerance"] {
+					t.Error("feature-gated no-op tolerance recommendation must not be emitted")
 				}
 				if !types["behavior-policy"] {
 					t.Error("expected behavior-policy recommendation")
@@ -240,5 +266,226 @@ func TestAnalyzeFromRescales_NilHPA(t *testing.T) {
 	}
 	if len(got.Recommendations) == 0 {
 		t.Fatal("expected recommendations built from default stabilization window")
+	}
+}
+
+func TestAnalyzeFromRescales_DoesNotModifyInput(t *testing.T) {
+	t.Parallel()
+	base := time.Date(2025, 1, 2, 3, 0, 0, 0, time.UTC)
+	rescales := []event.RescaleData{
+		{Timestamp: base.Add(2 * time.Minute), NewSize: 3},
+		{Timestamp: base, NewSize: 2},
+		{Timestamp: base.Add(time.Minute), NewSize: 5},
+	}
+	original := append([]event.RescaleData(nil), rescales...)
+
+	if got := AnalyzeFromRescales(rescales, nil); got == nil {
+		t.Fatal("expected analysis")
+	}
+	for i := range rescales {
+		if rescales[i] != original[i] {
+			t.Fatalf("input[%d] changed from %#v to %#v", i, original[i], rescales[i])
+		}
+	}
+}
+
+func TestNormalizeRescaleObservationsSameTimestamp(t *testing.T) {
+	t.Parallel()
+	base := time.Date(2025, 1, 2, 3, 0, 0, 0, time.UTC)
+	input := []event.RescaleData{
+		{Timestamp: base.Add(time.Minute), NewSize: 5},
+		{Timestamp: base, NewSize: 2},
+		{Timestamp: base.Add(time.Minute), NewSize: 5},
+		{Timestamp: base.Add(2 * time.Minute), NewSize: 3},
+		{Timestamp: base.Add(3 * time.Minute), NewSize: 8},
+		{Timestamp: base.Add(3 * time.Minute), NewSize: 4},
+	}
+
+	got := normalizeRescaleObservations(input)
+	if len(got) != 3 {
+		t.Fatalf("normalized observations = %#v, want 3 unambiguous timestamps", got)
+	}
+	for i, want := range []int32{2, 5, 3} {
+		if got[i].NewSize != want {
+			t.Fatalf("normalized[%d].NewSize = %d, want %d", i, got[i].NewSize, want)
+		}
+	}
+}
+
+func TestAnalyzeFromRescalesSameTimestampIsOrderIndependent(t *testing.T) {
+	t.Parallel()
+	base := time.Date(2025, 1, 2, 3, 0, 0, 0, time.UTC)
+	first := []event.RescaleData{
+		{Timestamp: base, NewSize: 2},
+		{Timestamp: base.Add(time.Minute), NewSize: 8},
+		{Timestamp: base.Add(time.Minute), NewSize: 3},
+		{Timestamp: base.Add(2 * time.Minute), NewSize: 5},
+		{Timestamp: base.Add(3 * time.Minute), NewSize: 2},
+		{Timestamp: base.Add(4 * time.Minute), NewSize: 6},
+	}
+	second := append([]event.RescaleData(nil), first...)
+	second[1], second[2] = second[2], second[1]
+
+	gotFirst := AnalyzeFromRescales(first, buildChurnTestHPA())
+	gotSecond := AnalyzeFromRescales(second, buildChurnTestHPA())
+	if gotFirst == nil || gotSecond == nil {
+		t.Fatalf("expected both analyses, got first=%+v second=%+v", gotFirst, gotSecond)
+	}
+	if gotFirst.DirectionFlips != 2 || gotFirst.ScaleUpCount != 2 || gotFirst.ScaleDownCount != 1 {
+		t.Fatalf("ambiguous timestamp affected transitions: %+v", gotFirst)
+	}
+	if gotFirst.DirectionFlips != gotSecond.DirectionFlips ||
+		gotFirst.ScaleUpCount != gotSecond.ScaleUpCount ||
+		gotFirst.ScaleDownCount != gotSecond.ScaleDownCount ||
+		gotFirst.Score != gotSecond.Score ||
+		gotFirst.TimeWindow != gotSecond.TimeWindow {
+		t.Fatalf("same-timestamp order changed analysis: first=%+v second=%+v", gotFirst, gotSecond)
+	}
+}
+
+func TestNextStabilizationWindowSeconds(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		current int32
+		want    int32
+		wantOK  bool
+	}{
+		{name: "disabled starts at 300", current: 0, want: 300, wantOK: true},
+		{name: "negative defensive fallback starts at 300", current: -1, want: 300, wantOK: true},
+		{name: "positive value doubles", current: 300, want: 600, wantOK: true},
+		{name: "half maximum doubles to maximum", current: 1800, want: 3600, wantOK: true},
+		{name: "doubling is clamped", current: 2000, want: 3600, wantOK: true},
+		{name: "maximum has no recommendation", current: 3600, wantOK: false},
+		{name: "above maximum has no recommendation", current: 4000, wantOK: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, ok := nextStabilizationWindowSeconds(tc.current)
+			if got != tc.want || ok != tc.wantOK {
+				t.Fatalf("nextStabilizationWindowSeconds(%d) = (%d, %t), want (%d, %t)",
+					tc.current, got, ok, tc.want, tc.wantOK)
+			}
+		})
+	}
+}
+
+func TestStabilizationWindowRecommendationUsesValidBounds(t *testing.T) {
+	t.Parallel()
+	window := int32(0)
+	hpa := buildChurnTestHPA()
+	hpa.Spec.Behavior = &autoscalingv2.HorizontalPodAutoscalerBehavior{
+		ScaleDown: &autoscalingv2.HPAScalingRules{StabilizationWindowSeconds: &window},
+	}
+
+	recommendation, ok := stabilizationWindowRecommendation(hpa)
+	if !ok {
+		t.Fatal("expected recommendation for disabled stabilization")
+	}
+	if recommendation.CurrentValue != "0s" || recommendation.RecommendedValue != "300s" {
+		t.Fatalf("unexpected recommendation: %+v", recommendation)
+	}
+	var patch struct {
+		Spec struct {
+			Behavior struct {
+				ScaleDown struct {
+					Window int32 `json:"stabilizationWindowSeconds"`
+				} `json:"scaleDown"`
+			} `json:"behavior"`
+		} `json:"spec"`
+	}
+	if err := json.Unmarshal([]byte(recommendation.Patch), &patch); err != nil {
+		t.Fatalf("decode patch: %v", err)
+	}
+	if patch.Spec.Behavior.ScaleDown.Window != 300 {
+		t.Fatalf("patch window = %d, want 300", patch.Spec.Behavior.ScaleDown.Window)
+	}
+
+	window = 3600
+	if recommendation, ok := stabilizationWindowRecommendation(hpa); ok {
+		t.Fatalf("maximum window must not produce a recommendation: %+v", recommendation)
+	}
+	for _, recommendation := range generateChurnRecommendations(ChurnMedium, hpa) {
+		if recommendation.Type == "stabilization-window" {
+			t.Fatalf("maximum window leaked into generated recommendations: %+v", recommendation)
+		}
+	}
+}
+
+func TestBehaviorPolicyRecommendationIsConservative(t *testing.T) {
+	t.Parallel()
+	t.Run("no explicit policy gets a minimal patch", func(t *testing.T) {
+		t.Parallel()
+		recommendation := behaviorPolicyRecommendation(buildChurnTestHPA())
+		if recommendation.Patch == "" {
+			t.Fatal("expected a patch when no explicit scale-down policy exists")
+		}
+		if strings.Contains(recommendation.Patch, "selectPolicy") ||
+			strings.Contains(recommendation.Patch, "stabilizationWindowSeconds") {
+			t.Fatalf("policy patch changes unrelated behavior fields: %s", recommendation.Patch)
+		}
+		var patch struct {
+			Spec struct {
+				Behavior struct {
+					ScaleDown struct {
+						Policies []autoscalingv2.HPAScalingPolicy `json:"policies"`
+					} `json:"scaleDown"`
+				} `json:"behavior"`
+			} `json:"spec"`
+		}
+		if err := json.Unmarshal([]byte(recommendation.Patch), &patch); err != nil {
+			t.Fatalf("decode patch: %v", err)
+		}
+		policies := patch.Spec.Behavior.ScaleDown.Policies
+		if len(policies) != 1 || policies[0].Type != autoscalingv2.PercentScalingPolicy ||
+			policies[0].Value != 50 || policies[0].PeriodSeconds != 60 {
+			t.Fatalf("unexpected policy patch: %+v", policies)
+		}
+	})
+
+	t.Run("existing stricter policy is never replaced", func(t *testing.T) {
+		t.Parallel()
+		hpa := buildChurnTestHPA()
+		hpa.Spec.Behavior = &autoscalingv2.HorizontalPodAutoscalerBehavior{
+			ScaleDown: &autoscalingv2.HPAScalingRules{
+				Policies: []autoscalingv2.HPAScalingPolicy{{
+					Type: autoscalingv2.PercentScalingPolicy, Value: 10, PeriodSeconds: 60,
+				}},
+			},
+		}
+		recommendation := behaviorPolicyRecommendation(hpa)
+		if recommendation.Patch != "" {
+			t.Fatalf("existing policy must receive patch-free guidance, got %s", recommendation.Patch)
+		}
+		if !strings.Contains(recommendation.CurrentValue, "10%/60s") {
+			t.Fatalf("existing policy is not reflected in guidance: %+v", recommendation)
+		}
+	})
+
+	t.Run("disabled scale-down is never enabled", func(t *testing.T) {
+		t.Parallel()
+		disabled := autoscalingv2.DisabledPolicySelect
+		hpa := buildChurnTestHPA()
+		hpa.Spec.Behavior = &autoscalingv2.HorizontalPodAutoscalerBehavior{
+			ScaleDown: &autoscalingv2.HPAScalingRules{SelectPolicy: &disabled},
+		}
+		recommendation := behaviorPolicyRecommendation(hpa)
+		if recommendation.Patch != "" {
+			t.Fatalf("disabled scale-down must receive patch-free guidance, got %s", recommendation.Patch)
+		}
+		if !strings.Contains(recommendation.CurrentValue, "disabled") {
+			t.Fatalf("disabled policy is not reflected in guidance: %+v", recommendation)
+		}
+	})
+}
+
+func TestHighChurnDoesNotEmitTolerancePatch(t *testing.T) {
+	t.Parallel()
+	for _, recommendation := range generateChurnRecommendations(ChurnHigh, buildChurnTestHPA()) {
+		if recommendation.Type == "tolerance" || strings.Contains(recommendation.Patch, "tolerance") {
+			t.Fatalf("feature-gated/no-op tolerance recommendation emitted: %+v", recommendation)
+		}
 	}
 }

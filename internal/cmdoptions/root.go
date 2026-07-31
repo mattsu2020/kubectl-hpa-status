@@ -28,7 +28,8 @@ func DefaultRoot() Root {
 				RequestTimeout: 30 * time.Second,
 			},
 			OutputOptions: OutputOptions{
-				Color: "auto",
+				Color:        "auto",
+				OutputSchema: "v1",
 			},
 			ApplyOptions: ApplyOptions{
 				DryRun: true,

@@ -24,6 +24,10 @@ type (
 	//
 	// Deprecated: Use vpa.Info instead. Scheduled for removal in v3.0.0.
 	VPAInfo = vpa.Info
+	// VPAContainerPolicy aliases vpa.ContainerPolicy.
+	//
+	// Deprecated: Use vpa.ContainerPolicy instead. Scheduled for removal in v3.0.0.
+	VPAContainerPolicy = vpa.ContainerPolicy
 	// VPAConflictInfo aliases vpa.ConflictInfo.
 	//
 	// Deprecated: Use vpa.ConflictInfo instead. Scheduled for removal in v3.0.0.

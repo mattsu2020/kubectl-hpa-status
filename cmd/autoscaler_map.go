@@ -5,13 +5,16 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
-	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/autoscalermap"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 	"github.com/spf13/cobra"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/kubeconv"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
+	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/autoscalermap"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
 type autoscalerMapOutput struct {
@@ -69,7 +72,7 @@ func runAutoscalerMap(ctx context.Context, out io.Writer, opts *options, names [
 
 	format, templateStr := selectOutputFromOptions(opts)
 
-	return writeOutput(out, format, templateStr, value, func() error {
+	return render.Format(out, format, templateStr, value, func(out io.Writer) error {
 		theme := style.NewTheme(shouldColorize(opts.Color, out))
 		for i, o := range outputs {
 			if i > 0 {
@@ -83,6 +86,7 @@ func runAutoscalerMap(ctx context.Context, out io.Writer, opts *options, names [
 		}
 		return nil
 	})
+
 }
 
 // assembleAutoscalerMapInput gathers all observable signals for autoscaler map.
@@ -130,7 +134,7 @@ func assembleAutoscalerMapInput(ctx context.Context, client *kube.Client, opts *
 
 			// Fetch pending pod details.
 			pendingDetails, _ := kube.FetchPendingPodDetails(ctx, client.Interface, hpa.Namespace, selector)
-			input.PendingPods = convertPendingPodInfos(pendingDetails)
+			input.PendingPods = kubeconv.PendingPodInfos(pendingDetails)
 		}
 	}
 
@@ -254,7 +258,7 @@ func fetchAutoscalerMapVPA(ctx context.Context, opts *options, hpa *autoscalingv
 		TargetRef:           vpaInfo.TargetRef,
 		UpdateMode:          vpaInfo.UpdateMode,
 		ControlledResources: vpaInfo.ControlledResources,
-		ConflictResources:   vpaInfo.ControlledResources,
+		ConflictResources:   kube.VPAConflictResources(hpa, vpaInfo),
 	}
 }
 

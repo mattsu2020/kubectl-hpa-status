@@ -1,9 +1,11 @@
 package hpa
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/churn"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
@@ -74,6 +76,149 @@ func TestApplyEnrichmentPenalties(t *testing.T) {
 func TestApplyEnrichmentPenalties_NilAnalysis(_ *testing.T) {
 	ApplyEnrichmentPenalties(nil, HealthWeights{})
 	// Should not panic.
+}
+
+func TestApplyEnrichmentPenaltiesIsIdempotentAcrossFinalize(t *testing.T) {
+	remaining := int64(30)
+	a := Analysis{
+		Health:                 string(HealthOK),
+		HealthScore:            95,
+		StabilizationRemaining: &remaining,
+		KEDAInfo: &KEDAAnalysis{
+			Triggers: []KEDATriggerSummary{{Type: "prometheus", Status: "Inactive"}},
+		},
+		VPAConflict: &vpa.ConflictInfo{VPAName: "my-vpa", UpdateMode: "Auto"},
+	}
+
+	ApplyEnrichmentPenalties(&a, HealthWeights{})
+	firstScore := a.HealthScore
+	firstSignalCount := len(a.HealthResult.Signals)
+
+	ApplyEnrichmentPenalties(&a, HealthWeights{})
+	if a.HealthScore != firstScore {
+		t.Fatalf("second application changed HealthScore from %d to %d", firstScore, a.HealthScore)
+	}
+	if len(a.HealthResult.Signals) != firstSignalCount {
+		t.Fatalf("second application duplicated signals: first=%d second=%d", firstSignalCount, len(a.HealthResult.Signals))
+	}
+
+	finalized := FinalizeAnalysis(a)
+	ApplyEnrichmentPenalties(&finalized, HealthWeights{})
+	if finalized.HealthScore != firstScore {
+		t.Fatalf("application after FinalizeAnalysis changed HealthScore from %d to %d", firstScore, finalized.HealthScore)
+	}
+	if finalized.HealthResult == nil {
+		t.Fatal("HealthResult must be initialized by enrichment")
+	}
+	if finalized.HealthResult.Score != finalized.HealthScore ||
+		string(finalized.HealthResult.State) != finalized.Health {
+		t.Fatalf("flat health fields and HealthResult diverged: health=%q score=%d result=%+v",
+			finalized.Health, finalized.HealthScore, finalized.HealthResult)
+	}
+	if len(finalized.HealthResult.Signals) != firstSignalCount {
+		t.Fatalf("application after FinalizeAnalysis duplicated signals: first=%d final=%d",
+			firstSignalCount, len(finalized.HealthResult.Signals))
+	}
+}
+
+func TestApplyChurnPenaltyIsIdempotentAndInitializesTypedResult(t *testing.T) {
+	a := Analysis{
+		Health:        string(HealthOK),
+		HealthScore:   90,
+		ChurnAnalysis: &churn.ChurnAnalysis{Level: churn.ChurnHigh},
+	}
+
+	ApplyChurnPenalty(&a, HealthWeights{})
+	firstScore := a.HealthScore
+	ApplyChurnPenalty(&a, HealthWeights{})
+
+	if a.HealthScore != firstScore {
+		t.Fatalf("second churn penalty changed score from %d to %d", firstScore, a.HealthScore)
+	}
+	if a.HealthResult == nil {
+		t.Fatal("churn penalty did not initialize HealthResult")
+	}
+	if a.HealthResult.Score != a.HealthScore || string(a.HealthResult.State) != a.Health {
+		t.Fatalf("flat health fields and HealthResult diverged: health=%q score=%d result=%+v",
+			a.Health, a.HealthScore, a.HealthResult)
+	}
+	if len(a.HealthResult.Signals) != 1 || a.HealthResult.Signals[0].Reason != enrichmentPenaltyChurn {
+		t.Fatalf("churn signals = %+v, want one stable signal", a.HealthResult.Signals)
+	}
+}
+
+func TestDynamicHealthPenaltiesRecomputeFromUnclampedBaseline(t *testing.T) {
+	a := Analysis{
+		Health:      string(HealthOK),
+		HealthScore: 10,
+		KEDAInfo: &KEDAAnalysis{
+			Triggers: []KEDATriggerSummary{{Status: "Inactive"}},
+		},
+	}
+	ApplyEnrichmentPenalties(&a, HealthWeights{KEDAInactiveTrigger: IntWeight(15)})
+	if a.HealthScore != 0 {
+		t.Fatalf("first score = %d, want 0", a.HealthScore)
+	}
+	ApplyEnrichmentPenalties(&a, HealthWeights{KEDAInactiveTrigger: IntWeight(5)})
+	if a.HealthScore != 5 {
+		t.Fatalf("reweighted score = %d, want 5", a.HealthScore)
+	}
+}
+
+func TestDynamicHealthPenaltiesRemoveInactiveSignals(t *testing.T) {
+	a := Analysis{
+		Health:      string(HealthOK),
+		HealthScore: 90,
+		KEDAInfo: &KEDAAnalysis{
+			Triggers: []KEDATriggerSummary{{Status: "Inactive"}},
+		},
+		VPAConflict: &vpa.ConflictInfo{VPAName: "web-vpa"},
+		ChurnAnalysis: &churn.ChurnAnalysis{
+			Level: churn.ChurnHigh,
+		},
+	}
+	ApplyChurnPenalty(&a, HealthWeights{})
+	if a.Health != string(HealthLimited) || len(a.HealthResult.Signals) != 3 {
+		t.Fatalf("dynamic health = %+v", a.HealthResult)
+	}
+
+	a.KEDAInfo.Triggers[0].Status = "Active"
+	a.VPAConflict = nil
+	a.ChurnAnalysis.Level = churn.ChurnLow
+	ApplyEnrichmentPenalties(&a, HealthWeights{})
+	if a.HealthScore != 90 || a.Health != string(HealthOK) {
+		t.Fatalf("restored health = %s/%d, want OK/90", a.Health, a.HealthScore)
+	}
+	if len(a.HealthResult.Signals) != 0 {
+		t.Fatalf("stale dynamic signals remain: %+v", a.HealthResult.Signals)
+	}
+}
+
+func TestDynamicHealthPenaltiesRestoreBaseStateAfterJSONRoundTrip(t *testing.T) {
+	original := Analysis{
+		Health:      string(HealthOK),
+		HealthScore: 100,
+		VPAConflict: &vpa.ConflictInfo{VPAName: "web-vpa"},
+	}
+	ApplyEnrichmentPenalties(&original, HealthWeights{})
+
+	data, err := json.Marshal(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var restored Analysis
+	if err := json.Unmarshal(data, &restored); err != nil {
+		t.Fatal(err)
+	}
+	restored.VPAConflict = nil
+	ApplyEnrichmentPenalties(&restored, HealthWeights{})
+
+	if restored.Health != string(HealthOK) || restored.HealthScore != 100 {
+		t.Fatalf("round-trip health = %s/%d, want OK/100", restored.Health, restored.HealthScore)
+	}
+	if restored.HealthResult == nil || restored.HealthResult.State != HealthOK || len(restored.HealthResult.Signals) != 0 {
+		t.Fatalf("round-trip HealthResult = %+v", restored.HealthResult)
+	}
 }
 
 func TestHealthScorePenaltyGating(t *testing.T) {

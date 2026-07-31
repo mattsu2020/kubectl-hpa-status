@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/spf13/cobra"
+
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
-	"github.com/spf13/cobra"
 )
 
 func newAssumptionsCommand(opts *options) *cobra.Command {
@@ -113,7 +115,7 @@ func runAssumptions(ctx context.Context, out io.Writer, opts *options, names []s
 				return fmt.Errorf("write assumptions separator: %w", err)
 			}
 		}
-		if err := writeOutput(out, format, templateStr, report, func() error {
+		if err := render.Format(out, format, templateStr, report, func(out io.Writer) error {
 			return hpaanalysis.WriteAssumptionsTextWithExplain(out, report.Assumptions,
 				flags.explain, style.NewTheme(shouldColorize(opts.Color, out)))
 		}); err != nil {

@@ -4,9 +4,8 @@
 // prometheus, markdown, html, incident). They are pure (no cobra, no options
 // struct) so they can be reused by any caller and tested in isolation.
 //
-// cmd/ re-exports these under their historical unexported names via a thin
-// facade in cmd/output.go; when the cmd/ sub-package split lands, callers
-// migrate to render.* directly and the facade shrinks.
+// Command callers use this package directly; cmd/output.go contains only
+// command-specific selection and localization policy.
 package render
 
 import (
@@ -52,10 +51,17 @@ var formatRenderers = map[string]func(out io.Writer, templateStr string, value a
 // Format is the top-level output-format dispatcher. writeText is invoked for
 // the human-readable formats ("", "table", "wide", "ja"); every other format
 // serializes value directly.
-func Format(out io.Writer, format string, templateStr string, value any, writeText func() error) error {
+func Format(out io.Writer, format string, templateStr string, value any, writeText func(io.Writer) error) error {
 	switch format {
 	case "", "table", "wide", "ja":
-		return writeText()
+		if writeText == nil {
+			return fmt.Errorf("text output requires a text renderer")
+		}
+		tracked := &errorTrackingWriter{writer: out}
+		if err := writeText(tracked); err != nil {
+			return err
+		}
+		return tracked.err
 	}
 	if renderer, ok := formatRenderers[format]; ok {
 		return renderer(out, templateStr, value)
@@ -64,6 +70,35 @@ func Format(out io.Writer, format string, templateStr string, value any, writeTe
 		return formatRenderers[kind](out, expr, value)
 	}
 	return fmt.Errorf("unsupported output format %q", format)
+}
+
+// errorTrackingWriter preserves the first write failure even when a legacy
+// text renderer ignores fmt.Fprintf's return value. Format checks err after
+// the callback, so broken pipes and short writers are never reported as a
+// successful command.
+type errorTrackingWriter struct {
+	writer io.Writer
+	err    error
+}
+
+// Unwrap exposes the original destination to presentation helpers such as
+// terminal/color detection while writes continue through this error tracker.
+func (w *errorTrackingWriter) Unwrap() io.Writer {
+	return w.writer
+}
+
+func (w *errorTrackingWriter) Write(p []byte) (int, error) {
+	if w.err != nil {
+		return 0, w.err
+	}
+	n, err := w.writer.Write(p)
+	if err == nil && n != len(p) {
+		err = io.ErrShortWrite
+	}
+	if err != nil {
+		w.err = err
+	}
+	return n, err
 }
 
 // ParsePrefixedFormat recognizes "jsonpath=", "jsonpath:", "template=",
@@ -91,8 +126,10 @@ func ParsePrefixedFormat(format string) (expr string, kind string, ok bool) {
 }
 
 // JSONLines writes value as newline-delimited JSON (JSON Lines / jsonl). For a
-// ListReport each item is emitted on its own line; for a StatusReport the
-// single report is one line. Other types produce one line for the whole value.
+// ListReport each item is emitted on its own line, and []StatusRecordV2 emits
+// one canonical v2 record per line. Other types produce one line for the whole
+// value; notably, the historical v1 []StatusReport shape remains one JSON array
+// on one line.
 // JSONL is the streaming-friendly counterpart of "json": a large list can be
 // produced and consumed one record at a time without buffering the whole array.
 func JSONLines(out io.Writer, value any) error {
@@ -103,6 +140,13 @@ func JSONLines(out io.Writer, value any) error {
 		for i := range report.Items {
 			if err := encoder.Encode(report.Items[i]); err != nil {
 				return fmt.Errorf("jsonl: encode list item %d: %w", i, err)
+			}
+		}
+		return nil
+	case []hpaanalysis.StatusRecordV2:
+		for i := range report {
+			if err := encoder.Encode(report[i]); err != nil {
+				return fmt.Errorf("jsonl: encode v2 status record %d: %w", i, err)
 			}
 		}
 		return nil

@@ -7,12 +7,14 @@ import (
 	"os"
 	"strings"
 
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/gitops"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 	"github.com/spf13/cobra"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/kubernetes/scheme"
+
+	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/gitops"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
 func newGitOpsReviewCommand(opts *options) *cobra.Command {
@@ -54,10 +56,11 @@ func runGitOpsReview(_ context.Context, out io.Writer, opts *options, filePath s
 
 	format, templateStr := selectOutputFromOptions(opts)
 
-	return writeOutput(out, format, templateStr, review, func() error {
+	return render.Format(out, format, templateStr, review, func(out io.Writer) error {
 		theme := style.NewTheme(shouldColorize(opts.Color, out))
 		return gitops.WriteReviewText(out, review, theme)
 	})
+
 }
 
 // collectGitOpsReviewFiles walks the given path and returns the list of

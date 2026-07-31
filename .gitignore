@@ -1,4 +1,5 @@
 kubectl-hpa-status
+.DS_Store
 *.test
 coverage.out
 dist/

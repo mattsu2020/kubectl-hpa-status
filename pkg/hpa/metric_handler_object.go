@@ -48,17 +48,7 @@ func (objectHandler) SpecIdentity(spec autoscalingv2.MetricSpec) (string, string
 }
 
 func (objectHandler) MatchesCurrent(spec autoscalingv2.MetricSpec, current autoscalingv2.MetricStatus) bool {
-	if spec.Object == nil || current.Object == nil {
-		return false
-	}
-	if spec.Object.Metric.Name != current.Object.Metric.Name {
-		return false
-	}
-	if !selectorsEqual(spec.Object.Metric.Selector, current.Object.Metric.Selector) {
-		return false
-	}
-	return spec.Object.DescribedObject.Kind == current.Object.DescribedObject.Kind &&
-		spec.Object.DescribedObject.Name == current.Object.DescribedObject.Name
+	return metricIdentityMatches(spec, current)
 }
 
 func (objectHandler) Remediation(spec autoscalingv2.MetricSpec) string {

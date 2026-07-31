@@ -1,11 +1,13 @@
 package hpa
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
 	"strings"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
@@ -25,13 +27,16 @@ func SimulateMetricChange(hpa *autoscalingv2.HorizontalPodAutoscaler, metricOver
 //   - cpu=+20% — relative increase from current value
 //   - cpu=-10% — relative decrease from current value
 func applyMetricOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, name, value string) error {
-	spec, found := resolveMetricSpec(hpa, name)
-	if !found {
-		return fmt.Errorf("metric %q: %w", name, ErrMetricNotFound)
+	spec, err := resolveMetricSpecUnique(hpa, name)
+	if err != nil {
+		return fmt.Errorf("metric %q: %w", name, err)
 	}
 
-	idx, found := findCurrentMetric(hpa, name)
-	if !found {
+	idx, err := findCurrentMetricForSpec(hpa, spec)
+	if err != nil {
+		return fmt.Errorf("metric %q current value: %w", name, err)
+	}
+	if idx < 0 {
 		return fmt.Errorf("metric %q has no current value in HPA status; cannot simulate without a baseline", name)
 	}
 
@@ -87,12 +92,12 @@ func parseMetricQuantity(value, metricType string) (resource.Quantity, error) {
 	return q, nil
 }
 
-// applyResourceMetricOverride sets the current value of a Resource metric from
-// a utilization%, quantity, or integer value string.
+// applyResourceMetricOverride preserves the value field selected by the
+// metric target so ratio projection remains aligned with the spec.
 func applyResourceMetricOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, spec autoscalingv2.MetricSpec, idx int, value string) error {
 	resName := spec.Resource.Name
-	switch {
-	case strings.HasSuffix(value, "%"):
+	switch spec.Resource.Target.Type {
+	case autoscalingv2.UtilizationMetricType:
 		parsed, err := strconv.ParseInt(strings.TrimSuffix(value, "%"), 10, 32)
 		if err != nil {
 			return fmt.Errorf("invalid utilization value %q: %w", value, err)
@@ -104,7 +109,7 @@ func applyResourceMetricOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, spe
 				AverageUtilization: &util,
 			},
 		}
-	case isResourceQuantity(value):
+	case autoscalingv2.AverageValueMetricType:
 		q, err := parseMetricQuantity(value, "resource")
 		if err != nil {
 			return err
@@ -116,51 +121,30 @@ func applyResourceMetricOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, spe
 			},
 		}
 	default:
-		parsed, err := strconv.ParseInt(value, 10, 32)
-		if err != nil {
-			return fmt.Errorf("invalid resource metric value %q: expected utilization%%, quantity, or integer", value)
-		}
-		util := int32(parsed)
-		hpa.Status.CurrentMetrics[idx].Resource = &autoscalingv2.ResourceMetricStatus{
-			Name: resName,
-			Current: autoscalingv2.MetricValueStatus{
-				AverageUtilization: &util,
-			},
-		}
+		return fmt.Errorf("unsupported resource metric target type %q", spec.Resource.Target.Type)
 	}
 	return nil
 }
 
 // applyExternalMetricOverride sets the current value of an External metric,
-// choosing AverageValue vs Value based on the existing status shape.
+// choosing AverageValue vs Value from the spec target type.
 func applyExternalMetricOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, spec autoscalingv2.MetricSpec, idx int, value string) error {
 	q, err := parseMetricQuantity(value, "external")
 	if err != nil {
 		return err
 	}
-	selectorHasLabels := spec.External.Metric.Selector != nil && len(spec.External.Metric.Selector.MatchLabels) > 0
-	useAverageValue := !selectorHasLabels && hpa.Status.CurrentMetrics[idx].External != nil &&
-		hpa.Status.CurrentMetrics[idx].External.Current.AverageValue != nil
-	if useAverageValue {
-		hpa.Status.CurrentMetrics[idx].External = &autoscalingv2.ExternalMetricStatus{
-			Metric: autoscalingv2.MetricIdentifier{
-				Name:     spec.External.Metric.Name,
-				Selector: spec.External.Metric.Selector,
-			},
-			Current: autoscalingv2.MetricValueStatus{
-				AverageValue: &q,
-			},
-		}
-	} else {
-		hpa.Status.CurrentMetrics[idx].External = &autoscalingv2.ExternalMetricStatus{
-			Metric: autoscalingv2.MetricIdentifier{
-				Name:     spec.External.Metric.Name,
-				Selector: spec.External.Metric.Selector,
-			},
-			Current: autoscalingv2.MetricValueStatus{
-				Value: &q,
-			},
-		}
+	current := autoscalingv2.MetricValueStatus{}
+	switch spec.External.Target.Type {
+	case autoscalingv2.AverageValueMetricType:
+		current.AverageValue = &q
+	case autoscalingv2.ValueMetricType:
+		current.Value = &q
+	default:
+		return fmt.Errorf("unsupported external metric target type %q", spec.External.Target.Type)
+	}
+	hpa.Status.CurrentMetrics[idx].External = &autoscalingv2.ExternalMetricStatus{
+		Metric:  spec.External.Metric,
+		Current: current,
 	}
 	return nil
 }
@@ -206,116 +190,173 @@ func applyPodsMetricOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, spec au
 func applyRelativeOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, spec autoscalingv2.MetricSpec, idx int, value string) error {
 	switch spec.Type {
 	case autoscalingv2.ResourceMetricSourceType:
-		current := hpa.Status.CurrentMetrics[idx].Resource
-		if current == nil {
-			return fmt.Errorf("cannot apply relative change: no current value for metric %q", spec.Resource.Name)
-		}
+		return applyRelativeResourceOverride(hpa, spec, idx, value)
+	case autoscalingv2.ExternalMetricSourceType:
+		return applyRelativeExternalOverride(hpa, spec, idx, value)
+	default:
+		return fmt.Errorf("relative overrides are only supported for Resource and External metrics, not %q", spec.Type)
+	}
+}
+
+func applyRelativeResourceOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, spec autoscalingv2.MetricSpec, idx int, value string) error {
+	current := hpa.Status.CurrentMetrics[idx].Resource
+	if current == nil {
+		return fmt.Errorf("cannot apply relative change: no current value for metric %q", spec.Resource.Name)
+	}
+	switch spec.Resource.Target.Type {
+	case autoscalingv2.UtilizationMetricType:
 		if current.Current.AverageUtilization == nil {
-			if current.Current.AverageValue == nil {
-				return fmt.Errorf("cannot apply relative change: no current value for metric %q", spec.Resource.Name)
-			}
-			newValue, err := parseRelativeQuantity(value, current.Current.AverageValue)
-			if err != nil {
-				return err
-			}
-			hpa.Status.CurrentMetrics[idx].Resource = &autoscalingv2.ResourceMetricStatus{
-				Name:    spec.Resource.Name,
-				Current: autoscalingv2.MetricValueStatus{AverageValue: &newValue},
-			}
-			return nil
+			return fmt.Errorf("cannot apply relative change: no current utilization for metric %q", spec.Resource.Name)
 		}
-		newVal, err := parseRelativeValue(value, *current.Current.AverageUtilization)
+		newValue, err := parseRelativeValue(value, *current.Current.AverageUtilization)
 		if err != nil {
 			return err
 		}
 		hpa.Status.CurrentMetrics[idx].Resource = &autoscalingv2.ResourceMetricStatus{
-			Name: spec.Resource.Name,
-			Current: autoscalingv2.MetricValueStatus{
-				AverageUtilization: &newVal,
-			},
+			Name:    spec.Resource.Name,
+			Current: autoscalingv2.MetricValueStatus{AverageUtilization: &newValue},
 		}
-	case autoscalingv2.ExternalMetricSourceType:
-		current := hpa.Status.CurrentMetrics[idx].External
-		if current == nil {
-			return fmt.Errorf("cannot apply relative change: no current value for external metric %q", spec.External.Metric.Name)
+	case autoscalingv2.AverageValueMetricType:
+		if current.Current.AverageValue == nil {
+			return fmt.Errorf("cannot apply relative change: no current average value for metric %q", spec.Resource.Name)
 		}
-		currentQty := current.Current.Value
-		if currentQty == nil {
-			currentQty = current.Current.AverageValue
-		}
-		if currentQty == nil {
-			return fmt.Errorf("cannot apply relative change: no current value for external metric %q", spec.External.Metric.Name)
-		}
-		newVal, err := parseRelativeQuantity(value, currentQty)
+		newValue, err := parseRelativeQuantity(value, current.Current.AverageValue)
 		if err != nil {
 			return err
 		}
-		hpa.Status.CurrentMetrics[idx].External = &autoscalingv2.ExternalMetricStatus{
-			Metric: autoscalingv2.MetricIdentifier{
-				Name:     spec.External.Metric.Name,
-				Selector: spec.External.Metric.Selector,
-			},
-			Current: autoscalingv2.MetricValueStatus{Value: &newVal},
+		hpa.Status.CurrentMetrics[idx].Resource = &autoscalingv2.ResourceMetricStatus{
+			Name:    spec.Resource.Name,
+			Current: autoscalingv2.MetricValueStatus{AverageValue: &newValue},
 		}
 	default:
-		return fmt.Errorf("relative overrides are only supported for Resource and External metrics, not %q", spec.Type)
+		return fmt.Errorf("unsupported resource metric target type %q", spec.Resource.Target.Type)
 	}
 	return nil
 }
 
-// resolveMetricSpec finds the spec metric matching the given name (case-insensitive).
-func resolveMetricSpec(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) (autoscalingv2.MetricSpec, bool) {
-	for _, m := range hpa.Spec.Metrics {
-		if metricSpecNameMatches(m, name) {
-			return m, true
-		}
+func applyRelativeExternalOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, spec autoscalingv2.MetricSpec, idx int, value string) error {
+	current := hpa.Status.CurrentMetrics[idx].External
+	if current == nil {
+		return fmt.Errorf("cannot apply relative change: no current value for external metric %q", spec.External.Metric.Name)
 	}
-	return autoscalingv2.MetricSpec{}, false
-}
-
-// findCurrentMetric returns the index of the current metric matching the given name.
-func findCurrentMetric(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) (int, bool) {
-	lower := strings.ToLower(name)
-	for i, m := range hpa.Status.CurrentMetrics {
-		if currentMetricNameMatches(m, lower) {
-			return i, true
-		}
-	}
-	return -1, false
-}
-
-// currentMetricNameMatches reports whether the given current-metric entry's
-// name matches the already-lowercased target name.
-func currentMetricNameMatches(m autoscalingv2.MetricStatus, lower string) bool {
-	switch m.Type {
-	case autoscalingv2.ResourceMetricSourceType:
-		return m.Resource != nil && strings.ToLower(string(m.Resource.Name)) == lower
-	case autoscalingv2.ExternalMetricSourceType:
-		return m.External != nil && strings.ToLower(m.External.Metric.Name) == lower
-	case autoscalingv2.PodsMetricSourceType:
-		return m.Pods != nil && strings.ToLower(m.Pods.Metric.Name) == lower
-	case autoscalingv2.ObjectMetricSourceType:
-		return m.Object != nil && strings.ToLower(m.Object.Metric.Name) == lower
-	case autoscalingv2.ContainerResourceMetricSourceType:
-		return m.ContainerResource != nil && strings.ToLower(string(m.ContainerResource.Name)) == lower
+	var currentQuantity *resource.Quantity
+	switch spec.External.Target.Type {
+	case autoscalingv2.AverageValueMetricType:
+		currentQuantity = current.Current.AverageValue
+	case autoscalingv2.ValueMetricType:
+		currentQuantity = current.Current.Value
 	default:
-		return false
+		return fmt.Errorf("unsupported external metric target type %q", spec.External.Target.Type)
 	}
+	if currentQuantity == nil {
+		return fmt.Errorf("cannot apply relative change: current value shape does not match %q target for external metric %q", spec.External.Target.Type, spec.External.Metric.Name)
+	}
+	newValue, err := parseRelativeQuantity(value, currentQuantity)
+	if err != nil {
+		return err
+	}
+	next := autoscalingv2.MetricValueStatus{}
+	if spec.External.Target.Type == autoscalingv2.AverageValueMetricType {
+		next.AverageValue = &newValue
+	} else {
+		next.Value = &newValue
+	}
+	hpa.Status.CurrentMetrics[idx].External = &autoscalingv2.ExternalMetricStatus{
+		Metric:  spec.External.Metric,
+		Current: next,
+	}
+	return nil
+}
+
+// resolveMetricSpec finds one unambiguous spec metric matching the given name
+// (case-insensitive). Ambiguous name-only references deliberately fail closed.
+func resolveMetricSpec(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) (autoscalingv2.MetricSpec, bool) {
+	spec, err := resolveMetricSpecUnique(hpa, name)
+	if err != nil {
+		return autoscalingv2.MetricSpec{}, false
+	}
+	return spec, true
+}
+
+func resolveMetricSpecUnique(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) (autoscalingv2.MetricSpec, error) {
+	index, err := resolveMetricSpecIndexUnique(hpa, name)
+	if err != nil {
+		return autoscalingv2.MetricSpec{}, err
+	}
+	return hpa.Spec.Metrics[index], nil
+}
+
+func resolveMetricSpecIndexUnique(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) (int, error) {
+	if hpa == nil {
+		return -1, ErrNilHPA
+	}
+	matches := make([]int, 0, 1)
+	for i, metric := range hpa.Spec.Metrics {
+		if metricSpecNameMatches(metric, name) {
+			matches = append(matches, i)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return -1, ErrMetricNotFound
+	case 1:
+		return matches[0], nil
+	default:
+		return -1, fmt.Errorf("%w: %q matches %d metrics; use a unique metric name or remove duplicate selector/container variants", ErrMetricAmbiguous, name, len(matches))
+	}
+}
+
+func findCurrentMetricForSpec(hpa *autoscalingv2.HorizontalPodAutoscaler, spec autoscalingv2.MetricSpec) (int, error) {
+	if hpa == nil {
+		return -1, ErrNilHPA
+	}
+	specID, err := MetricIDFromSpec(spec)
+	if err != nil {
+		return -1, err
+	}
+	match := -1
+	for i, current := range hpa.Status.CurrentMetrics {
+		currentID, currentErr := MetricIDFromStatus(current)
+		if currentErr != nil || currentID != specID {
+			continue
+		}
+		if match >= 0 {
+			return -1, fmt.Errorf("%w: current status contains duplicate identity %#v", ErrMetricAmbiguous, specID)
+		}
+		match = i
+	}
+	return match, nil
+}
+
+// findCurrentMetric returns the canonical current metric for one unambiguous
+// spec name. It fails closed when multiple spec or status identities match.
+func findCurrentMetric(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) (int, bool) {
+	spec, err := resolveMetricSpecUnique(hpa, name)
+	if err != nil {
+		return -1, false
+	}
+	index, err := findCurrentMetricForSpec(hpa, spec)
+	if err != nil || index < 0 {
+		return -1, false
+	}
+	return index, true
 }
 
 // parseRelativeValue parses a relative change like +20% or -10% and applies it
 // to the current int32 value, returning the new value.
 func parseRelativeValue(value string, current int32) (int32, error) {
-	if len(value) < 2 || !strings.HasSuffix(value, "%") {
-		return 0, fmt.Errorf("invalid relative value %q: expected format like +20%% or -10%%", value)
-	}
-	pctStr := strings.TrimSuffix(value, "%")
-	pct, err := strconv.ParseFloat(pctStr, 64)
+	pct, err := parseRelativePercentage(value)
 	if err != nil {
-		return 0, fmt.Errorf("invalid percentage %q: %w", pctStr, err)
+		return 0, err
 	}
 	factor := 1.0 + pct/100.0
 	result := math.Round(float64(current) * factor)
+	if math.IsNaN(result) || math.IsInf(result, 0) {
+		return 0, fmt.Errorf("relative value %q produces a non-finite result", value)
+	}
+	if result < float64(math.MinInt32) || result > float64(math.MaxInt32) {
+		return 0, fmt.Errorf("relative value %q produces a result outside the int32 range", value)
+	}
 	if result < 0 {
 		result = 0
 	}
@@ -324,25 +365,65 @@ func parseRelativeValue(value string, current int32) (int32, error) {
 
 // parseRelativeQuantity applies a relative percentage change to a resource.Quantity.
 func parseRelativeQuantity(value string, current *resource.Quantity) (resource.Quantity, error) {
-	if len(value) < 2 || !strings.HasSuffix(value, "%") {
-		return resource.Quantity{}, fmt.Errorf("invalid relative value %q: expected format like +20%% or -10%%", value)
+	if current == nil {
+		return resource.Quantity{}, fmt.Errorf("cannot apply relative value %q to a nil quantity", value)
 	}
-	pctStr := strings.TrimSuffix(value, "%")
-	pct, err := strconv.ParseFloat(pctStr, 64)
+	if current.Sign() < 0 {
+		return resource.Quantity{}, fmt.Errorf("cannot apply relative value %q to a negative quantity", value)
+	}
+	maxMilliQuantity := resource.NewMilliQuantity(math.MaxInt64, resource.DecimalSI)
+	if current.Cmp(*maxMilliQuantity) > 0 {
+		return resource.Quantity{}, fmt.Errorf("current quantity is outside the supported int64 milli-unit range")
+	}
+	pct, err := parseRelativePercentage(value)
 	if err != nil {
-		return resource.Quantity{}, fmt.Errorf("invalid percentage %q: %w", pctStr, err)
+		return resource.Quantity{}, err
+	}
+	if pct == 0 {
+		return current.DeepCopy(), nil
 	}
 	factor := 1.0 + pct/100.0
-	newMilliValue := int64(math.Round(float64(current.MilliValue()) * factor))
+	result := math.Round(float64(current.MilliValue()) * factor)
+	if math.IsNaN(result) || math.IsInf(result, 0) {
+		return resource.Quantity{}, fmt.Errorf("relative value %q produces a non-finite quantity", value)
+	}
+	// float64(math.MaxInt64) rounds to 1<<63, which is already outside the
+	// positive int64 range. Treat that boundary conservatively as overflow.
+	if result < float64(math.MinInt64) || result >= float64(math.MaxInt64) {
+		return resource.Quantity{}, fmt.Errorf("relative value %q produces a quantity outside the int64 range", value)
+	}
+	newMilliValue := int64(result)
 	if newMilliValue < 0 {
 		newMilliValue = 0
 	}
 	return *resource.NewMilliQuantity(newMilliValue, current.Format), nil
 }
 
+func parseRelativePercentage(value string) (float64, error) {
+	if len(value) < 2 || !strings.HasSuffix(value, "%") {
+		return 0, fmt.Errorf("invalid relative value %q: expected format like +20%% or -10%%", value)
+	}
+	pctText := strings.TrimSuffix(value, "%")
+	pct, err := strconv.ParseFloat(pctText, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid percentage %q: %w", pctText, err)
+	}
+	if math.IsNaN(pct) || math.IsInf(pct, 0) {
+		return 0, fmt.Errorf("invalid percentage %q: value must be finite", pctText)
+	}
+	factor := 1.0 + pct/100.0
+	if math.IsNaN(factor) || math.IsInf(factor, 0) {
+		return 0, fmt.Errorf("invalid percentage %q: relative factor must be finite", pctText)
+	}
+	return pct, nil
+}
+
 // computeProjectedReplicas returns ceil(currentReplicas * ratio) bounded by min/max.
 func computeProjectedReplicas(currentReplicas int32, ratio float64, minReplicas, maxReplicas int32) int32 {
-	projected := int32(math.Ceil(float64(currentReplicas) * ratio))
+	projected, usable := util.ProjectedReplicasForRatio(currentReplicas, ratio)
+	if !usable {
+		return currentReplicas
+	}
 	if projected < minReplicas {
 		return minReplicas
 	}
@@ -350,16 +431,6 @@ func computeProjectedReplicas(currentReplicas int32, ratio float64, minReplicas,
 		return maxReplicas
 	}
 	return projected
-}
-
-// isResourceQuantity returns true if the value looks like a Kubernetes quantity
-// (e.g., 4Gi, 500Mi, 2k) rather than a plain integer or percentage.
-func isResourceQuantity(value string) bool {
-	if strings.HasSuffix(value, "%") {
-		return false
-	}
-	_, err := strconv.ParseInt(value, 10, 64)
-	return err != nil
 }
 
 // buildMetricSimulation creates a MetricSimulation for a single override.
@@ -371,22 +442,26 @@ func buildMetricSimulation(original, modified *autoscalingv2.HorizontalPodAutosc
 	}
 
 	// Find original value
-	spec, specFound := resolveMetricSpec(original, name)
-	if !specFound {
+	spec, specErr := resolveMetricSpecUnique(original, name)
+	if specErr != nil {
+		if errors.Is(specErr, ErrMetricAmbiguous) {
+			ms.OriginalValue = "<ambiguous metric name>"
+			return ms
+		}
 		ms.OriginalValue = "<not found>"
 		return ms
 	}
 
-	idx, found := findCurrentMetric(original, name)
-	if !found {
+	idx, currentErr := findCurrentMetricForSpec(original, spec)
+	if currentErr != nil || idx < 0 {
 		ms.OriginalValue = "<no current value>"
 		return ms
 	}
 
 	ms.OriginalValue = formatMetricValue(original.Status.CurrentMetrics[idx], spec.Type)
 
-	modifiedIdx, modifiedFound := findCurrentMetric(modified, name)
-	if !modifiedFound {
+	modifiedIdx, modifiedErr := findCurrentMetricForSpec(modified, spec)
+	if modifiedErr != nil || modifiedIdx < 0 {
 		return ms
 	}
 	_, ratio := metricImpactRatio(modified, modified.Status.CurrentMetrics[modifiedIdx])

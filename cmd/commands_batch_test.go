@@ -103,6 +103,39 @@ func TestRunConflictScanDetectsMultipleHPAsAndKEDA(t *testing.T) {
 	}
 }
 
+func TestWriteConflictScanReportIncludesVPAWarnings(t *testing.T) {
+	report := conflictScanReport{
+		Warnings: map[string][]string{
+			"prod": {"VPA list failed: forbidden"},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := writeConflictScanReport(&buf, &options{}, report); err != nil {
+		t.Fatalf("writeConflictScanReport returned error: %v", err)
+	}
+	output := buf.String()
+	if !strings.Contains(output, "No HPA controller conflicts detected.") ||
+		!strings.Contains(output, "Warnings:") ||
+		!strings.Contains(output, "prod: VPA list failed: forbidden") {
+		t.Fatalf("expected VPA warning in conflict scan output, got:\n%s", output)
+	}
+}
+
+func TestWriteConflictScanReportPropagatesTextWriteFailure(t *testing.T) {
+	report := conflictScanReport{
+		Items: []conflictItem{{
+			Namespace: "prod",
+			Target:    "Deployment/web",
+			HPAs:      []string{"web"},
+			Risks:     []string{"conflict"},
+		}},
+	}
+	if err := writeConflictScanReport(alwaysFailWriter{}, &options{}, report); err == nil {
+		t.Fatal("expected text writer failure")
+	}
+}
+
 func TestRunReadinessEnablesImpactSections(t *testing.T) {
 	hpa := testutil.BuildHPA("default", "web")
 	fakeClient := testutil.NewFakeClient(hpa)

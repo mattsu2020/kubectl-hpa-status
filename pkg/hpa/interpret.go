@@ -144,10 +144,7 @@ func ObjectMetricDiagnostics(hpa *autoscalingv2.HorizontalPodAutoscaler) []Diagn
 		if spec.Type != autoscalingv2.ObjectMetricSourceType || spec.Object == nil {
 			continue
 		}
-		describedObject := autoscalingv2.CrossVersionObjectReference{
-			Kind: spec.Object.DescribedObject.Kind,
-			Name: spec.Object.DescribedObject.Name,
-		}
+		describedObject := spec.Object.DescribedObject
 		if metric, ok := currentObjectMetric(hpa, spec.Object.Metric.Name, spec.Object.Metric.Selector, describedObject); ok {
 			formatted := FormatMetricStatus(hpa, metric)
 			object := fmt.Sprintf("%s/%s", spec.Object.DescribedObject.Kind, spec.Object.DescribedObject.Name)

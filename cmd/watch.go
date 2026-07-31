@@ -6,10 +6,12 @@ import (
 	"io"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
-	"github.com/spf13/cobra"
 )
 
 func newWatchCommand(opts *options) *cobra.Command {
@@ -38,7 +40,7 @@ func runWatch(ctx context.Context, out io.Writer, opts *options, name string, in
 
 	interval := opts.WatchInterval
 	if interval < time.Second {
-		_, _ = fmt.Fprintf(out, "Warning: interval %s is below 1s; clamping to 1s to reduce API server load.\n", interval)
+		_, _ = fmt.Fprintf(watchDiagnosticWriter(opts, out), "Warning: interval %s is below 1s; clamping to 1s to reduce API server load.\n", interval)
 		interval = time.Second
 	}
 
@@ -56,8 +58,13 @@ func runWatch(ctx context.Context, out io.Writer, opts *options, name string, in
 
 func runWatchPolling(ctx context.Context, out io.Writer, opts *options, client *kube.Client, ec *enrichmentContext, name string, includeInterpretation bool, theme style.Theme, ticker *time.Ticker) error {
 	var previous *hpaanalysis.Analysis
+	humanOutput := watchUsesHumanOutput(opts)
 	for {
-		if err := clearWatchScreen(out, theme); err != nil {
+		if humanOutput {
+			if err := clearWatchScreen(out, theme); err != nil {
+				return err
+			}
+		} else if err := writeWatchDocumentSeparator(out, opts); err != nil {
 			return err
 		}
 
@@ -70,21 +77,55 @@ func runWatchPolling(ctx context.Context, out io.Writer, opts *options, client *
 		}
 		previous = &report.Analysis
 
-		writeStabilizationCountdown(out, &report.Analysis)
+		if humanOutput {
+			writeStabilizationCountdown(out, &report.Analysis)
+		}
 
 		if opts.UntilCondition != "" && reportHasCondition(report, opts.UntilCondition) {
-			_, err := fmt.Fprintf(out, "\nStopped: condition %q is present.\n", opts.UntilCondition)
+			_, err := fmt.Fprintf(watchDiagnosticWriter(opts, out), "\nStopped: condition %q is present.\n", opts.UntilCondition)
 			return err
 		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
-			if _, err := fmt.Fprintln(out); err != nil {
-				return err
+			if humanOutput {
+				if _, err := fmt.Fprintln(out); err != nil {
+					return err
+				}
 			}
 		}
 	}
+}
+
+func watchUsesHumanOutput(opts *options) bool {
+	format, _ := selectOutputFromOptions(opts)
+	switch normalizeOutputFormat(format) {
+	case "", "table", "wide", "ja":
+		return true
+	default:
+		return false
+	}
+}
+
+func watchDiagnosticWriter(opts *options, fallback io.Writer) io.Writer {
+	if opts != nil && opts.Err != nil {
+		return opts.Err
+	}
+	if watchUsesHumanOutput(opts) {
+		return fallback
+	}
+	return io.Discard
+}
+
+func writeWatchDocumentSeparator(out io.Writer, opts *options) error {
+	format, _ := selectOutputFromOptions(opts)
+	if normalizeOutputFormat(format) == "yaml" {
+		if _, err := fmt.Fprintln(out, "---"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // clearWatchScreen clears the terminal via the theme's screen-clear sequence, or prints a timestamp header when unavailable.
@@ -103,7 +144,7 @@ func clearWatchScreen(out io.Writer, theme style.Theme) error {
 // All three paths thread StatusTextOptions so the Summary line is localised when --lang is set.
 func writeWatchReport(out io.Writer, opts *options, report hpaanalysis.StatusReport, previous *hpaanalysis.Analysis) error {
 	format, templateStr := selectOutputFromOptions(opts)
-	return writeOutput(out, format, templateStr, report, func() error {
+	return render.Format(out, format, templateStr, statusOutputValue(opts, report), func(out io.Writer) error {
 		textOpts := statusTextOptions(opts, out)
 		if opts.Dashboard {
 			return hpaanalysis.WriteStatusDashboardWithOptions(out, report, textOpts)
@@ -116,6 +157,7 @@ func writeWatchReport(out io.Writer, opts *options, report hpaanalysis.StatusRep
 		}
 		return hpaanalysis.WriteStatusTextWithOptions(out, report, textOpts)
 	})
+
 }
 
 // writeStabilizationCountdown prints the prominent stabilization countdown line when scale-down stabilization is active.
@@ -143,7 +185,7 @@ func runWatchList(ctx context.Context, out io.Writer, opts *options) error {
 
 	interval := opts.WatchInterval
 	if interval < time.Second {
-		_, _ = fmt.Fprintf(out, "Warning: interval %s is below 1s; clamping to 1s to reduce API server load.\n", interval)
+		_, _ = fmt.Fprintf(watchDiagnosticWriter(opts, out), "Warning: interval %s is below 1s; clamping to 1s to reduce API server load.\n", interval)
 		interval = time.Second
 	}
 
@@ -151,15 +193,18 @@ func runWatchList(ctx context.Context, out io.Writer, opts *options) error {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
+	humanOutput := watchUsesHumanOutput(opts)
 	for {
-		if clearScreen := theme.ScreenClear(); clearScreen != "" {
-			if _, err := out.Write([]byte(clearScreen)); err != nil {
+		if humanOutput {
+			if clearScreen := theme.ScreenClear(); clearScreen != "" {
+				if _, err := out.Write([]byte(clearScreen)); err != nil {
+					return err
+				}
+			} else if _, err := fmt.Fprintf(out, "Updated: %s\n\n", time.Now().Format(time.RFC3339)); err != nil {
 				return err
 			}
-		} else {
-			if _, err := fmt.Fprintf(out, "Updated: %s\n\n", time.Now().Format(time.RFC3339)); err != nil {
-				return err
-			}
+		} else if err := writeWatchDocumentSeparator(out, opts); err != nil {
+			return err
 		}
 
 		if err := runList(ctx, out, opts); err != nil {
@@ -170,8 +215,10 @@ func runWatchList(ctx context.Context, out io.Writer, opts *options) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
-			if _, err := fmt.Fprintln(out); err != nil {
-				return err
+			if humanOutput {
+				if _, err := fmt.Fprintln(out); err != nil {
+					return err
+				}
 			}
 		}
 	}

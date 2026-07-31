@@ -79,6 +79,15 @@ func TestRunCapacityPlan_JSONOutput(t *testing.T) {
 	if output.Plan.TargetMaxReplicas <= 0 {
 		t.Errorf("expected positive targetMaxReplicas, got %d", output.Plan.TargetMaxReplicas)
 	}
+	hpaGets := 0
+	for _, action := range fakeClient.Actions() {
+		if action.Matches("get", "horizontalpodautoscalers") {
+			hpaGets++
+		}
+	}
+	if hpaGets != 1 {
+		t.Fatalf("dedicated capacity path fetched the HPA %d times, want 1", hpaGets)
+	}
 }
 
 func TestRunCapacityPlan_TextOutput(t *testing.T) {

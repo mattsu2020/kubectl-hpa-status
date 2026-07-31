@@ -7,9 +7,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	"github.com/spf13/cobra"
 	"k8s.io/client-go/discovery"
+
+	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 )
 
 type compatReport struct {
@@ -41,7 +43,7 @@ func runCompat(ctx context.Context, out io.Writer, opts *options) error {
 		return err
 	}
 	report := buildCompatReport(ctx, disco)
-	return writeOutput(out, opts.Output, opts.Template, report, func() error {
+	return render.Format(out, opts.Output, opts.Template, report, func(out io.Writer) error {
 		_, err := fmt.Fprintf(out, "Cluster: %s\nHPA API: %s\n\nCompatibility:\n", report.ClusterVersion, report.HPAAPI)
 		if err != nil {
 			return err
@@ -61,6 +63,7 @@ func runCompat(ctx context.Context, out io.Writer, opts *options) error {
 		}
 		return nil
 	})
+
 }
 
 func buildCompatReport(_ context.Context, disco discovery.DiscoveryInterface) compatReport {

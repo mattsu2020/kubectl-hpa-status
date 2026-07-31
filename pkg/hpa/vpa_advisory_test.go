@@ -65,11 +65,12 @@ func TestAnalyzeVPAAdvisory(t *testing.T) {
 			wantSafe:  true,
 		},
 		{
-			name:      "VPA Recommender mode - no conflict",
-			hpa:       buildVPAAdvisorHPA(true),
-			vpa:       &VPAConflictInfo{VPAName: "web-vpa", TargetKind: "Deployment", TargetName: "web", UpdateMode: "Recommender"},
-			wantLevel: VPAConflictNone,
-			wantSafe:  true,
+			name:                "unknown VPA mode fails closed",
+			hpa:                 buildVPAAdvisorHPA(true),
+			vpa:                 &VPAConflictInfo{VPAName: "web-vpa", TargetKind: "Deployment", TargetName: "web", UpdateMode: "Recommender"},
+			wantLevel:           VPAConflictError,
+			wantSafe:            false,
+			wantVPAPatchContain: "Initial",
 		},
 		{
 			name:      "VPA Initial mode with resource overlap - warning",

@@ -142,6 +142,26 @@ func TestFetchAllResourceQuotas_ReturnsAll(t *testing.T) {
 	if result[0].Used != "3" {
 		t.Errorf("expected used '3', got %q", result[0].Used)
 	}
+	if !result[0].UsageKnown {
+		t.Fatal("expected status.used presence to be preserved")
+	}
+}
+
+func TestFetchAllResourceQuotasPreservesUnsyncedUsage(t *testing.T) {
+	client := testutil.NewFakeClientWithObjects(&corev1.ResourceQuota{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "unsynced"},
+		Spec: corev1.ResourceQuotaSpec{Hard: corev1.ResourceList{
+			corev1.ResourceRequestsCPU: resource.MustParse("10"),
+		}},
+	})
+
+	result, err := FetchAllResourceQuotas(context.Background(), client, "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result) != 1 || result[0].UsageKnown {
+		t.Fatalf("missing status.used was not preserved: %+v", result)
+	}
 }
 
 func TestFetchAllResourceQuotas_None(t *testing.T) {

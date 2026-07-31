@@ -153,6 +153,11 @@ type Analysis struct {
 	// HealthResult holds the typed health state, score, and individual penalty
 	// signals. Populated when --debug is enabled or for JSON/YAML output.
 	HealthResult *HealthResult `json:"healthResult,omitempty" yaml:"healthResult,omitempty"`
+	// dynamicHealthBaseline is the immutable pre-enrichment health state used
+	// to reconcile KEDA, VPA, and churn penalties without accumulating or
+	// losing score through zero-value clamping. It is excluded from the wire
+	// model.
+	dynamicHealthBaseline *dynamicHealthBaseline
 	// HiddenFactors lists HPA decision factors that influence the controller
 	// but are only partially visible through public status fields.
 	HiddenFactors []HiddenDecisionFactor `json:"hiddenFactors,omitempty" yaml:"hiddenFactors,omitempty"`
@@ -252,12 +257,9 @@ type Analysis struct {
 	// EnrichmentStatus holds KEDA/VPA enrichment skip reasons for diagnostic
 	// output, populated during enrichment to explain why data may be absent.
 	//
-	// This is a JSON-mirror of internal/enrichment.Status, defined here because
-	// pkg/hpa cannot import the internal/enrichment package (Go internal package
-	// visibility). The internal/enrichment package converts its Status into this
-	// type before attaching it to Analysis. Treat the serialised shape as a
-	// public contract: add fields additively, never rename or reorder existing
-	// keys.
+	// This is the canonical status model; internal/enrichment aliases it rather
+	// than maintaining a second field/enum mirror. Treat the serialized shape
+	// as a public contract: add fields additively and never rename existing keys.
 	EnrichmentStatus *EnrichmentStatus `json:"enrichmentStatus,omitempty" yaml:"enrichmentStatus,omitempty"`
 	// MetricContract holds metrics contract validation results, populated when
 	// --metric-contract is enabled.
@@ -459,16 +461,15 @@ const (
 )
 
 // EnrichmentStatusEntry records the outcome for a single enrichment source.
-// JSON-mirror of internal/enrichment.Entry.
+// It is the canonical model shared by analysis output and internal enrichment.
 type EnrichmentStatusEntry struct {
 	Source EnrichmentSource `json:"source" yaml:"source"`
 	State  EnrichmentState  `json:"state" yaml:"state"`
 	Reason string           `json:"reason,omitempty" yaml:"reason,omitempty"`
 }
 
-// EnrichmentStatus holds the enrichment outcomes for all sources.
-// JSON-mirror of internal/enrichment.Status; attached to Analysis for
-// visibility in --debug and -o json output.
+// EnrichmentStatus holds the enrichment outcomes for all sources. It is
+// attached to Analysis for visibility in --debug and structured output.
 type EnrichmentStatus struct {
 	KEDA *EnrichmentStatusEntry `json:"keda,omitempty" yaml:"keda,omitempty"`
 	VPA  *EnrichmentStatusEntry `json:"vpa,omitempty" yaml:"vpa,omitempty"`

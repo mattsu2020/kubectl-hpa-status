@@ -9,12 +9,14 @@ import (
 
 	hpareadiness "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/readiness"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
-	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
+	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
 func newReadinessDoctorCommand(opts *options) *cobra.Command {
@@ -117,10 +119,11 @@ func runReadinessDoctor(ctx context.Context, out io.Writer, opts *options, name 
 
 	format, templateStr := selectOutputFromOptions(opts)
 
-	return writeOutput(out, format, templateStr, report, func() error {
+	return render.Format(out, format, templateStr, report, func(out io.Writer) error {
 		return hpaanalysis.WriteReadinessDoctorText(out, report,
 			style.NewTheme(shouldColorize(opts.Color, out)))
 	})
+
 }
 
 // isPodReady checks if a pod's Ready condition is True.

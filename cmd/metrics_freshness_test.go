@@ -2,8 +2,10 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	hpakeda "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/keda"
 
@@ -11,6 +13,7 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	fakediscovery "k8s.io/client-go/discovery/fake"
 )
@@ -93,5 +96,100 @@ func TestLatestMetricFailureEvent(t *testing.T) {
 	got := latestMetricFailureEvent(events, entry)
 	if got == nil || got.Reason != "FailedGetExternalMetric" {
 		t.Fatalf("expected FailedGetExternalMetric, got %#v", got)
+	}
+}
+
+func TestDiscoverMetricsAPIPrefersCustomV1Beta2AndFallsBack(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		resources []*metav1.APIResourceList
+		want      string
+	}{
+		{
+			name: "prefers v1beta2",
+			resources: []*metav1.APIResourceList{
+				{GroupVersion: "custom.metrics.k8s.io/v1beta1"},
+				{GroupVersion: "custom.metrics.k8s.io/v1beta2"},
+			},
+			want: "custom.metrics.k8s.io/v1beta2",
+		},
+		{
+			name: "falls back to v1beta1",
+			resources: []*metav1.APIResourceList{
+				{GroupVersion: "custom.metrics.k8s.io/v1beta1"},
+			},
+			want: "custom.metrics.k8s.io/v1beta1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			fakeClient := testutil.NewFakeClient()
+			fakeClient.Discovery().(*fakediscovery.FakeDiscovery).Resources = tt.resources
+			status := discoverMetricsAPI(
+				&kube.Client{Interface: fakeClient, Namespace: "default"},
+				"custom.metrics.k8s.io",
+			)
+			if !status.Available || status.Message != tt.want {
+				t.Fatalf("discoverMetricsAPI() = %+v, want available %q", status, tt.want)
+			}
+		})
+	}
+}
+
+func TestPodMetricSamplesRetainContainerAndFilterContainerResource(t *testing.T) {
+	t.Parallel()
+
+	var list podMetricsListJSON
+	if err := json.Unmarshal([]byte(`{
+		"items": [{
+			"timestamp": "2026-07-31T00:00:00Z",
+			"window": "30s",
+			"containers": [
+				{"name": "app", "usage": {"cpu": "100m"}},
+				{"name": "sidecar", "usage": {"cpu": "20m"}}
+			]
+		}]
+	}`), &list); err != nil {
+		t.Fatalf("unmarshal PodMetrics fixture: %v", err)
+	}
+	samples := podMetricSamplesFromList(list)
+	if len(samples) != 2 || samples[0].Container == "" || samples[1].Container == "" {
+		t.Fatalf("podMetricSamplesFromList() = %+v, want container names", samples)
+	}
+
+	newer := time.Date(2026, 7, 31, 0, 5, 0, 0, time.UTC)
+	older := newer.Add(-5 * time.Minute)
+	samples = []podMetricSample{
+		{Container: "app", Resource: corev1.ResourceCPU, Timestamp: newer, Window: "30s"},
+		{Container: "sidecar", Resource: corev1.ResourceCPU, Timestamp: older, Window: "30s"},
+	}
+	sidecar, found := latestPodMetricSample(samples, corev1.ResourceCPU, "sidecar")
+	if !found || !sidecar.Timestamp.Equal(older) {
+		t.Fatalf("latestPodMetricSample(sidecar) = %+v/%v, want the sidecar sample", sidecar, found)
+	}
+
+	hpa := &autoscalingv2.HorizontalPodAutoscaler{
+		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+			Metrics: []autoscalingv2.MetricSpec{{
+				Type: autoscalingv2.ContainerResourceMetricSourceType,
+				ContainerResource: &autoscalingv2.ContainerResourceMetricSource{
+					Name:      corev1.ResourceCPU,
+					Container: "sidecar",
+				},
+			}},
+		},
+	}
+	resourceName, containerName, ok := resourceIdentityForFreshnessEntry(
+		hpa,
+		0,
+		hpaanalysis.MetricFreshness{Name: "cpu", Type: "ContainerResource"},
+	)
+	if !ok || resourceName != corev1.ResourceCPU || containerName != "sidecar" {
+		t.Fatalf("resourceIdentityForFreshnessEntry() = (%q, %q, %v), want (cpu, sidecar, true)",
+			resourceName, containerName, ok)
 	}
 }

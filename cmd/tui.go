@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	analysisservice "github.com/mattsu2020/kubectl-hpa-status/internal/analysis"
 	hpakeda "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/keda"
 	hpavpa "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
 
@@ -62,12 +63,12 @@ func runTUI(ctx context.Context, out io.Writer, opts *options, initialName strin
 
 	// Create enrichment context and build a callback for batched enrichment.
 	ec := newEnrichmentContext(ctx, opts)
-	var enrichFn func(context.Context, []autoscalingv2.HorizontalPodAutoscaler) (map[string]*hpakeda.Analysis, map[string]*hpavpa.ConflictInfo)
+	var enrichFn func(context.Context, []autoscalingv2.HorizontalPodAutoscaler) (map[string]*hpakeda.Analysis, map[string]*hpavpa.ConflictInfo, map[string][]string)
 	if ec != nil {
-		enrichFn = func(enrichCtx context.Context, hpas []autoscalingv2.HorizontalPodAutoscaler) (map[string]*hpakeda.Analysis, map[string]*hpavpa.ConflictInfo) {
-			keda, _ := enrichListKEDA(enrichCtx, ec, hpas)
-			vpa, _ := enrichListVPA(enrichCtx, ec, hpas)
-			return keda, vpa
+		enrichFn = func(enrichCtx context.Context, hpas []autoscalingv2.HorizontalPodAutoscaler) (map[string]*hpakeda.Analysis, map[string]*hpavpa.ConflictInfo, map[string][]string) {
+			keda, kedaWarnings := enrichListKEDA(enrichCtx, ec, hpas)
+			vpa, vpaWarnings := enrichListVPA(enrichCtx, ec, hpas)
+			return keda, vpa, analysisservice.MergeNamespaceWarnings(kedaWarnings, vpaWarnings)
 		}
 	}
 

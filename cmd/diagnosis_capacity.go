@@ -5,20 +5,25 @@ import (
 	"fmt"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/observation"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
-func buildCapacityHeadroom(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, target string) *hpaanalysis.CapacityHeadroom {
+func buildCapacityHeadroomWithSnapshot(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, target string, snapshot *observation.Snapshot) *hpaanalysis.CapacityHeadroom {
 	if client == nil || hpa == nil {
 		return nil
 	}
-	info, err := kube.FetchScaleTargetInfo(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef)
-	if err != nil || info == nil || info.PodTemplate == nil {
+	if snapshot == nil {
+		snapshot = observation.New(client.Interface, hpa)
+	}
+	targetObservation := snapshot.ScaleTarget(ctx)
+	if !targetObservation.Known() || targetObservation.Data.PodTemplate == nil {
 		return nil
 	}
+	info := targetObservation.Data
 	cpuPerPod, memPerPod := sumPodTemplateRequests(info.PodTemplate)
 	additional := hpa.Spec.MaxReplicas - hpa.Status.DesiredReplicas
 	if additional < 0 {

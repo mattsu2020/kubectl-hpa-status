@@ -6,11 +6,13 @@ import (
 	"io"
 	"strings"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
-	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/spf13/cobra"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
+	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
 
 type compareReport struct {
@@ -72,9 +74,10 @@ func runCompare(ctx context.Context, out io.Writer, opts *options, fromRef, toRe
 		return fmt.Errorf("fetching TO HPA %s: %w", toRef, err)
 	}
 	report := buildCompareReport(fromLabel, toLabel, fromHPA, toHPA)
-	return writeOutput(out, opts.Output, opts.Template, report, func() error {
+	return render.Format(out, opts.Output, opts.Template, report, func(out io.Writer) error {
 		return writeCompareText(out, report)
 	})
+
 }
 
 // writeCompareText renders the human-readable single-pair compare output.
@@ -146,9 +149,10 @@ func runCompareAll(ctx context.Context, out io.Writer, opts *options, fromContex
 		}
 	}
 	list := compareListReport{Items: reports}
-	return writeOutput(out, opts.Output, opts.Template, list, func() error {
+	return render.Format(out, opts.Output, opts.Template, list, func(out io.Writer) error {
 		return renderCompareDriftText(out, reports)
 	})
+
 }
 
 func renderCompareDriftText(out io.Writer, reports []compareReport) error {

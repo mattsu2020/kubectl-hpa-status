@@ -7,10 +7,12 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	hpachurn "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/churn"
 
-	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/spf13/cobra"
+
+	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
 
 type historyReport struct {
@@ -71,7 +73,7 @@ func runHistory(ctx context.Context, out io.Writer, opts *options, name string, 
 		result.Queries = buildPrometheusHistoryQueries(prometheusURL, report.Analysis, since)
 	}
 	format, templateStr := selectOutputFromOptions(opts)
-	return writeOutput(out, format, templateStr, result, func() error {
+	return render.Format(out, format, templateStr, result, func(out io.Writer) error {
 		_, _ = fmt.Fprintf(out, "HPA history: %s/%s since=%s\n", result.Namespace, result.Name, result.Since)
 		_, _ = fmt.Fprintf(out, "Health: %s (%d/100)\n", result.Health, result.HealthScore)
 		if len(result.Anomalies) > 0 {
@@ -88,6 +90,7 @@ func runHistory(ctx context.Context, out io.Writer, opts *options, name string, 
 		}
 		return nil
 	})
+
 }
 
 func historyAnomalies(a hpaanalysis.Analysis) []string {

@@ -12,13 +12,15 @@ import (
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/enrichment"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 )
 
 type conflictScanReport struct {
-	Items []conflictItem `json:"items" yaml:"items"`
+	Items    []conflictItem      `json:"items" yaml:"items"`
+	Warnings map[string][]string `json:"warnings,omitempty" yaml:"warnings,omitempty"`
 }
 
 type conflictItem struct {
@@ -43,11 +45,12 @@ func runConflictScan(ctx context.Context, out io.Writer, opts *options) error {
 		return fmt.Errorf("failed to list HPAs: %w", err)
 	}
 
-	report := conflictScanReport{Items: detectHPAConflicts(ctx, opts, hpas.Items)}
+	items, warnings := detectHPAConflicts(ctx, opts, hpas.Items)
+	report := conflictScanReport{Items: items, Warnings: warnings}
 	return writeConflictScanReport(out, opts, report)
 }
 
-func detectHPAConflicts(ctx context.Context, opts *options, hpas []autoscalingv2.HorizontalPodAutoscaler) []conflictItem {
+func detectHPAConflicts(ctx context.Context, opts *options, hpas []autoscalingv2.HorizontalPodAutoscaler) ([]conflictItem, map[string][]string) {
 	byTarget := map[string][]autoscalingv2.HorizontalPodAutoscaler{}
 	for i := range hpas {
 		key := hpaTargetKey(&hpas[i])
@@ -82,8 +85,11 @@ func detectHPAConflicts(ctx context.Context, opts *options, hpas []autoscalingv2
 		}
 	}
 
+	var warnings map[string][]string
 	if conflictScanNeedsVPA(hpas) {
-		for key, vpa := range conflictVPAResults(ctx, opts, hpas) {
+		var vpaResults map[string]*hpavpa.ConflictInfo
+		vpaResults, warnings = conflictVPAResults(ctx, opts, hpas)
+		for key, vpa := range vpaResults {
 			if vpa == nil {
 				continue
 			}
@@ -109,16 +115,15 @@ func detectHPAConflicts(ctx context.Context, opts *options, hpas []autoscalingv2
 		}
 		return items[i].Target < items[j].Target
 	})
-	return items
+	return items, warnings
 }
 
-func conflictVPAResults(ctx context.Context, opts *options, hpas []autoscalingv2.HorizontalPodAutoscaler) map[string]*hpavpa.ConflictInfo {
+func conflictVPAResults(ctx context.Context, opts *options, hpas []autoscalingv2.HorizontalPodAutoscaler) (map[string]*hpavpa.ConflictInfo, map[string][]string) {
 	ec := enrichment.NewContext(ctx, enrichment.Config{
 		Kube: opts.KubeOptions(),
 		VPA:  "on",
 	})
-	results, _ := enrichment.BatchVPA(ctx, ec, hpas)
-	return results
+	return enrichment.BatchVPA(ctx, ec, hpas)
 }
 
 func conflictScanNeedsVPA(hpas []autoscalingv2.HorizontalPodAutoscaler) bool {
@@ -156,29 +161,55 @@ func writeConflictScanReport(out io.Writer, opts *options, report conflictScanRe
 		_, err = out.Write(data)
 		return err
 	default:
-		if len(report.Items) == 0 {
-			_, err := fmt.Fprintln(out, "No HPA controller conflicts detected.")
-			return err
-		}
-		_, _ = fmt.Fprintln(out, "Conflicts:")
-		for _, item := range report.Items {
-			_, _ = fmt.Fprintf(out, "  %s/%s\n", item.Namespace, targetNameOnly(item.Target))
-			_, _ = fmt.Fprintf(out, "    target: %s\n", item.Target)
-			if len(item.HPAs) > 0 {
-				_, _ = fmt.Fprintln(out, "    HPAs:")
-				for _, hpa := range item.HPAs {
-					_, _ = fmt.Fprintf(out, "      - %s\n", hpa)
+		return render.Format(out, "", "", report, func(out io.Writer) error {
+			if len(report.Items) == 0 {
+				if _, err := fmt.Fprintln(out, "No HPA controller conflicts detected."); err != nil {
+					return err
+				}
+			} else {
+				_, _ = fmt.Fprintln(out, "Conflicts:")
+				for _, item := range report.Items {
+					_, _ = fmt.Fprintf(out, "  %s/%s\n", item.Namespace, targetNameOnly(item.Target))
+					_, _ = fmt.Fprintf(out, "    target: %s\n", item.Target)
+					if len(item.HPAs) > 0 {
+						_, _ = fmt.Fprintln(out, "    HPAs:")
+						for _, hpa := range item.HPAs {
+							_, _ = fmt.Fprintf(out, "      - %s\n", hpa)
+						}
+					}
+					for _, risk := range item.Risks {
+						_, _ = fmt.Fprintf(out, "    Risk: %s\n", risk)
+					}
+					for _, evidence := range item.Evidence {
+						_, _ = fmt.Fprintf(out, "    Evidence: %s\n", evidence)
+					}
 				}
 			}
-			for _, risk := range item.Risks {
-				_, _ = fmt.Fprintf(out, "    Risk: %s\n", risk)
-			}
-			for _, evidence := range item.Evidence {
-				_, _ = fmt.Fprintf(out, "    Evidence: %s\n", evidence)
-			}
-		}
+			return writeConflictScanWarnings(out, report.Warnings)
+		})
+	}
+}
+
+func writeConflictScanWarnings(out io.Writer, warnings map[string][]string) error {
+	if len(warnings) == 0 {
 		return nil
 	}
+	namespaces := make([]string, 0, len(warnings))
+	for namespace := range warnings {
+		namespaces = append(namespaces, namespace)
+	}
+	sort.Strings(namespaces)
+	if _, err := fmt.Fprintln(out, "Warnings:"); err != nil {
+		return err
+	}
+	for _, namespace := range namespaces {
+		for _, warning := range warnings[namespace] {
+			if _, err := fmt.Fprintf(out, "  %s: %s\n", namespace, warning); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func hpaTargetKey(hpa *autoscalingv2.HorizontalPodAutoscaler) string {

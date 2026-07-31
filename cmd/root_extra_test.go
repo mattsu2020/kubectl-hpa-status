@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	corev1 "k8s.io/api/core/v1"
@@ -347,11 +348,11 @@ func TestAnalysisOptions(t *testing.T) {
 	}
 }
 
-// --- writePrometheus error tests ---
+// --- Prometheus rendering tests ---
 
 func TestWritePrometheusMetrics_WritesAllMetrics(t *testing.T) {
 	var out bytes.Buffer
-	err := writePrometheusMetrics(&out, "ns", "name", 75, 3, 5, 1, 10)
+	err := render.PrometheusMetrics(&out, "ns", "name", 75, 3, 5, 1, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -363,7 +364,7 @@ func TestWritePrometheusMetrics_WritesAllMetrics(t *testing.T) {
 	}
 }
 
-// --- escapePrometheusLabelValue tests ---
+// --- Prometheus label escaping tests ---
 
 func TestEscapePrometheusLabelValue(t *testing.T) {
 	tests := []struct {
@@ -375,7 +376,7 @@ func TestEscapePrometheusLabelValue(t *testing.T) {
 		{`both\"here`, `both\\\"here`},
 	}
 	for _, tt := range tests {
-		got := escapePrometheusLabelValue(tt.input)
+		got := render.EscapePrometheusLabelValue(tt.input)
 		if got != tt.want {
 			t.Errorf("escapePrometheusLabelValue(%q) = %q, want %q", tt.input, got, tt.want)
 		}

@@ -153,7 +153,7 @@ Releases are tag-driven (`git tag v1.2.3`):
 2. Tag the release commit: `git tag -a v1.2.3 -m "v1.2.3"`.
 3. Push the tag. The [`release`](.github/workflows/release.yml) workflow:
    - runs `go test ./...`
-   - builds archives for linux/darwin/windows (amd64/arm64) via GoReleaser
+   - builds archives for linux/darwin (amd64/arm64) and windows/amd64 via GoReleaser
      (`.goreleaser.yml`)
    - signs archives and checksums with cosign (sigstore, keyless)
    - generates SLSA build-provenance attestations

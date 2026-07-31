@@ -23,3 +23,13 @@ check "cmd" "$(statement_coverage '/cmd/')" 55
 check "cmd/replaylab" "$(statement_coverage '/cmd/replaylab/')" 60
 check "internal/enrichment" "$(statement_coverage '/internal/enrichment/')" 50
 check "pkg/hpa/render" "$(statement_coverage '/pkg/hpa/render/')" 50
+
+# Safety-sensitive boundaries get their own floors so strong coverage in large
+# presentation packages cannot hide a regression in mutation, policy, archive,
+# or persistence code.
+check "mutating command paths" "$(statement_coverage '/cmd/(apply|config_apply|list_apply)\.go:')" 65
+check "internal/patch" "$(statement_coverage '/internal/patch/')" 85
+check "internal/history" "$(statement_coverage '/internal/history/')" 60
+check "pkg/hpa/policy" "$(statement_coverage '/pkg/hpa/policy/')" 85
+check "pkg/hpa/lint" "$(statement_coverage '/pkg/hpa/lint/')" 80
+check "cmd/bundle" "$(statement_coverage '/cmd/bundle/')" 80

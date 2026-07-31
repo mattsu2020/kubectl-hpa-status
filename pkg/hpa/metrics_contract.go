@@ -25,6 +25,9 @@ type MetricContractReport struct {
 
 // MetricContractCheck holds the contract check result for a single metric.
 type MetricContractCheck struct {
+	// identity retains the canonical spec identity for internal correlation
+	// without changing the public JSON/YAML contract report.
+	identity MetricID
 	// MetricType is the HPA metric type (Resource, Pods, Object, External, ContainerResource).
 	MetricType string `json:"metricType" yaml:"metricType"`
 	// MetricName is the metric name (e.g., "cpu", "http_requests").
@@ -79,6 +82,10 @@ type MetricContractInput struct {
 
 // MetricContractMetric describes a single HPA metric spec for contract validation.
 type MetricContractMetric struct {
+	// identity is populated by WithMetricContractIdentity when the caller has
+	// the original autoscaling/v2 MetricSpec. Keeping it internal avoids
+	// expanding the serialized report surface.
+	identity MetricID
 	// Type is the metric type (Resource, Pods, Object, External, ContainerResource).
 	Type string
 	// Name is the metric name (e.g., "cpu", "memory", "http_requests").
@@ -104,6 +111,14 @@ type MetricContractMetric struct {
 	APIGroup string
 	// HasCurrentData indicates whether current metric data exists in HPA status.
 	HasCurrentData bool
+}
+
+// WithMetricContractIdentity attaches the canonical spec identity used for
+// internal cross-analysis correlation. MetricContractMetric is an input DTO
+// and the identity is not emitted in contract report JSON/YAML.
+func WithMetricContractIdentity(metric MetricContractMetric, identity MetricID) MetricContractMetric {
+	metric.identity = identity
+	return metric
 }
 
 // APIServiceStatus holds the availability status of a metrics API.
@@ -188,6 +203,7 @@ func analyzeMetric(metric MetricContractMetric, apiServices map[string]APIServic
 		apiSvc = metricsAPIForMetricType(metric.Type)
 	}
 	check := MetricContractCheck{
+		identity:                      metric.identity,
 		MetricType:                    metric.Type,
 		MetricName:                    metric.Name,
 		Resource:                      metric.Resource,

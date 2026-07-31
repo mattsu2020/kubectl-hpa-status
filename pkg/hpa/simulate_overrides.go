@@ -258,48 +258,46 @@ func applyToleranceOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, directio
 }
 
 func applyMetricTargetOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, name, value string) error {
-	for i := range hpa.Spec.Metrics {
-		spec := &hpa.Spec.Metrics[i]
-		if !metricSpecNameMatches(*spec, name) {
-			continue
+	index, err := resolveMetricSpecIndexUnique(hpa, name)
+	if err != nil {
+		return fmt.Errorf("metric %q: %w", name, err)
+	}
+	spec := &hpa.Spec.Metrics[index]
+	target := metricTargetPointer(spec)
+	if target == nil {
+		return fmt.Errorf("metric %q has no target", name)
+	}
+	if target.Type == autoscalingv2.UtilizationMetricType || target.AverageUtilization != nil {
+		parsed := strings.TrimSuffix(value, "%")
+		utilization, err := parsePositiveInt32(parsed)
+		if err != nil {
+			return fmt.Errorf("invalid utilization target %q for metric %q: %w", value, name, err)
 		}
-		target := metricTargetPointer(spec)
-		if target == nil {
-			return fmt.Errorf("metric %q has no target", name)
-		}
-		if target.Type == autoscalingv2.UtilizationMetricType || target.AverageUtilization != nil {
-			parsed := strings.TrimSuffix(value, "%")
-			utilization, err := parsePositiveInt32(parsed)
-			if err != nil {
-				return fmt.Errorf("invalid utilization target %q for metric %q: %w", value, name, err)
-			}
-			target.Type = autoscalingv2.UtilizationMetricType
-			target.AverageUtilization = &utilization
-			target.AverageValue = nil
-			target.Value = nil
-			return nil
-		}
-
-		quantity, err := resource.ParseQuantity(value)
-		if err != nil || quantity.Sign() <= 0 {
-			if err == nil {
-				err = errors.New("target must be greater than zero")
-			}
-			return fmt.Errorf("invalid quantity target %q for metric %q: %w", value, name, err)
-		}
-		if target.Type == autoscalingv2.ValueMetricType || target.Value != nil {
-			target.Type = autoscalingv2.ValueMetricType
-			target.Value = &quantity
-			target.AverageValue = nil
-		} else {
-			target.Type = autoscalingv2.AverageValueMetricType
-			target.AverageValue = &quantity
-			target.Value = nil
-		}
-		target.AverageUtilization = nil
+		target.Type = autoscalingv2.UtilizationMetricType
+		target.AverageUtilization = &utilization
+		target.AverageValue = nil
+		target.Value = nil
 		return nil
 	}
-	return fmt.Errorf("metric %q: %w", name, ErrMetricNotFound)
+
+	quantity, err := resource.ParseQuantity(value)
+	if err != nil || quantity.Sign() <= 0 {
+		if err == nil {
+			err = errors.New("target must be greater than zero")
+		}
+		return fmt.Errorf("invalid quantity target %q for metric %q: %w", value, name, err)
+	}
+	if target.Type == autoscalingv2.ValueMetricType || target.Value != nil {
+		target.Type = autoscalingv2.ValueMetricType
+		target.Value = &quantity
+		target.AverageValue = nil
+	} else {
+		target.Type = autoscalingv2.AverageValueMetricType
+		target.AverageValue = &quantity
+		target.Value = nil
+	}
+	target.AverageUtilization = nil
+	return nil
 }
 
 func metricSpecNameMatches(spec autoscalingv2.MetricSpec, name string) bool {

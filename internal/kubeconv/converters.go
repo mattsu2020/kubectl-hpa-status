@@ -181,10 +181,19 @@ func VPAInfo(vpa *kube.VPAInfo) *hpavpa.Info {
 	out := &hpavpa.Info{
 		Name:                vpa.Name,
 		TargetRef:           vpa.TargetRef,
+		TargetAPIVersion:    vpa.TargetAPIVersion,
 		TargetKind:          vpa.TargetKind,
 		TargetName:          vpa.TargetName,
 		UpdateMode:          vpa.UpdateMode,
 		ControlledResources: append([]string(nil), vpa.ControlledResources...),
+	}
+	for _, policy := range vpa.ContainerPolicies {
+		out.ContainerPolicies = append(out.ContainerPolicies, hpavpa.ContainerPolicy{
+			ContainerName:                policy.ContainerName,
+			Mode:                         policy.Mode,
+			ControlledResources:          append([]string(nil), policy.ControlledResources...),
+			ControlledResourcesSpecified: policy.ControlledResourcesSpecified,
+		})
 	}
 	for _, r := range vpa.Recommendations {
 		out.Recommendations = append(out.Recommendations, hpavpa.RecommendationInfo{

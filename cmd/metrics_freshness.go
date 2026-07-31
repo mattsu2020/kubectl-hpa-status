@@ -54,27 +54,34 @@ type apiDiscoveryStatus struct {
 }
 
 func discoverMetricsAPI(client *kube.Client, source string) apiDiscoveryStatus {
-	groupVersion := metricsAPIGroupVersion(source)
-	if groupVersion == "" {
+	groupVersions := metricsAPIGroupVersions(source)
+	if len(groupVersions) == 0 {
 		return apiDiscoveryStatus{Available: false, Message: "unknown metrics API source"}
 	}
-	_, err := client.Interface.Discovery().ServerResourcesForGroupVersion(groupVersion)
-	if err != nil {
-		return apiDiscoveryStatus{Available: false, Message: err.Error()}
+	var failures []string
+	for _, groupVersion := range groupVersions {
+		_, err := client.Interface.Discovery().ServerResourcesForGroupVersion(groupVersion)
+		if err == nil {
+			return apiDiscoveryStatus{Available: true, Message: groupVersion}
+		}
+		failures = append(failures, fmt.Sprintf("%s: %v", groupVersion, err))
 	}
-	return apiDiscoveryStatus{Available: true, Message: groupVersion}
+	return apiDiscoveryStatus{Available: false, Message: strings.Join(failures, "; ")}
 }
 
-func metricsAPIGroupVersion(source string) string {
+func metricsAPIGroupVersions(source string) []string {
 	switch source {
 	case "metrics.k8s.io":
-		return "metrics.k8s.io/v1beta1"
+		return []string{"metrics.k8s.io/v1beta1"}
 	case "custom.metrics.k8s.io":
-		return "custom.metrics.k8s.io/v1beta1"
+		return []string{
+			"custom.metrics.k8s.io/v1beta2",
+			"custom.metrics.k8s.io/v1beta1",
+		}
 	case "external.metrics.k8s.io":
-		return "external.metrics.k8s.io/v1beta1"
+		return []string{"external.metrics.k8s.io/v1beta1"}
 	default:
-		return ""
+		return nil
 	}
 }
 
@@ -136,11 +143,11 @@ func enrichResourceMetricSamples(ctx context.Context, client *kube.Client, hpa *
 	now := time.Now()
 	for i := range report.Analysis.MetricFreshnessEntries {
 		entry := &report.Analysis.MetricFreshnessEntries[i]
-		resourceName, ok := resourceNameForFreshnessEntry(hpa, i, *entry)
+		resourceName, containerName, ok := resourceIdentityForFreshnessEntry(hpa, i, *entry)
 		if !ok {
 			continue
 		}
-		sample, ok := latestPodMetricSample(samples, resourceName)
+		sample, ok := latestPodMetricSample(samples, resourceName, containerName)
 		if !ok {
 			continue
 		}
@@ -167,6 +174,7 @@ func hasResourceFreshnessEntry(entries []hpaanalysis.MetricFreshness) bool {
 }
 
 type podMetricSample struct {
+	Container string
 	Resource  corev1.ResourceName
 	Timestamp time.Time
 	Window    string
@@ -177,6 +185,7 @@ type podMetricsListJSON struct {
 		Timestamp  metav1.Time `json:"timestamp"`
 		Window     string      `json:"window"`
 		Containers []struct {
+			Name  string              `json:"name"`
 			Usage corev1.ResourceList `json:"usage"`
 		} `json:"containers"`
 	} `json:"items"`
@@ -198,6 +207,10 @@ func fetchPodMetricSamples(ctx context.Context, client *kube.Client, namespace, 
 	if err := json.Unmarshal(raw, &list); err != nil {
 		return nil, err
 	}
+	return podMetricSamplesFromList(list), nil
+}
+
+func podMetricSamplesFromList(list podMetricsListJSON) []podMetricSample {
 	var samples []podMetricSample
 	for _, item := range list.Items {
 		if item.Timestamp.IsZero() {
@@ -206,6 +219,7 @@ func fetchPodMetricSamples(ctx context.Context, client *kube.Client, namespace, 
 		for _, container := range item.Containers {
 			for resourceName := range container.Usage {
 				samples = append(samples, podMetricSample{
+					Container: container.Name,
 					Resource:  resourceName,
 					Timestamp: item.Timestamp.Time,
 					Window:    item.Window,
@@ -213,30 +227,42 @@ func fetchPodMetricSamples(ctx context.Context, client *kube.Client, namespace, 
 			}
 		}
 	}
-	return samples, nil
+	return samples
 }
 
-func resourceNameForFreshnessEntry(hpa *autoscalingv2.HorizontalPodAutoscaler, index int, entry hpaanalysis.MetricFreshness) (corev1.ResourceName, bool) {
+func resourceIdentityForFreshnessEntry(
+	hpa *autoscalingv2.HorizontalPodAutoscaler,
+	index int,
+	entry hpaanalysis.MetricFreshness,
+) (corev1.ResourceName, string, bool) {
 	if entry.Type != "Resource" && entry.Type != "ContainerResource" {
-		return "", false
+		return "", "", false
 	}
 	if index >= 0 && index < len(hpa.Spec.Metrics) {
 		spec := hpa.Spec.Metrics[index]
 		if spec.Type == autoscalingv2.ResourceMetricSourceType && spec.Resource != nil {
-			return spec.Resource.Name, true
+			return spec.Resource.Name, "", true
 		}
 		if spec.Type == autoscalingv2.ContainerResourceMetricSourceType && spec.ContainerResource != nil {
-			return spec.ContainerResource.Name, true
+			return spec.ContainerResource.Name, spec.ContainerResource.Container, true
 		}
 	}
-	return corev1.ResourceName(entry.Name), entry.Name != ""
+	if entry.Type == "ContainerResource" {
+		return "", "", false
+	}
+	return corev1.ResourceName(entry.Name), "", entry.Name != ""
 }
 
-func latestPodMetricSample(samples []podMetricSample, resourceName corev1.ResourceName) (podMetricSample, bool) {
+func latestPodMetricSample(
+	samples []podMetricSample,
+	resourceName corev1.ResourceName,
+	containerName string,
+) (podMetricSample, bool) {
 	var latest podMetricSample
 	found := false
 	for _, sample := range samples {
-		if sample.Resource != resourceName {
+		if sample.Resource != resourceName ||
+			(containerName != "" && sample.Container != containerName) {
 			continue
 		}
 		if !found || sample.Timestamp.After(latest.Timestamp) {

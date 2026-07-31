@@ -72,8 +72,12 @@ func SimulateScenario(hpa *autoscalingv2.HorizontalPodAutoscaler, overrides, met
 			value := metricOverrides[name]
 			result.Parameter = "metric." + name
 			result.SimulatedValue = value
-			if idx, found := findCurrentMetric(hpa, name); found {
-				spec, _ := resolveMetricSpec(hpa, name)
+			spec, specErr := resolveMetricSpecUnique(hpa, name)
+			if specErr != nil {
+				continue
+			}
+			idx, currentErr := findCurrentMetricForSpec(hpa, spec)
+			if currentErr == nil && idx >= 0 {
 				result.OriginalValue = formatMetricValue(hpa.Status.CurrentMetrics[idx], spec.Type)
 			}
 		}
@@ -154,8 +158,11 @@ func recomputeSimulatedDesired(hpa *autoscalingv2.HorizontalPodAutoscaler) {
 	if !found {
 		desired = hpa.Status.DesiredReplicas
 	}
-	// Missing metrics conservatively block a scale-down in the public estimate.
-	if found && len(hpa.Status.CurrentMetrics) < len(hpa.Spec.Metrics) && desired < hpa.Status.CurrentReplicas {
+	// Missing, duplicate, or malformed metrics conservatively block a
+	// scale-down. Comparing slice lengths is insufficient because two status
+	// entries can describe the same selector/container/object while another
+	// spec metric is absent.
+	if !hasOneToOneCanonicalMetricStatus(hpa) && desired < hpa.Status.CurrentReplicas {
 		desired = hpa.Status.CurrentReplicas
 	}
 
@@ -174,6 +181,61 @@ func recomputeSimulatedDesired(hpa *autoscalingv2.HorizontalPodAutoscaler) {
 			"the projected replica count was calculated from visible metric data")
 	}
 	replaceSimulatedControllerConditions(hpa, limited, limitedReason)
+}
+
+// hasOneToOneCanonicalMetricStatus reports whether every spec metric has
+// exactly one usable current status entry with the same canonical identity.
+// It deliberately fails closed for duplicate identities and malformed
+// selectors/source payloads so an estimated simulation cannot project a
+// scale-down from incomplete evidence.
+func hasOneToOneCanonicalMetricStatus(hpa *autoscalingv2.HorizontalPodAutoscaler) bool {
+	if hpa == nil || len(hpa.Spec.Metrics) != len(hpa.Status.CurrentMetrics) {
+		return false
+	}
+
+	specTargets := make(map[MetricID]autoscalingv2.MetricTargetType, len(hpa.Spec.Metrics))
+	for i := range hpa.Spec.Metrics {
+		spec := &hpa.Spec.Metrics[i]
+		id, err := MetricIDFromSpec(*spec)
+		if err != nil {
+			return false
+		}
+		if _, duplicate := specTargets[id]; duplicate {
+			return false
+		}
+		target := metricTargetPointer(spec)
+		if target == nil {
+			return false
+		}
+		specTargets[id] = target.Type
+	}
+
+	statusIDs := make(map[MetricID]struct{}, len(hpa.Status.CurrentMetrics))
+	for _, current := range hpa.Status.CurrentMetrics {
+		id, err := MetricIDFromStatus(current)
+		if err != nil {
+			return false
+		}
+		if _, duplicate := statusIDs[id]; duplicate {
+			return false
+		}
+		targetType, specified := specTargets[id]
+		if !specified {
+			return false
+		}
+		value, ok := currentMetricValueStatus(current)
+		if !ok || !hasMetricValueForTarget(value, targetType) {
+			return false
+		}
+		statusIDs[id] = struct{}{}
+	}
+
+	for id := range specTargets {
+		if _, found := statusIDs[id]; !found {
+			return false
+		}
+	}
+	return true
 }
 
 func simulatedDesiredFromMetrics(hpa *autoscalingv2.HorizontalPodAutoscaler) (int32, bool) {

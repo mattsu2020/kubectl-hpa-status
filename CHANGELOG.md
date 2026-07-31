@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Refactored analysis, observation, enrichment, history, conversion, and TUI
+  boundaries so commands share canonical request-scoped services and models.
+- Capacity planning now reports unknown inputs explicitly, accounts for Pod
+  slots and scheduling constraints, and keeps Cluster Autoscaler detection
+  advisory until compatible node-group headroom is proven.
+- HPA/VPA conflict detection now distinguishes utilization targets from
+  average-value targets, and retrospective analysis preserves complete
+  replica ranges and terminal bottleneck duration.
+
 - **`bundle`, `incident-bundle`, and `snapshot` now redact by default.**
   These commands produce evidence packs meant to leave the operator's machine,
   so `--redact` defaults to `true` (matching `support-bundle`). Pass
@@ -16,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   values.
 
 ### Added
+
+- Opt-in grouped status schema v2 for JSON, YAML, JSONL, JSONPath, and Go
+  templates, including per-item error records and a checked-in JSON Schema.
 
 - **Input size guardrails.** Files read fully into memory (candidate HPA
   manifests, recorded JSON traces, GitOps manifests, config files) are capped

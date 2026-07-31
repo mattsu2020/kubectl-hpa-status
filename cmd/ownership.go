@@ -6,10 +6,12 @@ import (
 	"io"
 	"strings"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	"github.com/spf13/cobra"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 )
 
 type ownershipReport struct {
@@ -69,10 +71,11 @@ func runOwnership(ctx context.Context, out io.Writer, opts *options, names []str
 	} else {
 		value = ownershipListReport{Items: reports}
 	}
-	return writeOutput(out, opts.Output, opts.Template, value, func() error {
+	return render.Format(out, opts.Output, opts.Template, value, func(out io.Writer) error {
 		writeOwnershipText(out, reports)
 		return nil
 	})
+
 }
 
 func buildOwnershipReport(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) (ownershipReport, error) {

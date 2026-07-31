@@ -25,6 +25,22 @@ func TestNewListItemHighlightsImplicitMaxReplicasLimit(t *testing.T) {
 	}
 }
 
+func TestNewListItemPreservesZeroHealthScore(t *testing.T) {
+	got := NewListItem(Analysis{
+		Namespace:   "default",
+		Name:        "broken",
+		Health:      "ERROR",
+		HealthScore: 0,
+		Conditions: []Condition{
+			{Type: "ScalingActive", Status: "False", Reason: "FailedGetResourceMetric"},
+		},
+	})
+
+	if got.HealthScore != 0 {
+		t.Fatalf("HealthScore = %d, want 0", got.HealthScore)
+	}
+}
+
 func TestWriteListTextVisuallyHighlightsProblems(t *testing.T) {
 	report := ListReport{Items: []ListItem{
 		{Namespace: "default", Name: "web", Current: 2, Desired: 2, Health: "OK", Summary: "steady"},

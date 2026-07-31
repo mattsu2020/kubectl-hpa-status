@@ -15,6 +15,10 @@
 # Default output format: table, wide, json, jsonl, yaml
 # output: json
 
+# Structured status output schema: v1 (flat) or v2 (grouped). This applies to
+# status/watch machine-readable output; pair v2 with json, jsonl, or yaml.
+# outputSchema: v2
+
 # Show extra columns in list output
 # wide: true
 
@@ -97,4 +101,3 @@ healthWeights:
   atMinimumReplicas: 5    # Deducted when desired == minReplicas. Default: 5
   # kedaInactiveTrigger: 15 # Deducted when a KEDA ScaledObject trigger is paused/inactive. Default: 15
   # vpaConflict: 20         # Deducted when VPA and HPA both manage CPU/memory. Default: 20
-

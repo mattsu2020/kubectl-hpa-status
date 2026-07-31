@@ -11,7 +11,7 @@
     "statusReport": {
       "type": "object",
       "properties": {
-        "apiVersion": { "type": "string" },
+        "apiVersion": { "type": "string", "const": "hpa-status/v1" },
         "analysis": { "$ref": "#/$defs/analysis" },
         "events": {
           "type": "array",
@@ -23,7 +23,7 @@
     "statusBatch": {
       "type": "object",
       "properties": {
-        "apiVersion": { "type": "string" },
+        "apiVersion": { "type": "string", "const": "hpa-status/v1" },
         "items": {
           "type": "array",
           "minItems": 1,
@@ -46,10 +46,14 @@
     "listReport": {
       "type": "object",
       "properties": {
-        "apiVersion": { "type": "string" },
+        "apiVersion": { "type": "string", "const": "hpa-status/v1" },
         "items": {
           "type": "array",
           "items": { "$ref": "#/$defs/listItem" }
+        },
+        "gitOpsDrift": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/gitOpsDriftSignal" }
         }
       },
       "required": ["apiVersion", "items"]
@@ -318,6 +322,7 @@
         "minReplicas": { "type": "integer" },
         "maxReplicas": { "type": "integer" },
         "summary": { "type": "string" },
+        "summaryKey": { "type": "string" },
         "health": { "type": "string", "enum": ["OK", "STABILIZED", "LIMITED", "ERROR"] },
         "healthScore": { "type": "integer", "minimum": 0, "maximum": 100 },
         "issue": { "type": "string" },
@@ -329,9 +334,29 @@
             { "type": "string", "format": "date-time" },
             { "type": "null" }
           ]
-        }
+        },
+        "stabilizing": { "type": "boolean" },
+        "stabilizationLabel": { "type": "string" },
+        "churnLevel": { "type": "string" },
+        "churnScore": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "trendSparkline": { "type": "string" },
+        "trendFlapping": { "type": "boolean" }
       },
       "required": ["namespace", "name", "health", "healthScore"]
+    },
+    "gitOpsDriftSignal": {
+      "type": "object",
+      "properties": {
+        "namespace": { "type": "string" },
+        "name": { "type": "string" },
+        "tool": { "type": "string" },
+        "evidence": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "advice": { "type": "string" }
+      },
+      "required": ["namespace", "name", "tool", "advice"]
     }
   }
 }

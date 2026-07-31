@@ -338,15 +338,17 @@ func TestResourceRequestsFromPodTemplate_ExposesEffectiveRequests(t *testing.T) 
 	template := &corev1.PodTemplateSpec{Spec: corev1.PodSpec{
 		Containers: []corev1.Container{{
 			Name: "app",
-			Resources: corev1.ResourceRequirements{Requests: corev1.ResourceList{
-				corev1.ResourceCPU: resource.MustParse("100m"),
-			}},
+			Resources: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("100m")},
+				Limits:   corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("500m")},
+			},
 		}},
 		InitContainers: []corev1.Container{{
 			Name: "init",
-			Resources: corev1.ResourceRequirements{Requests: corev1.ResourceList{
-				corev1.ResourceCPU: resource.MustParse("1"),
-			}},
+			Resources: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("1")},
+				Limits:   corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("2")},
+			},
 		}},
 		Overhead: corev1.ResourceList{
 			corev1.ResourceCPU: resource.MustParse("50m"),
@@ -360,5 +362,8 @@ func TestResourceRequestsFromPodTemplate_ExposesEffectiveRequests(t *testing.T) 
 	}
 	if result.PodRequests["cpu"] != "1050m" {
 		t.Fatalf("effective Pod CPU = %q, want 1050m", result.PodRequests["cpu"])
+	}
+	if result.PodLimits["cpu"] != "2050m" {
+		t.Fatalf("effective Pod CPU limit = %q, want 2050m", result.PodLimits["cpu"])
 	}
 }

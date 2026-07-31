@@ -10,7 +10,7 @@ import (
 )
 
 // fetchAndAnalyzePods retrieves pods for the HPA scale target and runs pod-level analysis.
-func fetchAndAnalyzePods(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpaanalysis.PodAnalysis {
+func fetchAndAnalyzePods(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpaanalysis.PodAnalysis { //nolint:unused // Retained compatibility wrapper.
 	ref := hpa.Spec.ScaleTargetRef
 	selector, err := resolveScaleTargetSelector(ctx, client, hpa.Namespace, ref)
 	if err != nil {

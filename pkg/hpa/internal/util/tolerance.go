@@ -75,6 +75,33 @@ func RatioWithinTolerance(hpa *autoscalingv2.HorizontalPodAutoscaler, ratio floa
 	return math.Abs(ratio-1) <= tolerance, tolerance
 }
 
+// ProjectedReplicasForRatio safely evaluates ceil(current * ratio). The
+// boolean is false when the inputs do not provide usable scaling evidence;
+// callers should preserve the current replica count in that case. Positive
+// infinity and finite products beyond int32 are saturated at MaxInt32.
+func ProjectedReplicasForRatio(current int32, ratio float64) (int32, bool) {
+	if current < 0 || math.IsNaN(ratio) || ratio < 0 {
+		return current, false
+	}
+	if math.IsInf(ratio, 1) {
+		return math.MaxInt32, true
+	}
+
+	product := float64(current) * ratio
+	if math.IsNaN(product) {
+		return current, false
+	}
+	if math.IsInf(product, 1) || product > float64(math.MaxInt32) {
+		return math.MaxInt32, true
+	}
+
+	projected := math.Ceil(product)
+	if projected > float64(math.MaxInt32) {
+		return math.MaxInt32, true
+	}
+	return int32(projected), true
+}
+
 // EstimatedDesiredForRatio applies the directional tolerance and estimates the
 // raw desired replica count for one metric. This mirrors the public part of the
 // HPA algorithm; missing-pod and not-yet-ready-pod conservative adjustments are
@@ -85,5 +112,9 @@ func EstimatedDesiredForRatio(hpa *autoscalingv2.HorizontalPodAutoscaler, ratio 
 	if within {
 		return current
 	}
-	return int32(math.Ceil(float64(current) * ratio))
+	projected, usable := ProjectedReplicasForRatio(current, ratio)
+	if !usable {
+		return current
+	}
+	return projected
 }

@@ -56,9 +56,7 @@ func appendMarkdownHeader(out *strings.Builder, a *hpa.Analysis) {
 
 	out.WriteString("**Health:** ")
 	out.WriteString(a.Health)
-	if a.HealthScore > 0 {
-		out.WriteString(fmt.Sprintf(" (%d/100)", a.HealthScore))
-	}
+	out.WriteString(fmt.Sprintf(" (%d/100)", a.HealthScore))
 	out.WriteString("\n")
 
 	out.WriteString(fmt.Sprintf("**Replicas:** current=%d desired=%d min=%d max=%d\n", a.Current, a.Desired, a.Min, a.Max))

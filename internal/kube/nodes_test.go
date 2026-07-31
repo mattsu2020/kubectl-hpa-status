@@ -33,6 +33,9 @@ func TestFetchNodeCapacity(t *testing.T) {
 		if summary.TotalNodes != 1 {
 			t.Errorf("expected 1 node, got %d", summary.TotalNodes)
 		}
+		if summary.SchedulableNodes != 1 {
+			t.Errorf("expected 1 schedulable node, got %d", summary.SchedulableNodes)
+		}
 		if summary.AllocCPU.String() != "4" {
 			t.Errorf("expected 4 CPU, got %s", summary.AllocCPU.String())
 		}
@@ -59,6 +62,23 @@ func TestFetchNodeCapacity(t *testing.T) {
 		if summary.TaintedNodes != 1 {
 			t.Errorf("expected 1 tainted node, got %d", summary.TaintedNodes)
 		}
+		if summary.SchedulableNodes != 1 || summary.AllocCPU.String() != "8" {
+			t.Fatalf("blocking-taint capacity must be excluded: %+v", summary)
+		}
+	})
+
+	t.Run("not ready and cordoned nodes are excluded", func(t *testing.T) {
+		notReady := buildTestNode("not-ready", "4", "16Gi", nil)
+		notReady.Status.Conditions[0].Status = corev1.ConditionFalse
+		cordoned := buildTestNode("cordoned", "8", "32Gi", nil)
+		cordoned.Spec.Unschedulable = true
+		summary, err := FetchNodeCapacity(context.Background(), fakeClientWithNodes(notReady, cordoned))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if summary.SchedulableNodes != 0 || !summary.AllocCPU.IsZero() || !summary.AllocMemory.IsZero() {
+			t.Fatalf("ineligible node capacity leaked into summary: %+v", summary)
+		}
 	})
 }
 
@@ -73,6 +93,10 @@ func buildTestNode(name, cpu, memory string, taints []corev1.Taint) *corev1.Node
 				corev1.ResourceCPU:    resource.MustParse(cpu),
 				corev1.ResourceMemory: resource.MustParse(memory),
 			},
+			Conditions: []corev1.NodeCondition{{
+				Type:   corev1.NodeReady,
+				Status: corev1.ConditionTrue,
+			}},
 		},
 	}
 }

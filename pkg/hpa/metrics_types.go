@@ -65,6 +65,10 @@ const (
 
 // MetricFreshness holds the freshness analysis for a single HPA metric.
 type MetricFreshness struct {
+	// identity retains the full selector/container/object identity used to
+	// correlate this runtime analysis with hints. It is intentionally
+	// unexported so the existing JSON/YAML wire format remains unchanged.
+	identity MetricID
 	// Name is the metric display name (e.g., "cpu", "queue_depth").
 	Name string `json:"name" yaml:"name"`
 	// Type is the metric source type (Resource, Pods, Object, External, ContainerResource).
