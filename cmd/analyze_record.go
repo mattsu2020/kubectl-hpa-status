@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"sort"
+	"time"
 
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/spf13/cobra"
@@ -28,24 +29,59 @@ type recordAnalysisItem struct {
 	Suggestions    []string `json:"suggestions,omitempty" yaml:"suggestions,omitempty"`
 }
 
+// analyzeRecordOptions carries the detector selection and the tuning knobs
+// that only apply to some detectors, so adding a detector does not keep
+// widening the runAnalyzeRecord signature.
+type analyzeRecordOptions struct {
+	detect        string
+	timezone      string
+	leadTime      time.Duration
+	bucketMinutes int
+	minDays       int
+}
+
 func newAnalyzeRecordCommand(opts *options) *cobra.Command {
-	var detect string
+	params := analyzeRecordOptions{}
 	cmd := &cobra.Command{
 		Use:   "analyze-record FILE",
-		Short: "Analyze durable record JSONL for flapping and replica churn",
+		Short: "Analyze durable record JSONL for flapping, churn, and recurring demand patterns",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runAnalyzeRecord(cmd.OutOrStdout(), opts, args[0], detect)
+			return runAnalyzeRecord(cmd.OutOrStdout(), opts, args[0], params)
 		},
 	}
-	cmd.Flags().StringVar(&detect, "detect", "flapping", "record analysis detector: flapping")
+	cmd.Flags().StringVar(&params.detect, "detect", detectFlapping,
+		"record analysis detector: flapping, seasonality")
+	cmd.Flags().StringVar(&params.timezone, "timezone", "",
+		"IANA timezone for seasonality schedules (default: local timezone)")
+	cmd.Flags().DurationVar(&params.leadTime, "lead-time", 0,
+		"how far ahead of a detected ramp to pre-scale (seasonality; default 15m)")
+	cmd.Flags().IntVar(&params.bucketMinutes, "bucket-minutes", 0,
+		"time-of-day resolution in minutes for seasonality detection (default 30)")
+	cmd.Flags().IntVar(&params.minDays, "min-days", 0,
+		"minimum distinct days required to claim daily periodicity (default 2)")
 	return cmd
 }
 
-func runAnalyzeRecord(out io.Writer, opts *options, path, detect string) error {
-	if detect != "" && detect != "flapping" {
-		return fmt.Errorf("unsupported detector %q (use flapping)", detect)
+// Supported analyze-record detectors.
+const (
+	detectFlapping    = "flapping"
+	detectSeasonality = "seasonality"
+)
+
+func runAnalyzeRecord(out io.Writer, opts *options, path string, params analyzeRecordOptions) error {
+	switch params.detect {
+	case "", detectFlapping:
+		return runAnalyzeRecordFlapping(out, opts, path)
+	case detectSeasonality:
+		return runAnalyzeRecordSeasonality(out, opts, path, params)
+	default:
+		return fmt.Errorf("unsupported detector %q (use %s or %s)",
+			params.detect, detectFlapping, detectSeasonality)
 	}
+}
+
+func runAnalyzeRecordFlapping(out io.Writer, opts *options, path string) error {
 	traces, err := loadAllRecordedTraces(path)
 	if err != nil {
 		return err

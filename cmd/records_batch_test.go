@@ -70,7 +70,7 @@ func TestRunAnalyzeRecordDetectsFlapping(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := &options{}
-	if err := runAnalyzeRecord(&buf, opts, tmp.Name(), "flapping"); err != nil {
+	if err := runAnalyzeRecord(&buf, opts, tmp.Name(), analyzeRecordOptions{detect: detectFlapping}); err != nil {
 		t.Fatalf("runAnalyzeRecord returned error: %v", err)
 	}
 	output := buf.String()

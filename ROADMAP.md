@@ -132,6 +132,7 @@ user-visible behavior change.
 - **CI/report outputs:** `lint -o github` emits GitHub Actions annotations and `scan --summary --report markdown|html` produces cluster summary reports.
 - **GitOps and policy workflows:** `--export`, `recommend --policy`, and `compare -A --only-drift` support PR-based operations and environment drift review.
 - **Operationalization:** `alerts generate` creates starter monitoring rules and `alpha analyze-record --detect flapping` turns durable records into churn insights.
+- **Seasonality detection:** `alpha analyze-record --detect seasonality` finds recurring daily demand ramps in durable records and proposes scheduled pre-scaling (cron + KEDA cron trigger), addressing the HPA's reactive-only scale-up delay. Weekly cycles and metric-value-based (rather than replica-based) detection remain open; the latter needs a typed numeric metric field on `TimelineSnapshot`, which is currently a formatted string.
 - **Explainability and TUI safety:** `--format structured`, `explain`, score breakdowns, hidden decision factors, and in-TUI two-step batch apply preview improve operator confidence.
 - **Trend and tuning workflows:** `history`, `tune`, `slo`, Prometheus query links, and carbon-aware `estimate` connect HPA behavior to incidents, SLOs, cost, and sustainability.
 - **CI/CD and GitOps reporting:** `scan/list --report junit|sarif`, `list --gitops-drift`, `export --prometheus`, and local AI context packs make HPA health easier to automate and share.

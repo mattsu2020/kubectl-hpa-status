@@ -439,6 +439,41 @@ kubectl hpa status alpha analyze-record hpa-history.jsonl --detect flapping
 
 The record analyzer counts desired replica changes and direction flips, then suggests stabilization/tolerance review when oscillation is detected.
 
+### Seasonality detection
+
+The HPA controller is reactive: it can only add replicas after a metric has already crossed the target, so every recurring traffic ramp pays a scale-up delay. When the ramp is predictable, the `seasonality` detector finds it in a durable record and proposes pre-scaling:
+
+```sh
+kubectl hpa status alpha analyze-record hpa-history.jsonl --detect seasonality --timezone Asia/Tokyo
+```
+
+```text
+prod/web: recurring daily pattern detected (confidence: high)
+  window:   08:00-18:00 UTC (Mon,Tue,Wed,Thu,Fri, 10 of 10 days)
+  demand:   baseline 3.0 -> peak 14 replicas
+  suggest:  raise minReplicas to 6 at 07:45 (15m0s before the ramp)
+    cron:    45 7 * * 1-5
+    release: 0 18 * * 1-5
+```
+
+The detector builds a time-of-day profile of `desiredReplicas`, finds the recurring peak window (including windows that cross midnight), and reports the fraction of days that exhibited it as confidence. It recommends raising `minReplicas` to the level needed at *ramp onset* rather than at peak, leaving the HPA to scale the rest of the way.
+
+| Flag | Default | Purpose |
+| --- | --- | --- |
+| `--timezone` | local | IANA timezone defining calendar days and emitted schedules |
+| `--lead-time` | `15m` | How far ahead of the ramp to pre-scale |
+| `--bucket-minutes` | `30` | Time-of-day resolution; must divide 1440 evenly |
+| `--min-days` | `2` | Distinct days required before claiming periodicity |
+
+Guardrails, so a one-off incident is not turned into a schedule:
+
+- At least `--min-days` distinct days are required; shorter recordings report `insufficient data` and say how much more to capture.
+- A candidate window must appear on at least 2 days and on over 50% of the days the schedule covers.
+- The schedule narrows to specific weekdays (for example `1-5`) only when each weekday was observed at least twice. Recording Monday to Friday is *not* evidence that weekends differ, so it yields `*`.
+- Peak and onset levels are computed from the days that matched, never averaged with quiet days.
+
+The emitted KEDA cron trigger is preferred over a static `minReplicas` bump because it releases the floor after the window, so pre-scaling costs nothing off-peak. The `patch` field in `-o json` carries the static fallback for clusters without KEDA.
+
 ## Interactive TUI
 
 For the full TUI workflow, key bindings, export guidance, and troubleshooting notes, see [TUI Manual](tui.md). For the shorter flag and key reference, see [Usage Guide - Interactive TUI](usage.md#interactive-tui).
