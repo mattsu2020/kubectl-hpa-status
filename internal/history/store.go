@@ -128,10 +128,6 @@ func (s *HealthStore) LoadAt(namespace, name string, since time.Duration, now ti
 	return loadHistoryFileAt(path, since, now)
 }
 
-func loadHistoryFile(path string, since time.Duration) ([]healthtrend.HealthSnapshot, error) { //nolint:unused // Retained compatibility wrapper.
-	return loadHistoryFileAt(path, since, time.Now())
-}
-
 func loadHistoryFileAt(path string, since time.Duration, now time.Time) ([]healthtrend.HealthSnapshot, error) {
 	f, err := os.Open(path)
 	if err != nil {

@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Workflow and watch flags are now scoped to the commands that use them.**
+  `--apply`, `--diff`, `--dry-run`, `--yes`, `--allow-partial`, `--export`,
+  `--trend*`, `--health-weight`, `--keda`, `--vpa`, `--policy-guard*`,
+  `--report`, and the watch flags (`--watch`, `--dashboard`, `--interval`,
+  `--timeout`, `--until-condition`) were registered as root persistent flags,
+  so every subcommand accepted them — `version --policy-guard-mode=warn` exited
+  0 with the flag silently ignored. They are now attached to the analysis
+  commands that read them (and to the root, which runs `status` implicitly),
+  and are rejected elsewhere. `version --help` and `completion --help` drop
+  from 40 flags to 20. No flag was removed from a command that acts on it.
+- `--lang` help text now states its actual scope: it localizes table/section
+  labels and the status summary line, while analysis detail text stays English.
+- Minimum Go version relaxed from `1.26.5` to `1.26.0`, so consumers importing
+  `pkg/hpa` are not forced onto a specific patch release.
+- Coverage thresholds in `scripts/check-coverage.sh` raised to sit ~2 points
+  below actual coverage. They had drifted 10+ points below, which let a large
+  regression pass the gate.
 - Refactored analysis, observation, enrichment, history, conversion, and TUI
   boundaries so commands share canonical request-scoped services and models.
 - Capacity planning now reports unknown inputs explicitly, accounts for Pod

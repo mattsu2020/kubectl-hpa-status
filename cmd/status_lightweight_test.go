@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"context"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
@@ -42,7 +44,7 @@ func TestTargetReplicaObservationsEnricherGating(t *testing.T) {
 						ClientOverride: fakeClient,
 					},
 				},
-				Status: statusOptions{Features: feats("explain"), Events: EventOption{Enabled: false}},
+				Status: statusOptions{Features: feats(t, "explain"), Events: EventOption{Enabled: false}},
 			},
 			readsScaleTarget: true,
 		},
@@ -54,7 +56,7 @@ func TestTargetReplicaObservationsEnricherGating(t *testing.T) {
 						ClientOverride: fakeClient,
 					},
 				},
-				Status: statusOptions{Features: feats("explainPods"), Events: EventOption{Enabled: false}},
+				Status: statusOptions{Features: feats(t, "explainPods"), Events: EventOption{Enabled: false}},
 			},
 			readsScaleTarget: true,
 		},
@@ -66,7 +68,7 @@ func TestTargetReplicaObservationsEnricherGating(t *testing.T) {
 						ClientOverride: fakeClient,
 					},
 				},
-				Status: statusOptions{Features: feats("deep"), Events: EventOption{Enabled: false}},
+				Status: statusOptions{Features: feats(t, "deep"), Events: EventOption{Enabled: false}},
 			},
 			readsScaleTarget: true,
 		},
@@ -78,7 +80,7 @@ func TestTargetReplicaObservationsEnricherGating(t *testing.T) {
 						ClientOverride: fakeClient,
 					},
 				},
-				Status: statusOptions{Features: feats("noEnrich"), Events: EventOption{Enabled: false}},
+				Status: statusOptions{Features: feats(t, "noEnrich"), Events: EventOption{Enabled: false}},
 			},
 			readsScaleTarget: false,
 		},
@@ -90,7 +92,7 @@ func TestTargetReplicaObservationsEnricherGating(t *testing.T) {
 						ClientOverride: fakeClient,
 					},
 				},
-				Status: statusOptions{Features: feats("hpaOnly"), Events: EventOption{Enabled: false}},
+				Status: statusOptions{Features: feats(t, "hpaOnly"), Events: EventOption{Enabled: false}},
 			},
 			readsScaleTarget: false,
 		},
@@ -174,12 +176,24 @@ type nulWriter struct{}
 
 func (nulWriter) Write(p []byte) (int, error) { return len(p), nil }
 
-// feats returns a Features value with the named flags enabled, for terser
-// test setup. Names match the featureSetters keys in cmdoptions/features.go.
-func feats(names ...string) featuresOptions {
+// feats returns a Features value with the named flags enabled, for terser test
+// setup. Names are matched case-insensitively against the field names of
+// cmdoptions.Features, so the struct is the single source of truth and no
+// parallel name registry has to be maintained alongside it. An unknown name
+// fails the test rather than silently producing a zero Features, which would
+// otherwise let a typo masquerade as a passing "feature disabled" assertion.
+func feats(t *testing.T, names ...string) featuresOptions {
+	t.Helper()
 	var f featuresOptions
-	for _, n := range names {
-		f.Enable(n)
+	v := reflect.ValueOf(&f).Elem()
+	for _, name := range names {
+		field := v.FieldByNameFunc(func(candidate string) bool {
+			return strings.EqualFold(candidate, name)
+		})
+		if !field.IsValid() || field.Kind() != reflect.Bool {
+			t.Fatalf("feats: unknown feature flag %q; expected a bool field on cmdoptions.Features", name)
+		}
+		field.SetBool(true)
 	}
 	return f
 }

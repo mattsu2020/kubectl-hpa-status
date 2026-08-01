@@ -17,12 +17,10 @@ import (
 // orchestration so the command wiring and the per-feature data gathering
 // evolve independently.
 
-// buildScalePath gathers pods, ReplicaSets, and events around the HPA's
-// scale target and hands them to hpaanalysis.AnalyzeScalePath for diagnosis.
-func buildScalePath(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpaanalysis.ScalePath { //nolint:unused // Retained compatibility wrapper.
-	return buildScalePathWithSnapshot(ctx, client, hpa, observation.New(client.Interface, hpa))
-}
-
+// buildScalePathWithSnapshot gathers pods, ReplicaSets, and events around the
+// HPA's scale target and hands them to hpaanalysis.AnalyzeScalePath for
+// diagnosis, reusing the caller's observation snapshot so the enrichment
+// pipeline issues each API read once.
 func buildScalePathWithSnapshot(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, snapshot *observation.Snapshot) *hpaanalysis.ScalePath {
 	input := hpaanalysis.ScalePathInput{}
 	var collectionWarnings []string
@@ -119,11 +117,6 @@ func scalePathEventObjectNames(hpa *autoscalingv2.HorizontalPodAutoscaler, pods 
 		names = append(names, rs.Name)
 	}
 	return names
-}
-
-func fetchTargetReplicaInfo(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) *hpaanalysis.TargetReplicaInfo { //nolint:unused // Retained compatibility wrapper.
-	info, _ := fetchTargetReplicaInfoFromSnapshot(ctx, observation.New(client.Interface, hpa), hpa)
-	return info
 }
 
 func fetchTargetReplicaInfoFromSnapshot(ctx context.Context, snapshot *observation.Snapshot, _ *autoscalingv2.HorizontalPodAutoscaler) (*hpaanalysis.TargetReplicaInfo, string) {
