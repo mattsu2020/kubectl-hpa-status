@@ -137,12 +137,25 @@ func isPodReady(pod *corev1.Pod) bool {
 }
 
 // countMissingMetrics fetches PodMetrics and counts pods not present in the response.
+//
+// A missing metrics API is not an error here: the count is an advisory input
+// to the readiness diagnosis, so every failure path degrades to 0 ("no pods
+// known to be missing metrics") rather than failing the command.
 func countMissingMetrics(ctx context.Context, client *kube.Client, namespace, selector string, pods []corev1.Pod) int32 {
-	if client == nil || len(pods) == 0 {
+	if client == nil || client.Interface == nil || len(pods) == 0 {
 		return 0
 	}
 
-	body, err := client.Interface.Discovery().RESTClient().Get().
+	// Discovery().RESTClient() is nil for clients built without a REST config
+	// (fake clients, and discovery implementations that do not wrap one).
+	// Calling Get() on it panics, so guard it the same way
+	// fetchPodMetricSamples and fetchPodMetricNames do.
+	restClient := client.Interface.Discovery().RESTClient()
+	if restClient == nil {
+		return 0
+	}
+
+	body, err := restClient.Get().
 		AbsPath("/apis/metrics.k8s.io/v1beta1").
 		Namespace(namespace).
 		Resource("pods").
