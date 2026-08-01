@@ -42,6 +42,13 @@ func loadControllerProfileFile(path string) (*hpaanalysis.ControllerProfile, err
 		return nil, err
 	}
 	profile := hpaanalysis.DefaultControllerProfile()
+	// Clear the "defaults" source seeded by DefaultControllerProfile before
+	// decoding: the file's own `source:` wins if it sets one, otherwise the
+	// profile must report the file it came from. Without this the fallback
+	// below is unreachable and a --controller-profile-file run reports its
+	// values as Kubernetes defaults, which is exactly what the operator is
+	// checking when they pass the flag.
+	profile.Source = ""
 	if err := yaml.Unmarshal(data, &profile); err != nil {
 		return nil, err
 	}

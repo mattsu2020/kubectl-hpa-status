@@ -39,21 +39,31 @@ func newRolloutCommand(opts *options) *cobra.Command {
 func runRollout(ctx context.Context, out io.Writer, opts *options, names []string) error {
 	local := applyCommandPreset(opts, presetRollout)
 
-	outputs := make([]rolloutOutput, 0, len(names))
-	for _, name := range names {
-		report, err := buildStatusReportWithClient(ctx, &local, name, false, nil)
+	// Build the client once rather than per name: the per-name work below runs
+	// concurrently, so buildStatusReportWithClient would otherwise re-read and
+	// re-parse the kubeconfig once per HPA, in parallel.
+	client, err := newClientOrDefault(&local)
+	if err != nil {
+		writeErrorIfStructured(out, local.Output, err)
+		return err
+	}
+
+	outputs, err := collectPerHPA(ctx, &local, names, func(ctx context.Context, name string) (rolloutOutput, error) {
+		report, err := buildStatusReport(ctx, &local, client, name, false, nil)
 		if err != nil {
-			writeErrorIfStructured(out, local.Output, err)
-			return err
+			return rolloutOutput{}, err
 		}
 
-		rolloutReport := buildRolloutReport(ctx, &local, &report.Analysis, name)
-		outputs = append(outputs, rolloutOutput{
+		return rolloutOutput{
 			Namespace: report.Analysis.Namespace,
 			Name:      report.Analysis.Name,
 			Target:    report.Analysis.Target,
-			Report:    rolloutReport,
-		})
+			Report:    buildRolloutReport(ctx, &local, &report.Analysis, name),
+		}, nil
+	})
+	if err != nil {
+		writeErrorIfStructured(out, local.Output, err)
+		return err
 	}
 
 	value := any(outputs)

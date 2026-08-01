@@ -7,8 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`readiness-doctor` no longer panics when the discovery client has no REST
+  client.** `countMissingMetrics` called `Discovery().RESTClient().Get()`
+  without the nil guard its two sibling call sites
+  (`fetchPodMetricSamples`, `fetchPodMetricNames`) already had, so any client
+  built without a REST config crashed the command with a nil-pointer
+  dereference instead of degrading to "no pods known to be missing metrics".
+- **`--controller-profile-file` now reports the file as the profile source.**
+  `loadControllerProfileFile` seeded the profile from
+  `DefaultControllerProfile()`, which sets `Source: "defaults"`, so the
+  `if profile.Source == ""` fallback was unreachable and a file-loaded profile
+  claimed its values came from Kubernetes defaults — exactly the thing the flag
+  exists to let an operator verify.
+
 ### Changed
 
+- **`--concurrency` now applies to every command that takes `NAME [NAME...]`.**
+  Only `status` read the flag; `blockers`, `capacity-plan`, `why-not-scale`,
+  `rollout`, `ownership`, `assumptions`, and `autoscaler-map` fetched their
+  HPAs one at a time regardless of the setting. They now share the bounded
+  parallel helper in `cmd/parallel.go`, which preserves the previous error
+  contract: the first failure in *input* order is returned and no partial
+  output is rendered, independent of goroutine scheduling. The flag's help text
+  claimed it covered "status/timeline"; `timeline` takes a single NAME and never
+  read it.
+- `autoscaler-map`, `why-not-scale`, and `rollout` build their Kubernetes client
+  once per run instead of once per HPA name, which previously re-read and
+  re-parsed the kubeconfig for every name in the argument list.
 - **Workflow and watch flags are now scoped to the commands that use them.**
   `--apply`, `--diff`, `--dry-run`, `--yes`, `--allow-partial`, `--export`,
   `--trend*`, `--health-weight`, `--keda`, `--vpa`, `--policy-guard*`,
@@ -66,6 +93,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- **Coverage gates now have root-package floors.** The `cmd` and `pkg/hpa`
+  checks matched by substring, so they also counted every subpackage under
+  those paths. As the package splits progressed, each freshly extracted
+  subpackage landed with high coverage and lifted the aggregate: the `cmd`
+  tree read 66.3% while the flat `cmd` package was 62.7%, and the `pkg/hpa`
+  tree read 80.2% against a 75.5% root. A regression confined to either root
+  could pass its gate. Added `cmd (root package)` and `pkg/hpa (root package)`
+  checks anchored with `[^/]+\.go:`.
+- **`cmd/` sub-package extraction (phase 2).** Extracted three of the four
+  shallow command groups named in ROADMAP.md: `cmd/internal/compat` (report
+  model, discovery rules, text renderer), `cmd/internal/alerts` (Prometheus and
+  Datadog rule templates), and `cmd/internal/buildinfo` (ldflags/build-info
+  version resolution). All three are cobra-free and option-free and are covered
+  at 90–100%. `completion` remains blocked on narrowing its `*options` and
+  flag-vocabulary dependencies into an explicit contract.
+- **Split `pkg/hpa/capacity_plan.go`** (1258 lines, the only production file
+  over the 800-line guidance) into `capacity_plan.go` (694),
+  `capacity_plan_quota.go` (quota and LimitRange checks), and
+  `capacity_plan_node.go` (node headroom, Pod slots, fragmentation). Decomposed
+  `checkNodeCapacity` (cyclomatic complexity 33) and
+  `allContainersSpecifyQuotaResource` (18) into per-dimension helpers, removing
+  both `//nolint:gocyclo` suppressions.
+- **Added fleet-path benchmarks** (`internal/analysis/bench_test.go`) for
+  `AnalyzeBatch` at 100/500/1000 HPAs, with and without enrichment, plus
+  `WriteListText` in normal and wide modes. The `list`/`scan`/`tui` path had no
+  benchmark despite being the code that runs against large clusters.
+- Raised `cmd` root-package coverage from 62.7% to 69.0% (total 76.5% → 78.2%)
+  with smoke tests for the eight least-covered user-facing commands: `compare`
+  (3.5% → 76.6%), `gitops review` (12.5% → 80.2%), `readiness-doctor`
+  (12.5% → 60.3%), `snapshot` (15.7% → 71.8%), the controller-profile helper
+  (19.2% → 88.1%), `history` (21.4% → 80.0%), `incident-bundle`
+  (27.8% → 77.8%), and `flap` (29.3% → 91.8%). The two bugs listed under Fixed
+  above were found by these tests.
 - Deduplicated the enrichment mode check: `internal/enrichment.Requested` is
   now the single definition shared with `cmd`.
 - Unified the previously duplicated `filepath.Walk` collectors of `lint` and

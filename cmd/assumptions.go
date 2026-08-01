@@ -91,20 +91,20 @@ func runAssumptions(ctx context.Context, out io.Writer, opts *options, names []s
 		observed = buildControllerProfile(ctx, client, opts.AssumeProfile, opts.ControllerProfileFile)
 	}
 
-	reports := make([]assumptionsOutput, 0, len(names))
-
-	for _, name := range names {
+	reports, err := collectPerHPA(ctx, opts, names, func(ctx context.Context, name string) (assumptionsOutput, error) {
 		hpa, err := kube.GetHPAFromClient(ctx, client, name)
 		if err != nil {
-			return wrapHPALookupError(client.Namespace, name, err)
+			return assumptionsOutput{}, wrapHPALookupError(client.Namespace, name, err)
 		}
 
-		assumptions := hpaanalysis.DetectControllerAssumptionsWithOverrides(hpa, overrides, observed)
-		reports = append(reports, assumptionsOutput{
+		return assumptionsOutput{
 			Namespace:   hpa.Namespace,
 			Name:        hpa.Name,
-			Assumptions: assumptions,
-		})
+			Assumptions: hpaanalysis.DetectControllerAssumptionsWithOverrides(hpa, overrides, observed),
+		}, nil
+	})
+	if err != nil {
+		return err
 	}
 
 	format, templateStr := selectOutputFromOptions(opts)

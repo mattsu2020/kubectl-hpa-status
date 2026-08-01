@@ -40,6 +40,7 @@ Inference should be labeled with confidence language and covered by tests.
 | `internal/i18n/` | Embedded locale bundles (en/ja), dynamically loaded from `locales/` |
 | `internal/testutil/` | Shared fake-client/HPA/workload builders used by `cmd/`, `internal/`, and `pkg/hpa` tests |
 | `cmd/internal/{client,errs,output}` | Lifted helpers (client construction, sentinel errors, output predicates) following the facade-then-migrate pattern |
+| `cmd/internal/{compat,alerts,buildinfo}` | Leaf command logic extracted from `cmd/`: Kubernetes/HPA compatibility rules, alert-rule templates, and ldflags/build-info version resolution. All three are cobra-free and option-free |
 | `cmd/bundle/` | Bundle report renderer layer, extracted from `cmd/` |
 | `test/e2e/` | kind-backed command path tests |
 
@@ -101,17 +102,28 @@ Refactoring notes:
   and flags. Each command snapshots it into an immutable
   `internal/cmdoptions.StatusRequest` or `ListRequest` (with deep-copied
   slices/maps/weights) before execution, so concurrent commands and callbacks
-  cannot observe later option mutation. Command wiring remains in `cmd/`;
-  further groups (`replay`, `alerts`/`completion`/`compat`/`version`) can move
-  once their remaining command-specific dependencies are narrowed.
+  cannot observe later option mutation. Command wiring remains in `cmd/`.
+  Of the shallow groups originally listed here, `alerts`, `compat`, and
+  `version` have moved (see below); `completion` has not, because its callbacks
+  close over `*options` and read the flag vocabularies defined in
+  `cmd/config.go` and `cmd/root_flags.go`.
 - Several cobra-free layers have been extracted out of `cmd/`:
   `internal/kubeconv` (kube.* -> pkg/hpa DTO conversion), `internal/render`
   (output format routing and serialization), `internal/analysis` (shared
   list/TUI finalization), `internal/observation` (request-scoped API reads),
-  and the v2.0 `cmd/internal/{errs,client,output}` + `cmd/bundle` extractions.
+  the v2.0 `cmd/internal/{errs,client,output}` + `cmd/bundle` extractions, and
+  the `cmd/internal/{compat,alerts,buildinfo}` leaf-command extractions.
   All command call sites now import `kubeconv` and `render` directly; the
   obsolete unexported `cmd/converters.go` and render-forwarding functions were
   deleted.
+- Multi-HPA commands share one bounded-parallel helper (`cmd/parallel.go`).
+  `mapPerHPA` runs the per-name work under `--concurrency` and returns one
+  result per input in input order; a per-name failure never cancels its
+  siblings, so the outcome does not depend on goroutine scheduling.
+  `collectPerHPA` layers the fail-fast contract on top (first error in *input*
+  order, no partial output) that the sequential loops it replaced had; `status`
+  uses `mapPerHPA` directly because it is the one command that renders partial
+  results.
 - `pkg/hpa/render` extraction of the report renderers is complete: the
   Markdown/HTML/list/incident report files (`report_markdown.go`,
   `report_html.go`, `report_html_sections.go`, `report_list.go`,

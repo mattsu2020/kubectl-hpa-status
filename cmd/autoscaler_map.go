@@ -37,32 +37,38 @@ func newAutoscalerMapCommand(opts *options) *cobra.Command {
 }
 
 func runAutoscalerMap(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	outputs := make([]autoscalerMapOutput, 0, len(names))
-	for _, name := range names {
-		// Uses the raw error so JSON/YAML output can emit a structured error
-		// document via writeError; the standard wrapper would only add an
-		// English prefix that breaks the structured output contract.
-		client, err := opts.NewClient()
-		if err != nil {
-			writeErrorIfStructured(out, opts.Output, err)
-			return err
-		}
+	// Uses the raw error so JSON/YAML output can emit a structured error
+	// document via writeError; the standard wrapper would only add an
+	// English prefix that breaks the structured output contract.
+	//
+	// The client is built once for the whole run. It used to be rebuilt per
+	// name inside the loop, which re-read and re-parsed the kubeconfig for
+	// every HPA; client-go clients are safe to share across the concurrent
+	// per-name work below.
+	client, err := opts.NewClient()
+	if err != nil {
+		writeErrorIfStructured(out, opts.Output, err)
+		return err
+	}
 
+	outputs, err := collectPerHPA(ctx, opts, names, func(ctx context.Context, name string) (autoscalerMapOutput, error) {
 		hpa, err := kube.GetHPAFromClient(ctx, client, name)
 		if err != nil {
-			writeErrorIfStructured(out, opts.Output, err)
-			return err
+			return autoscalerMapOutput{}, err
 		}
 
 		input := assembleAutoscalerMapInput(ctx, client, opts, hpa)
-		am := autoscalermap.Analyze(input)
 
-		outputs = append(outputs, autoscalerMapOutput{
+		return autoscalerMapOutput{
 			Namespace: hpa.Namespace,
 			Name:      hpa.Name,
 			Target:    fmt.Sprintf("%s/%s", hpa.Spec.ScaleTargetRef.Kind, hpa.Spec.ScaleTargetRef.Name),
-			Map:       am,
-		})
+			Map:       autoscalermap.Analyze(input),
+		}, nil
+	})
+	if err != nil {
+		writeErrorIfStructured(out, opts.Output, err)
+		return err
 	}
 
 	value := any(outputs)

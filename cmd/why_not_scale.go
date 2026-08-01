@@ -37,14 +37,25 @@ func newWhyNotScaleCommand(opts *options) *cobra.Command {
 func runWhyNotScale(ctx context.Context, out io.Writer, opts *options, names []string) error {
 	local := applyCommandPreset(opts, presetWhyNotScale)
 
-	reports := make([]whyNotScaleReport, 0, len(names))
-	for _, name := range names {
-		statusReport, err := buildStatusReportWithClient(ctx, &local, name, true, nil)
+	// Build the client once rather than per name: the per-name work below runs
+	// concurrently, so buildStatusReportWithClient would otherwise re-read and
+	// re-parse the kubeconfig once per HPA, in parallel.
+	client, err := newClientOrDefault(&local)
+	if err != nil {
+		writeErrorIfStructured(out, local.Output, err)
+		return err
+	}
+
+	reports, err := collectPerHPA(ctx, &local, names, func(ctx context.Context, name string) (whyNotScaleReport, error) {
+		statusReport, err := buildStatusReport(ctx, &local, client, name, true, nil)
 		if err != nil {
-			writeErrorIfStructured(out, local.Output, err)
-			return err
+			return whyNotScaleReport{}, err
 		}
-		reports = append(reports, buildWhyNotScaleReport(statusReport.Analysis))
+		return buildWhyNotScaleReport(statusReport.Analysis), nil
+	})
+	if err != nil {
+		writeErrorIfStructured(out, local.Output, err)
+		return err
 	}
 
 	value := any(reports)

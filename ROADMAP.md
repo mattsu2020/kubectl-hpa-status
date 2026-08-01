@@ -42,14 +42,24 @@ These are internal-only changes tracked separately because they touch wide
 areas and require their own design step before landing. They have no
 user-visible behavior change.
 
-- **Split `cmd/` into sub-packages:** `cmd/` currently holds ~110 files in one
-  `package cmd`. Extract self-contained groups (`bundle_*`, `replay`, then
-  shallower commands like `alerts`/`completion`/`compat`/`version`) into
-  sub-packages. Conversion and rendering callers are already on
-  `internal/kubeconv` / `internal/render`, and immutable request DTOs now bound
-  option mutation. The remaining prerequisite is to narrow command-only
-  helpers such as snapshot loading, capacity selectors, output selection, and
-  completion callbacks into explicit package contracts.
+- **Split `cmd/` into sub-packages:** the flat `package cmd` still holds ~90
+  non-test files / ~15k lines. Phase 1 lifted shared helpers into
+  `cmd/internal/{errs,client,output}` and the bundle renderers into
+  `cmd/bundle`. Phase 2 extracted three of the four shallow command groups
+  named here — `cmd/internal/compat` (report model, rules, text renderer),
+  `cmd/internal/alerts` (Prometheus/Datadog rule templates), and
+  `cmd/internal/buildinfo` (ldflags/build-info version resolution). Each is
+  cobra-free and option-free, and each carries its own tests.
+
+  `completion` is the remaining named group and is **still blocked**: its
+  callbacks close over `*options` for the client, namespace, and context, and
+  read the `validColorValues` / `validLangValues` / output-format vocabularies
+  that live in `cmd/config.go` and `cmd/root_flags.go`. Extracting it requires
+  first narrowing those into an explicit contract (a completion-source
+  interface plus an exported vocabulary type) rather than moving files.
+  The same prerequisite applies to the deeper commands: snapshot loading,
+  capacity selectors, and output selection are all reached through
+  cmd-private helpers.
 - **Slim the `Analysis` god-struct:** `pkg/hpa.Analysis` has 65 fields
   accumulated feature-by-feature. The additive migration boundary is now
   complete: v1 keeps the flat storage and default wire shape, while explicit
@@ -84,12 +94,89 @@ user-visible behavior change.
   `recommend`, and `container-advisor` overlap, as do `doctor`,
   `readiness-doctor`, and the `diagnosis-*` family. Plan subcommand grouping
   (`advisor container|behavior|recommend`, `doctor readiness|rollout|capacity`)
-  with deprecated aliases for one minor release before removal.
+  with deprecated aliases for one minor release before removal. See
+  "v3 CLI surface consolidation" below for the decided scope.
 - **Lower command-addition cost:** Adding one command today touches ~9 places
   (command file, commandGroups, options_bridge preset, cmdoptions preset +
   feature flag, enricher phase, Analysis field, text renderer, schema test).
   Evaluate an `AnalysisPlugin`-style registry (name + enrich + render) so a
   new analysis domain registers in one place.
+
+## v3 Breaking Changes (Decided, Not Yet Scheduled)
+
+This section is the single list of what a v3 major release removes. Nothing
+here changes before v3; it exists so the removals are decided once and can be
+executed in one release with one migration note.
+
+### v3 CLI surface consolidation
+
+The CLI has grown to 55 subcommands and 117 unique flags. Nine of those
+subcommands carry no logic of their own: each applies a named preset to a copy
+of the options and delegates straight to `runStatusMany` via
+`runStatusWithPreset` (`cmd/preset_helpers.go`). The preset is the whole
+command body — `cmd/readiness.go` is one line.
+
+| Command | Preset applier (`internal/cmdoptions/presets.go`) | Flags set |
+| --- | --- | --- |
+| `doctor` | `applyPresetDoctor` | doctor feature bundle + events/KEDA/VPA |
+| `readiness` | `applyPresetReadiness` | readiness feature bundle |
+| `metrics-probe` | `applyPresetMetricsProbe` | metrics-probe feature bundle |
+| `preflight` | `applyPresetPreflight` | 4 |
+| `container-advisor` | `applyPresetContainerAdvisor` | 4 |
+| `rollout-context` | `applyPresetRolloutContext` | 6 |
+| `node-context` | `applyPresetNodeContext` | 9 |
+| `trace` | `applyPresetTrace` | 1 (`--decision-trace`) |
+| `path` | `applyPresetPath` | 1 (`--scale-path`) |
+
+`trace` and `path` are exactly `status --decision-trace` and
+`status --scale-path`; the rest set enough flags that the long form is not a
+realistic thing to type, which is precisely why they became commands.
+
+**Decision:** keep every one of these as a discoverable entry point — the
+multi-flag equivalents are not obvious and users should not have to assemble
+them — but stop treating "add a command" as the way to expose a preset.
+Concretely, for v3:
+
+1. Group them under their workflow parent (`doctor readiness|rollout|capacity`,
+   `advisor container|behavior|recommend`), matching the `alpha` precedent.
+2. Keep the current top-level names as hidden deprecated aliases for the whole
+   v3 line, printing a one-line migration hint on stderr.
+3. Require new presets to ship as a `status` flag or `--analysis-profile`
+   value first; a dedicated command needs a reason beyond discoverability.
+
+This trims the top-level `--help` from 55 entries to roughly 25 without
+removing any capability. It is deliberately **not** a v2 change: the aliases
+alone are a behavior change to every documented invocation.
+
+### v3 deprecated-facade removal
+
+`pkg/hpa` carries 44 deprecated compatibility symbols (~680 lines) that
+forward to their canonical domain sub-packages. `make facade-check` already
+rejects new in-tree uses, so the only remaining consumers are external
+importers. All of them are removed in v3:
+
+| File | Symbols | Canonical package |
+| --- | --- | --- |
+| `pkg/hpa/vpa.go` | 11 | `pkg/hpa/vpa` |
+| `pkg/hpa/health_trend.go` | 10 | `pkg/hpa/healthtrend` |
+| `pkg/hpa/readiness.go` | 9 | `pkg/hpa/readiness` |
+| `pkg/hpa/churn.go` | 5 | `pkg/hpa/churn` |
+| `pkg/hpa/keda.go` | 4 | `pkg/hpa/keda` |
+| `pkg/hpa/workload_types.go` | 2 | `pkg/hpa/healthtrend` |
+| `pkg/hpa/report_list.go` | 2 | `pkg/hpa/render` |
+| `pkg/hpa/healthtrend/healthtrend.go` | 1 | in-package rename |
+
+Removal criteria (unchanged from ARCHITECTURE.md): the canonical package is
+covered at or above the facade's coverage, no in-tree caller remains, and the
+release carries a migration table mapping each removed symbol to its
+replacement.
+
+### v3 `Analysis` storage flip
+
+Tracked under "Slim the `Analysis` god-struct" above: make the 13 grouped
+views the primary in-memory storage, flip the default wire schema from v1 to
+v2, and retire the flat v1 fields. This is the third v3 item and shares the
+same migration note.
 
 ## Recently Added
 
