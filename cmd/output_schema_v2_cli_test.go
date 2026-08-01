@@ -24,9 +24,15 @@ func newOutputSchemaV2CLIRoot(client kubernetes.Interface) *cobra.Command {
 		PersistentPreRunE: rootPersistentPreRunE(&opts),
 	}
 	registerCommonFlags(root, &opts)
-	registerWatchFlags(root, &opts)
-	root.AddCommand(newStatusCommand(&opts))
-	root.AddCommand(newWatchCommand(&opts))
+	// Mirror NewRootCommand: the workflow and watch groups are attached to the
+	// commands that act on them rather than inherited from root.
+	workflowFlags := newWorkflowFlagSet(&opts)
+	watchFlags := newWatchFlagSet(&opts)
+	addSharedFlags(root, workflowFlags, watchFlags)
+	for _, sub := range []*cobra.Command{newStatusCommand(&opts), newWatchCommand(&opts)} {
+		addSharedFlags(sub, workflowFlags, watchFlags)
+		root.AddCommand(sub)
+	}
 	return root
 }
 

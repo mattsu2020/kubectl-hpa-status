@@ -194,19 +194,6 @@ func trendFlappingFromAnalysis(trend *HealthTrendResult) bool {
 	return trend != nil && trend.FlappingDetected
 }
 
-func healthFromAnalysis(src Analysis) (string, int) { //nolint:unused // Retained compatibility helper for downstream migrations.
-	score := 100
-	switch src.Health {
-	case string(HealthError):
-		score = 50
-	case string(HealthLimited):
-		score = 75
-	case string(HealthStabilized):
-		score = 90
-	}
-	return src.Health, score
-}
-
 func churnLevelFromAnalysis(ca *ChurnAnalysis) string {
 	if ca == nil {
 		return ""

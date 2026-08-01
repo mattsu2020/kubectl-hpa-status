@@ -82,7 +82,7 @@ func TestRunStatusSingleEarlyOutputModesPreserveWarningExit(t *testing.T) {
 						ClientOverride: testutil.NewFakeClient(hpa),
 					},
 				},
-				Status: statusOptions{Features: feats("noEnrich")},
+				Status: statusOptions{Features: feats(t, "noEnrich")},
 			}
 			tc.mutate(opts)
 			var out bytes.Buffer

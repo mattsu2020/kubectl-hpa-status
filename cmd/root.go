@@ -6,6 +6,7 @@ import (
 	"runtime/debug"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 var (
@@ -36,15 +37,27 @@ func NewRootCommand() *cobra.Command {
 	}
 
 	registerCommonFlags(root, opts)
-	registerWatchFlags(root, opts)
+
+	// The workflow and watch groups are attached per command instead of being
+	// inherited from root, so leaf utilities (version, completion, help) reject
+	// flags they never act on. Root itself gets both because it runs status
+	// implicitly for `kubectl hpa_status NAME`.
+	workflowFlags := newWorkflowFlagSet(opts)
+	watchFlags := newWatchFlagSet(opts)
+	addSharedFlags(root, workflowFlags, watchFlags)
+
 	registerFlagCompletions(root, opts)
 
-	registerCommands(root, opts)
+	registerCommands(root, opts, workflowFlags, watchFlags)
 
 	// alpha groups operational/experimental commands (policy, gitops, bundles,
 	// capacity planning, record analysis). As of v2.0 these live exclusively
 	// under the alpha path; the historical top-level aliases have been removed.
-	root.AddCommand(newAlphaCommand(opts))
+	alpha := newAlphaCommand(opts)
+	for _, sub := range alpha.Commands() {
+		addSharedFlags(sub, workflowFlags)
+	}
+	root.AddCommand(alpha)
 
 	_ = root.MarkPersistentFlagFilename("kubeconfig")
 	_ = root.MarkPersistentFlagFilename("config")
@@ -168,15 +181,21 @@ var commandGroups = []commandGroup{
 	},
 }
 
-// registerCommands attaches the grouped subcommands to root. The completion
-// and version commands are wired separately: completion needs the root itself,
-// and both belong under "Additional Commands" rather than a workflow group.
-func registerCommands(root *cobra.Command, opts *options) {
+// registerCommands attaches the grouped subcommands to root, giving each one
+// the workflow flag group and, for the watch-capable commands, the watch
+// group. version and completion are added without either group: they act on
+// no analysis option, so inheriting those flags would only let a typo pass
+// silently.
+func registerCommands(root *cobra.Command, opts *options, workflowFlags, watchFlags *pflag.FlagSet) {
 	for _, cg := range commandGroups {
 		root.AddGroup(&cg.group)
 		for _, build := range cg.builders {
 			sub := build(opts)
 			sub.GroupID = cg.group.ID
+			addSharedFlags(sub, workflowFlags)
+			if watchFlagCommands[sub.Name()] {
+				addSharedFlags(sub, watchFlags)
+			}
 			root.AddCommand(sub)
 		}
 	}

@@ -98,10 +98,6 @@ func nodeReady(node *corev1.Node) bool {
 	return false
 }
 
-func nodeEligibleForUntoleratedPod(node *corev1.Node) bool { //nolint:unused // Compatibility helper retained for package-local callers.
-	return nodeEligibleForPod(node, nil)
-}
-
 // nodeEligibleForPod evaluates the scheduling constraints that can be decided
 // from a Node and PodSpec alone. Constraints that need other cluster objects
 // (affinity peers, topology domains, RuntimeClass, volumes, custom schedulers)

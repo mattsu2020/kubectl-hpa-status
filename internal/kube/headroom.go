@@ -248,28 +248,3 @@ func podRequestsUnmodeledResources(podSpec *corev1.PodSpec) bool {
 	}
 	return hasUnmodeled(podSpec.Overhead)
 }
-
-// FetchScheduledPodRequests returns effective requests for all scheduled,
-// non-terminal Pods across all namespaces.
-func FetchScheduledPodRequests(ctx context.Context, client kubernetes.Interface) (resource.Quantity, resource.Quantity, error) {
-	pods, err := listPods(ctx, client, metav1.NamespaceAll, metav1.ListOptions{})
-	if err != nil {
-		return resource.Quantity{}, resource.Quantity{}, fmt.Errorf("failed to list scheduled pods: %w", err)
-	}
-
-	var cpu, memory resource.Quantity
-	for i := range pods {
-		pod := &pods[i]
-		if pod.Spec.NodeName == "" || pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
-			continue
-		}
-		requests := EffectivePodRequests(pod.Spec)
-		if quantity, ok := requests[corev1.ResourceCPU]; ok {
-			cpu.Add(quantity)
-		}
-		if quantity, ok := requests[corev1.ResourceMemory]; ok {
-			memory.Add(quantity)
-		}
-	}
-	return cpu, memory, nil
-}

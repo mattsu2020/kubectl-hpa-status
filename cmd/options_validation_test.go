@@ -21,8 +21,12 @@ func TestRootRejectsInvalidEffectiveOptionsBeforeRun(t *testing.T) {
 			wantErr: "failed to load config",
 		},
 		{
+			// --health-weight is a workflow flag, so it is scoped to the
+			// analysis commands rather than to `version`. The root's implicit
+			// status path carries it, and PersistentPreRunE still rejects the
+			// malformed value before any command body or client call.
 			name:    "malformed health weight is fatal",
-			args:    []string{"--health-weight", "not-a-pair", "version"},
+			args:    []string{"--health-weight", "not-a-pair", "web"},
 			wantErr: "expected name=value",
 		},
 		{
@@ -197,5 +201,72 @@ func TestLoadConfigFileIsStrictAndCanonical(t *testing.T) {
 	}
 	if cfg.Output != "go-template" {
 		t.Fatalf("canonical output = %q, want go-template", cfg.Output)
+	}
+}
+
+// TestWorkflowFlagsAreScopedToAnalysisCommands locks in the flag scoping: the
+// mutation/enrichment/report workflow flags and the watch flags belong to the
+// commands that act on them. Before this scoping every one of them sat on the
+// root's PersistentFlags, so `version --policy-guard-mode=warn` exited 0 with
+// the flag silently ignored — a typo in a script looked like success.
+func TestWorkflowFlagsAreScopedToAnalysisCommands(t *testing.T) {
+	rejected := []struct {
+		name string
+		args []string
+	}{
+		{"version rejects policy-guard-mode", []string{"version", "--policy-guard-mode=warn"}},
+		{"version rejects apply", []string{"version", "--apply"}},
+		{"version rejects trend-since", []string{"version", "--trend-since=1h"}},
+		{"version rejects report", []string{"version", "--report=markdown"}},
+		{"version rejects watch", []string{"version", "--watch"}},
+		{"completion rejects export", []string{"completion", "bash", "--export=yaml"}},
+	}
+	for _, tc := range rejected {
+		t.Run(tc.name, func(t *testing.T) {
+			root := NewRootCommand()
+			var out bytes.Buffer
+			root.SetOut(&out)
+			root.SetErr(&out)
+			root.SetArgs(tc.args)
+			err := root.Execute()
+			if err == nil || !strings.Contains(err.Error(), "unknown flag") {
+				t.Fatalf("error = %v, want an unknown-flag error", err)
+			}
+		})
+	}
+
+	// The same flags must remain available where they are actually consumed,
+	// including on root, which runs status implicitly.
+	accepted := []struct {
+		name string
+		args []string
+	}{
+		{"root implicit status accepts apply", []string{"--apply"}},
+		{"status accepts policy-guard-mode", []string{"status", "--policy-guard-mode=warn"}},
+		{"status accepts watch", []string{"status", "--watch"}},
+		{"list accepts report", []string{"list", "--report=markdown"}},
+		{"watch accepts interval", []string{"watch", "--interval=5s"}},
+		{"tui accepts dashboard", []string{"tui", "--dashboard"}},
+	}
+	for _, tc := range accepted {
+		t.Run(tc.name, func(t *testing.T) {
+			root := NewRootCommand()
+			if err := root.ParseFlags(tc.args); err != nil {
+				t.Fatalf("root ParseFlags(%v): %v", tc.args, err)
+			}
+			sub, _, err := root.Find(tc.args)
+			if err != nil {
+				t.Fatalf("Find(%v): %v", tc.args, err)
+			}
+			for _, arg := range tc.args {
+				name, _, _ := strings.Cut(strings.TrimPrefix(arg, "--"), "=")
+				if !strings.HasPrefix(arg, "--") {
+					continue
+				}
+				if sub.Flags().Lookup(name) == nil {
+					t.Fatalf("command %q does not define --%s", sub.Name(), name)
+				}
+			}
+		})
 	}
 }

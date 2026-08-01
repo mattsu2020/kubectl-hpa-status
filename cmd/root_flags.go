@@ -7,9 +7,17 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
-// registerCommonFlags registers flags that are shared across all commands.
+// registerCommonFlags registers the flags that genuinely apply to every
+// command: cluster connection, output shaping, and client request tuning.
+//
+// Flags that only some commands act on (the mutation workflow, enrichment
+// toggles, reporting, and watching) deliberately do NOT live here. They are
+// built by newWorkflowFlagSet/newWatchFlagSet and attached per command, so a
+// leaf utility such as `version` or `completion` rejects `--policy-guard-mode`
+// instead of accepting and silently ignoring it.
 func registerCommonFlags(cmd *cobra.Command, opts *options) {
 	cmd.PersistentFlags().StringVarP(&opts.Namespace, "namespace", "n", "", "namespace")
 	cmd.PersistentFlags().BoolVarP(&opts.AllNamespaces, "all-namespaces", "A", false, "list HPAs across all namespaces")
@@ -22,7 +30,7 @@ func registerCommonFlags(cmd *cobra.Command, opts *options) {
 	cmd.PersistentFlags().BoolVar(&opts.Wide, "wide", false, "show additional columns in table output")
 	cmd.PersistentFlags().StringVarP(&opts.Selector, "selector", "l", "", "label selector for list and scan, for example app=web,tier!=canary")
 	cmd.PersistentFlags().StringVar(&opts.Color, "color", opts.Color, "colorize table output: "+strings.Join(validColorValues, ", "))
-	cmd.PersistentFlags().StringVar(&opts.Lang, "lang", "", "text output language: "+strings.Join(validLangValues, ", "))
+	cmd.PersistentFlags().StringVar(&opts.Lang, "lang", "", "language for table/section labels and the status summary line; analysis detail text remains English: "+strings.Join(validLangValues, ", "))
 	cmd.PersistentFlags().BoolVarP(&opts.Debug, "debug", "v", false, "include internal analysis details such as ratios and health scoring inputs")
 	cmd.PersistentFlags().StringVar(&opts.Config, "config", "", "optional config file for analysis settings such as health score weights")
 	cmd.PersistentFlags().Int64Var(&opts.ChunkSize, "chunk-size", opts.ChunkSize, "Kubernetes list page size for list/scan/tui; set 0 to disable pagination")
@@ -31,32 +39,66 @@ func registerCommonFlags(cmd *cobra.Command, opts *options) {
 	cmd.PersistentFlags().IntVar(&opts.Burst, "burst", 0, "client-side rate limiting burst size (0 uses client-go default)")
 	cmd.PersistentFlags().DurationVar(&opts.RequestTimeout, "request-timeout", opts.RequestTimeout, "timeout for each Kubernetes API request; set 0 to wait indefinitely")
 
-	cmd.PersistentFlags().BoolVar(&opts.Apply, "apply", false, "run suggested HPA spec patch workflow")
-	cmd.PersistentFlags().BoolVar(&opts.Diff, "diff", false, "show field-level diff of suggested changes")
-	cmd.PersistentFlags().BoolVar(&opts.DryRun, "dry-run", opts.DryRun, "use server-side dry-run for --apply; set --dry-run=false to persist changes")
-	cmd.PersistentFlags().BoolVarP(&opts.Yes, "yes", "y", false, "skip confirmation when used with --apply")
-	cmd.PersistentFlags().BoolVar(&opts.AllowPartial, "allow-partial", false, "allow sequential (non-atomic) apply when patches cannot be merged; may leave the HPA partially modified")
+}
 
-	cmd.PersistentFlags().StringVar(&opts.Export, "export", "", "export suggestions for GitOps: yaml, kustomize, or helm-values")
+// newWorkflowFlagSet builds the flags shared by the analysis commands: the
+// mutation workflow (--apply and its safety switches), GitOps export,
+// health-trend history, enrichment integrations, and standalone reports.
+//
+// These are attached to the commands that act on them rather than inherited
+// by every command, so `version --policy-guard-mode=warn` is now rejected
+// instead of silently accepted. The returned set is built once and shared by
+// pointer across commands, which is exactly how cobra propagates persistent
+// flags; only one command parses per invocation.
+func newWorkflowFlagSet(opts *options) *pflag.FlagSet {
+	fs := pflag.NewFlagSet("workflow", pflag.ContinueOnError)
 
-	cmd.PersistentFlags().BoolVar(&opts.Trend, "trend", false, "show health score trend with flapping detection")
-	cmd.PersistentFlags().DurationVar(&opts.TrendSince, "trend-since", 24*time.Hour, "lookback window for health trend (default: 24h)")
-	cmd.PersistentFlags().DurationVar(&opts.TrendRetain, "trend-retain", 72*time.Hour, "retention period for health history (default: 72h)")
+	fs.BoolVar(&opts.Apply, "apply", false, "run suggested HPA spec patch workflow")
+	fs.BoolVar(&opts.Diff, "diff", false, "show field-level diff of suggested changes")
+	fs.BoolVar(&opts.DryRun, "dry-run", opts.DryRun, "use server-side dry-run for --apply; set --dry-run=false to persist changes")
+	fs.BoolVarP(&opts.Yes, "yes", "y", false, "skip confirmation when used with --apply")
+	fs.BoolVar(&opts.AllowPartial, "allow-partial", false, "allow sequential (non-atomic) apply when patches cannot be merged; may leave the HPA partially modified")
 
-	cmd.PersistentFlags().StringArrayVar(&opts.HealthWeightOverrides, "health-weight", nil, "override a health score penalty, for example scalingInactive=50; repeatable")
-	cmd.PersistentFlags().StringVar(&opts.KEDA, "keda", opts.KEDA, "KEDA ScaledObject enrichment: auto (enable when CRD present), on (force), off (disable)")
-	cmd.PersistentFlags().StringVar(&opts.VPA, "vpa", opts.VPA, "VPA conflict detection: auto (enable when CRD present), on (force), off (disable)")
-	cmd.PersistentFlags().StringVar(&opts.PolicyGuard, "policy-guard", "", "path to a policy file used to guard --apply patches")
-	cmd.PersistentFlags().StringVar(&opts.PolicyGuardMode, "policy-guard-mode", opts.PolicyGuardMode, "policy guard mode for --apply: block or warn")
-	cmd.PersistentFlags().StringVar(&opts.Report, "report", "", "generate standalone report: markdown, html, incident, junit, or sarif")
+	fs.StringVar(&opts.Export, "export", "", "export suggestions for GitOps: yaml, kustomize, or helm-values")
+
+	fs.BoolVar(&opts.Trend, "trend", false, "show health score trend with flapping detection")
+	fs.DurationVar(&opts.TrendSince, "trend-since", 24*time.Hour, "lookback window for health trend (default: 24h)")
+	fs.DurationVar(&opts.TrendRetain, "trend-retain", 72*time.Hour, "retention period for health history (default: 72h)")
+
+	fs.StringArrayVar(&opts.HealthWeightOverrides, "health-weight", nil, "override a health score penalty, for example scalingInactive=50; repeatable")
+	fs.StringVar(&opts.KEDA, "keda", opts.KEDA, "KEDA ScaledObject enrichment: auto (enable when CRD present), on (force), off (disable)")
+	fs.StringVar(&opts.VPA, "vpa", opts.VPA, "VPA conflict detection: auto (enable when CRD present), on (force), off (disable)")
+	fs.StringVar(&opts.PolicyGuard, "policy-guard", "", "path to a policy file used to guard --apply patches")
+	fs.StringVar(&opts.PolicyGuardMode, "policy-guard-mode", opts.PolicyGuardMode, "policy guard mode for --apply: block or warn")
+	fs.StringVar(&opts.Report, "report", "", "generate standalone report: markdown, html, incident, junit, or sarif")
 
 	// Preserve the historical boolean-style shorthand while keeping the values
 	// tri-state: --keda/--vpa means on, and =auto|off stays available.
-	if keda := cmd.PersistentFlags().Lookup("keda"); keda != nil {
+	if keda := fs.Lookup("keda"); keda != nil {
 		keda.NoOptDefVal = "on"
 	}
-	if vpa := cmd.PersistentFlags().Lookup("vpa"); vpa != nil {
+	if vpa := fs.Lookup("vpa"); vpa != nil {
 		vpa.NoOptDefVal = "on"
+	}
+	return fs
+}
+
+// addSharedFlags copies each set onto the command's local flag set, skipping
+// any flag whose name or shorthand the command already defines. Commands such
+// as tui (--policy-guard) and timeline (--interval) register narrower,
+// better-documented variants of a shared flag; those must win, and skipping
+// also keeps this safe to call on a command more than once.
+func addSharedFlags(cmd *cobra.Command, sets ...*pflag.FlagSet) {
+	for _, fs := range sets {
+		fs.VisitAll(func(f *pflag.Flag) {
+			if cmd.Flags().Lookup(f.Name) != nil {
+				return
+			}
+			if f.Shorthand != "" && cmd.Flags().ShorthandLookup(f.Shorthand) != nil {
+				return
+			}
+			cmd.Flags().AddFlag(f)
+		})
 	}
 }
 
@@ -117,14 +159,24 @@ func registerStatusFlags(cmd *cobra.Command, opts *options) {
 	cmd.Flags().BoolVar(&opts.AdapterDiagnostics, "adapter-diagnostics", false, "diagnose custom/external metrics adapter signals")
 }
 
-// registerWatchFlags registers flags specific to the watch / TUI commands.
-func registerWatchFlags(cmd *cobra.Command, opts *options) {
-	cmd.PersistentFlags().BoolVarP(&opts.Watch.Watch, "watch", "w", false, "watch HPA status periodically")
-	cmd.PersistentFlags().BoolVar(&opts.Dashboard, "dashboard", false, "render watch output as a compact terminal dashboard")
-	cmd.PersistentFlags().DurationVar(&opts.WatchInterval, "interval", opts.WatchInterval, "watch refresh interval")
-	cmd.PersistentFlags().DurationVar(&opts.WatchTimeout, "timeout", 0, "stop watching after this duration")
-	cmd.PersistentFlags().StringVar(&opts.UntilCondition, "until-condition", "", "stop watching once an HPA condition type is present, for example scaling-limited")
+// newWatchFlagSet builds the flags specific to the watch / TUI commands. Only
+// status, watch, and tui read these options, so they are attached to those
+// commands (and to root, which runs status implicitly) rather than inherited
+// by every subcommand.
+func newWatchFlagSet(opts *options) *pflag.FlagSet {
+	fs := pflag.NewFlagSet("watch", pflag.ContinueOnError)
+	fs.BoolVarP(&opts.Watch.Watch, "watch", "w", false, "watch HPA status periodically")
+	fs.BoolVar(&opts.Dashboard, "dashboard", false, "render watch output as a compact terminal dashboard")
+	fs.DurationVar(&opts.WatchInterval, "interval", opts.WatchInterval, "watch refresh interval")
+	fs.DurationVar(&opts.WatchTimeout, "timeout", 0, "stop watching after this duration")
+	fs.StringVar(&opts.UntilCondition, "until-condition", "", "stop watching once an HPA condition type is present, for example scaling-limited")
+	return fs
 }
+
+// watchFlagCommands are the commands that read the watch options
+// (cmd/status.go, cmd/watch.go, cmd/tui.go). Root is handled separately
+// because it runs status implicitly.
+var watchFlagCommands = map[string]bool{"status": true, "watch": true, "tui": true}
 
 func analysisProfileCompletions(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 	return validAnalysisProfiles(), cobra.ShellCompDirectiveNoFileComp

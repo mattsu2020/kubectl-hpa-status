@@ -95,12 +95,9 @@ func runBlockers(ctx context.Context, out io.Writer, opts *options, names []stri
 	})
 }
 
-// buildBlockerReportForStatus builds a BlockerReport within an existing
-// buildStatusReport call, reusing the already-created client.
-func buildBlockerReportForStatus(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, target string) *blocker.Report { //nolint:unused // Retained compatibility wrapper.
-	return buildBlockerReportForStatusWithSnapshot(ctx, client, hpa, target, observation.New(client.Interface, hpa))
-}
-
+// buildBlockerReportForStatusWithSnapshot builds a BlockerReport within an
+// existing buildStatusReport call, reusing the already-created client and the
+// caller's observation snapshot.
 func buildBlockerReportForStatusWithSnapshot(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, target string, snapshot *observation.Snapshot) *blocker.Report {
 	input, warnings := assembleBlockerInputWithSnapshot(ctx, client, hpa, snapshot)
 	report := blocker.AnalyzeBlockers(input)
@@ -112,12 +109,9 @@ func buildBlockerReportForStatusWithSnapshot(ctx context.Context, client *kube.C
 	return report
 }
 
-// assembleBlockerInput gathers all observable signals for blocker analysis.
-func assembleBlockerInput(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) blocker.Input { //nolint:unused // Retained compatibility wrapper.
-	input, _ := assembleBlockerInputWithSnapshot(ctx, client, hpa, observation.New(client.Interface, hpa))
-	return input
-}
-
+// assembleBlockerInputWithSnapshot gathers all observable signals for blocker
+// analysis from the caller's observation snapshot, returning any collection
+// warnings alongside the input.
 func assembleBlockerInputWithSnapshot(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, snapshot *observation.Snapshot) (blocker.Input, []string) {
 	input := blocker.Input{
 		Namespace:       hpa.Namespace,
