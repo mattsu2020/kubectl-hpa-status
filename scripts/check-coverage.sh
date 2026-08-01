@@ -23,12 +23,25 @@ check() {
 # target rises durably, raise its floor here in the same PR; never lower a
 # floor to make a red build green.
 total="$(go tool cover -func="$coverage_file" | awk '/^total:/ {gsub(/%/, "", $3); print $3}')"
-check "Total" "$total" 74
-check "pkg/hpa" "$(statement_coverage '/pkg/hpa/')" 78
-check "cmd" "$(statement_coverage '/cmd/')" 64
+check "Total" "$total" 76
+check "pkg/hpa (tree)" "$(statement_coverage '/pkg/hpa/')" 78
+check "cmd (tree)" "$(statement_coverage '/cmd/')" 69
 check "cmd/replaylab" "$(statement_coverage '/cmd/replaylab/')" 92
 check "internal/enrichment" "$(statement_coverage '/internal/enrichment/')" 83
 check "pkg/hpa/render" "$(statement_coverage '/pkg/hpa/render/')" 91
+
+# Root-package floors. The "(tree)" checks above use substring matches, so they
+# also count every subpackage under that path. As the cmd/ and pkg/hpa/ splits
+# progress, each freshly extracted subpackage lands with high coverage and
+# lifts the tree aggregate, which can mask the large, weakly covered root
+# package it was carved out of. When these two checks were added the cmd tree
+# read 66.3% against a flat cmd package at 62.7%, and the pkg/hpa tree read
+# 80.2% against a root at 75.5% — a regression confined to either root could
+# have passed its tree gate. `[^/]+\.go:` anchors these checks to files sitting
+# directly in the package directory, so a root cannot be carried by its own
+# subpackages.
+check "cmd (root package)" "$(statement_coverage '/cmd/[^/]+\.go:')" 67
+check "pkg/hpa (root package)" "$(statement_coverage '/pkg/hpa/[^/]+\.go:')" 73
 
 # Safety-sensitive boundaries get their own floors so strong coverage in large
 # presentation packages cannot hide a regression in mutation, policy, archive,
