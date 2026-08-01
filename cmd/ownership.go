@@ -52,17 +52,15 @@ func runOwnership(ctx context.Context, out io.Writer, opts *options, names []str
 	if err != nil {
 		return err
 	}
-	reports := make([]ownershipReport, 0, len(names))
-	for _, name := range names {
+	reports, err := collectPerHPA(ctx, opts, names, func(ctx context.Context, name string) (ownershipReport, error) {
 		hpa, err := client.Interface.AutoscalingV2().HorizontalPodAutoscalers(client.Namespace).Get(ctx, name, metav1.GetOptions{})
 		if err != nil {
-			return err
+			return ownershipReport{}, err
 		}
-		report, err := buildOwnershipReport(ctx, client, hpa)
-		if err != nil {
-			return err
-		}
-		reports = append(reports, report)
+		return buildOwnershipReport(ctx, client, hpa)
+	})
+	if err != nil {
+		return err
 	}
 
 	var value any

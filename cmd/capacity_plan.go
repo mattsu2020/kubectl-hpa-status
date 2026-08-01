@@ -49,12 +49,10 @@ func runCapacityPlan(ctx context.Context, out io.Writer, opts *options, names []
 		return err
 	}
 
-	outputs := make([]capacityPlanOutput, 0, len(names))
-	for _, name := range names {
+	outputs, err := collectPerHPA(ctx, &local, names, func(ctx context.Context, name string) (capacityPlanOutput, error) {
 		hpa, err := fetchHPA(ctx, client, name)
 		if err != nil {
-			writeErrorIfStructured(out, local.Output, err)
-			return err
+			return capacityPlanOutput{}, err
 		}
 		analysis := hpaanalysis.AnalyzeWithOptions(hpa, false, analysisOptions(local.HealthWeights, local.Debug))
 		input := assembleCapacityPlanInputWithSnapshot(
@@ -65,14 +63,17 @@ func runCapacityPlan(ctx context.Context, out io.Writer, opts *options, names []
 			local.TargetMax,
 			observation.New(client.Interface, hpa),
 		)
-		plan := hpaanalysis.AnalyzeCapacityPlan(input)
 
-		outputs = append(outputs, capacityPlanOutput{
+		return capacityPlanOutput{
 			Namespace: analysis.Namespace,
 			Name:      analysis.Name,
 			Target:    analysis.Target,
-			Plan:      plan,
-		})
+			Plan:      hpaanalysis.AnalyzeCapacityPlan(input),
+		}, nil
+	})
+	if err != nil {
+		writeErrorIfStructured(out, local.Output, err)
+		return err
 	}
 
 	value := any(outputs)

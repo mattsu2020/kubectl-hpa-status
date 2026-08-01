@@ -48,12 +48,10 @@ func runBlockers(ctx context.Context, out io.Writer, opts *options, names []stri
 		return err
 	}
 
-	outputs := make([]blockerOutput, 0, len(names))
-	for _, name := range names {
+	outputs, err := collectPerHPA(ctx, &local, names, func(ctx context.Context, name string) (blockerOutput, error) {
 		hpa, err := fetchHPA(ctx, client, name)
 		if err != nil {
-			writeErrorIfStructured(out, local.Output, err)
-			return err
+			return blockerOutput{}, err
 		}
 		analysis := hpaanalysis.AnalyzeWithOptions(hpa, false, analysisOptions(local.HealthWeights, local.Debug))
 		blockerReport := buildBlockerReportForStatusWithSnapshot(
@@ -64,12 +62,16 @@ func runBlockers(ctx context.Context, out io.Writer, opts *options, names []stri
 			observation.New(client.Interface, hpa),
 		)
 
-		outputs = append(outputs, blockerOutput{
+		return blockerOutput{
 			Namespace: analysis.Namespace,
 			Name:      analysis.Name,
 			Target:    analysis.Target,
 			Report:    blockerReport,
-		})
+		}, nil
+	})
+	if err != nil {
+		writeErrorIfStructured(out, local.Output, err)
+		return err
 	}
 
 	value := any(outputs)

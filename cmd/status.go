@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"golang.org/x/sync/errgroup"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
@@ -362,51 +361,32 @@ func joinExportAndExit(exportErr, exitErr error) error {
 }
 
 // buildReportsConcurrently builds status reports for all named HPAs
-// concurrently. Unlike the historical errgroup variant, a per-item failure
-// does NOT abort the whole batch: the error is captured in the corresponding
-// reportResult and the run continues so partial results can be emitted. The
-// parent context is still honored (Ctrl+C cancels in-flight work).
+// concurrently and adapts the shared mapPerHPA results into reportResult.
+//
+// status is the one multi-HPA command that renders partial output, so it uses
+// mapPerHPA directly instead of collectPerHPA: a per-item failure does NOT
+// abort the batch, it is carried in the corresponding reportResult and the
+// remaining reports are still emitted. The parent context is still honored
+// (Ctrl+C cancels in-flight work).
 //
 // apply is intentionally not handled here: runStatusMany rejects --apply with
 // multiple names up front (cmd/status.go), so this path is never reached with
 // opts.Apply set.
 func buildReportsConcurrently(ctx context.Context, opts *options, client *kube.Client, names []string, includeInterpretation bool, ec *enrichmentContext) []reportResult {
-	results := make([]reportResult, len(names))
-	for i, name := range names {
-		results[i] = reportResult{name: name, namespace: client.Namespace, err: errPending}
-	}
+	built := mapPerHPA(ctx, perHPAConcurrency(opts), names, func(ctx context.Context, name string) (hpaanalysis.StatusReport, error) {
+		return buildStatusReport(ctx, opts, client, name, includeInterpretation, ec)
+	})
 
-	g, gctx := errgroup.WithContext(ctx)
-	limit := opts.Concurrency
-	if limit < 1 {
-		limit = defaultConcurrency()
+	results := make([]reportResult, len(built))
+	for i, item := range built {
+		results[i] = reportResult{
+			name:      item.name,
+			namespace: client.Namespace,
+			report:    item.value,
+			hasReport: item.err == nil,
+			err:       item.err,
+		}
 	}
-	g.SetLimit(limit)
-
-	for i, name := range names {
-		i, name := i, name
-		g.Go(func() error {
-			if gctx.Err() != nil {
-				results[i].err = gctx.Err()
-				return nil // do not cancel the group; record and move on
-			}
-			report, err := buildStatusReport(gctx, opts, client, name, includeInterpretation, ec)
-			if err != nil {
-				results[i].err = err
-				return nil // partial-result: do not cancel the group
-			}
-			results[i].report = report
-			results[i].hasReport = true
-			results[i].err = nil
-			return nil
-		})
-	}
-	// g.Wait() is intentionally discarded: every goroutine above returns nil
-	// (per-HPA errors are captured into results[i].err instead of cancelling
-	// the group), so by construction Wait() returns nil here. If a future
-	// change makes a goroutine return a non-nil error, this discard would hide
-	// it — keep the goroutines returning nil, or revisit this call site.
-	_ = g.Wait()
 	return results
 }
 
@@ -420,10 +400,6 @@ type reportResult struct {
 	hasReport bool
 	err       error
 }
-
-// errPending is a placeholder for results whose goroutine has not yet filled
-// in a real value; it is overwritten before results are consumed.
-var errPending = errors.New("report build did not complete")
 
 // batchStatus maps a reportResult to its StatusBatchItem.Status.
 func (r reportResult) batchStatus() hpaanalysis.StatusBatchStatus {
