@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"sort"
 	"time"
 
 	hpaflapping "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/flapping"
@@ -90,7 +89,7 @@ func runFlapFromRecord(out io.Writer, opts *options, name, path string) error {
 	if err != nil {
 		return err
 	}
-	item := analyzeTraceFlapping("", *trace)
+	item := traceFlappingReport(*trace)
 	report := flapReport{
 		Namespace:       item.Namespace,
 		Name:            item.Name,
@@ -231,16 +230,4 @@ func flapRecommendations(level string) []string {
 		"check whether CPU or custom metrics frequently cross the target threshold",
 		"consider a less aggressive scaleDown policy such as Percent 10 per 60s",
 	}
-}
-
-func traceReplicaRange(trace hpaanalysis.TimelineTrace) (int32, int32) {
-	if len(trace.Snapshots) == 0 {
-		return 0, 0
-	}
-	values := make([]int, 0, len(trace.Snapshots))
-	for _, snap := range trace.Snapshots {
-		values = append(values, int(snap.Desired))
-	}
-	sort.Ints(values)
-	return int32(values[0]), int32(values[len(values)-1])
 }

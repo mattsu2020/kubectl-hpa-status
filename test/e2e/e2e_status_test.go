@@ -20,6 +20,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/utils/ptr"
 
 	// Import the root command package from our plugin
 	"github.com/mattsu2020/kubectl-hpa-status/cmd"
@@ -87,7 +88,7 @@ func TestE2E_HPAStatus(t *testing.T) {
 			Namespace: nsName,
 		},
 		Spec: corev1.ReplicationControllerSpec{
-			Replicas: int32Ptr(2),
+			Replicas: ptr.To(int32(2)),
 			Selector: map[string]string{"app": "test"},
 			Template: &corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
@@ -131,7 +132,7 @@ func TestE2E_HPAStatus(t *testing.T) {
 						Name: corev1.ResourceCPU,
 						Target: autoscalingv2.MetricTarget{
 							Type:               autoscalingv2.UtilizationMetricType,
-							AverageUtilization: int32Ptr(80),
+							AverageUtilization: ptr.To(int32(80)),
 						},
 					},
 				},
@@ -169,7 +170,7 @@ func TestE2E_HPAStatus(t *testing.T) {
 				Resource: &autoscalingv2.ResourceMetricStatus{
 					Name: corev1.ResourceCPU,
 					Current: autoscalingv2.MetricValueStatus{
-						AverageUtilization: int32Ptr(120),
+						AverageUtilization: ptr.To(int32(120)),
 					},
 				},
 			},

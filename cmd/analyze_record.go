@@ -13,22 +13,11 @@ import (
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/flapping"
 )
 
 type recordAnalysis struct {
-	Items []recordAnalysisItem `json:"items" yaml:"items"`
-}
-
-type recordAnalysisItem struct {
-	Namespace      string   `json:"namespace" yaml:"namespace"`
-	Name           string   `json:"name" yaml:"name"`
-	Snapshots      int      `json:"snapshots" yaml:"snapshots"`
-	DesiredChanges int      `json:"desiredChanges" yaml:"desiredChanges"`
-	DirectionFlips int      `json:"directionFlips" yaml:"directionFlips"`
-	ReplicaMin     int32    `json:"replicaMin,omitempty" yaml:"replicaMin,omitempty"`
-	ReplicaMax     int32    `json:"replicaMax,omitempty" yaml:"replicaMax,omitempty"`
-	Level          string   `json:"level" yaml:"level"`
-	Suggestions    []string `json:"suggestions,omitempty" yaml:"suggestions,omitempty"`
+	Items []flapping.TraceReport `json:"items" yaml:"items"`
 }
 
 // analyzeRecordOptions carries the detector selection and the tuning knobs
@@ -89,8 +78,8 @@ func runAnalyzeRecordFlapping(out io.Writer, opts *options, path string) error {
 		return err
 	}
 	var result recordAnalysis
-	for key, trace := range traces {
-		item := analyzeTraceFlapping(key, trace)
+	for _, trace := range traces {
+		item := traceFlappingReport(trace)
 		if item.DesiredChanges > 0 || item.DirectionFlips > 0 {
 			result.Items = append(result.Items, item)
 		}
@@ -164,59 +153,18 @@ func loadAllRecordedTraces(path string) (map[string]hpaanalysis.TimelineTrace, e
 	return result, nil
 }
 
-// Flapping severity thresholds for recorded-trace analysis. An HPA is
-// classified by the number of scale-direction reversals (direction flips) and
-// the total desiredReplicas changes across the recording.
-const (
-	flappingCriticalDirectionFlips = 6
-	flappingCriticalDesiredChanges = 15
-	flappingHighDirectionFlips     = 3
-	flappingHighDesiredChanges     = 8
-	flappingMediumDesiredChanges   = 4
-)
-
-func analyzeTraceFlapping(_ string, trace hpaanalysis.TimelineTrace) recordAnalysisItem {
-	item := recordAnalysisItem{
+// traceFlappingReport adapts a recorded trace to the flapping package's
+// TraceInput and runs the recorded-trace flapping detector. The thresholds
+// and level classification live in pkg/hpa/flapping so the analyze-record and
+// flap commands share one implementation.
+func traceFlappingReport(trace hpaanalysis.TimelineTrace) flapping.TraceReport {
+	desired := make([]int32, len(trace.Snapshots))
+	for i, snap := range trace.Snapshots {
+		desired[i] = snap.Desired
+	}
+	return flapping.AnalyzeTrace(flapping.TraceInput{
 		Namespace: trace.Namespace,
 		Name:      trace.HPAName,
-		Snapshots: len(trace.Snapshots),
-		Level:     "LOW",
-	}
-	item.ReplicaMin, item.ReplicaMax = traceReplicaRange(trace)
-	var lastDesired int32
-	var lastDirection int32
-	for i, snap := range trace.Snapshots {
-		if i == 0 {
-			lastDesired = snap.Desired
-			continue
-		}
-		if snap.Desired == lastDesired {
-			continue
-		}
-		item.DesiredChanges++
-		direction := int32(1)
-		if snap.Desired < lastDesired {
-			direction = -1
-		}
-		if lastDirection != 0 && direction != lastDirection {
-			item.DirectionFlips++
-		}
-		lastDirection = direction
-		lastDesired = snap.Desired
-	}
-	switch {
-	case item.DirectionFlips >= flappingCriticalDirectionFlips || item.DesiredChanges >= flappingCriticalDesiredChanges:
-		item.Level = "CRITICAL"
-	case item.DirectionFlips >= flappingHighDirectionFlips || item.DesiredChanges >= flappingHighDesiredChanges:
-		item.Level = "HIGH"
-	case item.DirectionFlips > 0 || item.DesiredChanges >= flappingMediumDesiredChanges:
-		item.Level = "MEDIUM"
-	}
-	if item.Level != "LOW" {
-		item.Suggestions = append(item.Suggestions,
-			"review scaleDown stabilization window and configured tolerance",
-			"check whether target utilization is too close to normal traffic baseline",
-		)
-	}
-	return item
+		Desired:   desired,
+	})
 }

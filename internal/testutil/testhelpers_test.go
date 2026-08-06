@@ -8,6 +8,7 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 )
 
 func TestNewFakeClient(t *testing.T) {
@@ -165,12 +166,10 @@ func TestWithDesiredAtMax(t *testing.T) {
 
 func TestWithBehavior(t *testing.T) {
 	behavior := &autoscalingv2.HorizontalPodAutoscalerBehavior{
-		ScaleUp: &autoscalingv2.HPAScalingRules{StabilizationWindowSeconds: int32Ptr(0)},
+		ScaleUp: &autoscalingv2.HPAScalingRules{StabilizationWindowSeconds: ptr.To(int32(0))},
 	}
 	hpa := BuildHPA("default", "web", WithBehavior(behavior))
 	if hpa.Spec.Behavior != behavior {
 		t.Fatalf("expected behavior to be set directly, got %+v", hpa.Spec.Behavior)
 	}
 }
-
-func int32Ptr(v int32) *int32 { return &v }

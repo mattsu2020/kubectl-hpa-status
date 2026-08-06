@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"k8s.io/utils/ptr"
 )
 
 func TestWriteRichIncidentMarkdown_SingleHealthyHPA(t *testing.T) {
@@ -25,7 +27,7 @@ func TestWriteRichIncidentMarkdown_SingleHealthyHPA(t *testing.T) {
 					{Type: "ScalingActive", Status: "True", Reason: "ValidMetricFound", Message: "the HPA was able to successfully calculate a replica count"},
 				},
 				Metrics: []Metric{
-					{Name: "cpu", Current: "78%", Target: "80%", Ratio: floatPtr(0.975), Text: "cpu 78%/80%"},
+					{Name: "cpu", Current: "78%", Target: "80%", Ratio: ptr.To(0.975), Text: "cpu 78%/80%"},
 				},
 			},
 		},
@@ -463,7 +465,7 @@ func TestWriteRichIncidentMarkdown_ValidMarkdown(t *testing.T) {
 					{Type: "ScalingActive", Status: "True", Reason: "ValidMetricFound", Message: "the HPA was able to successfully calculate a replica count"},
 				},
 				Metrics: []Metric{
-					{Name: "cpu", Current: "78%", Target: "80%", Ratio: floatPtr(0.975), Text: "cpu 78%/80%"},
+					{Name: "cpu", Current: "78%", Target: "80%", Ratio: ptr.To(0.975), Text: "cpu 78%/80%"},
 				},
 			},
 			Events: []Event{
@@ -585,9 +587,4 @@ func TestWriteRichIncidentMarkdown_SeverityAssessment(t *testing.T) {
 			}
 		})
 	}
-}
-
-// floatPtr is a test helper that returns a pointer to the given float64.
-func floatPtr(v float64) *float64 {
-	return &v
 }

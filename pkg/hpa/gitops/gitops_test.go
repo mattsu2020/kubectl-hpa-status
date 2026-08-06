@@ -3,6 +3,8 @@ package gitops
 import (
 	"strings"
 	"testing"
+
+	"k8s.io/utils/ptr"
 )
 
 func TestAnalyzeConflict_NoConflicts(t *testing.T) {
@@ -37,7 +39,7 @@ func TestAnalyzeConflict_ManifestReplicasMismatch(t *testing.T) {
 		TargetName:       "web",
 		DesiredReplicas:  8,
 		LiveReplicas:     8,
-		ManifestReplicas: int32Ptr(3),
+		ManifestReplicas: ptr.To(int32(3)),
 	})
 
 	if len(result.Conflicts) != 1 {
@@ -68,7 +70,7 @@ func TestAnalyzeConflict_ManifestReplicasMatch(t *testing.T) {
 		TargetKind:       "Deployment",
 		TargetName:       "web",
 		DesiredReplicas:  5,
-		ManifestReplicas: int32Ptr(5),
+		ManifestReplicas: ptr.To(int32(5)),
 	})
 
 	if len(result.Conflicts) != 0 {
@@ -135,7 +137,7 @@ func TestAnalyzeConflict_MultipleFindingsCombineIntoSummary(t *testing.T) {
 		TargetKind:        "Deployment",
 		TargetName:        "web",
 		DesiredReplicas:   8,
-		ManifestReplicas:  int32Ptr(3),
+		ManifestReplicas:  ptr.To(int32(3)),
 		ArgoCDAnnotations: map[string]string{"argocd.argoproj.io/instance": "web-app"},
 	})
 

@@ -19,6 +19,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	restclient "k8s.io/client-go/rest"
 	k8stesting "k8s.io/client-go/testing"
+	"k8s.io/utils/ptr"
 )
 
 func TestCheckAPIServices(t *testing.T) {
@@ -258,7 +259,7 @@ func TestFetchReplicaSetsForScaleTarget(t *testing.T) {
 				{Kind: "Deployment", Name: "web"},
 			},
 		},
-		Spec:   appsv1.ReplicaSetSpec{Replicas: ptrInt32(3)},
+		Spec:   appsv1.ReplicaSetSpec{Replicas: ptr.To(int32(3))},
 		Status: appsv1.ReplicaSetStatus{Replicas: 3, ReadyReplicas: 2},
 	}
 	unowned := &appsv1.ReplicaSet{
@@ -509,5 +510,3 @@ func TestFindConflictingVPA(t *testing.T) {
 		t.Fatalf("no-resource-metric HPA should return (nil, nil), got (%+v, %v)", info, err)
 	}
 }
-
-func ptrInt32(v int32) *int32 { return &v }

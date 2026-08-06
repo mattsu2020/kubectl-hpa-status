@@ -7,8 +7,8 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 )
 
 func TestScalingActiveRule(t *testing.T) {
@@ -101,7 +101,7 @@ func TestScalingLimitedMaxRule(t *testing.T) {
 								Name: corev1.ResourceCPU,
 								Target: autoscalingv2.MetricTarget{
 									Type:               autoscalingv2.UtilizationMetricType,
-									AverageUtilization: int32PtrForSuggestion(80),
+									AverageUtilization: ptr.To(int32(80)),
 								},
 							},
 						},
@@ -116,7 +116,7 @@ func TestScalingLimitedMaxRule(t *testing.T) {
 							Resource: &autoscalingv2.ResourceMetricStatus{
 								Name: corev1.ResourceCPU,
 								Current: autoscalingv2.MetricValueStatus{
-									AverageUtilization: int32PtrForSuggestion(100),
+									AverageUtilization: ptr.To(int32(100)),
 								},
 							},
 						},
@@ -214,7 +214,7 @@ func TestScalingLimitedMinRule(t *testing.T) {
 			hpa: &autoscalingv2.HorizontalPodAutoscaler{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-hpa", Namespace: "default"},
 				Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-					MinReplicas: int32PtrForSuggestion(3),
+					MinReplicas: ptr.To(int32(3)),
 				},
 				Status: autoscalingv2.HorizontalPodAutoscalerStatus{
 					DesiredReplicas: 3,
@@ -239,7 +239,7 @@ func TestScalingLimitedMinRule(t *testing.T) {
 			name: "Capped at min with min = 1 does not suggest",
 			hpa: &autoscalingv2.HorizontalPodAutoscaler{
 				Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-					MinReplicas: int32PtrForSuggestion(1),
+					MinReplicas: ptr.To(int32(1)),
 				},
 				Status: autoscalingv2.HorizontalPodAutoscalerStatus{
 					DesiredReplicas: 1,
@@ -258,7 +258,7 @@ func TestScalingLimitedMinRule(t *testing.T) {
 			name: "Not capped at min returns nil",
 			hpa: &autoscalingv2.HorizontalPodAutoscaler{
 				Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-					MinReplicas: int32PtrForSuggestion(2),
+					MinReplicas: ptr.To(int32(2)),
 				},
 				Status: autoscalingv2.HorizontalPodAutoscalerStatus{
 					DesiredReplicas: 5,
@@ -299,7 +299,7 @@ func TestScaleDownStabilizedRule(t *testing.T) {
 				Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
 					Behavior: &autoscalingv2.HorizontalPodAutoscalerBehavior{
 						ScaleDown: &autoscalingv2.HPAScalingRules{
-							StabilizationWindowSeconds: int32PtrForSuggestion(600),
+							StabilizationWindowSeconds: ptr.To(int32(600)),
 						},
 					},
 				},
@@ -322,7 +322,7 @@ func TestScaleDownStabilizedRule(t *testing.T) {
 				Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
 					Behavior: &autoscalingv2.HorizontalPodAutoscalerBehavior{
 						ScaleDown: &autoscalingv2.HPAScalingRules{
-							StabilizationWindowSeconds: int32PtrForSuggestion(300),
+							StabilizationWindowSeconds: ptr.To(int32(300)),
 						},
 					},
 				},
@@ -388,7 +388,7 @@ func TestBehaviorPolicyRule(t *testing.T) {
 								Name: corev1.ResourceCPU,
 								Target: autoscalingv2.MetricTarget{
 									Type:               autoscalingv2.UtilizationMetricType,
-									AverageUtilization: int32PtrForSuggestion(80),
+									AverageUtilization: ptr.To(int32(80)),
 								},
 							},
 						},
@@ -403,7 +403,7 @@ func TestBehaviorPolicyRule(t *testing.T) {
 							Resource: &autoscalingv2.ResourceMetricStatus{
 								Name: corev1.ResourceCPU,
 								Current: autoscalingv2.MetricValueStatus{
-									AverageUtilization: int32PtrForSuggestion(100),
+									AverageUtilization: ptr.To(int32(100)),
 								},
 							},
 						},
@@ -425,7 +425,7 @@ func TestBehaviorPolicyRule(t *testing.T) {
 								Name: corev1.ResourceCPU,
 								Target: autoscalingv2.MetricTarget{
 									Type:               autoscalingv2.UtilizationMetricType,
-									AverageUtilization: int32PtrForSuggestion(80),
+									AverageUtilization: ptr.To(int32(80)),
 								},
 							},
 						},
@@ -440,7 +440,7 @@ func TestBehaviorPolicyRule(t *testing.T) {
 							Resource: &autoscalingv2.ResourceMetricStatus{
 								Name: corev1.ResourceCPU,
 								Current: autoscalingv2.MetricValueStatus{
-									AverageUtilization: int32PtrForSuggestion(40),
+									AverageUtilization: ptr.To(int32(40)),
 								},
 							},
 						},
@@ -504,7 +504,7 @@ func TestToleranceRule(t *testing.T) {
 								Name: corev1.ResourceCPU,
 								Target: autoscalingv2.MetricTarget{
 									Type:               autoscalingv2.UtilizationMetricType,
-									AverageUtilization: int32PtrForSuggestion(80),
+									AverageUtilization: ptr.To(int32(80)),
 								},
 							},
 						},
@@ -519,7 +519,7 @@ func TestToleranceRule(t *testing.T) {
 							Resource: &autoscalingv2.ResourceMetricStatus{
 								Name: corev1.ResourceCPU,
 								Current: autoscalingv2.MetricValueStatus{
-									AverageUtilization: int32PtrForSuggestion(85), // 1.0625x target
+									AverageUtilization: ptr.To(int32(85)), // 1.0625x target
 								},
 							},
 						},
@@ -777,14 +777,6 @@ func TestScalingLimitedMaxRule_SufficientCapacity(t *testing.T) {
 }
 
 // Helper functions
-
-func int32PtrForSuggestion(i int32) *int32 {
-	return &i
-}
-
-func resourcePtr(q resource.Quantity) *resource.Quantity {
-	return &q
-}
 
 func buildScalingLimitedHPA(maxReplicas, desiredReplicas int32) *autoscalingv2.HorizontalPodAutoscaler {
 	return testutil.BuildHPA("default", "test-hpa",

@@ -6,6 +6,7 @@ import (
 
 	hpakeda "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/keda"
 	hpavpa "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
+	"k8s.io/utils/ptr"
 
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
@@ -38,8 +39,6 @@ func testListItem() hpaanalysis.ListItem {
 		Summary:     "HPA currently wants to scale up.",
 	}
 }
-
-func int64Ptr(v int64) *int64 { return &v }
 
 // --- ListItem renderers ---
 
@@ -152,8 +151,8 @@ func TestRenderDetailHiddenFactors_Empty(t *testing.T) {
 
 func TestRenderDetailStabilization_Active(t *testing.T) {
 	a := &hpaanalysis.Analysis{
-		StabilizationRemaining:     int64Ptr(45),
-		StabilizationWindowSeconds: int32Ptr(300),
+		StabilizationRemaining:     ptr.To(int64(45)),
+		StabilizationWindowSeconds: ptr.To(int32(300)),
 		StabilizationSource:        "scaleDown",
 	}
 	out := renderToString(func(sb *strings.Builder) { renderDetailStabilization(sb, a) })

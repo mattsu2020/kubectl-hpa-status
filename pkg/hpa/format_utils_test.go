@@ -6,10 +6,8 @@ import (
 	"time"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
+	"k8s.io/utils/ptr"
 )
-
-func fmtIntPtr(v int64) *int64   { return &v }
-func fmtInt32Ptr(v int32) *int32 { return &v }
 
 func TestFormatDuration(t *testing.T) {
 	tests := []struct {
@@ -47,11 +45,11 @@ func TestFormatStabilizationRemaining(t *testing.T) {
 		expected  string
 	}{
 		{"nil", nil, ""},
-		{"zero", fmtIntPtr(0), ""},
-		{"negative", fmtIntPtr(-5), ""},
-		{"30 seconds", fmtIntPtr(30), "30s"},
-		{"4m12s", fmtIntPtr(252), "4m 12s"},
-		{"1h", fmtIntPtr(3600), "1h 0m"},
+		{"zero", ptr.To(int64(0)), ""},
+		{"negative", ptr.To(int64(-5)), ""},
+		{"30 seconds", ptr.To(int64(30)), "30s"},
+		{"4m12s", ptr.To(int64(252)), "4m 12s"},
+		{"1h", ptr.To(int64(3600)), "1h 0m"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -70,11 +68,11 @@ func TestFormatStabilizationProgress(t *testing.T) {
 		window    *int32
 		expected  string
 	}{
-		{"nil remaining", nil, fmtInt32Ptr(300), ""},
-		{"zero remaining", fmtIntPtr(0), fmtInt32Ptr(300), ""},
-		{"nil window", fmtIntPtr(252), nil, "4m 12s remaining"},
-		{"both present", fmtIntPtr(252), fmtInt32Ptr(300), "4m 12s remaining (of 5m 0s)"},
-		{"zero window", fmtIntPtr(100), fmtInt32Ptr(0), "1m 40s remaining"},
+		{"nil remaining", nil, ptr.To(int32(300)), ""},
+		{"zero remaining", ptr.To(int64(0)), ptr.To(int32(300)), ""},
+		{"nil window", ptr.To(int64(252)), nil, "4m 12s remaining"},
+		{"both present", ptr.To(int64(252)), ptr.To(int32(300)), "4m 12s remaining (of 5m 0s)"},
+		{"zero window", ptr.To(int64(100)), ptr.To(int32(0)), "1m 40s remaining"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -93,13 +91,13 @@ func TestStabilizationProgressRatio(t *testing.T) {
 		window    *int32
 		expected  float64
 	}{
-		{"nil remaining", nil, fmtInt32Ptr(300), 0},
-		{"nil window", fmtIntPtr(100), nil, 0},
-		{"zero window", fmtIntPtr(100), fmtInt32Ptr(0), 0},
-		{"half elapsed", fmtIntPtr(150), fmtInt32Ptr(300), 0.5},
-		{"fully elapsed", fmtIntPtr(0), fmtInt32Ptr(300), 1.0},
-		{"just started", fmtIntPtr(299), fmtInt32Ptr(300), 0.0033333333333333335},
-		{"overshoot clamped", fmtIntPtr(-100), fmtInt32Ptr(300), 1.0},
+		{"nil remaining", nil, ptr.To(int32(300)), 0},
+		{"nil window", ptr.To(int64(100)), nil, 0},
+		{"zero window", ptr.To(int64(100)), ptr.To(int32(0)), 0},
+		{"half elapsed", ptr.To(int64(150)), ptr.To(int32(300)), 0.5},
+		{"fully elapsed", ptr.To(int64(0)), ptr.To(int32(300)), 1.0},
+		{"just started", ptr.To(int64(299)), ptr.To(int32(300)), 0.0033333333333333335},
+		{"overshoot clamped", ptr.To(int64(-100)), ptr.To(int32(300)), 1.0},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -120,11 +118,11 @@ func TestFormatCountdownBadge(t *testing.T) {
 		expected  string
 	}{
 		{"nil", nil, ""},
-		{"zero", fmtIntPtr(0), ""},
-		{"30 seconds", fmtIntPtr(30), "⏳ 30s"},
-		{"4m12s", fmtIntPtr(252), "⏳ 4m12s"},
-		{"1h23m", fmtIntPtr(4980), "⏳ 1h23m"},
-		{"5m0s", fmtIntPtr(300), "⏳ 5m0s"},
+		{"zero", ptr.To(int64(0)), ""},
+		{"30 seconds", ptr.To(int64(30)), "⏳ 30s"},
+		{"4m12s", ptr.To(int64(252)), "⏳ 4m12s"},
+		{"1h23m", ptr.To(int64(4980)), "⏳ 1h23m"},
+		{"5m0s", ptr.To(int64(300)), "⏳ 5m0s"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

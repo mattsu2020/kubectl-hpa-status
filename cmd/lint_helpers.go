@@ -118,7 +118,7 @@ func lintFileResultForDecodeError(file string, document int, decodeErr error) li
 // lintFileResult per HPA found. Returns true if at least one HPA document was
 // found in the file.
 func lintOneFile(file string, decoder runtimeDecoder, workloads map[lintWorkloadKey]lintWorkloadInfo) ([]lintFileResult, bool) {
-	data, readErr := os.ReadFile(file)
+	data, readErr := readFileBounded(file)
 	if readErr != nil {
 		return []lintFileResult{lintFileResultForReadError(file, readErr)}, true
 	}

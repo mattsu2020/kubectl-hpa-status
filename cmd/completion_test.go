@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
-	"k8s.io/client-go/tools/clientcmd/api"
 )
 
 func TestOutputCompletions(t *testing.T) {
@@ -100,38 +99,5 @@ func TestUntilConditionCompletions(t *testing.T) {
 	}
 	if len(completions) != 5 {
 		t.Errorf("expected 5 completions, got %d", len(completions))
-	}
-}
-
-func TestContextNames(t *testing.T) {
-	config := &api.Config{
-		Contexts: map[string]*api.Context{
-			"dev":     {},
-			"staging": {},
-			"prod":    {},
-		},
-	}
-	names := contextNames(config)
-	if len(names) != 3 {
-		t.Errorf("expected 3 context names, got %d", len(names))
-	}
-	found := map[string]bool{}
-	for _, n := range names {
-		found[n] = true
-	}
-	for _, exp := range []string{"dev", "staging", "prod"} {
-		if !found[exp] {
-			t.Errorf("missing context name %q", exp)
-		}
-	}
-}
-
-func TestContextNamesEmpty(t *testing.T) {
-	config := &api.Config{
-		Contexts: map[string]*api.Context{},
-	}
-	names := contextNames(config)
-	if len(names) != 0 {
-		t.Errorf("expected 0 context names, got %d", len(names))
 	}
 }

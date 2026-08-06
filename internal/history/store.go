@@ -294,12 +294,32 @@ func (s *HealthStore) filePath(namespace, name string) string {
 	return filepath.Join(s.dir, safeNS+"_"+safeName+".jsonl")
 }
 
-// sanitizeFilename replaces path separators and special characters.
+// maxFilenameSegmentLength bounds a single sanitized path segment so a
+// pathologically long name cannot blow past filesystem name limits.
+const maxFilenameSegmentLength = 200
+
+// sanitizeFilename neutralizes anything that could escape the store
+// directory: path separators, parent-directory references, control
+// characters, empty inputs, and over-long names. Inputs come from the
+// Kubernetes API and are DNS-constrained in practice, so this is
+// defense-in-depth.
 func sanitizeFilename(s string) string {
-	s = strings.ReplaceAll(s, "/", "_")
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		if r < 0x20 || r == 0x7f {
+			b.WriteRune('_')
+			continue
+		}
+		b.WriteRune(r)
+	}
+	s = strings.ReplaceAll(b.String(), "/", "_")
 	s = strings.ReplaceAll(s, "\\", "_")
-	if strings.HasPrefix(s, "..") {
+	if s == "" || s == "." || strings.HasPrefix(s, "..") {
 		s = "_" + s
+	}
+	if len(s) > maxFilenameSegmentLength {
+		s = s[:maxFilenameSegmentLength]
 	}
 	return s
 }

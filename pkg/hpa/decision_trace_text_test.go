@@ -3,9 +3,9 @@ package hpa
 import (
 	"strings"
 	"testing"
-)
 
-func float64Ptr(v float64) *float64 { return &v }
+	"k8s.io/utils/ptr"
+)
 
 func TestAppendStructuredDecisionTraceText_Nil(t *testing.T) {
 	var buf []byte
@@ -30,7 +30,7 @@ func TestAppendStructuredDecisionTraceText_Full(t *testing.T) {
 			Type:               "Resource",
 			Current:            "90",
 			Target:             "70",
-			Ratio:              float64Ptr(1.286),
+			Ratio:              ptr.To(1.286),
 			DesiredDirection:   "up",
 			EffectiveTolerance: 0.1,
 		}},

@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/tolerance"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
@@ -420,7 +420,7 @@ func parseRelativePercentage(value string) (float64, error) {
 
 // computeProjectedReplicas returns ceil(currentReplicas * ratio) bounded by min/max.
 func computeProjectedReplicas(currentReplicas int32, ratio float64, minReplicas, maxReplicas int32) int32 {
-	projected, usable := util.ProjectedReplicasForRatio(currentReplicas, ratio)
+	projected, usable := tolerance.ProjectedReplicasForRatio(currentReplicas, ratio)
 	if !usable {
 		return currentReplicas
 	}

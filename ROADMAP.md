@@ -51,15 +51,15 @@ user-visible behavior change.
   `cmd/internal/buildinfo` (ldflags/build-info version resolution). Each is
   cobra-free and option-free, and each carries its own tests.
 
-  `completion` is the remaining named group and is **still blocked**: its
-  callbacks close over `*options` for the client, namespace, and context, and
-  read the `validColorValues` / `validLangValues` / output-format vocabularies
-  that live in `cmd/config.go` and `cmd/root_flags.go`. Extracting it requires
-  first narrowing those into an explicit contract (a completion-source
-  interface plus an exported vocabulary type) rather than moving files.
-  The same prerequisite applies to the deeper commands: snapshot loading,
-  capacity selectors, and output selection are all reached through
-  cmd-private helpers.
+  `completion` is now extracted as `cmd/internal/completion`. The dynamic
+  completers (HPA names, namespaces, contexts) take a narrow `completion.Deps`
+  value (client factory + `AllNamespaces` + `Kubeconfig`) instead of closing
+  over `*options`, and the value vocabularies (`output`, `color`, `lang`, ...)
+  live as pure data in the package. `cmd/completion.go` is a thin facade that
+  bridges `*options` → `completion.Deps` so the ~40 `hpaNameCompletion(opts)`
+  call sites compile unchanged. The deeper commands (snapshot loading,
+  capacity selectors, output selection) still reach cmd-private helpers and
+  remain in `cmd/` for a later phase.
 - **Slim the `Analysis` god-struct:** `pkg/hpa.Analysis` has 65 fields
   accumulated feature-by-feature. The additive migration boundary is now
   complete: v1 keeps the flat storage and default wire shape, while explicit

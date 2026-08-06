@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -223,6 +224,7 @@ func TestHealthStoreLoadMultiple(t *testing.T) {
 }
 
 func TestSanitizeFilename(t *testing.T) {
+	long := strings.Repeat("a", maxFilenameSegmentLength+50)
 	tests := []struct {
 		input string
 		want  string
@@ -230,6 +232,11 @@ func TestSanitizeFilename(t *testing.T) {
 		{input: "default", want: "default"},
 		{input: "kube-system", want: "kube-system"},
 		{input: "../../../etc/passwd", want: "_.._.._.._etc_passwd"},
+		{input: "", want: "_"},
+		{input: ".", want: "_."},
+		{input: "..", want: "_.."},
+		{input: "a\x00b\x1fc", want: "a_b_c"},
+		{input: long, want: strings.Repeat("a", maxFilenameSegmentLength)},
 	}
 
 	for _, tt := range tests {

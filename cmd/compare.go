@@ -12,25 +12,8 @@ import (
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
-	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/compare"
 )
-
-type compareReport struct {
-	From        string        `json:"from" yaml:"from"`
-	To          string        `json:"to" yaml:"to"`
-	Differences []compareDiff `json:"differences" yaml:"differences"`
-	Risks       []string      `json:"risks,omitempty" yaml:"risks,omitempty"`
-}
-
-type compareListReport struct {
-	Items []compareReport `json:"items" yaml:"items"`
-}
-
-type compareDiff struct {
-	Field string `json:"field" yaml:"field"`
-	From  string `json:"from" yaml:"from"`
-	To    string `json:"to" yaml:"to"`
-}
 
 func newCompareCommand(opts *options) *cobra.Command {
 	cmd := &cobra.Command{
@@ -73,15 +56,14 @@ func runCompare(ctx context.Context, out io.Writer, opts *options, fromRef, toRe
 	if err != nil {
 		return fmt.Errorf("fetching TO HPA %s: %w", toRef, err)
 	}
-	report := buildCompareReport(fromLabel, toLabel, fromHPA, toHPA)
+	report := compare.BuildReport(fromLabel, toLabel, fromHPA, toHPA)
 	return render.Format(out, opts.Output, opts.Template, report, func(out io.Writer) error {
 		return writeCompareText(out, report)
 	})
-
 }
 
 // writeCompareText renders the human-readable single-pair compare output.
-func writeCompareText(out io.Writer, report compareReport) error {
+func writeCompareText(out io.Writer, report compare.Report) error {
 	if _, err := fmt.Fprintf(out, "HPA Compare: %s -> %s\n\n", report.From, report.To); err != nil {
 		return fmt.Errorf("write compare header: %w", err)
 	}
@@ -134,28 +116,27 @@ func runCompareAll(ctx context.Context, out io.Writer, opts *options, fromContex
 		hpa := &toHPAs.Items[i]
 		toMap[hpa.Namespace+"/"+hpa.Name] = hpa
 	}
-	var reports []compareReport
+	var reports []compare.Report
 	for i := range fromHPAs.Items {
 		from := &fromHPAs.Items[i]
 		key := from.Namespace + "/" + from.Name
 		to := toMap[key]
 		if to == nil {
-			reports = append(reports, compareReport{From: key, To: "<missing>", Differences: []compareDiff{{Field: "exists", From: "true", To: "false"}}, Risks: []string{"target environment is missing this HPA"}})
+			reports = append(reports, compare.Report{From: key, To: "<missing>", Differences: []compare.Diff{{Field: "exists", From: "true", To: "false"}}, Risks: []string{"target environment is missing this HPA"}})
 			continue
 		}
-		report := buildCompareReport(key, key, from, to)
+		report := compare.BuildReport(key, key, from, to)
 		if !onlyDrift || len(report.Differences) > 0 {
 			reports = append(reports, report)
 		}
 	}
-	list := compareListReport{Items: reports}
+	list := compare.ListReport{Items: reports}
 	return render.Format(out, opts.Output, opts.Template, list, func(out io.Writer) error {
 		return renderCompareDriftText(out, reports)
 	})
-
 }
 
-func renderCompareDriftText(out io.Writer, reports []compareReport) error {
+func renderCompareDriftText(out io.Writer, reports []compare.Report) error {
 	if len(reports) == 0 {
 		if _, err := fmt.Fprintln(out, "No HPA drift found."); err != nil {
 			return fmt.Errorf("write compare drift: %w", err)
@@ -202,48 +183,4 @@ func splitNamespacedRef(ref, defaultNamespace string) (string, string) {
 		return ns, name
 	}
 	return defaultNamespace, ref
-}
-
-func buildCompareReport(fromLabel, toLabel string, from, to *autoscalingv2.HorizontalPodAutoscaler) compareReport {
-	report := compareReport{From: fromLabel, To: toLabel}
-	addDiff := func(field, left, right string) {
-		if left != right {
-			report.Differences = append(report.Differences, compareDiff{Field: field, From: left, To: right})
-		}
-	}
-	addDiff("minReplicas", fmt.Sprintf("%d", replicasOrDefault(from.Spec.MinReplicas)), fmt.Sprintf("%d", replicasOrDefault(to.Spec.MinReplicas)))
-	addDiff("maxReplicas", fmt.Sprintf("%d", from.Spec.MaxReplicas), fmt.Sprintf("%d", to.Spec.MaxReplicas))
-	addDiff("metrics", compareMetricSummary(from), compareMetricSummary(to))
-	addDiff("behavior.scaleDown.stabilizationWindowSeconds", stabilizationWindowString(from), stabilizationWindowString(to))
-	addDiff("healthScore", fmt.Sprintf("%d", hpaanalysis.Analyze(from, false).HealthScore), fmt.Sprintf("%d", hpaanalysis.Analyze(to, false).HealthScore))
-	if to.Spec.MaxReplicas < from.Spec.MaxReplicas {
-		report.Risks = append(report.Risks, "target environment has lower maxReplicas and is more likely to hit a replica cap under the same load")
-	}
-	return report
-}
-
-func compareMetricSummary(hpa *autoscalingv2.HorizontalPodAutoscaler) string {
-	parts := make([]string, 0, len(hpa.Spec.Metrics))
-	for _, metric := range hpa.Spec.Metrics {
-		switch {
-		case metric.Resource != nil:
-			parts = append(parts, fmt.Sprintf("Resource/%s=%s", metric.Resource.Name, hpaanalysis.FormatMetricTarget(metric.Resource.Target)))
-		case metric.ContainerResource != nil:
-			parts = append(parts, fmt.Sprintf("ContainerResource/%s/%s=%s", metric.ContainerResource.Container, metric.ContainerResource.Name, hpaanalysis.FormatMetricTarget(metric.ContainerResource.Target)))
-		case metric.External != nil:
-			parts = append(parts, fmt.Sprintf("External/%s=%s", metric.External.Metric.Name, hpaanalysis.FormatMetricTarget(metric.External.Target)))
-		case metric.Pods != nil:
-			parts = append(parts, fmt.Sprintf("Pods/%s=%s", metric.Pods.Metric.Name, hpaanalysis.FormatMetricTarget(metric.Pods.Target)))
-		case metric.Object != nil:
-			parts = append(parts, fmt.Sprintf("Object/%s=%s", metric.Object.Metric.Name, hpaanalysis.FormatMetricTarget(metric.Object.Target)))
-		}
-	}
-	return strings.Join(parts, ",")
-}
-
-func stabilizationWindowString(hpa *autoscalingv2.HorizontalPodAutoscaler) string {
-	if hpa.Spec.Behavior == nil || hpa.Spec.Behavior.ScaleDown == nil || hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds == nil {
-		return "<default>"
-	}
-	return fmt.Sprintf("%d", *hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds)
 }

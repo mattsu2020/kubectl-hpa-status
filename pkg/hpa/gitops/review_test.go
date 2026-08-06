@@ -6,23 +6,22 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 )
-
-func int32Ptr(v int32) *int32 { return &v }
 
 func TestAnalyzeGitOpsReview_MaxReplicasDecreased(t *testing.T) {
 	before := &autoscalingv2.HorizontalPodAutoscaler{
 		ObjectMeta: metav1.ObjectMeta{Name: "web"},
 		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
 			MaxReplicas: 20,
-			MinReplicas: int32Ptr(2),
+			MinReplicas: ptr.To(int32(2)),
 			Metrics: []autoscalingv2.MetricSpec{
 				{
 					Type: autoscalingv2.ResourceMetricSourceType,
 					Resource: &autoscalingv2.ResourceMetricSource{
 						Name: "cpu",
 						Target: autoscalingv2.MetricTarget{
-							AverageUtilization: int32Ptr(70),
+							AverageUtilization: ptr.To(int32(70)),
 						},
 					},
 				},
@@ -56,16 +55,16 @@ func TestAnalyzeGitOpsReview_StabilizationRemoved(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "web"},
 		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
 			MaxReplicas: 10,
-			MinReplicas: int32Ptr(2),
+			MinReplicas: ptr.To(int32(2)),
 			Behavior: &autoscalingv2.HorizontalPodAutoscalerBehavior{
 				ScaleDown: &autoscalingv2.HPAScalingRules{
-					StabilizationWindowSeconds: int32Ptr(300),
+					StabilizationWindowSeconds: ptr.To(int32(300)),
 				},
 			},
 		},
 	}
 	after := before.DeepCopy()
-	after.Spec.Behavior.ScaleDown.StabilizationWindowSeconds = int32Ptr(0)
+	after.Spec.Behavior.ScaleDown.StabilizationWindowSeconds = ptr.To(int32(0))
 
 	review := AnalyzeReview([]ReviewInput{
 		{Before: before, After: after, FilePath: "hpa.yaml"},
@@ -87,14 +86,14 @@ func TestAnalyzeGitOpsReview_CPUTargetChanged(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "web"},
 		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
 			MaxReplicas: 10,
-			MinReplicas: int32Ptr(2),
+			MinReplicas: ptr.To(int32(2)),
 			Metrics: []autoscalingv2.MetricSpec{
 				{
 					Type: autoscalingv2.ResourceMetricSourceType,
 					Resource: &autoscalingv2.ResourceMetricSource{
 						Name: "cpu",
 						Target: autoscalingv2.MetricTarget{
-							AverageUtilization: int32Ptr(70),
+							AverageUtilization: ptr.To(int32(70)),
 						},
 					},
 				},
@@ -102,7 +101,7 @@ func TestAnalyzeGitOpsReview_CPUTargetChanged(t *testing.T) {
 		},
 	}
 	after := before.DeepCopy()
-	after.Spec.Metrics[0].Resource.Target.AverageUtilization = int32Ptr(95)
+	after.Spec.Metrics[0].Resource.Target.AverageUtilization = ptr.To(int32(95))
 
 	review := AnalyzeReview([]ReviewInput{
 		{Before: before, After: after, FilePath: "hpa.yaml"},
@@ -124,14 +123,14 @@ func TestAnalyzeGitOpsReview_MetricRemoved(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "web"},
 		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
 			MaxReplicas: 10,
-			MinReplicas: int32Ptr(2),
+			MinReplicas: ptr.To(int32(2)),
 			Metrics: []autoscalingv2.MetricSpec{
 				{
 					Type: autoscalingv2.ResourceMetricSourceType,
 					Resource: &autoscalingv2.ResourceMetricSource{
 						Name: "cpu",
 						Target: autoscalingv2.MetricTarget{
-							AverageUtilization: int32Ptr(70),
+							AverageUtilization: ptr.To(int32(70)),
 						},
 					},
 				},
@@ -140,7 +139,7 @@ func TestAnalyzeGitOpsReview_MetricRemoved(t *testing.T) {
 					Resource: &autoscalingv2.ResourceMetricSource{
 						Name: "memory",
 						Target: autoscalingv2.MetricTarget{
-							AverageUtilization: int32Ptr(80),
+							AverageUtilization: ptr.To(int32(80)),
 						},
 					},
 				},
@@ -170,7 +169,7 @@ func TestAnalyzeGitOpsReview_NewManifest_NoMetrics(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "web"},
 		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
 			MaxReplicas: 10,
-			MinReplicas: int32Ptr(2),
+			MinReplicas: ptr.To(int32(2)),
 			Metrics:     []autoscalingv2.MetricSpec{},
 		},
 	}
@@ -207,7 +206,7 @@ func TestAnalyzeGitOpsReview_NewManifestCPUTargetThresholdIsNumeric(t *testing.T
 							Resource: &autoscalingv2.ResourceMetricSource{
 								Name: "cpu",
 								Target: autoscalingv2.MetricTarget{
-									AverageUtilization: int32Ptr(tc.target),
+									AverageUtilization: ptr.To(tc.target),
 								},
 							},
 						},
@@ -234,14 +233,14 @@ func TestAnalyzeGitOpsReview_NoChanges(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "web"},
 		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
 			MaxReplicas: 10,
-			MinReplicas: int32Ptr(2),
+			MinReplicas: ptr.To(int32(2)),
 			Metrics: []autoscalingv2.MetricSpec{
 				{
 					Type: autoscalingv2.ResourceMetricSourceType,
 					Resource: &autoscalingv2.ResourceMetricSource{
 						Name: "cpu",
 						Target: autoscalingv2.MetricTarget{
-							AverageUtilization: int32Ptr(70),
+							AverageUtilization: ptr.To(int32(70)),
 						},
 					},
 				},
@@ -277,7 +276,7 @@ func TestExtractCPUTarget(t *testing.T) {
 							Resource: &autoscalingv2.ResourceMetricSource{
 								Name: "cpu",
 								Target: autoscalingv2.MetricTarget{
-									AverageUtilization: int32Ptr(70),
+									AverageUtilization: ptr.To(int32(70)),
 								},
 							},
 						},

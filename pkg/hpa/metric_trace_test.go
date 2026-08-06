@@ -7,6 +7,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 )
 
 func TestBuildMetricDecisionTrace(t *testing.T) {
@@ -41,7 +42,7 @@ func TestBuildMetricDecisionTrace(t *testing.T) {
 								Name: corev1.ResourceCPU,
 								Target: autoscalingv2.MetricTarget{
 									Type:               autoscalingv2.UtilizationMetricType,
-									AverageUtilization: int32Ptr(80),
+									AverageUtilization: ptr.To(int32(80)),
 								},
 							},
 						},
@@ -56,7 +57,7 @@ func TestBuildMetricDecisionTrace(t *testing.T) {
 							Resource: &autoscalingv2.ResourceMetricStatus{
 								Name: corev1.ResourceCPU,
 								Current: autoscalingv2.MetricValueStatus{
-									AverageUtilization: int32Ptr(100),
+									AverageUtilization: ptr.To(int32(100)),
 								},
 							},
 						},
@@ -82,7 +83,7 @@ func TestBuildMetricDecisionTrace(t *testing.T) {
 								Name: corev1.ResourceCPU,
 								Target: autoscalingv2.MetricTarget{
 									Type:               autoscalingv2.UtilizationMetricType,
-									AverageUtilization: int32Ptr(80),
+									AverageUtilization: ptr.To(int32(80)),
 								},
 							},
 						},
@@ -92,7 +93,7 @@ func TestBuildMetricDecisionTrace(t *testing.T) {
 								Name: corev1.ResourceMemory,
 								Target: autoscalingv2.MetricTarget{
 									Type:               autoscalingv2.UtilizationMetricType,
-									AverageUtilization: int32Ptr(80),
+									AverageUtilization: ptr.To(int32(80)),
 								},
 							},
 						},
@@ -107,7 +108,7 @@ func TestBuildMetricDecisionTrace(t *testing.T) {
 							Resource: &autoscalingv2.ResourceMetricStatus{
 								Name: corev1.ResourceCPU,
 								Current: autoscalingv2.MetricValueStatus{
-									AverageUtilization: int32Ptr(120), // 1.5x target
+									AverageUtilization: ptr.To(int32(120)), // 1.5x target
 								},
 							},
 						},
@@ -116,7 +117,7 @@ func TestBuildMetricDecisionTrace(t *testing.T) {
 							Resource: &autoscalingv2.ResourceMetricStatus{
 								Name: corev1.ResourceMemory,
 								Current: autoscalingv2.MetricValueStatus{
-									AverageUtilization: int32Ptr(88), // 1.1x target
+									AverageUtilization: ptr.To(int32(88)), // 1.1x target
 								},
 							},
 						},
@@ -142,7 +143,7 @@ func TestBuildMetricDecisionTrace(t *testing.T) {
 								Name: corev1.ResourceCPU,
 								Target: autoscalingv2.MetricTarget{
 									Type:               autoscalingv2.UtilizationMetricType,
-									AverageUtilization: int32Ptr(80),
+									AverageUtilization: ptr.To(int32(80)),
 								},
 							},
 						},
@@ -152,7 +153,7 @@ func TestBuildMetricDecisionTrace(t *testing.T) {
 								Name: corev1.ResourceMemory,
 								Target: autoscalingv2.MetricTarget{
 									Type:               autoscalingv2.UtilizationMetricType,
-									AverageUtilization: int32Ptr(80),
+									AverageUtilization: ptr.To(int32(80)),
 								},
 							},
 						},
@@ -167,7 +168,7 @@ func TestBuildMetricDecisionTrace(t *testing.T) {
 							Resource: &autoscalingv2.ResourceMetricStatus{
 								Name: corev1.ResourceCPU,
 								Current: autoscalingv2.MetricValueStatus{
-									AverageUtilization: int32Ptr(120),
+									AverageUtilization: ptr.To(int32(120)),
 								},
 							},
 						},
@@ -176,7 +177,7 @@ func TestBuildMetricDecisionTrace(t *testing.T) {
 							Resource: &autoscalingv2.ResourceMetricStatus{
 								Name: corev1.ResourceMemory,
 								Current: autoscalingv2.MetricValueStatus{
-									AverageUtilization: int32Ptr(90),
+									AverageUtilization: ptr.To(int32(90)),
 								},
 							},
 						},
@@ -202,7 +203,7 @@ func TestBuildMetricDecisionTrace(t *testing.T) {
 								Name: corev1.ResourceCPU,
 								Target: autoscalingv2.MetricTarget{
 									Type:               autoscalingv2.UtilizationMetricType,
-									AverageUtilization: int32Ptr(80),
+									AverageUtilization: ptr.To(int32(80)),
 								},
 							},
 						},
@@ -212,7 +213,7 @@ func TestBuildMetricDecisionTrace(t *testing.T) {
 								Name: corev1.ResourceMemory,
 								Target: autoscalingv2.MetricTarget{
 									Type:               autoscalingv2.UtilizationMetricType,
-									AverageUtilization: int32Ptr(80),
+									AverageUtilization: ptr.To(int32(80)),
 								},
 							},
 						},
@@ -227,7 +228,7 @@ func TestBuildMetricDecisionTrace(t *testing.T) {
 							Resource: &autoscalingv2.ResourceMetricStatus{
 								Name: corev1.ResourceCPU,
 								Current: autoscalingv2.MetricValueStatus{
-									AverageUtilization: int32Ptr(120), // 1.5x - not within tolerance
+									AverageUtilization: ptr.To(int32(120)), // 1.5x - not within tolerance
 								},
 							},
 						},
@@ -236,7 +237,7 @@ func TestBuildMetricDecisionTrace(t *testing.T) {
 							Resource: &autoscalingv2.ResourceMetricStatus{
 								Name: corev1.ResourceMemory,
 								Current: autoscalingv2.MetricValueStatus{
-									AverageUtilization: int32Ptr(82), // 1.025x - within tolerance
+									AverageUtilization: ptr.To(int32(82)), // 1.025x - within tolerance
 								},
 							},
 						},
@@ -257,7 +258,7 @@ func TestBuildMetricDecisionTrace(t *testing.T) {
 					MaxReplicas: 10,
 					Behavior: &autoscalingv2.HorizontalPodAutoscalerBehavior{
 						ScaleDown: &autoscalingv2.HPAScalingRules{
-							StabilizationWindowSeconds: int32Ptr(300),
+							StabilizationWindowSeconds: ptr.To(int32(300)),
 						},
 					},
 					Metrics: []autoscalingv2.MetricSpec{
@@ -267,7 +268,7 @@ func TestBuildMetricDecisionTrace(t *testing.T) {
 								Name: corev1.ResourceCPU,
 								Target: autoscalingv2.MetricTarget{
 									Type:               autoscalingv2.UtilizationMetricType,
-									AverageUtilization: int32Ptr(80),
+									AverageUtilization: ptr.To(int32(80)),
 								},
 							},
 						},
@@ -277,7 +278,7 @@ func TestBuildMetricDecisionTrace(t *testing.T) {
 								Name: corev1.ResourceMemory,
 								Target: autoscalingv2.MetricTarget{
 									Type:               autoscalingv2.UtilizationMetricType,
-									AverageUtilization: int32Ptr(80),
+									AverageUtilization: ptr.To(int32(80)),
 								},
 							},
 						},
@@ -292,7 +293,7 @@ func TestBuildMetricDecisionTrace(t *testing.T) {
 							Resource: &autoscalingv2.ResourceMetricStatus{
 								Name: corev1.ResourceCPU,
 								Current: autoscalingv2.MetricValueStatus{
-									AverageUtilization: int32Ptr(120),
+									AverageUtilization: ptr.To(int32(120)),
 								},
 							},
 						},
@@ -301,7 +302,7 @@ func TestBuildMetricDecisionTrace(t *testing.T) {
 							Resource: &autoscalingv2.ResourceMetricStatus{
 								Name: corev1.ResourceMemory,
 								Current: autoscalingv2.MetricValueStatus{
-									AverageUtilization: int32Ptr(60),
+									AverageUtilization: ptr.To(int32(60)),
 								},
 							},
 						},
@@ -336,7 +337,7 @@ func TestBuildMetricDecisionTrace(t *testing.T) {
 								Name: corev1.ResourceCPU,
 								Target: autoscalingv2.MetricTarget{
 									Type:               autoscalingv2.UtilizationMetricType,
-									AverageUtilization: int32Ptr(80),
+									AverageUtilization: ptr.To(int32(80)),
 								},
 							},
 						},
@@ -346,7 +347,7 @@ func TestBuildMetricDecisionTrace(t *testing.T) {
 								Metric: autoscalingv2.MetricIdentifier{Name: "http_requests"},
 								Target: autoscalingv2.MetricTarget{
 									Type:         autoscalingv2.AverageValueMetricType,
-									AverageValue: resourcePtr(resource.MustParse("500")),
+									AverageValue: ptr.To(resource.MustParse("500")),
 								},
 							},
 						},
@@ -361,7 +362,7 @@ func TestBuildMetricDecisionTrace(t *testing.T) {
 							Resource: &autoscalingv2.ResourceMetricStatus{
 								Name: corev1.ResourceCPU,
 								Current: autoscalingv2.MetricValueStatus{
-									AverageUtilization: int32Ptr(100),
+									AverageUtilization: ptr.To(int32(100)),
 								},
 							},
 						},
@@ -370,7 +371,7 @@ func TestBuildMetricDecisionTrace(t *testing.T) {
 							External: &autoscalingv2.ExternalMetricStatus{
 								Metric: autoscalingv2.MetricIdentifier{Name: "http_requests"},
 								Current: autoscalingv2.MetricValueStatus{
-									AverageValue: resourcePtr(resource.MustParse("800")),
+									AverageValue: ptr.To(resource.MustParse("800")),
 								},
 							},
 						},
@@ -450,19 +451,19 @@ func TestBuildMetricDecisionTrace(t *testing.T) {
 func TestMetricWinnerUsesMaximumEstimatedDesiredNotAbsoluteDistance(t *testing.T) {
 	hpa := &autoscalingv2.HorizontalPodAutoscaler{
 		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-			MinReplicas: int32Ptr(1),
+			MinReplicas: ptr.To(int32(1)),
 			MaxReplicas: 30,
 			Metrics: []autoscalingv2.MetricSpec{
-				{Type: autoscalingv2.ResourceMetricSourceType, Resource: &autoscalingv2.ResourceMetricSource{Name: corev1.ResourceCPU, Target: autoscalingv2.MetricTarget{Type: autoscalingv2.UtilizationMetricType, AverageUtilization: int32Ptr(100)}}},
-				{Type: autoscalingv2.ResourceMetricSourceType, Resource: &autoscalingv2.ResourceMetricSource{Name: corev1.ResourceMemory, Target: autoscalingv2.MetricTarget{Type: autoscalingv2.UtilizationMetricType, AverageUtilization: int32Ptr(100)}}},
+				{Type: autoscalingv2.ResourceMetricSourceType, Resource: &autoscalingv2.ResourceMetricSource{Name: corev1.ResourceCPU, Target: autoscalingv2.MetricTarget{Type: autoscalingv2.UtilizationMetricType, AverageUtilization: ptr.To(int32(100))}}},
+				{Type: autoscalingv2.ResourceMetricSourceType, Resource: &autoscalingv2.ResourceMetricSource{Name: corev1.ResourceMemory, Target: autoscalingv2.MetricTarget{Type: autoscalingv2.UtilizationMetricType, AverageUtilization: ptr.To(int32(100))}}},
 			},
 		},
 		Status: autoscalingv2.HorizontalPodAutoscalerStatus{
 			CurrentReplicas: 10,
 			DesiredReplicas: 15,
 			CurrentMetrics: []autoscalingv2.MetricStatus{
-				{Type: autoscalingv2.ResourceMetricSourceType, Resource: &autoscalingv2.ResourceMetricStatus{Name: corev1.ResourceCPU, Current: autoscalingv2.MetricValueStatus{AverageUtilization: int32Ptr(10)}}},
-				{Type: autoscalingv2.ResourceMetricSourceType, Resource: &autoscalingv2.ResourceMetricStatus{Name: corev1.ResourceMemory, Current: autoscalingv2.MetricValueStatus{AverageUtilization: int32Ptr(150)}}},
+				{Type: autoscalingv2.ResourceMetricSourceType, Resource: &autoscalingv2.ResourceMetricStatus{Name: corev1.ResourceCPU, Current: autoscalingv2.MetricValueStatus{AverageUtilization: ptr.To(int32(10))}}},
+				{Type: autoscalingv2.ResourceMetricSourceType, Resource: &autoscalingv2.ResourceMetricStatus{Name: corev1.ResourceMemory, Current: autoscalingv2.MetricValueStatus{AverageUtilization: ptr.To(int32(150))}}},
 			},
 		},
 	}
@@ -484,18 +485,18 @@ func TestMetricTraceUsesDirectionalConfiguredTolerance(t *testing.T) {
 	down := resource.MustParse("0.20")
 	hpa := &autoscalingv2.HorizontalPodAutoscaler{
 		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-			MinReplicas: int32Ptr(1), MaxReplicas: 20,
+			MinReplicas: ptr.To(int32(1)), MaxReplicas: 20,
 			Behavior: &autoscalingv2.HorizontalPodAutoscalerBehavior{
 				ScaleUp: &autoscalingv2.HPAScalingRules{Tolerance: &up}, ScaleDown: &autoscalingv2.HPAScalingRules{Tolerance: &down},
 			},
 			Metrics: []autoscalingv2.MetricSpec{
-				{Type: autoscalingv2.ResourceMetricSourceType, Resource: &autoscalingv2.ResourceMetricSource{Name: corev1.ResourceCPU, Target: autoscalingv2.MetricTarget{Type: autoscalingv2.UtilizationMetricType, AverageUtilization: int32Ptr(100)}}},
-				{Type: autoscalingv2.ResourceMetricSourceType, Resource: &autoscalingv2.ResourceMetricSource{Name: corev1.ResourceMemory, Target: autoscalingv2.MetricTarget{Type: autoscalingv2.UtilizationMetricType, AverageUtilization: int32Ptr(100)}}},
+				{Type: autoscalingv2.ResourceMetricSourceType, Resource: &autoscalingv2.ResourceMetricSource{Name: corev1.ResourceCPU, Target: autoscalingv2.MetricTarget{Type: autoscalingv2.UtilizationMetricType, AverageUtilization: ptr.To(int32(100))}}},
+				{Type: autoscalingv2.ResourceMetricSourceType, Resource: &autoscalingv2.ResourceMetricSource{Name: corev1.ResourceMemory, Target: autoscalingv2.MetricTarget{Type: autoscalingv2.UtilizationMetricType, AverageUtilization: ptr.To(int32(100))}}},
 			},
 		},
 		Status: autoscalingv2.HorizontalPodAutoscalerStatus{CurrentReplicas: 10, DesiredReplicas: 11, CurrentMetrics: []autoscalingv2.MetricStatus{
-			{Type: autoscalingv2.ResourceMetricSourceType, Resource: &autoscalingv2.ResourceMetricStatus{Name: corev1.ResourceCPU, Current: autoscalingv2.MetricValueStatus{AverageUtilization: int32Ptr(108)}}},
-			{Type: autoscalingv2.ResourceMetricSourceType, Resource: &autoscalingv2.ResourceMetricStatus{Name: corev1.ResourceMemory, Current: autoscalingv2.MetricValueStatus{AverageUtilization: int32Ptr(85)}}},
+			{Type: autoscalingv2.ResourceMetricSourceType, Resource: &autoscalingv2.ResourceMetricStatus{Name: corev1.ResourceCPU, Current: autoscalingv2.MetricValueStatus{AverageUtilization: ptr.To(int32(108))}}},
+			{Type: autoscalingv2.ResourceMetricSourceType, Resource: &autoscalingv2.ResourceMetricStatus{Name: corev1.ResourceMemory, Current: autoscalingv2.MetricValueStatus{AverageUtilization: ptr.To(int32(85))}}},
 		}},
 	}
 
@@ -530,7 +531,7 @@ func TestDetectMetricDecisionTrace(t *testing.T) {
 								Name: corev1.ResourceCPU,
 								Target: autoscalingv2.MetricTarget{
 									Type:               autoscalingv2.UtilizationMetricType,
-									AverageUtilization: int32Ptr(80),
+									AverageUtilization: ptr.To(int32(80)),
 								},
 							},
 						},
@@ -545,7 +546,7 @@ func TestDetectMetricDecisionTrace(t *testing.T) {
 							Resource: &autoscalingv2.ResourceMetricStatus{
 								Name: corev1.ResourceCPU,
 								Current: autoscalingv2.MetricValueStatus{
-									AverageUtilization: int32Ptr(100),
+									AverageUtilization: ptr.To(int32(100)),
 								},
 							},
 						},
@@ -567,7 +568,7 @@ func TestDetectMetricDecisionTrace(t *testing.T) {
 								Name: corev1.ResourceCPU,
 								Target: autoscalingv2.MetricTarget{
 									Type:               autoscalingv2.UtilizationMetricType,
-									AverageUtilization: int32Ptr(80),
+									AverageUtilization: ptr.To(int32(80)),
 								},
 							},
 						},
@@ -577,7 +578,7 @@ func TestDetectMetricDecisionTrace(t *testing.T) {
 								Name: corev1.ResourceMemory,
 								Target: autoscalingv2.MetricTarget{
 									Type:               autoscalingv2.UtilizationMetricType,
-									AverageUtilization: int32Ptr(80),
+									AverageUtilization: ptr.To(int32(80)),
 								},
 							},
 						},
@@ -592,7 +593,7 @@ func TestDetectMetricDecisionTrace(t *testing.T) {
 							Resource: &autoscalingv2.ResourceMetricStatus{
 								Name: corev1.ResourceCPU,
 								Current: autoscalingv2.MetricValueStatus{
-									AverageUtilization: int32Ptr(100),
+									AverageUtilization: ptr.To(int32(100)),
 								},
 							},
 						},
@@ -601,7 +602,7 @@ func TestDetectMetricDecisionTrace(t *testing.T) {
 							Resource: &autoscalingv2.ResourceMetricStatus{
 								Name: corev1.ResourceMemory,
 								Current: autoscalingv2.MetricValueStatus{
-									AverageUtilization: int32Ptr(90),
+									AverageUtilization: ptr.To(int32(90)),
 								},
 							},
 						},

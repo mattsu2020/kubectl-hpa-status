@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/lint"
@@ -144,7 +143,7 @@ type lintWorkloadInfo struct {
 func collectLintWorkloads(files []string, decoder runtimeDecoder) map[lintWorkloadKey]lintWorkloadInfo {
 	workloads := make(map[lintWorkloadKey]lintWorkloadInfo)
 	for _, f := range files {
-		data, err := os.ReadFile(f)
+		data, err := readFileBounded(f)
 		if err != nil {
 			continue
 		}

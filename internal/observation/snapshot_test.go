@@ -90,3 +90,40 @@ func testSnapshotHPA() autoscalingv2.HorizontalPodAutoscaler {
 		},
 	}
 }
+
+// TestSnapshotNilClientUnavailable covers the nil-client guard in ScaleTarget
+// and the nil-snapshot guard in Pods.
+func TestSnapshotNilClientUnavailable(t *testing.T) {
+	// New(nil, nil) yields a snapshot with no client and no HPA.
+	snapshot := New(nil, nil)
+	target := snapshot.ScaleTarget(context.Background())
+	if target.State != StateUnavailable || target.Err == nil {
+		t.Fatalf("ScaleTarget() with nil client = %#v", target)
+	}
+
+	// A nil snapshot receiver is unavailable as well.
+	var nilSnap *Snapshot
+	pods := nilSnap.Pods(context.Background())
+	if pods.State != StateUnavailable || pods.Err == nil {
+		t.Fatalf("nil Snapshot.Pods() = %#v", pods)
+	}
+}
+
+// TestSnapshotNotApplicableForUnsupportedKind covers the info==nil branch:
+// FetchScaleTargetInfo returns (nil, nil) for an unsupported scale target
+// kind, which must map to StateNotApplicable rather than an error.
+func TestSnapshotNotApplicableForUnsupportedKind(t *testing.T) {
+	client := fake.NewClientset()
+	hpa := testSnapshotHPA()
+	hpa.Spec.ScaleTargetRef = autoscalingv2.CrossVersionObjectReference{Kind: "Job", Name: "batch"}
+	snapshot := New(client, &hpa)
+
+	target := snapshot.ScaleTarget(context.Background())
+	if target.State != StateNotApplicable {
+		t.Fatalf("ScaleTarget() for unsupported kind = %#v, want StateNotApplicable", target)
+	}
+	pods := snapshot.Pods(context.Background())
+	if pods.State != StateNotApplicable {
+		t.Fatalf("Pods() for unsupported kind = %#v, want StateNotApplicable", pods)
+	}
+}

@@ -7,6 +7,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 )
 
 func TestAnalyzePods_NilInput(t *testing.T) {
@@ -236,10 +237,8 @@ func buildMinimalHPA() *autoscalingv2.HorizontalPodAutoscaler {
 				Kind: "Deployment",
 				Name: "test-deploy",
 			},
-			MinReplicas: ptrInt32(1),
+			MinReplicas: ptr.To(int32(1)),
 			MaxReplicas: 10,
 		},
 	}
 }
-
-func ptrInt32(v int32) *int32 { return &v }

@@ -159,3 +159,75 @@ func TestReplicaHighlight(t *testing.T) {
 		t.Error("expected no ANSI when not highlighted")
 	}
 }
+
+func TestIssue_EnabledColorsByHealth(t *testing.T) {
+	theme := NewTheme(true)
+	// ERROR and LIMITED render styled output.
+	if got := theme.Issue("something failed", "ERROR"); !strings.Contains(got, "\x1b[") {
+		t.Fatalf("Issue(ERROR) expected ANSI, got %q", got)
+	}
+	if got := theme.Issue("scaling limited", "LIMITED"); !strings.Contains(got, "\x1b[") {
+		t.Fatalf("Issue(LIMITED) expected ANSI, got %q", got)
+	}
+	// Unknown health leaves the string unstyled.
+	if got := theme.Issue("plain note", "OK"); got != "plain note" {
+		t.Fatalf("Issue(OK) = %q, want unchanged", got)
+	}
+}
+
+func TestConditionStatus_EnabledBranches(t *testing.T) {
+	theme := NewTheme(true)
+	// ScalingActive True -> success style; not True -> error style.
+	if got := theme.ConditionStatus("ScalingActive", "True"); !strings.Contains(got, "\x1b[") {
+		t.Fatalf("ConditionStatus(ScalingActive, True) expected ANSI, got %q", got)
+	}
+	if got := theme.ConditionStatus("ScalingActive", "False"); !strings.Contains(got, "\x1b[") {
+		t.Fatalf("ConditionStatus(ScalingActive, False) expected ANSI, got %q", got)
+	}
+	// ScalingLimited True -> warning style; otherwise success.
+	if got := theme.ConditionStatus("ScalingLimited", "True"); !strings.Contains(got, "\x1b[") {
+		t.Fatalf("ConditionStatus(ScalingLimited, True) expected ANSI, got %q", got)
+	}
+	if got := theme.ConditionStatus("ScalingLimited", "False"); !strings.Contains(got, "\x1b[") {
+		t.Fatalf("ConditionStatus(ScalingLimited, False) expected ANSI, got %q", got)
+	}
+	// Unknown condition type is returned unchanged.
+	if got := theme.ConditionStatus("SomeOther", "True"); got != "True" {
+		t.Fatalf("ConditionStatus(other) = %q, want unchanged", got)
+	}
+}
+
+func TestSummaryColorForKey_Enabled(t *testing.T) {
+	theme := NewTheme(true)
+	errorKeys := []string{"dir_unavailable", "dir_inactive", "dir_no_recommendation"}
+	for _, k := range errorKeys {
+		if got := theme.SummaryColorForKey("msg", k); !strings.Contains(got, "\x1b[") {
+			t.Fatalf("SummaryColorForKey(%q) expected ANSI, got %q", k, got)
+		}
+	}
+	warningKeys := []string{"dir_scale_up", "dir_scale_to_zero", "dir_scaled_to_zero", "dir_at_max", "dir_at_min", "dir_at_min_scale_to_zero"}
+	for _, k := range warningKeys {
+		if got := theme.SummaryColorForKey("msg", k); !strings.Contains(got, "\x1b[") {
+			t.Fatalf("SummaryColorForKey(%q) expected ANSI, got %q", k, got)
+		}
+	}
+	// Neutral keys return the plain summary.
+	if got := theme.SummaryColorForKey("unchanged", "dir_unchanged"); got != "unchanged" {
+		t.Fatalf("SummaryColorForKey(dir_unchanged) = %q, want unchanged", got)
+	}
+	// Unknown key falls through to SummaryColor (empty summary -> plain).
+	if got := theme.SummaryColorForKey("plain", "unknown-key"); got != "plain" {
+		t.Fatalf("SummaryColorForKey(unknown) = %q, want plain", got)
+	}
+}
+
+func TestActionLine_EnabledReturnsWarningStyled(t *testing.T) {
+	// Disabled theme returns the line unchanged.
+	if got := NewTheme(false).ActionLine("run kubectl apply"); got != "run kubectl apply" {
+		t.Fatalf("ActionLine disabled = %q, want unchanged", got)
+	}
+	// Enabled theme styles the line.
+	if got := NewTheme(true).ActionLine("apply this"); !strings.Contains(got, "\x1b[") {
+		t.Fatalf("ActionLine enabled expected ANSI, got %q", got)
+	}
+}

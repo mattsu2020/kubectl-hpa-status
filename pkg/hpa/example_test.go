@@ -8,6 +8,7 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 )
 
 func ExampleAnalyze() {
@@ -25,7 +26,7 @@ func ExampleAnalyze() {
 						Name: corev1.ResourceCPU,
 						Target: autoscalingv2.MetricTarget{
 							Type:               autoscalingv2.UtilizationMetricType,
-							AverageUtilization: ptrToInt32(80),
+							AverageUtilization: ptr.To(int32(80)),
 						},
 					},
 				},
@@ -40,7 +41,7 @@ func ExampleAnalyze() {
 					Resource: &autoscalingv2.ResourceMetricStatus{
 						Name: corev1.ResourceCPU,
 						Current: autoscalingv2.MetricValueStatus{
-							AverageUtilization: ptrToInt32(90),
+							AverageUtilization: ptr.To(int32(90)),
 						},
 					},
 				},
@@ -109,8 +110,4 @@ func ExampleHealth() {
 	_, _ = fmt.Fprintf(os.Stdout, "Health: %s, Score: %d\n", state, score)
 	// Output:
 	// Health: OK, Score: 100
-}
-
-func ptrToInt32(v int32) *int32 {
-	return &v
 }

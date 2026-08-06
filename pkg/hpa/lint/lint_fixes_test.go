@@ -7,6 +7,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 )
 
 func TestGenerateAutoFix_UnknownRule(t *testing.T) {
@@ -68,7 +69,7 @@ func TestFixHighUtilizationTarget(t *testing.T) {
 						Name: corev1.ResourceCPU,
 						Target: autoscalingv2.MetricTarget{
 							Type:               autoscalingv2.UtilizationMetricType,
-							AverageUtilization: int32Ptr(95),
+							AverageUtilization: ptr.To(int32(95)),
 						},
 					},
 				},

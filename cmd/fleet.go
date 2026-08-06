@@ -5,35 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"sort"
 
-	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/spf13/cobra"
 	"sigs.k8s.io/yaml"
+
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/fleet"
 )
-
-type fleetReport struct {
-	Risk                    string          `json:"risk" yaml:"risk"`
-	HPAs                    int             `json:"hpas" yaml:"hpas"`
-	CurrentPods             int32           `json:"currentPods" yaml:"currentPods"`
-	WorstCasePods           int32           `json:"worstCasePods" yaml:"worstCasePods"`
-	AdditionalPods          int32           `json:"additionalPods" yaml:"additionalPods"`
-	AtMaxReplicas           int             `json:"atMaxReplicas" yaml:"atMaxReplicas"`
-	WithoutConfiguredMetric int             `json:"withoutConfiguredMetric" yaml:"withoutConfiguredMetric"`
-	TopRisks                []fleetRiskItem `json:"topRisks,omitempty" yaml:"topRisks,omitempty"`
-}
-
-type fleetRiskItem struct {
-	Namespace      string `json:"namespace" yaml:"namespace"`
-	Name           string `json:"name" yaml:"name"`
-	Target         string `json:"target" yaml:"target"`
-	Current        int32  `json:"currentReplicas" yaml:"currentReplicas"`
-	Max            int32  `json:"maxReplicas" yaml:"maxReplicas"`
-	AdditionalPods int32  `json:"additionalPods" yaml:"additionalPods"`
-	Risk           string `json:"risk" yaml:"risk"`
-}
 
 func newFleetCommand(opts *options) *cobra.Command {
 	var risk string
@@ -68,59 +47,11 @@ func runFleet(ctx context.Context, out io.Writer, opts *options, risk string) er
 	if err != nil {
 		return fmt.Errorf("failed to list HPAs: %w", err)
 	}
-	report := buildFleetReport(hpas.Items, risk)
+	report := fleet.BuildReport(hpas.Items, risk)
 	return writeFleetReport(out, opts, report)
 }
 
-func buildFleetReport(hpas []autoscalingv2.HorizontalPodAutoscaler, risk string) fleetReport {
-	report := fleetReport{Risk: risk, HPAs: len(hpas)}
-	for i := range hpas {
-		hpa := &hpas[i]
-		current := hpa.Status.CurrentReplicas
-		if current == 0 {
-			current = hpa.Status.DesiredReplicas
-		}
-		additional := hpa.Spec.MaxReplicas - current
-		if additional < 0 {
-			additional = 0
-		}
-		report.CurrentPods += current
-		report.WorstCasePods += current + additional
-		report.AdditionalPods += additional
-		if current >= hpa.Spec.MaxReplicas {
-			report.AtMaxReplicas++
-		}
-		if len(hpa.Spec.Metrics) == 0 {
-			report.WithoutConfiguredMetric++
-		}
-		if additional > 0 {
-			report.TopRisks = append(report.TopRisks, fleetRiskItem{
-				Namespace:      hpa.Namespace,
-				Name:           hpa.Name,
-				Target:         hpa.Spec.ScaleTargetRef.Kind + "/" + hpa.Spec.ScaleTargetRef.Name,
-				Current:        current,
-				Max:            hpa.Spec.MaxReplicas,
-				AdditionalPods: additional,
-				Risk:           fmt.Sprintf("could add +%d pod(s) if this HPA reaches maxReplicas", additional),
-			})
-		}
-	}
-	sort.Slice(report.TopRisks, func(i, j int) bool {
-		if report.TopRisks[i].AdditionalPods != report.TopRisks[j].AdditionalPods {
-			return report.TopRisks[i].AdditionalPods > report.TopRisks[j].AdditionalPods
-		}
-		if report.TopRisks[i].Namespace != report.TopRisks[j].Namespace {
-			return report.TopRisks[i].Namespace < report.TopRisks[j].Namespace
-		}
-		return report.TopRisks[i].Name < report.TopRisks[j].Name
-	})
-	if len(report.TopRisks) > 10 {
-		report.TopRisks = report.TopRisks[:10]
-	}
-	return report
-}
-
-func writeFleetReport(out io.Writer, opts *options, report fleetReport) error {
+func writeFleetReport(out io.Writer, opts *options, report fleet.Report) error {
 	format, _ := selectOutputFromOptions(opts)
 	switch format {
 	case "json":

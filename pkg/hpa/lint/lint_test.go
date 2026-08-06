@@ -8,14 +8,13 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 )
 
 // containsString is a local test helper mirroring pkg/hpa.containsString.
 func containsString(s, substr string) bool {
 	return strings.Contains(s, substr)
 }
-
-func int32Ptr(v int32) *int32 { return &v }
 
 func TestLintHPA_NilHPA(t *testing.T) {
 	result := Run(nil)
@@ -48,14 +47,14 @@ func TestLintHPA_ValidHPA(t *testing.T) {
 						Name: corev1.ResourceCPU,
 						Target: autoscalingv2.MetricTarget{
 							Type:               autoscalingv2.UtilizationMetricType,
-							AverageUtilization: int32Ptr(60),
+							AverageUtilization: ptr.To(int32(60)),
 						},
 					},
 				},
 			},
 			Behavior: &autoscalingv2.HorizontalPodAutoscalerBehavior{
 				ScaleDown: &autoscalingv2.HPAScalingRules{
-					StabilizationWindowSeconds: int32Ptr(300),
+					StabilizationWindowSeconds: ptr.To(int32(300)),
 					Policies: []autoscalingv2.HPAScalingPolicy{
 						{
 							Type:          autoscalingv2.PercentScalingPolicy,
@@ -159,7 +158,7 @@ func TestLintHPA_HighUtilizationTarget(t *testing.T) {
 						Name: corev1.ResourceCPU,
 						Target: autoscalingv2.MetricTarget{
 							Type:               autoscalingv2.UtilizationMetricType,
-							AverageUtilization: int32Ptr(95),
+							AverageUtilization: ptr.To(int32(95)),
 						},
 					},
 				},
@@ -195,7 +194,7 @@ func TestLintHPA_SingleMetric(t *testing.T) {
 						Name: corev1.ResourceCPU,
 						Target: autoscalingv2.MetricTarget{
 							Type:               autoscalingv2.UtilizationMetricType,
-							AverageUtilization: int32Ptr(60),
+							AverageUtilization: ptr.To(int32(60)),
 						},
 					},
 				},

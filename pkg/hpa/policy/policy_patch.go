@@ -3,17 +3,17 @@ package policy
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"sigs.k8s.io/yaml"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/suggestion"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
 )
 
 // LoadPolicyFile reads and validates a policy YAML file from the given path.
 func LoadPolicyFile(path string) (File, error) {
-	data, err := os.ReadFile(path)
+	data, err := util.ReadFileBounded(path)
 	if err != nil {
 		return File{}, fmt.Errorf("reading policy file %s: %w", path, err)
 	}

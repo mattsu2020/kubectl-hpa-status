@@ -1,22 +1,15 @@
 package cmd
 
 import (
-	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"strings"
 
 	"github.com/spf13/cobra"
-	autoscalingv2 "k8s.io/api/autoscaling/v2"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
-	"github.com/mattsu2020/kubectl-hpa-status/internal/observation"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
 func newStatusCommand(opts *options) *cobra.Command {
@@ -187,432 +180,49 @@ func runStatusMultiple(ctx context.Context, out io.Writer, opts *options, names 
 		emitPerItemErrors(errorWriter(opts, out), results)
 	}
 
+	// The gitops export path joins its write error with the batch exit code
+	// instead of short-circuiting, so a render failure never masks per-item
+	// health outcomes.
 	if opts.Export != "" {
 		return joinExportAndExit(writeReportsGitOpsExport(out, opts.Export, successReports(results)), aggregateBatchExitCode(results, watchMode))
 	}
-	if opts.Format == "structured" {
-		traces := make([]*hpaanalysis.StructuredDecisionTrace, 0, len(results))
-		for i := range results {
-			if !results[i].hasReport {
-				continue
-			}
-			tr := results[i].report.Analysis.StructuredDecisionTrace
-			if tr == nil {
-				tr = hpaanalysis.ExportStructuredDecisionTrace(nil, results[i].report.Analysis)
-			}
-			traces = append(traces, tr)
-		}
-		if err := render.Format(out, "json", "", traces, nil); err != nil {
-			return err
-		}
-		return aggregateBatchExitCode(results, watchMode)
-	}
-	if opts.ContextForAI || opts.Ask != "" {
-		if err := writeAIContextMany(out, results, opts.Ask); err != nil {
-			return err
-		}
-		return aggregateBatchExitCode(results, watchMode)
-	}
-
-	format, templateStr := selectOutputFromOptions(opts)
-	reports := successReports(results)
-	if err := render.Format(out, format, templateStr, batchValue(opts, results, reports), func(out io.Writer) error {
-		return writeReportsStatusText(out, opts, results)
-	}); err != nil {
+	if err := renderBatchResults(out, opts, results); err != nil {
 		return err
 	}
-
 	return aggregateBatchExitCode(results, watchMode)
 }
 
-// batchOutputCarriesErrors reports whether the active output mode embeds
-// per-item errors in its own schema (so failed items do not need to be
-// re-emitted on stderr). Markdown/HTML/incident/export/structured only render
-// successful items, so for those modes stderr is the only place a failure
-// surfaces.
-func batchOutputCarriesErrors(opts *options) bool {
-	if opts.Export != "" || opts.Format == "structured" {
-		return false
+// renderBatchResults dispatches batch rendering to the output mode selected
+// by opts: structured decision traces, AI context, or the standard
+// format/template pipeline.
+func renderBatchResults(out io.Writer, opts *options, results []reportResult) error {
+	if opts.Format == "structured" {
+		return renderStructuredDecisionTraces(out, results)
 	}
 	if opts.ContextForAI || opts.Ask != "" {
-		return true // AI context renders an "Error:" block per failed item.
+		return writeAIContextMany(out, results, opts.Ask)
 	}
-	switch opts.Output {
-	case "json", "yaml":
-		return true // StatusBatch envelope carries per-item errors.
-	case "jsonl":
-		return opts.OutputSchema == "v2" // v2 records carry partial errors; v1 keeps the historical success-report array.
-	case "", "table", "wide", "ja":
-		return true // text path renders an "Error:" row per failed item.
-	default:
-		// jsonpath / go-template / prometheus / markdown / html / incident:
-		// only successful items are rendered; failures must go to stderr.
-		return false
-	}
-}
-
-// batchValue picks the value passed to render.Format for the multi-HPA path.
-// json/yaml carry the StatusBatch envelope so failed items are visible. v2
-// JSONL emits canonical StatusRecordV2 values one per line; v1 JSONL keeps
-// its historical one-line successful-report array. Other formats render only
-// successful reports.
-func batchValue(opts *options, results []reportResult, reports []hpaanalysis.StatusReport) any {
-	switch opts.Output {
-	case "json", "yaml":
-		batch := buildStatusBatch(results)
-		if opts.OutputSchema == "v2" {
-			return hpaanalysis.ProjectStatusBatchV2(batch)
-		}
-		return batch
-	case "jsonl":
-		if opts.OutputSchema == "v2" {
-			return hpaanalysis.ProjectStatusRecordsV2(buildStatusBatch(results))
-		}
-		return reports
-	default:
-		if opts.OutputSchema == "v2" {
-			return hpaanalysis.ProjectStatusReportsV2(reports)
-		}
-		return reports
-	}
-}
-
-func statusOutputValue(opts *options, report hpaanalysis.StatusReport) any {
-	if opts != nil && opts.OutputSchema == "v2" {
-		if opts.Output == "jsonl" {
-			return hpaanalysis.ProjectStatusRecordV2(report)
-		}
-		return hpaanalysis.ProjectStatusReportV2(report)
-	}
-	return report
-}
-
-// buildStatusBatch assembles the StatusBatch envelope from per-item results,
-// preserving input order.
-func buildStatusBatch(results []reportResult) hpaanalysis.StatusBatch {
-	items := make([]hpaanalysis.StatusBatchItem, 0, len(results))
-	for i := range results {
-		r := results[i]
-		item := hpaanalysis.StatusBatchItem{
-			Namespace: r.namespace,
-			Name:      r.name,
-			Status:    r.batchStatus(),
-		}
-		if r.hasReport {
-			rep := r.report
-			item.Report = &rep
-		} else {
-			item.Error = r.err.Error()
-		}
-		items = append(items, item)
-	}
-	return hpaanalysis.StatusBatch{APIVersion: hpaanalysis.SchemaVersion, Items: items}
-}
-
-// successReports returns the subset of reports that built successfully, in
-// input order. Used by renderers that have no per-item error slot (export,
-// markdown, html, incident).
-func successReports(results []reportResult) []hpaanalysis.StatusReport {
-	reports := make([]hpaanalysis.StatusReport, 0, len(results))
-	for i := range results {
-		if results[i].hasReport {
-			reports = append(reports, results[i].report)
-		}
-	}
-	return reports
-}
-
-// errorWriter returns the command's diagnostic stream. The fallback preserves
-// the behavior of direct helper callers that do not use cobra (primarily unit
-// tests), while normal CLI execution always supplies ErrOrStderr.
-func errorWriter(opts *options, fallback io.Writer) io.Writer {
-	if opts != nil && opts.Err != nil {
-		return opts.Err
-	}
-	return fallback
-}
-
-// emitPerItemErrors writes one render.Error-shaped line per failed item to
-// the diagnostic stream.
-// It is used only by output modes that cannot carry per-item errors in their
-// own schema.
-func emitPerItemErrors(out io.Writer, results []reportResult) {
-	for i := range results {
-		if results[i].hasReport {
-			continue
-		}
-		_, _ = fmt.Fprintf(out, "HPA %q in namespace %q: %v\n", results[i].name, results[i].namespace, results[i].err)
-	}
-}
-
-// joinOutputAndExit returns the output error if non-nil, otherwise the
-// health-derived exit-code error. A write failure is treated as more severe
-// than a warning result.
-func joinOutputAndExit(outputErr, exitErr error) error {
-	if outputErr != nil {
-		return outputErr
-	}
-	return exitErr
-}
-
-// joinExportAndExit preserves the historical helper name used by batch export.
-func joinExportAndExit(exportErr, exitErr error) error {
-	return joinOutputAndExit(exportErr, exitErr)
-}
-
-// buildReportsConcurrently builds status reports for all named HPAs
-// concurrently and adapts the shared mapPerHPA results into reportResult.
-//
-// status is the one multi-HPA command that renders partial output, so it uses
-// mapPerHPA directly instead of collectPerHPA: a per-item failure does NOT
-// abort the batch, it is carried in the corresponding reportResult and the
-// remaining reports are still emitted. The parent context is still honored
-// (Ctrl+C cancels in-flight work).
-//
-// apply is intentionally not handled here: runStatusMany rejects --apply with
-// multiple names up front (cmd/status.go), so this path is never reached with
-// opts.Apply set.
-func buildReportsConcurrently(ctx context.Context, opts *options, client *kube.Client, names []string, includeInterpretation bool, ec *enrichmentContext) []reportResult {
-	built := mapPerHPA(ctx, perHPAConcurrency(opts), names, func(ctx context.Context, name string) (hpaanalysis.StatusReport, error) {
-		return buildStatusReport(ctx, opts, client, name, includeInterpretation, ec)
+	format, templateStr := selectOutputFromOptions(opts)
+	reports := successReports(results)
+	return render.Format(out, format, templateStr, batchValue(opts, results, reports), func(out io.Writer) error {
+		return writeReportsStatusText(out, opts, results)
 	})
-
-	results := make([]reportResult, len(built))
-	for i, item := range built {
-		results[i] = reportResult{
-			name:      item.name,
-			namespace: client.Namespace,
-			report:    item.value,
-			hasReport: item.err == nil,
-			err:       item.err,
-		}
-	}
-	return results
 }
 
-// reportResult is the per-HPA outcome of a multi-HPA run. It captures either a
-// successfully built report or the error that prevented one, preserving the
-// input order via the results slice index.
-type reportResult struct {
-	name      string
-	namespace string
-	report    hpaanalysis.StatusReport
-	hasReport bool
-	err       error
-}
-
-// batchStatus maps a reportResult to its StatusBatchItem.Status.
-func (r reportResult) batchStatus() hpaanalysis.StatusBatchStatus {
-	if !r.hasReport {
-		return hpaanalysis.BatchStatusError
-	}
-	switch hpaanalysis.HealthState(r.report.Analysis.Health) {
-	case hpaanalysis.HealthError, hpaanalysis.HealthLimited:
-		return hpaanalysis.BatchStatusWarning
-	case "WARNING": // Analysis.Health is a string; some paths emit "WARNING".
-		return hpaanalysis.BatchStatusWarning
-	default:
-		return hpaanalysis.BatchStatusOK
-	}
-}
-
-// healthIsWarning reports whether a health string should raise the exit code
-// to warning (ERROR / LIMITED / WARNING).
-func healthIsWarning(health string) bool {
-	switch hpaanalysis.HealthState(health) {
-	case hpaanalysis.HealthError, hpaanalysis.HealthLimited:
-		return true
-	default:
-		return health == "WARNING"
-	}
-}
-
-// aggregateBatchExitCode returns the most severe per-item outcome as an
-// ExitCodeError: any build error dominates (ExitError, 1), otherwise any
-// warning-health item (ExitWarning, 2), otherwise nil. watchMode suppresses
-// warning aggregation exactly like the single-HPA path.
-func aggregateBatchExitCode(results []reportResult, watchMode bool) error {
-	hasError := false
-	hasWarning := false
+// renderStructuredDecisionTraces emits one structured decision trace per
+// successful item as a JSON array, exporting traces on demand for reports
+// that did not carry one.
+func renderStructuredDecisionTraces(out io.Writer, results []reportResult) error {
+	traces := make([]*hpaanalysis.StructuredDecisionTrace, 0, len(results))
 	for i := range results {
 		if !results[i].hasReport {
-			hasError = true
-			break
-		}
-		if healthIsWarning(results[i].report.Analysis.Health) {
-			hasWarning = true
-		}
-	}
-	if hasError {
-		return &ExitCodeError{Code: ExitError, Err: fmt.Errorf("%d of %d HPA(s) could not be reported; see output for details", countFailed(results), len(results))}
-	}
-	if hasWarning && !watchMode {
-		// Reuse the single-HPA helper to format a representative message.
-		for i := range results {
-			if err := warningExitCode(results[i].report.Analysis.Health, results[i].report.Analysis.Name, results[i].report.Analysis.Namespace, watchMode); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-// countFailed returns the number of results that did not produce a report.
-func countFailed(results []reportResult) int {
-	n := 0
-	for i := range results {
-		if !results[i].hasReport {
-			n++
-		}
-	}
-	return n
-}
-
-// writeReportsGitOpsExport writes a multi-HPA YAML export as a proper
-// multi-document stream. Kustomize and Helm values exports describe a single
-// target/file layout, so concatenating more than one would be ambiguous and is
-// rejected before anything is written.
-func writeReportsGitOpsExport(out io.Writer, exportFormat string, reports []hpaanalysis.StatusReport) error {
-	format, err := normalizeGitOpsExportFormat(exportFormat)
-	if err != nil {
-		return err
-	}
-	if len(reports) > 1 && format != "yaml" {
-		return fmt.Errorf("--export %s supports only a single HPA; use --export yaml for multi-HPA output or export each HPA separately", format)
-	}
-
-	rendered := make([][]byte, len(reports))
-	for i, report := range reports {
-		var buffer bytes.Buffer
-		if err := writeGitOpsExport(&buffer, format, report); err != nil {
-			return err
-		}
-		rendered[i] = buffer.Bytes()
-	}
-	for i, document := range rendered {
-		if i > 0 {
-			if _, err := fmt.Fprintln(out, "---"); err != nil {
-				return err
-			}
-		}
-		if _, err := out.Write(document); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// writeReportsStatusText writes each report's status text to out, separating
-// reports with blank lines. In the partial-result path, failed items are
-// passed in as zero-value StatusReports with Analysis.Health="ERROR" and a
-// message in Analysis.Summary; for clarity we render those inline so the text
-// output reflects the same per-item outcome as the JSON envelope.
-func writeReportsStatusText(out io.Writer, opts *options, results []reportResult) error {
-	for i, r := range results {
-		if i > 0 {
-			if _, err := fmt.Fprintln(out); err != nil {
-				return err
-			}
-		}
-		if !r.hasReport {
-			if _, err := fmt.Fprintf(out, "HPA %s/%s\nError: %v\n", r.namespace, r.name, r.err); err != nil {
-				return err
-			}
 			continue
 		}
-		if err := hpaanalysis.WriteStatusTextWithOptions(out, r.report, statusTextOptions(opts, out)); err != nil {
-			return err
+		tr := results[i].report.Analysis.StructuredDecisionTrace
+		if tr == nil {
+			tr = hpaanalysis.ExportStructuredDecisionTrace(nil, results[i].report.Analysis)
 		}
+		traces = append(traces, tr)
 	}
-	return nil
-}
-
-// statusTextOptions builds the StatusTextOptions used to render report text, including theme/lang/fix/diff settings.
-func statusTextOptions(opts *options, out io.Writer) hpaanalysis.StatusTextOptions {
-	return hpaanalysis.StatusTextOptions{
-		Theme:             style.NewTheme(shouldColorize(opts.Color, out)),
-		Lang:              outputLang(opts.Lang, opts.Output),
-		Fix:               opts.Fix,
-		Diff:              opts.Diff,
-		HiddenFactors:     opts.HiddenFactors,
-		Labels:            labelProviderForLang(opts.Lang, opts.Output),
-		SummaryTranslator: summaryTranslatorForLang(opts.Lang, opts.Output),
-	}
-}
-
-// buildStatusReportWithClient creates a client and delegates to buildStatusReport.
-func buildStatusReportWithClient(ctx context.Context, opts *options, name string, includeInterpretation bool, ec *enrichmentContext) (hpaanalysis.StatusReport, error) {
-	client, err := newClientOrDefault(opts)
-	if err != nil {
-		return hpaanalysis.StatusReport{}, err
-	}
-	return buildStatusReport(ctx, opts, client, name, includeInterpretation, ec)
-}
-
-func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, name string, includeInterpretation bool, ec *enrichmentContext) (hpaanalysis.StatusReport, error) {
-	hpa, err := fetchHPA(ctx, client, name)
-	if err != nil {
-		return hpaanalysis.StatusReport{}, err
-	}
-
-	report := hpaanalysis.StatusReport{
-		APIVersion: hpaanalysis.SchemaVersion,
-		Analysis:   hpaanalysis.AnalyzeWithOptions(hpa, includeInterpretation, analysisOptions(opts.HealthWeights, opts.Debug)),
-	}
-
-	// Run the enrichment pipeline. buildStatusEnrichers preserves the exact
-	// order of the previous sequential calls; enrichSimulations remains the
-	// only step whose error aborts the whole report (see
-	// abortOnErrorEnrichers). Skipped steps are silently ignored to avoid
-	// noise; failed steps record a message in report.Analysis.Warnings.
-	//
-	// --no-enrich / --hpa-only skips the pipeline entirely so status shows
-	// only the HPA object. This is the RBAC-light path: no Pod, Deployment,
-	// ReplicaSet, Event, KEDA, or VPA reads, making status usable in audited
-	// or restricted-permission environments where those reads are denied.
-	pipeline := &PipelineContext{
-		Client:       client,
-		EC:           ec,
-		Observations: observation.New(client.Interface, hpa),
-	}
-	if !opts.NoEnrich {
-		if err := runEnrichers(ctx, buildStatusEnrichers(opts), pipeline, hpa, &report); err != nil {
-			return hpaanalysis.StatusReport{}, err
-		}
-	}
-
-	// Finalize post-enrichment derivations (e.g. stabilization/churn
-	// correlation) that depend on fields populated above. Must run before the
-	// health snapshot is recorded so trend history reflects the final state.
-	report.Analysis = hpaanalysis.FinalizeAnalysis(report.Analysis)
-	recordHealthSnapshotAndTrend(ctx, opts, hpa, &report)
-
-	return report, nil
-}
-
-// fetchHPA retrieves a single HPA and wraps known API errors with actionable guidance.
-func fetchHPA(ctx context.Context, client *kube.Client, name string) (*autoscalingv2.HorizontalPodAutoscaler, error) {
-	hpa, err := kube.GetHPAFromClient(ctx, client, name)
-	if err != nil {
-		return nil, hpaFetchError(err, name, client.Namespace)
-	}
-	return hpa, nil
-}
-
-// hpaFetchError maps known Kubernetes API errors to user-facing guidance, preserving the wrapped cause.
-func hpaFetchError(err error, name, namespace string) error {
-	vers := kube.KubernetesVersions()
-	if apierrors.IsNotFound(err) {
-		return fmt.Errorf("HPA %q was not found in namespace %q. "+
-			"If the cluster is running Kubernetes older than %s, the autoscaling/v2 API may not be available. "+
-			"Check with: kubectl api-resources | grep autoscaling. Original error: %w",
-			name, namespace, vers.MinAPIVersion, errors.Join(ErrHPANotFound, err))
-	}
-	if apierrors.IsMethodNotSupported(err) {
-		return fmt.Errorf("the Kubernetes API server does not support the autoscaling/v2 API. "+
-			"This plugin officially supports Kubernetes %s+ (the API exists from %s+). "+
-			"Check with: kubectl api-resources | grep autoscaling. Original error: %w",
-			vers.StableSinceVersion, vers.MinAPIVersion, err)
-	}
-	return fmt.Errorf("failed to get HPA %s/%s from the Kubernetes API server: %w", namespace, name, errors.Join(ErrHPANotFound, err))
+	return render.Format(out, "json", "", traces, nil)
 }

@@ -18,6 +18,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/utils/ptr"
 
 	"github.com/mattsu2020/kubectl-hpa-status/cmd"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
@@ -150,7 +151,7 @@ func TestE2E_MaxReplicasCap(t *testing.T) {
 	deploy := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{Name: deployName, Namespace: nsName},
 		Spec: appsv1.DeploymentSpec{
-			Replicas: int32Ptr(2),
+			Replicas: ptr.To(int32(2)),
 			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": deployName}},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": deployName}},
@@ -238,7 +239,7 @@ func TestE2E_MaxReplicasCap(t *testing.T) {
 					RestartPolicy: corev1.RestartPolicyNever,
 				},
 			},
-			BackoffLimit: int32Ptr(0),
+			BackoffLimit: ptr.To(int32(0)),
 		},
 	}
 	if _, err := client.BatchV1().Jobs(nsName).Create(ctx0, loadJob, metav1.CreateOptions{}); err != nil {
