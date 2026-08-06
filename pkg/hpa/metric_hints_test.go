@@ -9,6 +9,7 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 )
 
 func TestAnalyzeMetricHints(t *testing.T) {
@@ -84,7 +85,7 @@ func TestAnalyzeMetricHints(t *testing.T) {
 		{
 			name:           "custom metrics API unavailable",
 			hpa:            buildPodsMetricHPA("http_requests"),
-			freshness:      []MetricFreshness{{Name: "http_requests", Type: "Pods", Source: "custom.metrics.k8s.io", APIServiceAvailable: boolPtrForHintTest(false)}},
+			freshness:      []MetricFreshness{{Name: "http_requests", Type: "Pods", Source: "custom.metrics.k8s.io", APIServiceAvailable: ptr.To(false)}},
 			contract:       &MetricContractReport{Checks: []MetricContractCheck{{MetricType: "Pods", MetricName: "http_requests", Status: "error"}}},
 			wantMinHints:   1,
 			wantSummaryHas: "issue",
@@ -267,7 +268,7 @@ func buildExternalMetricHPA(metricName string) *autoscalingv2.HorizontalPodAutos
 		Type: autoscalingv2.ExternalMetricSourceType,
 		External: &autoscalingv2.ExternalMetricSource{
 			Metric: autoscalingv2.MetricIdentifier{Name: metricName},
-			Target: autoscalingv2.MetricTarget{Value: quantityPtrForHintTest(resource.MustParse("100"))},
+			Target: autoscalingv2.MetricTarget{Value: ptr.To(resource.MustParse("100"))},
 		},
 	}}
 	return hpa
@@ -280,7 +281,7 @@ func buildExternalMetricHPAWithStatus(metricName string) *autoscalingv2.Horizont
 		Type: autoscalingv2.ExternalMetricSourceType,
 		External: &autoscalingv2.ExternalMetricStatus{
 			Metric:  autoscalingv2.MetricIdentifier{Name: metricName},
-			Current: autoscalingv2.MetricValueStatus{Value: quantityPtrForHintTest(resource.MustParse("50"))},
+			Current: autoscalingv2.MetricValueStatus{Value: ptr.To(resource.MustParse("50"))},
 		},
 	}}
 	return hpa
@@ -296,7 +297,7 @@ func buildPodsMetricHPA(metricName string) *autoscalingv2.HorizontalPodAutoscale
 		Type: autoscalingv2.PodsMetricSourceType,
 		Pods: &autoscalingv2.PodsMetricSource{
 			Metric: autoscalingv2.MetricIdentifier{Name: metricName},
-			Target: autoscalingv2.MetricTarget{AverageValue: quantityPtrForHintTest(resource.MustParse("100"))},
+			Target: autoscalingv2.MetricTarget{AverageValue: ptr.To(resource.MustParse("100"))},
 		},
 	}}
 	return hpa
@@ -314,7 +315,7 @@ func buildResourceMetricHPAWithStatus() *autoscalingv2.HorizontalPodAutoscaler {
 			Name: "cpu",
 			Target: autoscalingv2.MetricTarget{
 				Type:               autoscalingv2.UtilizationMetricType,
-				AverageUtilization: int32PtrForHintTest(80),
+				AverageUtilization: ptr.To(int32(80)),
 			},
 		},
 	}}
@@ -322,14 +323,8 @@ func buildResourceMetricHPAWithStatus() *autoscalingv2.HorizontalPodAutoscaler {
 		Type: autoscalingv2.ResourceMetricSourceType,
 		Resource: &autoscalingv2.ResourceMetricStatus{
 			Name:    "cpu",
-			Current: autoscalingv2.MetricValueStatus{AverageUtilization: int32PtrForHintTest(50)},
+			Current: autoscalingv2.MetricValueStatus{AverageUtilization: ptr.To(int32(50))},
 		},
 	}}
 	return hpa
 }
-
-func int32PtrForHintTest(v int32) *int32 { return &v }
-
-func boolPtrForHintTest(v bool) *bool { return &v }
-
-func quantityPtrForHintTest(q resource.Quantity) *resource.Quantity { return &q }

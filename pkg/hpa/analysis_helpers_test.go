@@ -63,10 +63,6 @@ func containsLine(lines []string, want string) bool {
 	return false
 }
 
-// boolPtr returns a pointer to b, used for optional table-driven bool fields.
-
-func boolPtr(b bool) *bool { return &b }
-
 // TestWriteStatusTextWithOptions_RendersWarnings verifies that Analysis.Warnings
 // are surfaced in plain-text output. Previously Warnings only appeared in
 // JSON/YAML output, leaving text users unaware of enrichment failures.

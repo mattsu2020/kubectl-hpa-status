@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"time"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
@@ -253,7 +253,7 @@ func timelineConditionMap(conditions []Condition) map[string]Condition {
 
 // LoadTimelineTrace reads a TimelineTrace from a JSON file.
 func LoadTimelineTrace(path string) (*TimelineTrace, error) {
-	data, err := os.ReadFile(path)
+	data, err := util.ReadFileBounded(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading trace file %s: %w", path, err)
 	}

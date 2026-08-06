@@ -193,3 +193,38 @@ func TestPodMetricSamplesRetainContainerAndFilterContainerResource(t *testing.T)
 			resourceName, containerName, ok)
 	}
 }
+
+func TestStaleWindowThreshold(t *testing.T) {
+	tests := []struct {
+		name   string
+		window string
+		want   time.Duration
+	}{
+		{name: "valid window doubles it", window: "60s", want: 2 * time.Minute},
+		{name: "invalid window falls back", window: "not-a-duration", want: 2 * time.Minute},
+		{name: "non-positive window falls back", window: "-5s", want: 2 * time.Minute},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := staleWindowThreshold(tt.window); got != tt.want {
+				t.Fatalf("staleWindowThreshold(%q) = %v, want %v", tt.window, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFormatAgeForEvidence(t *testing.T) {
+	tests := []struct {
+		in   time.Duration
+		want string
+	}{
+		{in: 90 * time.Second, want: "1m30s"},
+		{in: 1500 * time.Millisecond, want: "2s"},
+		{in: -3 * time.Second, want: "0s"}, // negative clamps to zero
+	}
+	for _, tt := range tests {
+		if got := formatAgeForEvidence(tt.in); got != tt.want {
+			t.Fatalf("formatAgeForEvidence(%v) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}

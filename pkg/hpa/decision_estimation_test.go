@@ -8,6 +8,7 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 )
 
 func TestEstimateDecisionSignals(t *testing.T) {
@@ -45,7 +46,7 @@ func TestEstimateDecisionSignals(t *testing.T) {
 					MaxReplicas: 10,
 					Behavior: &autoscalingv2.HorizontalPodAutoscalerBehavior{
 						ScaleDown: &autoscalingv2.HPAScalingRules{
-							StabilizationWindowSeconds: ptrInt32Test(300),
+							StabilizationWindowSeconds: ptr.To(int32(300)),
 						},
 					},
 				},
@@ -259,7 +260,7 @@ func TestEstimateDecisionSignalsSetsClassification(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "ns"},
 		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
 			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{Kind: "Deployment", Name: "test"},
-			MinReplicas:    ptrInt32Test(1),
+			MinReplicas:    ptr.To(int32(1)),
 			MaxReplicas:    10,
 		},
 		Status: autoscalingv2.HorizontalPodAutoscalerStatus{
@@ -314,4 +315,3 @@ func TestClassifyConfidence(t *testing.T) {
 }
 
 // Helper for tests.
-func ptrInt32Test(v int32) *int32 { return &v }

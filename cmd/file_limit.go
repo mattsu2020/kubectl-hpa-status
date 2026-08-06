@@ -81,6 +81,13 @@ func collectManifestFiles(root string) ([]string, error) {
 			}
 			return nil
 		}
+		// Skip symlinks encountered during directory walks. An explicitly
+		// passed file path is the user's own choice, but a link planted in a
+		// scanned directory could redirect a read to an arbitrary file, so
+		// walked entries are never followed.
+		if fi.Mode()&os.ModeSymlink != 0 {
+			return nil
+		}
 		ext := strings.ToLower(filepath.Ext(path))
 		if ext != ".yaml" && ext != ".yml" && ext != ".json" {
 			return nil

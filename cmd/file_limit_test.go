@@ -121,6 +121,33 @@ func TestCollectManifestFiles_DepthLimit(t *testing.T) {
 	}
 }
 
+func TestCollectManifestFiles_SkipsSymlinks(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+
+	target := filepath.Join(outside, "secret.yaml")
+	if err := os.WriteFile(target, []byte("kind: HPA"), 0o600); err != nil {
+		t.Fatalf("write outside file: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "real.yaml"), []byte("kind: HPA"), 0o600); err != nil {
+		t.Fatalf("write real file: %v", err)
+	}
+	if err := os.Symlink(target, filepath.Join(root, "link.yaml")); err != nil {
+		t.Fatalf("symlink file: %v", err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "linked-dir")); err != nil {
+		t.Fatalf("symlink dir: %v", err)
+	}
+
+	got, err := collectManifestFiles(root)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 || filepath.Base(got[0]) != "real.yaml" {
+		t.Fatalf("expected only real.yaml to be collected, got %v", got)
+	}
+}
+
 func TestWalkDepth(t *testing.T) {
 	tests := []struct {
 		root string
@@ -134,6 +161,19 @@ func TestWalkDepth(t *testing.T) {
 	for _, tc := range tests {
 		if got := walkDepth(tc.root, tc.path); got != tc.want {
 			t.Errorf("walkDepth(%q, %q) = %d, want %d", tc.root, tc.path, got, tc.want)
+		}
+	}
+}
+
+func TestSnapshotLimitError(t *testing.T) {
+	err := snapshotLimitError("/tmp/records.jsonl")
+	if err == nil {
+		t.Fatal("snapshotLimitError returned nil error")
+	}
+	msg := err.Error()
+	for _, want := range []string{"/tmp/records.jsonl", "snapshots per HPA"} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("snapshotLimitError message %q missing %q", msg, want)
 		}
 	}
 }

@@ -9,6 +9,7 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 )
 
 func TestSimulateMetricChange_NilHPA(t *testing.T) {
@@ -599,7 +600,7 @@ func TestFormatMetricValue(t *testing.T) {
 				Type: autoscalingv2.ResourceMetricSourceType,
 				Resource: &autoscalingv2.ResourceMetricStatus{
 					Current: autoscalingv2.MetricValueStatus{
-						AverageUtilization: ptrInt32(75),
+						AverageUtilization: ptr.To(int32(75)),
 					},
 				},
 			},
@@ -612,7 +613,7 @@ func TestFormatMetricValue(t *testing.T) {
 				Type: autoscalingv2.ResourceMetricSourceType,
 				Resource: &autoscalingv2.ResourceMetricStatus{
 					Current: autoscalingv2.MetricValueStatus{
-						AverageValue: ptrQuantity("4Gi"),
+						AverageValue: ptr.To(resource.MustParse("4Gi")),
 					},
 				},
 			},
@@ -625,7 +626,7 @@ func TestFormatMetricValue(t *testing.T) {
 				Type: autoscalingv2.ExternalMetricSourceType,
 				External: &autoscalingv2.ExternalMetricStatus{
 					Current: autoscalingv2.MetricValueStatus{
-						Value: ptrQuantity("500"),
+						Value: ptr.To(resource.MustParse("500")),
 					},
 				},
 			},
@@ -638,7 +639,7 @@ func TestFormatMetricValue(t *testing.T) {
 				Type: autoscalingv2.ExternalMetricSourceType,
 				External: &autoscalingv2.ExternalMetricStatus{
 					Current: autoscalingv2.MetricValueStatus{
-						AverageValue: ptrQuantity("200"),
+						AverageValue: ptr.To(resource.MustParse("200")),
 					},
 				},
 			},
@@ -651,7 +652,7 @@ func TestFormatMetricValue(t *testing.T) {
 				Type: autoscalingv2.PodsMetricSourceType,
 				Pods: &autoscalingv2.PodsMetricStatus{
 					Current: autoscalingv2.MetricValueStatus{
-						AverageValue: ptrQuantity("100m"),
+						AverageValue: ptr.To(resource.MustParse("100m")),
 					},
 				},
 			},
@@ -901,12 +902,6 @@ func TestSimulateMetricChangeRejectsAmbiguousNameOnlyOverride(t *testing.T) {
 			t.Fatalf("ambiguous target override mutated metric %d: got=%v want=%v", i, got, want)
 		}
 	}
-}
-
-// ptrQuantity parses a quantity string and returns a pointer to it.
-func ptrQuantity(s string) *resource.Quantity {
-	q := resource.MustParse(s)
-	return &q
 }
 
 // buildExternalMetricSimHPA creates an HPA with an external metric for simulation tests.

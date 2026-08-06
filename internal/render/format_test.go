@@ -401,3 +401,70 @@ func TestError_FormatVariants(t *testing.T) {
 		}
 	})
 }
+
+func TestFormat_Markdown_MultipleReports(t *testing.T) {
+	reports := []hpaanalysis.StatusReport{sampleStatusReport(), sampleStatusReport()}
+	var buf bytes.Buffer
+	if err := Format(&buf, "markdown", "", reports, nil); err != nil {
+		t.Fatalf("Format(markdown, []StatusReport): %v", err)
+	}
+	// Two reports should produce two separated documents.
+	if !strings.Contains(buf.String(), "my-hpa") {
+		t.Fatalf("markdown multi-report missing content: %s", buf.String())
+	}
+}
+
+func TestFormat_Incident_MultipleReports(t *testing.T) {
+	reports := []hpaanalysis.StatusReport{sampleStatusReport(), sampleStatusReport()}
+	var buf bytes.Buffer
+	if err := Format(&buf, "incident", "", reports, nil); err != nil {
+		t.Fatalf("Format(incident, []StatusReport): %v", err)
+	}
+	if buf.Len() == 0 {
+		t.Fatalf("incident multi-report output empty")
+	}
+}
+
+func TestFormat_TextRequiresRenderer(t *testing.T) {
+	var buf bytes.Buffer
+	err := Format(&buf, "table", "", sampleStatusReport(), nil)
+	if err == nil || !strings.Contains(err.Error(), "text renderer") {
+		t.Fatalf("expected text-renderer error, got %v", err)
+	}
+}
+
+func TestFormat_PrefixedTemplate(t *testing.T) {
+	var buf bytes.Buffer
+	err := Format(&buf, "go-template={{.APIVersion}}", "", sampleStatusReport(), nil)
+	if err != nil {
+		t.Fatalf("Format(go-template=): %v", err)
+	}
+	if !strings.Contains(buf.String(), "hpa-status/v1") {
+		t.Fatalf("prefixed template output missing value: %q", buf.String())
+	}
+}
+
+func TestErrorTrackingWriter_ShortWrite(t *testing.T) {
+	// A writer that accepts only part of the payload must surface io.ErrShortWrite.
+	short := &shortWriter{limit: 3}
+	tw := &errorTrackingWriter{writer: short}
+	if _, err := tw.Write([]byte("abcdef")); err != io.ErrShortWrite {
+		t.Fatalf("Write() error = %v, want io.ErrShortWrite", err)
+	}
+	if tw.err != io.ErrShortWrite {
+		t.Fatalf("tracked err = %v, want io.ErrShortWrite", tw.err)
+	}
+	// Subsequent writes are poisoned by the recorded error.
+	if _, err := tw.Write([]byte("x")); err != io.ErrShortWrite {
+		t.Fatalf("poisoned Write() error = %v, want io.ErrShortWrite", err)
+	}
+}
+
+type shortWriter struct{ limit int }
+
+func (w *shortWriter) Write(p []byte) (int, error) {
+	if len(p) > w.limit {
+		return w.limit, io.ErrShortWrite
+	}
+	return len(p), nil
+}

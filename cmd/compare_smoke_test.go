@@ -10,6 +10,7 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/compare"
 )
 
 // compareTestOptions builds options backed by a fake client. compare resolves
@@ -79,7 +80,7 @@ func TestRunCompareJSONOutput(t *testing.T) {
 		t.Fatalf("runCompare returned error: %v", err)
 	}
 
-	var report compareReport
+	var report compare.Report
 	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
 		t.Fatalf("compare JSON is not decodable: %v\n%s", err, out.String())
 	}
@@ -135,13 +136,13 @@ func TestRunCompareAllOnlyDriftFiltersMatchingHPAs(t *testing.T) {
 }
 
 func TestRunCompareAllReportsMissingHPAInTarget(t *testing.T) {
-	// buildCompareReport is only reached for HPAs present on both sides; the
+	// compare.BuildReport is only reached for HPAs present on both sides; the
 	// "<missing>" entry is assembled directly by runCompareAll, so cover that
 	// branch through the renderer contract it feeds.
-	reports := []compareReport{{
+	reports := []compare.Report{{
 		From:        "prod/web",
 		To:          "<missing>",
-		Differences: []compareDiff{{Field: "exists", From: "true", To: "false"}},
+		Differences: []compare.Diff{{Field: "exists", From: "true", To: "false"}},
 		Risks:       []string{"target environment is missing this HPA"},
 	}}
 	var out bytes.Buffer
@@ -150,22 +151,6 @@ func TestRunCompareAllReportsMissingHPAInTarget(t *testing.T) {
 	}
 	if got := out.String(); !strings.Contains(got, "<missing>") {
 		t.Errorf("expected the missing-HPA marker, got:\n%s", got)
-	}
-}
-
-func TestBuildCompareReportFlagsRemovedStabilization(t *testing.T) {
-	from := testutil.BuildHPA("staging", "web", testutil.WithScaleDownStabilizationWindow(300))
-	to := testutil.BuildHPA("prod", "web")
-
-	report := buildCompareReport("staging/web", "prod/web", from, to)
-
-	var fields []string
-	for _, diff := range report.Differences {
-		fields = append(fields, diff.Field)
-	}
-	joined := strings.Join(fields, ",")
-	if !strings.Contains(joined, "behavior.scaleDown.stabilizationWindowSeconds") {
-		t.Errorf("expected a stabilization-window difference, got fields: %s", joined)
 	}
 }
 
@@ -179,10 +164,10 @@ func TestRenderCompareDriftTextEmptyAndPopulated(t *testing.T) {
 	}
 
 	var populated bytes.Buffer
-	reports := []compareReport{{
+	reports := []compare.Report{{
 		From:        "prod/web",
 		To:          "<missing>",
-		Differences: []compareDiff{{Field: "exists", From: "true", To: "false"}},
+		Differences: []compare.Diff{{Field: "exists", From: "true", To: "false"}},
 		Risks:       []string{"target environment is missing this HPA"},
 	}}
 	if err := renderCompareDriftText(&populated, reports); err != nil {

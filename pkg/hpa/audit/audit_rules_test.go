@@ -7,13 +7,11 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 )
 
 // Local test helpers mirroring pkg/hpa.int32Ptr / resourcePtr so this test
 // file is self-contained within the audit sub-package.
-func int32Ptr(v int32) *int32 { return &v }
-
-func resourcePtr(q resource.Quantity) *resource.Quantity { return &q }
 
 // ---------------------------------------------------------------------------
 // 1. stabilizationWindowRule
@@ -61,7 +59,7 @@ func TestStabilizationWindowAuditRule(t *testing.T) {
 				Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
 					Behavior: &autoscalingv2.HorizontalPodAutoscalerBehavior{
 						ScaleDown: &autoscalingv2.HPAScalingRules{
-							StabilizationWindowSeconds: int32Ptr(300),
+							StabilizationWindowSeconds: ptr.To(int32(300)),
 						},
 					},
 				},
@@ -106,7 +104,7 @@ func TestReplicaRangeAuditRule(t *testing.T) {
 			hpa: &autoscalingv2.HorizontalPodAutoscaler{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-hpa", Namespace: "default"},
 				Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-					MinReplicas: int32Ptr(1),
+					MinReplicas: ptr.To(int32(1)),
 					MaxReplicas: 20,
 				},
 			},
@@ -119,7 +117,7 @@ func TestReplicaRangeAuditRule(t *testing.T) {
 			hpa: &autoscalingv2.HorizontalPodAutoscaler{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-hpa", Namespace: "default"},
 				Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-					MinReplicas: int32Ptr(2),
+					MinReplicas: ptr.To(int32(2)),
 					MaxReplicas: 10,
 				},
 			},
@@ -283,7 +281,7 @@ func TestMetricCoverageAuditRule(t *testing.T) {
 								Name: corev1.ResourceCPU,
 								Target: autoscalingv2.MetricTarget{
 									Type:               autoscalingv2.UtilizationMetricType,
-									AverageUtilization: int32Ptr(70),
+									AverageUtilization: ptr.To(int32(70)),
 								},
 							},
 						},
@@ -331,7 +329,7 @@ func TestMetricCoverageAuditRule(t *testing.T) {
 								Name: corev1.ResourceCPU,
 								Target: autoscalingv2.MetricTarget{
 									Type:               autoscalingv2.UtilizationMetricType,
-									AverageUtilization: int32Ptr(70),
+									AverageUtilization: ptr.To(int32(70)),
 								},
 							},
 						},
@@ -380,7 +378,7 @@ func TestMetricCoverageAuditRule(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestToleranceAuditRule(t *testing.T) {
-	tolerance := resourcePtr(resource.MustParse("100m"))
+	tolerance := ptr.To(resource.MustParse("100m"))
 	tests := []struct {
 		name         string
 		hpa          *autoscalingv2.HorizontalPodAutoscaler
@@ -541,7 +539,7 @@ func TestResourceRequestAuditRule(t *testing.T) {
 								Name: corev1.ResourceCPU,
 								Target: autoscalingv2.MetricTarget{
 									Type:               autoscalingv2.UtilizationMetricType,
-									AverageUtilization: int32Ptr(70),
+									AverageUtilization: ptr.To(int32(70)),
 								},
 							},
 						},
@@ -582,7 +580,7 @@ func TestResourceRequestAuditRule(t *testing.T) {
 								Name: corev1.ResourceCPU,
 								Target: autoscalingv2.MetricTarget{
 									Type:               autoscalingv2.UtilizationMetricType,
-									AverageUtilization: int32Ptr(70),
+									AverageUtilization: ptr.To(int32(70)),
 								},
 							},
 						},
@@ -592,7 +590,7 @@ func TestResourceRequestAuditRule(t *testing.T) {
 								Name: corev1.ResourceMemory,
 								Target: autoscalingv2.MetricTarget{
 									Type:               autoscalingv2.UtilizationMetricType,
-									AverageUtilization: int32Ptr(80),
+									AverageUtilization: ptr.To(int32(80)),
 								},
 							},
 						},
@@ -730,7 +728,7 @@ func TestTargetUtilizationAuditRule(t *testing.T) {
 								Name: corev1.ResourceCPU,
 								Target: autoscalingv2.MetricTarget{
 									Type:               autoscalingv2.UtilizationMetricType,
-									AverageUtilization: int32Ptr(95),
+									AverageUtilization: ptr.To(int32(95)),
 								},
 							},
 						},
@@ -753,7 +751,7 @@ func TestTargetUtilizationAuditRule(t *testing.T) {
 								Name: corev1.ResourceCPU,
 								Target: autoscalingv2.MetricTarget{
 									Type:               autoscalingv2.UtilizationMetricType,
-									AverageUtilization: int32Ptr(20),
+									AverageUtilization: ptr.To(int32(20)),
 								},
 							},
 						},
@@ -776,7 +774,7 @@ func TestTargetUtilizationAuditRule(t *testing.T) {
 								Name: corev1.ResourceCPU,
 								Target: autoscalingv2.MetricTarget{
 									Type:               autoscalingv2.UtilizationMetricType,
-									AverageUtilization: int32Ptr(70),
+									AverageUtilization: ptr.To(int32(70)),
 								},
 							},
 						},
@@ -816,7 +814,7 @@ func TestTargetUtilizationAuditRule(t *testing.T) {
 								Name: corev1.ResourceCPU,
 								Target: autoscalingv2.MetricTarget{
 									Type:               autoscalingv2.UtilizationMetricType,
-									AverageUtilization: int32Ptr(90),
+									AverageUtilization: ptr.To(int32(90)),
 								},
 							},
 						},
@@ -838,7 +836,7 @@ func TestTargetUtilizationAuditRule(t *testing.T) {
 								Name: corev1.ResourceCPU,
 								Target: autoscalingv2.MetricTarget{
 									Type:               autoscalingv2.UtilizationMetricType,
-									AverageUtilization: int32Ptr(30),
+									AverageUtilization: ptr.To(int32(30)),
 								},
 							},
 						},
@@ -888,7 +886,7 @@ func TestRun(t *testing.T) {
 					Kind: "Deployment",
 					Name: "my-app",
 				},
-				MinReplicas: int32Ptr(2),
+				MinReplicas: ptr.To(int32(2)),
 				MaxReplicas: 10,
 				Metrics: []autoscalingv2.MetricSpec{
 					{
@@ -897,7 +895,7 @@ func TestRun(t *testing.T) {
 							Name: corev1.ResourceCPU,
 							Target: autoscalingv2.MetricTarget{
 								Type:               autoscalingv2.UtilizationMetricType,
-								AverageUtilization: int32Ptr(70),
+								AverageUtilization: ptr.To(int32(70)),
 							},
 						},
 					},
@@ -915,7 +913,7 @@ func TestRun(t *testing.T) {
 						},
 					},
 					ScaleDown: &autoscalingv2.HPAScalingRules{
-						StabilizationWindowSeconds: int32Ptr(300),
+						StabilizationWindowSeconds: ptr.To(int32(300)),
 						Policies: []autoscalingv2.HPAScalingPolicy{
 							{Type: autoscalingv2.PodsScalingPolicy, Value: 1, PeriodSeconds: 60},
 						},
@@ -956,7 +954,7 @@ func TestRun(t *testing.T) {
 							Name: corev1.ResourceCPU,
 							Target: autoscalingv2.MetricTarget{
 								Type:               autoscalingv2.UtilizationMetricType,
-								AverageUtilization: int32Ptr(95),
+								AverageUtilization: ptr.To(int32(95)),
 							},
 						},
 					},
@@ -980,7 +978,7 @@ func TestRun(t *testing.T) {
 					Kind: "Deployment",
 					Name: "my-app",
 				},
-				MinReplicas: int32Ptr(1),
+				MinReplicas: ptr.To(int32(1)),
 				MaxReplicas: 5,
 			},
 		}
@@ -1006,7 +1004,7 @@ func TestRun(t *testing.T) {
 							Name: corev1.ResourceCPU,
 							Target: autoscalingv2.MetricTarget{
 								Type:               autoscalingv2.UtilizationMetricType,
-								AverageUtilization: int32Ptr(99),
+								AverageUtilization: ptr.To(int32(99)),
 							},
 						},
 					},
@@ -1071,7 +1069,7 @@ func TestLatencyStabilizationRule(t *testing.T) {
 				Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
 					Behavior: &autoscalingv2.HorizontalPodAutoscalerBehavior{
 						ScaleUp: &autoscalingv2.HPAScalingRules{
-							StabilizationWindowSeconds: int32Ptr(120),
+							StabilizationWindowSeconds: ptr.To(int32(120)),
 						},
 					},
 				},
@@ -1085,7 +1083,7 @@ func TestLatencyStabilizationRule(t *testing.T) {
 				Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
 					Behavior: &autoscalingv2.HorizontalPodAutoscalerBehavior{
 						ScaleUp: &autoscalingv2.HPAScalingRules{
-							StabilizationWindowSeconds: int32Ptr(30),
+							StabilizationWindowSeconds: ptr.To(int32(30)),
 						},
 					},
 				},
@@ -1188,7 +1186,7 @@ func TestRunWithProfile(t *testing.T) {
 		hpa := &autoscalingv2.HorizontalPodAutoscaler{
 			ObjectMeta: metav1.ObjectMeta{Name: "test-hpa", Namespace: "default"},
 			Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-				MinReplicas: int32Ptr(2),
+				MinReplicas: ptr.To(int32(2)),
 				MaxReplicas: 10,
 				Metrics: []autoscalingv2.MetricSpec{
 					{
@@ -1197,14 +1195,14 @@ func TestRunWithProfile(t *testing.T) {
 							Name: corev1.ResourceCPU,
 							Target: autoscalingv2.MetricTarget{
 								Type:               autoscalingv2.UtilizationMetricType,
-								AverageUtilization: int32Ptr(70),
+								AverageUtilization: ptr.To(int32(70)),
 							},
 						},
 					},
 				},
 				Behavior: &autoscalingv2.HorizontalPodAutoscalerBehavior{
 					ScaleDown: &autoscalingv2.HPAScalingRules{
-						StabilizationWindowSeconds: int32Ptr(300),
+						StabilizationWindowSeconds: ptr.To(int32(300)),
 						Policies: []autoscalingv2.HPAScalingPolicy{
 							{Type: autoscalingv2.PodsScalingPolicy, Value: 1, PeriodSeconds: 60},
 						},
@@ -1228,7 +1226,7 @@ func TestRunWithProfile(t *testing.T) {
 		hpa := &autoscalingv2.HorizontalPodAutoscaler{
 			ObjectMeta: metav1.ObjectMeta{Name: "test-hpa", Namespace: "default"},
 			Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-				MinReplicas: int32Ptr(1),
+				MinReplicas: ptr.To(int32(1)),
 				MaxReplicas: 5,
 				Metrics: []autoscalingv2.MetricSpec{
 					{
@@ -1237,7 +1235,7 @@ func TestRunWithProfile(t *testing.T) {
 							Name: corev1.ResourceCPU,
 							Target: autoscalingv2.MetricTarget{
 								Type:               autoscalingv2.UtilizationMetricType,
-								AverageUtilization: int32Ptr(70),
+								AverageUtilization: ptr.To(int32(70)),
 							},
 						},
 					},

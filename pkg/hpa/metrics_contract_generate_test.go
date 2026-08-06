@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"k8s.io/utils/ptr"
 )
 
 func TestGenerateContractCommands(t *testing.T) {
@@ -138,7 +140,7 @@ func TestGenerateMetricCommand_CustomMetricResourcePaths(t *testing.T) {
 				MetricName:         "node_load",
 				Resource:           "nodes",
 				ResourceName:       "worker-1",
-				ResourceNamespaced: boolPtr(false),
+				ResourceNamespaced: ptr.To(false),
 			},
 			want: `kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta1/nodes/worker-1/node_load"`,
 		},
@@ -149,7 +151,7 @@ func TestGenerateMetricCommand_CustomMetricResourcePaths(t *testing.T) {
 				MetricName:         "namespace_qps",
 				Resource:           "namespaces",
 				ResourceName:       "ignored-object-name",
-				ResourceNamespaced: boolPtr(false),
+				ResourceNamespaced: ptr.To(false),
 			},
 			want: `kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta1/namespaces/prod/metrics/namespace_qps"`,
 		},

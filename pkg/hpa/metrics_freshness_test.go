@@ -9,6 +9,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 )
 
 func TestAnalyzeMetricFreshness(t *testing.T) {
@@ -436,7 +437,7 @@ func buildHPAWithResourceSpecOnly(namespace, name, resourceName string, extraOpt
 					Name: corev1.ResourceName(resourceName),
 					Target: autoscalingv2.MetricTarget{
 						Type:               autoscalingv2.UtilizationMetricType,
-						AverageUtilization: ptrInt32(80),
+						AverageUtilization: ptr.To(int32(80)),
 					},
 				},
 			})
@@ -456,7 +457,7 @@ func buildHPAWithPodsMetricSpecOnly(namespace, name, metricName string) *autosca
 				Metric: autoscalingv2.MetricIdentifier{Name: metricName},
 				Target: autoscalingv2.MetricTarget{
 					Type:         autoscalingv2.AverageValueMetricType,
-					AverageValue: ptrQuantity("500m"),
+					AverageValue: ptr.To(resource.MustParse("500m")),
 				},
 			},
 		})

@@ -6,6 +6,7 @@ import (
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 )
 
 func TestDetectStabilizationSource(t *testing.T) {
@@ -39,7 +40,7 @@ func TestDetectStabilizationSource(t *testing.T) {
 				Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
 					Behavior: &autoscalingv2.HorizontalPodAutoscalerBehavior{
 						ScaleUp: &autoscalingv2.HPAScalingRules{
-							StabilizationWindowSeconds: ptrInt32ForTest(120),
+							StabilizationWindowSeconds: ptr.To(int32(120)),
 						},
 					},
 				},
@@ -196,7 +197,7 @@ func TestFormatStabilizationExplain(t *testing.T) {
 		{
 			name: "zero remaining returns empty",
 			analysis: Analysis{
-				StabilizationRemaining:     int64PtrVal(0),
+				StabilizationRemaining:     ptr.To(int64(0)),
 				StabilizationWindowSeconds: &window,
 			},
 			wantEmpty: true,
@@ -289,5 +290,3 @@ func TestFormatStabilizationWithSource(t *testing.T) {
 }
 
 // Helper for test readability.
-func int64PtrVal(v int64) *int64     { return &v }
-func ptrInt32ForTest(v int32) *int32 { return &v }

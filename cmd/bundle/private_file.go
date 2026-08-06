@@ -71,6 +71,14 @@ func WritePrivateFileAtomic(path string, write func(io.Writer) error) (retErr er
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close output: %w", err)
 	}
+	// Re-validate immediately before the rename to shrink the TOCTOU window
+	// between the initial check and the replacement: an attacker with write
+	// access to the directory could otherwise swap the target for a symlink
+	// while the temporary file is being built. Mirrors
+	// ensureRecordDestinationUnchanged in cmd/timeline.go.
+	if err := validateOutputPath(path); err != nil {
+		return err
+	}
 	if err := os.Rename(tmpPath, path); err != nil {
 		return fmt.Errorf("replace output: %w", err)
 	}

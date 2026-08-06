@@ -10,6 +10,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 )
 
 func TestSimulateHPA_NilHPA(t *testing.T) {
@@ -45,7 +46,7 @@ func TestSimulateHPA_RaiseMaxReplicas(t *testing.T) {
 
 func TestSimulateHPA_LowerMinReplicas(t *testing.T) {
 	hpa := buildSimHPA(3, 3, 10)
-	hpa.Spec.MinReplicas = ptrInt32(3)
+	hpa.Spec.MinReplicas = ptr.To(int32(3))
 
 	result, err := SimulateHPA(hpa, map[string]string{"minReplicas": "1"}, HealthWeights{})
 	if err != nil {
@@ -178,7 +179,7 @@ func TestSimulateHPA_ValidatesReplicaBounds(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			hpa := buildSimHPA(3, 3, 10)
-			hpa.Spec.MinReplicas = ptrInt32(3)
+			hpa.Spec.MinReplicas = ptr.To(int32(3))
 			_, err := SimulateHPA(hpa, tt.overrides, HealthWeights{})
 			if !errors.Is(err, ErrInvalidSimulationValue) {
 				t.Fatalf("error = %v, want ErrInvalidSimulationValue", err)

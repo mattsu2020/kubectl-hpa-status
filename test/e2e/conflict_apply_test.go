@@ -12,6 +12,7 @@ import (
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -19,6 +20,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/utils/ptr"
 
 	"github.com/mattsu2020/kubectl-hpa-status/cmd"
 )
@@ -342,7 +344,7 @@ func TestE2E_KEDACRDPresent(t *testing.T) {
 					Metric: autoscalingv2.MetricIdentifier{Name: "s1-cron"},
 					Target: autoscalingv2.MetricTarget{
 						Type:  autoscalingv2.AverageValueMetricType,
-						Value: resourcePtr("5"),
+						Value: ptr.To(resource.MustParse("5")),
 					},
 				},
 			}},

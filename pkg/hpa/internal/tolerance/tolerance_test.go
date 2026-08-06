@@ -1,4 +1,4 @@
-package util
+package tolerance
 
 import (
 	"math"
@@ -6,12 +6,13 @@ import (
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/utils/ptr"
 )
 
 func hpaWithTolerance(scaleUp, scaleDown *resource.Quantity) *autoscalingv2.HorizontalPodAutoscaler {
 	hpa := &autoscalingv2.HorizontalPodAutoscaler{
 		Status: autoscalingv2.HorizontalPodAutoscalerStatus{CurrentReplicas: 4},
-		Spec:   autoscalingv2.HorizontalPodAutoscalerSpec{MinReplicas: int32Ptr(1), MaxReplicas: 10},
+		Spec:   autoscalingv2.HorizontalPodAutoscalerSpec{MinReplicas: ptr.To(int32(1)), MaxReplicas: 10},
 	}
 	if scaleUp != nil || scaleDown != nil {
 		hpa.Spec.Behavior = &autoscalingv2.HorizontalPodAutoscalerBehavior{}
@@ -24,8 +25,6 @@ func hpaWithTolerance(scaleUp, scaleDown *resource.Quantity) *autoscalingv2.Hori
 	}
 	return hpa
 }
-
-func int32Ptr(v int32) *int32 { return &v }
 
 func TestDirectionalTolerance_Defaults(t *testing.T) {
 	hpa := hpaWithTolerance(nil, nil)

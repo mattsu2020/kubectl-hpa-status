@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
@@ -37,7 +36,7 @@ func buildControllerProfile(ctx context.Context, client *kube.Client, assumeProf
 }
 
 func loadControllerProfileFile(path string) (*hpaanalysis.ControllerProfile, error) {
-	data, err := os.ReadFile(path)
+	data, err := readFileBounded(path)
 	if err != nil {
 		return nil, err
 	}

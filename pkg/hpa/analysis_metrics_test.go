@@ -8,6 +8,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 )
 
 func TestFormatMetricStatusIncludesExternalSelector(t *testing.T) {
@@ -105,7 +106,7 @@ func TestDiagnoseMetricsPipeline(t *testing.T) {
 			// No current metrics set — simulates metrics server being down.
 			wantOverall:     "error",
 			wantNumChecks:   2,
-			wantRemediation: boolPtr(true),
+			wantRemediation: ptr.To(true),
 		},
 		{
 			name: "AllMetricsHealthy",
@@ -133,7 +134,7 @@ func TestDiagnoseMetricsPipeline(t *testing.T) {
 			wantOverall:      "degraded",
 			wantNumChecks:    2,
 			wantStatusByName: map[string]string{"cpu": "healthy", "queue_depth": "missing"},
-			wantRemediation:  boolPtr(true),
+			wantRemediation:  ptr.To(true),
 		},
 		{
 			name:           "ExternalMetricHealthy",

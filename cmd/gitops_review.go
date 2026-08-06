@@ -85,7 +85,7 @@ func decodeGitOpsReviewInputs(files []string) []gitops.ReviewInput {
 	var inputs []gitops.ReviewInput
 
 	for _, f := range files {
-		data, readErr := os.ReadFile(f)
+		data, readErr := readFileBounded(f)
 		if readErr != nil {
 			continue
 		}

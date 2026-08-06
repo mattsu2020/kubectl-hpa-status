@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
@@ -67,6 +68,9 @@ func exportListPatchesDirectory(out io.Writer, opts *options, hpas []autoscaling
 		return nil
 	}
 	dir := "hpa-patches"
+	if err := validatePatchExportDirectory(dir); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil { // #nosec G301 -- GitOps patch directory is intentionally user-readable.
 		return fmt.Errorf("create patch export directory %s: %w", dir, err)
 	}
@@ -85,7 +89,10 @@ func exportListPatchesDirectory(out io.Writer, opts *options, hpas []autoscaling
 		if strings.Contains(buf.String(), "no applicable") {
 			continue
 		}
-		path := fmt.Sprintf("%s/%s-%s-hpa-patch.yaml", dir, hpa.Namespace, hpa.Name)
+		path, err := patchFileName(dir, hpa.Namespace, hpa.Name)
+		if err != nil {
+			return err
+		}
 		if err := os.WriteFile(path, []byte(buf.String()), 0o644); err != nil { // #nosec G306 -- exported GitOps manifests are intended for review/commit.
 			return fmt.Errorf("write patch file %s: %w", path, err)
 		}
@@ -227,4 +234,41 @@ func executeBatchPatches(ctx context.Context, out io.Writer, opts *options, entr
 		return fmt.Errorf("batch apply failed for %d of %d HPA(s): %w", failed, len(entries), errors.Join(failures...))
 	}
 	return nil
+}
+
+// validatePatchExportDirectory refuses to export through a pre-existing
+// symlink or a non-directory occupying the export path, so a link planted in
+// a shared working directory cannot redirect every patch file elsewhere.
+func validatePatchExportDirectory(dir string) error {
+	fi, err := os.Lstat(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect patch export directory %s: %w", dir, err)
+	}
+	if fi.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("refusing to export patches through symlink %s", dir)
+	}
+	if !fi.IsDir() {
+		return fmt.Errorf("patch export path %s exists and is not a directory", dir)
+	}
+	return nil
+}
+
+// patchFileName builds the export file name for one HPA, rejecting identities
+// that could escape the export directory. The Kubernetes API validates names
+// to DNS-label rules, so this is defense-in-depth for cached, proxied, or
+// otherwise non-standard sources.
+func patchFileName(dir, namespace, name string) (string, error) {
+	for _, part := range []string{namespace, name} {
+		if part == "" || part == "." || part == ".." || strings.ContainsAny(part, `/\`) {
+			return "", fmt.Errorf("cannot export patch: unsafe HPA identity %q/%q", namespace, name)
+		}
+	}
+	path := filepath.Join(dir, namespace+"-"+name+"-hpa-patch.yaml")
+	if filepath.Dir(path) != filepath.Clean(dir) {
+		return "", fmt.Errorf("cannot export patch: resolved path escapes %s", dir)
+	}
+	return path, nil
 }

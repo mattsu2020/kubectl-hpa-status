@@ -5,9 +5,8 @@ import (
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 )
-
-func int32PtrForPolicyTest(v int32) *int32 { return &v }
 
 func intPtr(v int) *int { return &v }
 
@@ -33,7 +32,7 @@ func TestEvaluatePolicies_PolicySetShortForm(t *testing.T) {
 		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
 			MaxReplicas: 30,
 			Behavior: &autoscalingv2.HorizontalPodAutoscalerBehavior{
-				ScaleDown: &autoscalingv2.HPAScalingRules{StabilizationWindowSeconds: int32PtrForPolicyTest(60)},
+				ScaleDown: &autoscalingv2.HPAScalingRules{StabilizationWindowSeconds: ptr.To(int32(60))},
 			},
 		},
 		Status: autoscalingv2.HorizontalPodAutoscalerStatus{CurrentReplicas: 4},

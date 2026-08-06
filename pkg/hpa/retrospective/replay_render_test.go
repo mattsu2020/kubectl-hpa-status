@@ -9,6 +9,7 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
@@ -49,7 +50,7 @@ func replayFixtureHPA() *autoscalingv2.HorizontalPodAutoscaler {
 					Name: corev1.ResourceCPU,
 					Target: autoscalingv2.MetricTarget{
 						Type:               autoscalingv2.UtilizationMetricType,
-						AverageUtilization: ptrInt32ForReplay(50),
+						AverageUtilization: ptr.To(int32(50)),
 					},
 				},
 			}},
@@ -61,8 +62,6 @@ func replayFixtureHPA() *autoscalingv2.HorizontalPodAutoscaler {
 		},
 	}
 }
-
-func ptrInt32ForReplay(v int32) *int32 { return &v }
 
 func TestAnalyzeReplay(t *testing.T) {
 	base := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)

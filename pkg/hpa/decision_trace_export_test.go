@@ -10,6 +10,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 )
 
 func TestExportStructuredDecisionTrace_NilHPA(t *testing.T) {
@@ -323,7 +324,7 @@ func TestExportStructuredDecisionTrace_Stabilization(t *testing.T) {
 				Kind: "Deployment",
 				Name: "web",
 			},
-			MinReplicas: ptrInt32Export(1),
+			MinReplicas: ptr.To(int32(1)),
 			MaxReplicas: 10,
 			Behavior: &autoscalingv2.HorizontalPodAutoscalerBehavior{
 				ScaleDown: &autoscalingv2.HPAScalingRules{
@@ -576,5 +577,3 @@ func TestFormatRatioSafe(t *testing.T) {
 		t.Errorf("expected '1.500', got %s", result)
 	}
 }
-
-func ptrInt32Export(v int32) *int32 { return &v }

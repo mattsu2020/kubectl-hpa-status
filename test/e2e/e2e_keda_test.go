@@ -12,7 +12,9 @@ import (
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 
 	// Import the root command package from our plugin
 	"github.com/mattsu2020/kubectl-hpa-status/cmd"
@@ -55,7 +57,7 @@ func TestE2E_KEDAManagedHPA(t *testing.T) {
 						},
 						Target: autoscalingv2.MetricTarget{
 							Type:  autoscalingv2.AverageValueMetricType,
-							Value: resourcePtr("5"),
+							Value: ptr.To(resource.MustParse("5")),
 						},
 					},
 				},
@@ -90,7 +92,7 @@ func TestE2E_KEDAManagedHPA(t *testing.T) {
 						Name: "queue_length",
 					},
 					Current: autoscalingv2.MetricValueStatus{
-						AverageValue: resourcePtr("8"),
+						AverageValue: ptr.To(resource.MustParse("8")),
 					},
 				},
 			},

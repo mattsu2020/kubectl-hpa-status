@@ -155,20 +155,7 @@ func collectBundleData(ctx context.Context, client *kube.Client, opts *options, 
 
 	// 6. Fetch pods once and derive every bundle view (serialized pod info,
 	// event object names, and container status) from the same snapshot.
-	if selector != "" {
-		pods, err := kube.FetchPodObjectsForSelector(ctx, client.Interface, client.Namespace, selector)
-		if err != nil {
-			data.Warnings = append(data.Warnings, fmt.Sprintf("pods: %v", err))
-		} else {
-			data.PodInfos = kube.PodInfosFromPods(pods)
-			data.ContainerStatuses = kube.ContainerStatusesFromPods(pods)
-			if encoded, marshalErr := json.MarshalIndent(data.PodInfos, "", "  "); marshalErr != nil {
-				data.Warnings = append(data.Warnings, fmt.Sprintf("marshal pod infos: %v", marshalErr))
-			} else {
-				data.Pods = encoded
-			}
-		}
-	}
+	collectBundlePodData(ctx, client, selector, data)
 
 	// 7. Events with wider scope (HPA + scale target + pods).
 	objectNames := bundleEventObjectNames(hpa, data.PodInfos)
@@ -178,32 +165,60 @@ func collectBundleData(ctx context.Context, client *kube.Client, opts *options, 
 	// 8. Metrics API status (reuse snapshot helper).
 	data.MetricsAPI = fetchSnapshotMetricsAPI(ctx, client)
 
-	// 10. All ResourceQuotas (not just >= 80%).
-	data.ResourceQuotas, err = kube.FetchAllResourceQuotas(ctx, client.Interface, hpa.Namespace)
+	// 10-13. Namespace capacity context: quotas, limit ranges, PDBs, nodes.
+	collectBundleCapacityContext(ctx, client, hpa, data)
+
+	return data, nil
+}
+
+// collectBundlePodData fetches the workload pods once and derives every
+// pod-derived bundle view from that single snapshot. Failures degrade to
+// warnings so the rest of the bundle is still collected.
+func collectBundlePodData(ctx context.Context, client *kube.Client, selector string, data *bundle.Data) {
+	if selector == "" {
+		return
+	}
+	pods, err := kube.FetchPodObjectsForSelector(ctx, client.Interface, client.Namespace, selector)
+	if err != nil {
+		data.Warnings = append(data.Warnings, fmt.Sprintf("pods: %v", err))
+		return
+	}
+	data.PodInfos = kube.PodInfosFromPods(pods)
+	data.ContainerStatuses = kube.ContainerStatusesFromPods(pods)
+	if encoded, marshalErr := json.MarshalIndent(data.PodInfos, "", "  "); marshalErr != nil {
+		data.Warnings = append(data.Warnings, fmt.Sprintf("marshal pod infos: %v", marshalErr))
+	} else {
+		data.Pods = encoded
+	}
+}
+
+// collectBundleCapacityContext gathers the namespace capacity evidence
+// (resource quotas, limit ranges, pod disruption budgets, node capacity).
+// Each source is independent: a failure only appends a warning.
+func collectBundleCapacityContext(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, data *bundle.Data) {
+	quotas, err := kube.FetchAllResourceQuotas(ctx, client.Interface, hpa.Namespace)
 	if err != nil {
 		data.Warnings = append(data.Warnings, fmt.Sprintf("resource quotas: %v", err))
 	}
+	data.ResourceQuotas = quotas
 
-	// 11. LimitRanges.
-	data.LimitRanges, err = kube.FetchLimitRanges(ctx, client.Interface, hpa.Namespace)
+	limitRanges, err := kube.FetchLimitRanges(ctx, client.Interface, hpa.Namespace)
 	if err != nil {
 		data.Warnings = append(data.Warnings, fmt.Sprintf("limit ranges: %v", err))
 	}
+	data.LimitRanges = limitRanges
 
-	// 12. PDBs.
-	data.PDBs, err = kube.FetchPodDisruptionBudgets(ctx, client.Interface, hpa.Namespace, hpa.UID)
+	pdbs, err := kube.FetchPodDisruptionBudgets(ctx, client.Interface, hpa.Namespace, hpa.UID)
 	if err != nil {
 		data.Warnings = append(data.Warnings, fmt.Sprintf("pod disruption budgets: %v", err))
 	}
+	data.PDBs = pdbs
 
-	// 13. Node capacity.
 	nodeCap, err := kube.FetchNodeCapacity(ctx, client.Interface)
 	if err != nil {
 		data.Warnings = append(data.Warnings, fmt.Sprintf("node capacity: %v", err))
 	}
 	data.NodeCapacity = nodeCap
-
-	return data, nil
 }
 
 // bundleEventObjectNames collects object names for event fetching:

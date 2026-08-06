@@ -7,6 +7,7 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/utils/ptr"
 )
 
 func buildAssumptionsHPA() *autoscalingv2.HorizontalPodAutoscaler {
@@ -77,7 +78,7 @@ func TestDetectControllerAssumptions(t *testing.T) {
 				h := buildAssumptionsHPA()
 				h.Spec.Behavior = &autoscalingv2.HorizontalPodAutoscalerBehavior{
 					ScaleDown: &autoscalingv2.HPAScalingRules{
-						StabilizationWindowSeconds: int32Ptr(600),
+						StabilizationWindowSeconds: ptr.To(int32(600)),
 					},
 				}
 				return h
@@ -123,7 +124,7 @@ func TestDetectControllerAssumptions(t *testing.T) {
 				h := buildAssumptionsHPA()
 				h.Spec.Behavior = &autoscalingv2.HorizontalPodAutoscalerBehavior{
 					ScaleUp: &autoscalingv2.HPAScalingRules{
-						StabilizationWindowSeconds: int32Ptr(120),
+						StabilizationWindowSeconds: ptr.To(int32(120)),
 					},
 				}
 				return h
@@ -148,11 +149,11 @@ func TestDetectControllerAssumptions(t *testing.T) {
 				tol := resource.MustParse("0.2")
 				h.Spec.Behavior = &autoscalingv2.HorizontalPodAutoscalerBehavior{
 					ScaleDown: &autoscalingv2.HPAScalingRules{
-						StabilizationWindowSeconds: int32Ptr(600),
+						StabilizationWindowSeconds: ptr.To(int32(600)),
 						Tolerance:                  &tol,
 					},
 					ScaleUp: &autoscalingv2.HPAScalingRules{
-						StabilizationWindowSeconds: int32Ptr(120),
+						StabilizationWindowSeconds: ptr.To(int32(120)),
 					},
 				}
 				return h
@@ -282,7 +283,7 @@ func TestDetectControllerAssumptionsWithOverrides(t *testing.T) {
 				h := buildAssumptionsHPA()
 				h.Spec.Behavior = &autoscalingv2.HorizontalPodAutoscalerBehavior{
 					ScaleDown: &autoscalingv2.HPAScalingRules{
-						StabilizationWindowSeconds: int32Ptr(600),
+						StabilizationWindowSeconds: ptr.To(int32(600)),
 					},
 				}
 				return h

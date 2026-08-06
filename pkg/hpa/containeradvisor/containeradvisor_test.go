@@ -7,9 +7,8 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/utils/ptr"
 )
-
-func int32Ptr(v int32) *int32 { return &v }
 
 func TestAnalyzeContainerAdvisor_SingleContainer(t *testing.T) {
 	hpa := &autoscalingv2.HorizontalPodAutoscaler{
@@ -21,7 +20,7 @@ func TestAnalyzeContainerAdvisor_SingleContainer(t *testing.T) {
 						Name: corev1.ResourceCPU,
 						Target: autoscalingv2.MetricTarget{
 							Type:               autoscalingv2.UtilizationMetricType,
-							AverageUtilization: int32Ptr(60),
+							AverageUtilization: ptr.To(int32(60)),
 						},
 					},
 				},
@@ -51,7 +50,7 @@ func TestAnalyzeContainerAdvisor_MultiContainer_ResourceMetric(t *testing.T) {
 						Name: corev1.ResourceCPU,
 						Target: autoscalingv2.MetricTarget{
 							Type:               autoscalingv2.UtilizationMetricType,
-							AverageUtilization: int32Ptr(60),
+							AverageUtilization: ptr.To(int32(60)),
 						},
 					},
 				},
@@ -91,7 +90,7 @@ func TestAnalyzeContainerAdvisor_AlreadyUsingContainerResource(t *testing.T) {
 						Container: "app",
 						Target: autoscalingv2.MetricTarget{
 							Type:               autoscalingv2.UtilizationMetricType,
-							AverageUtilization: int32Ptr(60),
+							AverageUtilization: ptr.To(int32(60)),
 						},
 					},
 				},
@@ -154,7 +153,7 @@ func TestAnalyzeContainerAdvisor_PrefersAppContainer(t *testing.T) {
 						Name: corev1.ResourceCPU,
 						Target: autoscalingv2.MetricTarget{
 							Type:               autoscalingv2.UtilizationMetricType,
-							AverageUtilization: int32Ptr(60),
+							AverageUtilization: ptr.To(int32(60)),
 						},
 					},
 				},
@@ -187,7 +186,7 @@ func TestAnalyzeContainerAdvisorWithMetrics(t *testing.T) {
 						Name: corev1.ResourceCPU,
 						Target: autoscalingv2.MetricTarget{
 							Type:               autoscalingv2.UtilizationMetricType,
-							AverageUtilization: int32Ptr(60),
+							AverageUtilization: ptr.To(int32(60)),
 						},
 					},
 				},

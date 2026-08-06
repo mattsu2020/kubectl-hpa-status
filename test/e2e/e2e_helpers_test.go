@@ -18,6 +18,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/utils/ptr"
 )
 
 func e2eRequired() bool {
@@ -101,7 +102,7 @@ func createTestRC(t *testing.T, client *kubernetes.Clientset, nsName, name strin
 			Namespace: nsName,
 		},
 		Spec: corev1.ReplicationControllerSpec{
-			Replicas: int32Ptr(2),
+			Replicas: ptr.To(int32(2)),
 			Selector: map[string]string{"app": name},
 			Template: &corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
@@ -150,7 +151,7 @@ func createHealthyHPA(t *testing.T, client *kubernetes.Clientset, nsName, hpaNam
 						Name: corev1.ResourceCPU,
 						Target: autoscalingv2.MetricTarget{
 							Type:               autoscalingv2.UtilizationMetricType,
-							AverageUtilization: int32Ptr(80),
+							AverageUtilization: ptr.To(int32(80)),
 						},
 					},
 				},
@@ -187,7 +188,7 @@ func createHealthyHPA(t *testing.T, client *kubernetes.Clientset, nsName, hpaNam
 				Resource: &autoscalingv2.ResourceMetricStatus{
 					Name: corev1.ResourceCPU,
 					Current: autoscalingv2.MetricValueStatus{
-						AverageUtilization: int32Ptr(120),
+						AverageUtilization: ptr.To(int32(120)),
 					},
 				},
 			},
@@ -225,7 +226,7 @@ func createBrokenHPA(t *testing.T, client *kubernetes.Clientset, nsName, hpaName
 						Name: corev1.ResourceCPU,
 						Target: autoscalingv2.MetricTarget{
 							Type:               autoscalingv2.UtilizationMetricType,
-							AverageUtilization: int32Ptr(80),
+							AverageUtilization: ptr.To(int32(80)),
 						},
 					},
 				},
@@ -253,10 +254,6 @@ func createBrokenHPA(t *testing.T, client *kubernetes.Clientset, nsName, hpaName
 	if _, err := client.AutoscalingV2().HorizontalPodAutoscalers(nsName).UpdateStatus(ctx, hpa, metav1.UpdateOptions{}); err != nil {
 		t.Fatalf("failed to update broken HPA %s status: %v", hpaName, err)
 	}
-}
-
-func int32Ptr(v int32) *int32 {
-	return &v
 }
 
 // createScalingLimitedHPA creates an HPA that is at maxReplicas to trigger ScalingLimited.
@@ -287,7 +284,7 @@ func createScalingLimitedHPA(t *testing.T, client *kubernetes.Clientset, nsName,
 						Name: corev1.ResourceCPU,
 						Target: autoscalingv2.MetricTarget{
 							Type:               autoscalingv2.UtilizationMetricType,
-							AverageUtilization: int32Ptr(50),
+							AverageUtilization: ptr.To(int32(50)),
 						},
 					},
 				},
@@ -331,7 +328,7 @@ func createScalingLimitedHPA(t *testing.T, client *kubernetes.Clientset, nsName,
 				Resource: &autoscalingv2.ResourceMetricStatus{
 					Name: corev1.ResourceCPU,
 					Current: autoscalingv2.MetricValueStatus{
-						AverageUtilization: int32Ptr(95),
+						AverageUtilization: ptr.To(int32(95)),
 					},
 				},
 			},
@@ -340,12 +337,6 @@ func createScalingLimitedHPA(t *testing.T, client *kubernetes.Clientset, nsName,
 	if _, err := client.AutoscalingV2().HorizontalPodAutoscalers(nsName).UpdateStatus(ctx, hpa, metav1.UpdateOptions{}); err != nil {
 		t.Fatalf("failed to update HPA %s status: %v", hpaName, err)
 	}
-}
-
-// resourcePtr creates a pointer to a resource.Quantity parsed from a string.
-func resourcePtr(s string) *resource.Quantity {
-	q := resource.MustParse(s)
-	return &q
 }
 
 // createScaleToZeroHPA creates an HPA with minReplicas=0, CPU metric, and
@@ -451,7 +442,7 @@ func createStabilizedHPA(t *testing.T, client *kubernetes.Clientset, nsName, hpa
 						Name: corev1.ResourceCPU,
 						Target: autoscalingv2.MetricTarget{
 							Type:               autoscalingv2.UtilizationMetricType,
-							AverageUtilization: int32Ptr(80),
+							AverageUtilization: ptr.To(int32(80)),
 						},
 					},
 				},
@@ -495,7 +486,7 @@ func createStabilizedHPA(t *testing.T, client *kubernetes.Clientset, nsName, hpa
 				Resource: &autoscalingv2.ResourceMetricStatus{
 					Name: corev1.ResourceCPU,
 					Current: autoscalingv2.MetricValueStatus{
-						AverageUtilization: int32Ptr(40),
+						AverageUtilization: ptr.To(int32(40)),
 					},
 				},
 			},
@@ -535,7 +526,7 @@ func createMultiMetricHPA(t *testing.T, client *kubernetes.Clientset, nsName, hp
 						Name: corev1.ResourceCPU,
 						Target: autoscalingv2.MetricTarget{
 							Type:               autoscalingv2.UtilizationMetricType,
-							AverageUtilization: int32Ptr(80),
+							AverageUtilization: ptr.To(int32(80)),
 						},
 					},
 				},
@@ -545,7 +536,7 @@ func createMultiMetricHPA(t *testing.T, client *kubernetes.Clientset, nsName, hp
 						Name: corev1.ResourceMemory,
 						Target: autoscalingv2.MetricTarget{
 							Type:               autoscalingv2.UtilizationMetricType,
-							AverageUtilization: int32Ptr(70),
+							AverageUtilization: ptr.To(int32(70)),
 						},
 					},
 				},
@@ -582,7 +573,7 @@ func createMultiMetricHPA(t *testing.T, client *kubernetes.Clientset, nsName, hp
 				Resource: &autoscalingv2.ResourceMetricStatus{
 					Name: corev1.ResourceCPU,
 					Current: autoscalingv2.MetricValueStatus{
-						AverageUtilization: int32Ptr(150),
+						AverageUtilization: ptr.To(int32(150)),
 					},
 				},
 			},
@@ -591,7 +582,7 @@ func createMultiMetricHPA(t *testing.T, client *kubernetes.Clientset, nsName, hp
 				Resource: &autoscalingv2.ResourceMetricStatus{
 					Name: corev1.ResourceMemory,
 					Current: autoscalingv2.MetricValueStatus{
-						AverageUtilization: int32Ptr(75),
+						AverageUtilization: ptr.To(int32(75)),
 					},
 				},
 			},
@@ -635,7 +626,7 @@ func createBehaviorPolicyHPA(t *testing.T, client *kubernetes.Clientset, nsName,
 						Name: corev1.ResourceCPU,
 						Target: autoscalingv2.MetricTarget{
 							Type:               autoscalingv2.UtilizationMetricType,
-							AverageUtilization: int32Ptr(70),
+							AverageUtilization: ptr.To(int32(70)),
 						},
 					},
 				},
@@ -689,7 +680,7 @@ func createBehaviorPolicyHPA(t *testing.T, client *kubernetes.Clientset, nsName,
 				Resource: &autoscalingv2.ResourceMetricStatus{
 					Name: corev1.ResourceCPU,
 					Current: autoscalingv2.MetricValueStatus{
-						AverageUtilization: int32Ptr(140),
+						AverageUtilization: ptr.To(int32(140)),
 					},
 				},
 			},
@@ -779,7 +770,7 @@ func createBrokenExternalMetricHPA(t *testing.T, client *kubernetes.Clientset, n
 						},
 						Target: autoscalingv2.MetricTarget{
 							Type:         autoscalingv2.AverageValueMetricType,
-							AverageValue: resourcePtr("5"),
+							AverageValue: ptr.To(resource.MustParse("5")),
 						},
 					},
 				},
@@ -838,7 +829,7 @@ func createTooFewReplicasHPA(t *testing.T, client *kubernetes.Clientset, nsName,
 						Name: corev1.ResourceCPU,
 						Target: autoscalingv2.MetricTarget{
 							Type:               autoscalingv2.UtilizationMetricType,
-							AverageUtilization: int32Ptr(80),
+							AverageUtilization: ptr.To(int32(80)),
 						},
 					},
 				},
@@ -875,7 +866,7 @@ func createTooFewReplicasHPA(t *testing.T, client *kubernetes.Clientset, nsName,
 				Resource: &autoscalingv2.ResourceMetricStatus{
 					Name: corev1.ResourceCPU,
 					Current: autoscalingv2.MetricValueStatus{
-						AverageUtilization: int32Ptr(20),
+						AverageUtilization: ptr.To(int32(20)),
 					},
 				},
 			},

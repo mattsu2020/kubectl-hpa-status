@@ -7,9 +7,8 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/utils/ptr"
 )
-
-func int32Ptr(v int32) *int32 { return &v }
 
 func TestAnalyzeBehaviorAdvisor_NilHPA(t *testing.T) {
 	result := Analyze(nil)
@@ -28,7 +27,7 @@ func TestAnalyzeBehaviorAdvisor_NoBehavior(t *testing.T) {
 						Name: corev1.ResourceCPU,
 						Target: autoscalingv2.MetricTarget{
 							Type:               autoscalingv2.UtilizationMetricType,
-							AverageUtilization: int32Ptr(60),
+							AverageUtilization: ptr.To(int32(60)),
 						},
 					},
 				},

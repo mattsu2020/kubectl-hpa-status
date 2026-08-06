@@ -38,19 +38,49 @@ func AnalyzeCapacityPlan(input CapacityPlanInput) *CapacityPlan {
 	resourceInputsUnknown := hasObservationDomain(input.ObservationErrors, CapacityObservationScaleTarget) ||
 		hasObservationDomain(input.ObservationErrors, CapacityObservationPodResources)
 
+	targetMax, targetErrs := resolveTargetMax(input)
+	input.ObservationErrors = append(input.ObservationErrors, targetErrs...)
+
+	additionalPods := computeAdditionalPods(targetMax, input.CurrentReplicas)
+	demand := computeCapacityDemand(input, additionalPods, resourceInputsUnknown)
+	plan := newCapacityPlan(input, targetMax, additionalPods, demand)
+
+	// Run all checks.
+	appendCapacityAnalysisChecks(
+		plan,
+		input,
+		demand.perPodCPU,
+		demand.perPodMemory,
+		demand.perPodLimitCPU,
+		demand.perPodLimitMemory,
+		demand.totalCPU,
+		demand.totalMemory,
+		demand.totalLimitCPU,
+		demand.totalLimitMemory,
+		additionalPods,
+	)
+
+	finalizeCapacityPlan(plan, input, demand, resourceInputsUnknown)
+
+	return plan
+}
+
+// resolveTargetMax determines the target maxReplicas for the plan, returning
+// plan-input observation errors when the target cannot be used.
+func resolveTargetMax(input CapacityPlanInput) (int32, []CapacityObservationError) {
 	targetMax := input.TargetMaxReplicas
 	switch {
 	case targetMax == 0:
 		targetMax = computeTargetMax(input.MaxReplicas, input.CurrentReplicas)
 		if targetMax <= input.MaxReplicas {
-			input.ObservationErrors = append(input.ObservationErrors, CapacityObservationError{
+			return targetMax, []CapacityObservationError{{
 				Domain:  CapacityObservationPlanInput,
 				Source:  "target maxReplicas",
 				Message: "maxReplicas is already at the int32 limit and cannot be raised",
-			})
+			}}
 		}
 	case targetMax <= input.MaxReplicas:
-		input.ObservationErrors = append(input.ObservationErrors, CapacityObservationError{
+		return targetMax, []CapacityObservationError{{
 			Domain: CapacityObservationPlanInput,
 			Source: "target maxReplicas",
 			Message: fmt.Sprintf(
@@ -58,34 +88,66 @@ func AnalyzeCapacityPlan(input CapacityPlanInput) *CapacityPlan {
 				input.MaxReplicas,
 				targetMax,
 			),
-		})
+		}}
 	}
+	return targetMax, nil
+}
 
-	additionalPods64 := int64(targetMax) - int64(input.CurrentReplicas)
+// computeAdditionalPods clamps the pod delta implied by the target into the
+// int32 range.
+func computeAdditionalPods(targetMax, currentReplicas int32) int32 {
+	additionalPods64 := int64(targetMax) - int64(currentReplicas)
 	if additionalPods64 < 0 {
 		additionalPods64 = 0
 	}
 	if additionalPods64 > math.MaxInt32 {
 		additionalPods64 = math.MaxInt32
 	}
-	additionalPods := int32(additionalPods64)
+	return int32(additionalPods64)
+}
 
+// capacityDemand carries the per-pod and aggregate resource demand the plan's
+// checks compare against cluster headroom.
+type capacityDemand struct {
+	perPodCPU         resource.Quantity
+	perPodMemory      resource.Quantity
+	perPodLimitCPU    resource.Quantity
+	perPodLimitMemory resource.Quantity
+	totalCPU          resource.Quantity
+	totalMemory       resource.Quantity
+	totalLimitCPU     resource.Quantity
+	totalLimitMemory  resource.Quantity
+}
+
+// computeCapacityDemand derives per-pod and total resource demand for the
+// additional pods, leaving requests unknown when the observation inputs
+// themselves were unusable.
+func computeCapacityDemand(input CapacityPlanInput, additionalPods int32, resourceInputsUnknown bool) capacityDemand {
 	var perPodCPU, perPodMemory resource.Quantity
 	if !resourceInputsUnknown {
 		perPodCPU, perPodMemory = effectivePerPodResources(input)
 	}
 	perPodLimitCPU, perPodLimitMemory := effectivePerPodLimits(input)
-	totalCPU := multiplyQuantity(perPodCPU, int64(additionalPods))
-	totalMemory := multiplyQuantity(perPodMemory, int64(additionalPods))
-	totalLimitCPU := multiplyQuantity(perPodLimitCPU, int64(additionalPods))
-	totalLimitMemory := multiplyQuantity(perPodLimitMemory, int64(additionalPods))
+	return capacityDemand{
+		perPodCPU:         perPodCPU,
+		perPodMemory:      perPodMemory,
+		perPodLimitCPU:    perPodLimitCPU,
+		perPodLimitMemory: perPodLimitMemory,
+		totalCPU:          multiplyQuantity(perPodCPU, int64(additionalPods)),
+		totalMemory:       multiplyQuantity(perPodMemory, int64(additionalPods)),
+		totalLimitCPU:     multiplyQuantity(perPodLimitCPU, int64(additionalPods)),
+		totalLimitMemory:  multiplyQuantity(perPodLimitMemory, int64(additionalPods)),
+	}
+}
 
+// newCapacityPlan builds the plan skeleton shared by every check before the
+// checks and derived fields are populated.
+func newCapacityPlan(input CapacityPlanInput, targetMax, additionalPods int32, demand capacityDemand) *CapacityPlan {
 	issue := "HPA is not at maxReplicas"
 	if input.CurrentReplicas >= input.MaxReplicas {
 		issue = "HPA is capped at maxReplicas"
 	}
-
-	plan := &CapacityPlan{
+	return &CapacityPlan{
 		Namespace:         input.Namespace,
 		Name:              input.HPAName,
 		Target:            input.Target,
@@ -94,29 +156,18 @@ func AnalyzeCapacityPlan(input CapacityPlanInput) *CapacityPlan {
 		Issue:             issue,
 		TargetMaxReplicas: targetMax,
 		AdditionalPods:    additionalPods,
-		RequiredCPU:       totalCPU.String(),
-		RequiredMemory:    totalMemory.String(),
+		RequiredCPU:       demand.totalCPU.String(),
+		RequiredMemory:    demand.totalMemory.String(),
 	}
+}
 
-	// Run all checks.
-	appendCapacityAnalysisChecks(
-		plan,
-		input,
-		perPodCPU,
-		perPodMemory,
-		perPodLimitCPU,
-		perPodLimitMemory,
-		totalCPU,
-		totalMemory,
-		totalLimitCPU,
-		totalLimitMemory,
-		additionalPods,
-	)
-
+// finalizeCapacityPlan fills the derived fields that depend on check results
+// and on which observation domains came back unknown.
+func finalizeCapacityPlan(plan *CapacityPlan, input CapacityPlanInput, demand capacityDemand, resourceInputsUnknown bool) {
 	// Estimate schedulable now from remaining node capacity.
 	nodeCapacityUnknown := hasObservationDomain(input.ObservationErrors, CapacityObservationNodeCapacity)
 	if !resourceInputsUnknown && !nodeCapacityUnknown {
-		plan.SchedulableNow = computeSchedulableNow(input.NodeCapacity, perPodCPU, perPodMemory, input.ReadyPods)
+		plan.SchedulableNow = computeSchedulableNow(input.NodeCapacity, demand.perPodCPU, demand.perPodMemory, input.ReadyPods)
 	}
 
 	// Detect node autoscaler requirement.
@@ -124,13 +175,11 @@ func AnalyzeCapacityPlan(input CapacityPlanInput) *CapacityPlan {
 
 	// Suggest dry-run command.
 	if !hasObservationDomain(input.ObservationErrors, CapacityObservationPlanInput) {
-		plan.DryRunCommand = buildDryRunCommand(input.Namespace, input.HPAName, targetMax)
+		plan.DryRunCommand = buildDryRunCommand(input.Namespace, input.HPAName, plan.TargetMaxReplicas)
 	}
 
 	// Derive recommendation.
 	plan.Safe, plan.Recommendation, plan.NextActions = buildRecommendation(plan, input)
-
-	return plan
 }
 
 func validateCapacityQuantityInputs(input CapacityPlanInput) []CapacityObservationError {

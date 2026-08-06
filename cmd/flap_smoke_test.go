@@ -165,19 +165,28 @@ func TestFlapRecommendationsAreNeverEmpty(t *testing.T) {
 	}
 }
 
-func TestTraceReplicaRange(t *testing.T) {
+func TestTraceFlappingReport(t *testing.T) {
 	trace := hpaanalysis.TimelineTrace{
+		Namespace: "prod",
+		HPAName:   "web",
 		Snapshots: []hpaanalysis.TimelineSnapshot{
 			{Desired: 4}, {Desired: 9}, {Desired: 2},
 		},
 	}
-	low, high := traceReplicaRange(trace)
-	if low != 2 || high != 9 {
-		t.Errorf("traceReplicaRange = (%d, %d), want (2, 9)", low, high)
+	report := traceFlappingReport(trace)
+	if report.Namespace != "prod" || report.Name != "web" {
+		t.Errorf("identity = %s/%s, want prod/web", report.Namespace, report.Name)
+	}
+	if report.ReplicaMin != 2 || report.ReplicaMax != 9 {
+		t.Errorf("replica range = (%d, %d), want (2, 9)", report.ReplicaMin, report.ReplicaMax)
+	}
+	if report.Snapshots != 3 || report.DesiredChanges != 2 || report.DirectionFlips != 1 {
+		t.Errorf("counts = snapshots %d changes %d flips %d, want 3/2/1",
+			report.Snapshots, report.DesiredChanges, report.DirectionFlips)
 	}
 
-	if low, high := traceReplicaRange(hpaanalysis.TimelineTrace{}); low != 0 || high != 0 {
-		t.Errorf("empty trace range = (%d, %d), want (0, 0)", low, high)
+	if empty := traceFlappingReport(hpaanalysis.TimelineTrace{}); empty.ReplicaMin != 0 || empty.ReplicaMax != 0 || empty.Level != "LOW" {
+		t.Errorf("empty trace = min %d max %d level %s, want 0/0/LOW", empty.ReplicaMin, empty.ReplicaMax, empty.Level)
 	}
 }
 
