@@ -20,7 +20,6 @@ import (
 // internal/cmdoptions.NewScanRequest), so it must report broken/limited HPAs
 // by name across namespaces while excluding healthy ones from its output.
 func TestE2E_ScanSurfacesProblemsClusterWide(t *testing.T) {
-	t.Parallel()
 	kubeconfig := resolveKubeconfig(t)
 	_, healthyClient, healthyNs := setupTestNamespace(t, kubeconfig)
 	_, problemClient, problemNs := setupTestNamespace(t, kubeconfig)
