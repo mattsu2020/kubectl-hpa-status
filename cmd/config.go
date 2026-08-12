@@ -21,16 +21,21 @@ import (
 var (
 	validColorValues        = []string{"auto", "always", "never"}
 	validOutputSchemaValues = []string{"v1", "v2"}
-	validOutputValues       = []string{
-		"table", "wide", "json", "jsonl", "yaml", "jsonpath", "template", "gotemplate",
-		"markdown", "md", "html", "incident", "prometheus", "junit", "sarif", "github",
-	}
-	validLangValues = []string{"en", "ja"}
+	validOutputValues       = canonicalOutputValues()
+	validLangValues         = []string{"en", "ja"}
 
 	// outputFlagDisplayValues mirrors validOutputValues but keeps the
 	// kubectl-conventional "go-template" spelling for the --help string.
-	outputFlagDisplayValues = []string{"table", "wide", "json", "jsonl", "yaml", "jsonpath", "go-template"}
+	outputFlagDisplayValues = render.FormatNames()
 )
+
+func canonicalOutputValues() []string {
+	values := make([]string, 0, len(render.FormatNames())+5)
+	for _, name := range render.FormatNames() {
+		values = append(values, normalizeSelector(name))
+	}
+	return append(values, "template", "md", "junit", "sarif", "github")
+}
 
 // isAcceptedNormalized reports whether value (already normalized) is one of the
 // accepted options, treating the empty string as "unset/allowed".
@@ -326,6 +331,7 @@ var healthWeightSetters = map[string]func(*hpaanalysis.HealthWeights, int){
 	"atminimumreplicas":   func(w *hpaanalysis.HealthWeights, v int) { w.AtMinimumReplicas = hpaanalysis.IntWeight(v) },
 	"kedainactivetrigger": func(w *hpaanalysis.HealthWeights, v int) { w.KEDAInactiveTrigger = hpaanalysis.IntWeight(v) },
 	"vpaconflict":         func(w *hpaanalysis.HealthWeights, v int) { w.VPAConflict = hpaanalysis.IntWeight(v) },
+	"churn":               func(w *hpaanalysis.HealthWeights, v int) { w.Churn = hpaanalysis.IntWeight(v) },
 }
 
 func applyHealthWeightOverrides(opts *options) error {

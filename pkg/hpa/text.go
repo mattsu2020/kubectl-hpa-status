@@ -19,6 +19,27 @@ type StatusReport struct {
 	APIVersion string   `json:"apiVersion" yaml:"apiVersion"`
 	Analysis   Analysis `json:"analysis" yaml:"analysis"`
 	Events     []Event  `json:"events,omitempty" yaml:"events,omitempty"`
+	canonical  *GroupedAnalysis
+}
+
+// FreezeCanonical snapshots the nested analysis after all enrichment and
+// finalization. V1 fields remain as the compatibility surface; v2 consumers
+// read this immutable canonical snapshot.
+func (r *StatusReport) FreezeCanonical() {
+	if r == nil {
+		return
+	}
+	grouped := r.Analysis.Grouped()
+	r.canonical = &grouped
+}
+
+// CanonicalAnalysis returns the frozen nested model, falling back to a fresh
+// projection for reports assembled by older callers or struct literals.
+func (r StatusReport) CanonicalAnalysis() GroupedAnalysis {
+	if r.canonical != nil {
+		return *r.canonical
+	}
+	return r.Analysis.Grouped()
 }
 
 // StatusTextOptions configures text output rendering with theme, language, fix mode, and diff display.

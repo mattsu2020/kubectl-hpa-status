@@ -68,13 +68,7 @@ type Model struct {
 	batchApplyConfirm bool
 	batchApplyPreview []string
 
-	// Interactive mode states (nil when inactive).
-	simState        *simState
-	fixState        *fixState
-	replayState     *replayState
-	batchAuditState *batchAuditState
-	historyState    *historyState
-	hintsState      *hintsState
+	interactiveStates
 
 	// replicaHistory holds recent replica snapshots per HPA for inline sparklines.
 	// Keyed by "namespace/name", value is a slice of desired replica counts
@@ -82,6 +76,18 @@ type Model struct {
 	replicaHistory map[string][]float64
 
 	keys keyMap
+}
+
+// interactiveStates owns view-local state. It is embedded during the
+// migration so existing field access remains source-compatible while
+// controllers progressively become independent submodels.
+type interactiveStates struct {
+	simState        *simState
+	fixState        *fixState
+	replayState     *replayState
+	batchAuditState *batchAuditState
+	historyState    *historyState
+	hintsState      *hintsState
 }
 
 // Options holds configuration for the TUI dashboard.
@@ -95,6 +101,7 @@ type Options struct {
 	InitialName   string
 	InitialNS     string
 	StartInDetail bool
+	Now           func() time.Time
 
 	// EnrichHPAs is an optional callback that applies KEDA/VPA enrichment
 	// to a slice of HPAs. When set, fetchHPAs calls it after the initial
@@ -123,6 +130,13 @@ type Options struct {
 	// AuditFn is an optional callback for running the best-practice auditor
 	// on an HPA. When nil, the batch auditor action is disabled.
 	AuditFn AuditFunc
+}
+
+func (m Model) currentTime() time.Time {
+	if m.opts.Now != nil {
+		return m.opts.Now()
+	}
+	return time.Now()
 }
 
 // keyMap defines the keyboard shortcuts.
@@ -158,86 +172,22 @@ type keyMap struct {
 	Overview      key.Binding
 }
 
-// keyDef is a single row in the defaultKeys table.
-type keyDef struct {
-	keys []string
-	help string
-	desc string
-}
-
-// defaultKeyTable lists every binding in display order. The field order must
-// match keyMap's struct field order so the loop in defaultKeys can assign by
-// index.
-var defaultKeyTable = []keyDef{
-	{[]string{"up", "k"}, "↑/k", "up"},
-	{[]string{"down", "j"}, "↓/j", "down"},
-	{[]string{"enter"}, "enter", "detail"},
-	{[]string{"esc"}, "esc", "back"},
-	{[]string{"q", "ctrl+c"}, "q", "quit"},
-	{[]string{"r"}, "r", "refresh"},
-	{[]string{"p"}, "p", "pause"},
-	{[]string{"/"}, "/", "filter"},
-	{[]string{"?"}, "?", "help"},
-	{[]string{"S"}, "S", "sort cycle"},
-	{[]string{"g"}, "g", "jump to problems"},
-	{[]string{"m"}, "m", "metrics detail"},
-	{[]string{"space", " "}, "space", "toggle select"},
-	{[]string{"a"}, "a", "select all"},
-	{[]string{"A"}, "A", "deselect all"},
-	{[]string{"s"}, "s", "simulate"},
-	{[]string{"f"}, "f", "fix wizard"},
-	{[]string{"T"}, "T", "replay timeline"},
-	{[]string{"M"}, "M", "metric simulation"},
-	{[]string{"tab"}, "tab", "next field"},
-	{[]string{"shift+tab"}, "shift+tab", "previous field"},
-	{[]string{"d"}, "d", "server dry-run"},
-	{[]string{"+", "="}, "+/=", "faster refresh"},
-	{[]string{"-"}, "-", "slower refresh"},
-	{[]string{"B"}, "B", "batch auditor"},
-	{[]string{"x"}, "x", "preview/confirm batch apply"},
-	{[]string{"H"}, "H", "history/sparkline"},
-	{[]string{"h"}, "h", "metric hints"},
-	{[]string{"O"}, "O", "cluster overview"},
-}
-
 func defaultKeys() keyMap {
-	bindings := make([]key.Binding, len(defaultKeyTable))
-	for i, def := range defaultKeyTable {
-		bindings[i] = key.NewBinding(
-			key.WithKeys(def.keys...),
-			key.WithHelp(def.help, def.desc),
-		)
+	b := func(keys []string, help, desc string) key.Binding {
+		return key.NewBinding(key.WithKeys(keys...), key.WithHelp(help, desc))
 	}
 	return keyMap{
-		Up:            bindings[0],
-		Down:          bindings[1],
-		Enter:         bindings[2],
-		Escape:        bindings[3],
-		Quit:          bindings[4],
-		Refresh:       bindings[5],
-		Pause:         bindings[6],
-		Filter:        bindings[7],
-		Help:          bindings[8],
-		Sort:          bindings[9],
-		JumpProblem:   bindings[10],
-		Metrics:       bindings[11],
-		ToggleSelect:  bindings[12],
-		SelectAll:     bindings[13],
-		DeselectAll:   bindings[14],
-		Simulate:      bindings[15],
-		Fix:           bindings[16],
-		Replay:        bindings[17],
-		MetricMode:    bindings[18],
-		TabField:      bindings[19],
-		ShiftTabField: bindings[20],
-		DryRun:        bindings[21],
-		IntervalUp:    bindings[22],
-		IntervalDown:  bindings[23],
-		BatchAudit:    bindings[24],
-		BatchApply:    bindings[25],
-		History:       bindings[26],
-		Hints:         bindings[27],
-		Overview:      bindings[28],
+		Up: b([]string{"up", "k"}, "↑/k", "up"), Down: b([]string{"down", "j"}, "↓/j", "down"),
+		Enter: b([]string{"enter"}, "enter", "detail"), Escape: b([]string{"esc"}, "esc", "back"),
+		Quit: b([]string{"q", "ctrl+c"}, "q", "quit"), Refresh: b([]string{"r"}, "r", "refresh"),
+		Pause: b([]string{"p"}, "p", "pause"), Filter: b([]string{"/"}, "/", "filter"), Help: b([]string{"?"}, "?", "help"),
+		Sort: b([]string{"S"}, "S", "sort cycle"), JumpProblem: b([]string{"g"}, "g", "jump to problems"), Metrics: b([]string{"m"}, "m", "metrics detail"),
+		ToggleSelect: b([]string{"space", " "}, "space", "toggle select"), SelectAll: b([]string{"a"}, "a", "select all"), DeselectAll: b([]string{"A"}, "A", "deselect all"),
+		Simulate: b([]string{"s"}, "s", "simulate"), Fix: b([]string{"f"}, "f", "fix wizard"), Replay: b([]string{"T"}, "T", "replay timeline"),
+		MetricMode: b([]string{"M"}, "M", "metric simulation"), TabField: b([]string{"tab"}, "tab", "next field"), ShiftTabField: b([]string{"shift+tab"}, "shift+tab", "previous field"),
+		DryRun: b([]string{"d"}, "d", "server dry-run"), IntervalUp: b([]string{"+", "="}, "+/=", "faster refresh"), IntervalDown: b([]string{"-"}, "-", "slower refresh"),
+		BatchAudit: b([]string{"B"}, "B", "batch auditor"), BatchApply: b([]string{"x"}, "x", "preview/confirm batch apply"), History: b([]string{"H"}, "H", "history/sparkline"),
+		Hints: b([]string{"h"}, "h", "metric hints"), Overview: b([]string{"O"}, "O", "cluster overview"),
 	}
 }
 

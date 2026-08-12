@@ -2,6 +2,7 @@ package hpa
 
 import (
 	"fmt"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/churn"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
@@ -159,7 +160,7 @@ func correlateStabilizationChurn(a Analysis) Analysis {
 	if a.ChurnAnalysis == nil {
 		return a
 	}
-	if a.ChurnAnalysis.Level != ChurnHigh && a.ChurnAnalysis.Level != ChurnCritical {
+	if a.ChurnAnalysis.Level != churn.ChurnHigh && a.ChurnAnalysis.Level != churn.ChurnCritical {
 		return a
 	}
 	line := "[estimated] Churn detected while stabilization window is active — consider increasing scaleDown.stabilizationWindowSeconds to reduce thrashing."

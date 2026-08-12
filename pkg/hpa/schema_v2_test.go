@@ -51,6 +51,16 @@ func TestProjectStatusReportV2UsesNestedSchemaWithoutMutatingV1(t *testing.T) {
 	}
 }
 
+func TestProjectStatusReportV2UsesFrozenCanonicalSnapshot(t *testing.T) {
+	report := StatusReport{APIVersion: SchemaVersion, Analysis: Analysis{Name: "before", Health: "OK"}}
+	report.FreezeCanonical()
+	report.Analysis.Name = "legacy-mutated"
+	projected := ProjectStatusReportV2(report)
+	if projected.Analysis.Meta.Name != "before" {
+		t.Fatalf("canonical name = %q, want frozen value", projected.Analysis.Meta.Name)
+	}
+}
+
 func TestProjectStatusBatchV2PreservesErrors(t *testing.T) {
 	report := StatusReport{APIVersion: SchemaVersion, Analysis: Analysis{Name: "ok"}}
 	batch := StatusBatch{APIVersion: SchemaVersion, Items: []StatusBatchItem{

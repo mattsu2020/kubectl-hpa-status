@@ -128,27 +128,9 @@ func metricDisplayName(metric autoscalingv2.MetricStatus) string {
 // status. Keeping this type switch next to the handler registry prevents
 // decision tracing and freshness analysis from maintaining their own copies.
 func currentMetricValueStatus(metric autoscalingv2.MetricStatus) (autoscalingv2.MetricValueStatus, bool) {
-	switch metric.Type {
-	case autoscalingv2.ResourceMetricSourceType:
-		if metric.Resource != nil {
-			return metric.Resource.Current, true
-		}
-	case autoscalingv2.ContainerResourceMetricSourceType:
-		if metric.ContainerResource != nil {
-			return metric.ContainerResource.Current, true
-		}
-	case autoscalingv2.PodsMetricSourceType:
-		if metric.Pods != nil {
-			return metric.Pods.Current, true
-		}
-	case autoscalingv2.ObjectMetricSourceType:
-		if metric.Object != nil {
-			return metric.Object.Current, true
-		}
-	case autoscalingv2.ExternalMetricSourceType:
-		if metric.External != nil {
-			return metric.External.Current, true
-		}
+	descriptor, err := MetricDescriptorFromStatus(metric)
+	if err == nil && descriptor.Current != nil {
+		return *descriptor.Current, true
 	}
 	return autoscalingv2.MetricValueStatus{}, false
 }
@@ -157,8 +139,9 @@ func matchingMetricTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, current au
 	for i := range hpa.Spec.Metrics {
 		spec := &hpa.Spec.Metrics[i]
 		if metricIdentityMatches(*spec, current) {
-			if target := metricTargetPointer(spec); target != nil {
-				return target, true
+			descriptor, err := MetricDescriptorFromSpec(*spec)
+			if err == nil && descriptor.Target != nil {
+				return descriptor.Target, true
 			}
 		}
 	}
@@ -168,16 +151,11 @@ func matchingMetricTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, current au
 // specMetricSelector returns the formatted selector string for a spec metric,
 // or empty string if the metric type does not support selectors.
 func specMetricSelector(spec autoscalingv2.MetricSpec) string {
-	switch {
-	case spec.External != nil:
-		return FormatMetricSelector(spec.External.Metric.Selector)
-	case spec.Object != nil:
-		return FormatMetricSelector(spec.Object.Metric.Selector)
-	case spec.Pods != nil:
-		return FormatMetricSelector(spec.Pods.Metric.Selector)
-	default:
+	descriptor, err := MetricDescriptorFromSpec(spec)
+	if err != nil {
 		return ""
 	}
+	return FormatMetricSelector(descriptor.Selector)
 }
 
 // selectorsEqual compares two LabelSelectors for equality.

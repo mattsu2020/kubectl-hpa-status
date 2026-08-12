@@ -1,6 +1,8 @@
 package hpa
 
 import (
+	"encoding/json"
+	"math"
 	"strings"
 	"testing"
 
@@ -179,6 +181,16 @@ func TestProjectReplicaTrajectory(t *testing.T) {
 		if s.ProjectedReplicas > 20 {
 			t.Errorf("ProjectedReplicas = %d, want <= 20", s.ProjectedReplicas)
 		}
+	}
+}
+
+func TestComputeMetricRatioAtZeroIsJSONSafe(t *testing.T) {
+	ratio := computeMetricRatio(5, 0, 0, 10)
+	if math.IsInf(ratio, 0) || math.IsNaN(ratio) {
+		t.Fatalf("ratio must be finite, got %v", ratio)
+	}
+	if _, err := json.Marshal(ProjectedState{ProjectedMetricRatio: ratio}); err != nil {
+		t.Fatalf("ProjectedState must be JSON serializable: %v", err)
 	}
 }
 

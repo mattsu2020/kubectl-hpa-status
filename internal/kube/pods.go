@@ -82,6 +82,16 @@ func listPods(ctx context.Context, client kubernetes.Interface, namespace string
 	})
 }
 
+func visitPods(ctx context.Context, client kubernetes.Interface, namespace string, opts metav1.ListOptions, visit func([]corev1.Pod) error) error {
+	return visitListPages(ctx, opts, func(ctx context.Context, page metav1.ListOptions) ([]corev1.Pod, string, error) {
+		list, err := client.CoreV1().Pods(namespace).List(ctx, page)
+		if err != nil {
+			return nil, "", err
+		}
+		return list.Items, list.Continue, nil
+	}, visit)
+}
+
 // PodInfosFromPods derives the compact diagnostic view without another API
 // call.
 func PodInfosFromPods(pods []corev1.Pod) []PodInfo {
@@ -137,29 +147,12 @@ func podSchedulingReasons(pod corev1.Pod) []string {
 
 // resolveLabelSelector returns the label selector string for the given scale target reference.
 func resolveLabelSelector(ctx context.Context, client kubernetes.Interface, namespace string, ref autoscalingv2.CrossVersionObjectReference) (string, error) {
-	switch ref.Kind {
-	case "Deployment":
-		deploy, err := client.AppsV1().Deployments(namespace).Get(ctx, ref.Name, metav1.GetOptions{})
-		if err != nil {
-			return "", err
-		}
-		return metav1.FormatLabelSelector(deploy.Spec.Selector), nil
-	case "StatefulSet":
-		sts, err := client.AppsV1().StatefulSets(namespace).Get(ctx, ref.Name, metav1.GetOptions{})
-		if err != nil {
-			return "", err
-		}
-		return metav1.FormatLabelSelector(sts.Spec.Selector), nil
-	case "ReplicaSet":
-		rs, err := client.AppsV1().ReplicaSets(namespace).Get(ctx, ref.Name, metav1.GetOptions{})
-		if err != nil {
-			return "", err
-		}
-		if rs.Spec.Selector != nil {
-			return metav1.FormatLabelSelector(rs.Spec.Selector), nil
-		}
-		return "", nil
-	default:
+	info, err := FetchScaleTargetInfo(ctx, client, namespace, ref)
+	if err != nil {
+		return "", err
+	}
+	if info == nil {
 		return "", fmt.Errorf("kind %q: %w", ref.Kind, ErrUnsupportedScaleTargetKind)
 	}
+	return info.SelectorStr, nil
 }

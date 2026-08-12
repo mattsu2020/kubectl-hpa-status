@@ -48,16 +48,7 @@ func AnalyzeCapacityPlan(input CapacityPlanInput) *CapacityPlan {
 	// Run all checks.
 	appendCapacityAnalysisChecks(
 		plan,
-		input,
-		demand.perPodCPU,
-		demand.perPodMemory,
-		demand.perPodLimitCPU,
-		demand.perPodLimitMemory,
-		demand.totalCPU,
-		demand.totalMemory,
-		demand.totalLimitCPU,
-		demand.totalLimitMemory,
-		additionalPods,
+		capacityCheckContext{input: input, demand: demand, additionalPods: additionalPods},
 	)
 
 	finalizeCapacityPlan(plan, input, demand, resourceInputsUnknown)
@@ -298,13 +289,14 @@ func limitRangeResourceMissing(containers []CapacityContainerResources, resource
 	return requestMissing, limitMissing
 }
 
-func appendCapacityAnalysisChecks(
-	plan *CapacityPlan,
-	input CapacityPlanInput,
-	perPodCPU, perPodMemory, perPodLimitCPU, perPodLimitMemory,
-	totalCPU, totalMemory, totalLimitCPU, totalLimitMemory resource.Quantity,
-	additionalPods int32,
-) {
+type capacityCheckContext struct {
+	input          CapacityPlanInput
+	demand         capacityDemand
+	additionalPods int32
+}
+
+func appendCapacityAnalysisChecks(plan *CapacityPlan, ctx capacityCheckContext) {
+	input, demand, additionalPods := ctx.input, ctx.demand, ctx.additionalPods
 	plan.Checks = append(plan.Checks, checkObservationErrors(input.ObservationErrors)...)
 	resourceInputsUnknown := hasObservationDomain(input.ObservationErrors, CapacityObservationScaleTarget) ||
 		hasObservationDomain(input.ObservationErrors, CapacityObservationPodResources)
@@ -312,10 +304,10 @@ func appendCapacityAnalysisChecks(
 		plan.Checks = append(plan.Checks, checkQuotaHeadroom(
 			input.Quotas,
 			input,
-			totalCPU,
-			totalMemory,
-			totalLimitCPU,
-			totalLimitMemory,
+			demand.totalCPU,
+			demand.totalMemory,
+			demand.totalLimitCPU,
+			demand.totalLimitMemory,
 			additionalPods,
 		)...)
 	}
@@ -323,19 +315,19 @@ func appendCapacityAnalysisChecks(
 		plan.Checks = append(plan.Checks, checkLimitRanges(
 			input.LimitRanges,
 			input.ContainerResources,
-			perPodCPU,
-			perPodMemory,
-			perPodLimitCPU,
-			perPodLimitMemory,
+			demand.perPodCPU,
+			demand.perPodMemory,
+			demand.perPodLimitCPU,
+			demand.perPodLimitMemory,
 		)...)
 	}
 	if !resourceInputsUnknown && !hasObservationDomain(input.ObservationErrors, CapacityObservationNodeCapacity) {
 		plan.Checks = append(plan.Checks, checkNodeCapacity(
 			input.NodeCapacity,
-			totalCPU,
-			totalMemory,
-			perPodCPU,
-			perPodMemory,
+			demand.totalCPU,
+			demand.totalMemory,
+			demand.perPodCPU,
+			demand.perPodMemory,
 			additionalPods,
 			input.ClusterAutoscaler,
 		)...)

@@ -5,6 +5,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/healthtrend"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -183,14 +184,14 @@ func compactConditions(conditions []Condition) string {
 	return strings.Join(condParts, ";")
 }
 
-func trendSparklineFromAnalysis(trend *HealthTrendResult) string {
+func trendSparklineFromAnalysis(trend *healthtrend.Result) string {
 	if trend == nil {
 		return ""
 	}
 	return FormatTrendListRow(*trend)
 }
 
-func trendFlappingFromAnalysis(trend *HealthTrendResult) bool {
+func trendFlappingFromAnalysis(trend *healthtrend.Result) bool {
 	return trend != nil && trend.FlappingDetected
 }
 

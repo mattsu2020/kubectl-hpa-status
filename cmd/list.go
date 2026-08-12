@@ -246,8 +246,6 @@ func buildListItems(ctx context.Context, opts *options, hpas []autoscalingv2.Hor
 		if recorder != nil {
 			attachHealthTrend(recorder, &analysis, opts.TrendSince, opts.TrendRetain)
 		}
-		analysis = hpaanalysis.FinalizeAnalysis(analysis)
-
 		item := hpaanalysis.NewListItem(analysis)
 		if matchesListFilter(item, filter) && matchesHealthScoreRange(item, opts.HealthScoreMin, effectiveHealthScoreMax(opts)) {
 			items = append(items, item)

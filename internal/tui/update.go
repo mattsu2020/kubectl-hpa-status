@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -22,16 +21,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateTick()
 	case fetchResultMsg:
 		return m.updateFetchResult(msg)
-	case simResultMsg:
-		return m.updateSimResult(msg)
-	case applyResultMsg:
-		return m.updateApplyResult(msg)
-	case dryRunResultMsg:
-		return m.updateDryRunResult(msg)
-	case replayLoadedMsg:
-		return m.updateReplayLoaded(msg)
-	case batchAuditMsg:
-		return m.updateBatchAudit(msg)
+	}
+	if updated, cmd, handled := dispatchViewMessage(m, msg); handled {
+		return updated, cmd
 	}
 	return m, nil
 }
@@ -47,14 +39,8 @@ func (m Model) updateKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.filtering {
 		return m.handleFilterInput(msg)
 	}
-	// If in simulation view and textinput is focused, delegate.
-	if m.viewMode == simView && m.simState != nil && m.simState.metricMode && m.simState.metricInput.Focused() {
-		return m.handleSimInput(msg)
-	}
-	if m.viewMode == simView && m.simState != nil && !m.simState.metricMode {
-		if updated, handled := m.handleSimFieldInput(msg); handled {
-			return updated, nil
-		}
+	if updated, cmd, handled := controllerForMode(m.viewMode).HandleKey(m, msg); handled {
+		return updated, cmd
 	}
 	return m.handleKey(msg)
 }
@@ -68,7 +54,7 @@ func (m Model) updateTick() (tea.Model, tea.Cmd) {
 
 func (m Model) updateFetchResult(msg fetchResultMsg) (tea.Model, tea.Cmd) {
 	m.loading = false
-	m.lastRefresh = time.Now()
+	m.lastRefresh = m.currentTime()
 	// A refresh can change the HPA state and regenerate suggestions. Never
 	// carry an armed live-apply confirmation across that state boundary.
 	if m.fixState != nil {

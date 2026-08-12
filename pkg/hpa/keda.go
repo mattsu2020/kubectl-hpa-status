@@ -35,7 +35,7 @@ type KEDAFallbackInfo = keda.FallbackInfo
 // its KEDA ScaledObject. Delegates to keda.Analyze.
 //
 // Deprecated: Use keda.Analyze instead. Scheduled for removal in v3.0.0.
-func AnalyzeKEDA(hpa *autoscalingv2.HorizontalPodAutoscaler, k *KEDAAnalysis) []string {
+func AnalyzeKEDA(hpa *autoscalingv2.HorizontalPodAutoscaler, k *keda.Analysis) []string {
 	return keda.Analyze(hpa, k)
 }
 

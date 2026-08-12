@@ -51,11 +51,6 @@ func FetchClusterResourceHeadroomForPod(ctx context.Context, client kubernetes.I
 	if err != nil {
 		return nil, fmt.Errorf("failed to list nodes: %w", err)
 	}
-	pods, err := listPods(ctx, client, metav1.NamespaceAll, metav1.ListOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list scheduled pods: %w", err)
-	}
-
 	nodeCapacity := summarizeNodeCapacityForPod(nodes, podSpec)
 	type nodeUsage struct {
 		cpu    resource.Quantity
@@ -74,22 +69,28 @@ func FetchClusterResourceHeadroomForPod(ctx context.Context, client kubernetes.I
 	}
 
 	var requestedCPU, requestedMemory resource.Quantity
-	for i := range pods {
-		pod := &pods[i]
-		nodeUsage := usage[pod.Spec.NodeName]
-		if nodeUsage == nil || pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
-			continue
+	err = visitPods(ctx, client, metav1.NamespaceAll, metav1.ListOptions{}, func(pods []corev1.Pod) error {
+		for i := range pods {
+			pod := &pods[i]
+			nodeUsage := usage[pod.Spec.NodeName]
+			if nodeUsage == nil || pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
+				continue
+			}
+			requests := EffectivePodRequests(pod.Spec)
+			if quantity, ok := requests[corev1.ResourceCPU]; ok {
+				nodeUsage.cpu.Add(quantity)
+				requestedCPU.Add(quantity)
+			}
+			if quantity, ok := requests[corev1.ResourceMemory]; ok {
+				nodeUsage.memory.Add(quantity)
+				requestedMemory.Add(quantity)
+			}
+			nodeUsage.pods++
 		}
-		requests := EffectivePodRequests(pod.Spec)
-		if quantity, ok := requests[corev1.ResourceCPU]; ok {
-			nodeUsage.cpu.Add(quantity)
-			requestedCPU.Add(quantity)
-		}
-		if quantity, ok := requests[corev1.ResourceMemory]; ok {
-			nodeUsage.memory.Add(quantity)
-			requestedMemory.Add(quantity)
-		}
-		nodeUsage.pods++
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list scheduled pods: %w", err)
 	}
 
 	var availableCPU, availableMemory resource.Quantity

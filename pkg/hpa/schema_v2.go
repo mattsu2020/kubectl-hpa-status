@@ -60,7 +60,7 @@ type StatusRecordV2 struct {
 func ProjectStatusReportV2(report StatusReport) StatusReportV2 {
 	return StatusReportV2{
 		APIVersion: SchemaVersionV2,
-		Analysis:   report.Analysis.Grouped(),
+		Analysis:   report.CanonicalAnalysis(),
 		Events:     cloneEvents(report.Events),
 	}
 }

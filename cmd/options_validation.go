@@ -204,6 +204,9 @@ func validateOutputOption(cmd *cobra.Command, opts *options) error {
 
 	format, templateStr := selectOutputFromOptions(opts)
 	format = normalizeOutputFormat(format)
+	if err := validateCommandOutputFormat(cmd, format); err != nil {
+		return err
+	}
 	switch format {
 	case "", "table", "wide", "ja", "json", "jsonl", "yaml", "markdown", "md",
 		"html", "incident", "prometheus", "junit", "sarif", "github":
@@ -222,6 +225,28 @@ func validateOutputOption(cmd *cobra.Command, opts *options) error {
 		}
 		return fmt.Errorf("unsupported --output format %q", opts.Output)
 	}
+}
+
+func validateCommandOutputFormat(cmd *cobra.Command, format string) error {
+	if cmd == nil {
+		return nil
+	}
+	name := cmd.Name()
+	switch format {
+	case "junit":
+		if name != "list" && name != "scan" {
+			return fmt.Errorf("--output=junit is supported only by list and scan")
+		}
+	case "sarif":
+		if name != "list" && name != "scan" && name != "lint" {
+			return fmt.Errorf("--output=sarif is supported only by list, scan, and lint")
+		}
+	case "github":
+		if name != "lint" {
+			return fmt.Errorf("--output=github is supported only by lint")
+		}
+	}
+	return nil
 }
 
 func normalizeEffectiveEnums(opts *options) {

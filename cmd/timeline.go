@@ -12,6 +12,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/retrospective"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
@@ -62,7 +63,7 @@ func runRetrospectiveTimeline(ctx context.Context, out io.Writer, opts *options,
 	}
 
 	// 2. Fetch events since the cutoff time.
-	sinceTime := time.Now().Add(-since)
+	sinceTime := opts.CurrentTime().Add(-since)
 	coreEvents, err := kube.FetchRecentHPAEventsSince(ctx, client.Interface, hpa.Namespace, hpa.Name, sinceTime)
 	if err != nil {
 		return fmt.Errorf("failed to fetch events: %w", err)
@@ -198,25 +199,15 @@ func runTimelineFromRecord(out io.Writer, opts *options, name, path string) erro
 	}
 	format, _ := selectOutputFromOptions(opts)
 	switch format {
-	case "json":
-		encoder := json.NewEncoder(out)
-		encoder.SetIndent("", "  ")
-		return encoder.Encode(trace)
-	case "yaml":
-		data, marshalErr := yaml.Marshal(trace)
-		if marshalErr != nil {
-			return marshalErr
-		}
-		_, err = out.Write(data)
-		return err
 	case "markdown", "md":
 		return hpaanalysis.WriteTimelineMarkdown(out, *trace)
 	case "html":
 		return hpaanalysis.WriteTimelineHTML(out, *trace)
-	default:
+	}
+	return render.Format(out, format, "", trace, func(out io.Writer) error {
 		theme := style.NewTheme(shouldColorize(opts.Color, out))
 		return hpaanalysis.WriteTimelineTable(out, *trace, theme)
-	}
+	})
 }
 
 func isKnownOutputFormat(format string) bool {
@@ -245,8 +236,9 @@ func runReplay(out io.Writer, opts *options, filePath string) error {
 		return hpaanalysis.WriteTimelineMarkdown(out, trace)
 	case "html":
 		return hpaanalysis.WriteTimelineHTML(out, trace)
-	default:
+	}
+	return render.Format(out, format, "", trace, func(out io.Writer) error {
 		theme := style.NewTheme(shouldColorize(opts.Color, out))
 		return hpaanalysis.WriteTimelineTable(out, trace, theme)
-	}
+	})
 }

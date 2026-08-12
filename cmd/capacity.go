@@ -56,9 +56,22 @@ func buildCapacityContextWithSnapshot(ctx context.Context, client *kube.Client, 
 		result.PDBInterference = kubeconv.PDBs(pdbInfos)
 	}
 
-	result.NodeHints = kube.GenerateNodeHints(pending.Data, quotaInfos)
+	result.NodeHints = formatCapacityNodeHints(kube.DetectNodeHintObservations(pending.Data, quotaInfos))
 
 	return result
+}
+
+func formatCapacityNodeHints(observations []kube.NodeHintObservation) []string {
+	var hints []string
+	for _, observation := range observations {
+		switch observation.Kind {
+		case kube.NodeHintUnschedulable:
+			hints = append(hints, fmt.Sprintf("%d pending pod(s) are unschedulable; consider enabling Cluster Autoscaler or Karpenter for node auto-scaling", observation.Count))
+		case kube.NodeHintQuota:
+			hints = append(hints, fmt.Sprintf("ResourceQuota %q is near limit for %s; HPA scale-up may hit quota", observation.Name, observation.Resource))
+		}
+	}
+	return hints
 }
 
 // capacitySelector resolves the label selector for the HPA scale target.

@@ -70,3 +70,25 @@ func TestRecorderSurfacesLoadWarningWithoutDroppingValidSnapshots(t *testing.T) 
 		t.Fatalf("warnings = %#v", result.Warnings)
 	}
 }
+
+func TestRecorderUsesHealthStoreTransaction(t *testing.T) {
+	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
+	store, err := NewHealthStoreWithDir(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := NewRecorder(store, fixedClock{now: now}).RecordAndAnalyze(RecordInput{
+		Namespace: "default", Name: "web", HealthScore: 90, HealthState: "OK",
+		Since: time.Hour, Retention: 24 * time.Hour,
+	})
+	if result.Trend == nil {
+		t.Fatal("transaction did not return a trend")
+	}
+	if len(result.Warnings) != 0 {
+		t.Fatalf("warnings = %v", result.Warnings)
+	}
+	snapshots, err := store.LoadAt("default", "web", time.Hour, now)
+	if err != nil || len(snapshots) != 1 {
+		t.Fatalf("stored snapshots=%d err=%v", len(snapshots), err)
+	}
+}

@@ -52,6 +52,22 @@ func TestHealthStoreAppendAndLoad(t *testing.T) {
 	}
 }
 
+func TestHealthStoreLongNamesAreBoundedAndCollisionSafe(t *testing.T) {
+	store, err := NewHealthStoreWithDir(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	prefix := strings.Repeat("a", maxFilenameSegmentLength)
+	first := store.filePath("default", prefix+"-first")
+	second := store.filePath("default", prefix+"-second")
+	if first == second {
+		t.Fatalf("long names collided: %s", first)
+	}
+	if got := len(filepath.Base(first)); got > maxHistoryFilenameLength {
+		t.Fatalf("filename length = %d, want <= %d", got, maxHistoryFilenameLength)
+	}
+}
+
 func TestHealthStorePermissionsSortingAndCorruption(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "history")
 	store, err := NewHealthStoreWithDir(dir)

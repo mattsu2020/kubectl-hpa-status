@@ -12,6 +12,8 @@ import (
 // of growing switches on Model.
 type viewController interface {
 	Render(Model) string
+	HandleMessage(Model, tea.Msg) (Model, tea.Cmd, bool)
+	HandleKey(Model, tea.KeyMsg) (Model, tea.Cmd, bool)
 	MoveCursor(Model, int) Model
 	HandleEnter(Model) (Model, tea.Cmd)
 	HandleEscape(Model) (Model, tea.Cmd)
@@ -20,10 +22,26 @@ type viewController interface {
 // viewControllerFuncs lets simple views provide only the behavior they own.
 // Nil handlers are intentional no-ops.
 type viewControllerFuncs struct {
-	render       func(Model) string
-	moveCursor   func(Model, int) Model
-	handleEnter  func(Model) (Model, tea.Cmd)
-	handleEscape func(Model) (Model, tea.Cmd)
+	render        func(Model) string
+	moveCursor    func(Model, int) Model
+	handleEnter   func(Model) (Model, tea.Cmd)
+	handleEscape  func(Model) (Model, tea.Cmd)
+	handleKey     func(Model, tea.KeyMsg) (Model, tea.Cmd, bool)
+	handleMessage func(Model, tea.Msg) (Model, tea.Cmd, bool)
+}
+
+func (c viewControllerFuncs) HandleMessage(m Model, msg tea.Msg) (Model, tea.Cmd, bool) {
+	if c.handleMessage == nil {
+		return m, nil, false
+	}
+	return c.handleMessage(m, msg)
+}
+
+func (c viewControllerFuncs) HandleKey(m Model, msg tea.KeyMsg) (Model, tea.Cmd, bool) {
+	if c.handleKey == nil {
+		return m, nil, false
+	}
+	return c.handleKey(m, msg)
 }
 
 func (c viewControllerFuncs) Render(m Model) string {
@@ -77,24 +95,29 @@ var viewControllerRegistry = [viewModeCount]viewController{
 		handleEscape: escapeToListView,
 	},
 	simView: viewControllerFuncs{
-		render:       Model.renderSimView,
-		handleEnter:  enterSimView,
-		handleEscape: escapeInteractiveView,
+		render:        Model.renderSimView,
+		handleKey:     handleSimViewInput,
+		handleMessage: handleSimViewMessage,
+		handleEnter:   enterSimView,
+		handleEscape:  escapeInteractiveView,
 	},
 	fixView: viewControllerFuncs{
-		render:       Model.renderFixView,
-		moveCursor:   moveFixViewCursor,
-		handleEnter:  enterFixView,
-		handleEscape: escapeInteractiveView,
+		render:        Model.renderFixView,
+		handleMessage: handleFixViewMessage,
+		moveCursor:    moveFixViewCursor,
+		handleEnter:   enterFixView,
+		handleEscape:  escapeInteractiveView,
 	},
 	replayView: viewControllerFuncs{
-		render:       Model.renderReplayView,
-		moveCursor:   moveReplayViewCursor,
-		handleEscape: escapeInteractiveView,
+		render:        Model.renderReplayView,
+		handleMessage: handleReplayViewMessage,
+		moveCursor:    moveReplayViewCursor,
+		handleEscape:  escapeInteractiveView,
 	},
 	batchAuditView: viewControllerFuncs{
-		render:       Model.renderBatchAuditView,
-		handleEscape: escapeBatchAuditView,
+		render:        Model.renderBatchAuditView,
+		handleMessage: handleBatchAuditViewMessage,
+		handleEscape:  escapeBatchAuditView,
 	},
 	historyView: viewControllerFuncs{
 		render:       Model.renderHistoryView,
@@ -110,6 +133,74 @@ var viewControllerRegistry = [viewModeCount]viewController{
 		moveCursor:   moveHintsViewCursor,
 		handleEscape: escapeHintsView,
 	},
+}
+
+func handleSimViewMessage(m Model, msg tea.Msg) (Model, tea.Cmd, bool) {
+	result, ok := msg.(simResultMsg)
+	if !ok {
+		return m, nil, false
+	}
+	updated, cmd := m.updateSimResult(result)
+	return updated.(Model), cmd, true
+}
+
+func handleFixViewMessage(m Model, msg tea.Msg) (Model, tea.Cmd, bool) {
+	switch result := msg.(type) {
+	case applyResultMsg:
+		updated, cmd := m.updateApplyResult(result)
+		return updated.(Model), cmd, true
+	case dryRunResultMsg:
+		updated, cmd := m.updateDryRunResult(result)
+		return updated.(Model), cmd, true
+	default:
+		return m, nil, false
+	}
+}
+
+func handleReplayViewMessage(m Model, msg tea.Msg) (Model, tea.Cmd, bool) {
+	result, ok := msg.(replayLoadedMsg)
+	if !ok {
+		return m, nil, false
+	}
+	updated, cmd := m.updateReplayLoaded(result)
+	return updated.(Model), cmd, true
+}
+
+func handleBatchAuditViewMessage(m Model, msg tea.Msg) (Model, tea.Cmd, bool) {
+	result, ok := msg.(batchAuditMsg)
+	if !ok {
+		return m, nil, false
+	}
+	updated, cmd := m.updateBatchAudit(result)
+	return updated.(Model), cmd, true
+}
+
+func dispatchViewMessage(m Model, msg tea.Msg) (Model, tea.Cmd, bool) {
+	for _, controller := range viewControllerRegistry {
+		if controller == nil {
+			continue
+		}
+		if updated, cmd, handled := controller.HandleMessage(m, msg); handled {
+			return updated, cmd, true
+		}
+	}
+	return m, nil, false
+}
+
+func handleSimViewInput(m Model, msg tea.KeyMsg) (Model, tea.Cmd, bool) {
+	if m.simState == nil {
+		return m, nil, false
+	}
+	if m.simState.metricMode && m.simState.metricInput.Focused() {
+		updated, cmd := m.handleSimInput(msg)
+		return updated.(Model), cmd, true
+	}
+	if !m.simState.metricMode {
+		if updated, handled := m.handleSimFieldInput(msg); handled {
+			return updated.(Model), nil, true
+		}
+	}
+	return m, nil, false
 }
 
 // fallbackViewController keeps a corrupt or future unknown mode usable. It

@@ -78,3 +78,39 @@ func TestMetricIDRejectsInvalidSelector(t *testing.T) {
 		t.Fatal("invalid selector should return an error")
 	}
 }
+
+func TestMetricDescriptorsPreserveNormalizedValues(t *testing.T) {
+	target := autoscalingv2.MetricTarget{Type: autoscalingv2.AverageValueMetricType}
+	current := autoscalingv2.MetricValueStatus{}
+	selector := &metav1.LabelSelector{MatchLabels: map[string]string{"queue": "jobs"}}
+
+	specDescriptor, err := MetricDescriptorFromSpec(autoscalingv2.MetricSpec{
+		Type: autoscalingv2.ExternalMetricSourceType,
+		External: &autoscalingv2.ExternalMetricSource{
+			Metric: autoscalingv2.MetricIdentifier{Name: "queue_depth", Selector: selector},
+			Target: target,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	statusDescriptor, err := MetricDescriptorFromStatus(autoscalingv2.MetricStatus{
+		Type: autoscalingv2.ExternalMetricSourceType,
+		External: &autoscalingv2.ExternalMetricStatus{
+			Metric:  autoscalingv2.MetricIdentifier{Name: "queue_depth", Selector: selector.DeepCopy()},
+			Current: current,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if specDescriptor.Target == nil || specDescriptor.Selector != selector {
+		t.Fatalf("spec descriptor lost normalized fields: %+v", specDescriptor)
+	}
+	if statusDescriptor.Current == nil || statusDescriptor.Selector == nil {
+		t.Fatalf("status descriptor lost normalized fields: %+v", statusDescriptor)
+	}
+	if specDescriptor.ID != statusDescriptor.ID {
+		t.Fatalf("descriptor IDs differ: spec=%+v status=%+v", specDescriptor.ID, statusDescriptor.ID)
+	}
+}

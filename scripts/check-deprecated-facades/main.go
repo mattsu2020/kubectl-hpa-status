@@ -235,6 +235,37 @@ func scanSource(filename string, source []byte) ([]violation, error) {
 		})
 		return true
 	})
+
+	// The primary storage and grouped schema live in package hpa itself, where
+	// import-selector checks cannot see unqualified compatibility aliases.
+	// Inspect field type expressions in those boundary files while deliberately
+	// skipping qualified canonical selectors such as churn.ChurnAnalysis.
+	base := filepath.Base(filename)
+	if file.Name.Name == "hpa" && (base == "types.go" || base == "analysis_groups.go") {
+		rootSpec := deprecatedFacades[modulePath+"/pkg/hpa"]
+		ast.Inspect(file, func(node ast.Node) bool {
+			field, ok := node.(*ast.Field)
+			if !ok {
+				return true
+			}
+			ast.Inspect(field.Type, func(typeNode ast.Node) bool {
+				if _, qualified := typeNode.(*ast.SelectorExpr); qualified {
+					return false
+				}
+				ident, ok := typeNode.(*ast.Ident)
+				if !ok {
+					return true
+				}
+				if _, deprecated := rootSpec.symbols[ident.Name]; !deprecated {
+					return true
+				}
+				position := fileset.Position(ident.Pos())
+				violations = append(violations, violation{file: filename, line: position.Line, column: position.Column, symbol: ident.Name, replacement: rootSpec.replacement})
+				return true
+			})
+			return false
+		})
+	}
 	return violations, nil
 }
 

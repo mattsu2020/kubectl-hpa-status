@@ -52,18 +52,7 @@ func newRecordCommand(opts *options) *cobra.Command {
 }
 
 func newReplayCommand(opts *options) *cobra.Command {
-	var fromRecord string
-	var candidates []string
-	var compare string
-	var score string
-	var setOverrides []string
-	var replayHPA string
-	var propose string
-	var setMaxReplicas int32
-	var setMinReplicas int32
-	var setScaleDownStabilization time.Duration
-	var setCPUTarget int32
-	var setMemoryTarget int32
+	request := ReplayRequest{}
 	cmd := &cobra.Command{
 		Use:   "replay [FILE|NAME]",
 		Short: "Replay a recorded HPA timeline trace or run a what-if lab from record",
@@ -73,17 +62,17 @@ func newReplayCommand(opts *options) *cobra.Command {
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// --propose is an alias for --candidate.
-			if propose != "" && len(candidates) == 0 {
-				candidates = append([]string{propose}, candidates...)
+			if request.Propose != "" && len(request.Candidates) == 0 {
+				request.Candidates = append([]string{request.Propose}, request.Candidates...)
 			}
-			if replayHPA != "" {
-				return runReplayWithHPA(cmd.OutOrStdout(), opts, replayHPA, args, candidates, setOverrides, setMaxReplicas, setMinReplicas, setScaleDownStabilization, setCPUTarget, setMemoryTarget, compare, score)
+			if request.HPA != "" {
+				return runReplayWithHPA(cmd.OutOrStdout(), opts, request, args)
 			}
-			if fromRecord != "" {
-				return runReplayWithFromRecord(cmd.OutOrStdout(), opts, fromRecord, args, candidates, setOverrides, compare, score)
+			if request.FromRecord != "" {
+				return runReplayWithFromRecord(cmd.OutOrStdout(), opts, request, args)
 			}
-			if len(candidates) > 0 || score != "" {
-				return runReplayWithCandidateOrScore(cmd.OutOrStdout(), opts, replayHPA, args, candidates, setOverrides, setMaxReplicas, setMinReplicas, setScaleDownStabilization, setCPUTarget, setMemoryTarget, score)
+			if len(request.Candidates) > 0 || request.Score != "" {
+				return runReplayWithCandidateOrScore(cmd.OutOrStdout(), opts, request, args)
 			}
 			if len(args) != 1 {
 				return fmt.Errorf("replay requires FILE, or NAME with --from-record")
@@ -91,63 +80,70 @@ func newReplayCommand(opts *options) *cobra.Command {
 			return runReplay(cmd.OutOrStdout(), opts, args[0])
 		},
 	}
-	cmd.Flags().StringVar(&fromRecord, "from-record", "", "read durable JSONL/JSON trace written by record")
-	cmd.Flags().StringArrayVar(&candidates, "candidate", nil, "candidate HPA YAML to compare against recorded behavior; repeatable")
-	cmd.Flags().StringVar(&propose, "propose", "", "proposed behavior YAML file (alias for --candidate)")
-	cmd.Flags().StringVar(&compare, "compare", "current,candidate", "comparison mode for --from-record: current,candidate")
-	cmd.Flags().StringVar(&score, "score", "", "comma-separated replay scoring dimensions to emphasize, e.g. slo,cost,churn")
-	cmd.Flags().StringArrayVar(&setOverrides, "set", nil, "candidate override for replay lab, e.g. maxReplicas=30 or scaleDown.stabilizationWindowSeconds=600")
-	cmd.Flags().StringVar(&replayHPA, "hpa", "", "HPA name when FILE is passed as the replay input")
-	cmd.Flags().Int32Var(&setMaxReplicas, "set-max-replicas", 0, "candidate maxReplicas for replay lab")
-	cmd.Flags().Int32Var(&setMinReplicas, "set-min-replicas", 0, "candidate minReplicas for replay lab")
-	cmd.Flags().DurationVar(&setScaleDownStabilization, "set-scale-down-stabilization", 0, "candidate scaleDown.stabilizationWindowSeconds for replay lab")
-	cmd.Flags().Int32Var(&setCPUTarget, "set-cpu-target", 0, "candidate CPU averageUtilization target percentage (reported as an estimated limitation when raw metrics are unavailable)")
-	cmd.Flags().Int32Var(&setMemoryTarget, "set-memory-target", 0, "candidate memory averageUtilization target percentage (reported as an estimated limitation when raw metrics are unavailable)")
+	cmd.Flags().StringVar(&request.FromRecord, "from-record", "", "read durable JSONL/JSON trace written by record")
+	cmd.Flags().StringArrayVar(&request.Candidates, "candidate", nil, "candidate HPA YAML to compare against recorded behavior; repeatable")
+	cmd.Flags().StringVar(&request.Propose, "propose", "", "proposed behavior YAML file (alias for --candidate)")
+	cmd.Flags().StringVar(&request.Compare, "compare", "current,candidate", "comparison mode for --from-record: current,candidate")
+	cmd.Flags().StringVar(&request.Score, "score", "", "comma-separated replay scoring dimensions to emphasize, e.g. slo,cost,churn")
+	cmd.Flags().StringArrayVar(&request.SetOverrides, "set", nil, "candidate override for replay lab, e.g. maxReplicas=30 or scaleDown.stabilizationWindowSeconds=600")
+	cmd.Flags().StringVar(&request.HPA, "hpa", "", "HPA name when FILE is passed as the replay input")
+	cmd.Flags().Int32Var(&request.MaxReplicas, "set-max-replicas", 0, "candidate maxReplicas for replay lab")
+	cmd.Flags().Int32Var(&request.MinReplicas, "set-min-replicas", 0, "candidate minReplicas for replay lab")
+	cmd.Flags().DurationVar(&request.ScaleDownStabilization, "set-scale-down-stabilization", 0, "candidate scaleDown.stabilizationWindowSeconds for replay lab")
+	cmd.Flags().Int32Var(&request.CPUTarget, "set-cpu-target", 0, "candidate CPU averageUtilization target percentage (reported as an estimated limitation when raw metrics are unavailable)")
+	cmd.Flags().Int32Var(&request.MemoryTarget, "set-memory-target", 0, "candidate memory averageUtilization target percentage (reported as an estimated limitation when raw metrics are unavailable)")
 	return cmd
 }
 
+type ReplayRequest struct {
+	FromRecord, Compare, Score, HPA, Propose          string
+	Candidates, SetOverrides                          []string
+	MaxReplicas, MinReplicas, CPUTarget, MemoryTarget int32
+	ScaleDownStabilization                            time.Duration
+}
+
 // runReplayWithHPA handles the `replay --hpa NAME FILE` form.
-func runReplayWithHPA(out io.Writer, opts *options, replayHPA string, args []string, candidates, setOverrides []string, setMaxReplicas, setMinReplicas int32, setScaleDownStabilization time.Duration, setCPUTarget, setMemoryTarget int32, compare, score string) error {
+func runReplayWithHPA(out io.Writer, opts *options, request ReplayRequest, args []string) error {
 	if len(args) != 1 {
 		return fmt.Errorf("replay --hpa requires a record FILE argument")
 	}
-	if compare != "" && compare != "current,candidate" {
-		return fmt.Errorf("unsupported --compare %q (use current,candidate)", compare)
+	if request.Compare != "" && request.Compare != "current,candidate" {
+		return fmt.Errorf("unsupported --compare %q (use current,candidate)", request.Compare)
 	}
-	overrides, err := parseSimulateOverrides(setOverrides)
+	overrides, err := parseSimulateOverrides(request.SetOverrides)
 	if err != nil {
 		return err
 	}
-	addReplayShortcutOverrides(overrides, setMaxReplicas, setMinReplicas, setScaleDownStabilization, setCPUTarget, setMemoryTarget)
-	return runReplayPolicyLab(out, opts, replayHPA, args[0], candidates, overrides, score)
+	addReplayShortcutOverrides(overrides, request.MaxReplicas, request.MinReplicas, request.ScaleDownStabilization, request.CPUTarget, request.MemoryTarget)
+	return runReplayPolicyLab(out, opts, request.HPA, args[0], request.Candidates, overrides, request.Score)
 }
 
 // runReplayWithFromRecord handles the `replay --from-record FILE NAME` form.
-func runReplayWithFromRecord(out io.Writer, opts *options, fromRecord string, args []string, candidates, setOverrides []string, compare, score string) error {
+func runReplayWithFromRecord(out io.Writer, opts *options, request ReplayRequest, args []string) error {
 	if len(args) != 1 {
 		return fmt.Errorf("replay --from-record requires an HPA name")
 	}
-	if compare != "" && compare != "current,candidate" {
-		return fmt.Errorf("unsupported --compare %q (use current,candidate)", compare)
+	if request.Compare != "" && request.Compare != "current,candidate" {
+		return fmt.Errorf("unsupported --compare %q (use current,candidate)", request.Compare)
 	}
-	overrides, err := parseSimulateOverrides(setOverrides)
+	overrides, err := parseSimulateOverrides(request.SetOverrides)
 	if err != nil {
 		return err
 	}
-	return runReplayPolicyLab(out, opts, args[0], fromRecord, candidates, overrides, score)
+	return runReplayPolicyLab(out, opts, args[0], request.FromRecord, request.Candidates, overrides, request.Score)
 }
 
 // runReplayWithCandidateOrScore handles the `replay --candidate/--score FILE` form.
-func runReplayWithCandidateOrScore(out io.Writer, opts *options, replayHPA string, args []string, candidates, setOverrides []string, setMaxReplicas, setMinReplicas int32, setScaleDownStabilization time.Duration, setCPUTarget, setMemoryTarget int32, score string) error {
+func runReplayWithCandidateOrScore(out io.Writer, opts *options, request ReplayRequest, args []string) error {
 	if len(args) != 1 {
 		return fmt.Errorf("replay with --candidate or --score requires a record FILE argument")
 	}
-	overrides, err := parseSimulateOverrides(setOverrides)
+	overrides, err := parseSimulateOverrides(request.SetOverrides)
 	if err != nil {
 		return err
 	}
-	addReplayShortcutOverrides(overrides, setMaxReplicas, setMinReplicas, setScaleDownStabilization, setCPUTarget, setMemoryTarget)
-	return runReplayPolicyLab(out, opts, replayHPA, args[0], candidates, overrides, score)
+	addReplayShortcutOverrides(overrides, request.MaxReplicas, request.MinReplicas, request.ScaleDownStabilization, request.CPUTarget, request.MemoryTarget)
+	return runReplayPolicyLab(out, opts, request.HPA, args[0], request.Candidates, overrides, request.Score)
 }
 
 func addReplayShortcutOverrides(overrides map[string]string, maxReplicas, minReplicas int32, stabilization time.Duration, cpuTarget, memoryTarget int32) {

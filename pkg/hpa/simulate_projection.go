@@ -116,8 +116,11 @@ func interpolateReplicas(startReplicas, endReplicas, offset, stabilizationDelay,
 
 // computeMetricRatio estimates the metric ratio for a given replica count.
 func computeMetricRatio(startReplicas, currentReplicas, _, _ int32) float64 {
-	if startReplicas <= 0 {
-		return 1.0
+	// A ratio is undefined while the projected workload is scaled to zero.
+	// Return the zero value so omitempty removes it from structured output;
+	// importantly, never leak +Inf/NaN into encoding/json.
+	if startReplicas <= 0 || currentReplicas <= 0 {
+		return 0
 	}
 	ratio := float64(startReplicas) / float64(currentReplicas)
 	return math.Round(ratio*100) / 100

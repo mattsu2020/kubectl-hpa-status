@@ -7,9 +7,14 @@ import (
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/behavioradvisor"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/churn"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/containeradvisor"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/flapping"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/gitops"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/healthtrend"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/suggestion"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/keda"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/readiness"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/warmup"
 )
@@ -183,7 +188,7 @@ type Analysis struct {
 	// Interpretation lists detailed interpretation lines with confidence labels.
 	Interpretation []string `json:"interpretation,omitempty" yaml:"interpretation,omitempty"`
 	// KEDAInfo holds KEDA-specific analysis, populated when --keda is enabled.
-	KEDAInfo *KEDAAnalysis `json:"keda,omitempty" yaml:"keda,omitempty"`
+	KEDAInfo *keda.Analysis `json:"keda,omitempty" yaml:"keda,omitempty"`
 	// VPAConflict holds VPA conflict detection results, populated when --vpa is enabled.
 	VPAConflict *vpa.ConflictInfo `json:"vpaConflict,omitempty" yaml:"vpaConflict,omitempty"`
 	// TargetReplicas holds replica status from the scale target resource.
@@ -240,7 +245,7 @@ type Analysis struct {
 	CapacityHeadroom *CapacityHeadroom `json:"capacityHeadroom,omitempty" yaml:"capacityHeadroom,omitempty"`
 	// ReadinessImpact explains how not-yet-ready pods and missing PodMetrics may
 	// affect HPA CPU/resource decisions.
-	ReadinessImpact *ReadinessImpact `json:"readinessImpact,omitempty" yaml:"readinessImpact,omitempty"`
+	ReadinessImpact *readiness.Impact `json:"readinessImpact,omitempty" yaml:"readinessImpact,omitempty"`
 	// ScalePath explains the visible path from HPA desired replicas to scheduled pods.
 	ScalePath *ScalePath `json:"scalePath,omitempty" yaml:"scalePath,omitempty"`
 	// RolloutDiagnosis holds Deployment/StatefulSet rollout context for HPA diagnosis.
@@ -269,7 +274,7 @@ type Analysis struct {
 	GitOpsConflict *gitops.Conflict `json:"gitopsConflict,omitempty" yaml:"gitopsConflict,omitempty"`
 	// ChurnAnalysis holds the thrashing/churn detection result for the HPA timeline.
 	// Populated when --churn-detect is enabled or during doctor command.
-	ChurnAnalysis *ChurnAnalysis `json:"churnAnalysis,omitempty" yaml:"churnAnalysis,omitempty"`
+	ChurnAnalysis *churn.ChurnAnalysis `json:"churnAnalysis,omitempty" yaml:"churnAnalysis,omitempty"`
 	// VPAAdvisory holds the VPA-HPA coexistence advisory result, providing
 	// structured recommendations when VPA and HPA target the same workload.
 	// Populated when --vpa is enabled and a VPA conflict is detected.
@@ -292,7 +297,7 @@ type Analysis struct {
 	BehaviorAdvisor *behavioradvisor.Result `json:"behaviorAdvisor,omitempty" yaml:"behaviorAdvisor,omitempty"`
 	// HealthTrend holds the health score trend analysis over time.
 	// Populated when --trend is enabled and sufficient history is available.
-	HealthTrend *HealthTrendResult `json:"healthTrend,omitempty" yaml:"healthTrend,omitempty"`
+	HealthTrend *healthtrend.Result `json:"healthTrend,omitempty" yaml:"healthTrend,omitempty"`
 	// StructuredDecisionTrace holds the comprehensive structured decision trace
 	// with schema version, winner metric, tolerance/stabilization effects, and
 	// full condition evaluation. Populated when --decision-trace-format is set.
@@ -300,10 +305,10 @@ type Analysis struct {
 	// FlappingPrevention holds the flapping prevention advisor result with
 	// what-if simulations for different stabilization window values.
 	// Populated when --flapping-advisor is enabled.
-	FlappingPrevention *FlappingPreventionReport `json:"flappingPrevention,omitempty" yaml:"flappingPrevention,omitempty"`
+	FlappingPrevention *flapping.PreventionReport `json:"flappingPrevention,omitempty" yaml:"flappingPrevention,omitempty"`
 	// FlappingDiagnosis holds the result of event-based flapping detection with
 	// root-cause analysis (tight target, short stabilization window, etc.).
-	FlappingDiagnosis *FlappingDiagnosis `json:"flappingDiagnosis,omitempty" yaml:"flappingDiagnosis,omitempty"`
+	FlappingDiagnosis *flapping.Diagnosis `json:"flappingDiagnosis,omitempty" yaml:"flappingDiagnosis,omitempty"`
 	// AdapterDiagnostics holds custom/external metrics adapter diagnostics.
 	// Populated when --adapter-diagnostics is enabled.
 	AdapterDiagnostics *AdapterDiagnosticsReport `json:"adapterDiagnostics,omitempty" yaml:"adapterDiagnostics,omitempty"`

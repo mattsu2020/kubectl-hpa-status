@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	hpakeda "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/keda"
 	hpavpa "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
@@ -55,13 +56,7 @@ func (ec *Context) Status() Status {
 // CRD availability via API discovery and creates a dynamic client only when
 // at least one enrichment source is available. Always returns a non-nil Context
 // with status populated to explain why enrichment may be unavailable.
-//
-// The context parameter is currently unused: client-go's DiscoveryInterface
-// offers no context-aware calls in this version, and every discovery request
-// is already bounded by the rest config's RequestTimeout (default 30s). The
-// parameter stays so per-request cancellation can be threaded through once
-// the discovery API gains context support.
-func NewContext(_ context.Context, cfg Config) *Context {
+func NewContext(ctx context.Context, cfg Config) *Context {
 	kedaEntry := &Entry{Source: SourceKEDA, State: StateDisabled}
 	vpaEntry := &Entry{Source: SourceVPA, State: StateDisabled}
 	if Requested(cfg.KEDA) {
@@ -79,6 +74,20 @@ func NewContext(_ context.Context, cfg Config) *Context {
 		kedaEntry.State = StateDisabled
 		vpaEntry.State = StateDisabled
 		return &Context{status: status}
+	}
+	if err := ctx.Err(); err != nil {
+		kedaEntry.Reason = err.Error()
+		vpaEntry.Reason = err.Error()
+		return &Context{status: status}
+	}
+	// Discovery does not accept a context directly. Propagate the operation
+	// deadline through rest.Config.Timeout so cancellation still bounds the
+	// blocking discovery request.
+	if deadline, ok := ctx.Deadline(); ok {
+		remaining := time.Until(deadline)
+		if remaining > 0 && (cfg.Kube.Timeout <= 0 || remaining < cfg.Kube.Timeout) {
+			cfg.Kube.Timeout = remaining
+		}
 	}
 
 	disco, err := kube.NewDiscoveryClient(cfg.Kube)
@@ -363,7 +372,8 @@ func BatchKEDA(ctx context.Context, ec *Context, hpas []autoscalingv2.Horizontal
 	}
 
 	warnings := map[string][]string{}
-	allScaledObjects := map[string][]*unstructured.Unstructured{}
+	byScaledObjectName := map[string]*unstructured.Unstructured{}
+	byScaledTarget := map[string][]*unstructured.Unstructured{}
 	for ns := range namespaces {
 		soList, err := kube.FetchScaledObjects(ctx, ec.dynClient, ns)
 		if err != nil {
@@ -372,7 +382,14 @@ func BatchKEDA(ctx context.Context, ec *Context, hpas []autoscalingv2.Horizontal
 		}
 		for i := range soList {
 			item := soList[i]
-			allScaledObjects[ns] = append(allScaledObjects[ns], &item)
+			byScaledObjectName[ns+"/"+item.GetName()] = &item
+			ref, _, _ := unstructured.NestedMap(item.Object, "spec", "scaleTargetRef")
+			kind, _, _ := unstructured.NestedString(ref, "kind")
+			name, _, _ := unstructured.NestedString(ref, "name")
+			if kind != "" && name != "" {
+				key := ns + "/" + kind + "/" + name
+				byScaledTarget[key] = append(byScaledTarget[key], &item)
+			}
 		}
 	}
 
@@ -385,17 +402,22 @@ func BatchKEDA(ctx context.Context, ec *Context, hpas []autoscalingv2.Horizontal
 		}
 
 		var scaledObj *unstructured.Unstructured
-		for _, so := range allScaledObjects[hpa.Namespace] {
-			if scaledObjectMatchesHPA(so, hpa) {
-				scaledObj = so
-				break
-			}
+		if det.Name != "" {
+			scaledObj = byScaledObjectName[hpa.Namespace+"/"+det.Name]
+		}
+		candidates := byScaledTarget[hpa.Namespace+"/"+hpa.Spec.ScaleTargetRef.Kind+"/"+hpa.Spec.ScaleTargetRef.Name]
+		if scaledObj == nil && len(candidates) == 1 {
+			scaledObj = candidates[0]
 		}
 
 		key := hpa.Namespace + "/" + hpa.Name
 		if scaledObj == nil {
+			line := "[observed] HPA appears KEDA-managed but no matching ScaledObject found"
+			if len(candidates) > 1 {
+				line = "[observed] multiple ScaledObjects target this workload; ownership is ambiguous"
+			}
 			results[key] = &hpakeda.Analysis{
-				Lines: []string{"[observed] HPA appears KEDA-managed but no matching ScaledObject found"},
+				Lines: []string{line},
 			}
 			continue
 		}
@@ -432,7 +454,8 @@ func BatchVPA(ctx context.Context, ec *Context, hpas []autoscalingv2.HorizontalP
 		}
 		for i := range vpaList {
 			info := kube.ExtractVPAInfo(&vpaList[i])
-			allVPAs[ns] = append(allVPAs[ns], info)
+			key := ns + "/" + info.TargetKind + "/" + info.TargetName
+			allVPAs[key] = append(allVPAs[key], info)
 		}
 	}
 
@@ -440,7 +463,8 @@ func BatchVPA(ctx context.Context, ec *Context, hpas []autoscalingv2.HorizontalP
 	for i := range hpas {
 		hpa := &hpas[i]
 
-		for _, vpa := range allVPAs[hpa.Namespace] {
+		key := hpa.Namespace + "/" + hpa.Spec.ScaleTargetRef.Kind + "/" + hpa.Spec.ScaleTargetRef.Name
+		for _, vpa := range allVPAs[key] {
 			if kube.VPAConflictsWithHPA(hpa, &vpa) {
 				results[hpa.Namespace+"/"+hpa.Name] = hpavpa.NewConflictInfoForHPA(hpa, convertVPAInfo(&vpa))
 				break

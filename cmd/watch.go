@@ -61,7 +61,7 @@ func runWatchPolling(ctx context.Context, out io.Writer, opts *options, client *
 	humanOutput := watchUsesHumanOutput(opts)
 	for {
 		if humanOutput {
-			if err := clearWatchScreen(out, theme); err != nil {
+			if err := clearWatchScreen(out, theme, opts.CurrentTime()); err != nil {
 				return err
 			}
 		} else if err := writeWatchDocumentSeparator(out, opts); err != nil {
@@ -129,14 +129,14 @@ func writeWatchDocumentSeparator(out io.Writer, opts *options) error {
 }
 
 // clearWatchScreen clears the terminal via the theme's screen-clear sequence, or prints a timestamp header when unavailable.
-func clearWatchScreen(out io.Writer, theme style.Theme) error {
+func clearWatchScreen(out io.Writer, theme style.Theme, now time.Time) error {
 	if clearScreen := theme.ScreenClear(); clearScreen != "" {
 		if _, err := out.Write([]byte(clearScreen)); err != nil {
 			return err
 		}
 		return nil
 	}
-	_, err := fmt.Fprintf(out, "Updated: %s\n\n", time.Now().Format(time.RFC3339))
+	_, err := fmt.Fprintf(out, "Updated: %s\n\n", now.Format(time.RFC3339))
 	return err
 }
 
@@ -200,7 +200,7 @@ func runWatchList(ctx context.Context, out io.Writer, opts *options) error {
 				if _, err := out.Write([]byte(clearScreen)); err != nil {
 					return err
 				}
-			} else if _, err := fmt.Fprintf(out, "Updated: %s\n\n", time.Now().Format(time.RFC3339)); err != nil {
+			} else if _, err := fmt.Fprintf(out, "Updated: %s\n\n", opts.CurrentTime().Format(time.RFC3339)); err != nil {
 				return err
 			}
 		} else if err := writeWatchDocumentSeparator(out, opts); err != nil {

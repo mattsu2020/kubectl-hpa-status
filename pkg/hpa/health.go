@@ -1,6 +1,7 @@
 package hpa
 
 import (
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/churn"
 	"strings"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -274,7 +275,7 @@ func hasInactiveKEDATrigger(a *Analysis) bool {
 
 func hasHighChurn(a *Analysis) bool {
 	return a.ChurnAnalysis != nil &&
-		(a.ChurnAnalysis.Level == ChurnHigh || a.ChurnAnalysis.Level == ChurnCritical)
+		(a.ChurnAnalysis.Level == churn.ChurnHigh || a.ChurnAnalysis.Level == churn.ChurnCritical)
 }
 
 func reconcileDynamicHealthPenalties(a *Analysis, weights HealthWeights) {

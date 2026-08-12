@@ -15,25 +15,7 @@ import (
 )
 
 func newOutputSchemaV2CLIRoot(client kubernetes.Interface) *cobra.Command {
-	opts := defaultRootOptions()
-	opts.ClientOverride = client
-	root := &cobra.Command{
-		Use:               "kubectl-hpa-status",
-		SilenceErrors:     true,
-		SilenceUsage:      true,
-		PersistentPreRunE: rootPersistentPreRunE(&opts),
-	}
-	registerCommonFlags(root, &opts)
-	// Mirror NewRootCommand: the workflow and watch groups are attached to the
-	// commands that act on them rather than inherited from root.
-	workflowFlags := newWorkflowFlagSet(&opts)
-	watchFlags := newWatchFlagSet(&opts)
-	addSharedFlags(root, workflowFlags, watchFlags)
-	for _, sub := range []*cobra.Command{newStatusCommand(&opts), newWatchCommand(&opts)} {
-		addSharedFlags(sub, workflowFlags, watchFlags)
-		root.AddCommand(sub)
-	}
-	return root
+	return NewRootCommandWithDeps(AppDeps{Kubernetes: client})
 }
 
 func executeOutputSchemaV2CLI(t *testing.T, client kubernetes.Interface, args ...string) string {

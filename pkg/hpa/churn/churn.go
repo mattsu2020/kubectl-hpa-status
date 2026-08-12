@@ -13,6 +13,7 @@ import (
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/event"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/model"
 )
 
 // ChurnLevel classifies the severity of HPA replica thrashing.
@@ -90,7 +91,7 @@ type ChurnRecommendation struct {
 // Returns nil if fewer than 3 unambiguous rescale observations are available
 // (insufficient data to establish a thrashing pattern). The function is pure:
 // it does not modify the input slices or depend on external state.
-func AnalyzeChurnFromEvents(events []event.Event, hpa *autoscalingv2.HorizontalPodAutoscaler) *ChurnAnalysis {
+func AnalyzeChurnFromEvents(events []model.Event, hpa *autoscalingv2.HorizontalPodAutoscaler) *ChurnAnalysis {
 	var rescales []event.RescaleData
 	for _, ev := range events {
 		if ev.Reason != "SuccessfulRescale" {

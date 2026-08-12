@@ -14,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/confidence"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/model"
 )
 
 // Analysis holds the complete warmup analysis result for an HPA that
@@ -57,9 +58,9 @@ type Bottleneck struct {
 	// "scheduling", "startup_probe", "container_crash", "metrics_inactive", "unknown".
 	Type string `json:"type" yaml:"type"`
 	// Severity is the bottleneck severity.
-	Severity confidence.Severity `json:"severity" yaml:"severity"`
+	Severity model.Severity `json:"severity" yaml:"severity"`
 	// Confidence is the analysis confidence.
-	Confidence confidence.Confidence `json:"confidence" yaml:"confidence"`
+	Confidence model.Confidence `json:"confidence" yaml:"confidence"`
 	// Count is how many pods are affected by this bottleneck.
 	Count int32 `json:"count" yaml:"count"`
 	// Message is a human-readable description.

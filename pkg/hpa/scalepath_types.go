@@ -1,5 +1,7 @@
 package hpa
 
+import "fmt"
+
 import "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
 
 // ScalePath describes the visible scale-up path from the HPA recommendation
@@ -109,6 +111,18 @@ type QuotaConstraint struct {
 	Used     string `json:"used" yaml:"used"`
 	Hard     string `json:"hard" yaml:"hard"`
 	Message  string `json:"message" yaml:"message"`
+}
+
+// NewQuotaConstraint builds a quota constraint and owns its user-facing
+// description. Kubernetes adapters should only translate observable fields.
+func NewQuotaConstraint(name, resource, used, hard string) QuotaConstraint {
+	return QuotaConstraint{
+		Name:     name,
+		Resource: resource,
+		Used:     used,
+		Hard:     hard,
+		Message:  fmt.Sprintf("ResourceQuota %q is near limit for %s (used=%s, hard=%s)", name, resource, used, hard),
+	}
 }
 
 // PDBInterference describes a PodDisruptionBudget that may interfere with scaling.

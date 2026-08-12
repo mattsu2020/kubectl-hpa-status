@@ -328,26 +328,55 @@ func DetectClusterAutoscalerWithError(ctx context.Context, client kubernetes.Int
 
 // GenerateNodeHints produces capacity hints based on pending pods and quota state.
 func GenerateNodeHints(pending []PendingPodDetail, quotas []QuotaInfo) []string {
-	var hints []string
+	return FormatNodeHintObservations(DetectNodeHintObservations(pending, quotas))
+}
 
+type NodeHintKind string
+
+const (
+	NodeHintUnschedulable NodeHintKind = "unschedulable"
+	NodeHintQuota         NodeHintKind = "quota"
+)
+
+type NodeHintObservation struct {
+	Kind           NodeHintKind
+	Count          int
+	Name, Resource string
+}
+
+// DetectNodeHintObservations returns typed facts without presentation policy.
+func DetectNodeHintObservations(pending []PendingPodDetail, quotas []QuotaInfo) []NodeHintObservation {
+	var observations []NodeHintObservation
 	unschedulable := 0
 	for _, p := range pending {
 		if p.Unschedulable {
 			unschedulable++
 		}
 	}
-
 	if unschedulable > 0 {
-		hints = append(hints, fmt.Sprintf(
-			"%d pending pod(s) are unschedulable; consider enabling Cluster Autoscaler or Karpenter for node auto-scaling",
-			unschedulable))
+		observations = append(observations, NodeHintObservation{Kind: NodeHintUnschedulable, Count: unschedulable})
 	}
-
 	for _, q := range quotas {
-		hints = append(hints, fmt.Sprintf(
-			"ResourceQuota %q is near limit for %s; HPA scale-up may hit quota",
-			q.Name, q.Resource))
+		observations = append(observations, NodeHintObservation{Kind: NodeHintQuota, Name: q.Name, Resource: q.Resource})
 	}
+	return observations
+}
 
+// FormatNodeHintObservations is the compatibility formatter. New application
+// code formats typed observations outside the Kubernetes adapter.
+func FormatNodeHintObservations(observations []NodeHintObservation) []string {
+	var hints []string
+	for _, observation := range observations {
+		switch observation.Kind {
+		case NodeHintUnschedulable:
+			hints = append(hints, fmt.Sprintf(
+				"%d pending pod(s) are unschedulable; consider enabling Cluster Autoscaler or Karpenter for node auto-scaling",
+				observation.Count))
+		case NodeHintQuota:
+			hints = append(hints, fmt.Sprintf(
+				"ResourceQuota %q is near limit for %s; HPA scale-up may hit quota",
+				observation.Name, observation.Resource))
+		}
+	}
 	return hints
 }

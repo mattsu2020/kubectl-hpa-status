@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/mattsu2020/kubectl-hpa-status/cmd/internal/completion"
 )
@@ -16,8 +17,8 @@ import (
 func completionDeps(opts *options) completion.Deps {
 	return completion.Deps{
 		NewClient:     opts.NewClient,
-		AllNamespaces: opts.AllNamespaces,
-		Kubeconfig:    opts.Kubeconfig,
+		AllNamespaces: func() bool { return opts.AllNamespaces },
+		Kubeconfig:    func() string { return opts.Kubeconfig },
 	}
 }
 
@@ -64,7 +65,31 @@ func untilConditionCompletions(cmd *cobra.Command, args []string, toComplete str
 // registerFlagCompletions registers shell completions for all flags with known
 // values. analysis-profile stays here because its vocabulary lives in
 // internal/cmdoptions.
-func registerFlagCompletions(root *cobra.Command, opts *options) {
-	completion.RegisterFlagCompletions(root, completionDeps(opts))
-	_ = root.RegisterFlagCompletionFunc("analysis-profile", analysisProfileCompletions)
+func registerFlagCompletions(root *cobra.Command, opts *options) error {
+	if err := completion.RegisterFlagCompletions(root, completionDeps(opts)); err != nil {
+		return err
+	}
+	seen := make(map[*pflag.Flag]struct{})
+	var visit func(*cobra.Command) error
+	visit = func(cmd *cobra.Command) error {
+		flag := cmd.LocalNonPersistentFlags().Lookup("analysis-profile")
+		if flag == nil {
+			flag = cmd.PersistentFlags().Lookup("analysis-profile")
+		}
+		if flag != nil {
+			if _, ok := seen[flag]; !ok {
+				if err := cmd.RegisterFlagCompletionFunc("analysis-profile", analysisProfileCompletions); err != nil {
+					return err
+				}
+				seen[flag] = struct{}{}
+			}
+		}
+		for _, child := range cmd.Commands() {
+			if err := visit(child); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	return visit(root)
 }

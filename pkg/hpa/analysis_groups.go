@@ -3,8 +3,13 @@ package hpa
 import (
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/behavioradvisor"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/churn"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/containeradvisor"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/flapping"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/gitops"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/healthtrend"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/keda"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/readiness"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/warmup"
 )
@@ -169,7 +174,7 @@ func (a *Analysis) ActionsGroup() ActionsView {
 // LifecycleView groups freshness/trend/telemetry signals.
 type LifecycleView struct {
 	StaleStatus      *StaleStatusInfo       `json:"staleStatus,omitempty" yaml:"staleStatus,omitempty"`
-	HealthTrend      *HealthTrendResult     `json:"healthTrend,omitempty" yaml:"healthTrend,omitempty"`
+	HealthTrend      *healthtrend.Result    `json:"healthTrend,omitempty" yaml:"healthTrend,omitempty"`
 	Debug            []string               `json:"debug,omitempty" yaml:"debug,omitempty"`
 	HiddenFactors    []HiddenDecisionFactor `json:"hiddenFactors,omitempty" yaml:"hiddenFactors,omitempty"`
 	EnrichmentStatus *EnrichmentStatus      `json:"enrichmentStatus,omitempty" yaml:"enrichmentStatus,omitempty"`
@@ -194,7 +199,7 @@ type CapacityView struct {
 	ResourceCheck    *ResourceCheckResult `json:"resourceCheck,omitempty" yaml:"resourceCheck,omitempty"`
 	PodAnalysis      *PodAnalysis         `json:"podAnalysis,omitempty" yaml:"podAnalysis,omitempty"`
 	ScalePath        *ScalePath           `json:"scalePath,omitempty" yaml:"scalePath,omitempty"`
-	ReadinessImpact  *ReadinessImpact     `json:"readinessImpact,omitempty" yaml:"readinessImpact,omitempty"`
+	ReadinessImpact  *readiness.Impact    `json:"readinessImpact,omitempty" yaml:"readinessImpact,omitempty"`
 }
 
 // Capacity returns the scheduling/capacity group view.
@@ -227,10 +232,10 @@ func (a *Analysis) ScaleToZeroGroup() ScaleToZeroView {
 
 // StabilityView groups flapping and churn diagnosis signals.
 type StabilityView struct {
-	FlappingSimulation *SimulationResult         `json:"simulation,omitempty" yaml:"simulation,omitempty"`
-	FlappingPrevention *FlappingPreventionReport `json:"flappingPrevention,omitempty" yaml:"flappingPrevention,omitempty"`
-	FlappingDiagnosis  *FlappingDiagnosis        `json:"flappingDiagnosis,omitempty" yaml:"flappingDiagnosis,omitempty"`
-	ChurnAnalysis      *ChurnAnalysis            `json:"churnAnalysis,omitempty" yaml:"churnAnalysis,omitempty"`
+	FlappingSimulation *SimulationResult          `json:"simulation,omitempty" yaml:"simulation,omitempty"`
+	FlappingPrevention *flapping.PreventionReport `json:"flappingPrevention,omitempty" yaml:"flappingPrevention,omitempty"`
+	FlappingDiagnosis  *flapping.Diagnosis        `json:"flappingDiagnosis,omitempty" yaml:"flappingDiagnosis,omitempty"`
+	ChurnAnalysis      *churn.ChurnAnalysis       `json:"churnAnalysis,omitempty" yaml:"churnAnalysis,omitempty"`
 }
 
 // Stability returns the flapping/churn group view.
@@ -263,7 +268,7 @@ func (a *Analysis) Advisory() AdvisoryView {
 
 // ControllersView groups external controller integrations.
 type ControllersView struct {
-	KEDAInfo          *KEDAAnalysis      `json:"keda,omitempty" yaml:"keda,omitempty"`
+	KEDAInfo          *keda.Analysis     `json:"keda,omitempty" yaml:"keda,omitempty"`
 	RolloutDiagnosis  *RolloutDiagnosis  `json:"rolloutDiagnosis,omitempty" yaml:"rolloutDiagnosis,omitempty"`
 	ControllerProfile *ControllerProfile `json:"controllerProfile,omitempty" yaml:"controllerProfile,omitempty"`
 }

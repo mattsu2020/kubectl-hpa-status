@@ -14,11 +14,13 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/clientcmd/api"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 )
 
 // timeout bounds API calls made while generating shell completions so that a
@@ -35,9 +37,9 @@ type Deps struct {
 	// NewClient creates a client bound to the CLI's namespace/context.
 	NewClient ClientFactory
 	// AllNamespaces lists HPAs/clusters across every namespace.
-	AllNamespaces bool
+	AllNamespaces func() bool
 	// Kubeconfig is an explicit kubeconfig path, or empty for the default.
-	Kubeconfig string
+	Kubeconfig func() string
 }
 
 // ShellCommand returns the `completion [bash|zsh|fish|powershell]` subcommand
@@ -77,7 +79,7 @@ func HpaName(deps Deps) func(*cobra.Command, []string, string) ([]string, cobra.
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
 		namespace := client.Namespace
-		if deps.AllNamespaces {
+		if deps.AllNamespaces != nil && deps.AllNamespaces() {
 			namespace = metav1.NamespaceAll
 		}
 		// Bound the API read so a slow server cannot hang tab completion.
@@ -91,7 +93,7 @@ func HpaName(deps Deps) func(*cobra.Command, []string, string) ([]string, cobra.
 		}
 		names := make([]string, 0, len(hpas.Items))
 		for _, hpa := range hpas.Items {
-			if deps.AllNamespaces {
+			if deps.AllNamespaces != nil && deps.AllNamespaces() {
 				names = append(names, fmt.Sprintf("%s/%s\t%s", hpa.Namespace, hpa.Name, hpa.Spec.ScaleTargetRef.Name))
 				continue
 			}
@@ -126,8 +128,8 @@ func Namespace(deps Deps) func(*cobra.Command, []string, string) ([]string, cobr
 func Context(deps Deps) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 	return func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-		if deps.Kubeconfig != "" {
-			loadingRules.ExplicitPath = deps.Kubeconfig
+		if deps.Kubeconfig != nil && deps.Kubeconfig() != "" {
+			loadingRules.ExplicitPath = deps.Kubeconfig()
 		}
 		config, err := loadingRules.Load()
 		if err != nil {
@@ -148,17 +150,7 @@ func contextNames(config *api.Config) []string {
 // Static value lists for flag-value completion. Kept as package data so the
 // completion UI and any validation vocabulary stay in one place.
 var (
-	OutputValues = []completionValue{
-		{"table", "Default table output"},
-		{"wide", "Extended table columns"},
-		{"json", "JSON format"},
-		{"yaml", "YAML format"},
-		{"jsonpath=", "JSONPath expression"},
-		{"template=", "Go template"},
-		{"prometheus", "Prometheus exposition format"},
-		{"junit", "JUnit XML for CI reports"},
-		{"sarif", "SARIF for code scanning"},
-	}
+	OutputValues = outputCompletionValues()
 	FilterValues = []completionValue{
 		{"all", "Show all HPAs"},
 		{"ok", "Show healthy HPAs"},
@@ -202,6 +194,19 @@ var (
 	}
 )
 
+func outputCompletionValues() []completionValue {
+	descriptions := map[string]string{"table": "Default table output", "wide": "Extended table columns", "json": "JSON format", "jsonl": "JSON Lines format", "yaml": "YAML format", "jsonpath": "JSONPath expression", "go-template": "Go template", "markdown": "Markdown report", "html": "HTML report", "incident": "Incident report", "prometheus": "Prometheus exposition format"}
+	values := make([]completionValue, 0, len(render.FormatNames()))
+	for _, name := range render.FormatNames() {
+		value := name
+		if name == "jsonpath" || name == "go-template" {
+			value += "="
+		}
+		values = append(values, completionValue{value, descriptions[name]})
+	}
+	return values
+}
+
 type completionValue struct {
 	value, desc string
 }
@@ -244,14 +249,36 @@ func UntilCondition(_ *cobra.Command, _ []string, _ string) ([]string, cobra.She
 // RegisterFlagCompletions wires value completions onto the root command's
 // known flags. analysis-profile is registered by cmd because its vocabulary
 // lives in internal/cmdoptions.
-func RegisterFlagCompletions(root *cobra.Command, deps Deps) {
-	_ = root.RegisterFlagCompletionFunc("output", Output)
-	_ = root.RegisterFlagCompletionFunc("filter", Filter)
-	_ = root.RegisterFlagCompletionFunc("sort-by", SortBy)
-	_ = root.RegisterFlagCompletionFunc("color", Color)
-	_ = root.RegisterFlagCompletionFunc("lang", Lang)
-	_ = root.RegisterFlagCompletionFunc("events", Events)
-	_ = root.RegisterFlagCompletionFunc("until-condition", UntilCondition)
-	_ = root.RegisterFlagCompletionFunc("namespace", Namespace(deps))
-	_ = root.RegisterFlagCompletionFunc("context", Context(deps))
+func RegisterFlagCompletions(root *cobra.Command, deps Deps) error {
+	registrations := map[string]func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective){
+		"output": Output, "filter": Filter, "sort-by": SortBy, "color": Color,
+		"lang": Lang, "events": Events, "until-condition": UntilCondition,
+		"namespace": Namespace(deps), "context": Context(deps),
+	}
+	seen := make(map[*pflag.Flag]struct{})
+	var visit func(*cobra.Command) error
+	visit = func(cmd *cobra.Command) error {
+		for name, fn := range registrations {
+			flag := cmd.LocalNonPersistentFlags().Lookup(name)
+			if flag == nil {
+				flag = cmd.PersistentFlags().Lookup(name)
+			}
+			if flag != nil {
+				if _, ok := seen[flag]; ok {
+					continue
+				}
+				if err := cmd.RegisterFlagCompletionFunc(name, fn); err != nil {
+					return fmt.Errorf("registering completion for %s --%s: %w", cmd.CommandPath(), name, err)
+				}
+				seen[flag] = struct{}{}
+			}
+		}
+		for _, child := range cmd.Commands() {
+			if err := visit(child); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	return visit(root)
 }

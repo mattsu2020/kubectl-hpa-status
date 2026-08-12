@@ -49,7 +49,11 @@ func runRollout(ctx context.Context, out io.Writer, opts *options, names []strin
 	}
 
 	outputs, err := collectPerHPA(ctx, &local, names, func(ctx context.Context, name string) (rolloutOutput, error) {
-		report, err := buildStatusReport(ctx, &local, client, name, false, nil)
+		hpa, err := fetchHPA(ctx, client, name)
+		if err != nil {
+			return rolloutOutput{}, err
+		}
+		report, err := buildStatusReportFromHPA(ctx, &local, client, hpa, false, nil)
 		if err != nil {
 			return rolloutOutput{}, err
 		}
@@ -58,7 +62,7 @@ func runRollout(ctx context.Context, out io.Writer, opts *options, names []strin
 			Namespace: report.Analysis.Namespace,
 			Name:      report.Analysis.Name,
 			Target:    report.Analysis.Target,
-			Report:    buildRolloutReport(ctx, &local, &report.Analysis, name),
+			Report:    buildRolloutReport(ctx, client, hpa, &report.Analysis),
 		}, nil
 	})
 	if err != nil {
@@ -93,21 +97,7 @@ func runRollout(ctx context.Context, out io.Writer, opts *options, names []strin
 // buildRolloutReport assembles RolloutInput and runs the rollout analysis.
 // Warnings discovered while gathering live state are appended to analysis.Warnings
 // so they surface in the report rather than being silently dropped.
-func buildRolloutReport(ctx context.Context, opts *options, analysis *hpaanalysis.Analysis, name string) *hpaanalysis.RolloutReport {
-	// Best-effort client: a client-creation failure here is not fatal to the
-	// overall status report; returning nil lets the caller skip the rollout
-	// section and record a warning instead of aborting. Bypasses the standard
-	// "failed to create Kubernetes client" wrapper for that reason.
-	client, err := opts.NewClient()
-	if err != nil {
-		return nil
-	}
-
-	hpa, err := kube.GetHPAFromClient(ctx, client, name)
-	if err != nil {
-		return nil
-	}
-
+func buildRolloutReport(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, analysis *hpaanalysis.Analysis) *hpaanalysis.RolloutReport {
 	input := assembleRolloutInput(ctx, client, hpa, analysis)
 	return hpaanalysis.AnalyzeRollout(input)
 }

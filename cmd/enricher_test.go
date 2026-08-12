@@ -32,6 +32,10 @@ func (f *fakeEnricher) Run(_ context.Context, _ *PipelineContext, _ *autoscaling
 	return f.runErr
 }
 
+func (f *fakeEnricher) spec() enricherSpec {
+	return enricherSpec{name: f.name, enabled: func() bool { return f.enabled }, abortOnError: f.abortOnErr, run: f.Run}
+}
+
 func testHPA() *autoscalingv2.HorizontalPodAutoscaler {
 	return &autoscalingv2.HorizontalPodAutoscaler{
 		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "web"},
@@ -43,7 +47,7 @@ func TestRunEnrichers_SkipsDisabled(t *testing.T) {
 	disabled := &fakeEnricher{name: "off", enabled: false}
 	enabled := &fakeEnricher{name: "on", enabled: true, recordValue: "ran"}
 	report := &hpaanalysis.StatusReport{}
-	err := runEnrichers(context.Background(), []Enricher{disabled, enabled}, &PipelineContext{}, testHPA(), report)
+	err := runEnrichers(context.Background(), []enricherSpec{disabled.spec(), enabled.spec()}, &PipelineContext{}, testHPA(), report)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -66,7 +70,7 @@ func TestRunEnrichers_ErrorRecordedAsWarningWhenNotAborting(t *testing.T) {
 	}
 	after := &fakeEnricher{name: "after", enabled: true, recordValue: "after-ran"}
 	report := &hpaanalysis.StatusReport{}
-	err := runEnrichers(context.Background(), []Enricher{failing, after}, &PipelineContext{}, testHPA(), report)
+	err := runEnrichers(context.Background(), []enricherSpec{failing.spec(), after.spec()}, &PipelineContext{}, testHPA(), report)
 	if err != nil {
 		t.Fatalf("non-aborting error should not propagate: %v", err)
 	}
@@ -90,7 +94,7 @@ func TestRunEnrichers_AbortsOnAbortOnError(t *testing.T) {
 	}
 	after := &fakeEnricher{name: "after", enabled: true, recordValue: "after-ran"}
 	report := &hpaanalysis.StatusReport{}
-	err := runEnrichers(context.Background(), []Enricher{failing, after}, &PipelineContext{}, testHPA(), report)
+	err := runEnrichers(context.Background(), []enricherSpec{failing.spec(), after.spec()}, &PipelineContext{}, testHPA(), report)
 	if err == nil || err.Error() != "fatal" {
 		t.Fatalf("expected fatal error to propagate, got %v", err)
 	}

@@ -60,11 +60,15 @@ func readBundleFlags(cmd *cobra.Command) (format, output string, redact bool) {
 // defaultBundleOutputPath resolves the bundle output path. When the caller did
 // not pass --output, it derives "hpa-bundle-<name>-<ts>.<ext>" (or the
 // support-bundle prefix) so bundle and support-bundle share one formatting path.
-func defaultBundleOutputPath(outputPath, name, format, prefix string) string {
+func defaultBundleOutputPath(outputPath, name, format, prefix string, now ...time.Time) string {
 	if outputPath != "" {
 		return outputPath
 	}
-	ts := time.Now().Format("20060102-150405")
+	current := time.Now()
+	if len(now) > 0 {
+		current = now[0]
+	}
+	ts := current.Format("20060102-150405")
 	ext := ".md"
 	if format == "zip" {
 		ext = ".zip"
@@ -88,7 +92,7 @@ func runBundle(ctx context.Context, out io.Writer, opts *options, name, format, 
 		redactBundleData(data)
 	}
 
-	outputPath = defaultBundleOutputPath(outputPath, name, format, "hpa-bundle")
+	outputPath = defaultBundleOutputPath(outputPath, name, format, "hpa-bundle", opts.CurrentTime())
 
 	switch format {
 	case "markdown", "md":
@@ -120,7 +124,7 @@ func collectBundleData(ctx context.Context, client *kube.Client, opts *options, 
 	data := &bundle.Data{
 		Namespace: client.Namespace,
 		HPAName:   name,
-		Timestamp: time.Now(),
+		Timestamp: opts.CurrentTime(),
 	}
 
 	// 1. Fetch HPA YAML.
