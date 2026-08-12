@@ -176,12 +176,21 @@ func scanSource(filename string, source []byte) ([]violation, error) {
 		return nil, fmt.Errorf("parse %s: %w", filename, err)
 	}
 
+	aliases, violations, err := collectDeprecatedImports(fileset, file, filename)
+	if err != nil {
+		return nil, err
+	}
+	violations = appendSelectorViolations(fileset, file, filename, aliases, violations)
+	return appendBoundaryTypeViolations(fileset, file, filename, violations), nil
+}
+
+func collectDeprecatedImports(fileset *token.FileSet, file *ast.File, filename string) (map[string]facadeSpec, []violation, error) {
 	aliases := map[string]facadeSpec{}
 	var violations []violation
 	for _, imported := range file.Imports {
 		importPath, err := strconv.Unquote(imported.Path.Value)
 		if err != nil {
-			return nil, fmt.Errorf("parse import in %s: %w", filename, err)
+			return nil, nil, fmt.Errorf("parse import in %s: %w", filename, err)
 		}
 		spec, tracked := deprecatedFacades[importPath]
 		if !tracked {
@@ -208,7 +217,10 @@ func scanSource(filename string, source []byte) ([]violation, error) {
 			aliases[alias] = spec
 		}
 	}
+	return aliases, violations, nil
+}
 
+func appendSelectorViolations(fileset *token.FileSet, file *ast.File, filename string, aliases map[string]facadeSpec, violations []violation) []violation {
 	ast.Inspect(file, func(node ast.Node) bool {
 		selector, ok := node.(*ast.SelectorExpr)
 		if !ok {
@@ -235,7 +247,10 @@ func scanSource(filename string, source []byte) ([]violation, error) {
 		})
 		return true
 	})
+	return violations
+}
 
+func appendBoundaryTypeViolations(fileset *token.FileSet, file *ast.File, filename string, violations []violation) []violation {
 	// The primary storage and grouped schema live in package hpa itself, where
 	// import-selector checks cannot see unqualified compatibility aliases.
 	// Inspect field type expressions in those boundary files while deliberately
@@ -266,7 +281,7 @@ func scanSource(filename string, source []byte) ([]violation, error) {
 			return false
 		})
 	}
-	return violations, nil
+	return violations
 }
 
 func symbolSet(symbols ...string) map[string]struct{} {

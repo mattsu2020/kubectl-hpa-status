@@ -1,4 +1,4 @@
-// Durable recording for the timeline command: writes an HPA's desired-replica
+// Package cmd provides durable recording for the timeline command and writes an HPA's desired-replica
 // trace to a JSONL file with atomic publication, symlink protection, and
 // per-line sync. Split from timeline.go so the live-polling command stays
 // focused on its run loop.

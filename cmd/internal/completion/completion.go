@@ -223,25 +223,37 @@ func staticCompletions(values []completionValue) ([]string, cobra.ShellCompDirec
 	return out, cobra.ShellCompDirectiveNoFileComp
 }
 
-// Static completers adapt the value lists to cobra's completion signature.
+// Output completes supported output formats.
 func Output(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 	return staticCompletions(OutputValues)
 }
+
+// Filter completes list filter values.
 func Filter(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 	return staticCompletions(FilterValues)
 }
+
+// SortBy completes list sorting fields.
 func SortBy(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 	return staticCompletions(SortByValues)
 }
+
+// Color completes color modes.
 func Color(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 	return staticCompletions(ColorValues)
 }
+
+// Lang completes output languages.
 func Lang(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 	return staticCompletions(LangValues)
 }
+
+// Events completes event inclusion values.
 func Events(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 	return staticCompletions(EventsValues)
 }
+
+// UntilCondition completes HPA condition names.
 func UntilCondition(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 	return staticCompletions(UntilConditionValues)
 }

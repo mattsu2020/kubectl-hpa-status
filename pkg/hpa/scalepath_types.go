@@ -1,8 +1,10 @@
 package hpa
 
-import "fmt"
+import (
+	"fmt"
 
-import "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
+)
 
 // ScalePath describes the visible scale-up path from the HPA recommendation
 // through the workload, ReplicaSets, pods, and scheduler-facing signals.

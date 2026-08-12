@@ -7,8 +7,10 @@ import (
 	"os"
 )
 
+// MaxInputFileSize is the largest file accepted by shared input readers.
 const MaxInputFileSize = 50 * 1024 * 1024
 
+// ReadFileBounded reads path after rejecting files above MaxInputFileSize.
 func ReadFileBounded(path string) ([]byte, error) {
 	info, err := os.Stat(path)
 	if err != nil {

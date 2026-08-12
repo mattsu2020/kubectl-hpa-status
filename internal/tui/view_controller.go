@@ -140,18 +140,15 @@ func handleSimViewMessage(m Model, msg tea.Msg) (Model, tea.Cmd, bool) {
 	if !ok {
 		return m, nil, false
 	}
-	updated, cmd := m.updateSimResult(result)
-	return updated.(Model), cmd, true
+	return m.updateSimResult(result), nil, true
 }
 
 func handleFixViewMessage(m Model, msg tea.Msg) (Model, tea.Cmd, bool) {
 	switch result := msg.(type) {
 	case applyResultMsg:
-		updated, cmd := m.updateApplyResult(result)
-		return updated.(Model), cmd, true
+		return m.updateApplyResult(result), nil, true
 	case dryRunResultMsg:
-		updated, cmd := m.updateDryRunResult(result)
-		return updated.(Model), cmd, true
+		return m.updateDryRunResult(result), nil, true
 	default:
 		return m, nil, false
 	}
@@ -162,8 +159,7 @@ func handleReplayViewMessage(m Model, msg tea.Msg) (Model, tea.Cmd, bool) {
 	if !ok {
 		return m, nil, false
 	}
-	updated, cmd := m.updateReplayLoaded(result)
-	return updated.(Model), cmd, true
+	return m.updateReplayLoaded(result), nil, true
 }
 
 func handleBatchAuditViewMessage(m Model, msg tea.Msg) (Model, tea.Cmd, bool) {
@@ -171,8 +167,7 @@ func handleBatchAuditViewMessage(m Model, msg tea.Msg) (Model, tea.Cmd, bool) {
 	if !ok {
 		return m, nil, false
 	}
-	updated, cmd := m.updateBatchAudit(result)
-	return updated.(Model), cmd, true
+	return m.updateBatchAudit(result), nil, true
 }
 
 func dispatchViewMessage(m Model, msg tea.Msg) (Model, tea.Cmd, bool) {

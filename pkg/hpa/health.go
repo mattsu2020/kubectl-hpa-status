@@ -1,8 +1,9 @@
 package hpa
 
 import (
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/churn"
 	"strings"
+
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/churn"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"

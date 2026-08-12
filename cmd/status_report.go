@@ -1,4 +1,4 @@
-// Single- and multi-HPA report construction and text/export rendering for the
+// Package cmd provides single- and multi-HPA report construction and text/export rendering for the
 // status command. These functions build the StatusReport from a fetched HPA,
 // run the enrichment pipeline, and render the gitops export / status text
 // forms. Split from status.go so command wiring stays focused on

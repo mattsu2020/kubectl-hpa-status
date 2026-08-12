@@ -2,6 +2,7 @@ package hpa
 
 import (
 	"fmt"
+
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/flapping"
 )
 

@@ -107,10 +107,6 @@ func historyAnomalies(a hpaanalysis.Analysis) []string {
 	return anomalies
 }
 
-func buildPrometheusHistoryQueries(base string, a hpaanalysis.Analysis, since time.Duration) []prometheusQuery {
-	return buildPrometheusHistoryQueriesAt(base, a, since, time.Now())
-}
-
 func buildPrometheusHistoryQueriesAt(base string, a hpaanalysis.Analysis, since time.Duration, end time.Time) []prometheusQuery {
 	start := end.Add(-since)
 	params := func(query string) string {

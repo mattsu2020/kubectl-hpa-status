@@ -37,8 +37,6 @@ func (DefaultDecisionAdapter) FromEstimation(hpa *autoscalingv2.HorizontalPodAut
 	return EstimateDecisionSignals(hpa)
 }
 
-func int32Ptr(v int32) *int32 { return &v }
-
 // KEP6111DecisionAdapter will implement DecisionAdapter using structured
 // decision output from KEP-6111. This is a placeholder for future
 // implementation when the KEP lands in Kubernetes.

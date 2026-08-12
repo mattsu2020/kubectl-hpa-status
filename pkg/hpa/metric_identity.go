@@ -28,9 +28,9 @@ type MetricDescriptor struct {
 	Selector *metav1.LabelSelector
 }
 
-// MetricIDFromSpec derives a canonical identity and reports malformed selectors
-// instead of treating them as equal display strings.
-func MetricDescriptorFromSpec(spec autoscalingv2.MetricSpec) (MetricDescriptor, error) { //nolint:gocyclo
+// MetricDescriptorFromSpec normalizes a metric specification and reports
+// malformed selectors instead of treating them as equal display strings.
+func MetricDescriptorFromSpec(spec autoscalingv2.MetricSpec) (MetricDescriptor, error) { //nolint:dupl,gocyclo // Mirrors the upstream spec/status union types.
 	id := MetricID{Type: spec.Type}
 	descriptor := MetricDescriptor{ID: id}
 	switch spec.Type {
@@ -89,13 +89,14 @@ func MetricDescriptorFromSpec(spec autoscalingv2.MetricSpec) (MetricDescriptor, 
 	return descriptor, nil
 }
 
+// MetricIDFromSpec derives the canonical identity of a metric specification.
 func MetricIDFromSpec(spec autoscalingv2.MetricSpec) (MetricID, error) {
 	descriptor, err := MetricDescriptorFromSpec(spec)
 	return descriptor.ID, err
 }
 
-// MetricIDFromStatus derives the canonical identity of a current metric.
-func MetricDescriptorFromStatus(status autoscalingv2.MetricStatus) (MetricDescriptor, error) { //nolint:gocyclo
+// MetricDescriptorFromStatus normalizes the identity and current value of a metric status.
+func MetricDescriptorFromStatus(status autoscalingv2.MetricStatus) (MetricDescriptor, error) { //nolint:dupl,gocyclo // Mirrors the upstream spec/status union types.
 	id := MetricID{Type: status.Type}
 	descriptor := MetricDescriptor{ID: id}
 	switch status.Type {
@@ -154,6 +155,7 @@ func MetricDescriptorFromStatus(status autoscalingv2.MetricStatus) (MetricDescri
 	return descriptor, nil
 }
 
+// MetricIDFromStatus derives the canonical identity of a current metric.
 func MetricIDFromStatus(status autoscalingv2.MetricStatus) (MetricID, error) {
 	descriptor, err := MetricDescriptorFromStatus(status)
 	return descriptor.ID, err

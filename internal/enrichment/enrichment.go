@@ -365,15 +365,32 @@ func BatchKEDA(ctx context.Context, ec *Context, hpas []autoscalingv2.Horizontal
 	if ec == nil || !ec.kedaEnabled {
 		return nil, nil
 	}
+	indexes, warnings := loadKEDAIndexes(ctx, ec, hpas)
+	results := make(map[string]*hpakeda.Analysis)
+	for i := range hpas {
+		if key, analysis := analyzeKEDAHPA(&hpas[i], indexes); analysis != nil {
+			results[key] = analysis
+		}
+	}
+	return results, warnings
+}
 
+type kedaIndexes struct {
+	byName   map[string]*unstructured.Unstructured
+	byTarget map[string][]*unstructured.Unstructured
+}
+
+func loadKEDAIndexes(ctx context.Context, ec *Context, hpas []autoscalingv2.HorizontalPodAutoscaler) (kedaIndexes, map[string][]string) {
 	namespaces := map[string]bool{}
 	for i := range hpas {
 		namespaces[hpas[i].Namespace] = true
 	}
 
 	warnings := map[string][]string{}
-	byScaledObjectName := map[string]*unstructured.Unstructured{}
-	byScaledTarget := map[string][]*unstructured.Unstructured{}
+	indexes := kedaIndexes{
+		byName:   map[string]*unstructured.Unstructured{},
+		byTarget: map[string][]*unstructured.Unstructured{},
+	}
 	for ns := range namespaces {
 		soList, err := kube.FetchScaledObjects(ctx, ec.dynClient, ns)
 		if err != nil {
@@ -382,51 +399,44 @@ func BatchKEDA(ctx context.Context, ec *Context, hpas []autoscalingv2.Horizontal
 		}
 		for i := range soList {
 			item := soList[i]
-			byScaledObjectName[ns+"/"+item.GetName()] = &item
+			indexes.byName[ns+"/"+item.GetName()] = &item
 			ref, _, _ := unstructured.NestedMap(item.Object, "spec", "scaleTargetRef")
 			kind, _, _ := unstructured.NestedString(ref, "kind")
 			name, _, _ := unstructured.NestedString(ref, "name")
 			if kind != "" && name != "" {
 				key := ns + "/" + kind + "/" + name
-				byScaledTarget[key] = append(byScaledTarget[key], &item)
+				indexes.byTarget[key] = append(indexes.byTarget[key], &item)
 			}
 		}
 	}
+	return indexes, warnings
+}
 
-	results := map[string]*hpakeda.Analysis{}
-	for i := range hpas {
-		hpa := &hpas[i]
-		det := kube.DetectKEDA(hpa)
-		if !det.Managed {
-			continue
-		}
-
-		var scaledObj *unstructured.Unstructured
-		if det.Name != "" {
-			scaledObj = byScaledObjectName[hpa.Namespace+"/"+det.Name]
-		}
-		candidates := byScaledTarget[hpa.Namespace+"/"+hpa.Spec.ScaleTargetRef.Kind+"/"+hpa.Spec.ScaleTargetRef.Name]
-		if scaledObj == nil && len(candidates) == 1 {
-			scaledObj = candidates[0]
-		}
-
-		key := hpa.Namespace + "/" + hpa.Name
-		if scaledObj == nil {
-			line := "[observed] HPA appears KEDA-managed but no matching ScaledObject found"
-			if len(candidates) > 1 {
-				line = "[observed] multiple ScaledObjects target this workload; ownership is ambiguous"
-			}
-			results[key] = &hpakeda.Analysis{
-				Lines: []string{line},
-			}
-			continue
-		}
-
-		info := kube.ExtractKEDAInfo(scaledObj)
-		results[key] = buildKEDAAnalysis(info, hpa)
+func analyzeKEDAHPA(hpa *autoscalingv2.HorizontalPodAutoscaler, indexes kedaIndexes) (string, *hpakeda.Analysis) {
+	det := kube.DetectKEDA(hpa)
+	if !det.Managed {
+		return "", nil
 	}
 
-	return results, warnings
+	var scaledObj *unstructured.Unstructured
+	if det.Name != "" {
+		scaledObj = indexes.byName[hpa.Namespace+"/"+det.Name]
+	}
+	candidates := indexes.byTarget[hpa.Namespace+"/"+hpa.Spec.ScaleTargetRef.Kind+"/"+hpa.Spec.ScaleTargetRef.Name]
+	if scaledObj == nil && len(candidates) == 1 {
+		scaledObj = candidates[0]
+	}
+
+	key := hpa.Namespace + "/" + hpa.Name
+	if scaledObj == nil {
+		line := "[observed] HPA appears KEDA-managed but no matching ScaledObject found"
+		if len(candidates) > 1 {
+			line = "[observed] multiple ScaledObjects target this workload; ownership is ambiguous"
+		}
+		return key, &hpakeda.Analysis{Lines: []string{line}}
+	}
+
+	return key, buildKEDAAnalysis(kube.ExtractKEDAInfo(scaledObj), hpa)
 }
 
 // BatchVPA performs batched VPA enrichment for multiple HPAs.

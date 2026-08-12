@@ -117,14 +117,14 @@ func replicaRange(desired []int32) (int32, int32) {
 	if len(desired) == 0 {
 		return 0, 0
 	}
-	min, max := desired[0], desired[0]
+	minimum, maximum := desired[0], desired[0]
 	for _, v := range desired[1:] {
-		if v < min {
-			min = v
+		if v < minimum {
+			minimum = v
 		}
-		if v > max {
-			max = v
+		if v > maximum {
+			maximum = v
 		}
 	}
-	return min, max
+	return minimum, maximum
 }

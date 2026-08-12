@@ -107,24 +107,24 @@ func (m *Model) refocusAndClampCursorAfterFetch() {
 	}
 }
 
-func (m Model) updateSimResult(msg simResultMsg) (tea.Model, tea.Cmd) {
+func (m Model) updateSimResult(msg simResultMsg) Model {
 	if m.simState != nil {
 		m.simState.result = msg.result
 		m.simState.err = msg.err
 	}
-	return m, nil
+	return m
 }
 
-func (m Model) updateApplyResult(msg applyResultMsg) (tea.Model, tea.Cmd) {
+func (m Model) updateApplyResult(msg applyResultMsg) Model {
 	if m.fixState != nil {
 		m.fixState.applyConfirm = false
 		m.fixState.applied = true
 		m.fixState.applyErr = msg.err
 	}
-	return m, nil
+	return m
 }
 
-func (m Model) updateDryRunResult(msg dryRunResultMsg) (tea.Model, tea.Cmd) {
+func (m Model) updateDryRunResult(msg dryRunResultMsg) Model {
 	if m.fixState != nil {
 		m.fixState.applyConfirm = false
 		m.fixState.applied = false
@@ -135,28 +135,28 @@ func (m Model) updateDryRunResult(msg dryRunResultMsg) (tea.Model, tea.Cmd) {
 			m.fixState.dryRunResult = fmt.Sprintf("server-side validation passed: %s", msg.title)
 		}
 	}
-	return m, nil
+	return m
 }
 
-func (m Model) updateReplayLoaded(msg replayLoadedMsg) (tea.Model, tea.Cmd) {
+func (m Model) updateReplayLoaded(msg replayLoadedMsg) Model {
 	if m.replayState != nil {
 		m.replayState.loading = false
 		m.replayState.trace = msg.trace
 		m.replayState.err = msg.err
 	}
-	return m, nil
+	return m
 }
 
-func (m Model) updateBatchAudit(msg batchAuditMsg) (tea.Model, tea.Cmd) {
+func (m Model) updateBatchAudit(msg batchAuditMsg) Model {
 	if m.batchAuditState == nil {
-		return m, nil
+		return m
 	}
 	m.batchAuditState.loading = false
 	if msg.err != nil {
 		m.batchAuditState.err = msg.err
-		return m, nil
+		return m
 	}
 	m.batchAuditState.reports = msg.reports
 	m.batchAuditState.results = buildBatchAuditEntries(msg.reports)
-	return m, nil
+	return m
 }

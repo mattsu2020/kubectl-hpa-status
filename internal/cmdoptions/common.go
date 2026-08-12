@@ -46,6 +46,7 @@ type ConnectionOptions struct {
 	Now func() time.Time
 }
 
+// CurrentTime returns the injected clock value or wall-clock time by default.
 func (c *Common) CurrentTime() time.Time {
 	if c.Now != nil {
 		return c.Now()

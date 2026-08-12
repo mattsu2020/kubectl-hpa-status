@@ -331,13 +331,17 @@ func GenerateNodeHints(pending []PendingPodDetail, quotas []QuotaInfo) []string 
 	return FormatNodeHintObservations(DetectNodeHintObservations(pending, quotas))
 }
 
+// NodeHintKind classifies a capacity observation without presentation text.
 type NodeHintKind string
 
 const (
+	// NodeHintUnschedulable identifies pending pods the scheduler cannot place.
 	NodeHintUnschedulable NodeHintKind = "unschedulable"
-	NodeHintQuota         NodeHintKind = "quota"
+	// NodeHintQuota identifies a resource quota close to its hard limit.
+	NodeHintQuota NodeHintKind = "quota"
 )
 
+// NodeHintObservation is a structured capacity fact used by command renderers.
 type NodeHintObservation struct {
 	Kind           NodeHintKind
 	Count          int

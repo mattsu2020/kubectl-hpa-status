@@ -30,14 +30,6 @@ func hpaNameCompletion(opts *options) func(*cobra.Command, []string, string) ([]
 	return completion.HpaName(completionDeps(opts))
 }
 
-func namespaceCompletions(opts *options) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
-	return completion.Namespace(completionDeps(opts))
-}
-
-func contextCompletions(opts *options) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
-	return completion.Context(completionDeps(opts))
-}
-
 // Static completers delegate to the canonical value lists in the completion
 // package, preserving the historical signature used by tests.
 func outputCompletions(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {

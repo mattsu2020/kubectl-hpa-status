@@ -95,6 +95,7 @@ func newReplayCommand(opts *options) *cobra.Command {
 	return cmd
 }
 
+// ReplayRequest contains all inputs needed to replay a recorded HPA timeline.
 type ReplayRequest struct {
 	FromRecord, Compare, Score, HPA, Propose          string
 	Candidates, SetOverrides                          []string

@@ -75,9 +75,7 @@ func flattenEnricherSpecs(phases [][]enricherSpec) []enricherSpec {
 	}
 	enrichers := make([]enricherSpec, 0, n)
 	for _, phase := range phases {
-		for _, s := range phase {
-			enrichers = append(enrichers, s)
-		}
+		enrichers = append(enrichers, phase...)
 	}
 	return enrichers
 }
@@ -111,7 +109,7 @@ var statusEnricherNames = []string{
 }
 
 func enricherPhaseCore(opts *options) []enricherSpec {
-	plan := opts.Features.Plan()
+	plan := opts.Plan()
 	return []enricherSpec{
 		{
 			name:    "decision-traces",
@@ -141,7 +139,7 @@ func enricherPhaseCore(opts *options) []enricherSpec {
 }
 
 func enricherPhaseMetricsPods(opts *options) []enricherSpec {
-	plan := opts.Features.Plan()
+	plan := opts.Plan()
 	return []enricherSpec{
 		{
 			name:    "metrics-diagnostics",
@@ -213,7 +211,7 @@ func enricherPhaseMetricsPods(opts *options) []enricherSpec {
 }
 
 func enricherPhaseCapacity(opts *options) []enricherSpec {
-	plan := opts.Features.Plan()
+	plan := opts.Plan()
 	return []enricherSpec{
 		{
 			name: "capacity-analysis",
