@@ -17,6 +17,7 @@ import (
 	analysisservice "github.com/mattsu2020/kubectl-hpa-status/internal/analysis"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/audit"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -61,6 +62,7 @@ type Model struct {
 	width             int
 	height            int
 	loading           bool
+	fetchRequestID    uint64
 	sortField         string
 	sortDescending    bool
 	selected          map[string]bool
@@ -88,6 +90,49 @@ type interactiveStates struct {
 	batchAuditState *batchAuditState
 	historyState    *historyState
 	hintsState      *hintsState
+}
+
+// clone returns independent view-local state so Model's value-receiver Update
+// contract is real: updating a returned model never mutates an older copy.
+func (s interactiveStates) clone() interactiveStates {
+	out := s
+	if s.simState != nil {
+		v := *s.simState
+		v.fields = slices.Clone(s.simState.fields)
+		if s.simState.hpa != nil {
+			v.hpa = s.simState.hpa.DeepCopy()
+		}
+		out.simState = &v
+	}
+	if s.fixState != nil {
+		v := *s.fixState
+		v.suggestions = slices.Clone(s.fixState.suggestions)
+		out.fixState = &v
+	}
+	if s.replayState != nil {
+		v := *s.replayState
+		out.replayState = &v
+	}
+	if s.batchAuditState != nil {
+		v := *s.batchAuditState
+		v.results = slices.Clone(s.batchAuditState.results)
+		v.reports = make(map[string]*audit.Report, len(s.batchAuditState.reports))
+		for key, report := range s.batchAuditState.reports {
+			v.reports[key] = report
+		}
+		out.batchAuditState = &v
+	}
+	if s.historyState != nil {
+		v := *s.historyState
+		v.snapshots = slices.Clone(s.historyState.snapshots)
+		out.historyState = &v
+	}
+	if s.hintsState != nil {
+		v := *s.hintsState
+		v.flows = slices.Clone(s.hintsState.flows)
+		out.hintsState = &v
+	}
+	return out
 }
 
 // Options holds configuration for the TUI dashboard.
@@ -196,9 +241,10 @@ type tickMsg time.Time
 
 // fetchResultMsg carries the result of a background data fetch.
 type fetchResultMsg struct {
-	items   []hpaanalysis.ListItem
-	reports map[string]*hpaanalysis.StatusReport
-	err     error
+	requestID uint64
+	items     []hpaanalysis.ListItem
+	reports   map[string]*hpaanalysis.StatusReport
+	err       error
 }
 
 // NewModel creates a new TUI Model.
@@ -226,6 +272,7 @@ func NewModel(client kubernetes.Interface, namespace string, opts Options) Model
 		keys:           defaultKeys(),
 		filterInput:    ti,
 		loading:        true,
+		fetchRequestID: 1,
 		selected:       map[string]bool{},
 	}
 }
@@ -352,6 +399,7 @@ func cmpInt(a, b int) int {
 // includes large slices/maps like items, reports, and replicaHistory) on every
 // refresh tick.
 type fetchConfig struct {
+	requestID uint64
 	ctx       context.Context
 	client    kubernetes.Interface
 	namespace string
@@ -361,6 +409,7 @@ type fetchConfig struct {
 // newFetchConfig snapshots the minimal inputs required by fetchHPAs.
 func (m Model) newFetchConfig() fetchConfig {
 	return fetchConfig{
+		requestID: m.fetchRequestID,
 		ctx:       m.ctx,
 		client:    m.client,
 		namespace: m.namespace,
@@ -379,7 +428,7 @@ func fetchHPAs(m Model) tea.Cmd {
 
 		hpas, err := kube.ListHPAsFromInterface(cfg.ctx, cfg.client, ns, metav1.ListOptions{}, cfg.opts.ChunkSize)
 		if err != nil {
-			return fetchResultMsg{err: err}
+			return fetchResultMsg{requestID: cfg.requestID, err: err}
 		}
 
 		// Run optional batched KEDA/VPA enrichment.
@@ -407,7 +456,7 @@ func fetchHPAs(m Model) tea.Cmd {
 			reports[analyzed[i].Key] = &report
 		}
 
-		return fetchResultMsg{items: items, reports: reports}
+		return fetchResultMsg{requestID: cfg.requestID, items: items, reports: reports}
 	}
 }
 

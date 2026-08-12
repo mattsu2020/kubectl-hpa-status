@@ -6,6 +6,7 @@ package event
 
 import (
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -61,6 +62,31 @@ func FromCoreSlice(coreEvents []corev1.Event) []Event {
 type RescaleData struct {
 	Timestamp time.Time
 	NewSize   int32
+}
+
+// NormalizeRescales returns deterministic observations with exact duplicates
+// collapsed and ambiguous same-timestamp replica sizes removed.
+func NormalizeRescales(rescales []RescaleData) []RescaleData {
+	ordered := append([]RescaleData(nil), rescales...)
+	sort.Slice(ordered, func(i, j int) bool {
+		if ordered[i].Timestamp.Equal(ordered[j].Timestamp) {
+			return ordered[i].NewSize < ordered[j].NewSize
+		}
+		return ordered[i].Timestamp.Before(ordered[j].Timestamp)
+	})
+	normalized := make([]RescaleData, 0, len(ordered))
+	for start := 0; start < len(ordered); {
+		end, ambiguous := start+1, false
+		for end < len(ordered) && ordered[end].Timestamp.Equal(ordered[start].Timestamp) {
+			ambiguous = ambiguous || ordered[end].NewSize != ordered[start].NewSize
+			end++
+		}
+		if !ambiguous {
+			normalized = append(normalized, ordered[start])
+		}
+		start = end
+	}
+	return normalized
 }
 
 // ParseNewSize extracts the replica count from a SuccessfulRescale message.

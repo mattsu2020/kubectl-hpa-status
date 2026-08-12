@@ -173,11 +173,6 @@ func newWatchFlagSet(opts *options) *pflag.FlagSet {
 	return fs
 }
 
-// watchFlagCommands are the commands that read the watch options
-// (cmd/status.go, cmd/watch.go, cmd/tui.go). Root is handled separately
-// because it runs status implicitly.
-var watchFlagCommands = map[string]bool{"status": true, "watch": true, "tui": true}
-
 func analysisProfileCompletions(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 	return validAnalysisProfiles(), cobra.ShellCompDirectiveNoFileComp
 }

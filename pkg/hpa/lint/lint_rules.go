@@ -3,6 +3,7 @@ package lint
 import (
 	"fmt"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rulefacts"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"k8s.io/apimachinery/pkg/api/resource"
 
@@ -133,16 +134,9 @@ func lintNoScaleDownBehavior(hpa *autoscalingv2.HorizontalPodAutoscaler) []Findi
 // lintHighUtilizationTarget warns when utilization target is very high.
 func lintHighUtilizationTarget(hpa *autoscalingv2.HorizontalPodAutoscaler) []Finding {
 	var findings []Finding
-	for _, spec := range hpa.Spec.Metrics {
-		if spec.Type != autoscalingv2.ResourceMetricSourceType || spec.Resource == nil {
-			continue
-		}
-		target := spec.Resource.Target
-		if target.Type != autoscalingv2.UtilizationMetricType || target.AverageUtilization == nil {
-			continue
-		}
-		util := *target.AverageUtilization
-		name := string(spec.Resource.Name)
+	for _, target := range rulefacts.ResourceUtilizationTargets(hpa) {
+		util := target.Percent
+		name := target.Resource
 		if util > 90 {
 			findings = append(findings, Finding{
 				Severity:       Warning,

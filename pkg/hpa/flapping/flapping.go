@@ -7,7 +7,6 @@ package flapping
 
 import (
 	"fmt"
-	"sort"
 	"time"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -140,13 +139,10 @@ func DiagnoseFlapping(events []model.Event, hpa *autoscalingv2.HorizontalPodAuto
 	}
 
 	rescales := extractRescaleEvents(events)
+	rescales = event.NormalizeRescales(rescales)
 	if len(rescales) < 3 {
 		return nil
 	}
-
-	sort.Slice(rescales, func(i, j int) bool {
-		return rescales[i].Timestamp.Before(rescales[j].Timestamp)
-	})
 
 	flips := detectDirectionFlips(rescales)
 	if len(flips) == 0 {

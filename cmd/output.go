@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"io"
 	"strings"
 
@@ -98,10 +99,11 @@ func normalizeOutputFormat(value string) string {
 // writeErrorIfStructured emits an error in the requested structured format
 // (json/yaml) and is a no-op for text output. It collapses the repeated
 // structured-error branch at command boundaries.
-func writeErrorIfStructured(out io.Writer, output string, err error) {
+func writeErrorIfStructured(out io.Writer, output string, err error) error {
 	if output == "json" || output == "yaml" {
-		render.Error(out, output, err)
+		return errors.Join(err, render.Error(out, output, err))
 	}
+	return err
 }
 
 // outputConfig holds the output-related fields needed by outputSelection,

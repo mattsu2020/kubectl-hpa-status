@@ -2,7 +2,10 @@ package cmd
 
 import (
 	"context"
+	"fmt"
+	"io"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -13,6 +16,29 @@ type perHPAResult[T any] struct {
 	name  string
 	value T
 	err   error
+}
+
+// renderPerHPA centralizes the one-vs-many structured envelope and text
+// separator contract shared by dedicated multi-HPA commands.
+func renderPerHPA[T any](out io.Writer, opts *options, values []T, writeOne func(io.Writer, T) error) error {
+	var value any = values
+	if len(values) == 1 {
+		value = values[0]
+	}
+	format, templateStr := selectOutputFromOptions(opts)
+	return render.Format(out, format, templateStr, value, func(out io.Writer) error {
+		for i, item := range values {
+			if i > 0 {
+				if _, err := fmt.Fprintln(out); err != nil {
+					return fmt.Errorf("write report separator: %w", err)
+				}
+			}
+			if err := writeOne(out, item); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // perHPAConcurrency resolves the effective parallelism for a multi-HPA

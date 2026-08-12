@@ -8,7 +8,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
 
@@ -42,8 +41,7 @@ func runWhyNotScale(ctx context.Context, out io.Writer, opts *options, names []s
 	// re-parse the kubeconfig once per HPA, in parallel.
 	client, err := newClientOrDefault(&local)
 	if err != nil {
-		writeErrorIfStructured(out, local.Output, err)
-		return err
+		return writeErrorIfStructured(out, local.Output, err)
 	}
 
 	reports, err := collectPerHPA(ctx, &local, names, func(ctx context.Context, name string) (whyNotScaleReport, error) {
@@ -54,30 +52,10 @@ func runWhyNotScale(ctx context.Context, out io.Writer, opts *options, names []s
 		return buildWhyNotScaleReport(statusReport.Analysis), nil
 	})
 	if err != nil {
-		writeErrorIfStructured(out, local.Output, err)
-		return err
+		return writeErrorIfStructured(out, local.Output, err)
 	}
 
-	value := any(reports)
-	if len(reports) == 1 {
-		value = reports[0]
-	}
-
-	format, templateStr := selectOutputFromOptions(&local)
-
-	return render.Format(out, format, templateStr, value, func(out io.Writer) error {
-		for i, report := range reports {
-			if i > 0 {
-				if _, err := fmt.Fprintln(out); err != nil {
-					return err
-				}
-			}
-			if err := writeWhyNotScaleText(out, report); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
+	return renderPerHPA(out, &local, reports, writeWhyNotScaleText)
 
 }
 

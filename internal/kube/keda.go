@@ -230,24 +230,43 @@ func NewDynamicClient(opts Options) (dynamic.Interface, string, error) {
 // FindScaledObjectForHPA attempts to locate the ScaledObject that owns the given HPA.
 // It tries the label-based name first, then falls back to listing ScaledObjects in the namespace.
 func FindScaledObjectForHPA(ctx context.Context, dynClient dynamic.Interface, hpa *autoscalingv2.HorizontalPodAutoscaler) (*unstructured.Unstructured, error) {
-	if det := DetectKEDA(hpa); det.Name != "" {
-		return FetchScaledObject(ctx, dynClient, hpa.Namespace, det.Name)
-	}
-
-	// Fallback: list ScaledObjects and find one that references this HPA's scaleTargetRef.
 	items, err := FetchScaledObjects(ctx, dynClient, hpa.Namespace)
 	if err != nil {
 		return nil, err
 	}
+	matched, ambiguous := ResolveScaledObjectForHPA(hpa, items)
+	if matched != nil {
+		return matched, nil
+	}
+	if ambiguous {
+		return nil, fmt.Errorf("hpa %s/%s: multiple ScaledObjects target the workload", hpa.Namespace, hpa.Name)
+	}
+	return nil, fmt.Errorf("hpa %s/%s: %w", hpa.Namespace, hpa.Name, ErrScaledObjectNotFound)
+}
 
+// ResolveScaledObjectForHPA applies the canonical single and batch matching
+// rule: prefer the explicitly named object, otherwise require one unique
+// scaleTargetRef match. The boolean reports an ambiguous target match.
+func ResolveScaledObjectForHPA(hpa *autoscalingv2.HorizontalPodAutoscaler, items []unstructured.Unstructured) (*unstructured.Unstructured, bool) {
+	preferred := DetectKEDA(hpa).Name
+	if preferred != "" {
+		for i := range items {
+			if items[i].GetName() == preferred {
+				return &items[i], false
+			}
+		}
+	}
+	candidates := make([]*unstructured.Unstructured, 0, 1)
 	for i := range items {
 		ref := extractScaleTargetRef(&items[i])
 		if ref != nil && ref.Name == hpa.Spec.ScaleTargetRef.Name && ref.Kind == hpa.Spec.ScaleTargetRef.Kind {
-			return &items[i], nil
+			candidates = append(candidates, &items[i])
 		}
 	}
-
-	return nil, fmt.Errorf("hpa %s/%s: %w", hpa.Namespace, hpa.Name, ErrScaledObjectNotFound)
+	if len(candidates) == 1 {
+		return candidates[0], false
+	}
+	return nil, len(candidates) > 1
 }
 
 // FetchScaledObjects lists all KEDA ScaledObjects in a namespace using the

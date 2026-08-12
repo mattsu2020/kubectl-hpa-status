@@ -3,6 +3,7 @@ package audit
 import (
 	"fmt"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rulefacts"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
@@ -84,18 +85,9 @@ func resourceRequestRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []
 func targetUtilizationRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []Finding {
 	var findings []Finding
 
-	for _, spec := range hpa.Spec.Metrics {
-		if spec.Type != autoscalingv2.ResourceMetricSourceType || spec.Resource == nil {
-			continue
-		}
-
-		target := spec.Resource.Target
-		if target.Type != autoscalingv2.UtilizationMetricType || target.AverageUtilization == nil {
-			continue
-		}
-
-		utilization := *target.AverageUtilization
-		name := string(spec.Resource.Name)
+	for _, target := range rulefacts.ResourceUtilizationTargets(hpa) {
+		utilization := target.Percent
+		name := target.Resource
 
 		if utilization > 90 {
 			findings = append(findings, Finding{

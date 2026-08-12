@@ -381,21 +381,21 @@ func TestError_FormatVariants(t *testing.T) {
 
 	t.Run("json", func(t *testing.T) {
 		var buf bytes.Buffer
-		Error(&buf, "json", sentinel)
+		_ = Error(&buf, "json", sentinel)
 		if !strings.Contains(buf.String(), `"error":"boom"`) {
 			t.Fatalf("json error output: %s", buf.String())
 		}
 	})
 	t.Run("yaml", func(t *testing.T) {
 		var buf bytes.Buffer
-		Error(&buf, "yaml", sentinel)
+		_ = Error(&buf, "yaml", sentinel)
 		if !strings.Contains(buf.String(), "boom") {
 			t.Fatalf("yaml error output: %s", buf.String())
 		}
 	})
 	t.Run("default", func(t *testing.T) {
 		var buf bytes.Buffer
-		Error(&buf, "", sentinel)
+		_ = Error(&buf, "", sentinel)
 		if !strings.Contains(buf.String(), "Error: boom") {
 			t.Fatalf("default error output: %s", buf.String())
 		}

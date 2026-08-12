@@ -208,10 +208,11 @@ func registerCommands(root *cobra.Command, opts *options, workflowFlags, watchFl
 		for _, build := range cg.builders {
 			sub := build(opts)
 			sub.GroupID = cg.group.ID
-			if workflowFlagCommands[sub.Name()] {
+			capability := commandCapabilities[sub.Name()]
+			if capability.workflowFlags {
 				addSharedFlags(sub, workflowFlags)
 			}
-			if watchFlagCommands[sub.Name()] {
+			if capability.watchFlags {
 				addSharedFlags(sub, watchFlags)
 			}
 			root.AddCommand(sub)
@@ -224,8 +225,19 @@ func registerCommands(root *cobra.Command, opts *options, workflowFlags, watchFl
 // workflowFlagCommands declares the commands that actually execute the shared
 // apply/export/trend/enrichment/report workflow. Other commands reject these
 // flags instead of accepting values they never inspect.
-var workflowFlagCommands = map[string]bool{
-	"status": true, "list": true, "scan": true, "watch": true, "tui": true,
+type commandCapability struct {
+	workflowFlags bool
+	watchFlags    bool
+}
+
+// commandCapabilities is the single source for command-level shared flag
+// support, preventing workflow and watch registries from drifting.
+var commandCapabilities = map[string]commandCapability{
+	"status": {workflowFlags: true, watchFlags: true},
+	"list":   {workflowFlags: true},
+	"scan":   {workflowFlags: true},
+	"watch":  {workflowFlags: true, watchFlags: true},
+	"tui":    {workflowFlags: true, watchFlags: true},
 }
 
 func buildVersion() string {

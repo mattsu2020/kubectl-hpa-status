@@ -12,6 +12,7 @@ import (
 // rather than mutating the existing one. All methods on Model (Update, View,
 // Init, filteredItems) use value receivers for consistency with this pattern.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	m.interactiveStates = m.clone()
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		return m.updateWindowSize(msg)
@@ -46,13 +47,18 @@ func (m Model) updateKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) updateTick() (tea.Model, tea.Cmd) {
-	if m.paused {
+	if m.paused || m.loading {
 		return m, tickCmd(m.interval)
 	}
+	m.loading = true
+	m.fetchRequestID++
 	return m, tea.Batch(fetchHPAs(m), tickCmd(m.interval))
 }
 
 func (m Model) updateFetchResult(msg fetchResultMsg) (tea.Model, tea.Cmd) {
+	if msg.requestID != 0 && msg.requestID != m.fetchRequestID {
+		return m, nil
+	}
 	m.loading = false
 	m.lastRefresh = m.currentTime()
 	// A refresh can change the HPA state and regenerate suggestions. Never

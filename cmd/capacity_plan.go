@@ -13,7 +13,6 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kubeconv"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/observation"
-	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
@@ -45,8 +44,7 @@ func runCapacityPlan(ctx context.Context, out io.Writer, opts *options, names []
 	local := copyOptions(opts)
 	client, err := newClientOrDefault(&local)
 	if err != nil {
-		writeErrorIfStructured(out, local.Output, err)
-		return err
+		return writeErrorIfStructured(out, local.Output, err)
 	}
 
 	outputs, err := collectPerHPA(ctx, &local, names, func(ctx context.Context, name string) (capacityPlanOutput, error) {
@@ -72,28 +70,13 @@ func runCapacityPlan(ctx context.Context, out io.Writer, opts *options, names []
 		}, nil
 	})
 	if err != nil {
-		writeErrorIfStructured(out, local.Output, err)
-		return err
+		return writeErrorIfStructured(out, local.Output, err)
 	}
 
-	value := any(outputs)
-	if len(outputs) == 1 {
-		value = outputs[0]
-	}
-
-	format, templateStr := selectOutputFromOptions(&local)
-
-	return render.Format(out, format, templateStr, value, func(out io.Writer) error {
+	return renderPerHPA(out, &local, outputs, func(out io.Writer, o capacityPlanOutput) error {
 		theme := style.NewTheme(shouldColorize(local.Color, out))
-		for i, o := range outputs {
-			if i > 0 {
-				if _, err := fmt.Fprintln(out); err != nil {
-					return fmt.Errorf("write capacity separator: %w", err)
-				}
-			}
-			if err := hpaanalysis.WriteCapacityPlanText(out, o.Plan, theme); err != nil {
-				return fmt.Errorf("write capacity report for %s/%s: %w", o.Namespace, o.Name, err)
-			}
+		if err := hpaanalysis.WriteCapacityPlanText(out, o.Plan, theme); err != nil {
+			return fmt.Errorf("write capacity report for %s/%s: %w", o.Namespace, o.Name, err)
 		}
 		return nil
 	})

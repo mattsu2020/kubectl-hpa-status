@@ -10,6 +10,7 @@ import (
 
 	"github.com/mattsu2020/kubectl-hpa-status/cmd/bundle"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/metricsapi"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/audit"
 	hparender "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/render"
@@ -215,23 +216,12 @@ func fetchSnapshotMetricsAPI(_ context.Context, client *kube.Client) []byte {
 	var sb strings.Builder
 	sb.WriteString("# Metrics API Status\n\n")
 
-	apiGroups := []struct {
-		name    string
-		group   string
-		version string
-	}{
-		{"metrics.k8s.io", "metrics.k8s.io", "v1beta1"},
-		{"custom.metrics.k8s.io", "custom.metrics.k8s.io", "v1beta1"},
-		{"external.metrics.k8s.io", "external.metrics.k8s.io", "v1beta1"},
-	}
-
-	for _, api := range apiGroups {
-		gv := fmt.Sprintf("%s/%s", api.group, api.version)
-		_, err := client.Interface.Discovery().ServerResourcesForGroupVersion(gv)
-		if err != nil {
-			sb.WriteString(fmt.Sprintf("%s: UNAVAILABLE (%v)\n", api.name, err))
+	for _, source := range metricsapi.Sources() {
+		status := discoverMetricsAPI(client, source)
+		if !status.Available {
+			sb.WriteString(fmt.Sprintf("%s: UNAVAILABLE (%s)\n", source, status.Message))
 		} else {
-			sb.WriteString(fmt.Sprintf("%s: AVAILABLE\n", api.name))
+			sb.WriteString(fmt.Sprintf("%s: AVAILABLE (%s)\n", source, status.Message))
 		}
 	}
 

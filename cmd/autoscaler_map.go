@@ -11,7 +11,6 @@ import (
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kubeconv"
-	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/autoscalermap"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
@@ -47,8 +46,7 @@ func runAutoscalerMap(ctx context.Context, out io.Writer, opts *options, names [
 	// per-name work below.
 	client, err := opts.NewClient()
 	if err != nil {
-		writeErrorIfStructured(out, opts.Output, err)
-		return err
+		return writeErrorIfStructured(out, opts.Output, err)
 	}
 
 	outputs, err := collectPerHPA(ctx, opts, names, func(ctx context.Context, name string) (autoscalerMapOutput, error) {
@@ -67,28 +65,13 @@ func runAutoscalerMap(ctx context.Context, out io.Writer, opts *options, names [
 		}, nil
 	})
 	if err != nil {
-		writeErrorIfStructured(out, opts.Output, err)
-		return err
+		return writeErrorIfStructured(out, opts.Output, err)
 	}
 
-	value := any(outputs)
-	if len(outputs) == 1 {
-		value = outputs[0]
-	}
-
-	format, templateStr := selectOutputFromOptions(opts)
-
-	return render.Format(out, format, templateStr, value, func(out io.Writer) error {
+	return renderPerHPA(out, opts, outputs, func(out io.Writer, o autoscalerMapOutput) error {
 		theme := style.NewTheme(shouldColorize(opts.Color, out))
-		for i, o := range outputs {
-			if i > 0 {
-				if _, err := fmt.Fprintln(out); err != nil {
-					return fmt.Errorf("write autoscaler-map separator: %w", err)
-				}
-			}
-			if err := autoscalermap.WriteText(out, o.Map, theme); err != nil {
-				return fmt.Errorf("write autoscaler-map report for %s/%s: %w", o.Namespace, o.Name, err)
-			}
+		if err := autoscalermap.WriteText(out, o.Map, theme); err != nil {
+			return fmt.Errorf("write autoscaler-map report for %s/%s: %w", o.Namespace, o.Name, err)
 		}
 		return nil
 	})

@@ -71,19 +71,41 @@ func writeHTMLReportContent(out *strings.Builder, report hpa.StatusReport) {
 	}
 	out.WriteString("</h1>\n")
 
-	writeHTMLOverview(out, a)
-	writeHTMLSummary(out, a)
-	writeHTMLConditions(out, a)
-	writeHTMLMetrics(out, a)
-	writeHTMLRecommendations(out, a)
-	writeHTMLSuggestions(out, a)
-	writeHTMLEvents(out, report)
-	writeHTMLPodAnalysis(out, a)
-	writeHTMLSimulation(out, a)
-	writeHTMLMetricFreshness(out, a)
-	writeHTMLCapacityContext(out, a)
-	writeHTMLStructuredDecisionTrace(out, a)
-	writeHTMLWarnings(out, a)
+	for _, section := range reportSections {
+		writeHTMLSection(out, report, section)
+	}
+}
+
+func writeHTMLSection(out *strings.Builder, report hpa.StatusReport, section reportSection) {
+	a := report.Analysis
+	switch section {
+	case sectionOverview:
+		writeHTMLOverview(out, a)
+	case sectionSummary:
+		writeHTMLSummary(out, a)
+	case sectionConditions:
+		writeHTMLConditions(out, a)
+	case sectionMetrics:
+		writeHTMLMetrics(out, a)
+	case sectionRecommendations:
+		writeHTMLRecommendations(out, a)
+	case sectionSuggestions:
+		writeHTMLSuggestions(out, a)
+	case sectionEvents:
+		writeHTMLEvents(out, report)
+	case sectionPods:
+		writeHTMLPodAnalysis(out, a)
+	case sectionSimulation:
+		writeHTMLSimulation(out, a)
+	case sectionMetricFreshness:
+		writeHTMLMetricFreshness(out, a)
+	case sectionCapacity:
+		writeHTMLCapacityContext(out, a)
+	case sectionDecisionTrace:
+		writeHTMLStructuredDecisionTrace(out, a)
+	case sectionWarnings:
+		writeHTMLWarnings(out, a)
+	}
 }
 
 // htmlConditionStatus returns a color-coded condition status for HTML.

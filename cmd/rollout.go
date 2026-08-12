@@ -12,7 +12,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
-	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
@@ -44,8 +43,7 @@ func runRollout(ctx context.Context, out io.Writer, opts *options, names []strin
 	// re-parse the kubeconfig once per HPA, in parallel.
 	client, err := newClientOrDefault(&local)
 	if err != nil {
-		writeErrorIfStructured(out, local.Output, err)
-		return err
+		return writeErrorIfStructured(out, local.Output, err)
 	}
 
 	outputs, err := collectPerHPA(ctx, &local, names, func(ctx context.Context, name string) (rolloutOutput, error) {
@@ -66,30 +64,12 @@ func runRollout(ctx context.Context, out io.Writer, opts *options, names []strin
 		}, nil
 	})
 	if err != nil {
-		writeErrorIfStructured(out, local.Output, err)
-		return err
+		return writeErrorIfStructured(out, local.Output, err)
 	}
 
-	value := any(outputs)
-	if len(outputs) == 1 {
-		value = outputs[0]
-	}
-
-	format, templateStr := selectOutputFromOptions(&local)
-
-	return render.Format(out, format, templateStr, value, func(out io.Writer) error {
+	return renderPerHPA(out, &local, outputs, func(out io.Writer, o rolloutOutput) error {
 		theme := style.NewTheme(shouldColorize(local.Color, out))
-		for i, o := range outputs {
-			if i > 0 {
-				if _, err := fmt.Fprintln(out); err != nil {
-					return err
-				}
-			}
-			if err := hpaanalysis.WriteRolloutReportText(out, o.Report, theme); err != nil {
-				return err
-			}
-		}
-		return nil
+		return hpaanalysis.WriteRolloutReportText(out, o.Report, theme)
 	})
 
 }
