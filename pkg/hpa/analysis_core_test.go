@@ -129,6 +129,20 @@ func TestAnalyzeReportsMaxReplicasWhileCurrentReplicasConverge(t *testing.T) {
 	}
 }
 
+func TestAnalyzeInitializesEmptyStatusSlices(t *testing.T) {
+	hpa := baseHPA()
+	hpa.Status.Conditions = nil
+	hpa.Status.CurrentMetrics = nil
+
+	got := Analyze(hpa, false)
+	if got.Conditions == nil {
+		t.Fatal("conditions is nil, want initialized empty slice")
+	}
+	if got.Metrics == nil {
+		t.Fatal("metrics is nil, want initialized empty slice")
+	}
+}
+
 func TestAnalyzeScaleDownStabilized(t *testing.T) {
 	hpa := baseHPA()
 	hpa.Status.CurrentReplicas = 8

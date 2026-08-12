@@ -20,6 +20,8 @@ func collectBase(src *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) 
 		Desired:           src.Status.DesiredReplicas,
 		Min:               minReplicas,
 		Max:               src.Spec.MaxReplicas,
+		Conditions:        make([]Condition, 0, len(src.Status.Conditions)),
+		Metrics:           make([]Metric, 0, len(src.Status.CurrentMetrics)),
 		Summary:           summary,
 		SummaryKey:        summaryKey,
 		CreationTimestamp: src.CreationTimestamp,
