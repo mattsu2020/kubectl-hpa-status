@@ -121,8 +121,14 @@ func main() {
 }
 
 func scanRepository(root string) ([]violation, error) {
+	rootFS, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, fmt.Errorf("open repository root: %w", err)
+	}
+	defer func() { _ = rootFS.Close() }()
+
 	var violations []violation
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+	err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -142,7 +148,7 @@ func scanRepository(root string) ([]violation, error) {
 		if err != nil {
 			return err
 		}
-		source, err := os.ReadFile(path)
+		source, err := rootFS.ReadFile(relative)
 		if err != nil {
 			return err
 		}

@@ -1,4 +1,4 @@
-// Loading recorded timeline traces from JSONL or single-JSON files. These
+// Package cmd provides loading of recorded timeline traces from JSONL or single-JSON files. These
 // helpers read the durable record written by the record command and return the
 // matching trace, falling back to a whole-file JSON trace when the JSONL parse
 // fails. Split from timeline.go so the live command stays focused.

@@ -266,7 +266,7 @@ func enricherPhaseCapacity(opts *options) []enricherSpec {
 }
 
 func enricherPhaseAdvisors(opts *options) []enricherSpec {
-	plan := opts.Features.Plan()
+	plan := opts.Plan()
 	return []enricherSpec{
 		{
 			name:    "gitops-conflict",
