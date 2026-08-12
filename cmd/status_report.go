@@ -1,4 +1,4 @@
-// Single- and multi-HPA report construction and text/export rendering for the
+// Package cmd provides single- and multi-HPA report construction and text/export rendering for the
 // status command. These functions build the StatusReport from a fetched HPA,
 // run the enrichment pipeline, and render the gitops export / status text
 // forms. Split from status.go so command wiring stays focused on
@@ -107,7 +107,13 @@ func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, 
 	if err != nil {
 		return hpaanalysis.StatusReport{}, err
 	}
+	return buildStatusReportFromHPA(ctx, opts, client, hpa, includeInterpretation, ec)
+}
 
+// buildStatusReportFromHPA reuses an HPA already read by the caller. Compound
+// workflows such as snapshot and rollout use this entry point to keep one
+// request-scoped view of cluster state and avoid duplicate API reads.
+func buildStatusReportFromHPA(ctx context.Context, opts *options, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, includeInterpretation bool, ec *enrichmentContext) (hpaanalysis.StatusReport, error) {
 	report := hpaanalysis.StatusReport{
 		APIVersion: hpaanalysis.SchemaVersion,
 		Analysis:   hpaanalysis.AnalyzeWithOptions(hpa, includeInterpretation, analysisOptions(opts.HealthWeights, opts.Debug)),
@@ -139,6 +145,7 @@ func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, 
 	// health snapshot is recorded so trend history reflects the final state.
 	report.Analysis = hpaanalysis.FinalizeAnalysis(report.Analysis)
 	recordHealthSnapshotAndTrend(ctx, opts, hpa, &report)
+	report.FreezeCanonical()
 
 	return report, nil
 }

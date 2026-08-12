@@ -5,6 +5,7 @@ package history
 
 import (
 	"bufio"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -215,6 +216,48 @@ func (s *HealthStore) PruneAt(namespace, name string, retention time.Duration, n
 		return loadErr
 	}
 
+	if err := s.replaceSnapshots(path, snapshots); err != nil {
+		return err
+	}
+	if corruptErr != nil {
+		return corruptErr
+	}
+	return nil
+}
+
+// RecordAndLoad atomically appends a snapshot, applies retention, and returns
+// the requested analysis window while holding one inter-process lock.
+func (s *HealthStore) RecordAndLoad(namespace, name string, snapshot healthtrend.HealthSnapshot, retention, since time.Duration, now time.Time) ([]healthtrend.HealthSnapshot, error) {
+	if namespace == "" || name == "" {
+		return nil, fmt.Errorf("namespace and name must not be empty")
+	}
+	path := s.filePath(namespace, name)
+	release, err := acquireLock(path)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
+	snapshots, loadErr := loadHistoryFileAt(path, retention, now)
+	var corruptErr *CorruptLinesError
+	if loadErr != nil && !errors.As(loadErr, &corruptErr) {
+		return nil, loadErr
+	}
+	snapshots = append(snapshots, snapshot)
+	sort.SliceStable(snapshots, func(i, j int) bool { return snapshots[i].Timestamp.Before(snapshots[j].Timestamp) })
+	if err := s.replaceSnapshots(path, snapshots); err != nil {
+		return nil, err
+	}
+	cutoff := now.Add(-since)
+	start := sort.Search(len(snapshots), func(i int) bool { return !snapshots[i].Timestamp.Before(cutoff) })
+	window := append([]healthtrend.HealthSnapshot(nil), snapshots[start:]...)
+	if corruptErr != nil {
+		return window, corruptErr
+	}
+	return window, nil
+}
+
+func (s *HealthStore) replaceSnapshots(path string, snapshots []healthtrend.HealthSnapshot) error {
 	tmp, err := os.CreateTemp(s.dir, ".history-*.jsonl")
 	if err != nil {
 		return fmt.Errorf("creating temporary health store file: %w", err)
@@ -249,9 +292,6 @@ func (s *HealthStore) PruneAt(namespace, name string, retention time.Duration, n
 	}
 	if err := os.Rename(tmpPath, path); err != nil {
 		return fmt.Errorf("replacing health store file: %w", err)
-	}
-	if corruptErr != nil {
-		return corruptErr
 	}
 	return nil
 }
@@ -291,8 +331,28 @@ func (s *HealthStore) filePath(namespace, name string) string {
 	// Sanitize to prevent path traversal.
 	safeNS := sanitizeFilename(namespace)
 	safeName := sanitizeFilename(name)
-	return filepath.Join(s.dir, safeNS+"_"+safeName+".jsonl")
+	filename := safeNS + "_" + safeName + ".jsonl"
+	// sanitizeFilename truncates individual components. Add an identity hash
+	// whenever that happens, even if the combined filename still fits, so two
+	// names with the same prefix never share a history stream.
+	truncated := len(namespace) > maxFilenameSegmentLength || len(name) > maxFilenameSegmentLength
+	if truncated || len(filename) > maxHistoryFilenameLength {
+		sum := sha256.Sum256([]byte(namespace + "\x00" + name))
+		suffix := fmt.Sprintf("_%x.jsonl", sum[:8])
+		prefixLength := maxHistoryFilenameLength - len(suffix)
+		prefix := safeNS + "_" + safeName
+		if len(prefix) > prefixLength {
+			prefix = prefix[:prefixLength]
+		}
+		filename = prefix + suffix
+	}
+	return filepath.Join(s.dir, filename)
 }
+
+// Keep enough headroom below the common NAME_MAX=255 byte limit. A hash is
+// appended whenever truncation is required so two long HPA names cannot share
+// one history file.
+const maxHistoryFilenameLength = 240
 
 // maxFilenameSegmentLength bounds a single sanitized path segment so a
 // pathologically long name cannot blow past filesystem name limits.

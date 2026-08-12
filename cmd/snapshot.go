@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"archive/zip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -70,7 +69,7 @@ func runSnapshot(ctx context.Context, out io.Writer, opts *options, name, output
 	}
 
 	if outputPath == "" {
-		ts := time.Now().Format("20060102-150405")
+		ts := opts.CurrentTime().Format("20060102-150405")
 		outputPath = fmt.Sprintf("hpa-snapshot-%s-%s.zip", name, ts)
 	}
 
@@ -88,7 +87,7 @@ func collectSnapshotData(ctx context.Context, client *kube.Client, opts *options
 	data := &snapshotData{
 		Namespace: client.Namespace,
 		HPAName:   name,
-		Timestamp: time.Now(),
+		Timestamp: opts.CurrentTime(),
 	}
 
 	// 1. Fetch HPA
@@ -123,45 +122,22 @@ func collectSnapshotData(ctx context.Context, client *kube.Client, opts *options
 }
 
 func writeSnapshotZip(data *snapshotData, outputPath string) error {
-	entries := []struct {
-		Name    string
-		Content []byte
-	}{
-		{"hpa.yaml", data.HPA},
-		{"deployment.yaml", data.Deployment},
-		{"replicasets.yaml", data.ReplicaSets},
-		{"pods.yaml", data.Pods},
-		{"events.txt", data.Events},
-		{"metrics-api.txt", data.MetricsAPI},
-		{"analysis.json", data.Analysis},
-		{"report.md", data.Report},
-		{"metadata.txt", []byte(fmt.Sprintf(
+	entries := []bundle.Entry{
+		{Name: "hpa.yaml", Content: data.HPA},
+		{Name: "deployment.yaml", Content: data.Deployment},
+		{Name: "replicasets.yaml", Content: data.ReplicaSets},
+		{Name: "pods.yaml", Content: data.Pods},
+		{Name: "events.txt", Content: data.Events},
+		{Name: "metrics-api.txt", Content: data.MetricsAPI},
+		{Name: "analysis.json", Content: data.Analysis},
+		{Name: "report.md", Content: data.Report},
+		{Name: "metadata.txt", Content: []byte(fmt.Sprintf(
 			"HPA: %s/%s\nNamespace: %s\nTimestamp: %s\n",
 			data.Namespace, data.HPAName, data.Namespace, data.Timestamp.Format(time.RFC3339),
 		))},
 	}
 
-	return bundle.WritePrivateFileAtomic(outputPath, func(w io.Writer) error {
-		zw := zip.NewWriter(w)
-		for _, entry := range entries {
-			if len(entry.Content) == 0 {
-				continue
-			}
-			entryWriter, createErr := zw.Create(entry.Name)
-			if createErr != nil {
-				_ = zw.Close()
-				return fmt.Errorf("creating zip entry %s: %w", entry.Name, createErr)
-			}
-			if _, writeErr := entryWriter.Write(entry.Content); writeErr != nil {
-				_ = zw.Close()
-				return fmt.Errorf("writing zip entry %s: %w", entry.Name, writeErr)
-			}
-		}
-		if closeErr := zw.Close(); closeErr != nil {
-			return fmt.Errorf("finalizing zip archive: %w", closeErr)
-		}
-		return nil
-	})
+	return bundle.WriteEntries(outputPath, entries, false)
 }
 
 func fetchSnapshotTarget(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) []byte {
@@ -276,10 +252,10 @@ func buildSnapshotAnalysis(hpa *autoscalingv2.HorizontalPodAutoscaler, _ *option
 	return content
 }
 
-func buildSnapshotReport(ctx context.Context, _ *kube.Client, opts *options, hpa *autoscalingv2.HorizontalPodAutoscaler) []byte {
+func buildSnapshotReport(ctx context.Context, client *kube.Client, opts *options, hpa *autoscalingv2.HorizontalPodAutoscaler) []byte {
 	includeInterpretation := true
 	ec := newEnrichmentContext(ctx, opts)
-	statusReport, err := buildStatusReportWithClient(ctx, opts, hpa.Name, includeInterpretation, ec)
+	statusReport, err := buildStatusReportFromHPA(ctx, opts, client, hpa, includeInterpretation, ec)
 	if err != nil {
 		return []byte(fmt.Sprintf("# Error building status report: %v\n", err))
 	}

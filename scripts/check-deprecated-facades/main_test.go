@@ -74,3 +74,30 @@ import . "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 		t.Fatalf("dot import should be rejected: %+v", violations)
 	}
 }
+
+func TestScanSourceRejectsUnqualifiedFacadeInAnalysisBoundary(t *testing.T) {
+	source := []byte(`package hpa
+type Analysis struct { KEDA *KEDAAnalysis }
+`)
+	violations, err := scanSource("types.go", source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(violations) != 1 || violations[0].symbol != "KEDAAnalysis" {
+		t.Fatalf("violations=%+v", violations)
+	}
+}
+
+func TestScanSourceAllowsQualifiedCanonicalTypeInAnalysisBoundary(t *testing.T) {
+	source := []byte(`package hpa
+import "example/keda"
+type Analysis struct { KEDA *keda.Analysis }
+`)
+	violations, err := scanSource("types.go", source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(violations) != 0 {
+		t.Fatalf("violations=%+v", violations)
+	}
+}

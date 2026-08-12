@@ -15,6 +15,10 @@ import (
 )
 
 func enrichMetricFreshness(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
+	enrichMetricFreshnessAt(ctx, client, hpa, report, time.Now())
+}
+
+func enrichMetricFreshnessAt(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, now time.Time) {
 	if client == nil || hpa == nil || report == nil || len(report.Analysis.MetricFreshnessEntries) == 0 {
 		return
 	}
@@ -44,7 +48,7 @@ func enrichMetricFreshness(ctx context.Context, client *kube.Client, hpa *autosc
 		}
 	}
 
-	enrichResourceMetricSamples(ctx, client, hpa, report)
+	enrichResourceMetricSamples(ctx, client, hpa, report, now)
 	enrichKEDAFreshness(hpa.Namespace, report)
 }
 
@@ -127,7 +131,7 @@ func freshnessEventMatchesType(reason, metricType string) bool {
 	}
 }
 
-func enrichResourceMetricSamples(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
+func enrichResourceMetricSamples(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, now time.Time) {
 	if !hasResourceFreshnessEntry(report.Analysis.MetricFreshnessEntries) {
 		return
 	}
@@ -140,7 +144,6 @@ func enrichResourceMetricSamples(ctx context.Context, client *kube.Client, hpa *
 		return
 	}
 
-	now := time.Now()
 	for i := range report.Analysis.MetricFreshnessEntries {
 		entry := &report.Analysis.MetricFreshnessEntries[i]
 		resourceName, containerName, ok := resourceIdentityForFreshnessEntry(hpa, i, *entry)

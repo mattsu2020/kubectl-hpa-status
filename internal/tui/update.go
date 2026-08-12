@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -22,16 +21,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateTick()
 	case fetchResultMsg:
 		return m.updateFetchResult(msg)
-	case simResultMsg:
-		return m.updateSimResult(msg)
-	case applyResultMsg:
-		return m.updateApplyResult(msg)
-	case dryRunResultMsg:
-		return m.updateDryRunResult(msg)
-	case replayLoadedMsg:
-		return m.updateReplayLoaded(msg)
-	case batchAuditMsg:
-		return m.updateBatchAudit(msg)
+	}
+	if updated, cmd, handled := dispatchViewMessage(m, msg); handled {
+		return updated, cmd
 	}
 	return m, nil
 }
@@ -47,14 +39,8 @@ func (m Model) updateKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.filtering {
 		return m.handleFilterInput(msg)
 	}
-	// If in simulation view and textinput is focused, delegate.
-	if m.viewMode == simView && m.simState != nil && m.simState.metricMode && m.simState.metricInput.Focused() {
-		return m.handleSimInput(msg)
-	}
-	if m.viewMode == simView && m.simState != nil && !m.simState.metricMode {
-		if updated, handled := m.handleSimFieldInput(msg); handled {
-			return updated, nil
-		}
+	if updated, cmd, handled := controllerForMode(m.viewMode).HandleKey(m, msg); handled {
+		return updated, cmd
 	}
 	return m.handleKey(msg)
 }
@@ -68,7 +54,7 @@ func (m Model) updateTick() (tea.Model, tea.Cmd) {
 
 func (m Model) updateFetchResult(msg fetchResultMsg) (tea.Model, tea.Cmd) {
 	m.loading = false
-	m.lastRefresh = time.Now()
+	m.lastRefresh = m.currentTime()
 	// A refresh can change the HPA state and regenerate suggestions. Never
 	// carry an armed live-apply confirmation across that state boundary.
 	if m.fixState != nil {
@@ -121,24 +107,24 @@ func (m *Model) refocusAndClampCursorAfterFetch() {
 	}
 }
 
-func (m Model) updateSimResult(msg simResultMsg) (tea.Model, tea.Cmd) {
+func (m Model) updateSimResult(msg simResultMsg) Model {
 	if m.simState != nil {
 		m.simState.result = msg.result
 		m.simState.err = msg.err
 	}
-	return m, nil
+	return m
 }
 
-func (m Model) updateApplyResult(msg applyResultMsg) (tea.Model, tea.Cmd) {
+func (m Model) updateApplyResult(msg applyResultMsg) Model {
 	if m.fixState != nil {
 		m.fixState.applyConfirm = false
 		m.fixState.applied = true
 		m.fixState.applyErr = msg.err
 	}
-	return m, nil
+	return m
 }
 
-func (m Model) updateDryRunResult(msg dryRunResultMsg) (tea.Model, tea.Cmd) {
+func (m Model) updateDryRunResult(msg dryRunResultMsg) Model {
 	if m.fixState != nil {
 		m.fixState.applyConfirm = false
 		m.fixState.applied = false
@@ -149,28 +135,28 @@ func (m Model) updateDryRunResult(msg dryRunResultMsg) (tea.Model, tea.Cmd) {
 			m.fixState.dryRunResult = fmt.Sprintf("server-side validation passed: %s", msg.title)
 		}
 	}
-	return m, nil
+	return m
 }
 
-func (m Model) updateReplayLoaded(msg replayLoadedMsg) (tea.Model, tea.Cmd) {
+func (m Model) updateReplayLoaded(msg replayLoadedMsg) Model {
 	if m.replayState != nil {
 		m.replayState.loading = false
 		m.replayState.trace = msg.trace
 		m.replayState.err = msg.err
 	}
-	return m, nil
+	return m
 }
 
-func (m Model) updateBatchAudit(msg batchAuditMsg) (tea.Model, tea.Cmd) {
+func (m Model) updateBatchAudit(msg batchAuditMsg) Model {
 	if m.batchAuditState == nil {
-		return m, nil
+		return m
 	}
 	m.batchAuditState.loading = false
 	if msg.err != nil {
 		m.batchAuditState.err = msg.err
-		return m, nil
+		return m
 	}
 	m.batchAuditState.reports = msg.reports
 	m.batchAuditState.results = buildBatchAuditEntries(msg.reports)
-	return m, nil
+	return m
 }

@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/confidence"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/model"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
@@ -53,7 +54,7 @@ type Finding struct {
 	// Category classifies the finding: "stabilization", "tolerance", "policy".
 	Category string `json:"category" yaml:"category"`
 	// Severity is the finding severity: info, warning, error.
-	Severity confidence.Severity `json:"severity" yaml:"severity"`
+	Severity model.Severity `json:"severity" yaml:"severity"`
 	// Message is a human-readable description of the finding.
 	Message string `json:"message" yaml:"message"`
 	// Current shows the current configuration value.

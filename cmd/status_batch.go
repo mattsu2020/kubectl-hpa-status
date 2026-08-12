@@ -1,4 +1,4 @@
-// Batch rendering helpers for the multi-HPA status path. These functions
+// Package cmd provides batch rendering helpers for the multi-HPA status path. These functions
 // assemble the per-item status envelope, decide which output modes carry
 // failures in their own schema, and derive the aggregate exit code. They are
 // split from status.go so the command wiring stays focused on orchestration.

@@ -121,8 +121,14 @@ func main() {
 }
 
 func scanRepository(root string) ([]violation, error) {
+	rootFS, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, fmt.Errorf("open repository root: %w", err)
+	}
+	defer func() { _ = rootFS.Close() }()
+
 	var violations []violation
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+	err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -142,7 +148,7 @@ func scanRepository(root string) ([]violation, error) {
 		if err != nil {
 			return err
 		}
-		source, err := os.ReadFile(path)
+		source, err := rootFS.ReadFile(relative)
 		if err != nil {
 			return err
 		}
@@ -176,12 +182,21 @@ func scanSource(filename string, source []byte) ([]violation, error) {
 		return nil, fmt.Errorf("parse %s: %w", filename, err)
 	}
 
+	aliases, violations, err := collectDeprecatedImports(fileset, file, filename)
+	if err != nil {
+		return nil, err
+	}
+	violations = appendSelectorViolations(fileset, file, filename, aliases, violations)
+	return appendBoundaryTypeViolations(fileset, file, filename, violations), nil
+}
+
+func collectDeprecatedImports(fileset *token.FileSet, file *ast.File, filename string) (map[string]facadeSpec, []violation, error) {
 	aliases := map[string]facadeSpec{}
 	var violations []violation
 	for _, imported := range file.Imports {
 		importPath, err := strconv.Unquote(imported.Path.Value)
 		if err != nil {
-			return nil, fmt.Errorf("parse import in %s: %w", filename, err)
+			return nil, nil, fmt.Errorf("parse import in %s: %w", filename, err)
 		}
 		spec, tracked := deprecatedFacades[importPath]
 		if !tracked {
@@ -208,7 +223,10 @@ func scanSource(filename string, source []byte) ([]violation, error) {
 			aliases[alias] = spec
 		}
 	}
+	return aliases, violations, nil
+}
 
+func appendSelectorViolations(fileset *token.FileSet, file *ast.File, filename string, aliases map[string]facadeSpec, violations []violation) []violation {
 	ast.Inspect(file, func(node ast.Node) bool {
 		selector, ok := node.(*ast.SelectorExpr)
 		if !ok {
@@ -235,7 +253,41 @@ func scanSource(filename string, source []byte) ([]violation, error) {
 		})
 		return true
 	})
-	return violations, nil
+	return violations
+}
+
+func appendBoundaryTypeViolations(fileset *token.FileSet, file *ast.File, filename string, violations []violation) []violation {
+	// The primary storage and grouped schema live in package hpa itself, where
+	// import-selector checks cannot see unqualified compatibility aliases.
+	// Inspect field type expressions in those boundary files while deliberately
+	// skipping qualified canonical selectors such as churn.ChurnAnalysis.
+	base := filepath.Base(filename)
+	if file.Name.Name == "hpa" && (base == "types.go" || base == "analysis_groups.go") {
+		rootSpec := deprecatedFacades[modulePath+"/pkg/hpa"]
+		ast.Inspect(file, func(node ast.Node) bool {
+			field, ok := node.(*ast.Field)
+			if !ok {
+				return true
+			}
+			ast.Inspect(field.Type, func(typeNode ast.Node) bool {
+				if _, qualified := typeNode.(*ast.SelectorExpr); qualified {
+					return false
+				}
+				ident, ok := typeNode.(*ast.Ident)
+				if !ok {
+					return true
+				}
+				if _, deprecated := rootSpec.symbols[ident.Name]; !deprecated {
+					return true
+				}
+				position := fileset.Position(ident.Pos())
+				violations = append(violations, violation{file: filename, line: position.Line, column: position.Column, symbol: ident.Name, replacement: rootSpec.replacement})
+				return true
+			})
+			return false
+		})
+	}
+	return violations
 }
 
 func symbolSet(symbols ...string) map[string]struct{} {

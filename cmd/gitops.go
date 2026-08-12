@@ -20,7 +20,8 @@ import (
 // returns an error: manifest parse failures are logged as warnings and live
 // cluster fetch failures simply leave the corresponding fields empty, so the
 // caller always gets a (possibly empty) GitOpsConflict to render.
-func buildGitOpsConflict(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, manifestPath string) *gitops.Conflict {
+func buildGitOpsConflict(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, manifestPath string) (*gitops.Conflict, []string) {
+	var warnings []string
 	// Parse manifest path to extract spec.replicas
 	var manifestReplicas *int32
 	targetKind := hpa.Spec.ScaleTargetRef.Kind
@@ -30,8 +31,7 @@ func buildGitOpsConflict(ctx context.Context, client *kube.Client, hpa *autoscal
 		var err error
 		manifestReplicas, err = parseManifestReplicas(manifestPath, targetKind, targetName)
 		if err != nil {
-			// Log warning but continue - we can still detect ArgoCD/Flux
-			fmt.Fprintf(os.Stderr, "warning: failed to parse manifests: %v\n", err)
+			warnings = append(warnings, fmt.Sprintf("failed to parse manifests: %v", err))
 		}
 	}
 
@@ -95,7 +95,7 @@ func buildGitOpsConflict(ctx context.Context, client *kube.Client, hpa *autoscal
 
 	conflict := gitops.AnalyzeConflict(input)
 	conflict.Warnings = append(conflict.Warnings, liveFetchWarnings...)
-	return conflict
+	return conflict, warnings
 }
 
 // parseManifestReplicas reads YAML/JSON manifest files and extracts spec.replicas

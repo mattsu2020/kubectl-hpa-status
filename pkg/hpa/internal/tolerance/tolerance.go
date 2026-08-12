@@ -1,3 +1,4 @@
+// Package tolerance contains shared HPA tolerance calculations.
 package tolerance
 
 import (

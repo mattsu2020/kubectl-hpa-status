@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/mattsu2020/kubectl-hpa-status/internal/fileio"
 )
 
 const (
@@ -13,7 +15,7 @@ const (
 	// It prevents out-of-memory aborts when a huge or hostile file is passed,
 	// e.g. from a CI/CD pipeline. Streaming JSONL readers are bounded by
 	// maxSnapshotsPerTrace instead.
-	maxInputFileSize = 50 * 1024 * 1024 // 50 MiB
+	maxInputFileSize = fileio.MaxInputFileSize
 
 	// maxSnapshotsPerTrace bounds in-memory snapshot accumulation when
 	// streaming JSONL record files, preventing unbounded memory growth on
@@ -40,17 +42,7 @@ var walkSkipDirs = map[string]bool{
 // readFileBounded reads path into memory, refusing files larger than
 // maxInputFileSize. Callers wrap the returned error with context.
 func readFileBounded(path string) ([]byte, error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		return nil, err
-	}
-	if info.Size() > maxInputFileSize {
-		return nil, fmt.Errorf(
-			"file %s is %d bytes, exceeding the %d MiB input limit",
-			path, info.Size(), maxInputFileSize/(1024*1024),
-		)
-	}
-	return os.ReadFile(path) // #nosec G304 -- path comes from an explicit user flag, and size is bounded above
+	return fileio.ReadFileBounded(path)
 }
 
 // snapshotLimitError builds the error returned when a record file accumulates

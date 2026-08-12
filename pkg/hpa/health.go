@@ -3,6 +3,8 @@ package hpa
 import (
 	"strings"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/churn"
+
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 )
@@ -131,9 +133,11 @@ func applyConditionPenalties(acc *HealthAccumulator, conditions []autoscalingv2.
 	return health
 }
 
-// applyMaxReplicasCeilingPenalty applies the implicit maxReplicas penalty when replicas are pinned at max with pressure.
+// applyMaxReplicasCeilingPenalty applies the implicit maxReplicas penalty when
+// the desired recommendation is capped at maxReplicas with visible pressure.
+// Current replicas may lag desired replicas while the workload converges.
 func applyMaxReplicasCeilingPenalty(acc *HealthAccumulator, hpa *autoscalingv2.HorizontalPodAutoscaler, w resolvedWeights, health HealthState) HealthState {
-	if hpa.Status.CurrentReplicas != hpa.Status.DesiredReplicas || hpa.Status.DesiredReplicas != hpa.Spec.MaxReplicas {
+	if hpa.Status.DesiredReplicas != hpa.Spec.MaxReplicas {
 		return health
 	}
 	hasLimited := hasCondition(hpa.Status.Conditions, ConditionScalingLimited, corev1.ConditionTrue)
@@ -145,7 +149,7 @@ func applyMaxReplicasCeilingPenalty(acc *HealthAccumulator, hpa *autoscalingv2.H
 	if hasLimited || !hasPressure {
 		return health
 	}
-	acc.AddPenalty("Implicit maxReplicas ceiling (current==desired==max with pressure)", w.implicitMaxReplicas, HealthLimited)
+	acc.AddPenalty("Implicit maxReplicas ceiling (desired==max with pressure)", w.implicitMaxReplicas, HealthLimited)
 	if health == HealthOK {
 		health = HealthLimited
 	}
@@ -274,7 +278,7 @@ func hasInactiveKEDATrigger(a *Analysis) bool {
 
 func hasHighChurn(a *Analysis) bool {
 	return a.ChurnAnalysis != nil &&
-		(a.ChurnAnalysis.Level == ChurnHigh || a.ChurnAnalysis.Level == ChurnCritical)
+		(a.ChurnAnalysis.Level == churn.ChurnHigh || a.ChurnAnalysis.Level == churn.ChurnCritical)
 }
 
 func reconcileDynamicHealthPenalties(a *Analysis, weights HealthWeights) {

@@ -13,6 +13,7 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/event"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/model"
 )
 
 // PreventionReport holds the result of flapping prevention analysis
@@ -133,7 +134,7 @@ const (
 // (alternating scale-up/scale-down in short windows) and produces a diagnosis
 // with root causes and recommendations. Returns nil if fewer than 3 rescale
 // events are available (insufficient data to establish a pattern).
-func DiagnoseFlapping(events []event.Event, hpa *autoscalingv2.HorizontalPodAutoscaler) *Diagnosis {
+func DiagnoseFlapping(events []model.Event, hpa *autoscalingv2.HorizontalPodAutoscaler) *Diagnosis {
 	if hpa == nil || len(events) == 0 {
 		return nil
 	}

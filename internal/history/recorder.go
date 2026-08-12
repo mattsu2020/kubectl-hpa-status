@@ -23,6 +23,10 @@ type SnapshotStore interface {
 	PruneAt(namespace, name string, retention time.Duration, now time.Time) error
 }
 
+type transactionalSnapshotStore interface {
+	RecordAndLoad(namespace, name string, snapshot healthtrend.HealthSnapshot, retention, since time.Duration, now time.Time) ([]healthtrend.HealthSnapshot, error)
+}
+
 // RecordInput is independent of the large public Analysis DTO.
 type RecordInput struct {
 	Namespace       string
@@ -74,6 +78,17 @@ func (r *Recorder) RecordAndAnalyze(input RecordInput) RecordResult {
 	}
 
 	var result RecordResult
+	if store, ok := r.store.(transactionalSnapshotStore); ok {
+		snapshots, err := store.RecordAndLoad(input.Namespace, input.Name, snapshot, input.Retention, input.Since, now)
+		if err != nil {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("health trend transaction warning: %v", err))
+		}
+		if len(snapshots) > 0 {
+			trend := healthtrend.AnalyzeHealthTrend(snapshots)
+			result.Trend = &trend
+		}
+		return result
+	}
 	if err := r.store.Append(input.Namespace, input.Name, snapshot); err != nil {
 		result.Warnings = append(result.Warnings, fmt.Sprintf("health trend append failed: %v", err))
 	}

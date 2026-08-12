@@ -48,6 +48,13 @@ var formatRenderers = map[string]func(out io.Writer, templateStr string, value a
 	"incident":    func(out io.Writer, _ string, value any) error { return Incident(out, value) },
 }
 
+// FormatNames returns the canonical formats supported by the generic
+// dispatcher. Command-specific report formats (for example junit and sarif)
+// are intentionally not included.
+func FormatNames() []string {
+	return []string{"table", "wide", "json", "jsonl", "yaml", "jsonpath", "go-template", "markdown", "html", "incident", "prometheus"}
+}
+
 // Format is the top-level output-format dispatcher. writeText is invoked for
 // the human-readable formats ("", "table", "wide", "ja"); every other format
 // serializes value directly.

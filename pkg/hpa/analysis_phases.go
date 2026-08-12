@@ -3,6 +3,8 @@ package hpa
 import (
 	"fmt"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/churn"
+
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
@@ -18,6 +20,8 @@ func collectBase(src *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) 
 		Desired:           src.Status.DesiredReplicas,
 		Min:               minReplicas,
 		Max:               src.Spec.MaxReplicas,
+		Conditions:        make([]Condition, 0, len(src.Status.Conditions)),
+		Metrics:           make([]Metric, 0, len(src.Status.CurrentMetrics)),
 		Summary:           summary,
 		SummaryKey:        summaryKey,
 		CreationTimestamp: src.CreationTimestamp,
@@ -159,7 +163,7 @@ func correlateStabilizationChurn(a Analysis) Analysis {
 	if a.ChurnAnalysis == nil {
 		return a
 	}
-	if a.ChurnAnalysis.Level != ChurnHigh && a.ChurnAnalysis.Level != ChurnCritical {
+	if a.ChurnAnalysis.Level != churn.ChurnHigh && a.ChurnAnalysis.Level != churn.ChurnCritical {
 		return a
 	}
 	line := "[estimated] Churn detected while stabilization window is active — consider increasing scaleDown.stabilizationWindowSeconds to reduce thrashing."

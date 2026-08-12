@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"time"
 
 	hpareadiness "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/readiness"
 
@@ -83,7 +82,7 @@ func runReadinessDoctor(ctx context.Context, out io.Writer, opts *options, name 
 
 	// Build pod details with age.
 	podDetails := make([]hpareadiness.DoctorPod, 0, len(podList.Items))
-	now := time.Now()
+	now := opts.CurrentTime()
 	for i := range podList.Items {
 		pod := &podList.Items[i]
 		ageSeconds := int64(0)

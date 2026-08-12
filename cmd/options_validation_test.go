@@ -55,6 +55,16 @@ func TestRootRejectsInvalidEffectiveOptionsBeforeRun(t *testing.T) {
 			wantErr: "unsupported --output",
 		},
 		{
+			name:    "status rejects list-only junit output",
+			args:    []string{"status", "--output=junit", "web"},
+			wantErr: "supported only by list and scan",
+		},
+		{
+			name:    "status rejects lint-only github output",
+			args:    []string{"status", "--output=github", "web"},
+			wantErr: "supported only by lint",
+		},
+		{
 			name:    "unbounded list apply is rejected before client creation",
 			args:    []string{"list", "--apply", "--filter=all", "--yes"},
 			wantErr: "rejects --filter=all",

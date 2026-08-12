@@ -4,9 +4,11 @@ package cmd
 import (
 	"fmt"
 	"runtime/debug"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"k8s.io/client-go/kubernetes"
 )
 
 var (
@@ -21,8 +23,24 @@ var (
 
 // NewRootCommand creates and returns the root cobra command for kubectl-hpa-status.
 func NewRootCommand() *cobra.Command {
+	return NewRootCommandWithDeps(AppDeps{})
+}
+
+// AppDeps contains process-boundary dependencies used by the command tree.
+// Production callers use zero values; tests and embedders can inject the same
+// tree with a fake Kubernetes client instead of reconstructing Cobra wiring.
+type AppDeps struct {
+	Kubernetes kubernetes.Interface
+	Now        func() time.Time
+}
+
+// NewRootCommandWithDeps creates the production command tree with injectable
+// external dependencies.
+func NewRootCommandWithDeps(deps AppDeps) *cobra.Command {
 	opts := &options{}
 	*opts = defaultRootOptions()
+	opts.ClientOverride = deps.Kubernetes
+	opts.Now = deps.Now
 
 	root := &cobra.Command{
 		Use:               "kubectl-hpa-status",
@@ -46,18 +64,16 @@ func NewRootCommand() *cobra.Command {
 	watchFlags := newWatchFlagSet(opts)
 	addSharedFlags(root, workflowFlags, watchFlags)
 
-	registerFlagCompletions(root, opts)
-
 	registerCommands(root, opts, workflowFlags, watchFlags)
 
 	// alpha groups operational/experimental commands (policy, gitops, bundles,
 	// capacity planning, record analysis). As of v2.0 these live exclusively
 	// under the alpha path; the historical top-level aliases have been removed.
 	alpha := newAlphaCommand(opts)
-	for _, sub := range alpha.Commands() {
-		addSharedFlags(sub, workflowFlags)
-	}
 	root.AddCommand(alpha)
+	if err := registerFlagCompletions(root, opts); err != nil {
+		panic(fmt.Sprintf("register flag completions: %v", err))
+	}
 
 	_ = root.MarkPersistentFlagFilename("kubeconfig")
 	_ = root.MarkPersistentFlagFilename("config")
@@ -192,7 +208,9 @@ func registerCommands(root *cobra.Command, opts *options, workflowFlags, watchFl
 		for _, build := range cg.builders {
 			sub := build(opts)
 			sub.GroupID = cg.group.ID
-			addSharedFlags(sub, workflowFlags)
+			if workflowFlagCommands[sub.Name()] {
+				addSharedFlags(sub, workflowFlags)
+			}
 			if watchFlagCommands[sub.Name()] {
 				addSharedFlags(sub, watchFlags)
 			}
@@ -201,6 +219,13 @@ func registerCommands(root *cobra.Command, opts *options, workflowFlags, watchFl
 	}
 	root.AddCommand(newVersionCommand())
 	root.AddCommand(newCompletionCommand(root))
+}
+
+// workflowFlagCommands declares the commands that actually execute the shared
+// apply/export/trend/enrichment/report workflow. Other commands reject these
+// flags instead of accepting values they never inspect.
+var workflowFlagCommands = map[string]bool{
+	"status": true, "list": true, "scan": true, "watch": true, "tui": true,
 }
 
 func buildVersion() string {

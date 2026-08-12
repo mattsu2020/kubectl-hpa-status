@@ -2,11 +2,13 @@ package hpa
 
 import (
 	"fmt"
+
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/flapping"
 )
 
 // AppendFlappingPreventionText appends the flapping prevention advisor
 // section to a byte buffer (used by the main status text renderer).
-func AppendFlappingPreventionText(out *[]byte, report *FlappingPreventionReport, labels labels) {
+func AppendFlappingPreventionText(out *[]byte, report *flapping.PreventionReport, labels labels) {
 	if report == nil {
 		return
 	}

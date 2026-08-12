@@ -44,6 +44,26 @@ func TestRunStatus_ScalingInactiveWithExternalMetric(t *testing.T) {
 	}
 }
 
+func TestWorkflowFlagsOnlyAppearOnCapableCommands(t *testing.T) {
+	root := NewRootCommand()
+	for _, path := range [][]string{{"compare"}, {"alpha", "analyze-record"}, {"fleet"}} {
+		cmd, _, err := root.Find(path)
+		if err != nil {
+			t.Fatalf("find %v: %v", path, err)
+		}
+		if cmd.Flags().Lookup("apply") != nil {
+			t.Errorf("%s unexpectedly accepts --apply", cmd.CommandPath())
+		}
+	}
+	status, _, err := root.Find([]string{"status"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Flags().Lookup("apply") == nil {
+		t.Fatal("status must accept --apply")
+	}
+}
+
 func TestRunStatus_ImplicitMaxReplicas(t *testing.T) {
 	// current == desired == maxReplicas but no ScalingLimited condition.
 	hpa := testutil.BuildHPA("default", "capped",

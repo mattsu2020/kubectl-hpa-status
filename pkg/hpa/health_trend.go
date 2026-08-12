@@ -14,7 +14,7 @@ import (
 // Delegates to healthtrend.AnalyzeHealthTrend.
 //
 // Deprecated: Use healthtrend.AnalyzeHealthTrend instead. Scheduled for removal in v3.0.0.
-func AnalyzeHealthTrend(snapshots []HealthSnapshot) HealthTrendResult {
+func AnalyzeHealthTrend(snapshots []HealthSnapshot) healthtrend.Result {
 	return healthtrend.AnalyzeHealthTrend(snapshots)
 }
 
@@ -62,7 +62,7 @@ func RenderHealthTrendASCII(snapshots []HealthSnapshot, width int) string {
 // Delegates to healthtrend.FormatTrendText.
 //
 // Deprecated: Use healthtrend.FormatTrendText instead. Scheduled for removal in v3.0.0.
-func FormatTrendText(result HealthTrendResult) string {
+func FormatTrendText(result healthtrend.Result) string {
 	return healthtrend.FormatTrendText(result)
 }
 
@@ -70,7 +70,7 @@ func FormatTrendText(result HealthTrendResult) string {
 // Delegates to healthtrend.FormatTrendAnomalyText.
 //
 // Deprecated: Use healthtrend.FormatTrendAnomalyText instead. Scheduled for removal in v3.0.0.
-func FormatTrendAnomalyText(result HealthTrendResult) string {
+func FormatTrendAnomalyText(result healthtrend.Result) string {
 	return healthtrend.FormatTrendAnomalyText(result)
 }
 
@@ -78,7 +78,7 @@ func FormatTrendAnomalyText(result HealthTrendResult) string {
 // and ASCII graph. Delegates to healthtrend.FormatTrendAnomalyGraph.
 //
 // Deprecated: Use healthtrend.FormatTrendAnomalyGraph instead. Scheduled for removal in v3.0.0.
-func FormatTrendAnomalyGraph(result HealthTrendResult, graphWidth int) string {
+func FormatTrendAnomalyGraph(result healthtrend.Result, graphWidth int) string {
 	return healthtrend.FormatTrendAnomalyGraph(result, graphWidth)
 }
 
@@ -86,6 +86,6 @@ func FormatTrendAnomalyGraph(result HealthTrendResult, graphWidth int) string {
 // Delegates to healthtrend.FormatTrendListRow.
 //
 // Deprecated: Use healthtrend.FormatTrendListRow instead. Scheduled for removal in v3.0.0.
-func FormatTrendListRow(result HealthTrendResult) string {
+func FormatTrendListRow(result healthtrend.Result) string {
 	return healthtrend.FormatTrendListRow(result)
 }

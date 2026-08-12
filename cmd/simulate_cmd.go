@@ -2,15 +2,14 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 	"github.com/spf13/cobra"
-	"sigs.k8s.io/yaml"
 )
 
 type simulateReport struct {
@@ -116,22 +115,10 @@ func runSimulate(ctx context.Context, out io.Writer, opts *options, name string,
 	// Render output.
 	format, _ := selectOutputFromOptions(opts)
 
-	switch format {
-	case "json":
-		encoder := json.NewEncoder(out)
-		encoder.SetIndent("", "  ")
-		return encoder.Encode(report)
-	case "yaml":
-		data, marshalErr := yaml.Marshal(report)
-		if marshalErr != nil {
-			return marshalErr
-		}
-		_, err = out.Write(data)
-		return err
-	default:
+	return render.Format(out, format, "", report, func(out io.Writer) error {
 		theme := style.NewTheme(shouldColorize(opts.Color, out))
 		return writeSimulateText(out, report, theme)
-	}
+	})
 }
 
 // buildSimulateOverride builds the spec override map from --set-target and

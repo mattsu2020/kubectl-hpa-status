@@ -47,12 +47,12 @@ func SummarizeDirectionWithKey(hpa *autoscalingv2.HorizontalPodAutoscaler, minRe
 
 func summarizeDirectionFromReplicas(current, desired, maxReplicas, minReplicas int32) (string, string) {
 	switch {
+	case desired == maxReplicas:
+		return "HPA is at maxReplicas.", "dir_at_max"
 	case desired > current:
 		return "HPA currently wants to scale up.", "dir_scale_up"
 	case desired < current:
 		return "HPA currently wants to scale down.", "dir_scale_down"
-	case desired == maxReplicas:
-		return "HPA is at maxReplicas.", "dir_at_max"
 	case desired == minReplicas && minReplicas == 0:
 		return "HPA is at minReplicas (scale-to-zero enabled).", "dir_at_min_scale_to_zero"
 	case desired == minReplicas:

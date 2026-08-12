@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/behavioradvisor"
 	hpachurn "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/churn"
@@ -46,6 +47,7 @@ type CapacityAnalysisConfig struct {
 	CapacityHeadroom bool // opts.capacityHeadroom
 	ReadinessImpact  bool // opts.readinessImpact
 	ScalePath        bool // opts.scalePath
+	Now              time.Time
 }
 
 // RolloutAndBlockersConfig bundles the rollout/blockers-enricher flags.
@@ -99,9 +101,9 @@ func enrichMetricsDiagnostics(hpa *autoscalingv2.HorizontalPodAutoscaler, report
 	report.Analysis.MetricsDiagnostics = hpaanalysis.DiagnoseMetricsPipeline(hpa)
 }
 
-func enrichMetricFreshnessReport(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
+func enrichMetricFreshnessReport(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, now time.Time) {
 	report.Analysis.MetricFreshnessEntries = hpaanalysis.AnalyzeMetricFreshness(hpa, report.Events)
-	enrichMetricFreshness(ctx, client, hpa, report)
+	enrichMetricFreshnessAt(ctx, client, hpa, report, now)
 }
 
 func enrichResourceCheck(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
@@ -238,7 +240,7 @@ func enrichCapacityAnalysis(ctx context.Context, client *kube.Client, snapshot *
 		report.Analysis.CapacityHeadroom = buildCapacityHeadroomWithSnapshot(ctx, client, hpa, report.Analysis.Target, snapshot)
 	}
 	if cfg.ReadinessImpact {
-		report.Analysis.ReadinessImpact = buildReadinessImpactWithSnapshot(ctx, client, hpa, snapshot)
+		report.Analysis.ReadinessImpact = buildReadinessImpactWithSnapshot(ctx, client, hpa, snapshot, cfg.Now)
 	}
 	if cfg.ScalePath {
 		report.Analysis.ScalePath = buildScalePathWithSnapshot(ctx, client, hpa, snapshot)
@@ -261,7 +263,8 @@ func enrichCapacityPlan(ctx context.Context, client *kube.Client, snapshot *obse
 }
 
 func enrichGitOpsConflict(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, manifestPath string) {
-	conflict := buildGitOpsConflict(ctx, client, hpa, manifestPath)
+	conflict, warnings := buildGitOpsConflict(ctx, client, hpa, manifestPath)
+	report.Analysis.Warnings = append(report.Analysis.Warnings, warnings...)
 	if conflict != nil {
 		report.Analysis.GitOpsConflict = conflict
 	}

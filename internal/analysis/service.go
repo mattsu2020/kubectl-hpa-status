@@ -37,10 +37,11 @@ type BatchEnrichment struct {
 
 // Result is the canonical finalized representation used by list and TUI.
 type Result struct {
-	Key      string
-	Analysis hpaanalysis.Analysis
-	ListItem hpaanalysis.ListItem
-	Report   hpaanalysis.StatusReport
+	Key       string
+	Analysis  hpaanalysis.Analysis
+	Canonical hpaanalysis.GroupedAnalysis
+	ListItem  hpaanalysis.ListItem
+	Report    hpaanalysis.StatusReport
 }
 
 // AnalyzeOne runs the complete deterministic analysis path for one HPA.
@@ -58,14 +59,14 @@ func AnalyzeOne(hpa *autoscalingv2.HorizontalPodAutoscaler, opts Options, enrich
 	analysis = hpaanalysis.FinalizeAnalysis(analysis)
 
 	key := analysis.Namespace + "/" + analysis.Name
+	report := hpaanalysis.StatusReport{APIVersion: hpaanalysis.SchemaVersion, Analysis: analysis}
+	report.FreezeCanonical()
 	return Result{
-		Key:      key,
-		Analysis: analysis,
-		ListItem: hpaanalysis.NewListItem(analysis),
-		Report: hpaanalysis.StatusReport{
-			APIVersion: hpaanalysis.SchemaVersion,
-			Analysis:   analysis,
-		},
+		Key:       key,
+		Analysis:  analysis,
+		Canonical: report.CanonicalAnalysis(),
+		ListItem:  hpaanalysis.NewListItem(analysis),
+		Report:    report,
 	}
 }
 

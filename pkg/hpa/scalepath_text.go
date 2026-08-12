@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/readiness"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
@@ -140,7 +141,7 @@ func appendCapacityHeadroomText(out *[]byte, headroom *CapacityHeadroom, theme s
 }
 
 // appendReadinessImpactText renders the readiness impact section.
-func appendReadinessImpactText(out *[]byte, impact *ReadinessImpact, theme style.Theme) {
+func appendReadinessImpactText(out *[]byte, impact *readiness.Impact, theme style.Theme) {
 	if impact == nil {
 		return
 	}

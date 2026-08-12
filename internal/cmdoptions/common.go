@@ -42,6 +42,16 @@ type ConnectionOptions struct {
 	// It is intentionally not a CLI flag: cobra wires it to ErrOrStderr so
 	// machine-readable stdout remains safe to redirect.
 	Err io.Writer
+	// Now supplies operation time for deterministic command orchestration.
+	Now func() time.Time
+}
+
+// CurrentTime returns the injected clock value or wall-clock time by default.
+func (c *Common) CurrentTime() time.Time {
+	if c.Now != nil {
+		return c.Now()
+	}
+	return time.Now()
 }
 
 // OutputOptions holds rendering and formatting flags: output format,

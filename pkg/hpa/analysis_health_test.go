@@ -269,6 +269,17 @@ func TestHealthScorePenaltyGating(t *testing.T) {
 			wantFullScore: false,
 		},
 		{
+			name: "ImplicitMaxReplicas_PenaltyWhileCurrentReplicasConverge",
+			setup: func(hpa *autoscalingv2.HorizontalPodAutoscaler) {
+				hpa.Status.CurrentReplicas = 9
+				hpa.Status.DesiredReplicas = 10
+				hpa.Spec.MaxReplicas = 10
+				hpa.Spec.Metrics = []autoscalingv2.MetricSpec{resourceMetricSpec(corev1.ResourceCPU, 80)}
+				hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{resourceMetricStatus(corev1.ResourceCPU, 90)}
+			},
+			wantFullScore: false,
+		},
+		{
 			name: "ImplicitMaxReplicas_PenaltyWithScalingLimited",
 			setup: func(hpa *autoscalingv2.HorizontalPodAutoscaler) {
 				hpa.Status.CurrentReplicas = 10

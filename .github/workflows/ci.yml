@@ -199,12 +199,12 @@ jobs:
 
   # Forward-compatibility gate: build and test against the next Go release in
   # addition to the version pinned in go.mod. Catches upstream API removals and
-  # stdlib behavior changes before they land in the supported toolchain. Allowed
-  # to fail (continue-on-error) so a beta-toolchain hiccup does not block a PR,
-  # but surfaces regressions on the dashboard.
+  # stdlib behavior changes before they land in the supported toolchain. A
+  # future or RC toolchain may not be published yet; that availability failure
+  # is reported as a notice and skipped, while actual build/test failures still
+  # fail the job once setup succeeds.
   forward-compat:
     runs-on: ubuntu-latest
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -216,6 +216,8 @@ jobs:
           persist-credentials: false
 
       - name: Setup Go ${{ matrix.go-version }}
+        id: setup_go
+        continue-on-error: true
         uses: actions/setup-go@v6
         with:
           go-version: ${{ matrix.go-version }}
@@ -223,10 +225,18 @@ jobs:
           # a different toolchain.
           cache: false
 
+      - name: Report unavailable toolchain
+        if: steps.setup_go.outcome == 'failure'
+        env:
+          GO_VERSION: ${{ matrix.go-version }}
+        run: echo "::notice::Go ${GO_VERSION} is not published for this runner yet; skipping forward-compatibility checks"
+
       - name: Build
+        if: steps.setup_go.outcome == 'success'
         run: go build ./...
 
       - name: Test
+        if: steps.setup_go.outcome == 'success'
         run: go test ./...
 
   e2e:
@@ -305,7 +315,7 @@ jobs:
           REQUIRE_OPTIONAL_CRDS: ${{ matrix.kubernetes == '1.35' }}
         run: |
           keda_url="https://github.com/kedacore/keda/releases/download/${KEDA_VERSION}/keda-${KEDA_VERSION#v}-crds.yaml"
-          vpa_url="https://github.com/kubernetes/autoscaler/releases/download/${VPA_VERSION}/vpa-crds.yaml"
+          vpa_url="https://raw.githubusercontent.com/kubernetes/autoscaler/${VPA_VERSION}/vertical-pod-autoscaler/deploy/vpa-v1-crd-gen.yaml"
 
           echo "Fetching KEDA CRDs: ${keda_url}"
           if ! kubectl apply --server-side -f "${keda_url}"; then

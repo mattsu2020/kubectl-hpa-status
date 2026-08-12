@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/confidence"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/model"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
@@ -35,7 +36,7 @@ type Result struct {
 	// SuggestedMetric shows a suggested ContainerResource metric YAML fragment.
 	SuggestedMetric string `json:"suggestedMetric,omitempty" yaml:"suggestedMetric,omitempty"`
 	// Confidence indicates the confidence level of the recommendation.
-	Confidence confidence.Confidence `json:"confidence" yaml:"confidence"`
+	Confidence model.Confidence `json:"confidence" yaml:"confidence"`
 	// NextAction suggests what the operator should do next.
 	NextAction string `json:"nextAction,omitempty" yaml:"nextAction,omitempty"`
 	// ContainerUsageHints provides per-container usage hints when metrics are available.

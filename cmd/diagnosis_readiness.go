@@ -19,7 +19,7 @@ const (
 	defaultCPUInitializationPeriod = 5 * time.Minute
 )
 
-func buildReadinessImpactWithSnapshot(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, snapshot *observation.Snapshot) *hpareadiness.Impact {
+func buildReadinessImpactWithSnapshot(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, snapshot *observation.Snapshot, now time.Time) *hpareadiness.Impact {
 	if client == nil || hpa == nil {
 		return nil
 	}
@@ -57,7 +57,9 @@ func buildReadinessImpactWithSnapshot(ctx context.Context, client *kube.Client, 
 	if !pods.Known() {
 		return impact
 	}
-	now := time.Now()
+	if now.IsZero() {
+		now = time.Now()
+	}
 	impact.TotalPods = int32(len(pods.Data))
 	countNotYetReadyPods(impact, pods.Data, hpa.Namespace, now)
 	countMissingMetricPods(ctx, impact, client, hpa.Namespace, info.SelectorStr, pods.Data)

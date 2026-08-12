@@ -95,13 +95,7 @@ func cloneStringMap(m map[string]string) map[string]string {
 // populating the human-readable Message.
 func Quotas(infos []kube.QuotaInfo) []hpaanalysis.QuotaConstraint {
 	return QuotaDetail(infos, func(q kube.QuotaInfo) hpaanalysis.QuotaConstraint {
-		return hpaanalysis.QuotaConstraint{
-			Name:     q.Name,
-			Resource: q.Resource,
-			Used:     q.Used,
-			Hard:     q.Hard,
-			Message:  fmt.Sprintf("ResourceQuota %q is near limit for %s (used=%s, hard=%s)", q.Name, q.Resource, q.Used, q.Hard),
-		}
+		return hpaanalysis.NewQuotaConstraint(q.Name, q.Resource, q.Used, q.Hard)
 	})
 }
 

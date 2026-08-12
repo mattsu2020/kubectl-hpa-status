@@ -9,6 +9,7 @@ import (
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/suggestion"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/model"
 )
 
 // LoadPolicyFile reads and validates a policy YAML file from the given path.
@@ -48,8 +49,8 @@ func EvaluateMergePatch(hpa *autoscalingv2.HorizontalPodAutoscaler, mergePatch s
 // GuardFix evaluates suggested merge patches against a policy file before
 // applying them. Each suggestion is applied to a copy of the HPA and then
 // checked with the existing policy engine.
-func GuardFix(suggestions []suggestion.Suggestion, policyFile File, hpa *autoscalingv2.HorizontalPodAutoscaler) *suggestion.GuardResult {
-	result := &suggestion.GuardResult{}
+func GuardFix(suggestions []model.Suggestion, policyFile File, hpa *autoscalingv2.HorizontalPodAutoscaler) *model.GuardResult {
+	result := &model.GuardResult{}
 	if hpa == nil {
 		for _, sug := range suggestions {
 			result.Blocked = append(result.Blocked, suggestion.GuardBlocked{

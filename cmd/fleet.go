@@ -2,16 +2,14 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/spf13/cobra"
-	"sigs.k8s.io/yaml"
-
+	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/fleet"
+	"github.com/spf13/cobra"
 )
 
 func newFleetCommand(opts *options) *cobra.Command {
@@ -53,19 +51,7 @@ func runFleet(ctx context.Context, out io.Writer, opts *options, risk string) er
 
 func writeFleetReport(out io.Writer, opts *options, report fleet.Report) error {
 	format, _ := selectOutputFromOptions(opts)
-	switch format {
-	case "json":
-		encoder := json.NewEncoder(out)
-		encoder.SetIndent("", "  ")
-		return encoder.Encode(report)
-	case "yaml":
-		data, err := yaml.Marshal(report)
-		if err != nil {
-			return err
-		}
-		_, err = out.Write(data)
-		return err
-	default:
+	return render.Format(out, format, "", report, func(out io.Writer) error {
 		_, _ = fmt.Fprintln(out, "Fleet HPA Risk Summary")
 		_, _ = fmt.Fprintf(out, "  risk model: %s\n", report.Risk)
 		_, _ = fmt.Fprintf(out, "  HPAs: %d\n", report.HPAs)
@@ -83,5 +69,5 @@ func writeFleetReport(out io.Writer, opts *options, report fleet.Report) error {
 			}
 		}
 		return nil
-	}
+	})
 }

@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"time"
@@ -10,10 +9,10 @@ import (
 	hpaflapping "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/flapping"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 	"github.com/spf13/cobra"
-	"sigs.k8s.io/yaml"
 )
 
 type flapReport struct {
@@ -59,7 +58,7 @@ func runFlapLive(ctx context.Context, out io.Writer, opts *options, name string,
 	if since <= 0 {
 		since = 6 * time.Hour
 	}
-	coreEvents, err := kube.FetchRecentHPAEventsSince(ctx, client.Interface, hpa.Namespace, hpa.Name, time.Now().Add(-since))
+	coreEvents, err := kube.FetchRecentHPAEventsSince(ctx, client.Interface, hpa.Namespace, hpa.Name, opts.CurrentTime().Add(-since))
 	if err != nil {
 		return fmt.Errorf("failed to fetch events: %w", err)
 	}
@@ -110,19 +109,7 @@ func runFlapFromRecord(out io.Writer, opts *options, name, path string) error {
 
 func writeFlapReport(out io.Writer, opts *options, report flapReport) error {
 	format, _ := selectOutputFromOptions(opts)
-	switch format {
-	case "json":
-		encoder := json.NewEncoder(out)
-		encoder.SetIndent("", "  ")
-		return encoder.Encode(report)
-	case "yaml":
-		data, err := yaml.Marshal(report)
-		if err != nil {
-			return err
-		}
-		_, err = out.Write(data)
-		return err
-	default:
+	return render.Format(out, format, "", report, func(out io.Writer) error {
 		theme := style.NewTheme(shouldColorize(opts.Color, out))
 		_, _ = fmt.Fprintf(out, "Flapping Analysis: %s/%s\n", report.Namespace, report.Name)
 		_, _ = fmt.Fprintf(out, "  source: %s\n", report.Source)
@@ -148,7 +135,7 @@ func writeFlapReport(out io.Writer, opts *options, report flapReport) error {
 			}
 		}
 		return nil
-	}
+	})
 }
 
 func writeFlapDiagnosisText(out io.Writer, d *hpaflapping.Diagnosis) {

@@ -70,7 +70,7 @@ func runHistory(ctx context.Context, out io.Writer, opts *options, name string, 
 		Anomalies:         historyAnomalies(report.Analysis),
 	}
 	if prometheusURL != "" {
-		result.Queries = buildPrometheusHistoryQueries(prometheusURL, report.Analysis, since)
+		result.Queries = buildPrometheusHistoryQueriesAt(prometheusURL, report.Analysis, since, opts.CurrentTime())
 	}
 	format, templateStr := selectOutputFromOptions(opts)
 	return render.Format(out, format, templateStr, result, func(out io.Writer) error {
@@ -107,8 +107,7 @@ func historyAnomalies(a hpaanalysis.Analysis) []string {
 	return anomalies
 }
 
-func buildPrometheusHistoryQueries(base string, a hpaanalysis.Analysis, since time.Duration) []prometheusQuery {
-	end := time.Now()
+func buildPrometheusHistoryQueriesAt(base string, a hpaanalysis.Analysis, since time.Duration, end time.Time) []prometheusQuery {
 	start := end.Add(-since)
 	params := func(query string) string {
 		u, err := url.Parse(base)
