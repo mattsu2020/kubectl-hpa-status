@@ -188,7 +188,7 @@ func TestSimulateHPA_ValidatesReplicaBounds(t *testing.T) {
 	}
 }
 
-func TestSimulateHPA_RecomputesScalingLimitedCondition(t *testing.T) {
+func TestSimulateHPA_RecomputesScalingLimitedConditionAndInfersCeiling(t *testing.T) {
 	hpa := buildMetricSimHPA(10, 10, 10, 100)
 	current := int32(200)
 	hpa.Status.CurrentMetrics[0].Resource.Current.AverageUtilization = &current
@@ -208,8 +208,8 @@ func TestSimulateHPA_RecomputesScalingLimitedCondition(t *testing.T) {
 	if result.After.ScalingLimited {
 		t.Fatal("After.ScalingLimited reused the stale live condition")
 	}
-	if result.After.Health == string(HealthLimited) {
-		t.Fatalf("After.Health = %q; stale ScalingLimited penalty was retained", result.After.Health)
+	if result.After.Health != string(HealthLimited) {
+		t.Fatalf("After.Health = %q, want %q while the recommendation reaches maxReplicas under pressure", result.After.Health, HealthLimited)
 	}
 }
 

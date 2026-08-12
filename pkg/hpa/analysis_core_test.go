@@ -112,6 +112,23 @@ func TestAnalyzeMultiMetricMaxReplicasExplainsLimitAndImpactEstimate(t *testing.
 	}
 }
 
+func TestAnalyzeReportsMaxReplicasWhileCurrentReplicasConverge(t *testing.T) {
+	hpa := baseHPA()
+	hpa.Status.CurrentReplicas = 4
+	hpa.Status.DesiredReplicas = 5
+	hpa.Spec.MaxReplicas = 5
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{resourceMetricSpec(corev1.ResourceCPU, 50)}
+	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{resourceMetricStatus(corev1.ResourceCPU, 60)}
+
+	got := Analyze(hpa, false)
+	if got.Summary != "HPA is at maxReplicas." {
+		t.Fatalf("summary = %q, want maxReplicas summary", got.Summary)
+	}
+	if got.Health != string(HealthLimited) {
+		t.Fatalf("health = %q, want %q", got.Health, HealthLimited)
+	}
+}
+
 func TestAnalyzeScaleDownStabilized(t *testing.T) {
 	hpa := baseHPA()
 	hpa.Status.CurrentReplicas = 8
