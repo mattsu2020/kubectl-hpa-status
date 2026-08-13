@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 )
 
 func writeClusterSummaryMarkdown(out io.Writer, report hpaanalysis.ListReport) error {
@@ -120,11 +121,12 @@ func prioritizedListActions(items []hpaanalysis.ListItem) []string {
 	return actions
 }
 
+// escapeMarkdownCell escapes a single-line summary field for a Markdown table
+// cell using the shared rendutil escaping (HTML-safe, newline-flattening),
+// rendering empty values as a placeholder dash.
 func escapeMarkdownCell(value string) string {
-	value = strings.ReplaceAll(value, "|", "\\|")
-	value = strings.ReplaceAll(value, "\n", " ")
 	if value == "" {
 		return "-"
 	}
-	return value
+	return rendutil.MarkdownInline(value)
 }
