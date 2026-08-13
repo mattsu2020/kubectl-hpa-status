@@ -537,11 +537,16 @@ func policyReplicaLimit(current int32, scaleUp bool, policy autoscalingv2.HPASca
 			candidate = current64 - int64(policy.Value)
 		}
 	case autoscalingv2.PercentScalingPolicy:
-		if scaleUp {
-			candidate = int64(math.Ceil(float64(current) * (1 + float64(policy.Value)/100)))
-		} else {
-			candidate = int64(float64(current) * (1 - float64(policy.Value)/100))
+		// Round fractionally-generated replica counts up in both directions so
+		// the projection is symmetric and never underestimates how many pods
+		// remain after a scale-down band. (This is a projection, deliberately
+		// not a byte-for-byte reimplementation of the controller's separate
+		// truncate-the-change approach.)
+		multiplier := 1 + float64(policy.Value)/100
+		if !scaleUp {
+			multiplier = 1 - float64(policy.Value)/100
 		}
+		candidate = int64(math.Ceil(float64(current) * multiplier))
 	default:
 		return 0, false
 	}
