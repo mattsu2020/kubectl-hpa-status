@@ -207,6 +207,13 @@ kubectl hpa status web-multi -n hpa-status-examples --explain --suggest
 kubectl hpa status list -n hpa-status-examples --wide
 ```
 
+### 言語対応の範囲
+
+`--lang=en|ja` は、表・セクションのラベルと status のサマリー行を
+ローカライズします。詳細な診断根拠、リスク、推奨事項、修復手順は英語のままです。
+JSON/YAML のフィールド名と機械処理向け enum 値も言語に依存しないため、表示言語に
+かかわらずスクリプトから安定したスキーマを利用できます。
+
 ## 複数 HPA の出力と partial result
 
 `status NAME1 NAME2 ...` を実行すると、指定したすべての HPA をまとめて報告します。すべての HPA に到達できる場合は入力順に各アイテムの結果を出力します。一部の HPA の取得に失敗した場合（名前違い・namespace 違い・RBAC 拒否など）でも全体を中断せず、**partial result** として成功したアイテムを出力します。これにより list/fleet 的な用途でも健全なアイテムを取りこぼしません。

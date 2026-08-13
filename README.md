@@ -207,6 +207,14 @@ kubectl hpa status web-multi -n hpa-status-examples --explain --suggest
 kubectl hpa status list -n hpa-status-examples --wide
 ```
 
+### Language scope
+
+`--lang=en|ja` localizes table and section labels plus the status summary line.
+Detailed diagnostic evidence, risks, recommendations, and remediation text
+remain English. JSON/YAML field names and machine-readable enum values are
+also language-independent so scripts receive a stable schema regardless of
+the selected display language.
+
 ## Multi-HPA output and partial results
 
 `status NAME1 NAME2 ...` runs report all named HPAs together. When every HPA is reachable, the output is the per-item result in input order. When one or more HPAs fail to fetch (e.g. wrong name, wrong namespace, RBAC denial), the run no longer aborts: it emits a **partial result** so the fleet/list use case still gets the healthy items.

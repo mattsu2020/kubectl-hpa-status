@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	sharedclock "github.com/mattsu2020/kubectl-hpa-status/pkg/clock"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/healthtrend"
 )
 
@@ -12,9 +13,9 @@ type Clock interface {
 	Now() time.Time
 }
 
-type realClock struct{}
+type sharedClock struct{}
 
-func (realClock) Now() time.Time { return time.Now() }
+func (sharedClock) Now() time.Time { return sharedclock.Now() }
 
 // SnapshotStore is the persistence surface required by Recorder.
 type SnapshotStore interface {
@@ -57,7 +58,7 @@ type Recorder struct {
 // NewRecorder creates a recorder. A nil clock selects the real clock.
 func NewRecorder(store SnapshotStore, clock Clock) *Recorder {
 	if clock == nil {
-		clock = realClock{}
+		clock = sharedClock{}
 	}
 	return &Recorder{store: store, clock: clock}
 }

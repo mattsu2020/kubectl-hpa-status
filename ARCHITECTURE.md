@@ -38,6 +38,7 @@ Inference should be labeled with confidence language and covered by tests.
 | `internal/patch/` | RFC 7396 JSON merge patch helpers for suggestions |
 | `internal/tui/` | Bubble Tea dashboard: model/update/view plus per-view renderers |
 | `internal/history/` | Clock-injected recorder/store shared by status/list history collection and trend replay |
+| `pkg/clock/` | Canonical process-wide time source. Domain packages and the default history recorder delegate here; history retains operation-scoped clock injection for deterministic service tests |
 | `internal/i18n/` | Embedded locale bundles (en/ja), dynamically loaded from `locales/` |
 | `internal/testutil/` | Shared fake-client/HPA/workload builders used by `cmd/`, `internal/`, and `pkg/hpa` tests |
 | `cmd/internal/{client,errs,output}` | Lifted helpers (client construction, sentinel errors, output predicates) following the facade-then-migrate pattern |
@@ -167,8 +168,10 @@ Refactoring notes:
   values. Decision rules use those typed fields rather than localized display
   messages; legacy serialized records without IDs remain readable.
 - `internal/history.Recorder` owns append/prune/load/analyze behavior with an
-  injected clock. Status and list use this service instead of independently
-  reimplementing retention and trend analysis.
+  injected clock. A nil clock delegates to the canonical `pkg/clock`
+  source; the interface exists only to keep one recorder operation pinned to a
+  consistent time in tests. Status and list use this service instead of
+  independently reimplementing retention and trend analysis.
 - `internal/enrichment.RunPipeline` owns task ordering, enablement,
   best-effort warning callbacks, and fail-fast behavior. Per-source enrichers
   bind their typed inputs in task closures; the pipeline itself stays free of
@@ -197,6 +200,11 @@ Refactoring notes:
   reintroduce an English-string-to-key switch in cmd/ — the key is canonical.
   `internal/i18n/i18n_test.go` enforces both locale key parity and that every
   `dir_*` key resolves in every locale.
+- i18n intentionally covers table/section labels and the status summary line.
+  Diagnostic evidence, risks, recommendations, remediation text, serialized
+  field names, and machine-readable enum values remain English/stable. New
+  decision rules must use typed IDs or keys rather than matching either locale's
+  rendered text.
 - `DetectCRDs` returns per-source discovery errors in
   `CRDAvailability.KEDError` / `VPAError` (wrapping `ErrKEDACRDNotDetected` /
   `ErrVPACRDNotDetected`) so callers can distinguish "CRD is absent" from
