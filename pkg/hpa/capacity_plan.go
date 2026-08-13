@@ -412,7 +412,7 @@ func effectivePerPodLimits(input CapacityPlanInput) (resource.Quantity, resource
 // computeTargetMax returns a default target maxReplicas using the same doubling
 // formula as the suggestion engine. The 200-replica safety cap applies while
 // the existing maximum is below it; an HPA already above the cap advances by
-// one without overflowing int32.
+// one (or saturates at math.MaxInt32) without overflowing int32.
 func computeTargetMax(currentMax, desired int32) int32 {
 	if currentMax == math.MaxInt32 {
 		return math.MaxInt32

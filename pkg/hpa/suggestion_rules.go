@@ -398,22 +398,28 @@ func visibleScaleDownPressure(hpa *autoscalingv2.HorizontalPodAutoscaler) bool {
 // capacity plan so the two can never diverge.
 const maxReplicasCap int32 = 200
 
+// recommendedMaxReplicas returns the suggested new maxReplicas for the HPA.
+// Unlike the capacity plan's computeTargetMax (which doubles an above-cap HPA
+// to estimate prospective capacity), the suggestion engine is safety-focused:
+// it clamps growth at maxReplicasCap and, for an HPA already at or above the
+// cap, only advances by one. Arithmetic is done in int64 so doubling the
+// current maximum cannot overflow int32.
 func recommendedMaxReplicas(hpa *autoscalingv2.HorizontalPodAutoscaler) int32 {
-	next := hpa.Spec.MaxReplicas * 2
-	if hpa.Status.DesiredReplicas > next {
-		next = hpa.Status.DesiredReplicas
+	next := int64(hpa.Spec.MaxReplicas) * 2
+	if int64(hpa.Status.DesiredReplicas) > next {
+		next = int64(hpa.Status.DesiredReplicas)
 	}
-	if next <= hpa.Spec.MaxReplicas {
-		next = hpa.Spec.MaxReplicas + 1
+	if next <= int64(hpa.Spec.MaxReplicas) {
+		next = int64(hpa.Spec.MaxReplicas) + 1
 	}
-	// Cap to prevent dangerous suggestions on production clusters.
-	if next > maxReplicasCap {
-		next = maxReplicasCap
+	// Clamp to the safety cap, then never propose reducing the current maximum.
+	if next > int64(maxReplicasCap) {
+		next = int64(maxReplicasCap)
 	}
-	if next <= hpa.Spec.MaxReplicas {
-		next = hpa.Spec.MaxReplicas + 1
+	if next <= int64(hpa.Spec.MaxReplicas) {
+		next = int64(hpa.Spec.MaxReplicas) + 1
 	}
-	return next
+	return int32(next)
 }
 
 func hasVisibleScaleUpPressure(hpa *autoscalingv2.HorizontalPodAutoscaler) bool {
