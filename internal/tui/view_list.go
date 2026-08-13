@@ -54,12 +54,9 @@ func (m Model) renderListView() string {
 
 	// Rows.
 	visibleHeight := m.height - 4 // header + status bar + padding
-	start := 0
-	if m.cursor >= visibleHeight {
-		start = m.cursor - visibleHeight + 1
-	}
+	start, end := cursorScrollWindow(m.cursor, len(filtered), visibleHeight)
 
-	for i := start; i < len(filtered) && i < start+visibleHeight; i++ {
+	for i := start; i < end; i++ {
 		item := filtered[i]
 		// Checkbox for selection.
 		itemKey := item.Namespace + "/" + item.Name

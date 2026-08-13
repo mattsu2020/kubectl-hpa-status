@@ -219,18 +219,16 @@ func formatScaleDownStabilizedTimelineMessage(hpa *autoscalingv2.HorizontalPodAu
 	)
 }
 
-const defaultScaleDownStabilizationWindowSeconds int32 = 300
-
 // scaleDownStabilizationWindowSeconds returns the current effective
 // scale-down stabilization window. Kubernetes defaults an unspecified value
-// to 300 seconds. This current setting must not be used to reconstruct a past
-// event's remaining duration.
+// to conditions.DefaultScaleDownStabilizationWindowSeconds. This current
+// setting must not be used to reconstruct a past event's remaining duration.
 func scaleDownStabilizationWindowSeconds(hpa *autoscalingv2.HorizontalPodAutoscaler) int32 {
 	if hpa == nil || hpa.Spec.Behavior == nil || hpa.Spec.Behavior.ScaleDown == nil {
-		return defaultScaleDownStabilizationWindowSeconds
+		return conditions.DefaultScaleDownStabilizationWindowSeconds
 	}
 	if hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds == nil {
-		return defaultScaleDownStabilizationWindowSeconds
+		return conditions.DefaultScaleDownStabilizationWindowSeconds
 	}
 	return *hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds
 }

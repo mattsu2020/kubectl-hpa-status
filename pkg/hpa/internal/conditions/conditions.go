@@ -11,6 +11,13 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/clock"
 )
 
+// DefaultScaleDownStabilizationWindowSeconds is the Kubernetes default
+// scale-down stabilization window (5 minutes), applied when an HPA does not
+// specify one explicitly. It is the single source of truth for the default so
+// detection ("is the window at the default?"), suggested patch values, and
+// fallback math never drift apart.
+const DefaultScaleDownStabilizationWindowSeconds int32 = 300
+
 // HPA condition type constants. Kubernetes defines these as string literals
 // in the autoscaling/v2 condition types; we mirror them here so callers
 // compare against named constants instead of repeating the magic strings

@@ -6,6 +6,8 @@ import (
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
+
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/conditions"
 )
 
 type diagnosticContext struct {
@@ -94,7 +96,7 @@ func ableToScaleDiagnosticRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int
 		message := fmt.Sprintf("[estimated] Scale down appears stabilized: %s (estimated ~%d seconds remaining before scale-down is allowed).", condition.Message, *remaining)
 		nextStep := fmt.Sprintf("Scale-down stabilized; estimated ~%d seconds remaining", *remaining)
 		if hpa.Spec.Behavior == nil || hpa.Spec.Behavior.ScaleDown == nil {
-			message += " Note: no spec.behavior.scaleDown is set; the controller-manager default (usually 300s) is used and may differ from this estimate."
+			message += fmt.Sprintf(" Note: no spec.behavior.scaleDown is set; the controller-manager default (usually %ds) is used and may differ from this estimate.", conditions.DefaultScaleDownStabilizationWindowSeconds)
 		}
 		ctx.cases = append(ctx.cases, interpretationCase{
 			reason:     "ScaleDownStabilized",

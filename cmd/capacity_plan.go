@@ -162,7 +162,14 @@ func collectScaleTargetCapacity(ctx context.Context, client *kube.Client, hpa *a
 			return podSpec
 		}
 		if pods.Known() {
-			collectScaleTargetPodInfos(pods.Data, input)
+			input.ReadyPods = countReadyPods(pods.Data)
+		}
+		// Pending pod conversion goes through kubeconv like the other capacity
+		// commands; snapshot.PendingPods derives from the same memoized pod
+		// list, so this adds no extra API read.
+		pending := snapshot.PendingPods(ctx)
+		if pending.Known() {
+			input.PendingPods = kubeconv.PendingPodInfos(pending.Data)
 		}
 		return podSpec
 	}
@@ -186,20 +193,15 @@ func collectScaleTargetResources(info *kube.ScaleTargetInfo, kind, name string, 
 	input.PodLevelLimitMemory = resources.PodLevelLimits["memory"]
 }
 
-func collectScaleTargetPodInfos(podInfos []kube.PodInfo, input *hpaanalysis.CapacityPlanInput) {
+// countReadyPods counts pods whose Ready condition is true.
+func countReadyPods(podInfos []kube.PodInfo) int32 {
+	var count int32
 	for _, pod := range podInfos {
 		if pod.Ready {
-			input.ReadyPods++
-		}
-		if pod.Phase == "Pending" {
-			input.PendingPods = append(input.PendingPods, hpaanalysis.PendingPodInfo{
-				Name:          pod.Name,
-				Phase:         pod.Phase,
-				Unschedulable: pod.Unschedulable,
-				Reasons:       pod.Reasons,
-			})
+			count++
 		}
 	}
+	return count
 }
 
 func collectCapacityQuotas(ctx context.Context, client *kube.Client, namespace string, input *hpaanalysis.CapacityPlanInput) {

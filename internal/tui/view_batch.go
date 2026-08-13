@@ -58,12 +58,9 @@ func (m Model) renderBatchAuditView() string {
 
 	// Table rows
 	visibleHeight := m.height - 10
-	start := 0
-	if m.batchAuditState.scrollPos >= visibleHeight {
-		start = m.batchAuditState.scrollPos - visibleHeight + 1
-	}
+	start, end := cursorScrollWindow(m.batchAuditState.scrollPos, len(entries), visibleHeight)
 
-	for i := start; i < len(entries) && i < start+visibleHeight; i++ {
+	for i := start; i < end; i++ {
 		e := entries[i]
 		ns := truncate(e.Namespace, 12)
 		name := truncate(e.Name, 24)

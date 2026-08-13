@@ -5,6 +5,7 @@ import (
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/conditions"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
 )
 
@@ -30,10 +31,10 @@ func stabilizationWindowRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32
 		{
 			ID:          "stabilization-window",
 			Title:       "Stabilization window not explicitly configured",
-			Description: "scaleDown.stabilizationWindowSeconds is unset. The controller-manager default (300s) applies implicitly. Explicit configuration prevents surprise behavior changes across Kubernetes upgrades.",
+			Description: fmt.Sprintf("scaleDown.stabilizationWindowSeconds is unset. The controller-manager default (%ds) applies implicitly. Explicit configuration prevents surprise behavior changes across Kubernetes upgrades.", conditions.DefaultScaleDownStabilizationWindowSeconds),
 			Severity:    AuditWarning,
 			Category:    "stabilization",
-			Current:     "unset (default 300s)",
+			Current:     fmt.Sprintf("unset (default %ds)", conditions.DefaultScaleDownStabilizationWindowSeconds),
 			Recommended: "Set stabilizationWindowSeconds explicitly",
 			Patch:       patch,
 			Command:     util.KubectlPatchCommand(hpa, patch),

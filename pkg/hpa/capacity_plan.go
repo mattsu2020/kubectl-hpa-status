@@ -13,8 +13,6 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
 )
 
-const capacityMaxReplicasCap int32 = 200
-
 // parseQuantityOrZero is the calculation fallback after
 // validateCapacityQuantityInputs has converted malformed values into explicit
 // unknown observations. A malformed value must never silently produce a Safe
@@ -426,8 +424,8 @@ func computeTargetMax(currentMax, desired int32) int32 {
 	if next <= int64(currentMax) {
 		next = int64(currentMax) + 1
 	}
-	if currentMax < capacityMaxReplicasCap && next > int64(capacityMaxReplicasCap) {
-		next = int64(capacityMaxReplicasCap)
+	if currentMax < maxReplicasCap && next > int64(maxReplicasCap) {
+		next = int64(maxReplicasCap)
 	}
 	if next > math.MaxInt32 {
 		next = math.MaxInt32

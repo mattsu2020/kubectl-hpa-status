@@ -379,7 +379,7 @@ func appendHistoryEventLog(sb *strings.Builder, snapshots []hpaanalysis.Timeline
 		visibleHeight = 3
 	}
 
-	start, end := historyScrollWindow(scrollPos, len(snapshots), visibleHeight)
+	start, end := scrollWindow(scrollPos, len(snapshots), visibleHeight)
 
 	for i := start; i < end; i++ {
 		snap := snapshots[i]
@@ -402,23 +402,4 @@ func appendHistoryEventLog(sb *strings.Builder, snapshots []hpaanalysis.Timeline
 		sb.WriteString(dimStyle.Render(fmt.Sprintf("  [%d-%d of %d]", start+1, end, len(snapshots))))
 		sb.WriteString("\n")
 	}
-}
-
-func historyScrollWindow(scrollPos, totalEntries, visibleHeight int) (int, int) {
-	start := scrollPos
-	if start < 0 {
-		start = 0
-	}
-	maxStart := totalEntries - visibleHeight
-	if maxStart < 0 {
-		maxStart = 0
-	}
-	if start > maxStart {
-		start = maxStart
-	}
-	end := start + visibleHeight
-	if end > totalEntries {
-		end = totalEntries
-	}
-	return start, end
 }
