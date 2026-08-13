@@ -1,9 +1,12 @@
-// Package rendutil holds the shared HTML/Markdown escape and formatting
-// helpers used by renderers in pkg/hpa (report_*.go, *_text.go, timeline,
-// retrospective, etc.). Extracting them into their own package breaks the
-// import cycle that would otherwise block a pkg/hpa/render split: both
-// pkg/hpa (the remaining *_text.go files) and pkg/hpa/render need these
-// helpers, so they must live below both in the dependency graph.
+// Package rendutil holds the shared HTML/Markdown escape, display-width, and
+// list-projection helpers used by the rendering layers: pkg/hpa (report_*.go,
+// *_text.go, timeline, retrospective, etc.) and pkg/hpa/render, plus — for
+// the terminal-width helpers — internal/tui and cmd/replaylab. Extracting
+// them into their own package breaks the import cycle that would otherwise
+// block a pkg/hpa/render split: both pkg/hpa (the remaining *_text.go files)
+// and pkg/hpa/render need these helpers, so they must live below both in the
+// dependency graph. The package stays public (not under pkg/hpa/internal/)
+// precisely because internal/tui and cmd/replaylab also import it.
 package rendutil
 
 import "strings"
