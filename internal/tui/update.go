@@ -12,7 +12,7 @@ import (
 // rather than mutating the existing one. All methods on Model (Update, View,
 // Init, filteredItems) use value receivers for consistency with this pattern.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	m.interactiveStates = m.clone()
+	m = m.clone()
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		return m.updateWindowSize(msg)

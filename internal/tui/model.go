@@ -3,6 +3,7 @@ package tui
 
 import (
 	"context"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -90,6 +91,31 @@ type interactiveStates struct {
 	batchAuditState *batchAuditState
 	historyState    *historyState
 	hintsState      *hintsState
+}
+
+// clone returns a copy of m whose mutable containers — the item slice, the
+// selection set, the per-HPA replica history, the batch-apply preview, and
+// the view-local interactive states — are independent of the receiver. This
+// makes Model's value-receiver Update contract real: updating a returned
+// model never mutates an older copy. The reports map is not cloned because
+// fetches replace it wholesale and handlers only read entries.
+func (m Model) clone() Model {
+	m.items = slices.Clone(m.items)
+	if m.selected != nil {
+		selected := make(map[string]bool, len(m.selected))
+		maps.Copy(selected, m.selected)
+		m.selected = selected
+	}
+	if m.replicaHistory != nil {
+		history := make(map[string][]float64, len(m.replicaHistory))
+		for key, values := range m.replicaHistory {
+			history[key] = slices.Clone(values)
+		}
+		m.replicaHistory = history
+	}
+	m.batchApplyPreview = slices.Clone(m.batchApplyPreview)
+	m.interactiveStates = m.interactiveStates.clone()
+	return m
 }
 
 // clone returns independent view-local state so Model's value-receiver Update
