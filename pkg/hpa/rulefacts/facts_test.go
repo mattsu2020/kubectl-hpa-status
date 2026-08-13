@@ -30,9 +30,9 @@ func resUsage(name corev1.ResourceName, util *int32) *autoscalingv2.MetricSpec {
 
 func TestResourceUtilizationTargets(t *testing.T) {
 	tests := []struct {
-		name  string
-		hpa   *autoscalingv2.HorizontalPodAutoscaler
-		want  []ResourceUtilizationTarget
+		name string
+		hpa  *autoscalingv2.HorizontalPodAutoscaler
+		want []ResourceUtilizationTarget
 	}{
 		{name: "nil hpa", hpa: nil, want: nil},
 		{name: "empty", hpa: hpaWithMetrics(), want: nil},

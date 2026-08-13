@@ -5,10 +5,6 @@ package history
 
 import (
 	"bufio"
-	"context"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -301,156 +297,9 @@ func (s *HealthStore) replaceSnapshots(path string, snapshots []healthtrend.Heal
 	return nil
 }
 
-// acquireLock uses a portable O_EXCL lock file so separate kubectl processes
-// cannot append while another process is pruning the same HPA history.
-func acquireLock(path string) (func(), error) {
-	return acquireLockContext(context.Background(), path)
-}
-
-// acquireLockContext acquires an ownership-aware lock. A heartbeat prevents a
-// long-running live operation from being mistaken for an abandoned lock.
-func acquireLockContext(ctx context.Context, path string) (func(), error) {
-	lockPath := path + ".lock"
-	deadline := time.Now().Add(lockTimeout)
-	tokenBytes := make([]byte, 16)
-	if _, err := rand.Read(tokenBytes); err != nil {
-		return nil, fmt.Errorf("creating history lock token: %w", err)
-	}
-	token := hex.EncodeToString(tokenBytes)
-	for {
-		lock, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, storeFileMode)
-		if err == nil {
-			if _, writeErr := fmt.Fprintf(lock, "%s %d\n", token, os.Getpid()); writeErr != nil {
-				_ = lock.Close()
-				_ = os.Remove(lockPath)
-				return nil, fmt.Errorf("writing history lock: %w", writeErr)
-			}
-			if closeErr := lock.Close(); closeErr != nil {
-				_ = os.Remove(lockPath)
-				return nil, fmt.Errorf("closing history lock: %w", closeErr)
-			}
-			stop := make(chan struct{})
-			done := make(chan struct{})
-			go heartbeatLock(lockPath, token, stop, done)
-			return func() {
-				close(stop)
-				<-done
-				removeLockIfOwned(lockPath, token)
-			}, nil
-		}
-		if !os.IsExist(err) {
-			return nil, fmt.Errorf("creating history lock: %w", err)
-		}
-		if info, statErr := os.Stat(lockPath); statErr == nil && time.Since(info.ModTime()) > lockStaleAfter {
-			quarantine := fmt.Sprintf("%s.stale-%s", lockPath, token)
-			if renameErr := os.Rename(lockPath, quarantine); renameErr == nil {
-				_ = os.Remove(quarantine)
-			}
-			continue
-		}
-		if time.Now().After(deadline) {
-			return nil, fmt.Errorf("timed out waiting for history lock %s", lockPath)
-		}
-		select {
-		case <-ctx.Done():
-			return nil, fmt.Errorf("waiting for history lock %s: %w", lockPath, ctx.Err())
-		case <-time.After(10 * time.Millisecond):
-		}
-	}
-}
-
-func heartbeatLock(path, token string, stop <-chan struct{}, done chan<- struct{}) {
-	defer close(done)
-	ticker := time.NewTicker(lockHeartbeat)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-stop:
-			return
-		case now := <-ticker.C:
-			if !lockOwnedBy(path, token) {
-				return
-			}
-			_ = os.Chtimes(path, now, now)
-		}
-	}
-}
-
-func removeLockIfOwned(path, token string) {
-	if lockOwnedBy(path, token) {
-		_ = os.Remove(path)
-	}
-}
-
-func lockOwnedBy(path, token string) bool {
-	data, err := os.ReadFile(path) // #nosec G304 -- internally derived lock path
-	if err != nil {
-		return false
-	}
-	fields := strings.Fields(string(data))
-	return len(fields) > 0 && fields[0] == token
-}
-
 // Dir returns the store directory path.
 func (s *HealthStore) Dir() string {
 	return s.dir
-}
-
-func (s *HealthStore) filePath(namespace, name string) string {
-	// Sanitize to prevent path traversal.
-	safeNS := sanitizeFilename(namespace)
-	safeName := sanitizeFilename(name)
-	filename := safeNS + "_" + safeName + ".jsonl"
-	// sanitizeFilename truncates individual components. Add an identity hash
-	// whenever that happens, even if the combined filename still fits, so two
-	// names with the same prefix never share a history stream.
-	truncated := len(namespace) > maxFilenameSegmentLength || len(name) > maxFilenameSegmentLength
-	if truncated || len(filename) > maxHistoryFilenameLength {
-		sum := sha256.Sum256([]byte(namespace + "\x00" + name))
-		suffix := fmt.Sprintf("_%x.jsonl", sum[:8])
-		prefixLength := maxHistoryFilenameLength - len(suffix)
-		prefix := safeNS + "_" + safeName
-		if len(prefix) > prefixLength {
-			prefix = prefix[:prefixLength]
-		}
-		filename = prefix + suffix
-	}
-	return filepath.Join(s.dir, filename)
-}
-
-// Keep enough headroom below the common NAME_MAX=255 byte limit. A hash is
-// appended whenever truncation is required so two long HPA names cannot share
-// one history file.
-const maxHistoryFilenameLength = 240
-
-// maxFilenameSegmentLength bounds a single sanitized path segment so a
-// pathologically long name cannot blow past filesystem name limits.
-const maxFilenameSegmentLength = 200
-
-// sanitizeFilename neutralizes anything that could escape the store
-// directory: path separators, parent-directory references, control
-// characters, empty inputs, and over-long names. Inputs come from the
-// Kubernetes API and are DNS-constrained in practice, so this is
-// defense-in-depth.
-func sanitizeFilename(s string) string {
-	var b strings.Builder
-	b.Grow(len(s))
-	for _, r := range s {
-		if r < 0x20 || r == 0x7f {
-			b.WriteRune('_')
-			continue
-		}
-		b.WriteRune(r)
-	}
-	s = strings.ReplaceAll(b.String(), "/", "_")
-	s = strings.ReplaceAll(s, "\\", "_")
-	if s == "" || s == "." || strings.HasPrefix(s, "..") {
-		s = "_" + s
-	}
-	if len(s) > maxFilenameSegmentLength {
-		s = s[:maxFilenameSegmentLength]
-	}
-	return s
 }
 
 // resolveStoreDir returns the directory for health history storage.

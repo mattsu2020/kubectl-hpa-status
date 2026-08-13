@@ -9,7 +9,6 @@ import (
 
 	"github.com/spf13/cobra"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
-
 )
 
 type behaviorOutput struct {

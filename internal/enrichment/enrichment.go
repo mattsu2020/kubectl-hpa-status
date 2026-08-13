@@ -509,4 +509,3 @@ func BatchVPA(ctx context.Context, ec *Context, hpas []autoscalingv2.HorizontalP
 
 	return results, warnings
 }
-
