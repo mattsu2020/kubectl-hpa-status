@@ -9,7 +9,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -124,11 +123,12 @@ func FetchResourceQuotas(ctx context.Context, client kubernetes.Interface, names
 	return constraints, nil
 }
 
-// FetchPodDisruptionBudgets lists all PDBs in the namespace. Note: this returns
-// all PDBs regardless of whether they match the HPA scale target, since PDB
-// selector matching requires resolving pod labels which may not be available
-// in the current context. Consumers should filter as needed.
-func FetchPodDisruptionBudgets(ctx context.Context, client kubernetes.Interface, namespace string, _ types.UID) ([]PDBInfo, error) {
+// FetchPodDisruptionBudgets lists all PodDisruptionBudgets in the namespace.
+// The result is intentionally namespace-wide, NOT filtered to the HPA scale
+// target: PDB selector matching requires resolving pod labels which may not be
+// available in the current context. Consumers that need per-workload
+// attribution must match the scale target's pod labels themselves.
+func FetchPodDisruptionBudgets(ctx context.Context, client kubernetes.Interface, namespace string) ([]PDBInfo, error) {
 	pdbs, err := client.PolicyV1().PodDisruptionBudgets(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("list pod disruption budgets: %w", err)

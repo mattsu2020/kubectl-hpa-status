@@ -212,7 +212,7 @@ func collectBundleCapacityContext(ctx context.Context, client *kube.Client, hpa 
 	}
 	data.LimitRanges = limitRanges
 
-	pdbs, err := kube.FetchPodDisruptionBudgets(ctx, client.Interface, hpa.Namespace, hpa.UID)
+	pdbs, err := kube.FetchPodDisruptionBudgets(ctx, client.Interface, hpa.Namespace)
 	if err != nil {
 		data.Warnings = append(data.Warnings, fmt.Sprintf("pod disruption budgets: %v", err))
 	}

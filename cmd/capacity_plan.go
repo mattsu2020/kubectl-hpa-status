@@ -265,7 +265,7 @@ func collectCapacityClusterHeadroom(ctx context.Context, client *kube.Client, po
 }
 
 func collectCapacityPDBs(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, input *hpaanalysis.CapacityPlanInput) {
-	pdbInfos, pdbErr := kube.FetchPodDisruptionBudgets(ctx, client.Interface, hpa.Namespace, hpa.UID)
+	pdbInfos, pdbErr := kube.FetchPodDisruptionBudgets(ctx, client.Interface, hpa.Namespace)
 	if pdbErr != nil {
 		addCapacityObservationError(input, hpaanalysis.CapacityObservationPDBs, "PodDisruptionBudgets", pdbErr)
 	} else {

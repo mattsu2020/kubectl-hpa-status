@@ -253,7 +253,7 @@ func fetchAutoscalerMapVPA(ctx context.Context, opts *options, hpa *autoscalingv
 
 // fetchAutoscalerMapPDBs fetches PodDisruptionBudgets in the namespace.
 func fetchAutoscalerMapPDBs(ctx context.Context, client *kube.Client, namespace string) []autoscalermap.PDB {
-	pdbs, _ := kube.FetchPodDisruptionBudgets(ctx, client.Interface, namespace, "")
+	pdbs, _ := kube.FetchPodDisruptionBudgets(ctx, client.Interface, namespace)
 	if len(pdbs) == 0 {
 		return nil
 	}
