@@ -3,6 +3,7 @@ package kube
 import (
 	"testing"
 
+	hpavpa "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -487,4 +488,36 @@ func TestVPAConflictsWithHPA(t *testing.T) {
 			}
 		})
 	}
+}
+
+func domainVPAInfo(info *VPAInfo) *hpavpa.Info {
+	if info == nil {
+		return nil
+	}
+	out := &hpavpa.Info{
+		Name: info.Name, TargetAPIVersion: info.TargetAPIVersion,
+		TargetKind: info.TargetKind, TargetName: info.TargetName,
+		UpdateMode:          info.UpdateMode,
+		ControlledResources: append([]string(nil), info.ControlledResources...),
+	}
+	for _, policy := range info.ContainerPolicies {
+		out.ContainerPolicies = append(out.ContainerPolicies, hpavpa.ContainerPolicy{
+			ContainerName: policy.ContainerName, Mode: policy.Mode,
+			ControlledResources:          append([]string(nil), policy.ControlledResources...),
+			ControlledResourcesSpecified: policy.ControlledResourcesSpecified,
+		})
+	}
+	return out
+}
+
+func hasResourceMetrics(hpa *autoscalingv2.HorizontalPodAutoscaler) bool {
+	return len(hpavpa.ConflictResources(hpa, &hpavpa.Info{})) > 0
+}
+
+func vpaControlsHPAResource(hpa *autoscalingv2.HorizontalPodAutoscaler, resources []string) bool {
+	return len(hpavpa.ConflictResources(hpa, &hpavpa.Info{ControlledResources: resources})) > 0
+}
+
+func VPAConflictsWithHPA(hpa *autoscalingv2.HorizontalPodAutoscaler, info *VPAInfo) bool {
+	return hpavpa.ConflictsWithHPA(hpa, domainVPAInfo(info))
 }

@@ -9,10 +9,12 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/enrichment"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kubeconv"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/autoscalermap"
+	hpavpa "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
 )
 
 type autoscalerMapOutput struct {
@@ -236,7 +238,7 @@ func fetchAutoscalerMapVPA(ctx context.Context, opts *options, hpa *autoscalingv
 		return nil
 	}
 
-	vpaInfo, err := kube.FindConflictingVPA(ctx, dynClient, hpa.Namespace, hpa)
+	vpaInfo, err := enrichment.FindConflictingVPA(ctx, dynClient, hpa.Namespace, hpa)
 	if err != nil || vpaInfo == nil {
 		return nil
 	}
@@ -246,7 +248,7 @@ func fetchAutoscalerMapVPA(ctx context.Context, opts *options, hpa *autoscalingv
 		TargetRef:           vpaInfo.TargetRef,
 		UpdateMode:          vpaInfo.UpdateMode,
 		ControlledResources: vpaInfo.ControlledResources,
-		ConflictResources:   kube.VPAConflictResources(hpa, vpaInfo),
+		ConflictResources:   hpavpa.ConflictResources(hpa, kubeconv.VPAInfo(vpaInfo)),
 	}
 }
 

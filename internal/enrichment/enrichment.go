@@ -327,7 +327,7 @@ func EnrichVPA(ctx context.Context, ec *Context, hpa *autoscalingv2.HorizontalPo
 		entry.Reason = "dynamic client is unavailable"
 		return entry
 	}
-	vpaInfo, err := kube.FindConflictingVPA(ctx, ec.dynClient, report.Analysis.Namespace, hpa)
+	vpaInfo, err := FindConflictingVPA(ctx, ec.dynClient, report.Analysis.Namespace, hpa)
 	if err != nil {
 		entry.State = StateError
 		entry.Reason = err.Error()
@@ -500,12 +500,29 @@ func BatchVPA(ctx context.Context, ec *Context, hpas []autoscalingv2.HorizontalP
 
 		key := hpa.Namespace + "/" + hpa.Spec.ScaleTargetRef.Kind + "/" + hpa.Spec.ScaleTargetRef.Name
 		for _, vpa := range allVPAs[key] {
-			if kube.VPAConflictsWithHPA(hpa, &vpa) {
-				results[hpa.Namespace+"/"+hpa.Name] = hpavpa.NewConflictInfoForHPA(hpa, kubeconv.VPAInfo(&vpa))
+			analysisVPA := kubeconv.VPAInfo(&vpa)
+			if hpavpa.ConflictsWithHPA(hpa, analysisVPA) {
+				results[hpa.Namespace+"/"+hpa.Name] = hpavpa.NewConflictInfoForHPA(hpa, analysisVPA)
 				break
 			}
 		}
 	}
 
 	return results, warnings
+}
+
+// FindConflictingVPA keeps API access in the enrichment boundary while the
+// conflict predicate itself remains in the public VPA domain package.
+func FindConflictingVPA(ctx context.Context, dynClient dynamic.Interface, namespace string, hpa *autoscalingv2.HorizontalPodAutoscaler) (*kube.VPAInfo, error) {
+	vpas, err := kube.FetchVPAs(ctx, dynClient, namespace)
+	if err != nil {
+		return nil, err
+	}
+	for i := range vpas {
+		info := kube.ExtractVPAInfo(&vpas[i])
+		if hpavpa.ConflictsWithHPA(hpa, kubeconv.VPAInfo(&info)) {
+			return &info, nil
+		}
+	}
+	return nil, nil
 }

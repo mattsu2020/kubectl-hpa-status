@@ -188,6 +188,25 @@ func NewConflictInfoForHPA(hpa *autoscalingv2.HorizontalPodAutoscaler, v *Info) 
 	return info
 }
 
+// ConflictsWithHPA reports whether an active VPA controls at least one CPU or
+// memory resource used by an HPA targeting the same workload.
+func ConflictsWithHPA(hpa *autoscalingv2.HorizontalPodAutoscaler, v *Info) bool {
+	if hpa == nil || v == nil || strings.EqualFold(v.UpdateMode, "Off") {
+		return false
+	}
+	return len(ConflictResources(hpa, v)) > 0
+}
+
+// ConflictResources returns the unique CPU/memory resources controlled by
+// both the VPA and HPA. It resolves VPA per-container policy precedence and
+// the API default of controlling CPU and memory when the field is omitted.
+func ConflictResources(hpa *autoscalingv2.HorizontalPodAutoscaler, v *Info) []string {
+	if hpa == nil || v == nil || strings.EqualFold(v.UpdateMode, "Off") {
+		return nil
+	}
+	return conflictResourcesForInfo(hpa, v)
+}
+
 func hpaUsesResourceMetric(hpa *autoscalingv2.HorizontalPodAutoscaler, resource string) bool {
 	for _, m := range hpa.Spec.Metrics {
 		metricResource, _, _, ok := resourceMetricIdentity(m)
@@ -302,6 +321,9 @@ func overlappingResources(hpa *autoscalingv2.HorizontalPodAutoscaler, controlled
 	var conflicts []string
 	for _, resource := range controlled {
 		resource = strings.ToLower(resource)
+		if resource != "cpu" && resource != "memory" {
+			continue
+		}
 		if _, ok := seen[resource]; ok || !hpaUsesResourceMetric(hpa, resource) {
 			continue
 		}
