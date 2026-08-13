@@ -220,9 +220,14 @@ func TestE2E_MaxReplicasCap(t *testing.T) {
 
 	// 3. Send HTTP traffic to the target Deployment. Burning CPU in an
 	//    unrelated Pod would not affect the HPA target's utilization.
+	//    Parallelism 2 doubles the traffic so the utilization comfortably
+	//    exceeds the 3x needed to scale from minReplicas to maxReplicas;
+	//    a single load pod produced borderline load that stalled the HPA at
+	//    desired=5 and made this test flaky on slow CI runners.
 	loadJob := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{Name: "cap-load", Namespace: nsName},
 		Spec: batchv1.JobSpec{
+			Parallelism: ptr.To(int32(2)),
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{Name: "cap-load"},
 				Spec: corev1.PodSpec{
