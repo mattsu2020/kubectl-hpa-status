@@ -32,7 +32,7 @@ func (m Model) renderReplayView() string {
 	appendReplayAnalysisSummary(&sb, m.replayState.replayAnalysis)
 
 	visibleHeight := m.height - 6 // header + footer + padding
-	start, end := replayVisibleRange(trace, m.replayState.scrollPos, visibleHeight)
+	start, end := scrollWindow(m.replayState.scrollPos, len(trace.Snapshots), visibleHeight)
 	maxReplicas := replayMaxReplicas(trace.Snapshots)
 	bottleneckMarkers := replayBottleneckMarkers(m.replayState.replayAnalysis)
 
@@ -103,18 +103,6 @@ func formatBottleneckSummary(highCount, medCount, total int) string {
 	}
 	text += ")"
 	return text
-}
-
-func replayVisibleRange(trace *hpaanalysis.TimelineTrace, scrollPos, visibleHeight int) (int, int) {
-	start := scrollPos
-	if start < 0 {
-		start = 0
-	}
-	end := start + visibleHeight
-	if end > len(trace.Snapshots) {
-		end = len(trace.Snapshots)
-	}
-	return start, end
 }
 
 func replayMaxReplicas(snapshots []hpaanalysis.TimelineSnapshot) int32 {
