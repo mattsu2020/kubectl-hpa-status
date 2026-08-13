@@ -1,6 +1,7 @@
 package history
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -49,6 +50,36 @@ func TestHealthStoreAppendAndLoad(t *testing.T) {
 	}
 	if len(loaded) != 2 {
 		t.Errorf("Load() returned %d snapshots, want 2", len(loaded))
+	}
+}
+
+func TestHistoryLockDoesNotRemoveAnotherOwner(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "history.jsonl")
+	release, err := acquireLock(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lockPath := path + ".lock"
+	if err := os.WriteFile(lockPath, []byte("replacement-owner 999\n"), storeFileMode); err != nil {
+		t.Fatal(err)
+	}
+	release()
+	if _, err := os.Stat(lockPath); err != nil {
+		t.Fatalf("release removed another owner's lock: %v", err)
+	}
+}
+
+func TestHistoryLockWaitHonorsContext(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "history.jsonl")
+	release, err := acquireLock(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := acquireLockContext(ctx, path); !errors.Is(err, context.Canceled) {
+		t.Fatalf("acquireLockContext error = %v, want context.Canceled", err)
 	}
 }
 

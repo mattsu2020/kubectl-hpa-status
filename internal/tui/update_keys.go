@@ -48,7 +48,11 @@ func (m Model) keyHandlers() []keyBindingHandler {
 			return next, cmd
 		}},
 		{m.keys.Refresh, func(m Model) (tea.Model, tea.Cmd) {
+			if m.loading {
+				return m, nil
+			}
 			m.loading = true
+			m.fetchRequestID++
 			return m, fetchHPAs(m)
 		}},
 		{m.keys.Pause, func(m Model) (tea.Model, tea.Cmd) {

@@ -92,7 +92,15 @@ func applySuggestionsInNamespace(ctx context.Context, out io.Writer, opts *optio
 // phase; a failed merge is not fatal here because preValidatePatches falls
 // back to per-patch validation.
 func guardAndMergePatches(out io.Writer, opts *options, current *autoscalingv2.HorizontalPodAutoscaler, patches []hpaanalysis.Suggestion) ([]hpaanalysis.Suggestion, string, error, error) {
-	allowed, err := guardPatches(out, opts, current, patches)
+	var policyFile *hpapolicy.File
+	if opts.PolicyGuard != "" {
+		loaded, err := hpapolicy.LoadPolicyFile(opts.PolicyGuard)
+		if err != nil {
+			return nil, "", nil, err
+		}
+		policyFile = &loaded
+	}
+	allowed, err := guardPatchesWithPolicy(out, opts, current, patches, policyFile)
 	if err != nil {
 		return nil, "", nil, err
 	}
@@ -101,7 +109,7 @@ func guardAndMergePatches(out io.Writer, opts *options, current *autoscalingv2.H
 	}
 	mergedPatch, mergeErr := mergeSuggestionPatches(allowed)
 	if mergeErr == nil {
-		if err := guardMergedPatch(out, opts, current, mergedPatch); err != nil {
+		if err := guardMergedPatchWithPolicy(out, opts, current, mergedPatch, policyFile); err != nil {
 			return nil, "", nil, err
 		}
 	}
@@ -119,15 +127,11 @@ func reportValidationSuccess(out io.Writer, patchCount int, mergedValidated bool
 	return err
 }
 
-func guardPatches(out io.Writer, opts *options, current *autoscalingv2.HorizontalPodAutoscaler, patches []hpaanalysis.Suggestion) ([]hpaanalysis.Suggestion, error) {
-	if opts.PolicyGuard == "" {
+func guardPatchesWithPolicy(out io.Writer, opts *options, current *autoscalingv2.HorizontalPodAutoscaler, patches []hpaanalysis.Suggestion, policyFile *hpapolicy.File) ([]hpaanalysis.Suggestion, error) {
+	if policyFile == nil {
 		return patches, nil
 	}
-	policyFile, err := hpapolicy.LoadPolicyFile(opts.PolicyGuard)
-	if err != nil {
-		return nil, err
-	}
-	result := hpapolicy.GuardFix(patches, policyFile, current)
+	result := hpapolicy.GuardFix(patches, *policyFile, current)
 	if err := hpaanalysis.WritePolicyGuardText(out, result); err != nil {
 		return nil, err
 	}
@@ -146,15 +150,11 @@ func guardPatches(out io.Writer, opts *options, current *autoscalingv2.Horizonta
 // guardMergedPatch evaluates the complete state produced by all allowed
 // suggestions. Evaluating suggestions independently is insufficient because
 // two individually valid changes can violate a policy only when combined.
-func guardMergedPatch(out io.Writer, opts *options, current *autoscalingv2.HorizontalPodAutoscaler, mergedPatch string) error {
-	if opts.PolicyGuard == "" {
+func guardMergedPatchWithPolicy(out io.Writer, opts *options, current *autoscalingv2.HorizontalPodAutoscaler, mergedPatch string, policyFile *hpapolicy.File) error {
+	if policyFile == nil {
 		return nil
 	}
-	policyFile, err := hpapolicy.LoadPolicyFile(opts.PolicyGuard)
-	if err != nil {
-		return err
-	}
-	report, err := hpapolicy.EvaluateMergePatch(current, mergedPatch, policyFile)
+	report, err := hpapolicy.EvaluateMergePatch(current, mergedPatch, *policyFile)
 	if err != nil {
 		return err
 	}

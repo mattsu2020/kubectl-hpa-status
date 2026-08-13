@@ -334,18 +334,19 @@ func Incident(out io.Writer, value any) error {
 
 // Error writes an error in the requested format to out. Write failures are
 // intentionally ignored: we are already on the error-reporting path.
-func Error(out io.Writer, format string, err error) {
+func Error(out io.Writer, format string, err error) error {
 	switch format {
 	case "json":
-		_ = json.NewEncoder(out).Encode(map[string]string{"error": err.Error()})
+		return json.NewEncoder(out).Encode(map[string]string{"error": err.Error()})
 	case "yaml":
 		data, marshalErr := yaml.Marshal(map[string]string{"error": err.Error()})
 		if marshalErr != nil {
-			_, _ = fmt.Fprintf(out, "Error: %v\n", err)
-			return
+			return marshalErr
 		}
-		_, _ = out.Write(data)
+		_, writeErr := out.Write(data)
+		return writeErr
 	default:
-		_, _ = fmt.Fprintf(out, "Error: %v\n", err)
+		_, writeErr := fmt.Fprintf(out, "Error: %v\n", err)
+		return writeErr
 	}
 }

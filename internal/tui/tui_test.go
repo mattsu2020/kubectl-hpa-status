@@ -30,6 +30,22 @@ func TestNewModel_InitialState(t *testing.T) {
 	}
 }
 
+func TestFetchResultIgnoresOlderRequest(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.fetchRequestID = 2
+	m.loading = true
+	m.items = []hpaanalysis.ListItem{{Name: "new"}}
+
+	updated, _ := m.Update(fetchResultMsg{
+		requestID: 1,
+		items:     []hpaanalysis.ListItem{{Name: "old"}},
+	})
+	got := updated.(Model)
+	if !got.loading || len(got.items) != 1 || got.items[0].Name != "new" {
+		t.Fatalf("stale result changed model: %#v", got.items)
+	}
+}
+
 func TestNewModel_CustomInterval(t *testing.T) {
 	m := NewModel(nil, "default", Options{Interval: 2 * time.Second})
 	if m.interval != 2*time.Second {

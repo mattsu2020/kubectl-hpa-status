@@ -438,7 +438,7 @@ func TestWriteOutputPrometheusUnknownType(t *testing.T) {
 
 func TestWriteErrorJSON(t *testing.T) {
 	var out bytes.Buffer
-	render.Error(&out, "json", fmt.Errorf("HPA not found"))
+	_ = render.Error(&out, "json", fmt.Errorf("HPA not found"))
 	output := strings.TrimSpace(out.String())
 	if !strings.Contains(output, `"error"`) {
 		t.Fatalf("expected JSON error key, got %q", output)
@@ -450,7 +450,7 @@ func TestWriteErrorJSON(t *testing.T) {
 
 func TestWriteErrorYAML(t *testing.T) {
 	var out bytes.Buffer
-	render.Error(&out, "yaml", fmt.Errorf("HPA not found"))
+	_ = render.Error(&out, "yaml", fmt.Errorf("HPA not found"))
 	output := strings.TrimSpace(out.String())
 	if !strings.Contains(output, "error:") {
 		t.Fatalf("expected YAML error key, got %q", output)
@@ -462,7 +462,7 @@ func TestWriteErrorYAML(t *testing.T) {
 
 func TestWriteErrorText(t *testing.T) {
 	var out bytes.Buffer
-	render.Error(&out, "", fmt.Errorf("HPA not found"))
+	_ = render.Error(&out, "", fmt.Errorf("HPA not found"))
 	output := strings.TrimSpace(out.String())
 	if !strings.Contains(output, "Error: HPA not found") {
 		t.Fatalf("expected plain text error, got %q", output)

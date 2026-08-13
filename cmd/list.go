@@ -197,8 +197,7 @@ func runListStreaming(ctx context.Context, out io.Writer, opts *options, client 
 
 // reportListError writes the error in the requested output format when applicable.
 func reportListError(out io.Writer, output string, listErr error) error {
-	writeErrorIfStructured(out, output, listErr)
-	return listErr
+	return writeErrorIfStructured(out, output, listErr)
 }
 
 // validateListApply ensures --apply is used with a bounded filter.

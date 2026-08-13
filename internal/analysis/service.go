@@ -50,17 +50,12 @@ func AnalyzeOne(hpa *autoscalingv2.HorizontalPodAutoscaler, opts Options, enrich
 		Debug:         opts.Debug,
 		HealthWeights: opts.HealthWeights,
 	})
-	analysis.Warnings = append(analysis.Warnings, enrichment.Warnings...)
-	analysis.KEDAInfo = enrichment.KEDA
-	analysis.VPAConflict = enrichment.VPA
-	if analysis.KEDAInfo != nil || analysis.VPAConflict != nil {
-		hpaanalysis.ApplyEnrichmentPenalties(&analysis, opts.HealthWeights)
-	}
-	analysis = hpaanalysis.FinalizeAnalysis(analysis)
+	builder := hpaanalysis.NewAnalysisBuilder(analysis).AddEnrichment(
+		enrichment.KEDA, enrichment.VPA, enrichment.Warnings, opts.HealthWeights,
+	)
+	analysis, report := builder.Build()
 
 	key := analysis.Namespace + "/" + analysis.Name
-	report := hpaanalysis.StatusReport{APIVersion: hpaanalysis.SchemaVersion, Analysis: analysis}
-	report.FreezeCanonical()
 	return Result{
 		Key:       key,
 		Analysis:  analysis,

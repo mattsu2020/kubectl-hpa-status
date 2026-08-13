@@ -140,7 +140,9 @@ func writeStatusError(out io.Writer, opts *options, namespace, name string, repo
 		return nil
 	}
 	if opts.OutputSchema != "v2" {
-		writeErrorIfStructured(out, opts.Output, reportErr)
+		if opts.Output == "json" || opts.Output == "yaml" {
+			return render.Error(out, opts.Output, reportErr)
+		}
 		return nil
 	}
 	format, templateStr := selectOutputFromOptions(opts)

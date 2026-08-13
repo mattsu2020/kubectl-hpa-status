@@ -31,6 +31,39 @@ type Config struct {
 	VPA  string // "auto" (default), "on" (force), "off" (disable)
 }
 
+// Mode is the normalized tri-state enrichment policy.
+type Mode uint8
+
+const (
+	// ModeOff disables enrichment.
+	ModeOff Mode = iota
+	// ModeAuto enables enrichment only when the CRD is discovered.
+	ModeAuto
+	// ModeOn forces enrichment.
+	ModeOn
+)
+
+// ParseMode normalizes current and legacy flag spellings. Unknown values are
+// disabled; CLI validation is responsible for presenting the user error.
+func ParseMode(value string) Mode {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "on", "true", "1":
+		return ModeOn
+	case "auto":
+		return ModeAuto
+	default:
+		return ModeOff
+	}
+}
+
+// Requested reports whether discovery should be attempted.
+func (m Mode) Requested() bool { return m != ModeOff }
+
+// Enabled evaluates the mode against CRD availability.
+func (m Mode) Enabled(crdPresent bool) bool {
+	return m == ModeOn || (m == ModeAuto && crdPresent)
+}
+
 // Context holds reusable clients and CRD availability for enrichment
 // operations. Created once per command invocation and shared across all
 // HPA processing. Safe for concurrent use after construction because
@@ -57,20 +90,21 @@ func (ec *Context) Status() Status {
 // at least one enrichment source is available. Always returns a non-nil Context
 // with status populated to explain why enrichment may be unavailable.
 func NewContext(ctx context.Context, cfg Config) *Context {
+	kedaMode, vpaMode := ParseMode(cfg.KEDA), ParseMode(cfg.VPA)
 	kedaEntry := &Entry{Source: SourceKEDA, State: StateDisabled}
 	vpaEntry := &Entry{Source: SourceVPA, State: StateDisabled}
-	if Requested(cfg.KEDA) {
+	if kedaMode.Requested() {
 		kedaEntry.State = StateUnavailable
-		kedaEntry.Reason = "not requested"
+		kedaEntry.Reason = "not yet checked"
 	}
-	if Requested(cfg.VPA) {
+	if vpaMode.Requested() {
 		vpaEntry.State = StateUnavailable
-		vpaEntry.Reason = "not requested"
+		vpaEntry.Reason = "not yet checked"
 	}
 
 	status := Status{KEDA: kedaEntry, VPA: vpaEntry}
 
-	if !Requested(cfg.KEDA) && !Requested(cfg.VPA) {
+	if !kedaMode.Requested() && !vpaMode.Requested() {
 		kedaEntry.State = StateDisabled
 		vpaEntry.State = StateDisabled
 		return &Context{status: status}
@@ -99,8 +133,8 @@ func NewContext(ctx context.Context, cfg Config) *Context {
 
 	crdAvail := kube.DetectCRDs(disco)
 
-	kedaEnabled := isEnabled(cfg.KEDA, crdAvail.KEDA)
-	vpaEnabled := isEnabled(cfg.VPA, crdAvail.VPA)
+	kedaEnabled := kedaMode.Enabled(crdAvail.KEDA)
+	vpaEnabled := vpaMode.Enabled(crdAvail.VPA)
 
 	// Surface the real discovery outcome in each Entry.Reason. When discovery
 	// itself failed (RBAC denial, network timeout), the wrapped error replaces
@@ -170,14 +204,7 @@ func applyCRDAvailability(entry *Entry, requested, available bool, missingReason
 // presence. "on" forces enablement, "off" disables, "auto" (and any
 // unrecognized/empty value) enables only when the CRD is present.
 func isEnabled(mode string, crdPresent bool) bool {
-	switch mode {
-	case "on", "true", "1":
-		return true
-	case "off", "false", "0", "":
-		return false
-	default: // "auto" or unrecognized
-		return crdPresent
-	}
+	return ParseMode(mode).Enabled(crdPresent)
 }
 
 // Requested reports whether the mode asks for enrichment at all (on or auto),
@@ -187,12 +214,7 @@ func isEnabled(mode string, crdPresent bool) bool {
 // outside the package (e.g. cmd's streaming-eligibility check) share one
 // definition instead of mirroring the switch.
 func Requested(mode string) bool {
-	switch mode {
-	case "on", "auto", "true", "1":
-		return true
-	default:
-		return false
-	}
+	return ParseMode(mode).Requested()
 }
 
 // clearEnrichmentReason resets the entry's reason when enabled (marking it ready for per-HPA updates).
@@ -418,19 +440,22 @@ func analyzeKEDAHPA(hpa *autoscalingv2.HorizontalPodAutoscaler, indexes kedaInde
 		return "", nil
 	}
 
-	var scaledObj *unstructured.Unstructured
-	if det.Name != "" {
-		scaledObj = indexes.byName[hpa.Namespace+"/"+det.Name]
-	}
 	candidates := indexes.byTarget[hpa.Namespace+"/"+hpa.Spec.ScaleTargetRef.Kind+"/"+hpa.Spec.ScaleTargetRef.Name]
-	if scaledObj == nil && len(candidates) == 1 {
-		scaledObj = candidates[0]
+	items := make([]unstructured.Unstructured, 0, len(candidates)+1)
+	if named := indexes.byName[hpa.Namespace+"/"+det.Name]; named != nil {
+		items = append(items, *named)
 	}
+	for _, candidate := range candidates {
+		if len(items) == 0 || items[0].GetName() != candidate.GetName() {
+			items = append(items, *candidate)
+		}
+	}
+	scaledObj, ambiguous := kube.ResolveScaledObjectForHPA(hpa, items)
 
 	key := hpa.Namespace + "/" + hpa.Name
 	if scaledObj == nil {
 		line := "[observed] HPA appears KEDA-managed but no matching ScaledObject found"
-		if len(candidates) > 1 {
+		if ambiguous {
 			line = "[observed] multiple ScaledObjects target this workload; ownership is ambiguous"
 		}
 		return key, &hpakeda.Analysis{Lines: []string{line}}

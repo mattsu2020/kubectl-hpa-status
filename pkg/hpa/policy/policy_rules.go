@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rulefacts"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
@@ -356,15 +357,9 @@ func targetUtilizationRangePolicy(hpa *autoscalingv2.HorizontalPodAutoscaler, pa
 
 	var violations []Violation
 
-	for _, m := range hpa.Spec.Metrics {
-		if m.Type != autoscalingv2.ResourceMetricSourceType || m.Resource == nil {
-			continue
-		}
-		if m.Resource.Target.Type != autoscalingv2.UtilizationMetricType || m.Resource.Target.AverageUtilization == nil {
-			continue
-		}
-		util := int(*m.Resource.Target.AverageUtilization)
-		name := strings.ToLower(string(m.Resource.Name))
+	for _, target := range rulefacts.ResourceUtilizationTargets(hpa) {
+		util := int(target.Percent)
+		name := strings.ToLower(target.Resource)
 
 		if util < minPct || util > maxPct {
 			violations = append(violations, Violation{

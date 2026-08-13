@@ -28,13 +28,10 @@ var fixedCandidateWindows = []int32{300, 600}
 // modify the input slices or depend on external state.
 func AnalyzeFlappingPrevention(events []event.Event, hpa *autoscalingv2.HorizontalPodAutoscaler) *PreventionReport {
 	rescales := extractRescaleEvents(events)
+	rescales = event.NormalizeRescales(rescales)
 	if len(rescales) < 3 {
 		return nil
 	}
-
-	sort.Slice(rescales, func(i, j int) bool {
-		return rescales[i].Timestamp.Before(rescales[j].Timestamp)
-	})
 
 	currentWindow := currentStabilizationWindowSeconds(hpa)
 	directionFlips := countDirectionFlips(rescales)

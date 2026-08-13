@@ -40,7 +40,7 @@ func TestIsEnabled(t *testing.T) {
 		{"empty disables", "", true, false},
 		{"auto enables when CRD present", "auto", true, true},
 		{"auto disables when CRD absent", "auto", false, false},
-		{"unknown falls back to CRD presence", "weird", true, true},
+		{"unknown is disabled", "weird", true, false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

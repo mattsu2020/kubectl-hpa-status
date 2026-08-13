@@ -125,7 +125,7 @@ func AnalyzeFromRescales(rescales []event.RescaleData, hpa *autoscalingv2.Horizo
 // timestamps do not reveal an ordering from which direction changes can be
 // reconstructed safely.
 func buildChurnAnalysis(rescales []event.RescaleData, hpa *autoscalingv2.HorizontalPodAutoscaler) *ChurnAnalysis {
-	rescales = normalizeRescaleObservations(rescales)
+	rescales = event.NormalizeRescales(rescales)
 	if len(rescales) < 3 {
 		return nil
 	}
@@ -211,34 +211,7 @@ func buildChurnAnalysis(rescales []event.RescaleData, hpa *autoscalingv2.Horizon
 // timestamp containing different replica sizes is omitted because there is no
 // reliable ordering or final value, and choosing one would invent transitions.
 func normalizeRescaleObservations(rescales []event.RescaleData) []event.RescaleData {
-	if len(rescales) == 0 {
-		return nil
-	}
-
-	ordered := append([]event.RescaleData(nil), rescales...)
-	sort.Slice(ordered, func(i, j int) bool {
-		if ordered[i].Timestamp.Equal(ordered[j].Timestamp) {
-			return ordered[i].NewSize < ordered[j].NewSize
-		}
-		return ordered[i].Timestamp.Before(ordered[j].Timestamp)
-	})
-
-	normalized := make([]event.RescaleData, 0, len(ordered))
-	for start := 0; start < len(ordered); {
-		end := start + 1
-		ambiguous := false
-		for end < len(ordered) && ordered[end].Timestamp.Equal(ordered[start].Timestamp) {
-			if ordered[end].NewSize != ordered[start].NewSize {
-				ambiguous = true
-			}
-			end++
-		}
-		if !ambiguous {
-			normalized = append(normalized, ordered[start])
-		}
-		start = end
-	}
-	return normalized
+	return event.NormalizeRescales(rescales)
 }
 
 // latestContinuousRescaleSegment returns the most recent uninterrupted burst

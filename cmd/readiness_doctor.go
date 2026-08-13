@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 
@@ -13,6 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/metricsapi"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
@@ -149,27 +149,8 @@ func countMissingMetrics(ctx context.Context, client *kube.Client, namespace, se
 	// (fake clients, and discovery implementations that do not wrap one).
 	// Calling Get() on it panics, so guard it the same way
 	// fetchPodMetricSamples and fetchPodMetricNames do.
-	restClient := client.Interface.Discovery().RESTClient()
-	if restClient == nil {
-		return 0
-	}
-
-	body, err := restClient.Get().
-		AbsPath("/apis/metrics.k8s.io/v1beta1").
-		Namespace(namespace).
-		Resource("pods").
-		Param("labelSelector", selector).
-		DoRaw(ctx)
+	metricsList, err := metricsapi.ListPodMetrics(ctx, client.Interface, namespace, selector)
 	if err != nil {
-		return 0
-	}
-
-	var metricsList struct {
-		Items []struct {
-			Metadata metav1.ObjectMeta `json:"metadata"`
-		} `json:"items"`
-	}
-	if err := json.Unmarshal(body, &metricsList); err != nil {
 		return 0
 	}
 

@@ -31,6 +31,9 @@ type ContainerSpec struct {
 // this signature via the shared builderState below.
 type WorkloadOption func(*builderState)
 
+func (o WorkloadOption) applyWorkload(s *builderState) { o(s) }
+func (o WorkloadOption) applyPod(s *builderState)      { o(s) }
+
 // builderState carries the fields common to every workload kind so the option
 // functions can stay kind-agnostic. Each Build* helper seeds the relevant
 // status/template from this state. Pod-only fields (phase, container statuses,
@@ -69,14 +72,14 @@ func WithContainers(cs ...ContainerSpec) WorkloadOption {
 // is stored as the pod's labels so selector-based list calls match them.
 func WithSelector(matchLabels map[string]string) WorkloadOption {
 	return func(s *builderState) {
-		s.selector = matchLabels
+		s.selector = cloneStringMap(matchLabels)
 	}
 }
 
 // WithWorkloadLabels sets labels on the workload object itself.
 func WithWorkloadLabels(labels map[string]string) WorkloadOption {
 	return func(s *builderState) {
-		s.labels = labels
+		s.labels = cloneStringMap(labels)
 	}
 }
 
@@ -101,15 +104,14 @@ func WithDesiredReplicas(desired int32) WorkloadOption {
 // selector options that target the template are ignored.
 func WithPodTemplate(tmpl corev1.PodTemplateSpec) WorkloadOption {
 	return func(s *builderState) {
-		clone := tmpl
-		s.podTemplate = &clone
+		s.podTemplate = tmpl.DeepCopy()
 		s.templateSet = true
 	}
 }
 
 // DeploymentOption customises BuildDeployment. It is an alias of WorkloadOption
 // so callers get kind-specific documentation in their build call site.
-type DeploymentOption = WorkloadOption
+type DeploymentOption interface{ applyWorkload(*builderState) }
 
 // BuildDeployment creates an apps/v1 Deployment for testing.
 func BuildDeployment(namespace, name string, opts ...DeploymentOption) *appsv1.Deployment {
@@ -134,7 +136,7 @@ func BuildDeployment(namespace, name string, opts ...DeploymentOption) *appsv1.D
 }
 
 // StatefulSetOption customises BuildStatefulSet.
-type StatefulSetOption = WorkloadOption
+type StatefulSetOption interface{ applyWorkload(*builderState) }
 
 // BuildStatefulSet creates an apps/v1 StatefulSet for testing.
 func BuildStatefulSet(namespace, name string, opts ...StatefulSetOption) *appsv1.StatefulSet {
@@ -160,7 +162,7 @@ func BuildStatefulSet(namespace, name string, opts ...StatefulSetOption) *appsv1
 }
 
 // ReplicaSetOption customises BuildReplicaSet.
-type ReplicaSetOption = WorkloadOption
+type ReplicaSetOption interface{ applyWorkload(*builderState) }
 
 // BuildReplicaSet creates an apps/v1 ReplicaSet for testing.
 func BuildReplicaSet(namespace, name string, opts ...ReplicaSetOption) *appsv1.ReplicaSet {
@@ -186,48 +188,47 @@ func BuildReplicaSet(namespace, name string, opts ...ReplicaSetOption) *appsv1.R
 // PodOption customises BuildPod. It shares the WorkloadOption signature so the
 // generic options (WithContainer, WithSelector, ...) apply to Pods too, and the
 // pod-specific options below extend the same builderState.
-type PodOption = WorkloadOption
+type PodOption interface{ applyPod(*builderState) }
+
+type podOption func(*builderState)
+
+func (o podOption) applyPod(s *builderState) { o(s) }
 
 // WithPodPhase sets the pod's status phase (Pending, Running, ...).
 func WithPodPhase(phase corev1.PodPhase) PodOption {
-	return func(s *builderState) {
+	return podOption(func(s *builderState) {
 		s.podPhase = phase
 		s.podPhaseSet = true
-	}
+	})
 }
 
 // WithPodLabels sets labels on the pod. For selector-matching tests prefer
 // WithSelector so the same map drives both the label set and assertions.
 func WithPodLabels(labels map[string]string) PodOption {
-	return func(s *builderState) {
-		s.labels = labels
-	}
+	return podOption(func(s *builderState) { s.labels = cloneStringMap(labels) })
 }
 
 // WithContainerStatus appends a container status entry to the pod.
 func WithContainerStatus(status corev1.ContainerStatus) PodOption {
-	return func(s *builderState) {
+	return podOption(func(s *builderState) {
 		s.containerStatuses = append(s.containerStatuses, status)
-	}
+	})
 }
 
 // WithPodCondition appends a pod condition (e.g. PodScheduled=False,
 // Reason=Unschedulable) used by pending-pod diagnostics.
 func WithPodCondition(condition corev1.PodCondition) PodOption {
-	return func(s *builderState) {
+	return podOption(func(s *builderState) {
 		s.podConditions = append(s.podConditions, condition)
-	}
+	})
 }
 
 // BuildPod creates a corev1.Pod for testing. When WithSelector is provided via
 // the pod options, the selector map is applied as the pod's labels.
 func BuildPod(namespace, name string, opts ...PodOption) *corev1.Pod {
-	s := applyOptions(opts)
+	s := applyPodOptions(opts)
 	tmpl := resolvePodTemplate(s)
-	labels := s.labels
-	if labels == nil {
-		labels = map[string]string{}
-	}
+	labels := cloneStringMap(s.labels)
 	for k, v := range s.selector {
 		labels[k] = v
 	}
@@ -244,25 +245,44 @@ func BuildPod(namespace, name string, opts ...PodOption) *corev1.Pod {
 }
 
 // applyOptions runs the given workload options against a fresh builderState.
-func applyOptions(opts []WorkloadOption) *builderState {
+func applyOptions[T interface{ applyWorkload(*builderState) }](opts []T) *builderState {
 	s := &builderState{}
 	for _, opt := range opts {
-		opt(s)
+		opt.applyWorkload(s)
 	}
 	return s
+}
+
+func applyPodOptions(opts []PodOption) *builderState {
+	s := &builderState{}
+	for _, opt := range opts {
+		opt.applyPod(s)
+	}
+	return s
+}
+
+func cloneStringMap(input map[string]string) map[string]string {
+	if input == nil {
+		return map[string]string{}
+	}
+	out := make(map[string]string, len(input))
+	for key, value := range input {
+		out[key] = value
+	}
+	return out
 }
 
 // resolvePodTemplate returns the pod template to embed in a workload. A caller
 // supplied template wins; otherwise a template is built from containers/labels.
 func resolvePodTemplate(s *builderState) corev1.PodTemplateSpec {
 	if s.templateSet && s.podTemplate != nil {
-		return *s.podTemplate
+		return *s.podTemplate.DeepCopy()
 	}
 	tmpl := corev1.PodTemplateSpec{
 		Spec: corev1.PodSpec{Containers: toContainers(s.containers)},
 	}
 	if len(s.labels) > 0 {
-		tmpl.ObjectMeta = metav1.ObjectMeta{Labels: s.labels}
+		tmpl.ObjectMeta = metav1.ObjectMeta{Labels: cloneStringMap(s.labels)}
 	}
 	return tmpl
 }
@@ -273,7 +293,7 @@ func labelSelector(s *builderState) *metav1.LabelSelector {
 	if len(s.selector) == 0 {
 		return nil
 	}
-	return &metav1.LabelSelector{MatchLabels: s.selector}
+	return &metav1.LabelSelector{MatchLabels: cloneStringMap(s.selector)}
 }
 
 // toContainers converts the lightweight ContainerSpec list into corev1.Container

@@ -2,13 +2,13 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
 	hpareadiness "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/readiness"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/metricsapi"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/observation"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -135,35 +135,10 @@ func podReadyForImpact(pod corev1.Pod) bool {
 	return false
 }
 
-type podMetricsNamesJSON struct {
-	Items []struct {
-		Metadata struct {
-			Name string `json:"name"`
-		} `json:"metadata"`
-	} `json:"items"`
-}
-
 func fetchPodMetricNames(ctx context.Context, client *kube.Client, namespace, selector string) ([]string, error) {
-	restClient := client.Interface.Discovery().RESTClient()
-	if restClient == nil {
-		return nil, fmt.Errorf("discovery REST client is unavailable")
-	}
-	raw, err := restClient.Get().
-		AbsPath("/apis/metrics.k8s.io/v1beta1/namespaces", namespace, "pods").
-		Param("labelSelector", selector).
-		DoRaw(ctx)
+	list, err := metricsapi.ListPodMetrics(ctx, client.Interface, namespace, selector)
 	if err != nil {
 		return nil, err
 	}
-	var list podMetricsNamesJSON
-	if err := json.Unmarshal(raw, &list); err != nil {
-		return nil, err
-	}
-	names := make([]string, 0, len(list.Items))
-	for _, item := range list.Items {
-		if item.Metadata.Name != "" {
-			names = append(names, item.Metadata.Name)
-		}
-	}
-	return names, nil
+	return list.Names(), nil
 }

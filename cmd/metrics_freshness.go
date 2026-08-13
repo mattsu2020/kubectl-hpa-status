@@ -2,12 +2,12 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/metricsapi"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
@@ -74,19 +74,7 @@ func discoverMetricsAPI(client *kube.Client, source string) apiDiscoveryStatus {
 }
 
 func metricsAPIGroupVersions(source string) []string {
-	switch source {
-	case "metrics.k8s.io":
-		return []string{"metrics.k8s.io/v1beta1"}
-	case "custom.metrics.k8s.io":
-		return []string{
-			"custom.metrics.k8s.io/v1beta2",
-			"custom.metrics.k8s.io/v1beta1",
-		}
-	case "external.metrics.k8s.io":
-		return []string{"external.metrics.k8s.io/v1beta1"}
-	default:
-		return nil
-	}
+	return metricsapi.GroupVersions(source)
 }
 
 func latestMetricFailureEvent(events []hpaanalysis.Event, entry hpaanalysis.MetricFreshness) *hpaanalysis.Event {
@@ -183,31 +171,11 @@ type podMetricSample struct {
 	Window    string
 }
 
-type podMetricsListJSON struct {
-	Items []struct {
-		Timestamp  metav1.Time `json:"timestamp"`
-		Window     string      `json:"window"`
-		Containers []struct {
-			Name  string              `json:"name"`
-			Usage corev1.ResourceList `json:"usage"`
-		} `json:"containers"`
-	} `json:"items"`
-}
+type podMetricsListJSON = metricsapi.PodMetricsList
 
 func fetchPodMetricSamples(ctx context.Context, client *kube.Client, namespace, selector string) ([]podMetricSample, error) {
-	restClient := client.Interface.Discovery().RESTClient()
-	if restClient == nil {
-		return nil, fmt.Errorf("discovery REST client is unavailable")
-	}
-	raw, err := restClient.Get().
-		AbsPath("/apis/metrics.k8s.io/v1beta1/namespaces", namespace, "pods").
-		Param("labelSelector", selector).
-		DoRaw(ctx)
+	list, err := metricsapi.ListPodMetrics(ctx, client.Interface, namespace, selector)
 	if err != nil {
-		return nil, err
-	}
-	var list podMetricsListJSON
-	if err := json.Unmarshal(raw, &list); err != nil {
 		return nil, err
 	}
 	return podMetricSamplesFromList(list), nil
