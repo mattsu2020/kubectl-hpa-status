@@ -161,6 +161,25 @@ func formatDuration(d time.Duration) string {
 	return fmt.Sprintf("%dm", m)
 }
 
+// bottleneckDuration renders a bottleneck's duration as a table cell value:
+// "0s" when the duration is unset, the human-readable duration otherwise.
+// Shared by the Markdown and HTML replay renderers.
+func bottleneckDuration(b BottleneckMarker) string {
+	if b.Duration <= 0 {
+		return "0s"
+	}
+	return formatDuration(b.Duration)
+}
+
+// suppressedLabel renders a tolerance effect's suppression state as a Yes/No
+// table cell value. Shared by the Markdown and HTML replay renderers.
+func suppressedLabel(suppressed bool) string {
+	if suppressed {
+		return "Yes"
+	}
+	return "No"
+}
+
 // WriteReplayText renders a ReplayAnalysis as a text timeline with
 // bottleneck markers, control cycles, and stabilization windows.
 func WriteReplayText(w io.Writer, analysis *ReplayAnalysis, tl Timeline, theme style.Theme) error {
@@ -327,16 +346,12 @@ func WriteReplayMarkdown(w io.Writer, analysis *ReplayAnalysis, tl Timeline) err
 		out.WriteString("| Time | Type | Severity | Message | Duration |\n")
 		out.WriteString("|------|------|----------|---------|----------|\n")
 		for _, b := range analysis.Bottlenecks {
-			durationStr := "0s"
-			if b.Duration > 0 {
-				durationStr = formatDuration(b.Duration)
-			}
 			out.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s |\n",
 				b.Timestamp.Format("15:04"),
 				b.Type,
 				b.Severity,
 				rendutil.EscapeMarkdown(b.Message),
-				durationStr))
+				bottleneckDuration(b)))
 		}
 		out.WriteString("\n")
 	}
@@ -379,16 +394,12 @@ func WriteReplayMarkdown(w io.Writer, analysis *ReplayAnalysis, tl Timeline) err
 		out.WriteString("| Time | Metric | Actual Ratio | Tolerance | Suppressed |\n")
 		out.WriteString("|------|--------|--------------|------------|------------|\n")
 		for _, te := range analysis.ReplayToleranceEffects {
-			suppressed := "No"
-			if te.Suppressed {
-				suppressed = "Yes"
-			}
 			out.WriteString(fmt.Sprintf("| %s | %s | %.2f | %.2f | %s |\n",
 				te.Timestamp.Format("15:04"),
 				te.MetricName,
 				te.ActualRatio,
 				te.Tolerance,
-				suppressed))
+				suppressedLabel(te.Suppressed)))
 		}
 		out.WriteString("\n")
 	}
@@ -440,16 +451,12 @@ func WriteReplayHTML(w io.Writer, analysis *ReplayAnalysis, tl Timeline) error {
 		out.WriteString("<h2>Bottlenecks</h2>\n<table>\n<tr><th>Time</th><th>Type</th><th>Severity</th><th>Message</th><th>Duration</th></tr>\n")
 		for _, b := range analysis.Bottlenecks {
 			severityClass := "severity-" + strings.ToLower(b.Severity)
-			durationStr := "0s"
-			if b.Duration > 0 {
-				durationStr = formatDuration(b.Duration)
-			}
 			out.WriteString("<tr>")
 			out.WriteString(fmt.Sprintf("<td>%s</td>", b.Timestamp.Format("15:04")))
 			out.WriteString(fmt.Sprintf("<td>%s</td>", rendutil.HTMLEscape(b.Type)))
 			out.WriteString(fmt.Sprintf("<td class=\"%s\">%s</td>", severityClass, rendutil.HTMLEscape(b.Severity)))
 			out.WriteString(fmt.Sprintf("<td>%s</td>", rendutil.HTMLEscape(b.Message)))
-			out.WriteString(fmt.Sprintf("<td>%s</td>", durationStr))
+			out.WriteString(fmt.Sprintf("<td>%s</td>", bottleneckDuration(b)))
 			out.WriteString("</tr>\n")
 		}
 		out.WriteString("</table>\n")
@@ -489,16 +496,12 @@ func WriteReplayHTML(w io.Writer, analysis *ReplayAnalysis, tl Timeline) error {
 	if len(analysis.ReplayToleranceEffects) > 0 {
 		out.WriteString("<h2>Tolerance Effects</h2>\n<table>\n<tr><th>Time</th><th>Metric</th><th>Actual Ratio</th><th>Tolerance</th><th>Suppressed</th></tr>\n")
 		for _, te := range analysis.ReplayToleranceEffects {
-			suppressed := "No"
-			if te.Suppressed {
-				suppressed = "Yes"
-			}
 			out.WriteString("<tr>")
 			out.WriteString(fmt.Sprintf("<td>%s</td>", te.Timestamp.Format("15:04")))
 			out.WriteString(fmt.Sprintf("<td>%s</td>", rendutil.HTMLEscape(te.MetricName)))
 			out.WriteString(fmt.Sprintf("<td>%.2f</td>", te.ActualRatio))
 			out.WriteString(fmt.Sprintf("<td>%.2f</td>", te.Tolerance))
-			out.WriteString(fmt.Sprintf("<td>%s</td>", suppressed))
+			out.WriteString(fmt.Sprintf("<td>%s</td>", suppressedLabel(te.Suppressed)))
 			out.WriteString("</tr>\n")
 		}
 		out.WriteString("</table>\n")
