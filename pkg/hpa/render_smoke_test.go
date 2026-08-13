@@ -12,6 +12,7 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/containeradvisor"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/gitops"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/lint"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/readiness"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
@@ -94,19 +95,19 @@ func TestRenderSmokeWriters(t *testing.T) {
 			return WriteAssumptionsTextWithExplain(w, &ControllerAssumptions{}, true, theme)
 		}},
 		{"RolloutReport", func(w *bytes.Buffer) error { return WriteRolloutReportText(w, &RolloutReport{}, theme) }},
-		{"LintTextPopulated", func(w *bytes.Buffer) error { return WriteLintText(w, populatedLint) }},
-		{"LintSummaryPopulated", func(w *bytes.Buffer) error { return WriteLintSummary(w, populatedLint) }},
-		{"LintDiffPopulated", func(w *bytes.Buffer) error { return WriteLintDiff(w, populatedLint) }},
-		{"LintCompactPopulated", func(w *bytes.Buffer) error { return WriteLintCompact(w, populatedLint, "hpa.yaml") }},
-		{"ChurnTextPopulated", func(w *bytes.Buffer) error { return WriteChurnText(w, populatedChurn, theme) }},
-		{"ChurnMarkdownPopulated", func(w *bytes.Buffer) error { return WriteChurnMarkdown(w, populatedChurn) }},
-		{"ChurnHTMLPopulated", func(w *bytes.Buffer) error { return WriteChurnHTML(w, populatedChurn) }},
-		{"ReadinessDoctorText", func(w *bytes.Buffer) error { return WriteReadinessDoctorText(w, &ReadinessDoctorReport{}, theme) }},
-		{"ReadinessDoctorMarkdown", func(w *bytes.Buffer) error { return WriteReadinessDoctorMarkdown(w, &ReadinessDoctorReport{}) }},
+		{"LintTextPopulated", func(w *bytes.Buffer) error { return lint.WriteText(w, populatedLint) }},
+		{"LintSummaryPopulated", func(w *bytes.Buffer) error { return lint.WriteSummary(w, populatedLint) }},
+		{"LintDiffPopulated", func(w *bytes.Buffer) error { return lint.WriteDiff(w, populatedLint) }},
+		{"LintCompactPopulated", func(w *bytes.Buffer) error { return lint.WriteCompact(w, populatedLint, "hpa.yaml") }},
+		{"ChurnTextPopulated", func(w *bytes.Buffer) error { return churn.WriteChurnText(w, populatedChurn, theme) }},
+		{"ChurnMarkdownPopulated", func(w *bytes.Buffer) error { return churn.WriteChurnMarkdown(w, populatedChurn) }},
+		{"ChurnHTMLPopulated", func(w *bytes.Buffer) error { return churn.WriteChurnHTML(w, populatedChurn) }},
+		{"ReadinessDoctorText", func(w *bytes.Buffer) error { return readiness.WriteDoctorText(w, &readiness.DoctorReport{}, theme) }},
+		{"ReadinessDoctorMarkdown", func(w *bytes.Buffer) error { return readiness.WriteDoctorMarkdown(w, &readiness.DoctorReport{}) }},
 		{"DecisionTrace", func(w *bytes.Buffer) error { return WriteDecisionTraceText(w, &DecisionTrace{}) }},
 		{"BehaviorAdvisor", func(w *bytes.Buffer) error { return WriteBehaviorAdvisorText(w, &behavioradvisor.Result{}, nil) }},
 		{"PolicyGuardPopulated", func(w *bytes.Buffer) error { return WritePolicyGuardText(w, populatedGuard) }},
-		{"AuditPopulated", func(w *bytes.Buffer) error { return WriteAuditText(w, populatedAudit, nil) }},
+		{"AuditPopulated", func(w *bytes.Buffer) error { return audit.WriteText(w, populatedAudit, nil) }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

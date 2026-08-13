@@ -56,7 +56,7 @@ func runRecommend(ctx context.Context, out io.Writer, opts *options, args []stri
 		}
 
 		if err := renderWithOutput(out, opts, report, func(out io.Writer) error {
-			return hpaanalysis.WriteAuditText(out, report, labelProviderForLang(opts.Lang, opts.Output))
+			return audit.WriteText(out, report, labelProviderForLang(opts.Lang, opts.Output))
 		}); err != nil {
 			return err
 		}

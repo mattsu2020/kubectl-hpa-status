@@ -13,7 +13,6 @@ import (
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/metricsapi"
-	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
 
 func newReadinessDoctorCommand(opts *options) *cobra.Command {
@@ -115,7 +114,7 @@ func runReadinessDoctor(ctx context.Context, out io.Writer, opts *options, name 
 	report := hpareadiness.AnalyzeReadinessDoctor(input)
 
 	return renderWithOutput(out, opts, report, func(out io.Writer) error {
-		return hpaanalysis.WriteReadinessDoctorText(out, report,
+		return hpareadiness.WriteDoctorText(out, report,
 			themeFor(opts.Color, out))
 	})
 

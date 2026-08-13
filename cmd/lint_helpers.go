@@ -246,13 +246,13 @@ func writeLintTextResult(out io.Writer, r lintFileResult, fix bool) error {
 	} else {
 		_, _ = fmt.Fprintf(out, "%s:\n", r.File)
 	}
-	if err := hpaanalysis.WriteLintText(out, r.Result); err != nil {
+	if err := lint.WriteText(out, r.Result); err != nil {
 		return err
 	}
 	_, _ = fmt.Fprintln(out)
 
 	if fix {
-		if err := hpaanalysis.WriteLintDiff(out, r.Result); err != nil {
+		if err := lint.WriteDiff(out, r.Result); err != nil {
 			return err
 		}
 	}

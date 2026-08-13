@@ -1,30 +1,28 @@
-package hpa
+package audit
 
 import (
 	"bytes"
 	"strings"
 	"testing"
-
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/audit"
 )
 
-// 12. WriteAuditText
+// WriteText
 // ---------------------------------------------------------------------------
 
-func TestWriteAuditText(t *testing.T) {
+func TestWriteText(t *testing.T) {
 	t.Run("with findings outputs severity title and description", func(t *testing.T) {
-		report := &audit.Report{
+		report := &Report{
 			Namespace: "default",
 			Name:      "web-hpa",
 			Target:    "Deployment/web",
 			Score:     80,
 			Summary:   "Found 0 critical, 1 warnings, 0 informational findings (score: 80/100)",
-			Findings: []audit.Finding{
+			Findings: []Finding{
 				{
 					ID:          "stabilization-window",
 					Title:       "Stabilization window not explicitly configured",
 					Description: "scaleDown.stabilizationWindowSeconds is unset.",
-					Severity:    audit.AuditWarning,
+					Severity:    AuditWarning,
 					Category:    "stabilization",
 					Current:     "unset (default 300s)",
 					Recommended: "Set stabilizationWindowSeconds explicitly",
@@ -33,7 +31,7 @@ func TestWriteAuditText(t *testing.T) {
 		}
 
 		var buf bytes.Buffer
-		if err := WriteAuditText(&buf, report, nil); err != nil {
+		if err := WriteText(&buf, report, nil); err != nil {
 			t.Fatal(err)
 		}
 
@@ -53,17 +51,17 @@ func TestWriteAuditText(t *testing.T) {
 	})
 
 	t.Run("no findings outputs no findings message", func(t *testing.T) {
-		report := &audit.Report{
+		report := &Report{
 			Namespace: "default",
 			Name:      "perfect-hpa",
 			Target:    "Deployment/web",
 			Score:     100,
 			Summary:   "No best-practice issues found.",
-			Findings:  []audit.Finding{},
+			Findings:  []Finding{},
 		}
 
 		var buf bytes.Buffer
-		if err := WriteAuditText(&buf, report, nil); err != nil {
+		if err := WriteText(&buf, report, nil); err != nil {
 			t.Fatal(err)
 		}
 
@@ -77,17 +75,17 @@ func TestWriteAuditText(t *testing.T) {
 	})
 
 	t.Run("nil provider uses English defaults", func(t *testing.T) {
-		report := &audit.Report{
+		report := &Report{
 			Namespace: "default",
 			Name:      "test-hpa",
 			Target:    "Deployment/test",
 			Score:     90,
 			Summary:   "No best-practice issues found.",
-			Findings:  []audit.Finding{},
+			Findings:  []Finding{},
 		}
 
 		var buf bytes.Buffer
-		if err := WriteAuditText(&buf, report, nil); err != nil {
+		if err := WriteText(&buf, report, nil); err != nil {
 			t.Fatal(err)
 		}
 
@@ -101,25 +99,25 @@ func TestWriteAuditText(t *testing.T) {
 	})
 
 	t.Run("finding with command outputs command line", func(t *testing.T) {
-		report := &audit.Report{
+		report := &Report{
 			Namespace: "default",
 			Name:      "web-hpa",
 			Target:    "Deployment/web",
 			Score:     80,
 			Summary:   "Found 0 critical, 1 warnings, 0 informational findings (score: 80/100)",
-			Findings: []audit.Finding{
+			Findings: []Finding{
 				{
 					ID:          "stabilization-window",
 					Title:       "Stabilization window not explicitly configured",
 					Description: "scaleDown.stabilizationWindowSeconds is unset.",
-					Severity:    audit.AuditWarning,
+					Severity:    AuditWarning,
 					Command:     "kubectl patch hpa web-hpa -n default --type=merge -p '{}' --dry-run=server",
 				},
 			},
 		}
 
 		var buf bytes.Buffer
-		if err := WriteAuditText(&buf, report, nil); err != nil {
+		if err := WriteText(&buf, report, nil); err != nil {
 			t.Fatal(err)
 		}
 

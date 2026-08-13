@@ -1,4 +1,4 @@
-package hpa
+package churn
 
 import (
 	"fmt"
@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
@@ -94,7 +95,7 @@ func WriteChurnHTML(w io.Writer, analysis *ChurnAnalysis) error {
 		out.WriteString(`<h4>Recommendations</h4><ul>`)
 		for _, rec := range analysis.Recommendations {
 			out.WriteString(fmt.Sprintf(`<li><strong>%s</strong>: %s → %s — %s</li>`,
-				htmlEscape(rec.Type), htmlEscape(rec.CurrentValue), htmlEscape(rec.RecommendedValue), htmlEscape(rec.Rationale)))
+				rendutil.HTMLEscape(rec.Type), rendutil.HTMLEscape(rec.CurrentValue), rendutil.HTMLEscape(rec.RecommendedValue), rendutil.HTMLEscape(rec.Rationale)))
 		}
 		out.WriteString(`</ul>`)
 	}
