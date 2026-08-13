@@ -78,3 +78,93 @@ func TestFromCoreSlice(t *testing.T) {
 		}
 	})
 }
+
+func TestNormalizeRescales(t *testing.T) {
+	t0 := time.Date(2024, 3, 1, 0, 0, 0, 0, time.UTC)
+	t1 := t0.Add(time.Minute)
+	t2 := t0.Add(2 * time.Minute)
+
+	tests := []struct {
+		name     string
+		input    []RescaleData
+		want     []RescaleData
+		wantNil  bool
+	}{
+		{name: "nil input", input: nil, want: nil, wantNil: false},
+		{name: "empty input", input: []RescaleData{}, want: nil, wantNil: false},
+		{
+			name:  "already ordered preserved",
+			input: []RescaleData{{Timestamp: t0, NewSize: 2}, {Timestamp: t1, NewSize: 5}},
+			want:  []RescaleData{{Timestamp: t0, NewSize: 2}, {Timestamp: t1, NewSize: 5}},
+		},
+		{
+			name:  "out of order sorted by timestamp",
+			input: []RescaleData{{Timestamp: t2, NewSize: 9}, {Timestamp: t0, NewSize: 2}, {Timestamp: t1, NewSize: 5}},
+			want:  []RescaleData{{Timestamp: t0, NewSize: 2}, {Timestamp: t1, NewSize: 5}, {Timestamp: t2, NewSize: 9}},
+		},
+		{
+			name:  "exact duplicate collapsed to one",
+			input: []RescaleData{{Timestamp: t0, NewSize: 3}, {Timestamp: t0, NewSize: 3}},
+			want:  []RescaleData{{Timestamp: t0, NewSize: 3}},
+		},
+		{
+			name:  "same timestamp equal size keeps one even with other entries",
+			input: []RescaleData{{Timestamp: t0, NewSize: 3}, {Timestamp: t0, NewSize: 3}, {Timestamp: t1, NewSize: 7}},
+			want:  []RescaleData{{Timestamp: t0, NewSize: 3}, {Timestamp: t1, NewSize: 7}},
+		},
+		{
+			name:  "same timestamp different size drops all ambiguous",
+			input: []RescaleData{{Timestamp: t0, NewSize: 3}, {Timestamp: t0, NewSize: 5}},
+			want:  nil,
+		},
+		{
+			name: "ambiguous group dropped while others kept",
+			input: []RescaleData{
+				{Timestamp: t0, NewSize: 3}, {Timestamp: t0, NewSize: 5},
+				{Timestamp: t1, NewSize: 9},
+			},
+			want: []RescaleData{{Timestamp: t1, NewSize: 9}},
+		},
+		{
+			name:  "descending size tie-break is deterministic",
+			input: []RescaleData{{Timestamp: t0, NewSize: 8}, {Timestamp: t0, NewSize: 2}},
+			want:  nil, // same timestamp, differing size -> ambiguous, both dropped
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := NormalizeRescales(tt.input)
+			if tt.wantNil {
+				if got != nil {
+					t.Fatalf("NormalizeRescales() = %v, want nil", got)
+				}
+				return
+			}
+			if len(got) != len(tt.want) {
+				t.Fatalf("NormalizeRescales() = %v, want %v", got, tt.want)
+			}
+			for i := range got {
+				if !got[i].Timestamp.Equal(tt.want[i].Timestamp) || got[i].NewSize != tt.want[i].NewSize {
+					t.Fatalf("NormalizeRescales()[%d] = %v, want %v", i, got[i], tt.want[i])
+				}
+			}
+			// Input slice must not be mutated.
+			if !sameRescaleSlice(tt.input, append([]RescaleData(nil), tt.input...)) {
+				t.Fatalf("NormalizeRescales mutated its input")
+			}
+		})
+	}
+}
+
+func sameRescaleSlice(a, b []RescaleData) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if !a[i].Timestamp.Equal(b[i].Timestamp) || a[i].NewSize != b[i].NewSize {
+			return false
+		}
+	}
+	return true
+}
