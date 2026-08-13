@@ -7,6 +7,7 @@ package behavioradvisor
 import (
 	"fmt"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/conditions"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/confidence"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/model"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -168,12 +169,12 @@ func checkStabilizationWindow(input Input) []Finding {
 			ID:       "behavior-scaledown-window-default",
 			Category: "stabilization",
 			Severity: confidence.Info,
-			Message: "Scale-down stabilization window is not explicitly set. " +
-				"The controller-manager default (300s) applies implicitly. " +
-				"Explicit configuration prevents surprise behavior changes across Kubernetes upgrades.",
-			Current:     "unset (default 300s)",
+			Message: fmt.Sprintf("Scale-down stabilization window is not explicitly set. "+
+				"The controller-manager default (%ds) applies implicitly. "+
+				"Explicit configuration prevents surprise behavior changes across Kubernetes upgrades.", conditions.DefaultScaleDownStabilizationWindowSeconds),
+			Current:     fmt.Sprintf("unset (default %ds)", conditions.DefaultScaleDownStabilizationWindowSeconds),
 			Recommended: "Set stabilizationWindowSeconds explicitly",
-			Patch:       `kubectl patch hpa <name> --type=merge -p '{"spec":{"behavior":{"scaleDown":{"stabilizationWindowSeconds":300}}}}'`,
+			Patch:       fmt.Sprintf(`kubectl patch hpa <name> --type=merge -p '{"spec":{"behavior":{"scaleDown":{"stabilizationWindowSeconds":%d}}}}'`, conditions.DefaultScaleDownStabilizationWindowSeconds),
 		})
 	}
 

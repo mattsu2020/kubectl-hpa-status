@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
+
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/conditions"
 )
 
 // Assumption represents a single detected HPA controller assumption with its
@@ -228,17 +230,17 @@ func detectDownscaleStabilization(hpa *autoscalingv2.HorizontalPodAutoscaler) As
 			Source:      "hpa.spec",
 			Confidence:  "high",
 			Impact:      "Scale-down decisions are held for the stabilization window to prevent flapping",
-			Description: "The scaleDown stabilizationWindowSeconds prevents repeated scale-down by remembering past recommendations. Default is 300s.",
+			Description: fmt.Sprintf("The scaleDown stabilizationWindowSeconds prevents repeated scale-down by remembering past recommendations. Default is %ds.", conditions.DefaultScaleDownStabilizationWindowSeconds),
 		}
 	}
 
 	return Assumption{
 		Name:        "DownscaleStabilization",
-		Value:       "300s",
+		Value:       fmt.Sprintf("%ds", conditions.DefaultScaleDownStabilizationWindowSeconds),
 		Source:      "kubernetes-default",
 		Confidence:  "medium",
 		Impact:      "Scale-down decisions are held for the stabilization window to prevent flapping",
-		Description: "The scaleDown stabilizationWindowSeconds prevents repeated scale-down by remembering past recommendations. Default is 300s.",
+		Description: fmt.Sprintf("The scaleDown stabilizationWindowSeconds prevents repeated scale-down by remembering past recommendations. Default is %ds.", conditions.DefaultScaleDownStabilizationWindowSeconds),
 	}
 }
 
@@ -332,7 +334,7 @@ func buildAssumptionsWarnings(ca *ControllerAssumptions) []string {
 	}
 
 	if ca.DownscaleStabilization.Source == "kubernetes-default" {
-		warnings = append(warnings, "Scale-down may be delayed by default 300s stabilization.")
+		warnings = append(warnings, fmt.Sprintf("Scale-down may be delayed by default %ds stabilization.", conditions.DefaultScaleDownStabilizationWindowSeconds))
 	}
 
 	return warnings

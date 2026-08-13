@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
+
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/conditions"
 )
 
 // parseNonNegativeInt32 parses value as int32 and requires v >= minVal, returning a descriptive error otherwise.
@@ -130,7 +132,7 @@ func originalScaleDownStabilizationWindow(hpa *autoscalingv2.HorizontalPodAutosc
 	if hpa.Spec.Behavior != nil && hpa.Spec.Behavior.ScaleDown != nil && hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds != nil {
 		return fmt.Sprintf("%d", *hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds)
 	}
-	return "300"
+	return fmt.Sprintf("%d", conditions.DefaultScaleDownStabilizationWindowSeconds)
 }
 
 func originalScaleUpStabilizationWindow(hpa *autoscalingv2.HorizontalPodAutoscaler) string {

@@ -10,6 +10,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/conditions"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
 )
 
@@ -152,7 +153,7 @@ func scaleDownStabilizedRule(ctx SuggestionContext) []Suggestion {
 	}
 
 	window := scaleDownStabilizationWindow(hpa)
-	if window == nil || *window <= 60 || *window == 300 {
+	if window == nil || *window <= 60 || *window == conditions.DefaultScaleDownStabilizationWindowSeconds {
 		return nil
 	}
 
@@ -173,7 +174,7 @@ func scaleDownStabilizedRule(ctx SuggestionContext) []Suggestion {
 		Risk:        "medium",
 		Preconditions: []string{
 			"AbleToScale reason reports ScaleDownStabilized.",
-			"The stabilization window is not at the default 300s (it was explicitly set).",
+			fmt.Sprintf("The stabilization window is not at the default %ds (it was explicitly set).", conditions.DefaultScaleDownStabilizationWindowSeconds),
 			"The workload can tolerate faster downscale decisions.",
 		},
 		Warnings: []string{"Shorter stabilization can increase replica churn when traffic is bursty."},
@@ -221,7 +222,7 @@ func behaviorPolicyRule(ctx SuggestionContext) []Suggestion {
 			"spec": map[string]any{
 				"behavior": map[string]any{
 					"scaleDown": map[string]any{
-						"stabilizationWindowSeconds": 300,
+						"stabilizationWindowSeconds": conditions.DefaultScaleDownStabilizationWindowSeconds,
 						"selectPolicy":               "Max",
 						"policies": []map[string]any{
 							{"type": "Percent", "value": 50, "periodSeconds": 60},
@@ -238,7 +239,7 @@ func behaviorPolicyRule(ctx SuggestionContext) []Suggestion {
 			Risk:        "medium",
 			Preconditions: []string{
 				"The workload tolerates gradual downscale.",
-				"Traffic has enough signal stability for a 300s stabilization window.",
+				fmt.Sprintf("Traffic has enough signal stability for a %ds stabilization window.", conditions.DefaultScaleDownStabilizationWindowSeconds),
 			},
 			Warnings: []string{"Too-fast scale-down can cause latency spikes during rebound traffic."},
 			Apply:    true,
@@ -390,10 +391,12 @@ func visibleScaleDownPressure(hpa *autoscalingv2.HorizontalPodAutoscaler) bool {
 	return false
 }
 
-// recommendedMaxReplicasCap is the absolute upper bound for suggested
-// maxReplicas regardless of the doubling formula. This prevents dangerous
-// suggestions on production clusters where maxReplicas is already large.
-const recommendedMaxReplicasCap int32 = 200
+// maxReplicasCap is the absolute upper bound for suggested and
+// capacity-planned maxReplicas regardless of the doubling formula. This
+// prevents dangerous suggestions on production clusters where maxReplicas is
+// already large. A single constant serves both the suggestion rules and the
+// capacity plan so the two can never diverge.
+const maxReplicasCap int32 = 200
 
 func recommendedMaxReplicas(hpa *autoscalingv2.HorizontalPodAutoscaler) int32 {
 	next := hpa.Spec.MaxReplicas * 2
@@ -404,8 +407,8 @@ func recommendedMaxReplicas(hpa *autoscalingv2.HorizontalPodAutoscaler) int32 {
 		next = hpa.Spec.MaxReplicas + 1
 	}
 	// Cap to prevent dangerous suggestions on production clusters.
-	if next > recommendedMaxReplicasCap {
-		next = recommendedMaxReplicasCap
+	if next > maxReplicasCap {
+		next = maxReplicasCap
 	}
 	if next <= hpa.Spec.MaxReplicas {
 		next = hpa.Spec.MaxReplicas + 1
