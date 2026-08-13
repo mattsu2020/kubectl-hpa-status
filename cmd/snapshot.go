@@ -114,7 +114,7 @@ func collectSnapshotData(ctx context.Context, client *kube.Client, opts *options
 	data.MetricsAPI = fetchSnapshotMetricsAPI(ctx, client)
 
 	// 7. Build full analysis
-	data.Analysis = buildSnapshotAnalysis(hpa, opts)
+	data.Analysis = buildSnapshotAnalysis(hpa)
 
 	// 8. Generate markdown report
 	data.Report = buildSnapshotReport(ctx, client, opts, hpa)
@@ -228,7 +228,7 @@ func fetchSnapshotMetricsAPI(_ context.Context, client *kube.Client) []byte {
 	return []byte(sb.String())
 }
 
-func buildSnapshotAnalysis(hpa *autoscalingv2.HorizontalPodAutoscaler, _ *options) []byte {
+func buildSnapshotAnalysis(hpa *autoscalingv2.HorizontalPodAutoscaler) []byte {
 	minReplicas := hpaanalysis.DefaultMinReplicas
 	if hpa.Spec.MinReplicas != nil {
 		minReplicas = *hpa.Spec.MinReplicas

@@ -186,7 +186,7 @@ func runStatusMultiple(ctx context.Context, out io.Writer, opts *options, names 
 	// instead of short-circuiting, so a render failure never masks per-item
 	// health outcomes.
 	if opts.Export != "" {
-		return joinExportAndExit(writeReportsGitOpsExport(out, opts.Export, successReports(results)), aggregateBatchExitCode(results, watchMode))
+		return joinOutputAndExit(writeReportsGitOpsExport(out, opts.Export, successReports(results)), aggregateBatchExitCode(results, watchMode))
 	}
 	if err := renderBatchResults(out, opts, results); err != nil {
 		return err
