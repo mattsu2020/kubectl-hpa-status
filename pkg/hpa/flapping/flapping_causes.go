@@ -5,6 +5,7 @@ import (
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/conditions"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/event"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
 )
@@ -26,10 +27,10 @@ func diagnoseFlappingCauses(hpa *autoscalingv2.HorizontalPodAutoscaler, rescales
 
 	// Check for short stabilization window.
 	window := currentStabilizationWindowSeconds(hpa)
-	if window < 300 {
+	if window < conditions.DefaultScaleDownStabilizationWindowSeconds {
 		causes = append(causes, Cause{
 			Type:        "short-stabilization-window",
-			Description: fmt.Sprintf("The scaleDown stabilizationWindowSeconds is %ds (< 300s default). A short window allows the HPA to reverse scaling decisions before metrics stabilize.", window),
+			Description: fmt.Sprintf("The scaleDown stabilizationWindowSeconds is %ds (< %ds default). A short window allows the HPA to reverse scaling decisions before metrics stabilize.", window, conditions.DefaultScaleDownStabilizationWindowSeconds),
 			Confidence:  "high",
 		})
 	}
@@ -87,10 +88,7 @@ func generateFlappingFixes(hpa *autoscalingv2.HorizontalPodAutoscaler, causes []
 
 		case "short-stabilization-window":
 			currentWindow := currentStabilizationWindowSeconds(hpa)
-			recommendedWindow := currentWindow * 2
-			if recommendedWindow < 300 {
-				recommendedWindow = 300
-			}
+			recommendedWindow := max(currentWindow*2, conditions.DefaultScaleDownStabilizationWindowSeconds)
 			patch := util.MustMarshalJSON(map[string]any{
 				"spec": map[string]any{
 					"behavior": map[string]any{

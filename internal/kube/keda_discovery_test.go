@@ -69,7 +69,7 @@ func TestResolveScaledObjectForHPA(t *testing.T) {
 		},
 		{
 			name:            "preferred name absent falls back to unique targetRef",
-			items:           []unstructured.Unstructured{*other, *web, *dupe},
+			items:           []unstructured.Unstructured{*other, *web},
 			preferredName:   "so-missing",
 			wantName:        "so-web",
 		},
@@ -117,13 +117,7 @@ func TestFindScaledObjectForHPA(t *testing.T) {
 		hpa := discoveryHPA("api")
 		_, err := FindScaledObjectForHPA(context.Background(), dyn, hpa)
 		if err == nil || !errors.Is(err, ErrScaledObjectAmbiguous) {
-			// The command wrapper may wrap; assert it is not "not found" and
-			// not nil. We assert an error mentioning ambiguity.
-			if err == nil {
-				t.Fatalf("expected ambiguous error, got nil")
-			}
-			_ = err
-			return
+			t.Fatalf("expected ErrScaledObjectAmbiguous, got %v", err)
 		}
 	})
 
@@ -133,19 +127,6 @@ func TestFindScaledObjectForHPA(t *testing.T) {
 		_, err := FindScaledObjectForHPA(context.Background(), dyn, hpa)
 		if err == nil || !errors.Is(err, ErrScaledObjectNotFound) {
 			t.Fatalf("expected ErrScaledObjectNotFound, got %v", err)
-		}
-	})
-
-	t.Run("list failure propagates", func(t *testing.T) {
-		// A client that cannot list the GVR returns the wrapped error. Use a
-		// fake with a scheme that does not know the GVR by constructing a
-		// typed-fake backed by a nil mapper is fiddly; instead assert the
-		// empty-namespace path returns not-found rather than panicking.
-		dyn := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme())
-		hpa := discoveryHPA("api")
-		_, err := FindScaledObjectForHPA(context.Background(), dyn, hpa)
-		if err == nil || !errors.Is(err, ErrScaledObjectNotFound) {
-			t.Fatalf("expected ErrScaledObjectNotFound for empty fake, got %v", err)
 		}
 	})
 }

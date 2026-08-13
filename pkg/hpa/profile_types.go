@@ -1,5 +1,11 @@
 package hpa
 
+import (
+	"fmt"
+
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/tolerance"
+)
+
 // ControllerProfile describes HPA controller-manager settings that affect
 // controller decisions. Values may be observed from kube-controller-manager
 // arguments or default assumptions.
@@ -22,6 +28,6 @@ func DefaultControllerProfile() ControllerProfile {
 		DownscaleStabilization:  "5m",
 		InitialReadinessDelay:   "30s",
 		CPUInitializationPeriod: "5m",
-		Tolerance:               "0.1",
+		Tolerance:               fmt.Sprintf("%g", tolerance.DefaultTolerance),
 	}
 }

@@ -7,8 +7,16 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"k8s.io/apimachinery/pkg/api/resource"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/conditions"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/tolerance"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
 )
+
+// defaultWindowDisplay renders the default stabilization window as a
+// human-readable seconds label, e.g. "300s".
+func defaultWindowDisplay() string {
+	return fmt.Sprintf("%ds", conditions.DefaultScaleDownStabilizationWindowSeconds)
+}
 
 // lintReplicaRange checks for minReplicas > maxReplicas.
 func lintReplicaRange(hpa *autoscalingv2.HorizontalPodAutoscaler) []Finding {
@@ -200,7 +208,7 @@ func lintStabilizationWindow(hpa *autoscalingv2.HorizontalPodAutoscaler) []Findi
 			Severity:       Warning,
 			Rule:           "stabilization-window",
 			Message:        fmt.Sprintf("scaleDown stabilizationWindowSeconds is %ds (>15 minutes). Scale-down may remain suppressed for a very long time.", *window),
-			Recommendation: "Reduce the stabilization window to 300s (5 minutes) to allow faster recovery from traffic spikes while still preventing rapid oscillation.",
+			Recommendation: fmt.Sprintf("Reduce the stabilization window to %s (5 minutes) to allow faster recovery from traffic spikes while still preventing rapid oscillation.", defaultWindowDisplay()),
 			AutoFix:        generateAutoFix("stabilization-window", hpa),
 		}}
 	}
@@ -270,7 +278,7 @@ func fixMissingScaleDownBehavior(hpa *autoscalingv2.HorizontalPodAutoscaler) *Au
 		"spec": map[string]any{
 			"behavior": map[string]any{
 				"scaleDown": map[string]any{
-					"stabilizationWindowSeconds": 300,
+					"stabilizationWindowSeconds": conditions.DefaultScaleDownStabilizationWindowSeconds,
 					"policies": []map[string]any{
 						{
 							"type":          "Percent",
@@ -282,7 +290,7 @@ func fixMissingScaleDownBehavior(hpa *autoscalingv2.HorizontalPodAutoscaler) *Au
 			},
 		},
 	}
-	return buildAutoFix(hpa, patch, "No scaleDown behavior configured", "scaleDown with 300s stabilization + 50%/60s policy", "Low — adds guardrails to prevent aggressive downscaling")
+	return buildAutoFix(hpa, patch, "No scaleDown behavior configured", fmt.Sprintf("scaleDown with %s stabilization + 50%%/60s policy", defaultWindowDisplay()), "Low — adds guardrails to prevent aggressive downscaling")
 }
 
 // fixHighUtilizationTarget generates a patch lowering the utilization target to 80%.
@@ -337,22 +345,23 @@ func fixTightTolerance(hpa *autoscalingv2.HorizontalPodAutoscaler) *AutoFix {
 		currentVal = fmt.Sprintf("%.2f%%", hpa.Spec.Behavior.ScaleUp.Tolerance.AsApproximateFloat64()*100)
 		direction = "scaleUp"
 		behavior["scaleUp"] = map[string]any{
-			"tolerance": "0.1",
+			"tolerance": fmt.Sprintf("%g", tolerance.DefaultTolerance),
 		}
 	case hpa.Spec.Behavior != nil && hpa.Spec.Behavior.ScaleDown != nil && hpa.Spec.Behavior.ScaleDown.Tolerance != nil:
 		currentVal = fmt.Sprintf("%.2f%%", hpa.Spec.Behavior.ScaleDown.Tolerance.AsApproximateFloat64()*100)
 		direction = "scaleDown"
 		behavior["scaleDown"] = map[string]any{
-			"tolerance": "0.1",
+			"tolerance": fmt.Sprintf("%g", tolerance.DefaultTolerance),
 		}
 	default:
 		return nil
 	}
 
-	return buildAutoFix(hpa, patch, fmt.Sprintf("%s tolerance: %s", direction, currentVal), fmt.Sprintf("%s tolerance: 0.1 (10%%)", direction), "Medium — widens the no-scale band")
+	return buildAutoFix(hpa, patch, fmt.Sprintf("%s tolerance: %s", direction, currentVal), fmt.Sprintf("%s tolerance: %g (10%%)", direction, tolerance.DefaultTolerance), "Medium — widens the no-scale band")
 }
 
-// fixLongStabilizationWindow generates a patch reducing the window to 300s (5m).
+// fixLongStabilizationWindow generates a patch reducing the window to the
+// Kubernetes default (5m).
 func fixLongStabilizationWindow(hpa *autoscalingv2.HorizontalPodAutoscaler) *AutoFix {
 	if hpa.Spec.Behavior == nil || hpa.Spec.Behavior.ScaleDown == nil {
 		return nil
@@ -367,11 +376,11 @@ func fixLongStabilizationWindow(hpa *autoscalingv2.HorizontalPodAutoscaler) *Aut
 		"spec": map[string]any{
 			"behavior": map[string]any{
 				"scaleDown": map[string]any{
-					"stabilizationWindowSeconds": 300,
+					"stabilizationWindowSeconds": conditions.DefaultScaleDownStabilizationWindowSeconds,
 				},
 			},
 		},
 	}
 
-	return buildAutoFix(hpa, patch, fmt.Sprintf("%ds", *window), "300s (5m)", "Low — reduces cooldown delay")
+	return buildAutoFix(hpa, patch, fmt.Sprintf("%ds", *window), defaultWindowDisplay()+" (5m)", "Low — reduces cooldown delay")
 }

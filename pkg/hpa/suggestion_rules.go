@@ -466,10 +466,9 @@ func SuggestionDiff(currentMin *int32, currentDesired int32, currentMax int32, p
 		} `json:"spec"`
 	}
 	if err := json.Unmarshal([]byte(patch), &parsed); err != nil {
-		return fmt.Sprintf("  patch: %s", patch)
+		return fmt.Sprintf("  patch: %s\n", patch)
 	}
 	var lines []string
-	lines = append(lines, fmt.Sprintf("  status.desiredReplicas: %d (current status, unchanged by patch)", currentDesired))
 	if parsed.Spec.MinReplicas != nil {
 		current := DefaultMinReplicas
 		if currentMin != nil {
@@ -484,7 +483,12 @@ func SuggestionDiff(currentMin *int32, currentDesired int32, currentMax int32, p
 		lines = append(lines, "  spec.behavior: updated")
 	}
 	if len(lines) == 0 {
-		lines = append(lines, fmt.Sprintf("  patch: %s", patch))
+		return fmt.Sprintf("  patch: %s\n", patch)
 	}
-	return strings.Join(lines, "\n") + "\n"
+	// Lead with the current desiredReplicas as plain status context only when
+	// the patch actually changes something.
+	out := make([]string, 0, len(lines)+1)
+	out = append(out, fmt.Sprintf("  status.desiredReplicas: %d (current status, unchanged by patch)", currentDesired))
+	out = append(out, lines...)
+	return strings.Join(out, "\n") + "\n"
 }

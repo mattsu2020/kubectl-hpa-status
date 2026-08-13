@@ -6,6 +6,8 @@ import (
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/conditions"
 )
 
 // AnalyzeReview compares before and after HPA manifests to detect risky
@@ -243,15 +245,13 @@ func extractCPUTargetUtilization(hpa *autoscalingv2.HorizontalPodAutoscaler) (in
 	return 0, false
 }
 
-// extractScaleDownStabilization returns the scaleDown stabilization window seconds.
+// extractScaleDownStabilization returns the scaleDown stabilization window
+// seconds, falling back to the Kubernetes default when unset.
 func extractScaleDownStabilization(hpa *autoscalingv2.HorizontalPodAutoscaler) int32 {
-	if hpa.Spec.Behavior == nil || hpa.Spec.Behavior.ScaleDown == nil {
-		return 300
+	if window := conditions.ScaleDownStabilizationWindow(hpa); window != nil {
+		return *window
 	}
-	if hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds == nil {
-		return 300 // Kubernetes default.
-	}
-	return *hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds
+	return conditions.DefaultScaleDownStabilizationWindowSeconds
 }
 
 // behaviorMoreAggressive checks if scaleUp policy became more aggressive.

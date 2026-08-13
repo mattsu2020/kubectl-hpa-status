@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/churn"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/tolerance"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
@@ -201,7 +202,7 @@ func collectAssumptions(a Analysis) Analysis {
 	}
 	assumptions = append(assumptions, Assumption{
 		Name:       "tolerance",
-		Value:      "0.1",
+		Value:      fmt.Sprintf("%g", tolerance.DefaultTolerance),
 		Source:     "assumed-controller-default",
 		Confidence: "medium",
 	})

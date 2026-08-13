@@ -239,7 +239,7 @@ func FindScaledObjectForHPA(ctx context.Context, dynClient dynamic.Interface, hp
 		return matched, nil
 	}
 	if ambiguous {
-		return nil, fmt.Errorf("hpa %s/%s: multiple ScaledObjects target the workload", hpa.Namespace, hpa.Name)
+		return nil, fmt.Errorf("hpa %s/%s: %w", hpa.Namespace, hpa.Name, ErrScaledObjectAmbiguous)
 	}
 	return nil, fmt.Errorf("hpa %s/%s: %w", hpa.Namespace, hpa.Name, ErrScaledObjectNotFound)
 }
