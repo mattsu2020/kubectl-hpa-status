@@ -85,13 +85,13 @@ func TestNormalizeRescales(t *testing.T) {
 	t2 := t0.Add(2 * time.Minute)
 
 	tests := []struct {
-		name     string
-		input    []RescaleData
-		want     []RescaleData
-		wantNil  bool
+		name      string
+		input     []RescaleData
+		want      []RescaleData
+		wantEmpty bool
 	}{
-		{name: "nil input", input: nil, want: nil, wantNil: false},
-		{name: "empty input", input: []RescaleData{}, want: nil, wantNil: false},
+		{name: "nil input", input: nil, wantEmpty: true},
+		{name: "empty input", input: []RescaleData{}, wantEmpty: true},
 		{
 			name:  "already ordered preserved",
 			input: []RescaleData{{Timestamp: t0, NewSize: 2}, {Timestamp: t1, NewSize: 5}},
@@ -113,9 +113,9 @@ func TestNormalizeRescales(t *testing.T) {
 			want:  []RescaleData{{Timestamp: t0, NewSize: 3}, {Timestamp: t1, NewSize: 7}},
 		},
 		{
-			name:  "same timestamp different size drops all ambiguous",
-			input: []RescaleData{{Timestamp: t0, NewSize: 3}, {Timestamp: t0, NewSize: 5}},
-			want:  nil,
+			name:      "same timestamp different size drops all ambiguous",
+			input:     []RescaleData{{Timestamp: t0, NewSize: 3}, {Timestamp: t0, NewSize: 5}},
+			wantEmpty: true,
 		},
 		{
 			name: "ambiguous group dropped while others kept",
@@ -126,18 +126,22 @@ func TestNormalizeRescales(t *testing.T) {
 			want: []RescaleData{{Timestamp: t1, NewSize: 9}},
 		},
 		{
-			name:  "descending size tie-break is deterministic",
-			input: []RescaleData{{Timestamp: t0, NewSize: 8}, {Timestamp: t0, NewSize: 2}},
-			want:  nil, // same timestamp, differing size -> ambiguous, both dropped
+			name:      "descending size tie-break is deterministic",
+			input:     []RescaleData{{Timestamp: t0, NewSize: 8}, {Timestamp: t0, NewSize: 2}},
+			wantEmpty: true, // same timestamp, differing size -> ambiguous, both dropped
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			snapshot := append([]RescaleData(nil), tt.input...)
 			got := NormalizeRescales(tt.input)
-			if tt.wantNil {
-				if got != nil {
-					t.Fatalf("NormalizeRescales() = %v, want nil", got)
+			if !sameRescaleSlice(tt.input, snapshot) {
+				t.Fatalf("NormalizeRescales mutated its input")
+			}
+			if tt.wantEmpty {
+				if got == nil || len(got) != 0 {
+					t.Fatalf("NormalizeRescales() = %v, want empty", got)
 				}
 				return
 			}
@@ -148,10 +152,6 @@ func TestNormalizeRescales(t *testing.T) {
 				if !got[i].Timestamp.Equal(tt.want[i].Timestamp) || got[i].NewSize != tt.want[i].NewSize {
 					t.Fatalf("NormalizeRescales()[%d] = %v, want %v", i, got[i], tt.want[i])
 				}
-			}
-			// Input slice must not be mutated.
-			if !sameRescaleSlice(tt.input, append([]RescaleData(nil), tt.input...)) {
-				t.Fatalf("NormalizeRescales mutated its input")
 			}
 		})
 	}

@@ -60,6 +60,7 @@ var deprecatedFacades = map[string]facadeSpec{
 			"AnalyzeChurnFromEvents",
 			"VPARecommendationInfo",
 			"VPAInfo",
+			"VPAContainerPolicy",
 			"VPAConflictInfo",
 			"VPARecommendation",
 			"VPAConflictLevel",

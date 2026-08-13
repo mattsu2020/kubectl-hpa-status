@@ -49,6 +49,8 @@ func AnalyzeChurnFromEvents(events []Event, hpa *autoscalingv2.HorizontalPodAuto
 
 // AnalyzeChurnFromSnapshots detects churn from timeline snapshots. Converts
 // snapshots to rescale data, then delegates to churn.AnalyzeFromRescales.
+//
+// Deprecated: Use churn.AnalyzeFromRescales instead. Scheduled for removal in v3.0.0.
 func AnalyzeChurnFromSnapshots(snapshots []TimelineSnapshot, hpa *autoscalingv2.HorizontalPodAutoscaler) *ChurnAnalysis {
 	rescales := make([]event.RescaleData, 0, len(snapshots))
 	for _, snap := range snapshots {
