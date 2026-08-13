@@ -73,7 +73,11 @@ func PendingPodDetailsFromPods(pods []corev1.Pod) []PendingPodDetail {
 				condition.Status == corev1.ConditionFalse &&
 				condition.Reason == corev1.PodReasonUnschedulable {
 				detail.Unschedulable = true
-				detail.Reasons = append(detail.Reasons, condition.Message)
+				// Skip empty messages so downstream renderers never emit a
+				// trailing empty reason (matches PodInfo.Reasons derivation).
+				if condition.Message != "" {
+					detail.Reasons = append(detail.Reasons, condition.Message)
+				}
 			}
 		}
 		pending = append(pending, detail)
