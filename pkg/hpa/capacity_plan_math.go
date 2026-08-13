@@ -4,6 +4,7 @@ import (
 	"math"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/resourceutil"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
@@ -66,17 +67,6 @@ func sumContainerResources(containers []CapacityContainerResources) (resource.Qu
 	return totalCPU, totalMemory
 }
 
-// multiplyQuantity scales a quantity without routing through int64
-// MilliValue arithmetic, which can overflow for large but valid quantities.
-func multiplyQuantity(q resource.Quantity, multiplier int64) resource.Quantity {
-	if multiplier <= 0 || q.IsZero() {
-		return resource.Quantity{}
-	}
-	scaled := q.DeepCopy()
-	scaled.Mul(multiplier)
-	return scaled
-}
-
 // computeSchedulableNow estimates how many additional pods can be scheduled
 // with current node capacity. It subtracts resources used by already-running
 // pods (ReadyPods * per-pod resources) from total allocatable, then divides
@@ -116,8 +106,8 @@ func computeSchedulableNow(nc *blocker.NodeCapacitySummary, perPodCPU, perPodMem
 		// based on all scheduled Pods.
 		remainingCPU = parseQuantityOrZero(nc.AllocCPU)
 		remainingMem = parseQuantityOrZero(nc.AllocMemory)
-		remainingCPU.Sub(multiplyQuantity(perPodCPU, int64(readyPods)))
-		remainingMem.Sub(multiplyQuantity(perPodMemory, int64(readyPods)))
+		remainingCPU.Sub(resourceutil.Multiply(perPodCPU, int64(readyPods)))
+		remainingMem.Sub(resourceutil.Multiply(perPodMemory, int64(readyPods)))
 	}
 
 	fit := podsFitInResources(remainingCPU, remainingMem, perPodCPU, perPodMemory)
@@ -138,10 +128,10 @@ func podsFitInResources(availableCPU, availableMemory, perPodCPU, perPodMemory r
 		return math.MaxInt32
 	}
 	fits := func(count int64) bool {
-		if !perPodCPU.IsZero() && availableCPU.Cmp(multiplyQuantity(perPodCPU, count)) < 0 {
+		if !perPodCPU.IsZero() && availableCPU.Cmp(resourceutil.Multiply(perPodCPU, count)) < 0 {
 			return false
 		}
-		return perPodMemory.IsZero() || availableMemory.Cmp(multiplyQuantity(perPodMemory, count)) >= 0
+		return perPodMemory.IsZero() || availableMemory.Cmp(resourceutil.Multiply(perPodMemory, count)) >= 0
 	}
 	var low int64
 	high := int64(math.MaxInt32) + 1

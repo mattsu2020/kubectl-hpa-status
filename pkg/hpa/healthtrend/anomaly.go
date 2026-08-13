@@ -1,10 +1,10 @@
 package healthtrend
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/flapping"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 )
 
 const (
@@ -207,35 +207,7 @@ func extractScores(snapshots []HealthSnapshot) []int {
 
 // formatDurationFromDuration renders a time.Duration as a human-readable string.
 func formatDurationFromDuration(d time.Duration) string {
-	if d < 0 {
-		d = -d
-	}
-
-	switch {
-	case d >= 24*time.Hour:
-		days := int(d.Hours()) / 24
-		hours := int(d.Hours()) % 24
-		if hours == 0 {
-			return fmt.Sprintf("%dd", days)
-		}
-		return fmt.Sprintf("%dd%dh", days, hours)
-	case d >= time.Hour:
-		hours := int(d.Hours())
-		minutes := int(d.Minutes()) % 60
-		if minutes == 0 {
-			return fmt.Sprintf("%dh", hours)
-		}
-		return fmt.Sprintf("%dh%dm", hours, minutes)
-	case d >= time.Minute:
-		minutes := int(d.Minutes())
-		seconds := int(d.Seconds()) % 60
-		if seconds == 0 {
-			return fmt.Sprintf("%dm", minutes)
-		}
-		return fmt.Sprintf("%dm%ds", minutes, seconds)
-	default:
-		return fmt.Sprintf("%ds", int(d.Seconds()))
-	}
+	return rendutil.DurationCompact(d)
 }
 
 // absInt returns the absolute value of an integer.

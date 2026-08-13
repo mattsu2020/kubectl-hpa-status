@@ -9,6 +9,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/resourceutil"
 )
 
 // AnalyzeCapacityPlan produces a capacity plan that diagnoses whether it is
@@ -108,10 +109,10 @@ func computeCapacityDemand(input CapacityPlanInput, additionalPods int32, resour
 		perPodMemory:      perPodMemory,
 		perPodLimitCPU:    perPodLimitCPU,
 		perPodLimitMemory: perPodLimitMemory,
-		totalCPU:          multiplyQuantity(perPodCPU, int64(additionalPods)),
-		totalMemory:       multiplyQuantity(perPodMemory, int64(additionalPods)),
-		totalLimitCPU:     multiplyQuantity(perPodLimitCPU, int64(additionalPods)),
-		totalLimitMemory:  multiplyQuantity(perPodLimitMemory, int64(additionalPods)),
+		totalCPU:          resourceutil.Multiply(perPodCPU, int64(additionalPods)),
+		totalMemory:       resourceutil.Multiply(perPodMemory, int64(additionalPods)),
+		totalLimitCPU:     resourceutil.Multiply(perPodLimitCPU, int64(additionalPods)),
+		totalLimitMemory:  resourceutil.Multiply(perPodLimitMemory, int64(additionalPods)),
 	}
 }
 

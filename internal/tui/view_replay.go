@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/retrospective"
 )
 
@@ -142,11 +143,7 @@ func appendReplayTimelineRows(sb *strings.Builder, trace *hpaanalysis.TimelineTr
 		snap := trace.Snapshots[i]
 		timeStr := snap.Timestamp.Format("15:04:05")
 
-		filled := int(snap.Desired) * barWidth / int(maxReplicas)
-		if filled > barWidth {
-			filled = barWidth
-		}
-		bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
+		bar := rendutil.ProgressBar(int64(snap.Desired), int64(maxReplicas), barWidth)
 		barStyled := healthStyle(snap.Health).Render(bar)
 		healthBadge := healthStyle(snap.Health).Render(padRight(snap.Health, 8))
 

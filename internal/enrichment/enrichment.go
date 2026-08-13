@@ -513,6 +513,8 @@ func BatchVPA(ctx context.Context, ec *Context, hpas []autoscalingv2.HorizontalP
 
 // FindConflictingVPA keeps API access in the enrichment boundary while the
 // conflict predicate itself remains in the public VPA domain package.
+//
+//nolint:nilnil // nil result with no error means no conflicting VPA exists.
 func FindConflictingVPA(ctx context.Context, dynClient dynamic.Interface, namespace string, hpa *autoscalingv2.HorizontalPodAutoscaler) (*kube.VPAInfo, error) {
 	vpas, err := kube.FetchVPAs(ctx, dynClient, namespace)
 	if err != nil {

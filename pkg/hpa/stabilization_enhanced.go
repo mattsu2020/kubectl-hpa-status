@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
@@ -63,15 +64,7 @@ func FormatASCIIProgressBar(ratio float64, width int) string {
 	if inner < 1 {
 		inner = 1
 	}
-	innerFilled := int(math.Round(ratio * float64(inner)))
-	if innerFilled > inner {
-		innerFilled = inner
-	}
-
-	bar := fmt.Sprintf("[%s%s]",
-		repeatChar("█", innerFilled),
-		repeatChar("░", inner-innerFilled),
-	)
+	bar := "[" + rendutil.ProgressBar(int64(math.Round(ratio*1000)), 1000, int64(inner)) + "]"
 
 	// Percentage label.
 	pct := int(math.Round(ratio * 100))

@@ -12,7 +12,6 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 	restclient "k8s.io/client-go/rest"
@@ -435,28 +434,6 @@ func TestApplyRestOptions(t *testing.T) {
 	applyRestOptions(untouched, Options{})
 	if untouched.QPS != 3 || untouched.Burst != 6 || untouched.Timeout != time.Minute {
 		t.Fatalf("zero options must not override existing config: %+v", untouched)
-	}
-}
-
-func newVPAUnstructured(name, targetKind, targetName, updateMode string) *unstructured.Unstructured {
-	return &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": "autoscaling.k8s.io/v1",
-			"kind":       "VerticalPodAutoscaler",
-			"metadata": map[string]any{
-				"name":      name,
-				"namespace": "default",
-			},
-			"spec": map[string]any{
-				"targetRef": map[string]any{
-					"kind": targetKind,
-					"name": targetName,
-				},
-				"updatePolicy": map[string]any{
-					"updateMode": updateMode,
-				},
-			},
-		},
 	}
 }
 
