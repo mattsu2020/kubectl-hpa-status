@@ -15,7 +15,6 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/retrospective"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
 func newTimelineCommand(opts *options) *cobra.Command {
@@ -109,7 +108,7 @@ func renderRetrospectiveReplay(out io.Writer, replayAnalysis *retrospective.Repl
 	case "html":
 		return retrospective.WriteReplayHTML(out, replayAnalysis, tl)
 	default:
-		theme := style.NewTheme(shouldColorize(opts.Color, out))
+		theme := themeFor(opts.Color, out)
 		return retrospective.WriteReplayText(out, replayAnalysis, tl, theme)
 	}
 }
@@ -132,7 +131,7 @@ func renderRetrospective(out io.Writer, tl retrospective.Timeline, format string
 	case "html":
 		return retrospective.WriteHTML(out, tl)
 	default:
-		theme := style.NewTheme(shouldColorize(opts.Color, out))
+		theme := themeFor(opts.Color, out)
 		return retrospective.WriteTimeline(out, tl, theme)
 	}
 }
@@ -143,7 +142,7 @@ func runTimeline(ctx context.Context, out io.Writer, opts *options, name string,
 		interval = time.Second
 	}
 
-	theme := style.NewTheme(shouldColorize(opts.Color, out))
+	theme := themeFor(opts.Color, out)
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -205,7 +204,7 @@ func runTimelineFromRecord(out io.Writer, opts *options, name, path string) erro
 		return hpaanalysis.WriteTimelineHTML(out, *trace)
 	}
 	return render.Format(out, format, "", trace, func(out io.Writer) error {
-		theme := style.NewTheme(shouldColorize(opts.Color, out))
+		theme := themeFor(opts.Color, out)
 		return hpaanalysis.WriteTimelineTable(out, *trace, theme)
 	})
 }
@@ -238,7 +237,7 @@ func runReplay(out io.Writer, opts *options, filePath string) error {
 		return hpaanalysis.WriteTimelineHTML(out, trace)
 	}
 	return render.Format(out, format, "", trace, func(out io.Writer) error {
-		theme := style.NewTheme(shouldColorize(opts.Color, out))
+		theme := themeFor(opts.Color, out)
 		return hpaanalysis.WriteTimelineTable(out, trace, theme)
 	})
 }

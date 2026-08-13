@@ -19,7 +19,6 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
 func newListCommand(opts *options) *cobra.Command {
@@ -292,7 +291,7 @@ func writeListResult(out io.Writer, opts *options, report hpaanalysis.ListReport
 		if err := hpaanalysis.WriteListText(out, report, hpaanalysis.ListTextOptions{
 			Wide:              wide,
 			Color:             shouldColorize(opts.Color, out),
-			Theme:             style.NewTheme(shouldColorize(opts.Color, out)),
+			Theme:             themeFor(opts.Color, out),
 			Lang:              outputLang(opts.Lang, opts.Output),
 			Labels:            labelProviderForLang(opts.Lang, opts.Output),
 			SummaryTranslator: summaryTranslatorForLang(opts.Lang, opts.Output),

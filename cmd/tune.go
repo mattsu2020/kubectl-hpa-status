@@ -7,7 +7,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 )
 
 type tuneReport struct {
@@ -64,8 +63,7 @@ func runTune(ctx context.Context, out io.Writer, opts *options, name, goal strin
 	if !suggest {
 		report.SuggestedBehavior = ""
 	}
-	format, templateStr := selectOutputFromOptions(opts)
-	return render.Format(out, format, templateStr, report, func(out io.Writer) error {
+	return renderWithOutput(out, opts, report, func(out io.Writer) error {
 		_, _ = fmt.Fprintf(out, "HPA Tuning Advisor: %s/%s\n\nGoal: %s\n\nFindings:\n", report.Namespace, report.Name, report.Goal)
 		if len(report.Findings) == 0 {
 			_, _ = fmt.Fprintln(out, "- behavior is configured; review current policy against workload goal")

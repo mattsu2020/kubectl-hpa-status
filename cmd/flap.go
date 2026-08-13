@@ -11,7 +11,6 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 	"github.com/spf13/cobra"
 )
 
@@ -110,7 +109,7 @@ func runFlapFromRecord(out io.Writer, opts *options, name, path string) error {
 func writeFlapReport(out io.Writer, opts *options, report flapReport) error {
 	format, _ := selectOutputFromOptions(opts)
 	return render.Format(out, format, "", report, func(out io.Writer) error {
-		theme := style.NewTheme(shouldColorize(opts.Color, out))
+		theme := themeFor(opts.Color, out)
 		_, _ = fmt.Fprintf(out, "Flapping Analysis: %s/%s\n", report.Namespace, report.Name)
 		_, _ = fmt.Fprintf(out, "  source: %s\n", report.Source)
 		if report.Snapshots > 0 {

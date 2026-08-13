@@ -126,8 +126,7 @@ func runStatusSingle(ctx context.Context, out io.Writer, opts *options, name str
 		)
 	}
 
-	format, templateStr := selectOutputFromOptions(opts)
-	if err := render.Format(out, format, templateStr, statusOutputValue(opts, report), func(out io.Writer) error {
+	if err := renderWithOutput(out, opts, statusOutputValue(opts, report), func(out io.Writer) error {
 		return hpaanalysis.WriteStatusTextWithOptions(out, report, statusTextOptions(opts, out))
 	}); err != nil {
 		return err
@@ -152,7 +151,6 @@ func writeStatusError(out io.Writer, opts *options, namespace, name string, repo
 		}
 		return nil
 	}
-	format, templateStr := selectOutputFromOptions(opts)
 	record := hpaanalysis.StatusRecordV2{
 		APIVersion: hpaanalysis.SchemaVersionV2,
 		Namespace:  namespace,
@@ -160,7 +158,7 @@ func writeStatusError(out io.Writer, opts *options, namespace, name string, repo
 		Status:     hpaanalysis.StatusRecordErrorV2,
 		Error:      reportErr.Error(),
 	}
-	return render.Format(out, format, templateStr, record, nil)
+	return renderWithOutput(out, opts, record, nil)
 }
 
 // runStatusMultiple handles the multi-HPA status path. Unlike the single-HPA
@@ -211,9 +209,8 @@ func renderBatchResults(out io.Writer, opts *options, results []reportResult) er
 	if opts.ContextForAI || opts.Ask != "" {
 		return writeAIContextMany(out, results, opts.Ask)
 	}
-	format, templateStr := selectOutputFromOptions(opts)
 	reports := successReports(results)
-	return render.Format(out, format, templateStr, batchValue(opts, results, reports), func(out io.Writer) error {
+	return renderWithOutput(out, opts, batchValue(opts, results, reports), func(out io.Writer) error {
 		return writeReportsStatusText(out, opts, results)
 	})
 }

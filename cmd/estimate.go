@@ -7,7 +7,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 )
 
 type estimateOutput struct {
@@ -67,8 +66,7 @@ func runEstimate(ctx context.Context, out io.Writer, opts *options, name string,
 		AdditionalCarbonKgHour:  float64(additional) * carbonKg,
 		AvailabilityNote:        "Higher maxReplicas can reduce capacity risk only if quota, node capacity, and metric availability are healthy; run preflight before applying.",
 	}
-	format, templateStr := selectOutputFromOptions(opts)
-	return render.Format(out, format, templateStr, result, func(out io.Writer) error {
+	return renderWithOutput(out, opts, result, func(out io.Writer) error {
 		_, _ = fmt.Fprintln(out, "Estimate:")
 		_, _ = fmt.Fprintf(out, "- Current maxReplicas: %d\n", result.CurrentMaxReplicas)
 		_, _ = fmt.Fprintf(out, "- Proposed maxReplicas: %d\n", result.ProposedMaxReplicas)

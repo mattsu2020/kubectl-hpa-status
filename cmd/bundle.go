@@ -30,19 +30,20 @@ func newBundleCommand(opts *options) *cobra.Command {
 			return runBundle(cmd.Context(), cmd.OutOrStdout(), opts, args[0], format, output, redact)
 		},
 	}
-	addBundleFlags(cmd, "hpa-bundle-<name>-<timestamp>.{md|zip}")
+	addBundleFlags(cmd, "hpa-bundle-<name>-<timestamp>.{md|zip}", "markdown")
 	return cmd
 }
 
 // addBundleFlags registers the --format / --output / --redact flags shared by
-// the bundle and support-bundle commands. Only the --output help text (the
-// default filename pattern) differs between the two commands.
+// the bundle, support-bundle, and incident-bundle commands. The commands
+// differ only in the --format default and the --output help text (the default
+// filename pattern).
 //
 // Bundles are intended to leave the operator's machine (incident handoff,
 // GitHub issues, Slack), so --redact defaults to true. --redact=false remains
 // available for local, trusted archives that require exact object values.
-func addBundleFlags(cmd *cobra.Command, defaultOutputPattern string) {
-	cmd.Flags().String("format", "markdown", "output format: markdown or zip")
+func addBundleFlags(cmd *cobra.Command, defaultOutputPattern, defaultFormat string) {
+	cmd.Flags().String("format", defaultFormat, "output format: markdown or zip")
 	cmd.Flags().StringP("output", "o", "", "output file path (default: "+defaultOutputPattern+")")
 	cmd.Flags().Bool("redact", true, "redact sensitive information (credentials, labels, annotations, IPs, node names, and pod UIDs); use --redact=false only for trusted local archives")
 }

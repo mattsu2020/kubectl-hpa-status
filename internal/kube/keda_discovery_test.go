@@ -43,11 +43,11 @@ func TestResolveScaledObjectForHPA(t *testing.T) {
 	dupe := scaledObjectUnstructured("so-web2", "Deployment", "web")
 
 	tests := []struct {
-		name            string
-		items           []unstructured.Unstructured
-		preferredName   string
-		wantName        string
-		wantAmbiguous   bool
+		name          string
+		items         []unstructured.Unstructured
+		preferredName string
+		wantName      string
+		wantAmbiguous bool
 	}{
 		{name: "empty items", items: nil},
 		{name: "no match", items: []unstructured.Unstructured{*other}},
@@ -68,10 +68,10 @@ func TestResolveScaledObjectForHPA(t *testing.T) {
 			wantAmbiguous: true,
 		},
 		{
-			name:            "preferred name absent falls back to unique targetRef",
-			items:           []unstructured.Unstructured{*other, *web},
-			preferredName:   "so-missing",
-			wantName:        "so-web",
+			name:          "preferred name absent falls back to unique targetRef",
+			items:         []unstructured.Unstructured{*other, *web},
+			preferredName: "so-missing",
+			wantName:      "so-web",
 		},
 	}
 

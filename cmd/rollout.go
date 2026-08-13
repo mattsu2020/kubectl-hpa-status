@@ -13,7 +13,6 @@ import (
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
 type rolloutOutput struct {
@@ -68,7 +67,7 @@ func runRollout(ctx context.Context, out io.Writer, opts *options, names []strin
 	}
 
 	return renderPerHPA(out, &local, outputs, func(out io.Writer, o rolloutOutput) error {
-		theme := style.NewTheme(shouldColorize(local.Color, out))
+		theme := themeFor(local.Color, out)
 		return hpaanalysis.WriteRolloutReportText(out, o.Report, theme)
 	})
 

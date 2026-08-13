@@ -17,14 +17,14 @@ func TestSuggestionDiff(t *testing.T) {
 		want           string
 	}{
 		{
-			name:       "invalid patch printed verbatim",
-			patch:      "not-json",
-			want:       "  patch: not-json\n",
+			name:  "invalid patch printed verbatim",
+			patch: "not-json",
+			want:  "  patch: not-json\n",
 		},
 		{
-			name:       "empty spec patch printed verbatim",
-			patch:      `{"spec":{}}`,
-			want:       "  patch: {\"spec\":{}}\n",
+			name:  "empty spec patch printed verbatim",
+			patch: `{"spec":{}}`,
+			want:  "  patch: {\"spec\":{}}\n",
 		},
 		{
 			name:           "min max and desired rendered",
@@ -42,9 +42,9 @@ func TestSuggestionDiff(t *testing.T) {
 			want:           "  status.desiredReplicas: 3 (current status, unchanged by patch)\n  spec.minReplicas: 1 -> 5\n",
 		},
 		{
-			name:       "behavior change reported without value",
-			patch:      `{"spec":{"behavior":{}}}`,
-			want:       "  status.desiredReplicas: 0 (current status, unchanged by patch)\n  spec.behavior: updated\n",
+			name:  "behavior change reported without value",
+			patch: `{"spec":{"behavior":{}}}`,
+			want:  "  status.desiredReplicas: 0 (current status, unchanged by patch)\n  spec.behavior: updated\n",
 		},
 	}
 	for _, tt := range tests {
@@ -68,7 +68,7 @@ func TestApplyContainerResourceMetricOverride(t *testing.T) {
 		ContainerResource: &autoscalingv2.ContainerResourceMetricSource{
 			Name:      "cpu",
 			Container: "app",
-			Target: autoscalingv2.MetricTarget{Type: autoscalingv2.UtilizationMetricType},
+			Target:    autoscalingv2.MetricTarget{Type: autoscalingv2.UtilizationMetricType},
 		},
 	}
 
@@ -115,9 +115,9 @@ func TestApplyObjectMetricOverride(t *testing.T) {
 	avgSpec := autoscalingv2.MetricSpec{
 		Type: autoscalingv2.ObjectMetricSourceType,
 		Object: &autoscalingv2.ObjectMetricSource{
-			Metric: autoscalingv2.MetricIdentifier{Name: "queued"},
+			Metric:          autoscalingv2.MetricIdentifier{Name: "queued"},
 			DescribedObject: autoscalingv2.CrossVersionObjectReference{Kind: "Deployment", Name: "api"},
-			Target: autoscalingv2.MetricTarget{Type: autoscalingv2.AverageValueMetricType},
+			Target:          autoscalingv2.MetricTarget{Type: autoscalingv2.AverageValueMetricType},
 		},
 	}
 	if err := applyObjectMetricOverride(hpa, avgSpec, 0, "12"); err != nil {
@@ -131,9 +131,9 @@ func TestApplyObjectMetricOverride(t *testing.T) {
 	valSpec := autoscalingv2.MetricSpec{
 		Type: autoscalingv2.ObjectMetricSourceType,
 		Object: &autoscalingv2.ObjectMetricSource{
-			Metric: autoscalingv2.MetricIdentifier{Name: "uptime"},
+			Metric:          autoscalingv2.MetricIdentifier{Name: "uptime"},
 			DescribedObject: autoscalingv2.CrossVersionObjectReference{Kind: "Service", Name: "api"},
-			Target: autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType},
+			Target:          autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType},
 		},
 	}
 	if err := applyObjectMetricOverride(hpa, valSpec, 0, "9"); err != nil {
@@ -186,9 +186,9 @@ func TestCapacityObservationDomain(t *testing.T) {
 func TestHealthStateFromSignals(t *testing.T) {
 	sig := func(sev HealthState) HealthSignal { return HealthSignal{Severity: sev, Reason: "x"} }
 	tests := []struct {
-		name   string
-		input  []HealthSignal
-		want   HealthState
+		name  string
+		input []HealthSignal
+		want  HealthState
 	}{
 		{name: "empty", input: nil, want: HealthOK},
 		{name: "stabilized only", input: []HealthSignal{sig(HealthStabilized)}, want: HealthStabilized},

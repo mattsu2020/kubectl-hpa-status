@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	hpapolicy "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/policy"
 
 	"github.com/spf13/cobra"
@@ -183,9 +182,8 @@ func runPolicy(ctx context.Context, out io.Writer, opts *options, policyOpts *po
 	}
 
 	report := policyListReport{Items: reports}
-	format, templateStr := selectOutputFromOptions(opts)
-	if err := render.Format(out, format, templateStr, report, func(out io.Writer) error {
-		return writePolicyText(out, report, style.NewTheme(shouldColorize(opts.Color, out)))
+	if err := renderWithOutput(out, opts, report, func(out io.Writer) error {
+		return writePolicyText(out, report, themeFor(opts.Color, out))
 	}); err != nil {
 		return err
 	}

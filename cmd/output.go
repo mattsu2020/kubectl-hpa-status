@@ -9,6 +9,7 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/internal/i18n"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
 // shouldColorize re-exports cmd/internal/output.ShouldColorize under the
@@ -27,6 +28,20 @@ func outputLang(lang, output string) string {
 // stdinIsTerminal re-exports cmd/internal/output.StdinIsTerminal.
 func stdinIsTerminal(in io.Reader) bool {
 	return outpkg.StdinIsTerminal(in)
+}
+
+// themeFor builds the terminal theme for a color mode and output destination,
+// collapsing the repeated style.NewTheme(shouldColorize(...)) construction.
+func themeFor(colorMode string, out io.Writer) style.Theme {
+	return style.NewTheme(shouldColorize(colorMode, out))
+}
+
+// renderWithOutput serializes value through the output format selected from
+// opts, falling back to writeText for the human-readable text mode. It
+// collapses the repeated selectOutputFromOptions + render.Format trio.
+func renderWithOutput(out io.Writer, opts *options, value any, writeText func(io.Writer) error) error {
+	format, templateStr := selectOutputFromOptions(opts)
+	return render.Format(out, format, templateStr, value, writeText)
 }
 
 // i18nLabels is a LabelProvider backed by the internal/i18n locale system.

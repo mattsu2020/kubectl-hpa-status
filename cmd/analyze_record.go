@@ -11,7 +11,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/flapping"
 )
@@ -91,8 +90,7 @@ func runAnalyzeRecordFlapping(out io.Writer, opts *options, path string) error {
 		return result.Items[i].DesiredChanges > result.Items[j].DesiredChanges
 	})
 
-	format, templateStr := selectOutputFromOptions(opts)
-	return render.Format(out, format, templateStr, result, func(out io.Writer) error {
+	return renderWithOutput(out, opts, result, func(out io.Writer) error {
 		if len(result.Items) == 0 {
 			_, err := fmt.Fprintln(out, "No HPA flapping detected.")
 			return err

@@ -116,27 +116,21 @@ func runSimulate(ctx context.Context, out io.Writer, opts *options, name string,
 	format, _ := selectOutputFromOptions(opts)
 
 	return render.Format(out, format, "", report, func(out io.Writer) error {
-		theme := style.NewTheme(shouldColorize(opts.Color, out))
+		theme := themeFor(opts.Color, out)
 		return writeSimulateText(out, report, theme)
 	})
 }
 
-// buildSimulateOverride builds the spec override map from --set-target and
+// buildSimulateOverrides builds the spec override map from --set-target and
 // --tolerance flags.
 func buildSimulateOverrides(setTarget []string, tolerance string) (map[string]string, error) {
-	overrides := make(map[string]string)
-
 	// --set-target: cpu=60 → metric.cpu.target=60
-	for _, t := range setTarget {
-		parts := strings.SplitN(t, "=", 2)
-		if len(parts) != 2 {
-			return nil, fmt.Errorf("invalid --set-target %q: expected name=value format", t)
-		}
-		metricName := strings.ToLower(strings.TrimSpace(parts[0]))
-		value := strings.TrimSpace(parts[1])
-		if metricName == "" || value == "" {
-			return nil, fmt.Errorf("invalid --set-target %q: name and value must be non-empty", t)
-		}
+	targets, err := parseNormalizedPairs(setTarget, "--set-target")
+	if err != nil {
+		return nil, err
+	}
+	overrides := make(map[string]string, len(targets)+1)
+	for metricName, value := range targets {
 		overrides["metric."+metricName+".target"] = value
 	}
 
@@ -149,20 +143,7 @@ func buildSimulateOverrides(setTarget []string, tolerance string) (map[string]st
 }
 
 func parseSetMetricFlags(setMetric []string) (map[string]string, error) {
-	overrides := make(map[string]string, len(setMetric))
-	for _, m := range setMetric {
-		parts := strings.SplitN(m, "=", 2)
-		if len(parts) != 2 {
-			return nil, fmt.Errorf("invalid --set-metric %q: expected name=value format", m)
-		}
-		name := strings.ToLower(strings.TrimSpace(parts[0]))
-		value := strings.TrimSpace(parts[1])
-		if name == "" || value == "" {
-			return nil, fmt.Errorf("invalid --set-metric %q: name and value must be non-empty", m)
-		}
-		overrides[name] = value
-	}
-	return overrides, nil
+	return parseNormalizedPairs(setMetric, "--set-metric")
 }
 
 func writeSimulateText(out io.Writer, report simulateReport, theme style.Theme) error {

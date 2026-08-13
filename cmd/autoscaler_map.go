@@ -13,7 +13,6 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kubeconv"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/autoscalermap"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
 type autoscalerMapOutput struct {
@@ -69,7 +68,7 @@ func runAutoscalerMap(ctx context.Context, out io.Writer, opts *options, names [
 	}
 
 	return renderPerHPA(out, opts, outputs, func(out io.Writer, o autoscalerMapOutput) error {
-		theme := style.NewTheme(shouldColorize(opts.Color, out))
+		theme := themeFor(opts.Color, out)
 		if err := autoscalermap.WriteText(out, o.Map, theme); err != nil {
 			return fmt.Errorf("write autoscaler-map report for %s/%s: %w", o.Namespace, o.Name, err)
 		}
