@@ -25,6 +25,7 @@ Inference should be labeled with confidence language and covered by tests.
 | --- | --- |
 | `cmd/` | Cobra commands, flags, request construction, and Kubernetes client orchestration (one feature/subcommand per file) |
 | `pkg/hpa/` | Importable analysis model: HPA signal extraction, health scoring, suggestions, diagnostics, and text/Markdown/HTML/SARIF rendering |
+| `pkg/hpa/core/` | Dependency-light public contracts for localized labels and metric status formatting; `pkg/hpa` re-exports these types/functions for API compatibility |
 | `pkg/hpa/render/` | Shared report renderers (Markdown/HTML/list/incident) extracted from the root `pkg/hpa` `*_text.go` files |
 | `pkg/hpa/rendutil/` | Shared escape, display-width, and list-projection helpers sitting below both `pkg/hpa` and `pkg/hpa/render` to break the import cycle between them; also imported by `internal/tui` and `cmd/replaylab` for terminal-width truncation, which is why it stays public instead of moving under `pkg/hpa/internal/` |
 | `pkg/style/` | Terminal color and semantic styling (shared by cmd and pkg/hpa renderers) |
