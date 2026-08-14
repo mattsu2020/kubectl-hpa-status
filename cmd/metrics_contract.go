@@ -452,7 +452,16 @@ func selectMetricAPIService(
 }
 
 // checkAPIServiceAvailability checks if a metrics API is available via discovery.
-func checkAPIServiceAvailability(_ context.Context, client *kube.Client, groupVersion string) hpaanalysis.APIServiceStatus {
+func checkAPIServiceAvailability(ctx context.Context, client *kube.Client, groupVersion string) hpaanalysis.APIServiceStatus {
+	// Respect context cancellation for long-running discovery calls.
+	select {
+	case <-ctx.Done():
+		return hpaanalysis.APIServiceStatus{
+			Available: false,
+			Message:   "discovery cancelled",
+		}
+	default:
+	}
 	_, err := client.Interface.Discovery().ServerResourcesForGroupVersion(groupVersion)
 	if err != nil {
 		return hpaanalysis.APIServiceStatus{

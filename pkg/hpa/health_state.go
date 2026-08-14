@@ -8,6 +8,8 @@ type HealthState string
 const (
 	// HealthOK indicates no issues detected.
 	HealthOK HealthState = "OK"
+	// HealthWarning indicates warnings without blocking scaling.
+	HealthWarning HealthState = "WARNING"
 	// HealthError indicates ScalingActive not True or AbleToScale not True.
 	HealthError HealthState = "ERROR"
 	// HealthLimited indicates ScalingLimited is True or implicit max-replicas ceiling.

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/simulate"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
@@ -368,7 +369,7 @@ func appendSimulationSection(out *[]byte, a *Analysis, theme style.Theme, labels
 	}
 	// Extended simulation output: trajectory and risk warnings.
 	if sim.TimeSeriesProjection != nil || len(sim.RiskWarnings) > 0 {
-		extText := FormatSimulationExtended(sim)
+		extText := simulate.FormatSimulationExtended(sim)
 		if extText != "" {
 			*out = fmt.Appendf(*out, "%s\n", extText)
 		}

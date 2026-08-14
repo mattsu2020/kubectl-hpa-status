@@ -15,7 +15,7 @@ func TestSetClockForTest_FreezesAndRestores(t *testing.T) {
 		t.Fatalf("real-time now() drifted too far: before=%v now=%v", before, realNow)
 	}
 
-	restore := SetClockForTest(frozen)
+	restore := setClockForTest(frozen)
 	defer restore()
 
 	// While frozen, now() must return the exact fixed time.

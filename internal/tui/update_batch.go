@@ -41,7 +41,7 @@ func (m Model) handleBatchAuditKey() (tea.Model, tea.Cmd) {
 
 	return m, func() tea.Msg {
 		reports := make(map[string]*audit.Report)
-		var lastErr error
+		var errs []error
 		for _, name := range selected {
 			// `name` is the selection key. It is either a bare HPA name (when a
 			// namespace filter is active) or "namespace/name" (all-namespaces
@@ -59,12 +59,16 @@ func (m Model) handleBatchAuditKey() (tea.Model, tea.Cmd) {
 			}
 			report, err := auditFn(m.ctx, ns, shortName)
 			if err != nil {
-				lastErr = err
+				errs = append(errs, fmt.Errorf("%s/%s: %w", ns, shortName, err))
 				continue
 			}
 			reports[name] = report
 		}
-		return batchAuditMsg{reports: reports, err: lastErr}
+		var err error
+		if len(errs) > 0 {
+			err = errors.Join(errs...)
+		}
+		return batchAuditMsg{reports: reports, err: err}
 	}
 }
 

@@ -188,7 +188,7 @@ func TestWriteStatusDiff_NilPrevious(t *testing.T) {
 func TestWriteStatusDashboardIncludesKeyPanels(t *testing.T) {
 	report := StatusReport{Analysis: Analyze(baseHPA(), true)}
 	var buf bytes.Buffer
-	if err := WriteStatusDashboard(&buf, report, style.NewTheme(false)); err != nil {
+	if err := writeStatusDashboard(&buf, report, style.NewTheme(false)); err != nil {
 		t.Fatal(err)
 	}
 	output := buf.String()

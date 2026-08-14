@@ -16,6 +16,7 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/suggestion"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/keda"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/readiness"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/simulate"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/warmup"
 )
@@ -238,7 +239,7 @@ type Analysis struct {
 	// It is best-effort and uses only stable Kubernetes API fields.
 	DecisionTrace *DecisionTrace `json:"decisionTrace,omitempty" yaml:"decisionTrace,omitempty"`
 	// FlappingSimulation holds what-if analysis results from --simulate.
-	FlappingSimulation *SimulationResult `json:"simulation,omitempty" yaml:"simulation,omitempty"`
+	FlappingSimulation *simulate.SimulationResult `json:"simulation,omitempty" yaml:"simulation,omitempty"`
 	// CapacityContext holds infrastructure capacity analysis for the scale target.
 	CapacityContext *CapacityContext `json:"capacityContext,omitempty" yaml:"capacityContext,omitempty"`
 	// CapacityHeadroom estimates whether the cluster can absorb additional pods
