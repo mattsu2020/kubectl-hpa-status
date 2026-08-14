@@ -262,16 +262,17 @@ func confirmApply(out io.Writer, opts *options, count int, namespace, name strin
 	// would either block forever or silently consume non-confirmation input.
 	// Require an explicit --yes/-y in that case. A caller that deliberately
 	// sets opts.In is allowed to drive the prompt programmatically.
-	if opts.In == nil {
+	in := opts.In
+	if in == nil {
 		if !stdinIsTerminal(os.Stdin) {
 			return fmt.Errorf("cannot prompt for confirmation (stdin is not a terminal); pass --yes/-y to apply non-interactively")
 		}
-		opts.In = os.Stdin
+		in = os.Stdin
 	}
 	if _, err := fmt.Fprintf(out, "Apply %d patches to HPA %s/%s? [y/N]: ", count, namespace, name); err != nil {
 		return fmt.Errorf("write apply prompt: %w", err)
 	}
-	scanner := bufio.NewScanner(opts.In)
+	scanner := bufio.NewScanner(in)
 	if !scanner.Scan() {
 		if err := scanner.Err(); err != nil {
 			return fmt.Errorf("read confirmation input: %w", err)
@@ -330,8 +331,12 @@ func executePatches(ctx context.Context, out io.Writer, client *kube.Client, nam
 		return nil, fmt.Errorf("patches could not be merged into one atomic patch (%w); pass --allow-partial to apply them sequentially at the risk of a partial modification", mergeErr)
 	}
 
-	_, _ = fmt.Fprintf(out, "WARNING: patches could not be merged (%v); falling back to sequential, non-atomic apply.\n", mergeErr)
-	_, _ = fmt.Fprintf(out, "WARNING: if a later patch fails, the HPA %s/%s will be left partially modified — inspect it with `kubectl describe hpa %s -n %s` and reconcile manually.\n", namespace, name, name, namespace)
+	if _, err := fmt.Fprintf(out, "WARNING: patches could not be merged (%v); falling back to sequential, non-atomic apply.\n", mergeErr); err != nil {
+		return nil, fmt.Errorf("writing merge warning: %w", err)
+	}
+	if _, err := fmt.Fprintf(out, "WARNING: if a later patch fails, the HPA %s/%s will be left partially modified — inspect it with `kubectl describe hpa %s -n %s` and reconcile manually.\n", namespace, name, name, namespace); err != nil {
+		return nil, fmt.Errorf("writing partial modification warning: %w", err)
+	}
 
 	var applied []string
 	resourceVersion := expectedResourceVersion

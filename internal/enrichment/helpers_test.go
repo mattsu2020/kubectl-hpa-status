@@ -44,8 +44,8 @@ func TestIsEnabled(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := isEnabled(tc.mode, tc.crdPresent); got != tc.want {
-				t.Fatalf("isEnabled(%q, crd=%v) = %v, want %v", tc.mode, tc.crdPresent, got, tc.want)
+			if got := ParseMode(tc.mode).Enabled(tc.crdPresent); got != tc.want {
+				t.Fatalf("ParseMode(%q).Enabled(crd=%v) = %v, want %v", tc.mode, tc.crdPresent, got, tc.want)
 			}
 		})
 	}

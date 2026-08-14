@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/simulate"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
@@ -259,7 +260,7 @@ func buildStaleNextSteps(spec autoscalingv2.MetricSpec) []string {
 // value field required by its configured target type. A populated zero is
 // valid metric data.
 func hasMetricCurrentValue(spec autoscalingv2.MetricSpec, currentMetrics []autoscalingv2.MetricStatus) bool {
-	target := metricTargetPointer(&spec)
+	target := simulate.MetricTargetPointer(&spec)
 	if target == nil {
 		return false
 	}
@@ -281,7 +282,7 @@ func hasMetricCurrentValue(spec autoscalingv2.MetricSpec, currentMetrics []autos
 // isMetricValueZero checks whether a matching current metric has a populated
 // value whose numeric value is zero.
 func isMetricValueZero(spec autoscalingv2.MetricSpec, currentMetrics []autoscalingv2.MetricStatus) bool {
-	target := metricTargetPointer(&spec)
+	target := simulate.MetricTargetPointer(&spec)
 	if target == nil {
 		return false
 	}

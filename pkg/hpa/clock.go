@@ -18,18 +18,18 @@ func now() time.Time {
 	return clock.Now()
 }
 
-// SetClockForTest replaces the package clock for the duration of a test and
+// setClockForTest replaces the package clock for the duration of a test and
 // returns a cleanup function that restores the real clock. Tests MUST defer
 // the cleanup so that subsequent (possibly parallel) tests observe real time.
 //
 // Example:
 //
-//	defer SetClockForTest(fixedTime)()
+//	defer setClockForTest(fixedTime)()
 //
 // This helper delegates to clock.SetForTest. It is safe under t.Parallel()
-// within a single test, but tests must not run SetClockForTest concurrently
+// within a single test, but tests must not run setClockForTest concurrently
 // with each other: the clock is a single package-level value and the last
 // writer wins.
-func SetClockForTest(t time.Time) (restore func()) {
+func setClockForTest(t time.Time) (restore func()) {
 	return clock.SetForTest(t)
 }

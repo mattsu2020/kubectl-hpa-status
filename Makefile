@@ -14,11 +14,12 @@ build:
 
 .PHONY: test
 test:
-	$(GO) test ./...
+	$(GO) test -coverprofile=$(COVERAGE_OUT) ./...
+	@$(GO) tool cover -func=$(COVERAGE_OUT) > /dev/null
 
 .PHONY: test-race
 test-race:
-	$(GO) test -race ./...
+	$(GO) test -race -covermode=atomic ./...
 
 .PHONY: ci
 ci: tidy build vet lint fmt-check facade-check test test-race coverage-check docs-check
@@ -31,7 +32,7 @@ tidy:
 
 .PHONY: fmt
 fmt:
-	gofmt -w .
+	golangci-lint run --fix ./... || gofmt -w .
 
 .PHONY: fmt-check
 fmt-check:
@@ -52,7 +53,7 @@ coverage:
 	$(GO) tool cover -func=$(COVERAGE_OUT)
 
 .PHONY: coverage-check
-coverage-check: coverage
+coverage-check: $(COVERAGE_OUT)
 	bash scripts/check-coverage.sh $(COVERAGE_OUT)
 
 .PHONY: docs-check

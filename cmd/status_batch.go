@@ -30,9 +30,7 @@ func (r reportResult) batchStatus() hpaanalysis.StatusBatchStatus {
 		return hpaanalysis.BatchStatusError
 	}
 	switch hpaanalysis.HealthState(r.report.Analysis.Health) {
-	case hpaanalysis.HealthError, hpaanalysis.HealthLimited:
-		return hpaanalysis.BatchStatusWarning
-	case "WARNING": // Analysis.Health is a string; some paths emit "WARNING".
+	case hpaanalysis.HealthError, hpaanalysis.HealthLimited, hpaanalysis.HealthWarning:
 		return hpaanalysis.BatchStatusWarning
 	default:
 		return hpaanalysis.BatchStatusOK
@@ -205,10 +203,10 @@ func buildReportsConcurrently(ctx context.Context, opts *options, client *kube.C
 // to warning (ERROR / LIMITED / WARNING).
 func healthIsWarning(health string) bool {
 	switch hpaanalysis.HealthState(health) {
-	case hpaanalysis.HealthError, hpaanalysis.HealthLimited:
+	case hpaanalysis.HealthError, hpaanalysis.HealthLimited, hpaanalysis.HealthWarning:
 		return true
 	default:
-		return health == "WARNING"
+		return false
 	}
 }
 

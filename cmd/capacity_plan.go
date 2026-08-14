@@ -168,7 +168,8 @@ func collectScaleTargetCapacity(ctx context.Context, client *kube.Client, hpa *a
 		// list, so this adds no extra API read.
 		pending := snapshot.PendingPods(ctx)
 		if pending.Known() {
-			input.PendingPods = kubeconv.PendingPodInfos(pending.Data)
+			// Convert []hpa.PendingPodInfo to []capacityplan.PendingPodInfo
+			input.PendingPods = hpaanalysis.ConvertPendingPodsToCapacityplan(kubeconv.PendingPodInfos(pending.Data))
 		}
 		return podSpec
 	}
@@ -268,7 +269,7 @@ func collectCapacityPDBs(ctx context.Context, client *kube.Client, hpa *autoscal
 	if pdbErr != nil {
 		addCapacityObservationError(input, hpaanalysis.CapacityObservationPDBs, "PodDisruptionBudgets", pdbErr)
 	} else {
-		input.PDBs = kubeconv.PDBsPlain(pdbInfos)
+		input.PDBs = hpaanalysis.ConvertPDBsToCapacityplan(kubeconv.PDBsPlain(pdbInfos))
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/healthtrend"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/keda"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/readiness"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/simulate"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/warmup"
 )
@@ -232,7 +233,7 @@ func (a *Analysis) ScaleToZeroGroup() ScaleToZeroView {
 
 // StabilityView groups flapping and churn diagnosis signals.
 type StabilityView struct {
-	FlappingSimulation *SimulationResult          `json:"simulation,omitempty" yaml:"simulation,omitempty"`
+	FlappingSimulation *simulate.SimulationResult `json:"simulation,omitempty" yaml:"simulation,omitempty"`
 	FlappingPrevention *flapping.PreventionReport `json:"flappingPrevention,omitempty" yaml:"flappingPrevention,omitempty"`
 	FlappingDiagnosis  *flapping.Diagnosis        `json:"flappingDiagnosis,omitempty" yaml:"flappingDiagnosis,omitempty"`
 	ChurnAnalysis      *churn.ChurnAnalysis       `json:"churnAnalysis,omitempty" yaml:"churnAnalysis,omitempty"`

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	hpa "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/simulate"
 )
 
 // populatedAnalysis exercises every optional Analysis section renderers.go
@@ -23,12 +24,12 @@ func populatedAnalysis() hpa.Analysis {
 			ResourceIssues:  []hpa.PodResourceIssue{{Pod: "web-1", Container: "app", Resource: "cpu", Category: "missing-request"}},
 			ContainerChecks: []hpa.ContainerCheck{{Container: "app", Found: true}, {Container: "sidecar", Found: false, Message: "not found in pod spec"}},
 		},
-		FlappingSimulation: &hpa.SimulationResult{
+		FlappingSimulation: &simulate.SimulationResult{
 			Parameter:      "maxReplicas",
 			OriginalValue:  "10",
 			SimulatedValue: "20",
-			Before:         hpa.SimulationState{DesiredReplicas: 8, Health: "OK", HealthScore: 90},
-			After:          hpa.SimulationState{DesiredReplicas: 15, Health: "OK", HealthScore: 85},
+			Before:         simulate.SimulationState{DesiredReplicas: 8, Health: "OK", HealthScore: 90},
+			After:          simulate.SimulationState{DesiredReplicas: 15, Health: "OK", HealthScore: 85},
 			RiskAssessment: "Raising maxReplicas increases capacity; verify node headroom.",
 			Interpretation: []string{"desiredReplicas would increase from 8 to 15"},
 		},
