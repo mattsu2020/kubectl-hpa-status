@@ -95,10 +95,6 @@ func (m Model) keyHandlers() []keyBindingHandler {
 		{m.keys.Replay, func(m Model) (tea.Model, tea.Cmd) { return m.handleReplayKey() }},
 		{m.keys.BatchAudit, func(m Model) (tea.Model, tea.Cmd) { return m.handleBatchAuditKey() }},
 		{m.keys.BatchApply, func(m Model) (tea.Model, tea.Cmd) { return m.handleBatchApplyKey() }},
-		{m.keys.MetricMode, func(m Model) (tea.Model, tea.Cmd) { return m.handleMetricModeKey(), nil }},
-		{m.keys.DryRun, func(m Model) (tea.Model, tea.Cmd) { return m.handleDryRunKey() }},
-		{m.keys.TabField, func(m Model) (tea.Model, tea.Cmd) { return m.handleTabField(+1), nil }},
-		{m.keys.ShiftTabField, func(m Model) (tea.Model, tea.Cmd) { return m.handleTabField(-1), nil }},
 		{m.keys.IntervalUp, func(m Model) (tea.Model, tea.Cmd) { return m.handleIntervalKey(-1), nil }},
 		{m.keys.IntervalDown, func(m Model) (tea.Model, tea.Cmd) { return m.handleIntervalKey(+1), nil }},
 	}

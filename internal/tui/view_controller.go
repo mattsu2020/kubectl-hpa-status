@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 )
 
@@ -103,6 +104,7 @@ var viewControllerRegistry = [viewModeCount]viewController{
 	},
 	fixView: viewControllerFuncs{
 		render:        Model.renderFixView,
+		handleKey:     handleFixViewKey,
 		handleMessage: handleFixViewMessage,
 		moveCursor:    moveFixViewCursor,
 		handleEnter:   enterFixView,
@@ -195,7 +197,24 @@ func handleSimViewInput(m Model, msg tea.KeyMsg) (Model, tea.Cmd, bool) {
 			return updated.(Model), nil, true
 		}
 	}
+	if key.Matches(msg, m.keys.MetricMode) {
+		return m.handleMetricModeKey(), nil, true
+	}
+	if key.Matches(msg, m.keys.TabField) {
+		return m.handleTabField(+1), nil, true
+	}
+	if key.Matches(msg, m.keys.ShiftTabField) {
+		return m.handleTabField(-1), nil, true
+	}
 	return m, nil, false
+}
+
+func handleFixViewKey(m Model, msg tea.KeyMsg) (Model, tea.Cmd, bool) {
+	if !key.Matches(msg, m.keys.DryRun) {
+		return m, nil, false
+	}
+	updated, cmd := m.handleDryRunKey()
+	return updated.(Model), cmd, true
 }
 
 // fallbackViewController keeps a corrupt or future unknown mode usable. It
@@ -225,35 +244,28 @@ func moveListViewCursor(m Model, delta int) Model {
 
 func moveFixViewCursor(m Model, delta int) Model {
 	if m.fixState != nil {
-		m.fixState.selected = clampCursor(m.fixState.selected+delta, len(m.fixState.suggestions)-1)
-		m.fixState.applyConfirm = false
+		m.fixState.move(delta)
 	}
 	return m
 }
 
 func moveReplayViewCursor(m Model, delta int) Model {
 	if m.replayState != nil && m.replayState.trace != nil {
-		m.replayState.scrollPos = clampCursor(
-			m.replayState.scrollPos+delta,
-			maxInt(0, len(m.replayState.trace.Snapshots)-1),
-		)
+		m.replayState.move(delta)
 	}
 	return m
 }
 
 func moveHistoryViewCursor(m Model, delta int) Model {
 	if m.historyState != nil {
-		m.historyState.scrollPos = clampCursor(
-			m.historyState.scrollPos+delta,
-			maxInt(0, len(m.historyState.snapshots)-1),
-		)
+		m.historyState.move(delta)
 	}
 	return m
 }
 
 func moveHintsViewCursor(m Model, delta int) Model {
 	if m.hintsState != nil {
-		m.hintsState.selected = clampCursor(m.hintsState.selected+delta, len(m.hintsState.flows)-1)
+		m.hintsState.move(delta)
 	}
 	return m
 }

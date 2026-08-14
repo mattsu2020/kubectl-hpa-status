@@ -13,7 +13,6 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/audit"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"k8s.io/client-go/kubernetes"
 )
@@ -116,40 +115,22 @@ func (m Model) clone() Model {
 func (s interactiveStates) clone() interactiveStates {
 	out := s
 	if s.simState != nil {
-		v := *s.simState
-		v.fields = slices.Clone(s.simState.fields)
-		if s.simState.hpa != nil {
-			v.hpa = s.simState.hpa.DeepCopy()
-		}
-		out.simState = &v
+		out.simState = s.simState.clone()
 	}
 	if s.fixState != nil {
-		v := *s.fixState
-		v.suggestions = slices.Clone(s.fixState.suggestions)
-		out.fixState = &v
+		out.fixState = s.fixState.clone()
 	}
 	if s.replayState != nil {
-		v := *s.replayState
-		out.replayState = &v
+		out.replayState = s.replayState.clone()
 	}
 	if s.batchAuditState != nil {
-		v := *s.batchAuditState
-		v.results = slices.Clone(s.batchAuditState.results)
-		v.reports = make(map[string]*audit.Report, len(s.batchAuditState.reports))
-		for key, report := range s.batchAuditState.reports {
-			v.reports[key] = report
-		}
-		out.batchAuditState = &v
+		out.batchAuditState = s.batchAuditState.clone()
 	}
 	if s.historyState != nil {
-		v := *s.historyState
-		v.snapshots = slices.Clone(s.historyState.snapshots)
-		out.historyState = &v
+		out.historyState = s.historyState.clone()
 	}
 	if s.hintsState != nil {
-		v := *s.hintsState
-		v.flows = slices.Clone(s.hintsState.flows)
-		out.hintsState = &v
+		out.hintsState = s.hintsState.clone()
 	}
 	return out
 }
