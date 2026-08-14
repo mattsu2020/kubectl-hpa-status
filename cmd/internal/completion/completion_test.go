@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -22,15 +23,9 @@ func TestOutputCompletions(t *testing.T) {
 	if directive != cobra.ShellCompDirectiveNoFileComp {
 		t.Errorf("expected NoFileComp, got %v", directive)
 	}
-	expected := []string{"table", "wide", "json", "yaml", "jsonpath=", "template=", "prometheus"}
-	for i, exp := range expected {
-		if i >= len(completions) {
-			t.Errorf("missing completion for %q", exp)
-			continue
-		}
-		if completions[i] == "" {
-			t.Errorf("empty completion at index %d", i)
-		}
+	expected := []string{"table", "wide", "json", "jsonl", "yaml", "jsonpath=", "go-template=", "markdown", "html", "incident", "prometheus"}
+	if got := completionKeys(completions); !slices.Equal(got, expected) {
+		t.Fatalf("completions = %v, want %v", got, expected)
 	}
 }
 
@@ -40,25 +35,8 @@ func TestFilterCompletions(t *testing.T) {
 		t.Errorf("expected NoFileComp, got %v", directive)
 	}
 	expected := []string{"all", "ok", "error", "limited", "issue"}
-	if len(completions) != len(expected) {
-		t.Errorf("expected %d completions, got %d", len(expected), len(completions))
-	}
-	for i, exp := range expected {
-		if i < len(completions) && completions[i] == "" {
-			t.Errorf("empty completion at index %d", i)
-		}
-		if i < len(completions) {
-			found := false
-			for _, c := range completions {
-				if len(c) >= len(exp) && c[:len(exp)] == exp {
-					found = true
-					break
-				}
-			}
-			if !found {
-				t.Errorf("missing completion for %q", exp)
-			}
-		}
+	if got := completionKeys(completions); !slices.Equal(got, expected) {
+		t.Fatalf("completions = %v, want %v", got, expected)
 	}
 }
 
@@ -68,8 +46,8 @@ func TestSortByCompletions(t *testing.T) {
 		t.Errorf("expected NoFileComp, got %v", directive)
 	}
 	expected := []string{"name", "namespace", "health", "healthscore", "current", "desired", "diff", "age", "issue", "min", "max", "target"}
-	if len(completions) != len(expected) {
-		t.Errorf("expected %d completions, got %d", len(expected), len(completions))
+	if got := completionKeys(completions); !slices.Equal(got, expected) {
+		t.Fatalf("completions = %v, want %v", got, expected)
 	}
 }
 
@@ -78,8 +56,8 @@ func TestColorCompletions(t *testing.T) {
 	if directive != cobra.ShellCompDirectiveNoFileComp {
 		t.Errorf("expected NoFileComp, got %v", directive)
 	}
-	if len(completions) != 3 {
-		t.Errorf("expected 3 completions, got %d", len(completions))
+	if got, want := completionKeys(completions), []string{"auto", "always", "never"}; !slices.Equal(got, want) {
+		t.Fatalf("completions = %v, want %v", got, want)
 	}
 }
 
@@ -88,8 +66,8 @@ func TestLangCompletions(t *testing.T) {
 	if directive != cobra.ShellCompDirectiveNoFileComp {
 		t.Errorf("expected NoFileComp, got %v", directive)
 	}
-	if len(completions) != 2 {
-		t.Errorf("expected 2 completions, got %d", len(completions))
+	if got, want := completionKeys(completions), []string{"en", "ja"}; !slices.Equal(got, want) {
+		t.Fatalf("completions = %v, want %v", got, want)
 	}
 }
 
@@ -98,8 +76,8 @@ func TestEventsCompletions(t *testing.T) {
 	if directive != cobra.ShellCompDirectiveNoFileComp {
 		t.Errorf("expected NoFileComp, got %v", directive)
 	}
-	if len(completions) != 2 {
-		t.Errorf("expected 2 completions, got %d", len(completions))
+	if got, want := completionKeys(completions), []string{"true", "false"}; !slices.Equal(got, want) {
+		t.Fatalf("completions = %v, want %v", got, want)
 	}
 }
 
@@ -108,8 +86,8 @@ func TestUntilConditionCompletions(t *testing.T) {
 	if directive != cobra.ShellCompDirectiveNoFileComp {
 		t.Errorf("expected NoFileComp, got %v", directive)
 	}
-	if len(completions) != 5 {
-		t.Errorf("expected 5 completions, got %d", len(completions))
+	if got, want := completionKeys(completions), []string{"ok", "healthy", "stable", "scaling-limited", "error"}; !slices.Equal(got, want) {
+		t.Fatalf("completions = %v, want %v", got, want)
 	}
 }
 
@@ -287,6 +265,14 @@ func containsCompletion(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func completionKeys(values []string) []string {
+	keys := make([]string, len(values))
+	for i, value := range values {
+		keys[i], _, _ = strings.Cut(value, "\t")
+	}
+	return keys
 }
 
 func commandWithContext() *cobra.Command {

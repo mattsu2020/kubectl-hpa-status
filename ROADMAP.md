@@ -29,6 +29,13 @@ This roadmap tracks planned work that is visible to users and contributors. It i
 - **Unified enrichment:** The generic pipeline engine lives in `internal/enrichment`; internal status types alias the canonical public model, and health penalties upsert their signals idempotently.
 - **Immutable command requests:** Status/list/scan snapshot mutable Cobra options into deep-copied request DTOs before execution.
 - **Direct rendering and conversion boundaries:** Command call sites now import `internal/render` and `internal/kubeconv` directly. The obsolete `cmd/converters.go` and render forwarding functions were removed, and text write errors are propagated.
+- **HPA formatting core:** Localized labels and metric status/target/selector
+  formatting live in `pkg/hpa/core`; the root package keeps compatibility
+  aliases and forwarding functions for the v2 public API.
+- **TUI view sub-models:** Six independent interactive state machines own
+  their cloning and view-local transitions behind the mode controller
+  registry, leaving the top-level model responsible for shared application
+  state and global keys.
 - **Compatibility-facade gate:** `make facade-check` and CI reject new in-tree uses of deprecated public facades; ARCHITECTURE.md records the v3 removal criteria.
 - **`client.LookupHPA`:** The create-client + fetch-HPA helper lives in `cmd/internal/client` (cmd facade retained).
 - **Error sentinel hygiene:** Added `ErrNoRecordedSnapshots`, `ErrPolicyViolations`, `ErrPolicyGuardBlocked`, and `ErrInvalidCandidateSpec` so exit paths are matchable via `errors.Is`.
@@ -53,8 +60,8 @@ These are internal-only changes tracked separately because they touch wide
 areas and require their own design step before landing. They have no
 user-visible behavior change.
 
-- **Split `cmd/` into sub-packages:** the flat `package cmd` still holds ~90
-  non-test files / ~15k lines. Phase 1 lifted shared helpers into
+- **Split `cmd/` into sub-packages:** the flat `package cmd` still holds 96
+  non-test files / ~14.6k lines. Phase 1 lifted shared helpers into
   `cmd/internal/{errs,client,output}` and the bundle renderers into
   `cmd/bundle`. Phase 2 extracted three of the four shallow command groups
   named here — `cmd/internal/compat` (report model, rules, text renderer),
@@ -84,26 +91,14 @@ user-visible behavior change.
   call remains deprecated with no applyconfig replacement. Re-check on each
   client-go upgrade and remove the one `//nolint:staticcheck` once an
   alternative lands.
-- **Extract `pkg/hpa/core` shared helpers:** `FormatMetricStatus`, the labels
-  machinery, `TimelineSnapshot` helpers, clock, and conditions utilities are
-  the shared dependency that keeps `capacity`, `simulate`, `decision`,
-  `metrics`, `health`, `retrospective`, and `timeline` in the `pkg/hpa` root
-  (see ARCHITECTURE.md "leaf domain extraction prerequisite"). Lifting them
-  into `pkg/hpa/core` unblocks the domain extractions below.
-- **Extract `simulate` and `capacity` domains:** Once `core` exists, move the
+- **Extract `simulate` and `capacity` domains:** With the formatting/labels
+  core now available, move the
   tightly-coupled `simulate*.go` files (simulate, simulate_metric,
   simulate_extended, simulate_projection) into `pkg/hpa/simulate/`, and the
   `CapacityContext`/`CapacityHeadroom`/`CapacityPlan` trio into
   `pkg/hpa/capacity/` (with `blocker.nodeCapacityRule` re-homed to capacity),
   keeping deprecated re-export facades in `pkg/hpa` until the facade-removal
   policy below clears them.
-- **TUI sub-models per view mode:** The first delegation boundary is in place:
-  a mode-to-controller registry now owns rendering, view-local cursor movement,
-  and Enter/Escape handling, with exhaustive registration tests and a safe
-  fallback for unknown modes. `internal/tui.Model` still permanently holds six
-  independent state machines. Move those states behind dedicated sub-models
-  and narrow the remaining global key handling so adding a view becomes an
-  isolated change.
 - **Consolidate advisor/doctor command surfaces (user-visible):** `advisor`,
   `recommend`, and `container-advisor` overlap, as do `doctor`,
   `readiness-doctor`, and the `diagnosis-*` family. Plan subcommand grouping

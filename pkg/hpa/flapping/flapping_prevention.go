@@ -257,7 +257,7 @@ func formatObservationWindow(rescales []event.RescaleData) string {
 
 // formatFlappingDuration converts a duration to a human-readable string.
 func formatFlappingDuration(d time.Duration) string {
-	return rendutil.DurationCompact(d)
+	return rendutil.DurationCompactHMS(d)
 }
 
 // buildFlappingSummary creates a one-line summary of the flapping analysis.

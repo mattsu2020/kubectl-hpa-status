@@ -134,11 +134,11 @@ Refactoring notes:
   `report_incident.go`) now live in `pkg/hpa/render`, and the shared
   HTML/Markdown escape helpers (`escapeMarkdown`, `htmlEscape`,
   `htmlHealthBadge`, `htmlCSS`) live in `pkg/hpa/rendutil` to break the
-  import cycle (both `pkg/hpa` and `pkg/hpa/render` need them). The remaining
-  `*_text.go` files (status text, diff text, advisor text) are still in
-  `pkg/hpa` because they share the `FormatMetricStatus`/`labels` machinery
-  with the analysis core; moving them requires injecting those call sites
-  through an interface first.
+  import cycle (both `pkg/hpa` and `pkg/hpa/render` need them). Localized
+  labels and metric formatting now live in `pkg/hpa/core`, with compatibility
+  forwards in `pkg/hpa`. The remaining `*_text.go` files stay in `pkg/hpa`
+  because they render root `Analysis` domain types; formatting helpers are no
+  longer the blocker.
 - `cmd/options_bridge.go` is the single vocabulary for `internal/cmdoptions`
   symbols inside `cmd/`. Every preset const, type alias
   (`options`, `commonOptions`, `commandPresetOptions`, ...), and helper
@@ -325,28 +325,27 @@ Refactoring notes:
     `HealthTrendResult` types moved from `workload_types.go` to the new
     package; `pkg/hpa` keeps type aliases for backward compatibility.
     The package imports `pkg/hpa/flapping` for `AnomalyDetection` types.
-  Domains that depend on the shared clock (`now()`), labels machinery, or
-  `FormatMetricStatus` (capacity, retrospective, timeline, metrics, decision,
-  simulate) remain in `pkg/hpa` until those shared helpers are extracted into a
-  core sub-package; that extraction is deferred until a domain that needs them
-  is moved.
+  - `pkg/hpa/core` — localized labels and metric formatting. The root
+    `pkg/hpa` package re-exports them for v2 API compatibility, while domain
+    code can import the dependency-light core directly. Time-dependent domains
+    share the public `pkg/clock` abstraction.
 - Audit, blocker, warmup, flapping, churn, policy, lint, readiness, keda,
   vpa, and healthtrend have been extracted into self-contained sub-packages. The remaining
   domains (pod-analysis, events, capacity, simulate, decision, gitops, metrics,
   health, retrospective, timeline, behavior, container-advisor, assumptions,
-  hidden-factors) each depend on one or more shared helpers that still span the
-  analysis core (`FormatMetricStatus`, the `labels` machinery,
-  `TimelineSnapshot`, `Analysis`). They are intentionally left in `pkg/hpa` as
-  a single cohesive analysis package; extracting those helpers into a shared
-  core sub-package is the prerequisite for the next batch of domain extractions.
+  hidden-factors) each depend on root domain types such as `TimelineSnapshot`
+  and `Analysis`, or on cross-domain finalization. They are intentionally left
+  in `pkg/hpa` until a narrower typed boundary can be introduced; labels and
+  metric formatting are already available from `pkg/hpa/core`.
   Additionally, `pkg/hpa/internal/suggestion` holds the shared `Suggestion`,
   `GuardResult`, `GuardBlocked`, and `GuardWarning` types used by policy and
   the suggestion pipeline.
-- Shared helpers have been progressively extracted into `pkg/hpa/internal/`
-  sub-packages so leaf domains can use them without reaching back into the
-  analysis core:
-  - `pkg/hpa/internal/clock` — swappable time source (`clock.Now`,
-    `clock.SetForTest`). `pkg/hpa` re-exports as `now()` / `SetClockForTest`.
+- Shared helpers have been progressively extracted so leaf domains can use
+  them without reaching back into the analysis core:
+  - `pkg/clock` — the canonical clock interface and real/fake implementations
+    shared by history and analysis code.
+  - `pkg/hpa/core` — localized labels and metric status/target/selector
+    formatting, re-exported from `pkg/hpa` for compatibility.
   - `pkg/hpa/internal/conditions` — HPA condition lookup and stabilization
     math (`conditions.Find`, `conditions.ScaleDownStabilizationWindow`,
     `conditions.EstimateStabilizationRemaining`, condition constants).

@@ -73,9 +73,9 @@ type Model struct {
 	keys keyMap
 }
 
-// interactiveStates owns view-local state. It is embedded during the
-// migration so existing field access remains source-compatible while
-// controllers progressively become independent submodels.
+// interactiveStates groups the independent view-local submodels. Embedding
+// keeps controller field access concise while each state owns its mutable
+// containers and transitions.
 type interactiveStates struct {
 	simState        *simState
 	fixState        *fixState

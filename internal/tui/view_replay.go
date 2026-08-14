@@ -143,7 +143,7 @@ func appendReplayTimelineRows(sb *strings.Builder, trace *hpaanalysis.TimelineTr
 		snap := trace.Snapshots[i]
 		timeStr := snap.Timestamp.Format("15:04:05")
 
-		bar := rendutil.ProgressBar(int64(snap.Desired), int64(maxReplicas), barWidth)
+		bar := rendutil.ProgressBarFloor(int64(snap.Desired), int64(maxReplicas), barWidth)
 		barStyled := healthStyle(snap.Health).Render(bar)
 		healthBadge := healthStyle(snap.Health).Render(padRight(snap.Health, 8))
 

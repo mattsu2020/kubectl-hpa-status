@@ -173,7 +173,7 @@ func formatFreshnessDuration(d time.Duration) string {
 	if d < 0 {
 		d = 0
 	}
-	return rendutil.DurationCompact(d)
+	return rendutil.DurationCompactHMS(d)
 }
 
 // emptyAsUnknown returns "<unknown>" when value is the empty string.

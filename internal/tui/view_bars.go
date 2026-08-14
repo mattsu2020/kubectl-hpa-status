@@ -10,7 +10,7 @@ import (
 
 func renderScoreBar(score int) string {
 	const width = 20
-	bar := rendutil.ProgressBar(int64(score), 100, width)
+	bar := rendutil.ProgressBarFloor(int64(score), 100, width)
 
 	switch {
 	case score >= 80:
@@ -32,7 +32,7 @@ func renderCountdownBar(remaining, total int) string {
 	if elapsed < 0 {
 		elapsed = 0
 	}
-	bar := rendutil.ProgressBar(int64(elapsed), int64(total), width)
+	bar := rendutil.ProgressBarFloor(int64(elapsed), int64(total), width)
 	return warnStyle.Render(bar) + dimStyle.Render(fmt.Sprintf(" %ds/%ds", remaining, total))
 }
 
@@ -48,7 +48,7 @@ func renderEnhancedCountdownBar(remaining int, total int) string {
 	if elapsed < 0 {
 		elapsed = 0
 	}
-	bar := rendutil.ProgressBar(int64(elapsed), int64(total), width)
+	bar := rendutil.ProgressBarFloor(int64(elapsed), int64(total), width)
 
 	remainingRatio := float64(remaining) / float64(total)
 	var style lipgloss.Style
@@ -80,7 +80,7 @@ func renderMiniScoreBar(score int, width int) string {
 	if barW < 3 {
 		barW = 3
 	}
-	bar := rendutil.ProgressBar(int64(score), 100, int64(barW))
+	bar := rendutil.ProgressBarFloor(int64(score), 100, int64(barW))
 	var style lipgloss.Style
 	switch {
 	case score >= 80:
