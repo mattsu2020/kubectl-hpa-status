@@ -7,20 +7,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	appsv1 "k8s.io/api/apps/v1"
 	authorizationv1 "k8s.io/api/authorization/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/kubernetes/fake"
 	restclient "k8s.io/client-go/rest"
 	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/utils/ptr"
 )
 
 func TestCheckAPIServices(t *testing.T) {
-	client := fake.NewSimpleClientset()
+	client := testutil.NewFakeClientWithObjects()
 	client.Resources = []*metav1.APIResourceList{
 		{GroupVersion: "metrics.k8s.io/v1beta1"},
 	}
@@ -57,7 +57,7 @@ func TestCheckMetricsServer(t *testing.T) {
 			},
 			Status: appsv1.DeploymentStatus{Replicas: 1, ReadyReplicas: 1},
 		}
-		status := CheckMetricsServer(context.Background(), fake.NewSimpleClientset(deploy))
+		status := CheckMetricsServer(context.Background(), testutil.NewFakeClientWithObjects(deploy))
 		if !status.Available || !status.Ready {
 			t.Fatalf("expected available+ready, got %+v", status)
 		}
@@ -71,7 +71,7 @@ func TestCheckMetricsServer(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "metrics-server", Namespace: "kube-system"},
 			Status:     appsv1.DeploymentStatus{Replicas: 2, ReadyReplicas: 0},
 		}
-		status := CheckMetricsServer(context.Background(), fake.NewSimpleClientset(deploy))
+		status := CheckMetricsServer(context.Background(), testutil.NewFakeClientWithObjects(deploy))
 		if !status.Available || status.Ready {
 			t.Fatalf("expected available but not ready, got %+v", status)
 		}
@@ -81,7 +81,7 @@ func TestCheckMetricsServer(t *testing.T) {
 	})
 
 	t.Run("absent", func(t *testing.T) {
-		status := CheckMetricsServer(context.Background(), fake.NewSimpleClientset())
+		status := CheckMetricsServer(context.Background(), testutil.NewFakeClientWithObjects())
 		if status.Available {
 			t.Fatalf("expected unavailable, got %+v", status)
 		}
@@ -92,7 +92,7 @@ func TestCheckMetricsServer(t *testing.T) {
 }
 
 func TestCheckRBAC(t *testing.T) {
-	client := fake.NewSimpleClientset()
+	client := testutil.NewFakeClientWithObjects()
 	client.PrependReactor("create", "selfsubjectaccessreviews",
 		func(action k8stesting.Action) (bool, runtime.Object, error) {
 			sar := action.(k8stesting.CreateAction).GetObject().(*authorizationv1.SelfSubjectAccessReview)
@@ -115,7 +115,7 @@ func TestGetHPAFromClient(t *testing.T) {
 	hpa := &autoscalingv2.HorizontalPodAutoscaler{
 		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "staging"},
 	}
-	client := &Client{Interface: fake.NewSimpleClientset(hpa), Namespace: "staging"}
+	client := &Client{Interface: testutil.NewFakeClientWithObjects(hpa), Namespace: "staging"}
 
 	got, err := GetHPAFromClient(context.Background(), client, "web")
 	if err != nil {
@@ -175,7 +175,7 @@ func TestFetchPodInfosForSelector(t *testing.T) {
 			},
 		},
 	}
-	client := fake.NewSimpleClientset(readyPod, unschedulablePod)
+	client := testutil.NewFakeClientWithObjects(readyPod, unschedulablePod)
 
 	infos, err := FetchPodInfosForSelector(context.Background(), client, "default", "app=web")
 	if err != nil {
@@ -218,7 +218,7 @@ func TestFetchPodsForScaleTargetSelectors(t *testing.T) {
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Name: "web-1", Namespace: "default", Labels: map[string]string{"app": "web"}},
 	}
-	client := fake.NewSimpleClientset(deploy, sts, rs, pod)
+	client := testutil.NewFakeClientWithObjects(deploy, sts, rs, pod)
 
 	for _, kind := range []string{"Deployment", "StatefulSet", "ReplicaSet"} {
 		name := map[string]string{"Deployment": "web", "StatefulSet": "db", "ReplicaSet": "web-rs"}[kind]
@@ -269,7 +269,7 @@ func TestFetchReplicaSetsForScaleTarget(t *testing.T) {
 			},
 		},
 	}
-	client := fake.NewSimpleClientset(owned, unowned)
+	client := testutil.NewFakeClientWithObjects(owned, unowned)
 
 	t.Run("deployment filters by owner", func(t *testing.T) {
 		ref := autoscalingv2.CrossVersionObjectReference{Kind: "Deployment", Name: "web"}
@@ -336,7 +336,7 @@ func TestFetchRecentEventsForObjects(t *testing.T) {
 			LastTimestamp:  now,
 		},
 	}
-	client := fake.NewSimpleClientset(events...)
+	client := testutil.NewFakeClientWithObjects(events...)
 
 	got := FetchRecentEventsForObjects(context.Background(), client, "default", []string{"web", "", "web"}, 5)
 	if len(got) != 2 {

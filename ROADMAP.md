@@ -33,7 +33,12 @@ This roadmap tracks planned work that is visible to users and contributors. It i
 - **`client.LookupHPA`:** The create-client + fetch-HPA helper lives in `cmd/internal/client` (cmd facade retained).
 - **Error sentinel hygiene:** Added `ErrNoRecordedSnapshots`, `ErrPolicyViolations`, `ErrPolicyGuardBlocked`, and `ErrInvalidCandidateSpec` so exit paths are matchable via `errors.Is`.
 - **Nil-safety:** Guarded `*deploy.Spec.Replicas` / `*sts.Spec.Replicas` dereferences in the GitOps conflict path.
-- **Test coverage:** Lifted coverage across `cmd/` (12 previously-untested files), `internal/cmdoptions` (34.9% → 61.2%), `pkg/hpa/keda` (45.8% → 96.6%), and split the 1934-line `test/e2e/e2e_test.go` into per-area files.
+- **Test coverage:** Lifted coverage across `cmd/` (12 previously-untested
+  files), `cmd/internal/completion` (26.1% → 95.7%), `internal/cmdoptions`
+  (34.9% → 61.2%), and `pkg/hpa/keda` (45.8% → 96.6%). Direct client-go
+  `fake.NewSimpleClientset` calls are centralized in `internal/testutil`, so
+  the temporary SA1019 suppression has one audited location. The 1934-line
+  `test/e2e/e2e_test.go` was also split into per-area files.
 - **Large test file splits:** Split `pkg/hpa/analysis_test.go` (~1900 lines) into domain files (`analysis_core`, `structured`, `metrics`, `health`, `suggestions`, `text`, `helpers`) and `cmd/root_integration_test.go` into status/list/watch/simulate integration files.
 - **E2E behavior policies:** `TestE2E_BehaviorPolicies` asserts `behavior -o json` scaleUp/scaleDown policies and status --explain visibility.
 
@@ -74,9 +79,10 @@ user-visible behavior change.
   v2 output uses 13 nested group views. Remaining work is a v3 design decision:
   make grouped values primary in-memory storage, flip the default only with
   migration notes, then retire the flat v1 fields in that major release.
-- **Re-evaluate testutil SA1019 suppressions:** `internal/testutil` uses
-  `fake.NewSimpleClientset` (deprecated, no applyconfig replacement). Re-check
-  on each client-go upgrade and remove the `//nolint:staticcheck` once an
+- **Re-evaluate testutil SA1019 suppression:** All fake-client construction is
+  routed through `internal/testutil`; its single `fake.NewSimpleClientset`
+  call remains deprecated with no applyconfig replacement. Re-check on each
+  client-go upgrade and remove the one `//nolint:staticcheck` once an
   alternative lands.
 - **Extract `pkg/hpa/core` shared helpers:** `FormatMetricStatus`, the labels
   machinery, `TimelineSnapshot` helpers, clock, and conditions utilities are
