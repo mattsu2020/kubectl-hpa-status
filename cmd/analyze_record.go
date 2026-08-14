@@ -1,16 +1,14 @@
 package cmd
 
 import (
-	"bufio"
-	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"sort"
 	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/mattsu2020/kubectl-hpa-status/cmd/internal/recordio"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/flapping"
 )
@@ -112,24 +110,8 @@ func runAnalyzeRecordFlapping(out io.Writer, opts *options, path string) error {
 }
 
 func loadAllRecordedTraces(path string) (map[string]hpaanalysis.TimelineTrace, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read record file: %w", err)
-	}
-	defer func() { _ = file.Close() }()
-
 	result := map[string]hpaanalysis.TimelineTrace{}
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 64*1024), 10*1024*1024)
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(line) == 0 {
-			continue
-		}
-		var trace hpaanalysis.TimelineTrace
-		if err := json.Unmarshal(line, &trace); err != nil {
-			return nil, fmt.Errorf("failed to parse JSONL record: %w", err)
-		}
+	_, err := recordio.ScanTraces(path, func(trace hpaanalysis.TimelineTrace) error {
 		key := trace.Namespace + "/" + trace.HPAName
 		current := result[key]
 		if current.HPAName == "" {
@@ -141,12 +123,13 @@ func loadAllRecordedTraces(path string) (map[string]hpaanalysis.TimelineTrace, e
 		current.End = trace.End
 		current.Snapshots = append(current.Snapshots, trace.Snapshots...)
 		if len(current.Snapshots) > maxSnapshotsPerTrace {
-			return nil, snapshotLimitError(path)
+			return snapshotLimitError(path)
 		}
 		result[key] = current
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("failed to scan record file: %w", err)
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return result, nil
 }

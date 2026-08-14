@@ -14,7 +14,13 @@ This roadmap tracks planned work that is visible to users and contributors. It i
 - **Removed deprecated top-level `alpha` aliases:** Operational and experimental commands (`policy`, `gitops`, `bundle`, `incident-bundle`, `support-bundle`, `capacity`, `capacity-gap`, `autoscaler-map`, `analyze-record`, `flap`) now live exclusively under the `alpha` parent; the historical top-level paths were removed. Use `alpha <cmd>`.
 - **Versioned status schema:** Added all 13 read-only `Analysis` group views and the opt-in `--output-schema=v2` projection for status JSON, YAML, JSONL, JSONPath, and Go templates. v1 remains the default compatible flat contract; v2 has its own checked-in JSON schema and preserves multi-HPA item errors.
 - **Actions SSOT:** `RecommendedActions` and `buildStructuredActions` share `collectActionCases` so human and structured action lists cannot diverge on the core analyze path.
-- **`cmd/` sub-package extraction (phase 1):** Lifted shared helpers into `cmd/internal/{errs,client,output}` and extracted the bundle renderer layer into `cmd/bundle`, following the facade-then-migrate pattern. Further groups (`replay`, `alerts`/`completion`/`compat`/`version`) remain in `cmd/`.
+- **`cmd/` sub-package extraction:** Lifted shared helpers into
+  `cmd/internal/{errs,client,output}`, shallow command domains into
+  `cmd/internal/{alerts,buildinfo,compat,completion}`, bundle presentation into
+  `cmd/bundle`, replay presentation into `cmd/replaylab`, and the three
+  timeline-record JSONL readers into `cmd/internal/recordio`. Kubernetes/Cobra
+  orchestration remains in `cmd` by design so extracted packages stay
+  option-free and do not require a broad command facade.
 - **Status enricher phases:** `buildStatusEnrichers` is split into named dependency phases (`core` → `metricsPods` → `capacity` → `advisors`) with a pinned name order test.
 - **Shared analysis and observation boundaries:** Added `internal/analysis` for list/TUI finalization and `internal/observation` for request-scoped, memoized scale-target/Pod reads with typed availability states.
 - **Shared history service:** Status and list now use one clock-injected recorder for append, retention pruning, load, and health-trend analysis.
@@ -59,7 +65,9 @@ user-visible behavior change.
   bridges `*options` → `completion.Deps` so the ~40 `hpaNameCompletion(opts)`
   call sites compile unchanged. The deeper commands (snapshot loading,
   capacity selectors, output selection) still reach cmd-private helpers and
-  remain in `cmd/` for a later phase.
+  remain in `cmd/` as orchestration boundaries. Timeline JSONL scanning is
+  centralized in `cmd/internal/recordio`; filtering, merging, snapshot limits,
+  and legacy single-JSON fallback remain explicit at each command boundary.
 - **Slim the `Analysis` god-struct:** `pkg/hpa.Analysis` has 65 fields
   accumulated feature-by-feature. The additive migration boundary is now
   complete: v1 keeps the flat storage and default wire shape, while explicit

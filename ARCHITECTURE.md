@@ -24,6 +24,7 @@ Inference should be labeled with confidence language and covered by tests.
 | Path | Responsibility |
 | --- | --- |
 | `cmd/` | Cobra commands, flags, request construction, and Kubernetes client orchestration (one feature/subcommand per file) |
+| `cmd/internal/recordio/` | Streaming JSONL decoding for record, replay, and offline record analysis; callers own filtering, merging, limits, and legacy JSON fallback |
 | `pkg/hpa/` | Importable analysis model: HPA signal extraction, health scoring, suggestions, diagnostics, and text/Markdown/HTML/SARIF rendering |
 | `pkg/hpa/core/` | Dependency-light public contracts for localized labels and metric status formatting; `pkg/hpa` re-exports these types/functions for API compatibility |
 | `pkg/hpa/render/` | Shared report renderers (Markdown/HTML/list/incident) extracted from the root `pkg/hpa` `*_text.go` files |
@@ -235,8 +236,9 @@ Refactoring notes:
   pipeline diagnostics, freshness, contract). The split keeps each metrics
   sub-table editable in isolation.
 - The `record` / `replay` cobra command constructors live in
-  `replay_commands.go`; the heavy lifting stays in `replay_lab*.go` and
-  `runRecord` (in `timeline.go`).
+  `replay_commands.go`; presentation is isolated in `cmd/replaylab`, shared
+  JSONL decoding lives in `cmd/internal/recordio`, and Kubernetes orchestration
+  remains in `cmd`.
 - Test files are organised by source area rather than as monolithic grab-bags:
   `commands_batch_test.go` (run-command smoke tests),
   `render_batch_test.go` (renderer smoke tests),
@@ -357,7 +359,7 @@ Refactoring notes:
     (`confidence.Severity`, `confidence.Confidence`, `confidence.Classification`
     with their constants). `pkg/hpa` re-exports as `Severity` /
     `ConfidenceHigh` / etc.
-- The `cmd/bundle` and `cmd/replay` sub-package extractions were assessed and
+- Further `cmd/bundle` and replay orchestration extraction was assessed and
   deferred. Both groups still depend on multiple unexported `cmd/` helpers
   (`newClientOrDefault`, `applyCommandPreset`, `fetchSnapshot*`,
   `capacitySelector`, `redactBytes`, `loadRecordedTrace`, `traceReplicaRange`,
