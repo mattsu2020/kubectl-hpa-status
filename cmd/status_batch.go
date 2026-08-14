@@ -171,11 +171,6 @@ func joinOutputAndExit(outputErr, exitErr error) error {
 	return exitErr
 }
 
-// joinExportAndExit preserves the historical helper name used by batch export.
-func joinExportAndExit(exportErr, exitErr error) error {
-	return joinOutputAndExit(exportErr, exitErr)
-}
-
 // buildReportsConcurrently builds status reports for all named HPAs
 // concurrently and adapts the shared mapPerHPA results into reportResult.
 //

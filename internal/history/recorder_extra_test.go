@@ -19,7 +19,7 @@ func TestRecorderNilStoreExposesWarning(t *testing.T) {
 	}
 }
 
-// TestRecorderRealClockAndDefaultClock covers the realClock.Now() path and the
+// TestRecorderRealClockAndDefaultClock covers the shared clock default and the
 // nil-clock default in NewRecorder. It uses a real in-memory-or-disk store so
 // the full RecordAndAnalyze pipeline runs against the real clock.
 func TestRecorderRealClockAndDefaultClock(t *testing.T) {
@@ -27,7 +27,7 @@ func TestRecorderRealClockAndDefaultClock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewHealthStoreWithDir() error: %v", err)
 	}
-	r := NewRecorder(store, nil) // nil clock -> realClock
+	r := NewRecorder(store, nil) // nil clock -> process-wide shared clock
 	result := r.RecordAndAnalyze(RecordInput{
 		Namespace: "ns", Name: "app",
 		HealthScore: 90, HealthState: "OK", DesiredReplicas: 3, CurrentReplicas: 3,

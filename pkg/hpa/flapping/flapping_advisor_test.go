@@ -10,6 +10,22 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/event"
 )
 
+func TestFormatFlappingDurationPreservesLegacyPrecision(t *testing.T) {
+	tests := []struct {
+		duration time.Duration
+		want     string
+	}{
+		{duration: 29 * time.Second, want: "29s"},
+		{duration: time.Minute + 29*time.Second, want: "1m29s"},
+		{duration: 25*time.Hour + 3*time.Minute, want: "25h3m"},
+	}
+	for _, tt := range tests {
+		if got := formatFlappingDuration(tt.duration); got != tt.want {
+			t.Errorf("formatFlappingDuration(%s) = %q, want %q", tt.duration, got, tt.want)
+		}
+	}
+}
+
 // rescaleEvent is a test helper that builds a SuccessfulRescale event with the
 // given replica count and timestamp.
 func rescaleEvent(newSize int32, ts time.Time) event.Event {

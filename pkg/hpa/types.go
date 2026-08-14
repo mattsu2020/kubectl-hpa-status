@@ -9,6 +9,7 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/churn"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/containeradvisor"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/core"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/flapping"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/gitops"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/healthtrend"
@@ -382,18 +383,8 @@ type Condition struct {
 	Message string `json:"message,omitempty" yaml:"message,omitempty"`
 }
 
-// Metric holds formatted metric data including current, target, ratio, and display text.
-type Metric struct {
-	Type     string   `json:"type" yaml:"type"`
-	Name     string   `json:"name,omitempty" yaml:"name,omitempty"`
-	Selector string   `json:"selector,omitempty" yaml:"selector,omitempty"`
-	Object   string   `json:"object,omitempty" yaml:"object,omitempty"`
-	Current  string   `json:"current,omitempty" yaml:"current,omitempty"`
-	Target   string   `json:"target,omitempty" yaml:"target,omitempty"`
-	Ratio    *float64 `json:"ratio,omitempty" yaml:"ratio,omitempty"`
-	Note     string   `json:"note,omitempty" yaml:"note,omitempty"`
-	Text     string   `json:"text" yaml:"text"`
-}
+// Metric is re-exported from core for source compatibility.
+type Metric = core.Metric
 
 // MetricImpactGuess estimates which resource metric has the most impact on scaling.
 type MetricImpactGuess struct {

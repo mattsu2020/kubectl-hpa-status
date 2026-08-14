@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/clock"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/clock"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )

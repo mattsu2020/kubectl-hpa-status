@@ -6,7 +6,6 @@ import (
 	"io"
 
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
 // listStreamer emits list items incrementally as pages arrive, instead of
@@ -57,7 +56,7 @@ func (s *listStreamer) writeTable(items []hpaanalysis.ListItem) error {
 	textOpts := hpaanalysis.ListTextOptions{
 		Wide:              s.wide,
 		Color:             shouldColorize(s.opts.Color, s.out),
-		Theme:             style.NewTheme(shouldColorize(s.opts.Color, s.out)),
+		Theme:             themeFor(s.opts.Color, s.out),
 		Lang:              outputLang(s.opts.Lang, s.opts.Output),
 		Labels:            labelProviderForLang(s.opts.Lang, s.opts.Output),
 		SummaryTranslator: summaryTranslatorForLang(s.opts.Lang, s.opts.Output),

@@ -46,7 +46,7 @@ func newRecordCommand(opts *options) *cobra.Command {
 		},
 	}
 	cmd.Flags().DurationVar(&duration, "duration", 15*time.Minute, "total recording duration")
-	cmd.Flags().DurationVar(&interval, "interval", 5*time.Second, "polling interval")
+	cmd.Flags().DurationVar(&interval, "interval", defaultPollInterval, "polling interval")
 	cmd.Flags().StringVar(&outputPath, "output-file", "", "path to durable JSONL history file; -o FILE is also accepted for record")
 	return cmd
 }

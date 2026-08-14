@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	hpachurn "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/churn"
+	hpamodel "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/model"
 
 	"charm.land/lipgloss/v2"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
@@ -234,9 +235,18 @@ func (m Model) renderHistoryView() string {
 		return renderHistoryEmpty(item)
 	}
 
-	// Derive churn analysis from snapshots if not already computed.
+	// Derive churn analysis from snapshots if not already computed. The
+	// canonical churn analyzer consumes rescale events, so the timeline
+	// snapshots are projected into that shape here.
 	if churn == nil {
-		churn = hpaanalysis.AnalyzeChurnFromSnapshots(snapshots, nil)
+		rescales := make([]hpamodel.RescaleData, 0, len(snapshots))
+		for _, snap := range snapshots {
+			rescales = append(rescales, hpamodel.RescaleData{
+				Timestamp: snap.Timestamp,
+				NewSize:   snap.Desired,
+			})
+		}
+		churn = hpachurn.AnalyzeFromRescales(rescales, nil)
 	}
 
 	var sb strings.Builder

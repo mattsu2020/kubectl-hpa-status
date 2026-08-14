@@ -6,26 +6,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
 // FormatDuration returns a human-readable duration string from seconds.
 // Examples: "0s", "45s", "4m 12s", "1h 23m", "2h 0m".
 func FormatDuration(seconds int64) string {
-	if seconds <= 0 {
-		return "0s"
-	}
-	h := seconds / 3600
-	m := (seconds % 3600) / 60
-	s := seconds % 60
-	switch {
-	case h > 0:
-		return fmt.Sprintf("%dh %dm", h, m)
-	case m > 0:
-		return fmt.Sprintf("%dm %ds", m, s)
-	default:
-		return fmt.Sprintf("%ds", s)
-	}
+	return rendutil.DurationSpaced(time.Duration(seconds) * time.Second)
 }
 
 // FormatStabilizationRemaining returns a human-readable string like
@@ -89,17 +77,7 @@ func FormatCountdownBadge(remaining *int64) string {
 // progressBar renders a 10-cell unicode bar for a metric ratio (0–2 mapped to
 // 0–10 filled cells). Shared by the list and status text renderers.
 func progressBar(ratio float64) string {
-	if ratio < 0 {
-		ratio = 0
-	}
-	if ratio > 2 {
-		ratio = 2
-	}
-	filled := int((ratio/2)*10 + 0.5)
-	if filled > 10 {
-		filled = 10
-	}
-	return strings.Repeat("█", filled) + strings.Repeat("░", 10-filled)
+	return rendutil.ProgressBar(int64(ratio*1000), 2000, 10)
 }
 
 // formatMetricText reconstructs a metric display line using the original Text
@@ -195,18 +173,7 @@ func formatFreshnessDuration(d time.Duration) string {
 	if d < 0 {
 		d = 0
 	}
-	seconds := int64(d.Seconds())
-	if seconds < 60 {
-		return fmt.Sprintf("%ds", seconds)
-	}
-	minutes := seconds / 60
-	secs := seconds % 60
-	if minutes < 60 {
-		return fmt.Sprintf("%dm%ds", minutes, secs)
-	}
-	hours := minutes / 60
-	mins := minutes % 60
-	return fmt.Sprintf("%dh%dm", hours, mins)
+	return rendutil.DurationCompactHMS(d)
 }
 
 // emptyAsUnknown returns "<unknown>" when value is the empty string.

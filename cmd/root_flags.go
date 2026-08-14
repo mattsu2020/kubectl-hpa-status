@@ -10,6 +10,13 @@ import (
 	"github.com/spf13/pflag"
 )
 
+// defaultPollInterval is the single CLI-side default for the polling `--interval`
+// flag shared by the watch set (via the cmdoptions model) and the standalone
+// timeline/replay commands. The options model carries its own 5s default in
+// internal/cmdoptions; this constant keeps the per-command registrations from
+// drifting if that canonical value ever changes.
+const defaultPollInterval = 5 * time.Second
+
 // registerCommonFlags registers the flags that genuinely apply to every
 // command: cluster connection, output shaping, and client request tuning.
 //

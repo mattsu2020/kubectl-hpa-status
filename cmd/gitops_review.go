@@ -12,9 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/kubernetes/scheme"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/gitops"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
 func newGitOpsReviewCommand(opts *options) *cobra.Command {
@@ -54,11 +52,8 @@ func runGitOpsReview(_ context.Context, out io.Writer, opts *options, filePath s
 
 	review := gitops.AnalyzeReview(inputs)
 
-	format, templateStr := selectOutputFromOptions(opts)
-
-	return render.Format(out, format, templateStr, review, func(out io.Writer) error {
-		theme := style.NewTheme(shouldColorize(opts.Color, out))
-		return gitops.WriteReviewText(out, review, theme)
+	return renderWithOutput(out, opts, review, func(out io.Writer) error {
+		return gitops.WriteReviewText(out, review, themeFor(opts.Color, out))
 	})
 
 }

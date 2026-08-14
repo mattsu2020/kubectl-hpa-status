@@ -7,6 +7,7 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/observation"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/resourceutil"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -29,8 +30,8 @@ func buildCapacityHeadroomWithSnapshot(ctx context.Context, client *kube.Client,
 	if additional < 0 {
 		additional = 0
 	}
-	addCPU := multiplyQuantity(cpuPerPod, additional)
-	addMem := multiplyQuantity(memPerPod, additional)
+	addCPU := resourceutil.Multiply(cpuPerPod, int64(additional))
+	addMem := resourceutil.Multiply(memPerPod, int64(additional))
 	headroom := &hpaanalysis.CapacityHeadroom{
 		HPAName:                    hpa.Name,
 		Target:                     target,
@@ -89,15 +90,6 @@ func sumPodTemplateRequests(tmpl *corev1.PodTemplateSpec) (resource.Quantity, re
 		mem = q.DeepCopy()
 	}
 	return cpu, mem
-}
-
-func multiplyQuantity(q resource.Quantity, factor int32) resource.Quantity {
-	out := q.DeepCopy()
-	if factor <= 0 || q.IsZero() {
-		return resource.Quantity{}
-	}
-	out.SetMilli(q.MilliValue() * int64(factor))
-	return out
 }
 
 func quantityOrEmpty(q resource.Quantity) string {

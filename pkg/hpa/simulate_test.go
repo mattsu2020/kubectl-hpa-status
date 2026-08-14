@@ -384,6 +384,32 @@ func TestPolicyReplicaLimitPercentScaleDownRoundsLikeController(t *testing.T) {
 	}
 }
 
+func TestPolicyReplicaLimitPercentScaleDownRoundsUp(t *testing.T) {
+	t.Parallel()
+
+	// 10 replicas cut 25% = 7.5 -> rounds up to 8, matching the symmetric ceil
+	// used on scale-up rather than truncating to 7.
+	tests := []struct {
+		scaleUp bool
+		percent int32
+		want    int32
+	}{
+		{scaleUp: true, percent: 25, want: 13},  // 10*1.25 = 12.5 -> ceil 13
+		{scaleUp: false, percent: 25, want: 8},  // 10*0.75 = 7.5 -> ceil 8
+		{scaleUp: false, percent: 100, want: 0}, // 10*0.0  -> protected by <0 clamp
+	}
+	for _, tt := range tests {
+		got, ok := policyReplicaLimit(10, tt.scaleUp, autoscalingv2.HPAScalingPolicy{
+			Type:          autoscalingv2.PercentScalingPolicy,
+			Value:         tt.percent,
+			PeriodSeconds: 60,
+		})
+		if !ok || got != tt.want {
+			t.Fatalf("policyReplicaLimit(10, scaleUp=%v, %d%%) = (%d, %v), want (%d, true)", tt.scaleUp, tt.percent, got, ok, tt.want)
+		}
+	}
+}
+
 func TestMetricSimulationProjectedReplicasIncludesRatePolicy(t *testing.T) {
 	t.Parallel()
 

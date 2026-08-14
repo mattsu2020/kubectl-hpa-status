@@ -14,17 +14,14 @@ func newIncidentBundleCommand(opts *options) *cobra.Command {
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: hpaNameCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			format, _ := cmd.Flags().GetString("format")
-			output, _ := cmd.Flags().GetString("output")
-			redact, _ := cmd.Flags().GetBool("redact")
+			format, output, redact := readBundleFlags(cmd)
 			return runIncidentBundle(cmd.Context(), cmd.OutOrStdout(), opts, args[0], format, output, redact)
 		},
 	}
-	cmd.Flags().String("format", "zip", "output format: markdown or zip")
-	cmd.Flags().StringP("output", "o", "", "output file path")
-	// Incident bundles leave the operator's machine by definition, so redaction
-	// is on by default. --redact=false remains for trusted local archives.
-	cmd.Flags().Bool("redact", true, "redact sensitive information; use --redact=false only for trusted local archives")
+	// Incident bundles default to zip (single handoff artifact) and leave the
+	// operator's machine by definition, so the shared privacy-preserving
+	// defaults apply (see addBundleFlags).
+	addBundleFlags(cmd, "hpa-bundle-<name>-<timestamp>.{md|zip}", "zip")
 	return cmd
 }
 

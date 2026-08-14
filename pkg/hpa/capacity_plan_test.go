@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/resourceutil"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
@@ -441,7 +442,7 @@ func TestAnalyzeCapacityPlan_PDBInformational(t *testing.T) {
 
 func TestMultiplyQuantity_FractionalCPU(t *testing.T) {
 	q := resource.MustParse("250m")
-	result := multiplyQuantity(q, 10)
+	result := resourceutil.Multiply(q, 10)
 	if result.Cmp(resource.MustParse("2500m")) != 0 {
 		t.Errorf("expected 2500m, got %s", result.String())
 	}
@@ -449,7 +450,7 @@ func TestMultiplyQuantity_FractionalCPU(t *testing.T) {
 
 func TestMultiplyQuantity_Memory(t *testing.T) {
 	q := resource.MustParse("512Mi")
-	result := multiplyQuantity(q, 5)
+	result := resourceutil.Multiply(q, 5)
 	if result.Cmp(resource.MustParse("2560Mi")) != 0 {
 		t.Errorf("expected 2560Mi, got %s", result.String())
 	}
@@ -457,7 +458,7 @@ func TestMultiplyQuantity_Memory(t *testing.T) {
 
 func TestMultiplyQuantity_ZeroMultiplier(t *testing.T) {
 	q := resource.MustParse("100m")
-	result := multiplyQuantity(q, 0)
+	result := resourceutil.Multiply(q, 0)
 	if !result.IsZero() {
 		t.Errorf("expected zero, got %s", result.String())
 	}
@@ -465,7 +466,7 @@ func TestMultiplyQuantity_ZeroMultiplier(t *testing.T) {
 
 func TestMultiplyQuantity_ZeroQuantity(t *testing.T) {
 	q := resource.MustParse("0")
-	result := multiplyQuantity(q, 10)
+	result := resourceutil.Multiply(q, 10)
 	if !result.IsZero() {
 		t.Errorf("expected zero, got %s", result.String())
 	}

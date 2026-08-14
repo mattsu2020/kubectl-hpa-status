@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/seasonality"
 )
@@ -58,8 +57,7 @@ func runAnalyzeRecordSeasonality(out io.Writer, opts *options, path string, para
 		return a.Namespace+"/"+a.Name < b.Namespace+"/"+b.Name
 	})
 
-	format, templateStr := selectOutputFromOptions(opts)
-	return render.Format(out, format, templateStr, result, func(out io.Writer) error {
+	return renderWithOutput(out, opts, result, func(out io.Writer) error {
 		return writeSeasonalityText(out, result)
 	})
 

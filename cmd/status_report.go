@@ -18,7 +18,6 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/observation"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
 // writeReportsGitOpsExport writes a multi-HPA YAML export as a proper
@@ -83,7 +82,7 @@ func writeReportsStatusText(out io.Writer, opts *options, results []reportResult
 // statusTextOptions builds the StatusTextOptions used to render report text, including theme/lang/fix/diff settings.
 func statusTextOptions(opts *options, out io.Writer) hpaanalysis.StatusTextOptions {
 	return hpaanalysis.StatusTextOptions{
-		Theme:             style.NewTheme(shouldColorize(opts.Color, out)),
+		Theme:             themeFor(opts.Color, out),
 		Lang:              outputLang(opts.Lang, opts.Output),
 		Fix:               opts.Fix,
 		Diff:              opts.Diff,

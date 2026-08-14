@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
-	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/audit"
 )
@@ -56,9 +55,8 @@ func runRecommend(ctx context.Context, out io.Writer, opts *options, args []stri
 			report = audit.Run(hpa, minReplicas)
 		}
 
-		format, templateStr := selectOutputFromOptions(opts)
-		if err := render.Format(out, format, templateStr, report, func(out io.Writer) error {
-			return hpaanalysis.WriteAuditText(out, report, labelProviderForLang(opts.Lang, opts.Output))
+		if err := renderWithOutput(out, opts, report, func(out io.Writer) error {
+			return audit.WriteText(out, report, labelProviderForLang(opts.Lang, opts.Output))
 		}); err != nil {
 			return err
 		}

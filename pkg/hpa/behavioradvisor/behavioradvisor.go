@@ -9,6 +9,7 @@ import (
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/conditions"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/confidence"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/tolerance"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/model"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -149,7 +150,7 @@ func checkStabilizationWindow(input Input) []Finding {
 	// Scale-down stabilization window analysis.
 	if input.ScaleDownWindow != nil {
 		window := *input.ScaleDownWindow
-		if window > 600 {
+		if window > 2*conditions.DefaultScaleDownStabilizationWindowSeconds {
 			minutes := window / 60
 			findings = append(findings, Finding{
 				ID:       "behavior-scaledown-window-long",
@@ -160,8 +161,8 @@ func checkStabilizationWindow(input Input) []Finding {
 						"Scale-down may remain suppressed for up to %d minutes after load drops.",
 					window, minutes, minutes),
 				Current:     fmt.Sprintf("%ds", window),
-				Recommended: "For latency-sensitive: ≤120s. For cost-sensitive: ≤300s.",
-				Patch:       `kubectl patch hpa <name> --type=merge -p '{"spec":{"behavior":{"scaleDown":{"stabilizationWindowSeconds":300}}}}'`,
+				Recommended: fmt.Sprintf("For latency-sensitive: ≤120s. For cost-sensitive: ≤%ds.", conditions.DefaultScaleDownStabilizationWindowSeconds),
+				Patch:       fmt.Sprintf(`kubectl patch hpa <name> --type=merge -p '{"spec":{"behavior":{"scaleDown":{"stabilizationWindowSeconds":%d}}}}'`, conditions.DefaultScaleDownStabilizationWindowSeconds),
 			})
 		}
 	} else {
@@ -200,7 +201,7 @@ func checkStabilizationWindow(input Input) []Finding {
 func checkTolerance(input Input) []Finding {
 	var findings []Finding
 
-	defaultTolerance := 0.1
+	defaultTolerance := tolerance.DefaultTolerance
 
 	scaleDownTol := defaultTolerance
 	if input.ScaleDownTolerance != nil {

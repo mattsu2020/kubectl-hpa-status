@@ -2,23 +2,15 @@ package tui
 
 import (
 	"fmt"
-	"strings"
 
 	"charm.land/lipgloss/v2"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 )
 
 func renderScoreBar(score int) string {
 	const width = 20
-	filled := score * width / 100
-	if filled < 0 {
-		filled = 0
-	}
-	if filled > width {
-		filled = width
-	}
-
-	bar := strings.Repeat("█", filled) + strings.Repeat("░", width-filled)
+	bar := rendutil.ProgressBarFloor(int64(score), 100, width)
 
 	switch {
 	case score >= 80:
@@ -40,15 +32,7 @@ func renderCountdownBar(remaining, total int) string {
 	if elapsed < 0 {
 		elapsed = 0
 	}
-	filled := elapsed * width / total
-	if filled < 0 {
-		filled = 0
-	}
-	if filled > width {
-		filled = width
-	}
-
-	bar := strings.Repeat("█", filled) + strings.Repeat("░", width-filled)
+	bar := rendutil.ProgressBarFloor(int64(elapsed), int64(total), width)
 	return warnStyle.Render(bar) + dimStyle.Render(fmt.Sprintf(" %ds/%ds", remaining, total))
 }
 
@@ -64,15 +48,7 @@ func renderEnhancedCountdownBar(remaining int, total int) string {
 	if elapsed < 0 {
 		elapsed = 0
 	}
-	filled := elapsed * width / total
-	if filled < 0 {
-		filled = 0
-	}
-	if filled > width {
-		filled = width
-	}
-
-	bar := strings.Repeat("█", filled) + strings.Repeat("░", width-filled)
+	bar := rendutil.ProgressBarFloor(int64(elapsed), int64(total), width)
 
 	remainingRatio := float64(remaining) / float64(total)
 	var style lipgloss.Style
@@ -104,15 +80,7 @@ func renderMiniScoreBar(score int, width int) string {
 	if barW < 3 {
 		barW = 3
 	}
-	filled := score * barW / 100
-	if filled < 0 {
-		filled = 0
-	}
-	if filled > barW {
-		filled = barW
-	}
-
-	bar := strings.Repeat("█", filled) + strings.Repeat("░", barW-filled)
+	bar := rendutil.ProgressBarFloor(int64(score), 100, int64(barW))
 	var style lipgloss.Style
 	switch {
 	case score >= 80:

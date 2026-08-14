@@ -7,8 +7,10 @@ import (
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/conditions"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/event"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 )
 
 // candidateWindowMultipliers defines the multipliers applied to the current
@@ -16,8 +18,12 @@ import (
 var candidateWindowMultipliers = []float64{1.5, 2.0, 3.0}
 
 // fixedCandidateWindows provides additional fixed window values (in seconds)
-// that are always evaluated regardless of the current window.
-var fixedCandidateWindows = []int32{300, 600}
+// that are always evaluated regardless of the current window: the Kubernetes
+// default stabilization window and twice that value.
+var fixedCandidateWindows = []int32{
+	conditions.DefaultScaleDownStabilizationWindowSeconds,
+	2 * conditions.DefaultScaleDownStabilizationWindowSeconds,
+}
 
 // AnalyzeFlappingPrevention analyzes HPA rescale events to recommend
 // stabilization window changes that reduce replica flapping. It simulates
@@ -251,13 +257,7 @@ func formatObservationWindow(rescales []event.RescaleData) string {
 
 // formatFlappingDuration converts a duration to a human-readable string.
 func formatFlappingDuration(d time.Duration) string {
-	if d < time.Minute {
-		return fmt.Sprintf("%ds", int(d.Seconds()))
-	}
-	if d < time.Hour {
-		return fmt.Sprintf("%dm%ds", int(d.Minutes()), int(d.Seconds())%60)
-	}
-	return fmt.Sprintf("%dh%dm", int(d.Hours()), int(d.Minutes())%60)
+	return rendutil.DurationCompactHMS(d)
 }
 
 // buildFlappingSummary creates a one-line summary of the flapping analysis.
@@ -293,14 +293,10 @@ func formatDuration(d time.Duration) string {
 }
 
 // currentStabilizationWindowSeconds returns the HPA scale-down stabilization
-// window, defaulting to 300s when unset. Local copy of the pkg/hpa helper; see
-// conditions.ScaleDownStabilizationWindow for the nil-returning variant.
+// window, defaulting to the Kubernetes default when unset.
 func currentStabilizationWindowSeconds(hpa *autoscalingv2.HorizontalPodAutoscaler) int32 {
-	if hpa.Spec.Behavior == nil || hpa.Spec.Behavior.ScaleDown == nil {
-		return 300
+	if window := conditions.ScaleDownStabilizationWindow(hpa); window != nil {
+		return *window
 	}
-	if hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds == nil {
-		return 300
-	}
-	return *hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds
+	return conditions.DefaultScaleDownStabilizationWindowSeconds
 }

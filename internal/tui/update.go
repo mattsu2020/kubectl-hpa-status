@@ -1,10 +1,6 @@
 package tui
 
-import (
-	"fmt"
-
-	tea "charm.land/bubbletea/v2"
-)
+import tea "charm.land/bubbletea/v2"
 
 // Update handles all bubbletea messages.
 // Value receivers are intentional here: Bubbletea's architecture uses an
@@ -12,7 +8,7 @@ import (
 // rather than mutating the existing one. All methods on Model (Update, View,
 // Init, filteredItems) use value receivers for consistency with this pattern.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	m.interactiveStates = m.clone()
+	m = m.clone()
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		return m.updateWindowSize(msg)
@@ -115,40 +111,28 @@ func (m *Model) refocusAndClampCursorAfterFetch() {
 
 func (m Model) updateSimResult(msg simResultMsg) Model {
 	if m.simState != nil {
-		m.simState.result = msg.result
-		m.simState.err = msg.err
+		m.simState.update(msg)
 	}
 	return m
 }
 
 func (m Model) updateApplyResult(msg applyResultMsg) Model {
 	if m.fixState != nil {
-		m.fixState.applyConfirm = false
-		m.fixState.applied = true
-		m.fixState.applyErr = msg.err
+		m.fixState.updateApply(msg)
 	}
 	return m
 }
 
 func (m Model) updateDryRunResult(msg dryRunResultMsg) Model {
 	if m.fixState != nil {
-		m.fixState.applyConfirm = false
-		m.fixState.applied = false
-		m.fixState.applyErr = msg.err
-		if msg.err != nil {
-			m.fixState.dryRunResult = fmt.Sprintf("validation failed: %v", msg.err)
-		} else {
-			m.fixState.dryRunResult = fmt.Sprintf("server-side validation passed: %s", msg.title)
-		}
+		m.fixState.updateDryRun(msg)
 	}
 	return m
 }
 
 func (m Model) updateReplayLoaded(msg replayLoadedMsg) Model {
 	if m.replayState != nil {
-		m.replayState.loading = false
-		m.replayState.trace = msg.trace
-		m.replayState.err = msg.err
+		m.replayState.update(msg)
 	}
 	return m
 }
@@ -157,12 +141,6 @@ func (m Model) updateBatchAudit(msg batchAuditMsg) Model {
 	if m.batchAuditState == nil {
 		return m
 	}
-	m.batchAuditState.loading = false
-	if msg.err != nil {
-		m.batchAuditState.err = msg.err
-		return m
-	}
-	m.batchAuditState.reports = msg.reports
-	m.batchAuditState.results = buildBatchAuditEntries(msg.reports)
+	m.batchAuditState.update(msg)
 	return m
 }

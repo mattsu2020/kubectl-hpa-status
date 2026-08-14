@@ -14,7 +14,13 @@ This roadmap tracks planned work that is visible to users and contributors. It i
 - **Removed deprecated top-level `alpha` aliases:** Operational and experimental commands (`policy`, `gitops`, `bundle`, `incident-bundle`, `support-bundle`, `capacity`, `capacity-gap`, `autoscaler-map`, `analyze-record`, `flap`) now live exclusively under the `alpha` parent; the historical top-level paths were removed. Use `alpha <cmd>`.
 - **Versioned status schema:** Added all 13 read-only `Analysis` group views and the opt-in `--output-schema=v2` projection for status JSON, YAML, JSONL, JSONPath, and Go templates. v1 remains the default compatible flat contract; v2 has its own checked-in JSON schema and preserves multi-HPA item errors.
 - **Actions SSOT:** `RecommendedActions` and `buildStructuredActions` share `collectActionCases` so human and structured action lists cannot diverge on the core analyze path.
-- **`cmd/` sub-package extraction (phase 1):** Lifted shared helpers into `cmd/internal/{errs,client,output}` and extracted the bundle renderer layer into `cmd/bundle`, following the facade-then-migrate pattern. Further groups (`replay`, `alerts`/`completion`/`compat`/`version`) remain in `cmd/`.
+- **`cmd/` sub-package extraction:** Lifted shared helpers into
+  `cmd/internal/{errs,client,output}`, shallow command domains into
+  `cmd/internal/{alerts,buildinfo,compat,completion}`, bundle presentation into
+  `cmd/bundle`, replay presentation into `cmd/replaylab`, and the three
+  timeline-record JSONL readers into `cmd/internal/recordio`. Kubernetes/Cobra
+  orchestration remains in `cmd` by design so extracted packages stay
+  option-free and do not require a broad command facade.
 - **Status enricher phases:** `buildStatusEnrichers` is split into named dependency phases (`core` → `metricsPods` → `capacity` → `advisors`) with a pinned name order test.
 - **Shared analysis and observation boundaries:** Added `internal/analysis` for list/TUI finalization and `internal/observation` for request-scoped, memoized scale-target/Pod reads with typed availability states.
 - **Shared history service:** Status and list now use one clock-injected recorder for append, retention pruning, load, and health-trend analysis.
@@ -23,11 +29,23 @@ This roadmap tracks planned work that is visible to users and contributors. It i
 - **Unified enrichment:** The generic pipeline engine lives in `internal/enrichment`; internal status types alias the canonical public model, and health penalties upsert their signals idempotently.
 - **Immutable command requests:** Status/list/scan snapshot mutable Cobra options into deep-copied request DTOs before execution.
 - **Direct rendering and conversion boundaries:** Command call sites now import `internal/render` and `internal/kubeconv` directly. The obsolete `cmd/converters.go` and render forwarding functions were removed, and text write errors are propagated.
+- **HPA formatting core:** Localized labels and metric status/target/selector
+  formatting live in `pkg/hpa/core`; the root package keeps compatibility
+  aliases and forwarding functions for the v2 public API.
+- **TUI view sub-models:** Six independent interactive state machines own
+  their cloning and view-local transitions behind the mode controller
+  registry, leaving the top-level model responsible for shared application
+  state and global keys.
 - **Compatibility-facade gate:** `make facade-check` and CI reject new in-tree uses of deprecated public facades; ARCHITECTURE.md records the v3 removal criteria.
 - **`client.LookupHPA`:** The create-client + fetch-HPA helper lives in `cmd/internal/client` (cmd facade retained).
 - **Error sentinel hygiene:** Added `ErrNoRecordedSnapshots`, `ErrPolicyViolations`, `ErrPolicyGuardBlocked`, and `ErrInvalidCandidateSpec` so exit paths are matchable via `errors.Is`.
 - **Nil-safety:** Guarded `*deploy.Spec.Replicas` / `*sts.Spec.Replicas` dereferences in the GitOps conflict path.
-- **Test coverage:** Lifted coverage across `cmd/` (12 previously-untested files), `internal/cmdoptions` (34.9% → 61.2%), `pkg/hpa/keda` (45.8% → 96.6%), and split the 1934-line `test/e2e/e2e_test.go` into per-area files.
+- **Test coverage:** Lifted coverage across `cmd/` (12 previously-untested
+  files), `cmd/internal/completion` (26.1% → 95.7%), `internal/cmdoptions`
+  (34.9% → 61.2%), and `pkg/hpa/keda` (45.8% → 96.6%). Direct client-go
+  `fake.NewSimpleClientset` calls are centralized in `internal/testutil`, so
+  the temporary SA1019 suppression has one audited location. The 1934-line
+  `test/e2e/e2e_test.go` was also split into per-area files.
 - **Large test file splits:** Split `pkg/hpa/analysis_test.go` (~1900 lines) into domain files (`analysis_core`, `structured`, `metrics`, `health`, `suggestions`, `text`, `helpers`) and `cmd/root_integration_test.go` into status/list/watch/simulate integration files.
 - **E2E behavior policies:** `TestE2E_BehaviorPolicies` asserts `behavior -o json` scaleUp/scaleDown policies and status --explain visibility.
 
@@ -42,8 +60,8 @@ These are internal-only changes tracked separately because they touch wide
 areas and require their own design step before landing. They have no
 user-visible behavior change.
 
-- **Split `cmd/` into sub-packages:** the flat `package cmd` still holds ~90
-  non-test files / ~15k lines. Phase 1 lifted shared helpers into
+- **Split `cmd/` into sub-packages:** the flat `package cmd` still holds 96
+  non-test files / ~14.6k lines. Phase 1 lifted shared helpers into
   `cmd/internal/{errs,client,output}` and the bundle renderers into
   `cmd/bundle`. Phase 2 extracted three of the four shallow command groups
   named here — `cmd/internal/compat` (report model, rules, text renderer),
@@ -59,48 +77,41 @@ user-visible behavior change.
   bridges `*options` → `completion.Deps` so the ~40 `hpaNameCompletion(opts)`
   call sites compile unchanged. The deeper commands (snapshot loading,
   capacity selectors, output selection) still reach cmd-private helpers and
-  remain in `cmd/` for a later phase.
+  remain in `cmd/` as orchestration boundaries. Timeline JSONL scanning is
+  centralized in `cmd/internal/recordio`; filtering, merging, snapshot limits,
+  and legacy single-JSON fallback remain explicit at each command boundary.
 - **Slim the `Analysis` god-struct:** `pkg/hpa.Analysis` has 65 fields
   accumulated feature-by-feature. The additive migration boundary is now
   complete: v1 keeps the flat storage and default wire shape, while explicit
   v2 output uses 13 nested group views. Remaining work is a v3 design decision:
   make grouped values primary in-memory storage, flip the default only with
   migration notes, then retire the flat v1 fields in that major release.
-- **Re-evaluate testutil SA1019 suppressions:** `internal/testutil` uses
-  `fake.NewSimpleClientset` (deprecated, no applyconfig replacement). Re-check
-  on each client-go upgrade and remove the `//nolint:staticcheck` once an
+- **Re-evaluate testutil SA1019 suppression:** All fake-client construction is
+  routed through `internal/testutil`; its single `fake.NewSimpleClientset`
+  call remains deprecated with no applyconfig replacement. Re-check on each
+  client-go upgrade and remove the one `//nolint:staticcheck` once an
   alternative lands.
-- **Extract `pkg/hpa/core` shared helpers:** `FormatMetricStatus`, the labels
-  machinery, `TimelineSnapshot` helpers, clock, and conditions utilities are
-  the shared dependency that keeps `capacity`, `simulate`, `decision`,
-  `metrics`, `health`, `retrospective`, and `timeline` in the `pkg/hpa` root
-  (see ARCHITECTURE.md "leaf domain extraction prerequisite"). Lifting them
-  into `pkg/hpa/core` unblocks the domain extractions below.
-- **Extract `simulate` and `capacity` domains:** Once `core` exists, move the
+- **Extract `simulate` and `capacity` domains:** With the formatting/labels
+  core now available, move the
   tightly-coupled `simulate*.go` files (simulate, simulate_metric,
   simulate_extended, simulate_projection) into `pkg/hpa/simulate/`, and the
   `CapacityContext`/`CapacityHeadroom`/`CapacityPlan` trio into
   `pkg/hpa/capacity/` (with `blocker.nodeCapacityRule` re-homed to capacity),
   keeping deprecated re-export facades in `pkg/hpa` until the facade-removal
   policy below clears them.
-- **TUI sub-models per view mode:** The first delegation boundary is in place:
-  a mode-to-controller registry now owns rendering, view-local cursor movement,
-  and Enter/Escape handling, with exhaustive registration tests and a safe
-  fallback for unknown modes. `internal/tui.Model` still permanently holds six
-  independent state machines. Move those states behind dedicated sub-models
-  and narrow the remaining global key handling so adding a view becomes an
-  isolated change.
 - **Consolidate advisor/doctor command surfaces (user-visible):** `advisor`,
   `recommend`, and `container-advisor` overlap, as do `doctor`,
   `readiness-doctor`, and the `diagnosis-*` family. Plan subcommand grouping
   (`advisor container|behavior|recommend`, `doctor readiness|rollout|capacity`)
   with deprecated aliases for one minor release before removal. See
   "v3 CLI surface consolidation" below for the decided scope.
-- **Lower command-addition cost:** Adding one command today touches ~9 places
-  (command file, commandGroups, options_bridge preset, cmdoptions preset +
-  feature flag, enricher phase, Analysis field, text renderer, schema test).
-  Evaluate an `AnalysisPlugin`-style registry (name + enrich + render) so a
-  new analysis domain registers in one place.
+- **Lower command-addition cost (evaluated):** Command construction and shared
+  flag capabilities now live in one `commandSpec` registration, with registry
+  consistency tests. A dynamic `AnalysisPlugin` registry is deferred because
+  the typed `Analysis` payload and JSON schemas still require explicit changes;
+  hiding those behind `name + enrich + render` would trade compile-time checks
+  for runtime failures. The required v3 extension boundary and migration
+  conditions are recorded in `docs/analysis-plugin-registry.md`.
 
 ## v3 Breaking Changes (Decided, Not Yet Scheduled)
 

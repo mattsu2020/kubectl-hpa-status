@@ -12,9 +12,11 @@ import (
 //	local := applyCommandPreset(opts, presetX)
 //	return runStatusMany(ctx, out, &local, names, !local.NoInterpret)
 //
-// Callers that need to mutate the preset copy before running (e.g. doctor's
-// extra event/trend flags, history's --since wiring) must keep using
-// applyCommandPreset directly; this helper is only for the no-mutation case.
+// Callers that need to mutate the preset copy before running (e.g. history's
+// --since wiring) must keep using applyCommandPreset directly; this helper is
+// only for the no-mutation case. Presets such as doctor that carry their own
+// extra configuration (events, KEDA/VPA) enable it inside their applier and
+// need no extras passed here.
 func runStatusWithPreset(ctx context.Context, out io.Writer, opts *options, p preset, names []string, extra ...commandPresetOptions) error {
 	local := applyCommandPreset(opts, p, extra...)
 	return runStatusMany(ctx, out, &local, names, !local.NoInterpret)

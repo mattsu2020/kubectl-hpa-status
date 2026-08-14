@@ -24,7 +24,9 @@ Inference should be labeled with confidence language and covered by tests.
 | Path | Responsibility |
 | --- | --- |
 | `cmd/` | Cobra commands, flags, request construction, and Kubernetes client orchestration (one feature/subcommand per file) |
+| `cmd/internal/recordio/` | Streaming JSONL decoding for record, replay, and offline record analysis; callers own filtering, merging, limits, and legacy JSON fallback |
 | `pkg/hpa/` | Importable analysis model: HPA signal extraction, health scoring, suggestions, diagnostics, and text/Markdown/HTML/SARIF rendering |
+| `pkg/hpa/core/` | Dependency-light public contracts for localized labels and metric status formatting; `pkg/hpa` re-exports these types/functions for API compatibility |
 | `pkg/hpa/render/` | Shared report renderers (Markdown/HTML/list/incident) extracted from the root `pkg/hpa` `*_text.go` files |
 | `pkg/hpa/rendutil/` | Shared escape, display-width, and list-projection helpers sitting below both `pkg/hpa` and `pkg/hpa/render` to break the import cycle between them; also imported by `internal/tui` and `cmd/replaylab` for terminal-width truncation, which is why it stays public instead of moving under `pkg/hpa/internal/` |
 | `pkg/style/` | Terminal color and semantic styling (shared by cmd and pkg/hpa renderers) |
@@ -36,8 +38,9 @@ Inference should be labeled with confidence language and covered by tests.
 | `internal/cmdoptions/` | Structured CLI option model, immutable per-command request snapshots, presets, and normalization, decoupled from cobra |
 | `internal/render/` | Output-format routing and serialization (json/yaml/jsonl/jsonpath/template/prometheus/markdown/html/incident), including write-error propagation |
 | `internal/patch/` | RFC 7396 JSON merge patch helpers for suggestions |
-| `internal/tui/` | Bubble Tea dashboard: model/update/view plus per-view renderers |
+| `internal/tui/` | Bubble Tea dashboard: a top-level orchestration model plus six clone-safe interactive submodels (simulation, fix, replay, batch audit, history, hints) and per-view controllers that own local keys/messages |
 | `internal/history/` | Clock-injected recorder/store shared by status/list history collection and trend replay |
+| `pkg/clock/` | Canonical process-wide time source. Domain packages and the default history recorder delegate here; history retains operation-scoped clock injection for deterministic service tests |
 | `internal/i18n/` | Embedded locale bundles (en/ja), dynamically loaded from `locales/` |
 | `internal/testutil/` | Shared fake-client/HPA/workload builders used by `cmd/`, `internal/`, and `pkg/hpa` tests |
 | `cmd/internal/{client,errs,output}` | Lifted helpers (client construction, sentinel errors, output predicates) following the facade-then-migrate pattern |
@@ -131,11 +134,11 @@ Refactoring notes:
   `report_incident.go`) now live in `pkg/hpa/render`, and the shared
   HTML/Markdown escape helpers (`escapeMarkdown`, `htmlEscape`,
   `htmlHealthBadge`, `htmlCSS`) live in `pkg/hpa/rendutil` to break the
-  import cycle (both `pkg/hpa` and `pkg/hpa/render` need them). The remaining
-  `*_text.go` files (status text, diff text, advisor text) are still in
-  `pkg/hpa` because they share the `FormatMetricStatus`/`labels` machinery
-  with the analysis core; moving them requires injecting those call sites
-  through an interface first.
+  import cycle (both `pkg/hpa` and `pkg/hpa/render` need them). Localized
+  labels and metric formatting now live in `pkg/hpa/core`, with compatibility
+  forwards in `pkg/hpa`. The remaining `*_text.go` files stay in `pkg/hpa`
+  because they render root `Analysis` domain types; formatting helpers are no
+  longer the blocker.
 - `cmd/options_bridge.go` is the single vocabulary for `internal/cmdoptions`
   symbols inside `cmd/`. Every preset const, type alias
   (`options`, `commonOptions`, `commandPresetOptions`, ...), and helper
@@ -167,8 +170,10 @@ Refactoring notes:
   values. Decision rules use those typed fields rather than localized display
   messages; legacy serialized records without IDs remain readable.
 - `internal/history.Recorder` owns append/prune/load/analyze behavior with an
-  injected clock. Status and list use this service instead of independently
-  reimplementing retention and trend analysis.
+  injected clock. A nil clock delegates to the canonical `pkg/clock`
+  source; the interface exists only to keep one recorder operation pinned to a
+  consistent time in tests. Status and list use this service instead of
+  independently reimplementing retention and trend analysis.
 - `internal/enrichment.RunPipeline` owns task ordering, enablement,
   best-effort warning callbacks, and fail-fast behavior. Per-source enrichers
   bind their typed inputs in task closures; the pipeline itself stays free of
@@ -197,6 +202,11 @@ Refactoring notes:
   reintroduce an English-string-to-key switch in cmd/ — the key is canonical.
   `internal/i18n/i18n_test.go` enforces both locale key parity and that every
   `dir_*` key resolves in every locale.
+- i18n intentionally covers table/section labels and the status summary line.
+  Diagnostic evidence, risks, recommendations, remediation text, serialized
+  field names, and machine-readable enum values remain English/stable. New
+  decision rules must use typed IDs or keys rather than matching either locale's
+  rendered text.
 - `DetectCRDs` returns per-source discovery errors in
   `CRDAvailability.KEDError` / `VPAError` (wrapping `ErrKEDACRDNotDetected` /
   `ErrVPACRDNotDetected`) so callers can distinguish "CRD is absent" from
@@ -226,8 +236,9 @@ Refactoring notes:
   pipeline diagnostics, freshness, contract). The split keeps each metrics
   sub-table editable in isolation.
 - The `record` / `replay` cobra command constructors live in
-  `replay_commands.go`; the heavy lifting stays in `replay_lab*.go` and
-  `runRecord` (in `timeline.go`).
+  `replay_commands.go`; presentation is isolated in `cmd/replaylab`, shared
+  JSONL decoding lives in `cmd/internal/recordio`, and Kubernetes orchestration
+  remains in `cmd`.
 - Test files are organised by source area rather than as monolithic grab-bags:
   `commands_batch_test.go` (run-command smoke tests),
   `render_batch_test.go` (renderer smoke tests),
@@ -314,28 +325,27 @@ Refactoring notes:
     `HealthTrendResult` types moved from `workload_types.go` to the new
     package; `pkg/hpa` keeps type aliases for backward compatibility.
     The package imports `pkg/hpa/flapping` for `AnomalyDetection` types.
-  Domains that depend on the shared clock (`now()`), labels machinery, or
-  `FormatMetricStatus` (capacity, retrospective, timeline, metrics, decision,
-  simulate) remain in `pkg/hpa` until those shared helpers are extracted into a
-  core sub-package; that extraction is deferred until a domain that needs them
-  is moved.
+  - `pkg/hpa/core` — localized labels and metric formatting. The root
+    `pkg/hpa` package re-exports them for v2 API compatibility, while domain
+    code can import the dependency-light core directly. Time-dependent domains
+    share the public `pkg/clock` abstraction.
 - Audit, blocker, warmup, flapping, churn, policy, lint, readiness, keda,
   vpa, and healthtrend have been extracted into self-contained sub-packages. The remaining
   domains (pod-analysis, events, capacity, simulate, decision, gitops, metrics,
   health, retrospective, timeline, behavior, container-advisor, assumptions,
-  hidden-factors) each depend on one or more shared helpers that still span the
-  analysis core (`FormatMetricStatus`, the `labels` machinery,
-  `TimelineSnapshot`, `Analysis`). They are intentionally left in `pkg/hpa` as
-  a single cohesive analysis package; extracting those helpers into a shared
-  core sub-package is the prerequisite for the next batch of domain extractions.
+  hidden-factors) each depend on root domain types such as `TimelineSnapshot`
+  and `Analysis`, or on cross-domain finalization. They are intentionally left
+  in `pkg/hpa` until a narrower typed boundary can be introduced; labels and
+  metric formatting are already available from `pkg/hpa/core`.
   Additionally, `pkg/hpa/internal/suggestion` holds the shared `Suggestion`,
   `GuardResult`, `GuardBlocked`, and `GuardWarning` types used by policy and
   the suggestion pipeline.
-- Shared helpers have been progressively extracted into `pkg/hpa/internal/`
-  sub-packages so leaf domains can use them without reaching back into the
-  analysis core:
-  - `pkg/hpa/internal/clock` — swappable time source (`clock.Now`,
-    `clock.SetForTest`). `pkg/hpa` re-exports as `now()` / `SetClockForTest`.
+- Shared helpers have been progressively extracted so leaf domains can use
+  them without reaching back into the analysis core:
+  - `pkg/clock` — the canonical clock interface and real/fake implementations
+    shared by history and analysis code.
+  - `pkg/hpa/core` — localized labels and metric status/target/selector
+    formatting, re-exported from `pkg/hpa` for compatibility.
   - `pkg/hpa/internal/conditions` — HPA condition lookup and stabilization
     math (`conditions.Find`, `conditions.ScaleDownStabilizationWindow`,
     `conditions.EstimateStabilizationRemaining`, condition constants).
@@ -348,7 +358,7 @@ Refactoring notes:
     (`confidence.Severity`, `confidence.Confidence`, `confidence.Classification`
     with their constants). `pkg/hpa` re-exports as `Severity` /
     `ConfidenceHigh` / etc.
-- The `cmd/bundle` and `cmd/replay` sub-package extractions were assessed and
+- Further `cmd/bundle` and replay orchestration extraction was assessed and
   deferred. Both groups still depend on multiple unexported `cmd/` helpers
   (`newClientOrDefault`, `applyCommandPreset`, `fetchSnapshot*`,
   `capacitySelector`, `redactBytes`, `loadRecordedTrace`, `traceReplicaRange`,

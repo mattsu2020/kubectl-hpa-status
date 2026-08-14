@@ -1,4 +1,4 @@
-package hpa
+package readiness
 
 import (
 	"fmt"
@@ -8,8 +8,8 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
-// WriteReadinessDoctorText renders a ReadinessDoctorReport as plain text.
-func WriteReadinessDoctorText(w io.Writer, report *ReadinessDoctorReport, theme style.Theme) error {
+// WriteDoctorText renders a DoctorReport as plain text.
+func WriteDoctorText(w io.Writer, report *DoctorReport, theme style.Theme) error {
 	if report == nil {
 		return nil
 	}
@@ -81,8 +81,8 @@ func WriteReadinessDoctorText(w io.Writer, report *ReadinessDoctorReport, theme 
 	return err
 }
 
-// WriteReadinessDoctorMarkdown renders a ReadinessDoctorReport as Markdown.
-func WriteReadinessDoctorMarkdown(w io.Writer, report *ReadinessDoctorReport) error {
+// WriteDoctorMarkdown renders a DoctorReport as Markdown.
+func WriteDoctorMarkdown(w io.Writer, report *DoctorReport) error {
 	if report == nil {
 		return nil
 	}

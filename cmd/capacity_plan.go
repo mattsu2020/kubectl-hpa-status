@@ -15,7 +15,6 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/internal/observation"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
 type capacityPlanOutput struct {
@@ -74,7 +73,7 @@ func runCapacityPlan(ctx context.Context, out io.Writer, opts *options, names []
 	}
 
 	return renderPerHPA(out, &local, outputs, func(out io.Writer, o capacityPlanOutput) error {
-		theme := style.NewTheme(shouldColorize(local.Color, out))
+		theme := themeFor(local.Color, out)
 		if err := hpaanalysis.WriteCapacityPlanText(out, o.Plan, theme); err != nil {
 			return fmt.Errorf("write capacity report for %s/%s: %w", o.Namespace, o.Name, err)
 		}
@@ -265,7 +264,7 @@ func collectCapacityClusterHeadroom(ctx context.Context, client *kube.Client, po
 }
 
 func collectCapacityPDBs(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, input *hpaanalysis.CapacityPlanInput) {
-	pdbInfos, pdbErr := kube.FetchPodDisruptionBudgets(ctx, client.Interface, hpa.Namespace, hpa.UID)
+	pdbInfos, pdbErr := kube.FetchPodDisruptionBudgets(ctx, client.Interface, hpa.Namespace)
 	if pdbErr != nil {
 		addCapacityObservationError(input, hpaanalysis.CapacityObservationPDBs, "PodDisruptionBudgets", pdbErr)
 	} else {

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -13,7 +14,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	fakediscovery "k8s.io/client-go/discovery/fake"
-	kubernetesfake "k8s.io/client-go/kubernetes/fake"
 )
 
 func TestBuildMetricContractResourceCurrentDataIsReadOnlyLookup(t *testing.T) {
@@ -179,7 +179,7 @@ func TestBuildMetricContractMetric_ExternalSelectorIdentityAndZeroValue(t *testi
 func TestResolveCustomMetricResourceUsesDiscoveryForIrregularResources(t *testing.T) {
 	t.Parallel()
 
-	clientset := kubernetesfake.NewSimpleClientset()
+	clientset := testutil.NewFakeClientWithObjects()
 	clientset.Discovery().(*fakediscovery.FakeDiscovery).Resources = []*metav1.APIResourceList{
 		{
 			GroupVersion: "example.io/v1",
@@ -230,7 +230,7 @@ func TestResolveCustomMetricResourceUsesDiscoveryForIrregularResources(t *testin
 func TestResolveCustomMetricResourceReportsDiscoveryMiss(t *testing.T) {
 	t.Parallel()
 
-	clientset := kubernetesfake.NewSimpleClientset()
+	clientset := testutil.NewFakeClientWithObjects()
 	clientset.Discovery().(*fakediscovery.FakeDiscovery).Resources = []*metav1.APIResourceList{{
 		GroupVersion: "example.io/v1",
 	}}
@@ -246,7 +246,7 @@ func TestResolveCustomMetricResourceReportsDiscoveryMiss(t *testing.T) {
 func TestResolveMetricTargetSelector(t *testing.T) {
 	t.Parallel()
 
-	clientset := kubernetesfake.NewSimpleClientset(&appsv1.Deployment{
+	clientset := testutil.NewFakeClientWithObjects(&appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{Namespace: "prod", Name: "web"},
 		Spec: appsv1.DeploymentSpec{
 			Selector: &metav1.LabelSelector{
@@ -294,7 +294,7 @@ func TestResolveMetricTargetSelectorReportsUnsupportedTarget(t *testing.T) {
 	}
 	got := resolveMetricTargetSelector(
 		context.Background(),
-		&kube.Client{Interface: kubernetesfake.NewSimpleClientset()},
+		&kube.Client{Interface: testutil.NewFakeClientWithObjects()},
 		hpa,
 	)
 	if got.Err == nil || got.Selector != "" {
@@ -305,7 +305,7 @@ func TestResolveMetricTargetSelectorReportsUnsupportedTarget(t *testing.T) {
 func TestSelectMetricAPIServiceUsesServedCustomMetricsVersion(t *testing.T) {
 	t.Parallel()
 
-	clientset := kubernetesfake.NewSimpleClientset()
+	clientset := testutil.NewFakeClientWithObjects()
 	clientset.Discovery().(*fakediscovery.FakeDiscovery).Resources = []*metav1.APIResourceList{{
 		GroupVersion: "custom.metrics.k8s.io/v1beta2",
 	}}
@@ -330,7 +330,7 @@ func TestBuildMetricContractInputUsesServedVersionAndExactPodSelectors(t *testin
 
 	metricSelector := &metav1.LabelSelector{MatchLabels: map[string]string{"series": "frontend"}}
 	one := resource.MustParse("1")
-	clientset := kubernetesfake.NewSimpleClientset(&appsv1.Deployment{
+	clientset := testutil.NewFakeClientWithObjects(&appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{Namespace: "prod", Name: "web"},
 		Spec: appsv1.DeploymentSpec{
 			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "web"}},

@@ -53,20 +53,27 @@ func runStatus(ctx context.Context, out io.Writer, opts *options, name string, i
 }
 
 func runStatusMany(ctx context.Context, out io.Writer, opts *options, names []string, includeInterpretation bool) error {
+	// Derive the structured-mode decision-trace defaults on a scratch copy so
+	// the caller's opts is never mutated: callers may pass a value they still
+	// own (request copy or a shared preset). The derived copy is used for the
+	// rest of this call unless no derivation is needed.
+	derived := opts
 	if opts.Format == "structured" && opts.DecisionTraceFormat == "" {
-		opts.DecisionTrace = true
-		opts.DecisionTraceFormat = "json"
+		copyOpts := *opts
+		copyOpts.DecisionTrace = true
+		copyOpts.DecisionTraceFormat = "json"
+		derived = &copyOpts
 		includeInterpretation = true
 	}
 
-	if opts.Apply && len(names) > 1 {
+	if derived.Apply && len(names) > 1 {
 		return fmt.Errorf("--apply supports only a single HPA at a time; use 'list --apply' for batch mode")
 	}
 
 	if len(names) == 1 {
-		return runStatusSingle(ctx, out, opts, names[0], includeInterpretation)
+		return runStatusSingle(ctx, out, derived, names[0], includeInterpretation)
 	}
-	return runStatusMultiple(ctx, out, opts, names, includeInterpretation)
+	return runStatusMultiple(ctx, out, derived, names, includeInterpretation)
 }
 
 // runStatusSingle handles the single-HPA status path, including structured/AI/apply/export output modes.
@@ -119,8 +126,7 @@ func runStatusSingle(ctx context.Context, out io.Writer, opts *options, name str
 		)
 	}
 
-	format, templateStr := selectOutputFromOptions(opts)
-	if err := render.Format(out, format, templateStr, statusOutputValue(opts, report), func(out io.Writer) error {
+	if err := renderWithOutput(out, opts, statusOutputValue(opts, report), func(out io.Writer) error {
 		return hpaanalysis.WriteStatusTextWithOptions(out, report, statusTextOptions(opts, out))
 	}); err != nil {
 		return err
@@ -145,7 +151,6 @@ func writeStatusError(out io.Writer, opts *options, namespace, name string, repo
 		}
 		return nil
 	}
-	format, templateStr := selectOutputFromOptions(opts)
 	record := hpaanalysis.StatusRecordV2{
 		APIVersion: hpaanalysis.SchemaVersionV2,
 		Namespace:  namespace,
@@ -153,7 +158,7 @@ func writeStatusError(out io.Writer, opts *options, namespace, name string, repo
 		Status:     hpaanalysis.StatusRecordErrorV2,
 		Error:      reportErr.Error(),
 	}
-	return render.Format(out, format, templateStr, record, nil)
+	return renderWithOutput(out, opts, record, nil)
 }
 
 // runStatusMultiple handles the multi-HPA status path. Unlike the single-HPA
@@ -186,7 +191,7 @@ func runStatusMultiple(ctx context.Context, out io.Writer, opts *options, names 
 	// instead of short-circuiting, so a render failure never masks per-item
 	// health outcomes.
 	if opts.Export != "" {
-		return joinExportAndExit(writeReportsGitOpsExport(out, opts.Export, successReports(results)), aggregateBatchExitCode(results, watchMode))
+		return joinOutputAndExit(writeReportsGitOpsExport(out, opts.Export, successReports(results)), aggregateBatchExitCode(results, watchMode))
 	}
 	if err := renderBatchResults(out, opts, results); err != nil {
 		return err
@@ -204,9 +209,8 @@ func renderBatchResults(out io.Writer, opts *options, results []reportResult) er
 	if opts.ContextForAI || opts.Ask != "" {
 		return writeAIContextMany(out, results, opts.Ask)
 	}
-	format, templateStr := selectOutputFromOptions(opts)
 	reports := successReports(results)
-	return render.Format(out, format, templateStr, batchValue(opts, results, reports), func(out io.Writer) error {
+	return renderWithOutput(out, opts, batchValue(opts, results, reports), func(out io.Writer) error {
 		return writeReportsStatusText(out, opts, results)
 	})
 }

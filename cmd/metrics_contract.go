@@ -14,7 +14,6 @@ import (
 	"k8s.io/client-go/restmapper"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
-	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
 
@@ -77,8 +76,6 @@ func runMetricsContract(ctx context.Context, out io.Writer, opts *options, name 
 		return nil
 	default:
 		// Standard output (text, JSON, YAML via --output flag)
-		format, templateStr := selectOutputFromOptions(opts)
-
 		output := metricsContractOutput{
 			Namespace: report.Namespace,
 			Name:      report.Name,
@@ -86,7 +83,7 @@ func runMetricsContract(ctx context.Context, out io.Writer, opts *options, name 
 			Contract:  report,
 		}
 
-		return render.Format(out, format, templateStr, output, func(out io.Writer) error {
+		return renderWithOutput(out, opts, output, func(out io.Writer) error {
 			return hpaanalysis.WriteMetricContractText(out, report)
 		})
 

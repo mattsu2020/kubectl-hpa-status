@@ -62,11 +62,18 @@ func BuildReport(fromLabel, toLabel string, from, to *autoscalingv2.HorizontalPo
 	addDiff("maxReplicas", fmt.Sprintf("%d", from.Spec.MaxReplicas), fmt.Sprintf("%d", to.Spec.MaxReplicas))
 	addDiff("metrics", MetricSummary(from), MetricSummary(to))
 	addDiff("behavior.scaleDown.stabilizationWindowSeconds", StabilizationWindow(from), StabilizationWindow(to))
-	addDiff("healthScore", fmt.Sprintf("%d", hpaanalysis.Analyze(from, false).HealthScore), fmt.Sprintf("%d", hpaanalysis.Analyze(to, false).HealthScore))
+	addDiff("healthScore", healthScore(from), healthScore(to))
 	if to.Spec.MaxReplicas < from.Spec.MaxReplicas {
 		report.Risks = append(report.Risks, "target environment has lower maxReplicas and is more likely to hit a replica cap under the same load")
 	}
 	return report
+}
+
+// healthScore is the narrow adapter between configuration comparison and the
+// full HPA analyzer. Keeping the dependency here makes the rest of report
+// construction independent of Analysis and its derived output model.
+func healthScore(hpa *autoscalingv2.HorizontalPodAutoscaler) string {
+	return fmt.Sprintf("%d", hpaanalysis.Analyze(hpa, false).HealthScore)
 }
 
 // MetricSummary returns a compact string representation of an HPA's metric

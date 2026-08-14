@@ -11,6 +11,7 @@ import (
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/conditions"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/event"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/model"
 )
@@ -224,12 +225,14 @@ func windowFromFlips(flips []directionFlip) int {
 }
 
 // flappingSeverity classifies flapping severity based on flip count and time
-// window.
+// window. Window thresholds are expressed relative to the Kubernetes default
+// scale-down stabilization window.
 func flappingSeverity(flipCount int, windowSeconds int) string {
+	defaultWindow := int(conditions.DefaultScaleDownStabilizationWindowSeconds)
 	switch {
-	case flipCount >= 6 || (flipCount >= 3 && windowSeconds > 0 && windowSeconds < 300):
+	case flipCount >= 6 || (flipCount >= 3 && windowSeconds > 0 && windowSeconds < defaultWindow):
 		return "CRITICAL"
-	case flipCount >= 3 || (flipCount >= 2 && windowSeconds > 0 && windowSeconds < 600):
+	case flipCount >= 3 || (flipCount >= 2 && windowSeconds > 0 && windowSeconds < 2*defaultWindow):
 		return "HIGH"
 	case flipCount >= 2:
 		return "MEDIUM"

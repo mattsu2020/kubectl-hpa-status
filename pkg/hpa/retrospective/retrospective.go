@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/clock"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/clock"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/conditions"
 	eventutil "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/event"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"

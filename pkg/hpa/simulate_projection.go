@@ -8,6 +8,15 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
+const (
+	// defaultProjectionDurationSeconds is the simulated span covered by a
+	// replica trajectory when the caller does not specify one (5 minutes).
+	defaultProjectionDurationSeconds int32 = 300
+	// defaultProjectionStepSeconds is the trajectory granularity when the
+	// caller does not specify one.
+	defaultProjectionStepSeconds int32 = 30
+)
+
 // ProjectReplicaTrajectory generates a time-series projection showing how
 // replica count would change over time under the modified HPA configuration.
 //
@@ -19,12 +28,12 @@ import (
 func ProjectReplicaTrajectory(original, modified *autoscalingv2.HorizontalPodAutoscaler, opts SimulationExtendedOptions) []ProjectedState {
 	duration := opts.DurationSeconds
 	if duration <= 0 {
-		duration = 300 // default 5 minutes
+		duration = defaultProjectionDurationSeconds
 	}
 
 	step := opts.StepSeconds
 	if step <= 0 {
-		step = 30 // default 30-second steps
+		step = defaultProjectionStepSeconds
 	}
 
 	// Ensure step is reasonable.

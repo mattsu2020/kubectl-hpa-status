@@ -1,15 +1,15 @@
 package cmd
 
 import (
-	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/mattsu2020/kubectl-hpa-status/cmd/internal/recordio"
 	"github.com/mattsu2020/kubectl-hpa-status/cmd/replaylab"
 
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
@@ -108,32 +108,21 @@ func runReplayPolicyLab(out io.Writer, opts *options, name, recordPath string, c
 }
 
 func inferRecordedTraceName(path, namespace string) (string, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return "", fmt.Errorf("failed to read record file: %w", err)
-	}
-	defer func() { _ = file.Close() }()
 	names := map[string]string{}
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 64*1024), 10*1024*1024)
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(line) == 0 {
-			continue
-		}
-		var trace hpaanalysis.TimelineTrace
-		if err := json.Unmarshal(line, &trace); err != nil {
-			return inferRecordedJSONTraceName(path, namespace)
-		}
+	_, err := recordio.ScanTraces(path, func(trace hpaanalysis.TimelineTrace) error {
 		if namespace != "" && trace.Namespace != namespace {
-			continue
+			return nil
 		}
 		if trace.HPAName != "" {
 			names[trace.Namespace+"/"+trace.HPAName] = trace.HPAName
 		}
+		return nil
+	})
+	if errors.Is(err, recordio.ErrInvalidJSONLine) {
+		return inferRecordedJSONTraceName(path, namespace)
 	}
-	if err := scanner.Err(); err != nil {
-		return "", fmt.Errorf("failed to scan record file: %w", err)
+	if err != nil {
+		return "", err
 	}
 	if len(names) == 1 {
 		for _, name := range names {

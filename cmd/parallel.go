@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -25,8 +24,7 @@ func renderPerHPA[T any](out io.Writer, opts *options, values []T, writeOne func
 	if len(values) == 1 {
 		value = values[0]
 	}
-	format, templateStr := selectOutputFromOptions(opts)
-	return render.Format(out, format, templateStr, value, func(out io.Writer) error {
+	return renderWithOutput(out, opts, value, func(out io.Writer) error {
 		for i, item := range values {
 			if i > 0 {
 				if _, err := fmt.Fprintln(out); err != nil {

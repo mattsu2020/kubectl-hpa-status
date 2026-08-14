@@ -11,6 +11,10 @@ var (
 	// resolved for an HPA.
 	ErrScaledObjectNotFound = errors.New("scaledobject not found for HPA")
 
+	// ErrScaledObjectAmbiguous is returned when more than one KEDA ScaledObject
+	// targets the HPA scale target and no explicit name disambiguates them.
+	ErrScaledObjectAmbiguous = errors.New("multiple scaledobjects target the HPA scale target")
+
 	// ErrUnsupportedScaleTargetKind is returned when the HPA scaleTargetRef
 	// references a kind this package does not know how to resolve
 	// (Deployment / StatefulSet / ReplicaSet).

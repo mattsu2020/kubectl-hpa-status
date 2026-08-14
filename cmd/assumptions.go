@@ -8,9 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
-	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
 func newAssumptionsCommand(opts *options) *cobra.Command {
@@ -107,17 +105,15 @@ func runAssumptions(ctx context.Context, out io.Writer, opts *options, names []s
 		return err
 	}
 
-	format, templateStr := selectOutputFromOptions(opts)
-
 	for i, report := range reports {
 		if i > 0 {
 			if _, err := fmt.Fprintln(out); err != nil {
 				return fmt.Errorf("write assumptions separator: %w", err)
 			}
 		}
-		if err := render.Format(out, format, templateStr, report, func(out io.Writer) error {
+		if err := renderWithOutput(out, opts, report, func(out io.Writer) error {
 			return hpaanalysis.WriteAssumptionsTextWithExplain(out, report.Assumptions,
-				flags.explain, style.NewTheme(shouldColorize(opts.Color, out)))
+				flags.explain, themeFor(opts.Color, out))
 		}); err != nil {
 			return fmt.Errorf("write assumptions report for %s/%s: %w", report.Namespace, report.Name, err)
 		}

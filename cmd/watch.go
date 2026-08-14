@@ -9,7 +9,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
-	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
@@ -44,7 +43,7 @@ func runWatch(ctx context.Context, out io.Writer, opts *options, name string, in
 		interval = time.Second
 	}
 
-	theme := style.NewTheme(shouldColorize(opts.Color, out))
+	theme := themeFor(opts.Color, out)
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -143,8 +142,7 @@ func clearWatchScreen(out io.Writer, theme style.Theme, now time.Time) error {
 // writeWatchReport renders the current report via the selected format, choosing dashboard/diff/text rendering inside the fallback.
 // All three paths thread StatusTextOptions so the Summary line is localised when --lang is set.
 func writeWatchReport(out io.Writer, opts *options, report hpaanalysis.StatusReport, previous *hpaanalysis.Analysis) error {
-	format, templateStr := selectOutputFromOptions(opts)
-	return render.Format(out, format, templateStr, statusOutputValue(opts, report), func(out io.Writer) error {
+	return renderWithOutput(out, opts, statusOutputValue(opts, report), func(out io.Writer) error {
 		textOpts := statusTextOptions(opts, out)
 		if opts.Dashboard {
 			return hpaanalysis.WriteStatusDashboardWithOptions(out, report, textOpts)
@@ -189,7 +187,7 @@ func runWatchList(ctx context.Context, out io.Writer, opts *options) error {
 		interval = time.Second
 	}
 
-	theme := style.NewTheme(shouldColorize(opts.Color, out))
+	theme := themeFor(opts.Color, out)
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 

@@ -49,7 +49,7 @@ func buildCapacityContextWithSnapshot(ctx context.Context, client *kube.Client, 
 		result.QuotaConstraints = kubeconv.Quotas(quotaInfos)
 	}
 
-	pdbInfos, pdbErr := kube.FetchPodDisruptionBudgets(ctx, client.Interface, hpa.Namespace, hpa.UID)
+	pdbInfos, pdbErr := kube.FetchPodDisruptionBudgets(ctx, client.Interface, hpa.Namespace)
 	if pdbErr != nil {
 		result.Warnings = append(result.Warnings, fmt.Sprintf("pod disruption budgets unavailable: %v", pdbErr))
 	} else {

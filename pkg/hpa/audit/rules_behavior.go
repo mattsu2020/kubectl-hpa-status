@@ -21,7 +21,7 @@ func stabilizationWindowRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32
 		"spec": map[string]any{
 			"behavior": map[string]any{
 				"scaleDown": map[string]any{
-					"stabilizationWindowSeconds": 300,
+					"stabilizationWindowSeconds": conditions.DefaultScaleDownStabilizationWindowSeconds,
 				},
 			},
 		},
@@ -208,16 +208,16 @@ func kedaCooldownRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []Fin
 	}
 
 	window := hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds
-	if window != nil && *window > 300 {
+	if window != nil && *window > conditions.DefaultScaleDownStabilizationWindowSeconds {
 		return []Finding{
 			{
 				ID:          "keda-cooldown",
 				Title:       "Scale-down stabilization too long for KEDA profile",
-				Description: fmt.Sprintf("scaleDown.stabilizationWindowSeconds is %ds. KEDA workloads with active triggers should scale down promptly when the trigger signal decreases. Consider reducing to ≤300s.", *window),
+				Description: fmt.Sprintf("scaleDown.stabilizationWindowSeconds is %ds. KEDA workloads with active triggers should scale down promptly when the trigger signal decreases. Consider reducing to ≤%ds.", *window, conditions.DefaultScaleDownStabilizationWindowSeconds),
 				Severity:    AuditInfo,
 				Category:    "profile-keda",
 				Current:     fmt.Sprintf("%ds", *window),
-				Recommended: "≤300s for KEDA-managed workloads",
+				Recommended: fmt.Sprintf("≤%ds for KEDA-managed workloads", conditions.DefaultScaleDownStabilizationWindowSeconds),
 			},
 		}
 	}

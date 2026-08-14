@@ -295,7 +295,7 @@ func TestFetchPodsForScaleTarget_UnsupportedKind(t *testing.T) {
 
 func TestFetchPodDisruptionBudgets_Empty(t *testing.T) {
 	fakeClient := testutil.NewFakeClient()
-	result, err := FetchPodDisruptionBudgets(context.Background(), fakeClient, "default", "")
+	result, err := FetchPodDisruptionBudgets(context.Background(), fakeClient, "default")
 	if err != nil {
 		t.Fatalf("FetchPodDisruptionBudgets: %v", err)
 	}

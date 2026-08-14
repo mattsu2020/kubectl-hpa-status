@@ -8,7 +8,7 @@ package conditions
 import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/clock"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/clock"
 )
 
 // DefaultScaleDownStabilizationWindowSeconds is the Kubernetes default

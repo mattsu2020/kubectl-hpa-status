@@ -13,7 +13,6 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/internal/observation"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
 type blockerOutput struct {
@@ -72,7 +71,7 @@ func runBlockers(ctx context.Context, out io.Writer, opts *options, names []stri
 	}
 
 	return renderPerHPA(out, &local, outputs, func(out io.Writer, o blockerOutput) error {
-		theme := style.NewTheme(shouldColorize(local.Color, out))
+		theme := themeFor(local.Color, out)
 		if err := hpaanalysis.WriteBlockerText(out, o.Report, theme); err != nil {
 			return fmt.Errorf("write blockers report for %s/%s: %w", o.Namespace, o.Name, err)
 		}

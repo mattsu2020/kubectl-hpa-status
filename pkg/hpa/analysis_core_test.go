@@ -702,6 +702,26 @@ func TestRecommendedMaxReplicas_RespectsCap(t *testing.T) {
 	}
 }
 
+func TestRecommendedMaxReplicas_NoInt32OverflowForLargeMaxReplicas(t *testing.T) {
+	// MaxReplicas close to int32 range used to overflow when doubled as int32,
+	// producing a wildly wrong (often negative) suggestion.
+	hpa := baseHPA()
+	hpa.Spec.MaxReplicas = 1_500_000_000
+	hpa.Status.CurrentReplicas = 0
+	hpa.Status.DesiredReplicas = 0
+
+	got := recommendedMaxReplicas(hpa)
+	// The safety-focused suggestion must stay a valid positive int32 (the old
+	// int32 doubling overflowed to a negative value) and, for an HPA already
+	// far above the cap, advance by one rather than doubling.
+	if got <= 0 {
+		t.Fatalf("recommendedMaxReplicas overflowed: got %d for MaxReplicas=1.5e9", got)
+	}
+	if got != 1_500_000_001 {
+		t.Fatalf("expected +1 advance for above-cap HPA, got %d", got)
+	}
+}
+
 func TestNilSafetyFindCondition(t *testing.T) {
 	result := FindCondition(nil, "ScalingActive")
 	if result != nil {

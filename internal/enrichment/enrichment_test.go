@@ -8,7 +8,6 @@ import (
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 // --- Status tests ---
@@ -406,87 +405,6 @@ func TestBatchVPA_VPADisabled(t *testing.T) {
 	}
 }
 
-// --- scaledObjectMatchesHPA tests ---
-
-func TestScaledObjectMatchesHPA_Match(t *testing.T) {
-	so := &unstructured.Unstructured{
-		Object: map[string]any{
-			"spec": map[string]any{
-				"scaleTargetRef": map[string]any{
-					"kind": "Deployment",
-					"name": "my-app",
-				},
-			},
-		},
-	}
-	hpa := &autoscalingv2.HorizontalPodAutoscaler{
-		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{Kind: "Deployment", Name: "my-app"},
-		},
-	}
-	if !scaledObjectMatchesHPA(so, hpa) {
-		t.Fatal("expected match")
-	}
-}
-
-func TestScaledObjectMatchesHPA_NoMatch(t *testing.T) {
-	so := &unstructured.Unstructured{
-		Object: map[string]any{
-			"spec": map[string]any{
-				"scaleTargetRef": map[string]any{
-					"kind": "Deployment",
-					"name": "other-app",
-				},
-			},
-		},
-	}
-	hpa := &autoscalingv2.HorizontalPodAutoscaler{
-		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{Kind: "Deployment", Name: "my-app"},
-		},
-	}
-	if scaledObjectMatchesHPA(so, hpa) {
-		t.Fatal("expected no match")
-	}
-}
-
-func TestScaledObjectMatchesHPA_EmptyRef(t *testing.T) {
-	so := &unstructured.Unstructured{
-		Object: map[string]any{
-			"spec": map[string]any{},
-		},
-	}
-	hpa := &autoscalingv2.HorizontalPodAutoscaler{
-		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{Kind: "Deployment", Name: "my-app"},
-		},
-	}
-	if scaledObjectMatchesHPA(so, hpa) {
-		t.Fatal("expected no match with empty ref")
-	}
-}
-
-func TestScaledObjectMatchesHPA_EmptyKindName(t *testing.T) {
-	so := &unstructured.Unstructured{
-		Object: map[string]any{
-			"spec": map[string]any{
-				"scaleTargetRef": map[string]any{
-					"kind": "",
-					"name": "",
-				},
-			},
-		},
-	}
-	hpa := &autoscalingv2.HorizontalPodAutoscaler{
-		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{Kind: "Deployment", Name: "my-app"},
-		},
-	}
-	if scaledObjectMatchesHPA(so, hpa) {
-		t.Fatal("expected no match with empty kind/name")
-	}
-}
-
 // --- clearEnrichmentReason ---
 
 func TestClearEnrichmentReason_Disabled(t *testing.T) {
@@ -508,56 +426,5 @@ func TestClearEnrichmentReason_Enabled(t *testing.T) {
 	}
 	if entry.Reason != "" {
 		t.Fatalf("expected empty reason, got %q", entry.Reason)
-	}
-}
-
-// --- convertVPAInfo ---
-
-func TestConvertVPAInfo_Nil(t *testing.T) {
-	if result := convertVPAInfo(nil); result != nil {
-		t.Fatalf("expected nil for nil input, got %+v", result)
-	}
-}
-
-func TestConvertVPAInfo_WithData(t *testing.T) {
-	input := &kube.VPAInfo{
-		Name:                "web-vpa",
-		TargetRef:           "Deployment/web",
-		TargetKind:          "Deployment",
-		TargetName:          "web",
-		UpdateMode:          "Auto",
-		ControlledResources: []string{"cpu", "memory"},
-		Recommendations: []kube.VPARecommendationInfo{
-			{Container: "app", Resource: "cpu", Target: "500m", Lower: "250m", Upper: "1"},
-			{Container: "app", Resource: "memory", Target: "512Mi", Lower: "256Mi", Upper: "1Gi"},
-		},
-	}
-	result := convertVPAInfo(input)
-	if result == nil {
-		t.Fatal("expected non-nil result")
-	}
-	if result.Name != "web-vpa" || result.UpdateMode != "Auto" {
-		t.Fatalf("unexpected Name/UpdateMode: %+v", result)
-	}
-	if len(result.ControlledResources) != 2 {
-		t.Fatalf("expected 2 controlled resources, got %d", len(result.ControlledResources))
-	}
-	if len(result.Recommendations) != 2 {
-		t.Fatalf("expected 2 recommendations, got %d", len(result.Recommendations))
-	}
-	rec := result.Recommendations[0]
-	if rec.Container != "app" || rec.Resource != "cpu" || rec.Target != "500m" {
-		t.Fatalf("unexpected recommendation: %+v", rec)
-	}
-}
-
-func TestConvertVPAInfo_EmptyRecommendations(t *testing.T) {
-	input := &kube.VPAInfo{Name: "empty-vpa", UpdateMode: "Off"}
-	result := convertVPAInfo(input)
-	if result == nil {
-		t.Fatal("expected non-nil result")
-	}
-	if len(result.Recommendations) != 0 {
-		t.Fatalf("expected 0 recommendations, got %d", len(result.Recommendations))
 	}
 }

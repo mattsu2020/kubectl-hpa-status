@@ -9,11 +9,12 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/enrichment"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kubeconv"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/autoscalermap"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
+	hpavpa "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
 )
 
 type autoscalerMapOutput struct {
@@ -69,7 +70,7 @@ func runAutoscalerMap(ctx context.Context, out io.Writer, opts *options, names [
 	}
 
 	return renderPerHPA(out, opts, outputs, func(out io.Writer, o autoscalerMapOutput) error {
-		theme := style.NewTheme(shouldColorize(opts.Color, out))
+		theme := themeFor(opts.Color, out)
 		if err := autoscalermap.WriteText(out, o.Map, theme); err != nil {
 			return fmt.Errorf("write autoscaler-map report for %s/%s: %w", o.Namespace, o.Name, err)
 		}
@@ -237,7 +238,7 @@ func fetchAutoscalerMapVPA(ctx context.Context, opts *options, hpa *autoscalingv
 		return nil
 	}
 
-	vpaInfo, err := kube.FindConflictingVPA(ctx, dynClient, hpa.Namespace, hpa)
+	vpaInfo, err := enrichment.FindConflictingVPA(ctx, dynClient, hpa.Namespace, hpa)
 	if err != nil || vpaInfo == nil {
 		return nil
 	}
@@ -247,13 +248,13 @@ func fetchAutoscalerMapVPA(ctx context.Context, opts *options, hpa *autoscalingv
 		TargetRef:           vpaInfo.TargetRef,
 		UpdateMode:          vpaInfo.UpdateMode,
 		ControlledResources: vpaInfo.ControlledResources,
-		ConflictResources:   kube.VPAConflictResources(hpa, vpaInfo),
+		ConflictResources:   hpavpa.ConflictResources(hpa, kubeconv.VPAInfo(vpaInfo)),
 	}
 }
 
 // fetchAutoscalerMapPDBs fetches PodDisruptionBudgets in the namespace.
 func fetchAutoscalerMapPDBs(ctx context.Context, client *kube.Client, namespace string) []autoscalermap.PDB {
-	pdbs, _ := kube.FetchPodDisruptionBudgets(ctx, client.Interface, namespace, "")
+	pdbs, _ := kube.FetchPodDisruptionBudgets(ctx, client.Interface, namespace)
 	if len(pdbs) == 0 {
 		return nil
 	}

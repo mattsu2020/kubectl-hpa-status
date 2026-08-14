@@ -8,10 +8,10 @@ package hpa
 import (
 	"fmt"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/core"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	klabels "k8s.io/apimachinery/pkg/labels"
 )
 
 // MetricHandler encapsulates type-specific logic for one HPA metric source type.
@@ -84,10 +84,9 @@ func (fallbackHandler) DisplayName(metric autoscalingv2.MetricStatus) string {
 
 // FormatMetricStatus formats a metric status entry into a Metric struct.
 func FormatMetricStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, metric autoscalingv2.MetricStatus) Metric {
-	if metric.Type == "" {
-		return Metric{Text: "Metric status is present, but details are unavailable"}
-	}
-	return handlerFor(metric.Type).FormatStatus(hpa, metric)
+	return core.FormatMetricStatus(hpa, metric, func(metricType autoscalingv2.MetricSourceType) core.MetricStatusFormatter {
+		return handlerFor(metricType)
+	})
 }
 
 // metricImpactRatio returns the metric display name and ratio for any metric type.
@@ -185,62 +184,23 @@ func appendRatioAndNote(text string, ratio *float64, note string) string {
 
 // FormatMetricTarget returns a human-readable string for a metric target.
 func FormatMetricTarget(target autoscalingv2.MetricTarget) string {
-	switch target.Type {
-	case autoscalingv2.UtilizationMetricType:
-		if target.AverageUtilization != nil {
-			return fmt.Sprintf("%d%%", *target.AverageUtilization)
-		}
-	case autoscalingv2.AverageValueMetricType:
-		if target.AverageValue != nil {
-			return target.AverageValue.String()
-		}
-	case autoscalingv2.ValueMetricType:
-		if target.Value != nil {
-			return target.Value.String()
-		}
-	}
-	return "<unknown>"
+	return core.FormatMetricTarget(target)
 }
 
 // FormatMetricSelector returns a stable selector string for custom/external
 // metrics. Empty selectors are omitted from text output.
 func FormatMetricSelector(selector *metav1.LabelSelector) string {
-	if selector == nil {
-		return ""
-	}
-	parsed, err := metav1.LabelSelectorAsSelector(selector)
-	if err != nil {
-		return klabels.FormatLabels(selector.MatchLabels)
-	}
-	if parsed.Empty() {
-		return ""
-	}
-	return parsed.String()
+	return core.FormatMetricSelector(selector)
 }
 
 // FormatMetricValue returns a formatted string for utilization or average value.
 func FormatMetricValue(utilization *int32, averageValue *resource.Quantity) string {
-	if utilization != nil {
-		return fmt.Sprintf("%d%%", *utilization)
-	}
-	if averageValue != nil && !averageValue.IsZero() {
-		return averageValue.String()
-	}
-	return "<unknown>"
+	return core.FormatMetricValue(utilization, averageValue)
 }
 
 // FormatMetricValueStatus returns a formatted string for a metric value status.
 func FormatMetricValueStatus(value autoscalingv2.MetricValueStatus) string {
-	if value.AverageUtilization != nil {
-		return fmt.Sprintf("%d%%", *value.AverageUtilization)
-	}
-	if value.AverageValue != nil && !value.AverageValue.IsZero() {
-		return value.AverageValue.String()
-	}
-	if value.Value != nil && !value.Value.IsZero() {
-		return value.Value.String()
-	}
-	return "<unknown>"
+	return core.FormatMetricValueStatus(value)
 }
 
 // FindResourceTargetSpec finds the MetricTarget for a resource metric by name.

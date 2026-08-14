@@ -22,7 +22,7 @@ func newSupportBundleCommand(opts *options) *cobra.Command {
 	}
 	// Support bundles are intended to leave the operator's machine, so use the
 	// privacy-preserving default (shared with bundle via addBundleFlags).
-	addBundleFlags(cmd, "hpa-support-bundle-<name>-<timestamp>.{md|zip}")
+	addBundleFlags(cmd, "hpa-support-bundle-<name>-<timestamp>.{md|zip}", "markdown")
 	return cmd
 }
 
