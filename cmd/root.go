@@ -121,7 +121,19 @@ func rootRunE(opts *options) func(cmd *cobra.Command, args []string) error {
 // subcommands by workflow instead of one flat alphabetical list.
 type commandGroup struct {
 	group    cobra.Group
-	builders []func(opts *options) *cobra.Command
+	commands []commandSpec
+}
+
+// commandSpec is the single registration point for one root command.
+type commandSpec struct {
+	build      func(opts *options) *cobra.Command
+	capability commandCapability
+}
+
+func rootCommand(build func(*options) *cobra.Command) commandSpec { return commandSpec{build: build} }
+
+func workflowCommand(build func(*options) *cobra.Command, watch bool) commandSpec {
+	return commandSpec{build: build, capability: commandCapability{workflowFlags: true, watchFlags: watch}}
 }
 
 // commandGroups is the registry of subcommands attached to the root command.
@@ -132,67 +144,47 @@ type commandGroup struct {
 var commandGroups = []commandGroup{
 	{
 		group: cobra.Group{ID: "diagnose", Title: "Diagnose Commands:"},
-		builders: []func(opts *options) *cobra.Command{
-			newStatusCommand,
-			newDoctorCommand,
-			newReadinessDoctorCommand,
-			newWhyNotScaleCommand,
-			newBlockersCommand,
-			newTraceCommand,
-			newPathCommand,
-			newReadinessCommand,
-			newRolloutCommand,
-			newRolloutContextCommand,
-			newNodeContextCommand,
-			newMetricsCommand,
-			newExplainCommand,
+		commands: []commandSpec{
+			workflowCommand(newStatusCommand, true),
+			rootCommand(newDoctorCommand), rootCommand(newReadinessDoctorCommand),
+			rootCommand(newWhyNotScaleCommand), rootCommand(newBlockersCommand),
+			rootCommand(newTraceCommand), rootCommand(newPathCommand),
+			rootCommand(newReadinessCommand), rootCommand(newRolloutCommand),
+			rootCommand(newRolloutContextCommand), rootCommand(newNodeContextCommand),
+			rootCommand(newMetricsCommand), rootCommand(newExplainCommand),
 		},
 	},
 	{
 		group: cobra.Group{ID: "fleet", Title: "Fleet Overview Commands:"},
-		builders: []func(opts *options) *cobra.Command{
-			newListCommand,
-			newScanCommand,
-			newFleetCommand,
-			newCompareCommand,
-			newOwnershipCommand,
+		commands: []commandSpec{
+			workflowCommand(newListCommand, false), workflowCommand(newScanCommand, false),
+			rootCommand(newFleetCommand), rootCommand(newCompareCommand), rootCommand(newOwnershipCommand),
 		},
 	},
 	{
 		group: cobra.Group{ID: "monitor", Title: "Monitoring & History Commands:"},
-		builders: []func(opts *options) *cobra.Command{
-			newWatchCommand,
-			newTUICommand,
-			newTimelineCommand,
-			newHistoryCommand,
-			newRecordCommand,
-			newReplayCommand,
+		commands: []commandSpec{
+			workflowCommand(newWatchCommand, true), workflowCommand(newTUICommand, true),
+			rootCommand(newTimelineCommand), rootCommand(newHistoryCommand),
+			rootCommand(newRecordCommand), rootCommand(newReplayCommand),
 		},
 	},
 	{
 		group: cobra.Group{ID: "tune", Title: "Tuning & Planning Commands:"},
-		builders: []func(opts *options) *cobra.Command{
-			newAdvisorCommand,
-			newContainerAdvisorCommand,
-			newTuneCommand,
-			newBehaviorCommand,
-			newSimulateCommand,
-			newEstimateCommand,
-			newRecommendCommand,
-			newPreflightCommand,
-			newAssumptionsCommand,
-			newProfileCommand,
-			newSLOCommand,
+		commands: []commandSpec{
+			rootCommand(newAdvisorCommand), rootCommand(newContainerAdvisorCommand),
+			rootCommand(newTuneCommand), rootCommand(newBehaviorCommand),
+			rootCommand(newSimulateCommand), rootCommand(newEstimateCommand),
+			rootCommand(newRecommendCommand), rootCommand(newPreflightCommand),
+			rootCommand(newAssumptionsCommand), rootCommand(newProfileCommand), rootCommand(newSLOCommand),
 		},
 	},
 	{
 		group: cobra.Group{ID: "integrate", Title: "Integration & Export Commands:"},
-		builders: []func(opts *options) *cobra.Command{
-			newExportCommand,
-			newSnapshotCommand,
-			func(*options) *cobra.Command { return newAlertsCommand() },
-			newLintCommand,
-			newCompatCommand,
+		commands: []commandSpec{
+			rootCommand(newExportCommand), rootCommand(newSnapshotCommand),
+			rootCommand(func(*options) *cobra.Command { return newAlertsCommand() }),
+			rootCommand(newLintCommand), rootCommand(newCompatCommand),
 		},
 	},
 }
@@ -205,10 +197,10 @@ var commandGroups = []commandGroup{
 func registerCommands(root *cobra.Command, opts *options, workflowFlags, watchFlags *pflag.FlagSet) {
 	for _, cg := range commandGroups {
 		root.AddGroup(&cg.group)
-		for _, build := range cg.builders {
-			sub := build(opts)
+		for _, spec := range cg.commands {
+			sub := spec.build(opts)
 			sub.GroupID = cg.group.ID
-			capability := commandCapabilities[sub.Name()]
+			capability := spec.capability
 			if capability.workflowFlags {
 				addSharedFlags(sub, workflowFlags)
 			}
@@ -228,16 +220,6 @@ func registerCommands(root *cobra.Command, opts *options, workflowFlags, watchFl
 type commandCapability struct {
 	workflowFlags bool
 	watchFlags    bool
-}
-
-// commandCapabilities is the single source for command-level shared flag
-// support, preventing workflow and watch registries from drifting.
-var commandCapabilities = map[string]commandCapability{
-	"status": {workflowFlags: true, watchFlags: true},
-	"list":   {workflowFlags: true},
-	"scan":   {workflowFlags: true},
-	"watch":  {workflowFlags: true, watchFlags: true},
-	"tui":    {workflowFlags: true, watchFlags: true},
 }
 
 func buildVersion() string {

@@ -96,11 +96,13 @@ user-visible behavior change.
   (`advisor container|behavior|recommend`, `doctor readiness|rollout|capacity`)
   with deprecated aliases for one minor release before removal. See
   "v3 CLI surface consolidation" below for the decided scope.
-- **Lower command-addition cost:** Adding one command today touches ~9 places
-  (command file, commandGroups, options_bridge preset, cmdoptions preset +
-  feature flag, enricher phase, Analysis field, text renderer, schema test).
-  Evaluate an `AnalysisPlugin`-style registry (name + enrich + render) so a
-  new analysis domain registers in one place.
+- **Lower command-addition cost (evaluated):** Command construction and shared
+  flag capabilities now live in one `commandSpec` registration, with registry
+  consistency tests. A dynamic `AnalysisPlugin` registry is deferred because
+  the typed `Analysis` payload and JSON schemas still require explicit changes;
+  hiding those behind `name + enrich + render` would trade compile-time checks
+  for runtime failures. The required v3 extension boundary and migration
+  conditions are recorded in `docs/analysis-plugin-registry.md`.
 
 ## v3 Breaking Changes (Decided, Not Yet Scheduled)
 
