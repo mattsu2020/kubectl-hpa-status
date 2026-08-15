@@ -96,19 +96,19 @@ func renderMiniScoreBar(score int, width int) string {
 // renderStabBadge renders the stabilization countdown badge for a list row.
 func renderStabBadge(item hpaanalysis.ListItem, width int) string {
 	if !item.Stabilizing || item.StabilizationLabel == "" {
-		return dimStyle.Render(padRight("-", width))
+		return dimStyle.Render(fitWidth("-", width))
 	}
 	label := item.StabilizationLabel
 	if len(label) > width {
 		label = label[:width]
 	}
-	return warnStyle.Render(padRight(label, width))
+	return warnStyle.Render(fitWidth(label, width))
 }
 
 // renderInlineSparkline renders a compact sparkline for the list view TREND column.
 func renderInlineSparkline(history []float64, width int, churnLevel string) string {
 	if len(history) < 2 {
-		return dimStyle.Render(padRight("·", width))
+		return dimStyle.Render(fitWidth("·", width))
 	}
 	var style lipgloss.Style
 	switch churnLevel {

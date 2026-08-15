@@ -89,11 +89,6 @@ func WriteScalePathText(w io.Writer, path *ScalePath) error {
 	return err
 }
 
-// writeStatusText writes a plain text status report using the given theme.
-func writeStatusText(w io.Writer, report StatusReport, theme style.Theme) error {
-	return WriteStatusTextWithOptions(w, report, StatusTextOptions{Theme: theme})
-}
-
 // writeStatusDashboard writes a compact dashboard format status report.
 func writeStatusDashboard(w io.Writer, report StatusReport, theme style.Theme) error {
 	return WriteStatusDashboardWithOptions(w, report, StatusTextOptions{Theme: theme})

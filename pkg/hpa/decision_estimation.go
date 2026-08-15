@@ -80,7 +80,7 @@ func buildStabilizationDecisionSignal(hpa *autoscalingv2.HorizontalPodAutoscaler
 	}
 
 	return &DecisionSignal{
-		Reason:     "ScaleDownStabilized",
+		Reason:     ReasonScaleDownStabilized,
 		Message:    message,
 		Source:     "StabilizationWindow",
 		Confidence: string(ConfidenceMedium),

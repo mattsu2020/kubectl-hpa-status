@@ -2,7 +2,7 @@ package simulate
 
 import autoscalingv2 "k8s.io/api/autoscaling/v2"
 
-// applyPodsMetricOverride sets the current AverageValue of a Pods metric.
+// ApplyPodsMetricOverride sets the current AverageValue of a Pods metric.
 func ApplyPodsMetricOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, spec autoscalingv2.MetricSpec, idx int, value string) error {
 	q, err := parseMetricQuantity(value, "pods")
 	if err != nil {

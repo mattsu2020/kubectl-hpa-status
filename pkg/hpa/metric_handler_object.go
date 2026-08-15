@@ -17,7 +17,7 @@ func (objectHandler) FormatStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, me
 	targetSpec := FindObjectTargetSpec(hpa, metric.Object.Metric.Name, metric.Object.Metric.Selector, metric.Object.DescribedObject)
 	target := FormatMetricTarget(targetSpec)
 	current := FormatMetricValueStatus(metric.Object.Current)
-	ratio, note := calculateRatioAndNote(metric.Object.Current, targetSpec, target)
+	ratio, note := calculateRatioAndNote(metric.Object.Current, targetSpec)
 	name := fmt.Sprintf("%s/%s", metric.Object.DescribedObject.Kind, metric.Object.DescribedObject.Name)
 	selector := FormatMetricSelector(metric.Object.Metric.Selector)
 	text := fmt.Sprintf("Object %s %s current=%s target=%s", name, metric.Object.Metric.Name, current, target)
@@ -36,7 +36,7 @@ func (objectHandler) ImpactRatio(hpa *autoscalingv2.HorizontalPodAutoscaler, met
 		return "", nil
 	}
 	targetSpec := FindObjectTargetSpec(hpa, metric.Object.Metric.Name, metric.Object.Metric.Selector, metric.Object.DescribedObject)
-	ratio, _ := calculateRatioAndNote(metric.Object.Current, targetSpec, FormatMetricTarget(targetSpec))
+	ratio, _ := calculateRatioAndNote(metric.Object.Current, targetSpec)
 	return metric.Object.Metric.Name, ratio
 }
 

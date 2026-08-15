@@ -7,6 +7,7 @@ import (
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/audit"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/retrospective"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/simulate"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
@@ -28,7 +29,7 @@ type simState struct {
 	metricMode  bool
 	metricInput textinput.Model
 	focusIndex  int
-	result      *hpaanalysis.SimulationResult
+	result      *simulate.SimulationResult
 	err         error
 }
 
@@ -91,20 +92,33 @@ type hintsState struct {
 
 // simResultMsg carries simulation results from a background computation.
 type simResultMsg struct {
-	result *hpaanalysis.SimulationResult
+	result *simulate.SimulationResult
 	err    error
 }
 
-// applyResultMsg carries the result of a patch apply operation.
+// applyResultMsg carries the result of a patch apply operation. The epoch
+// identifies the fix-wizard state that started the apply; results from an
+// earlier epoch (e.g. after a refresh replaced the suggestions) are dropped.
 type applyResultMsg struct {
+	epoch int
 	title string
 	err   error
 }
 
 // dryRunResultMsg carries the result of a real server-side dry-run. It is
 // separate from applyResultMsg so successful validation is never presented as
-// a persisted change.
+// a persisted change. The epoch guards against stale results the same way as
+// applyResultMsg.
 type dryRunResultMsg struct {
+	epoch int
+	title string
+	err   error
+}
+
+// batchApplyResultMsg carries the outcome of a batch apply started from the
+// list view. It is separate from applyResultMsg because it is not tied to the
+// fix-wizard state; it is surfaced as a transient status message instead.
+type batchApplyResultMsg struct {
 	title string
 	err   error
 }

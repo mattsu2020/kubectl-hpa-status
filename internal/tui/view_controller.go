@@ -172,9 +172,22 @@ func handleBatchAuditViewMessage(m Model, msg tea.Msg) (Model, tea.Cmd, bool) {
 	return m.updateBatchAudit(result), nil, true
 }
 
+// dispatchViewMessage routes a message through the view controllers. The
+// current mode's controller is consulted first so a message understood by two
+// views is resolved deterministically; the remaining controllers are still
+// scanned afterwards because asynchronous results (simulation, apply, replay,
+// batch audit) must update their state even if the user already switched to a
+// different view. Controllers without a message handler or with a nil state
+// no-op, so out-of-mode messages stay harmless.
 func dispatchViewMessage(m Model, msg tea.Msg) (Model, tea.Cmd, bool) {
-	for _, controller := range viewControllerRegistry {
-		if controller == nil {
+	current := viewControllerRegistry[m.viewMode]
+	if current != nil {
+		if updated, cmd, handled := current.HandleMessage(m, msg); handled {
+			return updated, cmd, true
+		}
+	}
+	for i, controller := range viewControllerRegistry {
+		if controller == nil || i == int(m.viewMode) {
 			continue
 		}
 		if updated, cmd, handled := controller.HandleMessage(m, msg); handled {

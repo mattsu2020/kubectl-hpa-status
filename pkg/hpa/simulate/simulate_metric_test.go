@@ -13,7 +13,7 @@ import (
 )
 
 func TestSimulateMetricChange_NilHPA(t *testing.T) {
-	_, err := SimulateMetricChange(nil, map[string]string{"cpu": "80%"}, HealthWeights{})
+	_, err := MetricChange(nil, map[string]string{"cpu": "80%"}, HealthWeights{})
 	if err == nil {
 		t.Error("expected error for nil HPA")
 	}
@@ -22,7 +22,7 @@ func TestSimulateMetricChange_NilHPA(t *testing.T) {
 func TestSimulateMetricChange_CPU80Percent(t *testing.T) {
 	hpa := buildMetricSimHPA(4, 4, 10, 50) // current=4, desired=4, max=10, cpu target=50%
 
-	result, err := SimulateMetricChange(hpa, map[string]string{"cpu": "80%"}, HealthWeights{})
+	result, err := MetricChange(hpa, map[string]string{"cpu": "80%"}, HealthWeights{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestSimulateMetricChange_CPU80Percent(t *testing.T) {
 func TestSimulateMetricChange_RelativeIncrease(t *testing.T) {
 	hpa := buildMetricSimHPA(4, 4, 10, 50)
 
-	result, err := SimulateMetricChange(hpa, map[string]string{"cpu": "+20%"}, HealthWeights{})
+	result, err := MetricChange(hpa, map[string]string{"cpu": "+20%"}, HealthWeights{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestSimulateMetricChange_RelativeIncrease(t *testing.T) {
 func TestSimulateMetricChange_RelativeDecrease(t *testing.T) {
 	hpa := buildMetricSimHPA(8, 8, 20, 50)
 
-	result, err := SimulateMetricChange(hpa, map[string]string{"cpu": "-10%"}, HealthWeights{})
+	result, err := MetricChange(hpa, map[string]string{"cpu": "-10%"}, HealthWeights{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestSimulateMetricChange_RelativeDecrease(t *testing.T) {
 func TestSimulateMetricChange_InvalidMetricName(t *testing.T) {
 	hpa := buildMetricSimHPA(4, 4, 10, 50)
 
-	_, err := SimulateMetricChange(hpa, map[string]string{"nonexistent": "80%"}, HealthWeights{})
+	_, err := MetricChange(hpa, map[string]string{"nonexistent": "80%"}, HealthWeights{})
 	if err == nil {
 		t.Fatal("expected error for unknown metric name")
 	}
@@ -121,7 +121,7 @@ func TestSimulateMetricChange_InvalidMetricName(t *testing.T) {
 func TestSimulateMetricChange_InvalidValueFormat(t *testing.T) {
 	hpa := buildMetricSimHPA(4, 4, 10, 50)
 
-	_, err := SimulateMetricChange(hpa, map[string]string{"cpu": "abc%"}, HealthWeights{})
+	_, err := MetricChange(hpa, map[string]string{"cpu": "abc%"}, HealthWeights{})
 	if err == nil {
 		t.Error("expected error for invalid value format")
 	}
@@ -130,7 +130,7 @@ func TestSimulateMetricChange_InvalidValueFormat(t *testing.T) {
 func TestSimulateMetricChange_MetricNotInSpec(t *testing.T) {
 	hpa := buildSimHPA(4, 4, 10) // no metrics in spec
 
-	_, err := SimulateMetricChange(hpa, map[string]string{"cpu": "80%"}, HealthWeights{})
+	_, err := MetricChange(hpa, map[string]string{"cpu": "80%"}, HealthWeights{})
 	if err == nil {
 		t.Error("expected error when metric not found in spec")
 	}
@@ -139,7 +139,7 @@ func TestSimulateMetricChange_MetricNotInSpec(t *testing.T) {
 func TestSimulateMetricChange_MultipleOverrides(t *testing.T) {
 	hpa := buildMultiMetricSimHPA(4, 4, 10)
 
-	result, err := SimulateMetricChange(hpa, map[string]string{"cpu": "80%", "memory": "70%"}, HealthWeights{})
+	result, err := MetricChange(hpa, map[string]string{"cpu": "80%", "memory": "70%"}, HealthWeights{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -159,9 +159,9 @@ func TestSimulateMetricChange_MultipleOverrides(t *testing.T) {
 
 func TestSimulateMetricChangeAggregatesMaximumDesiredAcrossMetrics(t *testing.T) {
 	hpa := buildMultiMetricSimHPA(10, 10, 30)
-	result, err := SimulateMetricChange(hpa, map[string]string{"cpu": "10%", "memory": "90%"}, HealthWeights{})
+	result, err := MetricChange(hpa, map[string]string{"cpu": "10%", "memory": "90%"}, HealthWeights{})
 	if err != nil {
-		t.Fatalf("SimulateMetricChange: %v", err)
+		t.Fatalf("MetricChange: %v", err)
 	}
 	// cpu requests 2 replicas (10/50), memory requests 15 (90/60). The
 	// multi-metric HPA recommendation is the maximum, not the largest distance.
@@ -172,9 +172,9 @@ func TestSimulateMetricChangeAggregatesMaximumDesiredAcrossMetrics(t *testing.T)
 
 func TestSimulateMetricChangeUsesCurrentReplicasAsFormulaBase(t *testing.T) {
 	hpa := buildMetricSimHPA(4, 8, 20, 50)
-	result, err := SimulateMetricChange(hpa, map[string]string{"cpu": "80%"}, HealthWeights{})
+	result, err := MetricChange(hpa, map[string]string{"cpu": "80%"}, HealthWeights{})
 	if err != nil {
-		t.Fatalf("SimulateMetricChange: %v", err)
+		t.Fatalf("MetricChange: %v", err)
 	}
 	if result.After.DesiredReplicas != 7 {
 		t.Fatalf("after desired replicas = %d, want ceil(4 * 1.6) = 7", result.After.DesiredReplicas)
@@ -187,7 +187,7 @@ func TestSimulateMetricChangeUsesCurrentReplicasAsFormulaBase(t *testing.T) {
 func TestSimulateMetricChange_DeepCopyIsolation(t *testing.T) {
 	hpa := buildMetricSimHPA(4, 4, 10, 50)
 
-	_, err := SimulateMetricChange(hpa, map[string]string{"cpu": "80%"}, HealthWeights{})
+	_, err := MetricChange(hpa, map[string]string{"cpu": "80%"}, HealthWeights{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -205,7 +205,7 @@ func TestSimulateMetricChange_DeepCopyIsolation(t *testing.T) {
 func TestSimulateMetricChange_MemoryQuantity(t *testing.T) {
 	hpa := buildResourceQuantitySimHPA(4, 4, 10)
 
-	result, err := SimulateMetricChange(hpa, map[string]string{"memory": "8Gi"}, HealthWeights{})
+	result, err := MetricChange(hpa, map[string]string{"memory": "8Gi"}, HealthWeights{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -223,7 +223,7 @@ func TestSimulateMetricChange_MemoryQuantity(t *testing.T) {
 func TestSimulateMetricChange_InterpretationGenerated(t *testing.T) {
 	hpa := buildMetricSimHPA(4, 4, 10, 50)
 
-	result, err := SimulateMetricChange(hpa, map[string]string{"cpu": "80%"}, HealthWeights{})
+	result, err := MetricChange(hpa, map[string]string{"cpu": "80%"}, HealthWeights{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -236,7 +236,7 @@ func TestSimulateMetricChange_InterpretationGenerated(t *testing.T) {
 func TestSimulateMetricChange_RiskAssessmentAtMax(t *testing.T) {
 	hpa := buildMetricSimHPA(4, 4, 10, 50)
 
-	result, err := SimulateMetricChange(hpa, map[string]string{"cpu": "200%"}, HealthWeights{})
+	result, err := MetricChange(hpa, map[string]string{"cpu": "200%"}, HealthWeights{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -885,9 +885,9 @@ func TestSimulateMetricChangeRejectsAmbiguousNameOnlyOverride(t *testing.T) {
 		},
 	}
 
-	_, err := SimulateMetricChange(hpa, map[string]string{"queue_depth": "20"}, HealthWeights{})
+	_, err := MetricChange(hpa, map[string]string{"queue_depth": "20"}, HealthWeights{})
 	if !errors.Is(err, ErrMetricAmbiguous) {
-		t.Fatalf("SimulateMetricChange() error = %v, want ErrMetricAmbiguous", err)
+		t.Fatalf("MetricChange() error = %v, want ErrMetricAmbiguous", err)
 	}
 
 	before := hpa.DeepCopy()

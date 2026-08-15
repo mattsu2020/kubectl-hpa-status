@@ -3,8 +3,6 @@ package cmd
 import (
 	"errors"
 	"fmt"
-
-	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
 
 // Exit codes for script integration.
@@ -39,12 +37,14 @@ func (e *ExitCodeError) Unwrap() error { return e.Err }
 // warningExitCode returns an ExitCodeError with ExitWarning if the analysis
 // health indicates a problem. It returns nil when the health is OK.
 // Watch mode (untilCondition is set) always returns nil for success.
+// The accepted states match healthIsWarning (ERROR / LIMITED / WARNING) so a
+// single-HPA status and any member of a batch status produce the same exit
+// code for the same health.
 func warningExitCode(health, name, namespace string, watchMode bool) error {
 	if watchMode {
 		return nil
 	}
-	switch health {
-	case string(hpaanalysis.HealthError), string(hpaanalysis.HealthLimited):
+	if healthIsWarning(health) {
 		return &ExitCodeError{
 			Code: ExitWarning,
 			Err:  fmt.Errorf("HPA %s/%s health is %s", namespace, name, health),

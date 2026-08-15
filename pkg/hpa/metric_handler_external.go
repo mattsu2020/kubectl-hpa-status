@@ -17,7 +17,7 @@ func (externalHandler) FormatStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, 
 	targetSpec := FindExternalTargetSpec(hpa, metric.External.Metric.Name, metric.External.Metric.Selector)
 	target := FormatMetricTarget(targetSpec)
 	current := FormatMetricValueStatus(metric.External.Current)
-	ratio, note := calculateRatioAndNote(metric.External.Current, targetSpec, target)
+	ratio, note := calculateRatioAndNote(metric.External.Current, targetSpec)
 	selector := FormatMetricSelector(metric.External.Metric.Selector)
 	text := fmt.Sprintf("External %s current=%s target=%s", metric.External.Metric.Name, current, target)
 	if selector != "" {
@@ -35,7 +35,7 @@ func (externalHandler) ImpactRatio(hpa *autoscalingv2.HorizontalPodAutoscaler, m
 		return "", nil
 	}
 	targetSpec := FindExternalTargetSpec(hpa, metric.External.Metric.Name, metric.External.Metric.Selector)
-	ratio, _ := calculateRatioAndNote(metric.External.Current, targetSpec, FormatMetricTarget(targetSpec))
+	ratio, _ := calculateRatioAndNote(metric.External.Current, targetSpec)
 	return metric.External.Metric.Name, ratio
 }
 

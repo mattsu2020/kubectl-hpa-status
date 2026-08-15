@@ -148,7 +148,7 @@ func scalingLimitedMinRule(ctx SuggestionContext) []Suggestion {
 func scaleDownStabilizedRule(ctx SuggestionContext) []Suggestion {
 	hpa := ctx.HPA
 	condition := FindCondition(hpa, ConditionAbleToScale)
-	if condition == nil || condition.Reason != "ScaleDownStabilized" {
+	if condition == nil || condition.Reason != ReasonScaleDownStabilized {
 		return nil
 	}
 
@@ -249,6 +249,14 @@ func behaviorPolicyRule(ctx SuggestionContext) []Suggestion {
 	return suggestions
 }
 
+// The tolerance-rule band: the rule fires only for ratios slightly above
+// target (2-10% over). Below that the default tolerance already absorbs the
+// deviation; above it a tolerance change is unlikely to be the right fix.
+const (
+	toleranceRuleMinRatio = 1.02
+	toleranceRuleMaxRatio = 1.10
+)
+
 // toleranceRule suggests reviewing scale-up tolerance for small sustained pressure.
 func toleranceRule(ctx SuggestionContext) []Suggestion {
 	hpa := ctx.HPA
@@ -257,7 +265,7 @@ func toleranceRule(ctx SuggestionContext) []Suggestion {
 	}
 
 	metric, ok := MetricOutsideTarget(hpa)
-	if !ok || metric.Ratio < 1.02 || metric.Ratio > 1.10 {
+	if !ok || metric.Ratio < toleranceRuleMinRatio || metric.Ratio > toleranceRuleMaxRatio {
 		return nil
 	}
 
@@ -441,13 +449,6 @@ func hasVisibleScaleUpPressure(hpa *autoscalingv2.HorizontalPodAutoscaler) bool 
 // kubectlPatchCommand delegates to util.KubectlPatchCommand.
 func kubectlPatchCommand(hpa *autoscalingv2.HorizontalPodAutoscaler, patch string) string {
 	return util.KubectlPatchCommand(hpa, patch)
-}
-
-// kubectlPatchCommandWithDryRun is the mode-selectable variant for callers
-// (e.g. capacity_plan, lint) that need --dry-run=client or no dry-run flag at
-// all. Delegates to util.KubectlPatchCommandWithDryRun.
-func kubectlPatchCommandWithDryRun(hpa *autoscalingv2.HorizontalPodAutoscaler, patch string, mode util.DryRunMode) string {
-	return util.KubectlPatchCommandWithDryRun(hpa, patch, mode)
 }
 
 // marshalJSON delegates to util.MarshalJSON.

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/confidence"
+
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 
@@ -116,7 +118,7 @@ func ExternalMetricDiagnostics(hpa *autoscalingv2.HorizontalPodAutoscaler) []Dia
 		if !hasCurrentExternalMetric(hpa, spec.External.Metric.Name, spec.External.Metric.Selector) {
 			entries = append(entries, DiagnosticEntry{
 				Reason:     "ExternalMetricDiagnostic",
-				Message:    fmt.Sprintf("[observed] External metric %q%s is configured but no matching current metric status is reported; check the external metrics adapter, selector, and metric freshness.", spec.External.Metric.Name, selectorSuffix(spec.External.Metric.Selector)),
+				Message:    fmt.Sprintf(confidence.BadgeObserved+" External metric %q%s is configured but no matching current metric status is reported; check the external metrics adapter, selector, and metric freshness.", spec.External.Metric.Name, selectorSuffix(spec.External.Metric.Selector)),
 				Severity:   SeverityWarning,
 				Confidence: ConfidenceHigh,
 			})
@@ -127,7 +129,7 @@ func ExternalMetricDiagnostics(hpa *autoscalingv2.HorizontalPodAutoscaler) []Dia
 			if formatted.Ratio != nil {
 				entries = append(entries, DiagnosticEntry{
 					Reason:     "ExternalMetricDiagnostic",
-					Message:    fmt.Sprintf("[estimated] External metric %q%s is %.3fx its target; stale or delayed adapter data can make HPA decisions lag behind workload demand.", spec.External.Metric.Name, selectorSuffix(spec.External.Metric.Selector), *formatted.Ratio),
+					Message:    fmt.Sprintf(confidence.BadgeEstimated+" External metric %q%s is %.3fx its target; stale or delayed adapter data can make HPA decisions lag behind workload demand.", spec.External.Metric.Name, selectorSuffix(spec.External.Metric.Selector), *formatted.Ratio),
 					Severity:   SeverityInfo,
 					Confidence: ConfidenceMedium,
 				})
@@ -151,7 +153,7 @@ func ObjectMetricDiagnostics(hpa *autoscalingv2.HorizontalPodAutoscaler) []Diagn
 			if formatted.Ratio != nil {
 				entries = append(entries, DiagnosticEntry{
 					Reason:     "ObjectMetricDiagnostic",
-					Message:    fmt.Sprintf("[estimated] Object metric %q%s on %s is %.3fx its target; compare this object-level load with per-pod load before changing replica limits.", spec.Object.Metric.Name, selectorSuffix(spec.Object.Metric.Selector), object, *formatted.Ratio),
+					Message:    fmt.Sprintf(confidence.BadgeEstimated+" Object metric %q%s on %s is %.3fx its target; compare this object-level load with per-pod load before changing replica limits.", spec.Object.Metric.Name, selectorSuffix(spec.Object.Metric.Selector), object, *formatted.Ratio),
 					Severity:   SeverityInfo,
 					Confidence: ConfidenceMedium,
 				})
@@ -159,7 +161,7 @@ func ObjectMetricDiagnostics(hpa *autoscalingv2.HorizontalPodAutoscaler) []Diagn
 		} else {
 			entries = append(entries, DiagnosticEntry{
 				Reason:     "ObjectMetricDiagnostic",
-				Message:    fmt.Sprintf("[observed] Object metric %q%s is configured but no matching current metric status is reported; verify the described object and metric adapter output.", spec.Object.Metric.Name, selectorSuffix(spec.Object.Metric.Selector)),
+				Message:    fmt.Sprintf(confidence.BadgeObserved+" Object metric %q%s is configured but no matching current metric status is reported; verify the described object and metric adapter output.", spec.Object.Metric.Name, selectorSuffix(spec.Object.Metric.Selector)),
 				Severity:   SeverityWarning,
 				Confidence: ConfidenceHigh,
 			})
@@ -176,7 +178,7 @@ func KEDADiagnostics(hpa *autoscalingv2.HorizontalPodAutoscaler) []DiagnosticEnt
 	entries := []DiagnosticEntry{
 		{
 			Reason:     "KEDADiagnostic",
-			Message:    "[estimated] This HPA appears to be managed by KEDA. HPA status explains the final autoscaling object, but KEDA ScaledObject, TriggerAuthentication, and scaler errors may explain missing external metrics.",
+			Message:    confidence.BadgeEstimated + " This HPA appears to be managed by KEDA. HPA status explains the final autoscaling object, but KEDA ScaledObject, TriggerAuthentication, and scaler errors may explain missing external metrics.",
 			Severity:   SeverityInfo,
 			Confidence: ConfidenceMedium,
 		},
@@ -184,7 +186,7 @@ func KEDADiagnostics(hpa *autoscalingv2.HorizontalPodAutoscaler) []DiagnosticEnt
 	if len(hpa.Spec.Metrics) == 0 {
 		entries = append(entries, DiagnosticEntry{
 			Reason:     "KEDADiagnostic",
-			Message:    "[observed] KEDA-style HPA has no visible spec.metrics; check whether KEDA has reconciled the ScaledObject successfully.",
+			Message:    confidence.BadgeObserved + " KEDA-style HPA has no visible spec.metrics; check whether KEDA has reconciled the ScaledObject successfully.",
 			Severity:   SeverityWarning,
 			Confidence: ConfidenceHigh,
 		})
@@ -193,7 +195,7 @@ func KEDADiagnostics(hpa *autoscalingv2.HorizontalPodAutoscaler) []DiagnosticEnt
 		if spec.Type == autoscalingv2.ExternalMetricSourceType && spec.External != nil {
 			entries = append(entries, DiagnosticEntry{
 				Reason:     "KEDADiagnostic",
-				Message:    fmt.Sprintf("[estimated] For KEDA external metric %q, inspect the ScaledObject status.conditions and keda-operator logs if HPA currentMetrics is missing or stale.", spec.External.Metric.Name),
+				Message:    fmt.Sprintf(confidence.BadgeEstimated+" For KEDA external metric %q, inspect the ScaledObject status.conditions and keda-operator logs if HPA currentMetrics is missing or stale.", spec.External.Metric.Name),
 				Severity:   SeverityInfo,
 				Confidence: ConfidenceMedium,
 			})
@@ -272,7 +274,7 @@ func collectActionCases(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas 
 		return cases
 	}
 
-	if condition := FindCondition(hpa, ConditionAbleToScale); condition != nil && condition.Reason == "ScaleDownStabilized" {
+	if condition := FindCondition(hpa, ConditionAbleToScale); condition != nil && condition.Reason == ReasonScaleDownStabilized {
 		human := "CPU or memory may already be low, but scale-down is stabilized; review HPA behavior and recent recommendations."
 		nextStep := "Review HPA behavior and recent recommendations"
 		if window := scaleDownStabilizationWindow(hpa); window != nil {

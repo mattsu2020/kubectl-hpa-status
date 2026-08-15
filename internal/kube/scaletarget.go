@@ -30,8 +30,7 @@ type ScaleTargetInfo struct {
 //
 //nolint:nilnil // nil result with no error is intentional for unsupported kinds
 func FetchScaleTargetInfo(ctx context.Context, client kubernetes.Interface, namespace string, ref autoscalingv2.CrossVersionObjectReference) (*ScaleTargetInfo, error) {
-	switch ref.Kind {
-	case "Deployment":
+	getDeployment := func() (*ScaleTargetInfo, error) {
 		deploy, err := client.AppsV1().Deployments(namespace).Get(ctx, ref.Name, metav1.GetOptions{})
 		if err != nil {
 			return nil, fmt.Errorf("failed to get Deployment %s/%s: %w", namespace, ref.Name, err)
@@ -47,7 +46,8 @@ func FetchScaleTargetInfo(ctx context.Context, client kubernetes.Interface, name
 			ReadyReplicas:   deploy.Status.ReadyReplicas,
 			PodTemplate:     &deploy.Spec.Template,
 		}, nil
-	case "StatefulSet":
+	}
+	getStatefulSet := func() (*ScaleTargetInfo, error) {
 		sts, err := client.AppsV1().StatefulSets(namespace).Get(ctx, ref.Name, metav1.GetOptions{})
 		if err != nil {
 			return nil, fmt.Errorf("failed to get StatefulSet %s/%s: %w", namespace, ref.Name, err)
@@ -63,7 +63,8 @@ func FetchScaleTargetInfo(ctx context.Context, client kubernetes.Interface, name
 			ReadyReplicas:   sts.Status.ReadyReplicas,
 			PodTemplate:     &sts.Spec.Template,
 		}, nil
-	case "ReplicaSet":
+	}
+	getReplicaSet := func() (*ScaleTargetInfo, error) {
 		rs, err := client.AppsV1().ReplicaSets(namespace).Get(ctx, ref.Name, metav1.GetOptions{})
 		if err != nil {
 			return nil, fmt.Errorf("failed to get ReplicaSet %s/%s: %w", namespace, ref.Name, err)
@@ -79,6 +80,16 @@ func FetchScaleTargetInfo(ctx context.Context, client kubernetes.Interface, name
 			ReadyReplicas:   rs.Status.ReadyReplicas,
 			PodTemplate:     &rs.Spec.Template,
 		}, nil
+	}
+	// Retry transient API-server failures (429/5xx/timeouts) once per workload
+	// kind; non-transient errors are returned after the first attempt.
+	switch ref.Kind {
+	case "Deployment":
+		return retryTransient(ctx, getDeployment)
+	case "StatefulSet":
+		return retryTransient(ctx, getStatefulSet)
+	case "ReplicaSet":
+		return retryTransient(ctx, getReplicaSet)
 	default:
 		return nil, nil
 	}

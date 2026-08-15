@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/confidence"
+
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
@@ -65,7 +67,7 @@ func Analyze(hpa *autoscalingv2.HorizontalPodAutoscaler, k *Analysis) []string {
 
 	var lines []string
 
-	lines = append(lines, fmt.Sprintf("[observed] HPA is owned by KEDA ScaledObject %q in the same namespace.", k.ScaledObjectName))
+	lines = append(lines, fmt.Sprintf(confidence.BadgeObserved+" HPA is owned by KEDA ScaledObject %q in the same namespace.", k.ScaledObjectName))
 
 	// Trigger cross-reference with HPA external metrics.
 	lines = append(lines, analyzeTriggers(hpa, k)...)
@@ -87,7 +89,7 @@ func Analyze(hpa *autoscalingv2.HorizontalPodAutoscaler, k *Analysis) []string {
 
 func analyzeTriggers(hpa *autoscalingv2.HorizontalPodAutoscaler, k *Analysis) []string {
 	if len(k.Triggers) == 0 {
-		return []string{"[estimated] ScaledObject has no triggers defined; verify the ScaledObject spec."}
+		return []string{confidence.BadgeEstimated + " ScaledObject has no triggers defined; verify the ScaledObject spec."}
 	}
 
 	var lines []string
@@ -106,12 +108,12 @@ func analyzeTriggers(hpa *autoscalingv2.HorizontalPodAutoscaler, k *Analysis) []
 					if t.CurrentValue != "" {
 						triggerDesc += fmt.Sprintf(" current=%s", t.CurrentValue)
 					}
-					lines = append(lines, fmt.Sprintf("[observed] %s produces external metric %q which matches HPA spec.metrics entry.", triggerDesc, spec.External.Metric.Name))
+					lines = append(lines, fmt.Sprintf(confidence.BadgeObserved+" %s produces external metric %q which matches HPA spec.metrics entry.", triggerDesc, spec.External.Metric.Name))
 					break
 				}
 			}
 			if !matched {
-				lines = append(lines, fmt.Sprintf("[estimated] HPA external metric %q has no matching KEDA trigger; the metric name may not align with the scaler output.", spec.External.Metric.Name))
+				lines = append(lines, fmt.Sprintf(confidence.BadgeEstimated+" HPA external metric %q has no matching KEDA trigger; the metric name may not align with the scaler output.", spec.External.Metric.Name))
 			}
 		}
 	}
@@ -119,7 +121,7 @@ func analyzeTriggers(hpa *autoscalingv2.HorizontalPodAutoscaler, k *Analysis) []
 	for _, t := range k.Triggers {
 		names = append(names, t.Name)
 	}
-	lines = append(lines, fmt.Sprintf("[observed] ScaledObject defines %d trigger(s): %s.", len(k.Triggers), strings.Join(names, ", ")))
+	lines = append(lines, fmt.Sprintf(confidence.BadgeObserved+" ScaledObject defines %d trigger(s): %s.", len(k.Triggers), strings.Join(names, ", ")))
 
 	return lines
 }
@@ -135,7 +137,7 @@ func analyzePolling(hpa *autoscalingv2.HorizontalPodAutoscaler, k *Analysis) []s
 	if hpa.Spec.Behavior != nil && hpa.Spec.Behavior.ScaleDown != nil {
 		if window := hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds; window != nil && *window > interval {
 			lines = append(lines,
-				fmt.Sprintf("[estimated] KEDA polling interval is %ds but HPA scaleDown stabilization is %ds; the stabilization window delays reaction to KEDA metric updates.", interval, *window),
+				fmt.Sprintf(confidence.BadgeEstimated+" KEDA polling interval is %ds but HPA scaleDown stabilization is %ds; the stabilization window delays reaction to KEDA metric updates.", interval, *window),
 			)
 		}
 	}
@@ -151,13 +153,13 @@ func analyzeReplicaBounds(hpa *autoscalingv2.HorizontalPodAutoscaler, k *Analysi
 	}
 
 	if k.MinReplicaCount != nil && *k.MinReplicaCount != minReplicas {
-		lines = append(lines, fmt.Sprintf("[observed] KEDA minReplicaCount=%d differs from HPA minReplicas=%d; KEDA reconciliation may override manual HPA changes.", *k.MinReplicaCount, minReplicas))
+		lines = append(lines, fmt.Sprintf(confidence.BadgeObserved+" KEDA minReplicaCount=%d differs from HPA minReplicas=%d; KEDA reconciliation may override manual HPA changes.", *k.MinReplicaCount, minReplicas))
 	}
 	if k.MaxReplicaCount != nil && *k.MaxReplicaCount != hpa.Spec.MaxReplicas {
-		lines = append(lines, fmt.Sprintf("[observed] KEDA maxReplicaCount=%d differs from HPA maxReplicas=%d; KEDA reconciliation may override manual HPA changes.", *k.MaxReplicaCount, hpa.Spec.MaxReplicas))
+		lines = append(lines, fmt.Sprintf(confidence.BadgeObserved+" KEDA maxReplicaCount=%d differs from HPA maxReplicas=%d; KEDA reconciliation may override manual HPA changes.", *k.MaxReplicaCount, hpa.Spec.MaxReplicas))
 	}
 	if k.IdleReplicaCount != nil {
-		lines = append(lines, fmt.Sprintf("[observed] KEDA idleReplicaCount=%d is set; KEDA will scale the workload down to this many replicas when all triggers are idle (scale-to-zero fallback).", *k.IdleReplicaCount))
+		lines = append(lines, fmt.Sprintf(confidence.BadgeObserved+" KEDA idleReplicaCount=%d is set; KEDA will scale the workload down to this many replicas when all triggers are idle (scale-to-zero fallback).", *k.IdleReplicaCount))
 	}
 
 	return lines
@@ -173,13 +175,13 @@ func analyzeTriggerStatus(k *Analysis) []string {
 	// Check for inactive triggers.
 	for _, t := range k.Triggers {
 		if t.Status == "Inactive" {
-			lines = append(lines, fmt.Sprintf("[observed] KEDA trigger %q (type %s) is Inactive; the scaler may not be receiving events or the external source may be unavailable.", t.Name, t.Type))
+			lines = append(lines, fmt.Sprintf(confidence.BadgeObserved+" KEDA trigger %q (type %s) is Inactive; the scaler may not be receiving events or the external source may be unavailable.", t.Name, t.Type))
 		}
 	}
 
 	// Note fallback configuration.
 	if k.Fallback != nil {
-		lines = append(lines, fmt.Sprintf("[observed] ScaledObject has fallback configured: failureThreshold=%d, replicas=%d. KEDA will fall back to %d replicas if the scaler fails %d consecutive checks.", k.Fallback.FailureThreshold, k.Fallback.Replicas, k.Fallback.Replicas, k.Fallback.FailureThreshold))
+		lines = append(lines, fmt.Sprintf(confidence.BadgeObserved+" ScaledObject has fallback configured: failureThreshold=%d, replicas=%d. KEDA will fall back to %d replicas if the scaler fails %d consecutive checks.", k.Fallback.FailureThreshold, k.Fallback.Replicas, k.Fallback.Replicas, k.Fallback.FailureThreshold))
 	}
 
 	return lines

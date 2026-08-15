@@ -199,7 +199,7 @@ func fetchSnapshotPods(ctx context.Context, client *kube.Client, hpa *autoscalin
 
 func fetchSnapshotEvents(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) []byte {
 	objectNames := []string{hpa.Name, hpa.Spec.ScaleTargetRef.Name}
-	events := kube.FetchRecentEventsForObjects(ctx, client.Interface, hpa.Namespace, objectNames, 20)
+	events := kube.FetchRecentEventsForObjects(ctx, client.Interface, hpa.Namespace, objectNames, diagnosticEventLimit)
 
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("# Recent Events for %s/%s\n\n", hpa.Namespace, hpa.Name))

@@ -9,14 +9,14 @@ import (
 // Metric holds a single metric's current state for analysis and simulation.
 // This is a local copy to avoid import cycles with the hpa root package.
 type Metric struct {
-	Type            string  `json:"type" yaml:"type"`
-	Name            string  `json:"name,omitempty" yaml:"name,omitempty"`
-	Selector        string  `json:"selector,omitempty" yaml:"selector,omitempty"`
-	Current         string  `json:"current" yaml:"current"`
-	Target          string  `json:"target" yaml:"target"`
-	CurrentReplicas int32  `json:"currentReplicas,omitempty" yaml:"currentReplicas,omitempty"`
-	AverageValue    string  `json:"averageValue,omitempty" yaml:"averageValue,omitempty"`
-	Note            string  `json:"note,omitempty" yaml:"note,omitempty"`
+	Type            string   `json:"type" yaml:"type"`
+	Name            string   `json:"name,omitempty" yaml:"name,omitempty"`
+	Selector        string   `json:"selector,omitempty" yaml:"selector,omitempty"`
+	Current         string   `json:"current" yaml:"current"`
+	Target          string   `json:"target" yaml:"target"`
+	CurrentReplicas int32    `json:"currentReplicas,omitempty" yaml:"currentReplicas,omitempty"`
+	AverageValue    string   `json:"averageValue,omitempty" yaml:"averageValue,omitempty"`
+	Note            string   `json:"note,omitempty" yaml:"note,omitempty"`
 	Ratio           *float64 `json:"ratio,omitempty" yaml:"ratio,omitempty"`
 }
 
@@ -31,6 +31,20 @@ type HealthWeights struct {
 	Falling int `json:"falling,omitempty" yaml:"falling,omitempty"`
 	// MetricUnavailable is the penalty for metric fetch failures (default: 20).
 	MetricUnavailable int `json:"metricUnavailable,omitempty" yaml:"metricUnavailable,omitempty"`
+}
+
+// HealthWeightsFrom converts the hpa root package's pointer-based penalty
+// weights into this package's flat form. A nil pointer selects the default
+// penalty. Note the flat form cannot represent "explicitly disable" (*int 0)
+// — that distinction only exists on the AnalyzeWithOptions path.
+func HealthWeightsFrom(limited, notReady, falling *int) HealthWeights {
+	deref := func(p *int) int {
+		if p == nil {
+			return 0
+		}
+		return *p
+	}
+	return HealthWeights{Limited: deref(limited), NotReady: deref(notReady), Falling: deref(falling)}
 }
 
 // Analysis holds the full HPA analysis result.
@@ -154,19 +168,19 @@ type formatDurationFunc func(seconds int32) string
 
 // Function pointer variables
 var (
-	metricIDFromSpecFuncImpl              metricIDFromSpecFunc
-	metricIDFromStatusFuncImpl            metricIDFromStatusFunc
+	metricIDFromSpecFuncImpl               metricIDFromSpecFunc
+	metricIDFromStatusFuncImpl             metricIDFromStatusFunc
 	currentMetricValueStatusFuncImpl       currentMetricValueStatusFunc
-	hasMetricValueForTargetFuncImpl       hasMetricValueForTargetFunc
+	hasMetricValueForTargetFuncImpl        hasMetricValueForTargetFunc
 	metricImpactRatioFuncImpl              metricImpactRatioFunc
-	estimatedDesiredForRatioFuncImpl      estimatedDesiredForRatioFunc
+	estimatedDesiredForRatioFuncImpl       estimatedDesiredForRatioFunc
 	matchingMetricTargetFuncImpl           matchingMetricTargetFunc
 	formatMetricTargetFuncImpl             formatMetricTargetFunc
 	directionalToleranceFuncImpl           directionalToleranceFunc
 	ratioWithinToleranceFuncImpl           ratioWithinToleranceFunc
 	toleranceDirectionFuncImpl             toleranceDirectionFunc
 	formatMetricValueStatusFuncImpl        formatMetricValueStatusFunc
-	effectiveDirectionalTolerancesFuncImpl  effectiveDirectionalTolerancesFunc
+	effectiveDirectionalTolerancesFuncImpl effectiveDirectionalTolerancesFunc
 	repeatCharFuncImpl                     repeatCharFunc
 	formatDurationFuncImpl                 formatDurationFunc
 )

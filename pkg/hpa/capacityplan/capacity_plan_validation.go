@@ -7,7 +7,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
-func validateCapacityQuantityInputs(input CapacityPlanInput) []CapacityObservationError {
+func validateCapacityQuantityInputs(input Input) []CapacityObservationError {
 	var validationErrors []CapacityObservationError
 	validate := func(domain CapacityObservationDomain, source, value string, allowNegative bool) {
 		if value == "" {

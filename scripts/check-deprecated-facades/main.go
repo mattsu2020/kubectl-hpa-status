@@ -25,6 +25,19 @@ type facadeSpec struct {
 var deprecatedFacades = map[string]facadeSpec{
 	modulePath + "/pkg/hpa": {
 		symbols: symbolSet(
+			// Simulation domain facade (pkg/hpa/simulate_facade.go).
+			"SimulationResult",
+			"SimulationState",
+			"SimulationExtendedOptions",
+			"ProjectedState",
+			"ErrInvalidSimulationValue",
+			"ErrUnsupportedSimulationSemantics",
+			"SimulateHPA",
+			"SimulateScenario",
+			"SimulateExtended",
+			"SimulateMetricChange",
+			"BuildSimulatedHPA",
+			"FormatTrajectoryASCII",
 			"ReadinessImpact",
 			"ReadinessDoctorReport",
 			"ReadinessPodAgeDistribution",

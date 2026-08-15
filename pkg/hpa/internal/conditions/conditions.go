@@ -36,6 +36,18 @@ const (
 	AbleToScale = "AbleToScale"
 )
 
+// HPA condition reason constants. Kubernetes does not export these as typed
+// constants, so the literals are mirrored here once instead of being repeated
+// at every call site that inspects condition.Reason.
+const (
+	// ReasonScaleDownStabilized is the AbleToScale reason set while the
+	// scale-down stabilization window suppresses downscaling.
+	ReasonScaleDownStabilized = "ScaleDownStabilized"
+	// ReasonScaleUpStabilized is the corresponding reason on the scale-up
+	// side, set by controllers that apply upscale stabilization.
+	ReasonScaleUpStabilized = "ScaleUpStabilized"
+)
+
 // Find returns the HPA condition matching the given type, or nil. Returns nil
 // safely when hpa is nil.
 func Find(hpa *autoscalingv2.HorizontalPodAutoscaler, conditionType string) *autoscalingv2.HorizontalPodAutoscalerCondition {
@@ -68,7 +80,7 @@ func ScaleDownStabilizationWindow(hpa *autoscalingv2.HorizontalPodAutoscaler) *i
 // and based on LastScaleTime as the best available signal.
 func EstimateStabilizationRemaining(hpa *autoscalingv2.HorizontalPodAutoscaler) *int64 {
 	condition := Find(hpa, AbleToScale)
-	if condition == nil || condition.Reason != "ScaleDownStabilized" {
+	if condition == nil || condition.Reason != ReasonScaleDownStabilized {
 		return nil
 	}
 	window := ScaleDownStabilizationWindow(hpa)

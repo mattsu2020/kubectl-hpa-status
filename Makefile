@@ -32,7 +32,12 @@ tidy:
 
 .PHONY: fmt
 fmt:
-	golangci-lint run --fix ./... || gofmt -w .
+	@if command -v golangci-lint >/dev/null 2>&1; then \
+		golangci-lint run --fix ./...; \
+	else \
+		echo "golangci-lint not found; falling back to gofmt (install golangci-lint for full fixing)"; \
+		gofmt -w .; \
+	fi
 
 .PHONY: fmt-check
 fmt-check:
@@ -52,8 +57,10 @@ coverage:
 	$(GO) test -coverprofile=$(COVERAGE_OUT) ./...
 	$(GO) tool cover -func=$(COVERAGE_OUT)
 
+# coverage-check always regenerates the profile: a file-based target would
+# silently validate a stale coverage.out left over from an earlier run.
 .PHONY: coverage-check
-coverage-check: $(COVERAGE_OUT)
+coverage-check: coverage
 	bash scripts/check-coverage.sh $(COVERAGE_OUT)
 
 .PHONY: docs-check
@@ -76,8 +83,9 @@ e2e:
 dev: build
 	./$(BIN) --help
 
-.PHONY: krew
-krew:
+# snapshot builds an unsigned local release with goreleaser (no publishing).
+.PHONY: snapshot
+snapshot:
 	$(GORELEASER) release --snapshot --clean --skip=publish
 
 .PHONY: release-check

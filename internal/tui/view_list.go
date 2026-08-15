@@ -41,13 +41,13 @@ func (m Model) renderListView() string {
 
 	// Header.
 	sb.WriteString(dimStyle.Render(
-		padRight("NAMESPACE", nsW) + "  " +
-			padRight("NAME", nameW) + "  " +
-			padRight("HEALTH", healthW) + "  " +
-			padRight("SCORE", scoreW) + "  " +
-			padRight("STAB", stabW) + "  " +
-			padRight("TREND", sparkW) + "  " +
-			padRight("ISSUE", issueW) + "  " +
+		fitWidth("NAMESPACE", nsW) + "  " +
+			fitWidth("NAME", nameW) + "  " +
+			fitWidth("HEALTH", healthW) + "  " +
+			fitWidth("SCORE", scoreW) + "  " +
+			fitWidth("STAB", stabW) + "  " +
+			fitWidth("TREND", sparkW) + "  " +
+			fitWidth("ISSUE", issueW) + "  " +
 			"SUMMARY",
 	))
 	sb.WriteString("\n")
@@ -69,7 +69,7 @@ func (m Model) renderListView() string {
 
 		ns := truncate(item.Namespace, nsW)
 		name := truncate(item.Name, nameW)
-		health := healthStyle(item.Health).Render(padRight(item.Health, healthW))
+		health := healthStyle(item.Health).Render(fitWidth(item.Health, healthW))
 		score := renderMiniScoreBar(item.HealthScore, scoreW)
 		stab := renderStabBadge(item, stabW)
 
@@ -87,13 +87,13 @@ func (m Model) renderListView() string {
 
 		summary := truncate(item.Summary, summaryW)
 
-		row := padRight(ns, nsW) + "  " +
-			padRight(name, nameW) + "  " +
+		row := fitWidth(ns, nsW) + "  " +
+			fitWidth(name, nameW) + "  " +
 			health + "  " +
 			score + "  " +
-			padRight(stab, stabW) + "  " +
+			fitWidth(stab, stabW) + "  " +
 			sparkline + "  " +
-			padRight(issueText, issueW) + "  " +
+			fitWidth(issueText, issueW) + "  " +
 			summary
 
 		sb.WriteString(cursor + row + "\n")
@@ -131,6 +131,10 @@ func (m Model) renderStatusBar() string {
 
 	if m.sortField != "" {
 		parts = append(parts, fmt.Sprintf("sort:%s", m.sortField))
+	}
+
+	if m.statusMessage != "" {
+		parts = append(parts, m.statusMessage)
 	}
 
 	switch m.viewMode {

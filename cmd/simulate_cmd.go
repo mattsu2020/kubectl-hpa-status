@@ -8,22 +8,23 @@ import (
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/simulate"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 	"github.com/spf13/cobra"
 )
 
 type simulateReport struct {
-	Namespace      string                       `json:"namespace" yaml:"namespace"`
-	Name           string                       `json:"name" yaml:"name"`
-	Before         hpaanalysis.SimulationState  `json:"before" yaml:"before"`
-	After          hpaanalysis.SimulationState  `json:"after" yaml:"after"`
-	Confidence     string                       `json:"confidence" yaml:"confidence"`
-	Parameter      string                       `json:"parameter,omitempty" yaml:"parameter,omitempty"`
-	Interpretation []string                     `json:"interpretation,omitempty" yaml:"interpretation,omitempty"`
-	Suggestions    []hpaanalysis.Suggestion     `json:"suggestions,omitempty" yaml:"suggestions,omitempty"`
-	RiskWarnings   []string                     `json:"riskWarnings,omitempty" yaml:"riskWarnings,omitempty"`
-	RiskAssessment string                       `json:"riskAssessment,omitempty" yaml:"riskAssessment,omitempty"`
-	TimeSeries     []hpaanalysis.ProjectedState `json:"timeSeriesProjection,omitempty" yaml:"timeSeriesProjection,omitempty"`
+	Namespace      string                    `json:"namespace" yaml:"namespace"`
+	Name           string                    `json:"name" yaml:"name"`
+	Before         simulate.SimulationState  `json:"before" yaml:"before"`
+	After          simulate.SimulationState  `json:"after" yaml:"after"`
+	Confidence     string                    `json:"confidence" yaml:"confidence"`
+	Parameter      string                    `json:"parameter,omitempty" yaml:"parameter,omitempty"`
+	Interpretation []string                  `json:"interpretation,omitempty" yaml:"interpretation,omitempty"`
+	Suggestions    []hpaanalysis.Suggestion  `json:"suggestions,omitempty" yaml:"suggestions,omitempty"`
+	RiskWarnings   []string                  `json:"riskWarnings,omitempty" yaml:"riskWarnings,omitempty"`
+	RiskAssessment string                    `json:"riskAssessment,omitempty" yaml:"riskAssessment,omitempty"`
+	TimeSeries     []simulate.ProjectedState `json:"timeSeriesProjection,omitempty" yaml:"timeSeriesProjection,omitempty"`
 }
 
 func newSimulateCommand(opts *options) *cobra.Command {
@@ -79,8 +80,10 @@ func runSimulate(ctx context.Context, out io.Writer, opts *options, name string,
 		return fmt.Errorf("--duration must be >= 0")
 	}
 
-	simResult, err := hpaanalysis.SimulateScenario(hpa, overrides, metricOverrides,
-		hpaanalysis.HealthWeights{}, hpaanalysis.SimulationExtendedOptions{DurationSeconds: duration})
+	// Honor configured health weights (--health-weight / config file) so the
+	// simulation's health scores match the status command's scoring.
+	simResult, err := simulate.Scenario(hpa, overrides, metricOverrides,
+		weightsForSimulate(opts.HealthWeights), simulate.SimulationExtendedOptions{DurationSeconds: duration})
 	if err != nil {
 		return fmt.Errorf("simulation failed: %w", err)
 	}
@@ -101,7 +104,7 @@ func runSimulate(ctx context.Context, out io.Writer, opts *options, name string,
 
 	// Optional suggestions on the simulated state.
 	if suggest {
-		simulatedHPA, buildErr := hpaanalysis.BuildSimulatedHPA(hpa, overrides, metricOverrides)
+		simulatedHPA, buildErr := simulate.BuildSimulatedHPA(hpa, overrides, metricOverrides)
 		if buildErr != nil {
 			return fmt.Errorf("build simulated HPA for suggestions: %w", buildErr)
 		}
@@ -208,7 +211,7 @@ func writeSimulateSupplementalSections(out io.Writer, report simulateReport) {
 
 	if len(report.TimeSeries) > 0 {
 		_, _ = fmt.Fprintln(out, "\n  Projected Trajectory:")
-		_, _ = fmt.Fprint(out, hpaanalysis.FormatTrajectoryASCII(report.TimeSeries, 40))
+		_, _ = fmt.Fprint(out, simulate.FormatTrajectoryASCII(report.TimeSeries, 40))
 	}
 
 	if len(report.Suggestions) > 0 {
@@ -220,4 +223,10 @@ func writeSimulateSupplementalSections(out io.Writer, report simulateReport) {
 			}
 		}
 	}
+}
+
+// weightsForSimulate adapts the configured penalty weights to the simulate
+// package's representation so simulation health scores match status scoring.
+func weightsForSimulate(w hpaanalysis.HealthWeights) simulate.HealthWeights {
+	return simulate.HealthWeightsFrom(w.ScalingLimited, w.UnableToScale, w.ScaleDownStabilized)
 }

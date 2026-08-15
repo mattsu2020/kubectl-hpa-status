@@ -353,8 +353,8 @@ func TestBatchApplyKeyRequiresSecondConfirmation(t *testing.T) {
 		t.Fatal("second x should run apply command")
 	}
 	msg := cmd()
-	if _, ok := msg.(applyResultMsg); !ok {
-		t.Fatalf("expected applyResultMsg, got %T", msg)
+	if _, ok := msg.(batchApplyResultMsg); !ok {
+		t.Fatalf("expected batchApplyResultMsg, got %T", msg)
 	}
 	if calls != 1 || applied != 2 {
 		t.Fatalf("expected one grouped call with two suggestions, calls=%d suggestions=%d", calls, applied)
@@ -555,7 +555,7 @@ func TestIntervalUp_DecreasesInterval(t *testing.T) {
 func TestIntervalUp_EqualsSign(t *testing.T) {
 	m := NewModel(nil, "default", Options{Interval: 10 * time.Second})
 
-	// Press = (same as + for IntervalUp).
+	// Press = (same as + for IntervalFaster).
 	updated, _ := m.Update(tea.KeyPressMsg{Text: "="})
 	m2 := updated.(Model)
 	if m2.interval != 5*time.Second {
@@ -1212,9 +1212,9 @@ func TestPadRight(t *testing.T) {
 		{"abc", 3, "abc"},
 	}
 	for _, tt := range tests {
-		got := padRight(tt.input, tt.width)
+		got := fitWidth(tt.input, tt.width)
 		if got != tt.want {
-			t.Errorf("padRight(%q, %d) = %q, want %q", tt.input, tt.width, got, tt.want)
+			t.Errorf("fitWidth(%q, %d) = %q, want %q", tt.input, tt.width, got, tt.want)
 		}
 	}
 }

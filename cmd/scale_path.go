@@ -53,7 +53,7 @@ func buildScalePathWithSnapshot(ctx context.Context, client *kube.Client, hpa *a
 			collectionWarnings = append(collectionWarnings, fmt.Sprintf("replica sets unavailable: %v", rsErr))
 		}
 		objectNames := scalePathEventObjectNames(hpa, input.Pods, input.ReplicaSets)
-		input.Events = convertScalePathEvents(kube.FetchRecentEventsForObjects(ctx, client.Interface, hpa.Namespace, objectNames, 10))
+		input.Events = convertScalePathEvents(kube.FetchRecentEventsForObjects(ctx, client.Interface, hpa.Namespace, objectNames, scalePathEventLimit))
 	}
 	result := hpaanalysis.AnalyzeScalePath(hpa, input)
 	result.ProbeWarnings = append(result.ProbeWarnings, collectionWarnings...)

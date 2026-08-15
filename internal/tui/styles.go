@@ -32,6 +32,9 @@ func truncate(s string, maxLen int) string {
 	return rendutil.TruncateDisplayWidth(s, maxLen, "…")
 }
 
-func padRight(s string, width int) string {
+// fitWidth fits s to exactly width display cells, truncating with an
+// ellipsis when it is too long. Named differently from pkg/hpa's padRight
+// (which pads without truncation) because the behaviors differ.
+func fitWidth(s string, width int) string {
 	return rendutil.FitDisplayWidth(s, width)
 }

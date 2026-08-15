@@ -91,6 +91,43 @@ func testSnapshotHPA() autoscalingv2.HorizontalPodAutoscaler {
 	}
 }
 
+// TestSnapshotRetriesTransientFailure covers the memoization policy: a failed
+// read (e.g. a cancelled context) must not be cached, so a later call with a
+// healthy context recovers, while a successful read is still served from the
+// cache without a second API call.
+func TestSnapshotRetriesTransientFailure(t *testing.T) {
+	replicas := int32(1)
+	selector := &metav1.LabelSelector{MatchLabels: map[string]string{"app": "web"}}
+	client := fake.NewClientset(
+		&appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "web"},
+			Spec: appsv1.DeploymentSpec{
+				Replicas: &replicas,
+				Selector: selector,
+			},
+		},
+	)
+	failures := 1
+	client.PrependReactor("get", "deployments", func(ktesting.Action) (bool, runtime.Object, error) {
+		if failures > 0 {
+			failures--
+			return true, nil, errors.New("context deadline exceeded")
+		}
+		return false, nil, nil
+	})
+	hpa := testSnapshotHPA()
+	snapshot := New(client, &hpa)
+
+	first := snapshot.ScaleTarget(context.Background())
+	if first.State != StateUnavailable || first.Err == nil {
+		t.Fatalf("first ScaleTarget() = %#v, want unavailable", first)
+	}
+	second := snapshot.ScaleTarget(context.Background())
+	if second.State != StateKnown {
+		t.Fatalf("second ScaleTarget() = %#v, want known (failure must not be memoized)", second)
+	}
+}
+
 // TestSnapshotNilClientUnavailable covers the nil-client guard in ScaleTarget
 // and the nil-snapshot guard in Pods.
 func TestSnapshotNilClientUnavailable(t *testing.T) {

@@ -145,7 +145,7 @@ func appendReplayTimelineRows(sb *strings.Builder, trace *hpaanalysis.TimelineTr
 
 		bar := rendutil.ProgressBarFloor(int64(snap.Desired), int64(maxReplicas), barWidth)
 		barStyled := healthStyle(snap.Health).Render(bar)
-		healthBadge := healthStyle(snap.Health).Render(padRight(snap.Health, 8))
+		healthBadge := healthStyle(snap.Health).Render(fitWidth(snap.Health, 8))
 
 		metricInfo := snap.TopMetric
 		if metricInfo == "" {

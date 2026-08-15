@@ -14,7 +14,7 @@ import (
 )
 
 func TestSimulateHPA_NilHPA(t *testing.T) {
-	_, err := SimulateHPA(nil, map[string]string{"maxReplicas": "20"}, HealthWeights{})
+	_, err := HPA(nil, map[string]string{"maxReplicas": "20"}, HealthWeights{})
 	if err == nil {
 		t.Error("expected error for nil HPA")
 	}
@@ -23,7 +23,7 @@ func TestSimulateHPA_NilHPA(t *testing.T) {
 func TestSimulateHPA_RaiseMaxReplicas(t *testing.T) {
 	hpa := buildSimHPA(5, 5, 10) // current=5, desired=5, max=10 -> at max -> LIMITED
 
-	result, err := SimulateHPA(hpa, map[string]string{"maxReplicas": "20"}, HealthWeights{})
+	result, err := HPA(hpa, map[string]string{"maxReplicas": "20"}, HealthWeights{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -48,7 +48,7 @@ func TestSimulateHPA_LowerMinReplicas(t *testing.T) {
 	hpa := buildSimHPA(3, 3, 10)
 	hpa.Spec.MinReplicas = ptr.To(int32(3))
 
-	result, err := SimulateHPA(hpa, map[string]string{"minReplicas": "1"}, HealthWeights{})
+	result, err := HPA(hpa, map[string]string{"minReplicas": "1"}, HealthWeights{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -70,7 +70,7 @@ func TestSimulateHPA_StabilizationWindow(t *testing.T) {
 		},
 	}
 
-	_, err := SimulateHPA(hpa, map[string]string{"scaleDown.stabilizationWindowSeconds": "30"}, HealthWeights{})
+	_, err := HPA(hpa, map[string]string{"scaleDown.stabilizationWindowSeconds": "30"}, HealthWeights{})
 	if !errors.Is(err, ErrUnsupportedSimulationSemantics) {
 		t.Fatalf("error = %v, want ErrUnsupportedSimulationSemantics", err)
 	}
@@ -79,7 +79,7 @@ func TestSimulateHPA_StabilizationWindow(t *testing.T) {
 func TestSimulateHPA_InvalidPath(t *testing.T) {
 	hpa := buildSimHPA(3, 3, 10)
 
-	_, err := SimulateHPA(hpa, map[string]string{"invalidField": "10"}, HealthWeights{})
+	_, err := HPA(hpa, map[string]string{"invalidField": "10"}, HealthWeights{})
 	if err == nil {
 		t.Error("expected error for invalid path")
 	}
@@ -91,7 +91,7 @@ func TestSimulateHPA_InvalidPath(t *testing.T) {
 func TestSimulateHPA_InvalidValue(t *testing.T) {
 	hpa := buildSimHPA(3, 3, 10)
 
-	_, err := SimulateHPA(hpa, map[string]string{"maxReplicas": "abc"}, HealthWeights{})
+	_, err := HPA(hpa, map[string]string{"maxReplicas": "abc"}, HealthWeights{})
 	if err == nil {
 		t.Error("expected error for non-numeric value")
 	}
@@ -100,7 +100,7 @@ func TestSimulateHPA_InvalidValue(t *testing.T) {
 func TestSimulateHPA_MaxReplicasZero(t *testing.T) {
 	hpa := buildSimHPA(3, 3, 10)
 
-	_, err := SimulateHPA(hpa, map[string]string{"maxReplicas": "0"}, HealthWeights{})
+	_, err := HPA(hpa, map[string]string{"maxReplicas": "0"}, HealthWeights{})
 	if err == nil {
 		t.Error("expected error for maxReplicas=0")
 	}
@@ -109,7 +109,7 @@ func TestSimulateHPA_MaxReplicasZero(t *testing.T) {
 func TestSimulateHPA_DeepCopyIsolation(t *testing.T) {
 	hpa := buildSimHPA(3, 3, 10)
 
-	_, err := SimulateHPA(hpa, map[string]string{"maxReplicas": "20"}, HealthWeights{})
+	_, err := HPA(hpa, map[string]string{"maxReplicas": "20"}, HealthWeights{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -122,7 +122,7 @@ func TestSimulateHPA_DeepCopyIsolation(t *testing.T) {
 func TestSimulateHPA_InterpretationGenerated(t *testing.T) {
 	hpa := buildSimHPA(3, 3, 10)
 
-	result, err := SimulateHPA(hpa, map[string]string{"maxReplicas": "20"}, HealthWeights{})
+	result, err := HPA(hpa, map[string]string{"maxReplicas": "20"}, HealthWeights{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -147,7 +147,7 @@ func TestSimulateHPA_SelectPolicy(t *testing.T) {
 	current := int32(50)
 	hpa.Status.CurrentMetrics[0].Resource.Current.AverageUtilization = &current
 
-	result, err := SimulateHPA(hpa, map[string]string{"scaleDown.selectPolicy": "Disabled"}, HealthWeights{})
+	result, err := HPA(hpa, map[string]string{"scaleDown.selectPolicy": "Disabled"}, HealthWeights{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -159,7 +159,7 @@ func TestSimulateHPA_SelectPolicy(t *testing.T) {
 
 func TestSimulateHPA_InvalidSelectPolicy(t *testing.T) {
 	hpa := buildSimHPA(3, 3, 10)
-	_, err := SimulateHPA(hpa, map[string]string{"scaleDown.selectPolicy": "Fastest"}, HealthWeights{})
+	_, err := HPA(hpa, map[string]string{"scaleDown.selectPolicy": "Fastest"}, HealthWeights{})
 	if !errors.Is(err, ErrInvalidSimulationValue) {
 		t.Fatalf("error = %v, want ErrInvalidSimulationValue", err)
 	}
@@ -180,7 +180,7 @@ func TestSimulateHPA_ValidatesReplicaBounds(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			hpa := buildSimHPA(3, 3, 10)
 			hpa.Spec.MinReplicas = ptr.To(int32(3))
-			_, err := SimulateHPA(hpa, tt.overrides, HealthWeights{})
+			_, err := HPA(hpa, tt.overrides, HealthWeights{})
 			if !errors.Is(err, ErrInvalidSimulationValue) {
 				t.Fatalf("error = %v, want ErrInvalidSimulationValue", err)
 			}
@@ -198,9 +198,9 @@ func TestSimulateHPA_RecomputesScalingLimitedConditionAndInfersCeiling(t *testin
 		Reason: "TooManyReplicas",
 	})
 
-	result, err := SimulateHPA(hpa, map[string]string{"maxReplicas": "20"}, HealthWeights{})
+	result, err := HPA(hpa, map[string]string{"maxReplicas": "20"}, HealthWeights{})
 	if err != nil {
-		t.Fatalf("SimulateHPA: %v", err)
+		t.Fatalf("HPA: %v", err)
 	}
 	if result.After.DesiredReplicas != 20 {
 		t.Fatalf("After.DesiredReplicas = %d, want 20", result.After.DesiredReplicas)
@@ -236,9 +236,9 @@ func TestSimulateHPA_AppliesImmediateRatePolicies(t *testing.T) {
 		},
 	}
 
-	result, err := SimulateHPA(hpa, map[string]string{"scaleUp.selectPolicy": "Min"}, HealthWeights{})
+	result, err := HPA(hpa, map[string]string{"scaleUp.selectPolicy": "Min"}, HealthWeights{})
 	if err != nil {
-		t.Fatalf("SimulateHPA: %v", err)
+		t.Fatalf("HPA: %v", err)
 	}
 	if result.After.DesiredReplicas != 13 {
 		t.Fatalf("After.DesiredReplicas = %d, want policy-limited 13", result.After.DesiredReplicas)
@@ -428,9 +428,9 @@ func TestMetricSimulationProjectedReplicasIncludesRatePolicy(t *testing.T) {
 		},
 	}
 
-	result, err := SimulateMetricChange(hpa, map[string]string{"cpu": "200%"}, HealthWeights{})
+	result, err := MetricChange(hpa, map[string]string{"cpu": "200%"}, HealthWeights{})
 	if err != nil {
-		t.Fatalf("SimulateMetricChange: %v", err)
+		t.Fatalf("MetricChange: %v", err)
 	}
 	if result.After.DesiredReplicas != 13 {
 		t.Fatalf("After.DesiredReplicas = %d, want rate-limited 13", result.After.DesiredReplicas)
@@ -572,7 +572,7 @@ func TestValidateSimulatedScalingRulesUpperBounds(t *testing.T) {
 
 func TestSimulateHPA_RejectsRatePolicyOverrideWithoutEventHistory(t *testing.T) {
 	hpa := buildSimHPA(3, 3, 10)
-	_, err := SimulateHPA(hpa, map[string]string{"scaleUp.policies[0].value": "4"}, HealthWeights{})
+	_, err := HPA(hpa, map[string]string{"scaleUp.policies[0].value": "4"}, HealthWeights{})
 	if !errors.Is(err, ErrUnsupportedSimulationSemantics) {
 		t.Fatalf("error = %v, want ErrUnsupportedSimulationSemantics", err)
 	}
@@ -585,11 +585,11 @@ func TestSimulateScenarioTargetToleranceAndDuration(t *testing.T) {
 	current := int32(108)
 	hpa.Status.CurrentMetrics[0].Resource.Current.AverageUtilization = &current
 
-	result, err := SimulateScenario(hpa,
+	result, err := Scenario(hpa,
 		map[string]string{"metric.cpu.target": "90", "tolerance": "0.05"},
 		nil, HealthWeights{}, SimulationExtendedOptions{DurationSeconds: 120, StepSeconds: 30})
 	if err != nil {
-		t.Fatalf("SimulateScenario: %v", err)
+		t.Fatalf("Scenario: %v", err)
 	}
 	if result.After.DesiredReplicas != 12 {
 		t.Fatalf("after desired replicas = %d, want ceil(10 * 108/90) = 12", result.After.DesiredReplicas)
@@ -615,14 +615,14 @@ func TestSimulateScenarioToleranceOnlyChangesProjection(t *testing.T) {
 	current := int32(108)
 	hpa.Status.CurrentMetrics[0].Resource.Current.AverageUtilization = &current
 
-	defaultResult, err := SimulateScenario(hpa, nil, map[string]string{"cpu": "108%"}, HealthWeights{}, SimulationExtendedOptions{})
+	defaultResult, err := Scenario(hpa, nil, map[string]string{"cpu": "108%"}, HealthWeights{}, SimulationExtendedOptions{})
 	if err != nil {
 		t.Fatalf("default simulation: %v", err)
 	}
 	if defaultResult.After.DesiredReplicas != 10 {
 		t.Fatalf("default tolerance should hold at 10, got %d", defaultResult.After.DesiredReplicas)
 	}
-	tightResult, err := SimulateScenario(hpa, map[string]string{"tolerance": "0.05"}, map[string]string{"cpu": "108%"}, HealthWeights{}, SimulationExtendedOptions{})
+	tightResult, err := Scenario(hpa, map[string]string{"tolerance": "0.05"}, map[string]string{"cpu": "108%"}, HealthWeights{}, SimulationExtendedOptions{})
 	if err != nil {
 		t.Fatalf("tight tolerance simulation: %v", err)
 	}

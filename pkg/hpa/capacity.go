@@ -13,7 +13,7 @@ import (
 type CapacityPlan = capacityplan.CapacityPlan
 
 // CapacityPlanInput re-exports the capacity plan input type.
-type CapacityPlanInput = capacityplan.CapacityPlanInput
+type CapacityPlanInput = capacityplan.Input
 
 // CapacityContext holds infrastructure capacity analysis for the HPA scale target.
 type CapacityContext struct {
@@ -146,33 +146,4 @@ func ConvertPDBsToCapacityplan(hpaPDBs []PDBInterference) []capacityplan.PDBInte
 // This re-exports the capacityplan internal function for testing.
 func CapacityObservationDomainForError(observationErr CapacityObservationError) CapacityObservationDomain {
 	return capacityplan.CapacityObservationDomainForError(observationErr)
-}
-
-// convertPendingPods converts capacityplan PendingPodInfo to hpa PendingPodInfo.
-func convertPendingPods(capacitypods []capacityplan.PendingPodInfo) []PendingPodInfo {
-	result := make([]PendingPodInfo, len(capacitypods))
-	for i, pod := range capacitypods {
-		result[i] = PendingPodInfo{
-			Name:          pod.Name,
-			Phase:         pod.Phase,
-			Unschedulable: pod.Unschedulable,
-			Reasons:       pod.Reasons,
-		}
-	}
-	return result
-}
-
-// convertQuotaConstraints converts capacityplan QuotaConstraint to hpa QuotaConstraint.
-func convertQuotaConstraints(capacityConstraints []capacityplan.QuotaConstraint) []QuotaConstraint {
-	result := make([]QuotaConstraint, len(capacityConstraints))
-	for i, constraint := range capacityConstraints {
-		result[i] = QuotaConstraint{
-			Name:     constraint.Name,
-			Resource: constraint.Resource,
-			Used:     constraint.Used,
-			Hard:     constraint.Hard,
-			Message:  constraint.Message,
-		}
-	}
-	return result
 }

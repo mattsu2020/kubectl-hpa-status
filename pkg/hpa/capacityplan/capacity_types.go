@@ -36,9 +36,9 @@ type PDBInterference struct {
 // Capacity Plan types
 // ---------------------------------------------------------------------------
 
-// CapacityPlanInput aggregates all observable signals needed to produce a
+// Input aggregates all observable signals needed to produce a
 // capacity plan. The cmd layer assembles this from multiple kube fetchers.
-type CapacityPlanInput struct {
+type Input struct {
 	// Namespace is the Kubernetes namespace of the HPA.
 	Namespace string
 	// HPAName is the HPA resource name.
@@ -277,16 +277,16 @@ type CapacityCheckResult struct {
 
 // labels holds localized labels for capacity plan text output.
 type labels struct {
-	CapacityPlan      string
-	Recommendation   string
-	Checks            string
-	Safe              string
-	Failed            string
-	AdditionalPods    string
-	RequiredCPU      string
-	RequiredMemory   string
-	Headroom          string
-	NextActions       string
+	CapacityPlan   string
+	Recommendation string
+	Checks         string
+	Safe           string
+	Failed         string
+	AdditionalPods string
+	RequiredCPU    string
+	RequiredMemory string
+	Headroom       string
+	NextActions    string
 }
 
 // Labels is the exported version of labels for cross-package usage.

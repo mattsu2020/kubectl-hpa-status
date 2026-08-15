@@ -140,16 +140,6 @@ func TestKubernetesVersions(t *testing.T) {
 	}
 }
 
-func TestHomeDir(t *testing.T) {
-	want, err := os.UserHomeDir()
-	if err != nil {
-		t.Skipf("no home dir in this environment: %v", err)
-	}
-	if got := homeDir(); got != want {
-		t.Fatalf("homeDir() = %q, want %q", got, want)
-	}
-}
-
 func TestFetchPodInfosForSelector(t *testing.T) {
 	readyPod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Name: "web-1", Namespace: "default", Labels: map[string]string{"app": "web"}},

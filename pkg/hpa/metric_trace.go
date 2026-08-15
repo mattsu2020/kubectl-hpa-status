@@ -151,7 +151,7 @@ func winnerHiddenByControllerState(hpa *autoscalingv2.HorizontalPodAutoscaler) b
 		return true
 	}
 	condition := FindCondition(hpa, ConditionAbleToScale)
-	return condition != nil && condition.Reason == "ScaleDownStabilized"
+	return condition != nil && condition.Reason == ReasonScaleDownStabilized
 }
 
 func toleranceDirection(ratio float64) string {
@@ -168,7 +168,7 @@ func toleranceDirection(ratio float64) string {
 // and builds the effect description.
 func buildStabilizationEffect(hpa *autoscalingv2.HorizontalPodAutoscaler) *StabilizationEffect {
 	condition := FindCondition(hpa, ConditionAbleToScale)
-	if condition == nil || condition.Reason != "ScaleDownStabilized" {
+	if condition == nil || condition.Reason != ReasonScaleDownStabilized {
 		return nil
 	}
 

@@ -89,20 +89,20 @@ func (c *Client) ListHPAs(ctx context.Context, namespace string, opts metav1.Lis
 // slice. fn receives the raw page (not the accumulated list) so streaming
 // callers can convert items to a lighter shape and release raw HPAs before the
 // next page arrives, keeping memory flat on large clusters. Pagination follows
-// the Kubernetes Continue token. chunkSize <= 0 lists in a single page.
+// the Kubernetes Continue token, including the repeated-token guard against
+// servers that hand back the same token forever. chunkSize <= 0 lists in a
+// single page. Each page is retried briefly on transient API-server failures
+// (429/5xx/timeouts).
 func ListHPAsEachPage(ctx context.Context, iface kubernetes.Interface, namespace string, opts metav1.ListOptions, chunkSize int64, fn func(*autoscalingv2.HorizontalPodAutoscalerList) error) error {
-	if chunkSize <= 0 {
-		list, err := iface.AutoscalingV2().HorizontalPodAutoscalers(namespace).List(ctx, opts)
-		if err != nil {
-			return err
-		}
-		return fn(list)
+	if chunkSize > 0 {
+		opts.Limit = chunkSize
 	}
-
-	opts.Limit = chunkSize
 	opts.Continue = ""
+	seenContinue := make(map[string]bool)
 	for {
-		page, err := iface.AutoscalingV2().HorizontalPodAutoscalers(namespace).List(ctx, opts)
+		page, err := retryTransient(ctx, func() (*autoscalingv2.HorizontalPodAutoscalerList, error) {
+			return iface.AutoscalingV2().HorizontalPodAutoscalers(namespace).List(ctx, opts)
+		})
 		if err != nil {
 			return err
 		}
@@ -112,6 +112,10 @@ func ListHPAsEachPage(ctx context.Context, iface kubernetes.Interface, namespace
 		if page.Continue == "" {
 			return nil
 		}
+		if seenContinue[page.Continue] {
+			return fmt.Errorf("listing HPAs in namespace %s: server returned a repeated continue token", namespace)
+		}
+		seenContinue[page.Continue] = true
 		opts.Continue = page.Continue
 	}
 }

@@ -9,12 +9,16 @@ import (
 )
 
 // GetHPA fetches a single HorizontalPodAutoscaler by name from the given
-// namespace using the provided interface. Callers wrap the returned error with
-// their own user-facing guidance (e.g. actionable hints for NotFound).
+// namespace using the provided interface. Transient API-server failures
+// (429/5xx/timeouts) are retried briefly; the last error is returned as-is so
+// callers can wrap it with their own user-facing guidance (e.g. actionable
+// hints for NotFound).
 func GetHPA(ctx context.Context, iface kubernetes.Interface, namespace, name string) (*autoscalingv2.HorizontalPodAutoscaler, error) {
-	return iface.AutoscalingV2().
-		HorizontalPodAutoscalers(namespace).
-		Get(ctx, name, metav1.GetOptions{})
+	return retryTransient(ctx, func() (*autoscalingv2.HorizontalPodAutoscaler, error) {
+		return iface.AutoscalingV2().
+			HorizontalPodAutoscalers(namespace).
+			Get(ctx, name, metav1.GetOptions{})
+	})
 }
 
 // GetHPAFromClient is a convenience wrapper that uses the client's namespace.

@@ -10,7 +10,7 @@ import (
 // This initialization must happen before any simulate package functions are called.
 func init() {
 	// Inject core analysis function
-	simulate.SetAnalyzeFunc(func(hpa *autoscalingv2.HorizontalPodAutoscaler, includeMetrics bool, opts simulate.AnalysisOptions) simulate.Analysis {
+	simulate.SetAnalyzeFunc(func(hpa *autoscalingv2.HorizontalPodAutoscaler, _ bool, opts simulate.AnalysisOptions) simulate.Analysis {
 		analysisOpts := AnalysisOptions{
 			HealthWeights: convertSimulateHealthWeights(opts.HealthWeights),
 		}
@@ -45,59 +45,39 @@ func init() {
 	})
 
 	// Inject metric handler functions
-	simulate.SetCurrentMetricValueStatusFunc(func(metric autoscalingv2.MetricStatus) (autoscalingv2.MetricValueStatus, bool) {
-		return currentMetricValueStatus(metric)
-	})
+	simulate.SetCurrentMetricValueStatusFunc(currentMetricValueStatus)
 
-	simulate.SetHasMetricValueForTargetFunc(func(v autoscalingv2.MetricValueStatus, targetType autoscalingv2.MetricTargetType) bool {
-		return hasMetricValueForTarget(v, targetType)
-	})
+	simulate.SetHasMetricValueForTargetFunc(hasMetricValueForTarget)
 
-	simulate.SetMetricImpactRatioFunc(func(hpa *autoscalingv2.HorizontalPodAutoscaler, metric autoscalingv2.MetricStatus) (string, *float64) {
-		return metricImpactRatio(hpa, metric)
-	})
+	simulate.SetMetricImpactRatioFunc(metricImpactRatio)
 
-	simulate.SetMatchingMetricTargetFunc(func(hpa *autoscalingv2.HorizontalPodAutoscaler, current autoscalingv2.MetricStatus) (*autoscalingv2.MetricTarget, bool) {
-		return matchingMetricTarget(hpa, current)
-	})
+	simulate.SetMatchingMetricTargetFunc(matchingMetricTarget)
 
-	simulate.SetFormatMetricTargetFunc(func(target autoscalingv2.MetricTarget) string {
-		return FormatMetricTarget(target)
-	})
+	simulate.SetFormatMetricTargetFunc(FormatMetricTarget)
 
 	// Inject tolerance functions
-	simulate.SetDirectionalToleranceFunc(func(hpa *autoscalingv2.HorizontalPodAutoscaler, ratio float64) (float64, bool) {
-		return directionalTolerance(hpa, ratio)
-	})
+	simulate.SetDirectionalToleranceFunc(directionalTolerance)
 
-	simulate.SetRatioWithinToleranceFunc(func(hpa *autoscalingv2.HorizontalPodAutoscaler, ratio float64) (bool, float64) {
-		return ratioWithinTolerance(hpa, ratio)
-	})
+	simulate.SetRatioWithinToleranceFunc(ratioWithinTolerance)
 
-	simulate.SetToleranceDirectionFunc(func(ratio float64, scaleUp, scaleDown *float64) string {
+	simulate.SetToleranceDirectionFunc(func(ratio float64, _, _ *float64) string {
 		return toleranceDirection(ratio)
 	})
 
-	simulate.SetEffectiveDirectionalTolerancesFunc(func(hpa *autoscalingv2.HorizontalPodAutoscaler) (scaleUp, scaleDown float64) {
-		return effectiveDirectionalTolerances(hpa)
-	})
+	simulate.SetEffectiveDirectionalTolerancesFunc(effectiveDirectionalTolerances)
 
 	// Inject formatting functions
-	simulate.SetFormatMetricValueStatusFunc(func(v autoscalingv2.MetricValueStatus) string {
-		return FormatMetricValueStatus(v)
-	})
+	simulate.SetFormatMetricValueStatusFunc(FormatMetricValueStatus)
 
 	simulate.SetRepeatCharFunc(func(count int, char string) string {
-		return repeatChar(char, count)
+		return repeatChar(char, count) // argument order differs; keep the adapter
 	})
 
 	simulate.SetFormatDurationFunc(func(seconds int32) string {
 		return FormatDuration(int64(seconds))
 	})
 
-	simulate.SetEstimatedDesiredForRatioFunc(func(hpa *autoscalingv2.HorizontalPodAutoscaler, ratio float64) int32 {
-		return estimatedDesiredForRatio(hpa, ratio)
-	})
+	simulate.SetEstimatedDesiredForRatioFunc(estimatedDesiredForRatio)
 }
 
 // convertSimulateHealthWeights converts simulate.HealthWeights to hpa.HealthWeights
@@ -121,13 +101,13 @@ func convertMetricsToSimulate(metrics []Metric) []simulate.Metric {
 	result := make([]simulate.Metric, len(metrics))
 	for i, m := range metrics {
 		result[i] = simulate.Metric{
-			Type:            m.Type,
-			Name:            m.Name,
-			Selector:        m.Selector,
-			Current:         m.Current,
-			Target:          m.Target,
-			Note:            m.Note,
-			Ratio:           m.Ratio,
+			Type:     m.Type,
+			Name:     m.Name,
+			Selector: m.Selector,
+			Current:  m.Current,
+			Target:   m.Target,
+			Note:     m.Note,
+			Ratio:    m.Ratio,
 		}
 	}
 	return result

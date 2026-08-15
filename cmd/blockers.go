@@ -35,48 +35,38 @@ func newBlockersCommand(opts *options) *cobra.Command {
 }
 
 func runBlockers(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	// Keep command execution isolated from the shared root options. The
-	// dedicated blocker path gathers only the observations it needs, so it
-	// does not run the full status pipeline or record an unrelated health
-	// history sample.
-	local := copyOptions(opts)
-	client, err := newClientOrDefault(&local)
-	if err != nil {
-		return writeErrorIfStructured(out, local.Output, err)
-	}
+	// No preset: the dedicated blocker path gathers only the observations it
+	// needs, so it does not run the full status pipeline or record an unrelated
+	// health history sample.
+	return runPerHPACommand(ctx, out, opts, names, "",
+		func(ctx context.Context, local *options, client *kube.Client, name string) (blockerOutput, error) {
+			hpa, err := fetchHPA(ctx, client, name)
+			if err != nil {
+				return blockerOutput{}, err
+			}
+			analysis := hpaanalysis.AnalyzeWithOptions(hpa, false, analysisOptions(local.HealthWeights, local.Debug))
+			blockerReport := buildBlockerReportForStatusWithSnapshot(
+				ctx,
+				client,
+				hpa,
+				analysis.Target,
+				observation.New(client.Interface, hpa),
+			)
 
-	outputs, err := collectPerHPA(ctx, &local, names, func(ctx context.Context, name string) (blockerOutput, error) {
-		hpa, err := fetchHPA(ctx, client, name)
-		if err != nil {
-			return blockerOutput{}, err
-		}
-		analysis := hpaanalysis.AnalyzeWithOptions(hpa, false, analysisOptions(local.HealthWeights, local.Debug))
-		blockerReport := buildBlockerReportForStatusWithSnapshot(
-			ctx,
-			client,
-			hpa,
-			analysis.Target,
-			observation.New(client.Interface, hpa),
-		)
-
-		return blockerOutput{
-			Namespace: analysis.Namespace,
-			Name:      analysis.Name,
-			Target:    analysis.Target,
-			Report:    blockerReport,
-		}, nil
-	})
-	if err != nil {
-		return writeErrorIfStructured(out, local.Output, err)
-	}
-
-	return renderPerHPA(out, &local, outputs, func(out io.Writer, o blockerOutput) error {
-		theme := themeFor(local.Color, out)
-		if err := hpaanalysis.WriteBlockerText(out, o.Report, theme); err != nil {
-			return fmt.Errorf("write blockers report for %s/%s: %w", o.Namespace, o.Name, err)
-		}
-		return nil
-	})
+			return blockerOutput{
+				Namespace: analysis.Namespace,
+				Name:      analysis.Name,
+				Target:    analysis.Target,
+				Report:    blockerReport,
+			}, nil
+		},
+		func(out io.Writer, local *options, o blockerOutput) error {
+			theme := themeFor(local.Color, out)
+			if err := hpaanalysis.WriteBlockerText(out, o.Report, theme); err != nil {
+				return fmt.Errorf("write blockers report for %s/%s: %w", o.Namespace, o.Name, err)
+			}
+			return nil
+		})
 }
 
 // buildBlockerReportForStatusWithSnapshot builds a BlockerReport within an
@@ -150,7 +140,7 @@ func assembleBlockerInputWithSnapshot(ctx context.Context, client *kube.Client, 
 
 			// Fetch events for the scale target and pods.
 			objectNames := blockerEventObjectNames(hpa, podInfos.Data)
-			events := kube.FetchRecentEventsForObjects(ctx, client.Interface, hpa.Namespace, objectNames, 20)
+			events := kube.FetchRecentEventsForObjects(ctx, client.Interface, hpa.Namespace, objectNames, diagnosticEventLimit)
 			input.FailedSchedulingEvents = extractFailedSchedulingMessages(events)
 		} else {
 			input.PodObservation = blocker.ObservationNotApplicable
@@ -245,6 +235,10 @@ func extractFailedSchedulingMessages(events []kube.EventInfo) []string {
 }
 
 // blockerEventObjectNames collects object names for event fetching.
+// blockerEventObjectNames collects the object names whose recent events are
+// relevant for an HPA diagnosis: the HPA itself, its scale target, and the
+// target's pods. Shared with the support-bundle collector (see
+// bundleEventObjectNames) so both event fetches use the same scope.
 func blockerEventObjectNames(hpa *autoscalingv2.HorizontalPodAutoscaler, pods []kube.PodInfo) []string {
 	names := []string{hpa.Name, hpa.Spec.ScaleTargetRef.Name}
 	for _, pod := range pods {

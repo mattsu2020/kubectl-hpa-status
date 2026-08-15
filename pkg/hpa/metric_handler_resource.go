@@ -17,7 +17,7 @@ func (resourceHandler) FormatStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, 
 	targetSpec := FindResourceTargetSpec(hpa, string(metric.Resource.Name))
 	target := FormatMetricTarget(targetSpec)
 	current := FormatMetricValue(metric.Resource.Current.AverageUtilization, metric.Resource.Current.AverageValue)
-	ratio, note := calculateRatioAndNote(metric.Resource.Current, targetSpec, target)
+	ratio, note := calculateRatioAndNote(metric.Resource.Current, targetSpec)
 	text := appendRatioAndNote(
 		fmt.Sprintf("Resource %s current=%s target=%s", metric.Resource.Name, current, target),
 		ratio, note,
@@ -33,7 +33,7 @@ func (resourceHandler) ImpactRatio(hpa *autoscalingv2.HorizontalPodAutoscaler, m
 		return "", nil
 	}
 	targetSpec := FindResourceTargetSpec(hpa, string(metric.Resource.Name))
-	ratio, _ := calculateRatioAndNote(metric.Resource.Current, targetSpec, FormatMetricTarget(targetSpec))
+	ratio, _ := calculateRatioAndNote(metric.Resource.Current, targetSpec)
 	return string(metric.Resource.Name), ratio
 }
 
