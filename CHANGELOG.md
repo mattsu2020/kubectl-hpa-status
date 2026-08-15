@@ -7,10 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-The unreleased line ships as **3.0.0** (major): it executes the v3 breaking
-changes decided in `ROADMAP.md` — deprecated-facade removal, CLI surface
-conservation under workflow parents, and the v2 default wire schema. The
-migration notes are in the breaking sections below.
+## [3.0.0] - 2026-08-15
+
+This major release executes the v3 breaking changes decided in `ROADMAP.md` —
+deprecated-facade removal, CLI surface consolidation under workflow parents,
+and the v2 default wire schema. The migration notes are in the breaking
+sections below.
 
 ### Removed (breaking)
 
