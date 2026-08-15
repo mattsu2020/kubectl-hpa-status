@@ -11,12 +11,12 @@ func TestAnalyzeHealthTrend(t *testing.T) {
 	tests := []struct {
 		name      string
 		snapshots []HealthSnapshot
-		check     func(t *testing.T, result HealthTrendResult)
+		check     func(t *testing.T, result Result)
 	}{
 		{
 			name:      "empty snapshots returns empty result",
 			snapshots: nil,
-			check: func(t *testing.T, result HealthTrendResult) {
+			check: func(t *testing.T, result Result) {
 				if len(result.Snapshots) != 0 {
 					t.Error("expected empty snapshots")
 				}
@@ -30,7 +30,7 @@ func TestAnalyzeHealthTrend(t *testing.T) {
 				{Timestamp: now.Add(-2 * time.Hour), HealthScore: 95, HealthState: "OK"},
 				{Timestamp: now.Add(-1 * time.Hour), HealthScore: 100, HealthState: "OK"},
 			},
-			check: func(t *testing.T, result HealthTrendResult) {
+			check: func(t *testing.T, result Result) {
 				if result.MinScore != 95 {
 					t.Errorf("MinScore = %d, want 95", result.MinScore)
 				}
@@ -53,7 +53,7 @@ func TestAnalyzeHealthTrend(t *testing.T) {
 				{Timestamp: now.Add(-2 * time.Hour), HealthScore: 60, HealthState: "LIMITED"},
 				{Timestamp: now.Add(-1 * time.Hour), HealthScore: 40, HealthState: "ERROR"},
 			},
-			check: func(t *testing.T, result HealthTrendResult) {
+			check: func(t *testing.T, result Result) {
 				if result.DegradationRate >= 0 {
 					t.Errorf("DegradationRate = %.2f, want negative", result.DegradationRate)
 				}
@@ -73,7 +73,7 @@ func TestAnalyzeHealthTrend(t *testing.T) {
 				{Timestamp: now.Add(-2 * time.Hour), HealthScore: 55, HealthState: "LIMITED"},
 				{Timestamp: now.Add(-1 * time.Hour), HealthScore: 100, HealthState: "OK"},
 			},
-			check: func(t *testing.T, result HealthTrendResult) {
+			check: func(t *testing.T, result Result) {
 				if !result.FlappingDetected {
 					t.Error("expected flapping to be detected")
 				}
@@ -89,7 +89,7 @@ func TestAnalyzeHealthTrend(t *testing.T) {
 				{Timestamp: now.Add(-3 * time.Hour), HealthScore: 100, HealthState: "OK"},
 				{Timestamp: now.Add(-2 * time.Hour), HealthScore: 90, HealthState: "OK"},
 			},
-			check: func(t *testing.T, result HealthTrendResult) {
+			check: func(t *testing.T, result Result) {
 				if len(result.Snapshots) != 3 {
 					t.Fatalf("expected 3 snapshots, got %d", len(result.Snapshots))
 				}

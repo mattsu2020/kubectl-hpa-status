@@ -457,3 +457,21 @@ func TestOutputSchemaV2RejectsInvalidCLICombinations(t *testing.T) {
 		})
 	}
 }
+
+func TestStatusOutputSchemaV2IsDefaultForStructuredOutput(t *testing.T) {
+	web := testutil.BuildHPA("default", "web", testutil.WithReplicas(3, 3))
+
+	// No --output-schema flag: v2 is the default wire schema, so JSON output
+	// carries the grouped projection.
+	output := executeOutputSchemaV2CLI(t, testutil.NewFakeClient(web),
+		"status", "web", "--no-enrich", "--output=json")
+	assertV2SingleOutputShape(t, []byte(output))
+
+	// The text path is schema-independent: plain `status NAME` must keep
+	// working without a schema error now that v2 is the default.
+	text := executeOutputSchemaV2CLI(t, testutil.NewFakeClient(web),
+		"status", "web", "--no-enrich")
+	if !strings.Contains(text, "web") {
+		t.Fatalf("plain text status output = %q", text)
+	}
+}

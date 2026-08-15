@@ -11,6 +11,7 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/churn"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/containeradvisor"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/gitops"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/healthtrend"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/lint"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/readiness"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
@@ -149,8 +150,8 @@ func TestRenderSmokeAppenders(t *testing.T) {
 }
 
 func TestRenderSmokeFormatters(t *testing.T) {
-	trend := HealthTrendResult{
-		Snapshots:        []HealthSnapshot{{HealthScore: 90}, {HealthScore: 60}},
+	trend := healthtrend.Result{
+		Snapshots:        []healthtrend.HealthSnapshot{{HealthScore: 90}, {HealthScore: 60}},
 		MinScore:         60,
 		MaxScore:         90,
 		MeanScore:        75,
@@ -165,18 +166,18 @@ func TestRenderSmokeFormatters(t *testing.T) {
 			ScoreAfter:  60,
 		}},
 	}
-	if s := FormatTrendText(trend); s == "" {
+	if s := healthtrend.FormatTrendText(trend); s == "" {
 		t.Error("FormatTrendText returned empty string for populated trend")
 	}
-	if s := FormatTrendAnomalyText(trend); s == "" {
+	if s := healthtrend.FormatTrendAnomalyText(trend); s == "" {
 		t.Error("FormatTrendAnomalyText returned empty string for populated trend")
 	}
-	if s := FormatTrendListRow(trend); s == "" {
+	if s := healthtrend.FormatTrendListRow(trend); s == "" {
 		t.Error("FormatTrendListRow returned empty string for populated trend")
 	}
 	// Graph rendering needs a non-trivial width; just assert it does not panic
 	// and mentions nothing when snapshots are empty.
-	_ = FormatTrendAnomalyGraph(trend, 20)
+	_ = healthtrend.FormatTrendAnomalyGraph(trend, 20)
 
 	signals := []DecisionSignal{{Reason: "ToleranceHold", Message: "within tolerance", Confidence: "high"}}
 	if s := FormatDecisionSignals(signals); !strings.Contains(s, "ToleranceHold") {

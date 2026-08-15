@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/churn"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/healthtrend"
 )
 
@@ -98,21 +99,21 @@ func trendSparklineFromAnalysis(trend *healthtrend.Result) string {
 	if trend == nil {
 		return ""
 	}
-	return FormatTrendListRow(*trend)
+	return healthtrend.FormatTrendListRow(*trend)
 }
 
 func trendFlappingFromAnalysis(trend *healthtrend.Result) bool {
 	return trend != nil && trend.FlappingDetected
 }
 
-func churnLevelFromAnalysis(ca *ChurnAnalysis) string {
+func churnLevelFromAnalysis(ca *churn.ChurnAnalysis) string {
 	if ca == nil {
 		return ""
 	}
 	return string(ca.Level)
 }
 
-func churnScoreFromAnalysis(ca *ChurnAnalysis) int {
+func churnScoreFromAnalysis(ca *churn.ChurnAnalysis) int {
 	if ca == nil {
 		return 0
 	}

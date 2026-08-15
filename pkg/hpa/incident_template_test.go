@@ -6,6 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/churn"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/healthtrend"
+
 	"k8s.io/utils/ptr"
 )
 
@@ -286,9 +289,9 @@ func TestWriteRichIncidentMarkdown_WithChurnAnalysis(t *testing.T) {
 				Health:      "LIMITED",
 				HealthScore: 70,
 				Summary:     "Scaling churn detected.",
-				ChurnAnalysis: &ChurnAnalysis{
+				ChurnAnalysis: &churn.ChurnAnalysis{
 					Score:          65,
-					Level:          ChurnHigh,
+					Level:          churn.ChurnHigh,
 					ScaleUpCount:   8,
 					ScaleDownCount: 7,
 					DirectionFlips: 6,
@@ -325,8 +328,8 @@ func TestWriteRichIncidentMarkdown_WithHealthTrendAnomalies(t *testing.T) {
 				Health:      "ERROR",
 				HealthScore: 40,
 				Summary:     "Health degrading.",
-				HealthTrend: &HealthTrendResult{
-					Snapshots: []HealthSnapshot{
+				HealthTrend: &healthtrend.Result{
+					Snapshots: []healthtrend.HealthSnapshot{
 						{Timestamp: time.Now().Add(-10 * time.Minute), HealthScore: 90, HealthState: "OK"},
 						{Timestamp: time.Now(), HealthScore: 40, HealthState: "ERROR"},
 					},

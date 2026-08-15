@@ -256,13 +256,10 @@ Refactoring notes:
   shared clock/labels/`FormatMetricStatus` helpers). Each extraction keeps the
   `hpaanalysis.*` public API stable via type aliases and thin wrapper functions
   in `pkg/hpa`, so `cmd/` and `internal/` callers keep compiling without new
-  imports. The re-export facades (`policy.go`, `flapping_advisor.go`,
-  `churn.go`, `keda.go`, `vpa.go`, `readiness.go`, `health_trend.go`, and
-  `report_list.go`) carry `Deprecated:` markers pointing at canonical
-  sub-package symbols; they exist only for external importers of `pkg/hpa`.
-  The `facade-check` CI target rejects new repository-internal selector uses.
-  They remain available throughout v2 and are scheduled for removal in v3;
-  do not add new usages of the deprecated aliases.
+  imports. The re-export facades that carried `Deprecated:` markers through
+  v2 (`churn.go`, `keda.go`, `vpa.go`, `readiness.go`, `health_trend.go`,
+  `report_list.go`, `simulate_facade.go`, and `workload_types.go`) were
+  removed in v3.0.0; import the canonical domain sub-packages directly.
   Completed so far:
   - `pkg/hpa/keda` — KEDA ScaledObject analysis (`keda.Analysis`, `keda.Analyze`).
     Re-exported as `hpaanalysis.KEDAAnalysis`, `hpaanalysis.AnalyzeKEDA`, etc.
@@ -377,18 +374,17 @@ without depending on Cobra command wiring.
 
 ### Compatibility facade removal policy
 
-Every public facade scheduled for v3 removal must satisfy all of these
-conditions before deletion:
+The v2 compatibility facades were removed in v3.0.0 under this policy, which
+stays recorded for any future facade cycle:
 
 1. Its canonical replacement is public, documented, and covered by tests.
-2. The facade has carried a Go `Deprecated:` marker for the remainder of the
-   v2 major line and the v3 migration notes name the replacement.
-3. `make facade-check` reports no repository-internal selector use.
-4. Removal happens only in v3 or later; no v2 patch/minor release deletes it.
+2. The facade carried a Go `Deprecated:` marker for the remainder of a major
+   line and the next major release's migration notes name the replacement.
+3. A repository-internal check reported no in-tree selector use.
+4. Removal happens only in a major release.
 
-The policy applies to the root `pkg/hpa` KEDA, VPA, churn, readiness,
-health-trend, and list-report facades, plus any later domain facade added to the
-checker. The former unexported `cmd/converters.go` and rendering forwarders were
+The policy applied to the root `pkg/hpa` KEDA, VPA, churn, readiness,
+health-trend, and list-report facades. The former unexported `cmd/converters.go` and rendering forwarders were
 not public compatibility APIs and have already been removed after all call
 sites migrated.
 

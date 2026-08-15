@@ -53,7 +53,7 @@ func batchOutputCarriesErrors(opts *options) bool {
 	case "json", "yaml":
 		return true // StatusBatch envelope carries per-item errors.
 	case "jsonl":
-		return opts.OutputSchema == "v2" // v2 records carry partial errors; v1 keeps the historical success-report array.
+		return statusUsesV2Schema(opts) // v2 records carry partial errors; v1 keeps the historical success-report array.
 	case "", "table", "wide", "ja":
 		return true // text path renders an "Error:" row per failed item.
 	default:
@@ -72,17 +72,17 @@ func batchValue(opts *options, results []reportResult, reports []hpaanalysis.Sta
 	switch opts.Output {
 	case "json", "yaml":
 		batch := buildStatusBatch(results)
-		if opts.OutputSchema == "v2" {
+		if statusUsesV2Schema(opts) {
 			return hpaanalysis.ProjectStatusBatchV2(batch)
 		}
 		return batch
 	case "jsonl":
-		if opts.OutputSchema == "v2" {
+		if statusUsesV2Schema(opts) {
 			return hpaanalysis.ProjectStatusRecordsV2(buildStatusBatch(results))
 		}
 		return reports
 	default:
-		if opts.OutputSchema == "v2" {
+		if statusUsesV2Schema(opts) {
 			return hpaanalysis.ProjectStatusReportsV2(reports)
 		}
 		return reports
@@ -92,7 +92,7 @@ func batchValue(opts *options, results []reportResult, reports []hpaanalysis.Sta
 // statusOutputValue picks the value passed to render.Format for the
 // single-HPA path, projecting to the v2 schema when requested.
 func statusOutputValue(opts *options, report hpaanalysis.StatusReport) any {
-	if opts != nil && opts.OutputSchema == "v2" {
+	if statusUsesV2Schema(opts) {
 		if opts.Output == "jsonl" {
 			return hpaanalysis.ProjectStatusRecordV2(report)
 		}

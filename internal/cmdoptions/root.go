@@ -29,7 +29,7 @@ func DefaultRoot() Root {
 			},
 			OutputOptions: OutputOptions{
 				Color:        "auto",
-				OutputSchema: "v1",
+				OutputSchema: "v2",
 			},
 			ApplyOptions: ApplyOptions{
 				DryRun: true,

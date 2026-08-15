@@ -172,7 +172,7 @@ RBAC 権限については [docs/rbac.yaml](docs/rbac.yaml) を参照してく�
 | 層 | コマンド | 備考 |
 | --- | --- | --- |
 | 基本 | `status`, `list`, `scan`, `doctor`, `watch`, `explain`, `tui` | 日常の HPA 検査 |
-| 調査 | `trace`, `timeline`, `metrics`, `recommend`, `path`, `blockers`, `rollout`, `compare` | 原因分析 |
+| 調査 | `doctor trace`, `doctor path`, `timeline`, `metrics`, `recommend`, `blockers`, `rollout`, `compare` | 原因分析 |
 | 運用 (`alpha`) | `alpha policy`, `alpha gitops`, `alpha bundle`, `alpha incident-bundle`, `alpha support-bundle` | apply 時のガード、GitOps、サポートデータ |
 | 実験的 (`alpha`) | `alpha capacity`, `alpha capacity-gap`, `alpha autoscaler-map`, `alpha analyze-record`, `alpha flap` | ニッチなツール。リリース間で変更される可能性あり |
 
@@ -238,7 +238,7 @@ exit code は最も深刻なアイテムの結果を採用します:
 }
 ```
 
-単一 HPA の `status NAME -o json` は従来通り bare `StatusReport` のままです（エンベロープなし）。テキスト出力では成功アイテムを通常どおり描画し、失敗アイテムごとに `Error: <メッセージ>` 行を1行ずつ出力します。
+v3 以降、構造化出力の既定はグループ化された v2 射影（`apiVersion: "hpa-status/v2"`）です。上記のフラットな従来形状を使うには `--output-schema=v1` を指定してください。単一 HPA の `status NAME -o json` は従来通り bare レポートのままです（エンベロープなし）。テキスト出力では成功アイテムを通常どおり描画し、失敗アイテムごとに `Error: <メッセージ>` 行を1行ずつ出力します。
 
 ## ドキュメント
 

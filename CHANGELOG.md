@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+The unreleased line ships as **3.0.0** (major): it executes the v3 breaking
+changes decided in `ROADMAP.md` — deprecated-facade removal, CLI surface
+conservation under workflow parents, and the v2 default wire schema. The
+migration notes are in the breaking sections below.
+
+### Removed (breaking)
+
+- **Removed all 57 deprecated compatibility facades from `pkg/hpa`.** These
+  were `Deprecated:`-marked re-exports of the canonical domain sub-packages
+  and existed only for external importers through v2. Import the canonical
+  packages directly:
+
+  | Removed `pkg/hpa` symbols | Replacement |
+  | --- | --- |
+  | `SimulationResult`, `SimulationState`, `SimulationExtendedOptions`, `ProjectedState`, `SimulateHPA`, `SimulateScenario`, `SimulateExtended`, `SimulateMetricChange`, `BuildSimulatedHPA`, `FormatTrajectoryASCII`, `ErrInvalidSimulationValue`, `ErrUnsupportedSimulationSemantics` | `pkg/hpa/simulate` |
+  | `VPAInfo`, `VPAContainerPolicy`, `VPARecommendationInfo`, `VPAConflictInfo`, `VPARecommendation`, `VPAConflictLevel`, `VPAAdvisory`, `VPAConflictNone/Warning/Error`, `AnalyzeVPA`, `NewVPAConflictInfo`, `AnalyzeVPAAdvisory` | `pkg/hpa/vpa` (`Info`, `ContainerPolicy`, `ConflictInfo`, `Advisory`, `Analyze`, `NewConflictInfo`, `AnalyzeAdvisory`, ...) |
+  | `HealthSnapshot`, `HealthTrendResult`, `AnalyzeHealthTrend`, `DetectFlapping`, `ComputeHealthVariance`, `FormatHealthSparkline`, `DetectAnomalies`, `RenderHealthTrendASCII`, `FormatTrendText`, `FormatTrendAnomalyText`, `FormatTrendAnomalyGraph`, `FormatTrendListRow` | `pkg/hpa/healthtrend` (`HealthSnapshot`, `Result`, `AnalyzeHealthTrend`, ...) |
+  | `ReadinessImpact`, `ReadinessDoctorReport`, `ReadinessPodAgeDistribution`, `ReadinessProbeAnalysis`, `ReadinessInitImpact`, `ReadinessExclusionEstimate`, `ReadinessDoctorInput`, `ReadinessDoctorPod`, `AnalyzeReadinessDoctor` | `pkg/hpa/readiness` (`Impact`, `DoctorReport`, `ProbeAnalysis`, ...) |
+  | `ChurnLevel`, `ChurnAnalysis`, `ChurnRecommendation`, `ChurnLow/Medium/High/Critical`, `AnalyzeChurnFromEvents`, `AnalyzeChurnFromSnapshots` | `pkg/hpa/churn` |
+  | `KEDAAnalysis`, `KEDATriggerSummary`, `KEDAFallbackInfo`, `AnalyzeKEDA` | `pkg/hpa/keda` (`Analysis`, `TriggerSummary`, `FallbackInfo`, `Analyze`) |
+  | `WriteMarkdownListReport`, `WriteHTMLListReport` | `pkg/hpa/render` |
+  | `healthtrend.HealthTrendResult` | `healthtrend.Result` (in-package rename) |
+
+  The `scripts/check-deprecated-facades` checker, its `make facade-check`
+  target, and its CI step were removed together with the facades.
+
+### Changed (breaking)
+
+- **Grouped the focused diagnosis preset commands under their workflow
+  parents.** `doctor` now hosts `doctor readiness` (ex-`readiness`),
+  `doctor rollout` (ex-`rollout-context`), `doctor capacity`
+  (ex-`node-context`), `doctor trace` (ex-`trace`), `doctor path` (ex-`path`),
+  and `doctor preflight` (ex-`preflight`); `container-advisor` maps to the
+  existing `advisor container`. The historical top-level names keep working
+  for the whole v3 line as hidden deprecated aliases that print a one-line
+  migration hint on stderr, and will be removed in the next major release.
+  `doctor NAME` itself is unchanged. New presets must ship as a `status` flag
+  or `--analysis-profile` value first.
+- **Structured status/watch output now defaults to the grouped v2 schema.**
+  `status -o json|yaml|jsonl|jsonpath|go-template` emits the v2 projection
+  (`apiVersion: "hpa-status/v2"` with 13 nested group views) by default; pass
+  `--output-schema=v1` to keep the flat legacy shape. Text output is
+  schema-independent and unchanged. JSONL consumers parsing the v1 one-line
+  success array must switch to v2 per-line records or pin `v1`.
+
 ### Fixed
 
 - **`readiness-doctor` no longer panics when the discovery client has no REST

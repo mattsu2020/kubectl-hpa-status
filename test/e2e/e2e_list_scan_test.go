@@ -65,7 +65,7 @@ func TestE2E_JSONStructuredOutput(t *testing.T) {
 	rootCmd := cmd.NewRootCommand()
 	rootCmd.SetOut(buf)
 	rootCmd.SetErr(buf)
-	rootCmd.SetArgs([]string{"status", "json-struct-hpa", "-n", nsName, "-o", "json", "--explain", "--kubeconfig", kubeconfig})
+	rootCmd.SetArgs([]string{"status", "json-struct-hpa", "-n", nsName, "-o", "json", "--output-schema=v1", "--explain", "--kubeconfig", kubeconfig})
 
 	if err := rootCmd.Execute(); err != nil {
 		var exitErr *cmd.ExitCodeError
@@ -207,5 +207,39 @@ func TestE2E_MultipleProblems(t *testing.T) {
 	}
 	if strings.Contains(probOutput, "mp-healthy-hpa") {
 		t.Errorf("healthy HPA mp-healthy-hpa must NOT appear in --problem output, got:\n%s", probOutput)
+	}
+}
+
+// TestE2E_JSONDefaultSchemaV2 verifies that status -o json with no explicit
+// --output-schema emits the v2 grouped projection (the default since v3).
+func TestE2E_JSONDefaultSchemaV2(t *testing.T) {
+	t.Parallel()
+	kubeconfig := resolveKubeconfig(t)
+	_, client, nsName := setupTestNamespace(t, kubeconfig)
+
+	createTestRC(t, client, nsName, "default-schema-rc")
+	createHealthyHPA(t, client, nsName, "default-schema-hpa", "default-schema-rc")
+
+	buf := new(bytes.Buffer)
+	rootCmd := cmd.NewRootCommand()
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(buf)
+	rootCmd.SetArgs([]string{"status", "default-schema-hpa", "-n", nsName, "-o", "json", "--kubeconfig", kubeconfig})
+
+	if err := rootCmd.Execute(); err != nil {
+		var exitErr *cmd.ExitCodeError
+		if !errors.As(err, &exitErr) {
+			t.Fatalf("unexpected error (not ExitCodeError): %v. Output:\n%s", err, buf.String())
+		}
+	}
+
+	var envelope struct {
+		APIVersion string `json:"apiVersion"`
+	}
+	if err := json.Unmarshal([]byte(buf.String()), &envelope); err != nil {
+		t.Fatalf("default schema output is not valid JSON: %v\nraw:\n%s", err, buf.String())
+	}
+	if envelope.APIVersion != "hpa-status/v2" {
+		t.Fatalf("default output apiVersion = %q, want hpa-status/v2", envelope.APIVersion)
 	}
 }

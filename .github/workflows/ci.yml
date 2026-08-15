@@ -62,13 +62,6 @@ jobs:
             exit 1
           fi
 
-      - name: Check deprecated facade usage
-        # Public compatibility facades remain available through v2, but code
-        # inside this repository must use their canonical domain packages so
-        # the facades can be removed cleanly in v3.
-        if: matrix.os == 'ubuntu-latest'
-        run: go run ./scripts/check-deprecated-facades
-
       - name: Compile Windows release target
         # Windows-specific files cannot be exercised on the Unix test runners,
         # but the release publishes windows/amd64. Compile it on every PR so a

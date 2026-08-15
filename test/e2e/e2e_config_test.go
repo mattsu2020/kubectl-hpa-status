@@ -28,7 +28,7 @@ func TestE2E_ConfigFile(t *testing.T) {
 	defaultCmd := cmd.NewRootCommand()
 	defaultCmd.SetOut(defaultBuf)
 	defaultCmd.SetErr(defaultBuf)
-	defaultCmd.SetArgs([]string{"status", "config-hpa", "-n", nsName, "-o", "json", "--kubeconfig", kubeconfig})
+	defaultCmd.SetArgs([]string{"status", "config-hpa", "-n", nsName, "-o", "json", "--output-schema=v1", "--kubeconfig", kubeconfig})
 
 	if err := defaultCmd.Execute(); err != nil {
 		var exitErr *cmd.ExitCodeError
@@ -50,7 +50,7 @@ func TestE2E_ConfigFile(t *testing.T) {
 	configCmd := cmd.NewRootCommand()
 	configCmd.SetOut(configBuf)
 	configCmd.SetErr(configBuf)
-	configCmd.SetArgs([]string{"status", "config-hpa", "-n", nsName, "-o", "json", "--config", configPath, "--kubeconfig", kubeconfig})
+	configCmd.SetArgs([]string{"status", "config-hpa", "-n", nsName, "-o", "json", "--output-schema=v1", "--config", configPath, "--kubeconfig", kubeconfig})
 
 	if err := configCmd.Execute(); err != nil {
 		var exitErr *cmd.ExitCodeError

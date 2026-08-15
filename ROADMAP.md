@@ -12,7 +12,7 @@ This roadmap tracks planned work that is visible to users and contributors. It i
 - **Removed deprecated `analyze` command:** The `analyze` (alias `diagnose`) subcommand was removed. Use `status NAME --explain`.
 - **Removed deprecated flag aliases:** `--recommend` (use `--suggest`), `--export-patch` (use `--export`), and the list flag `--max-score` (use `--health-score`) were removed.
 - **Removed deprecated top-level `alpha` aliases:** Operational and experimental commands (`policy`, `gitops`, `bundle`, `incident-bundle`, `support-bundle`, `capacity`, `capacity-gap`, `autoscaler-map`, `analyze-record`, `flap`) now live exclusively under the `alpha` parent; the historical top-level paths were removed. Use `alpha <cmd>`.
-- **Versioned status schema:** Added all 13 read-only `Analysis` group views and the opt-in `--output-schema=v2` projection for status JSON, YAML, JSONL, JSONPath, and Go templates. v1 remains the default compatible flat contract; v2 has its own checked-in JSON schema and preserves multi-HPA item errors.
+- **Versioned status schema:** Added all 13 read-only `Analysis` group views and the opt-in `--output-schema=v2` projection for status JSON, YAML, JSONL, JSONPath, and Go templates. through v2, v1 remained the default compatible flat contract; v3 flipped the default to v2 (see below). v2 has its own checked-in JSON schema and preserves multi-HPA item errors.
 - **Actions SSOT:** `RecommendedActions` and `buildStructuredActions` share `collectActionCases` so human and structured action lists cannot diverge on the core analyze path.
 - **`cmd/` sub-package extraction:** Lifted shared helpers into
   `cmd/internal/{errs,client,output}`, shallow command domains into
@@ -113,11 +113,13 @@ user-visible behavior change.
   for runtime failures. The required v3 extension boundary and migration
   conditions are recorded in `docs/analysis-plugin-registry.md`.
 
-## v3 Breaking Changes (Decided, Not Yet Scheduled)
+## v3 Breaking Changes (Decided; CLI + facades + wire default executed)
 
-This section is the single list of what a v3 major release removes. Nothing
-here changes before v3; it exists so the removals are decided once and can be
-executed in one release with one migration note.
+This section is the single list of what the v3 major release removes. The CLI
+surface consolidation, the deprecated-facade removal, and the default wire
+schema flip are done on the v3 line; the remaining open item is the in-memory
+`Analysis` storage flip below. Each executed item keeps one migration note in
+`CHANGELOG.md`.
 
 ### v3 CLI surface consolidation
 
@@ -155,23 +157,32 @@ Concretely, for v3:
 3. Require new presets to ship as a `status` flag or `--analysis-profile`
    value first; a dedicated command needs a reason beyond discoverability.
 
-This trims the top-level `--help` from 55 entries to roughly 25 without
-removing any capability. It is deliberately **not** a v2 change: the aliases
-alone are a behavior change to every documented invocation.
+This trims the top-level `--help` without removing any capability. It is
+deliberately **not** a v2 change: the aliases alone are a behavior change to
+every documented invocation.
+
+**Status (v3.0.0): executed.** `doctor` is the workflow parent for
+`readiness`, `rollout` (ex-`rollout-context`), `capacity` (ex-`node-context`),
+`trace`, `path`, and `preflight`; `metrics probe` was already grouped;
+`container-advisor` maps to the existing `advisor container`. The historical
+top-level names remain as hidden deprecated aliases for the v3 line
+(`cmd/deprecated_aliases.go`), printing a one-line migration hint on stderr.
+New presets must ship as a `status` flag or `--analysis-profile` value first
+(see the policy note in `internal/cmdoptions/presets.go`).
 
 ### v3 deprecated-facade removal
 
-`pkg/hpa` carries 44 deprecated compatibility symbols (~680 lines) that
-forward to their canonical domain sub-packages. `make facade-check` already
-rejects new in-tree uses, so the only remaining consumers are external
-importers. All of them are removed in v3:
+`pkg/hpa` carried 57 deprecated compatibility symbols (~900 lines) that
+forwarded to their canonical domain sub-packages. All of them were removed in
+v3.0.0; the migration table maps each removed symbol to its replacement:
 
 | File | Symbols | Canonical package |
 | --- | --- | --- |
+| `pkg/hpa/simulate_facade.go` | 12 | `pkg/hpa/simulate` |
 | `pkg/hpa/vpa.go` | 11 | `pkg/hpa/vpa` |
 | `pkg/hpa/health_trend.go` | 10 | `pkg/hpa/healthtrend` |
 | `pkg/hpa/readiness.go` | 9 | `pkg/hpa/readiness` |
-| `pkg/hpa/churn.go` | 5 | `pkg/hpa/churn` |
+| `pkg/hpa/churn.go` | 6 | `pkg/hpa/churn` |
 | `pkg/hpa/keda.go` | 4 | `pkg/hpa/keda` |
 | `pkg/hpa/workload_types.go` | 2 | `pkg/hpa/healthtrend` |
 | `pkg/hpa/report_list.go` | 2 | `pkg/hpa/render` |
@@ -180,7 +191,8 @@ importers. All of them are removed in v3:
 Removal criteria (unchanged from ARCHITECTURE.md): the canonical package is
 covered at or above the facade's coverage, no in-tree caller remains, and the
 release carries a migration table mapping each removed symbol to its
-replacement.
+replacement. **Status (v3.0.0): executed.** The `facade-check` script, its
+Makefile target, and its CI step were removed together with the facades.
 
 ### v3 `Analysis` storage flip
 
@@ -188,6 +200,14 @@ Tracked under "Slim the `Analysis` god-struct" above: make the 13 grouped
 views the primary in-memory storage, flip the default wire schema from v1 to
 v2, and retire the flat v1 fields. This is the third v3 item and shares the
 same migration note.
+
+**Status (v3.0.0): the default wire schema flip is executed.** Structured
+status/watch output (JSON, YAML, JSONL, JSONPath, Go template) now defaults to
+the grouped v2 projection; `--output-schema=v1` keeps the flat legacy shape,
+and the text path is schema-independent. Still open for a v3.x release: making
+the grouped views the primary in-memory storage and retiring the flat v1
+fields on `pkg/hpa.Analysis` (a wide internal refactor with no additional
+user-visible change beyond what the wire flip already shipped).
 
 ## Recently Added
 

@@ -3,6 +3,7 @@ package hpa
 import (
 	"fmt"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/healthtrend"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
@@ -15,7 +16,7 @@ func appendHealthTrendSection(out *[]byte, a *Analysis) {
 		return
 	}
 	*out = append(*out, '\n')
-	trendText := FormatTrendText(*a.HealthTrend)
+	trendText := healthtrend.FormatTrendText(*a.HealthTrend)
 	*out = fmt.Appendf(*out, "%s\n", trendText)
 }
 

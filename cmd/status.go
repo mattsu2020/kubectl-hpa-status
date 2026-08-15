@@ -145,7 +145,7 @@ func writeStatusError(out io.Writer, opts *options, namespace, name string, repo
 	if opts == nil {
 		return nil
 	}
-	if opts.OutputSchema != "v2" {
+	if !statusUsesV2Schema(opts) {
 		if opts.Output == "json" || opts.Output == "yaml" {
 			return render.Error(out, opts.Output, reportErr)
 		}

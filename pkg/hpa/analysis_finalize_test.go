@@ -1,12 +1,16 @@
 package hpa
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/churn"
+)
 
 func TestFinalizeAnalysisIsIdempotent(t *testing.T) {
 	remaining := int64(30)
 	a := Analysis{
 		StabilizationRemaining: &remaining,
-		ChurnAnalysis:          &ChurnAnalysis{Level: ChurnHigh},
+		ChurnAnalysis:          &churn.ChurnAnalysis{Level: churn.ChurnHigh},
 		Assumptions: []Assumption{{
 			Name:       "custom",
 			Value:      "kept",

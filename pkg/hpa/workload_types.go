@@ -1,9 +1,5 @@
 package hpa
 
-import (
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/healthtrend"
-)
-
 // ResourceCheckResult holds warnings about resource request/limit consistency with HPA targets.
 type ResourceCheckResult struct {
 	Warnings []ResourceWarning `json:"warnings,omitempty" yaml:"warnings,omitempty"`
@@ -36,16 +32,6 @@ type PodResourceIssue struct {
 	Resource  string `json:"resource" yaml:"resource"`
 	Category  string `json:"category" yaml:"category"` // "missing-request", "missing-limit"
 }
-
-// HealthSnapshot records a single health observation for trend tracking.
-//
-// Deprecated: Use healthtrend.HealthSnapshot instead. Scheduled for removal in v3.0.0.
-type HealthSnapshot = healthtrend.HealthSnapshot
-
-// HealthTrendResult holds the analysis of health score history over time.
-//
-// Deprecated: Use healthtrend.Result instead. Scheduled for removal in v3.0.0.
-type HealthTrendResult = healthtrend.Result
 
 // ContainerCheck verifies that a ContainerResource metric target container exists in pods.
 type ContainerCheck struct {
