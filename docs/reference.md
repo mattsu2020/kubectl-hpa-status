@@ -336,10 +336,10 @@ Use this when you need a durable answer to "what changed around the time this HP
 Before applying a maxReplicas fix, validate whether the target workload can actually run the additional pods:
 
 ```sh
-kubectl hpa status preflight web -n production --raise-max 20
+kubectl hpa status doctor preflight web -n production --raise-max 20
 ```
 
-`preflight` reuses the capacity plan engine and checks namespace ResourceQuota, LimitRange constraints, node allocatable summary, Pending pods, PDB signals, and Cluster Autoscaler detection. The older `capacity` command remains available for the same standalone capacity report.
+`doctor preflight` reuses the capacity plan engine and checks namespace ResourceQuota, LimitRange constraints, node allocatable summary, Pending pods, PDB signals, and Cluster Autoscaler detection. The older `capacity` command remains available for the same standalone capacity report.
 
 ## Metrics Adapter Probe
 
@@ -369,7 +369,7 @@ Use `estimate` to quantify the rough upper-bound pod and cost impact of changing
 kubectl hpa status estimate web -n production --max-replicas 30 --pod-cost 0.12
 ```
 
-The command reports current maxReplicas, proposed maxReplicas, additional worst-case pods, and optional hourly cost. It is deliberately simple; run `preflight` before applying the change to validate quota and capacity.
+The command reports current maxReplicas, proposed maxReplicas, additional worst-case pods, and optional hourly cost. It is deliberately simple; run `doctor preflight` before applying the change to validate quota and capacity.
 
 ## CI and Cluster Summary Reports
 

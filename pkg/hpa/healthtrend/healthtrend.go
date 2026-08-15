@@ -36,12 +36,6 @@ type Result struct {
 	Anomalies        []flapping.AnomalyDetection `json:"anomalies,omitempty" yaml:"anomalies,omitempty"`
 }
 
-// HealthTrendResult is kept as a source-compatible alias for callers that used
-// the original exported name before the healthtrend package was extracted.
-//
-// Deprecated: Use Result instead. Scheduled for removal in v3.0.0.
-type HealthTrendResult = Result //nolint:revive // compatibility alias; removing it would break the public API
-
 // AnalyzeHealthTrend computes trend statistics from a series of health snapshots.
 // Returns a Result with variance, min/max/mean, degradation rate,
 // and flapping detection.

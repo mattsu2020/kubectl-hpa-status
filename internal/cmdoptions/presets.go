@@ -203,6 +203,11 @@ type CommandPresetOptions struct {
 // Root copy with that preset's enrichment bundle. Splitting the per-preset
 // logic into named functions keeps ApplyCommandPreset a flat dispatch and
 // holds cyclomatic complexity below the gocyclo threshold.
+//
+// v3 policy: a new preset must first ship as a status flag or an
+// --analysis-profile value. A dedicated command needs a reason beyond
+// discoverability; preset commands live grouped under their workflow parent
+// (doctor, advisor), not at the top level.
 var presetAppliers = map[CommandPreset]func(*Root, CommandPresetOptions){
 	PresetDoctor:           applyPresetDoctor,
 	PresetExplain:          applyPresetExplain,

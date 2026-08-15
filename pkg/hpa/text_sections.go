@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/keda"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/simulate"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
@@ -172,7 +173,7 @@ func appendKEDASection(out *[]byte, a *Analysis, theme style.Theme, labels label
 // kedaTriggerLabel renders the trigger header line: type, optional name, and
 // optional status badge. Extracted from appendKEDASection to keep its
 // cyclomatic complexity under the linter threshold.
-func kedaTriggerLabel(t KEDATriggerSummary, theme style.Theme) string {
+func kedaTriggerLabel(t keda.TriggerSummary, theme style.Theme) string {
 	label := t.Type
 	if t.Name != "" {
 		label = fmt.Sprintf("%s (%s)", t.Type, t.Name)
@@ -185,7 +186,7 @@ func kedaTriggerLabel(t KEDATriggerSummary, theme style.Theme) string {
 
 // kedaTriggerDetail renders the optional metric/threshold/current detail line
 // for a trigger, or "" when none of those fields are set.
-func kedaTriggerDetail(t KEDATriggerSummary) string {
+func kedaTriggerDetail(t keda.TriggerSummary) string {
 	if t.MetricName == "" && t.Threshold == "" && t.CurrentValue == "" {
 		return ""
 	}

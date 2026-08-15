@@ -172,7 +172,7 @@ Commands are grouped into four layers so the top-level surface stays focused on 
 | Layer | Commands | Notes |
 | --- | --- | --- |
 | Basic | `status`, `list`, `scan`, `doctor`, `watch`, `explain`, `tui` | Daily HPA inspection |
-| Investigation | `trace`, `timeline`, `metrics`, `recommend`, `path`, `blockers`, `rollout`, `compare` | Root-cause analysis |
+| Investigation | `doctor trace`, `doctor path`, `timeline`, `metrics`, `recommend`, `blockers`, `rollout`, `compare` | Root-cause analysis |
 | Operational (`alpha`) | `alpha policy`, `alpha gitops`, `alpha bundle`, `alpha incident-bundle`, `alpha support-bundle` | Apply-time gating, GitOps, support data |
 | Experimental (`alpha`) | `alpha capacity`, `alpha capacity-gap`, `alpha autoscaler-map`, `alpha analyze-record`, `alpha flap` | Niche tools; may change between releases |
 
@@ -239,7 +239,7 @@ For `-o json` / `-o yaml`, multi-HPA output is wrapped in a `StatusBatch` envelo
 }
 ```
 
-Single-HPA `status NAME -o json` keeps the historical bare `StatusReport` shape (no envelope). Text output renders successful items normally and a single `Error: <message>` row per failed item.
+Since v3, structured output defaults to the grouped v2 projection (`apiVersion: "hpa-status/v2"`); pass `--output-schema=v1` for the flat legacy shape shown above. Single-HPA `status NAME -o json` keeps the historical bare report shape (no envelope). Text output renders successful items normally and a single `Error: <message>` row per failed item.
 
 ## Documentation
 

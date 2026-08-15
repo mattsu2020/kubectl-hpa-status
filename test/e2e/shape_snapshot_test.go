@@ -36,7 +36,9 @@ var validHealthStates = map[string]bool{
 // ExitCodeError (which is expected for ERROR/LIMITED health).
 func runStatusJSON(t *testing.T, kubeconfig, namespace, hpaName string, extraArgs ...string) string {
 	t.Helper()
-	args := []string{"status", hpaName, "-n", namespace, "-o", "json"}
+	// v1 keeps the flat shape this suite asserts; the default flipped to v2
+	// in v3 and is smoke-checked in TestE2E_JSONDefaultSchemaV2.
+	args := []string{"status", hpaName, "-n", namespace, "-o", "json", "--output-schema=v1"}
 	args = append(args, extraArgs...)
 	args = append(args, "--kubeconfig", kubeconfig)
 

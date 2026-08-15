@@ -32,7 +32,7 @@ func registerCommonFlags(cmd *cobra.Command, opts *options) {
 	cmd.PersistentFlags().StringVar(&opts.Kubeconfig, "kubeconfig", "", "path to kubeconfig")
 	cmd.PersistentFlags().StringVar(&opts.Cluster, "cluster", "", "kubeconfig cluster")
 	cmd.PersistentFlags().StringVarP(&opts.Output, "output", "o", "", "output format: "+strings.Join(outputFlagDisplayValues, ", ")+", jsonpath=..., template=...")
-	cmd.PersistentFlags().StringVar(&opts.OutputSchema, "output-schema", opts.OutputSchema, "structured status output schema: v1 or v2")
+	cmd.PersistentFlags().StringVar(&opts.OutputSchema, "output-schema", opts.OutputSchema, "structured status output schema: v1 or v2 (default v2; v1 keeps the flat legacy shape)")
 	cmd.PersistentFlags().StringVar(&opts.Template, "template", "", "template string to use when -o jsonpath or -o go-template/template is specified")
 	cmd.PersistentFlags().BoolVar(&opts.Wide, "wide", false, "show additional columns in table output")
 	cmd.PersistentFlags().StringVarP(&opts.Selector, "selector", "l", "", "label selector for list and scan, for example app=web,tier!=canary")

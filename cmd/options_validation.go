@@ -141,16 +141,37 @@ func validateOutputSchemaOption(cmd *cobra.Command, opts *options) error {
 		}
 		return nil
 	}
+	// v2 is the default schema, and the text path is schema-independent: an
+	// implicit v2 with text output is the normal `status NAME` invocation, not
+	// an error. Only an explicitly requested v2 paired with a format that
+	// cannot carry it stays an actionable error.
+	if structuredStatusOutput(opts) {
+		return nil
+	}
+	if flagChanged(cmd, "output-schema") {
+		return fmt.Errorf("--output-schema=v2 requires json, yaml, jsonl, jsonpath, or go-template output")
+	}
+	return nil
+}
+
+// structuredStatusOutput reports whether the selected output format can carry
+// a projected status schema (v1 or v2). Text output is schema-independent.
+func structuredStatusOutput(opts *options) bool {
 	format, _ := selectOutputFromOptions(opts)
 	switch normalizeOutputFormat(format) {
 	case "json", "jsonl", "yaml", "jsonpath", "go-template", "template":
-		return nil
+		return true
 	default:
-		if _, kind, ok := render.ParsePrefixedFormat(format); ok && (kind == "jsonpath" || kind == "go-template") {
-			return nil
-		}
-		return fmt.Errorf("--output-schema=v2 requires json, yaml, jsonl, jsonpath, or go-template output")
+		_, kind, ok := render.ParsePrefixedFormat(format)
+		return ok && (kind == "jsonpath" || kind == "go-template")
 	}
+}
+
+// statusUsesV2Schema reports whether status output should render through the
+// v2 grouped projection. v2 is the default wire schema, but it only applies
+// to structured output; the text path keeps rendering the report directly.
+func statusUsesV2Schema(opts *options) bool {
+	return opts != nil && opts.OutputSchema == "v2" && structuredStatusOutput(opts)
 }
 
 func validateListCommandOptions(cmd *cobra.Command, opts *options) error {

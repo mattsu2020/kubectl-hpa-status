@@ -6,23 +6,24 @@ import (
 	"testing"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/churn"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/keda"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 )
 
 func TestApplyEnrichmentPenalties(t *testing.T) {
-	// inactiveKEDA returns a KEDAAnalysis whose only trigger is Inactive, which
+	// inactiveKEDA returns a keda.Analysis whose only trigger is Inactive, which
 	// triggers the KEDA penalty.
-	inactiveKEDA := func() *KEDAAnalysis {
-		return &KEDAAnalysis{
-			Triggers: []KEDATriggerSummary{{Type: "prometheus", Status: "Inactive"}},
+	inactiveKEDA := func() *keda.Analysis {
+		return &keda.Analysis{
+			Triggers: []keda.TriggerSummary{{Type: "prometheus", Status: "Inactive"}},
 		}
 	}
-	// activeKEDA returns a KEDAAnalysis whose trigger is Active (no penalty).
-	activeKEDA := func() *KEDAAnalysis {
-		return &KEDAAnalysis{
-			Triggers: []KEDATriggerSummary{{Type: "prometheus", Status: "Active"}},
+	// activeKEDA returns a keda.Analysis whose trigger is Active (no penalty).
+	activeKEDA := func() *keda.Analysis {
+		return &keda.Analysis{
+			Triggers: []keda.TriggerSummary{{Type: "prometheus", Status: "Active"}},
 		}
 	}
 	vpaConflict := func() *vpa.ConflictInfo {
@@ -33,7 +34,7 @@ func TestApplyEnrichmentPenalties(t *testing.T) {
 		name       string
 		health     string
 		score      int
-		keda       func() *KEDAAnalysis
+		keda       func() *keda.Analysis
 		vpa        func() *vpa.ConflictInfo
 		weights    HealthWeights
 		wantScore  int
@@ -84,8 +85,8 @@ func TestApplyEnrichmentPenaltiesIsIdempotentAcrossFinalize(t *testing.T) {
 		Health:                 string(HealthOK),
 		HealthScore:            95,
 		StabilizationRemaining: &remaining,
-		KEDAInfo: &KEDAAnalysis{
-			Triggers: []KEDATriggerSummary{{Type: "prometheus", Status: "Inactive"}},
+		KEDAInfo: &keda.Analysis{
+			Triggers: []keda.TriggerSummary{{Type: "prometheus", Status: "Inactive"}},
 		},
 		VPAConflict: &vpa.ConflictInfo{VPAName: "my-vpa", UpdateMode: "Auto"},
 	}
@@ -151,8 +152,8 @@ func TestDynamicHealthPenaltiesRecomputeFromUnclampedBaseline(t *testing.T) {
 	a := Analysis{
 		Health:      string(HealthOK),
 		HealthScore: 10,
-		KEDAInfo: &KEDAAnalysis{
-			Triggers: []KEDATriggerSummary{{Status: "Inactive"}},
+		KEDAInfo: &keda.Analysis{
+			Triggers: []keda.TriggerSummary{{Status: "Inactive"}},
 		},
 	}
 	ApplyEnrichmentPenalties(&a, HealthWeights{KEDAInactiveTrigger: IntWeight(15)})
@@ -169,8 +170,8 @@ func TestDynamicHealthPenaltiesRemoveInactiveSignals(t *testing.T) {
 	a := Analysis{
 		Health:      string(HealthOK),
 		HealthScore: 90,
-		KEDAInfo: &KEDAAnalysis{
-			Triggers: []KEDATriggerSummary{{Status: "Inactive"}},
+		KEDAInfo: &keda.Analysis{
+			Triggers: []keda.TriggerSummary{{Status: "Inactive"}},
 		},
 		VPAConflict: &vpa.ConflictInfo{VPAName: "web-vpa"},
 		ChurnAnalysis: &churn.ChurnAnalysis{
