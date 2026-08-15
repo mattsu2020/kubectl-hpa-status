@@ -47,7 +47,7 @@ func retryTransient[T any](ctx context.Context, fn func() (T, error)) (T, error)
 	var err error
 	for attempt := 0; attempt < transientRetryAttempts; attempt++ {
 		if attempt > 0 {
-			wait := transientRetryBaseWait*time.Duration(attempt) + rand.N(transientRetryJitter)
+			wait := transientRetryBaseWait*time.Duration(attempt) + rand.N(transientRetryJitter) // #nosec G404 -- jitter only decorrelates retry timing; unpredictability is not required
 			select {
 			case <-ctx.Done():
 				return zero, ctx.Err()
