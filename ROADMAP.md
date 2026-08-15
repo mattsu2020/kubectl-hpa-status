@@ -6,6 +6,7 @@ This roadmap tracks planned work that is visible to users and contributors. It i
 
 - **E2E scenario coverage:** Expand kind E2E coverage for multi-metric HPAs, KEDA-style external metrics, VPA conflict detection, and stabilization boundary cases. Behavior-policy visualization is covered by `TestE2E_BehaviorPolicies`.
 - **README sync quality gate:** Keep `README.md` and `README.ja.md` structurally aligned through `make docs-check` and CI.
+- **v4 preparation on the v3.x line:** Land the grouped-primary in-memory `Analysis` storage flip and additive record fields (typed numeric metric values on `TimelineSnapshot`) so that v4.0.0 only has to delete. See "v4 Breaking Changes (Planned)" below.
 
 ## Done through 3.0.0
 
@@ -81,11 +82,12 @@ user-visible behavior change.
   centralized in `cmd/internal/recordio`; filtering, merging, snapshot limits,
   and legacy single-JSON fallback remain explicit at each command boundary.
 - **Slim the `Analysis` god-struct:** `pkg/hpa.Analysis` has 65 fields
-  accumulated feature-by-feature. The additive migration boundary is now
-  complete: v1 keeps the flat storage and default wire shape, while explicit
-  v2 output uses 13 nested group views. Remaining work is a v3 design decision:
-  make grouped values primary in-memory storage, flip the default only with
-  migration notes, then retire the flat v1 fields in that major release.
+  accumulated feature-by-feature. The additive migration boundary is complete:
+  through v2 the flat storage kept the default wire shape while explicit v2
+  output used 13 nested group views; 3.0.0 flipped the default wire schema to
+  v2. Remaining work is sequenced under the v4 plan: grouped values become the
+  primary in-memory storage on the v3.x line (no wire change), and the flat v1
+  fields are retired in v4.0.0.
 - **Re-evaluate testutil SA1019 suppression:** All fake-client construction is
   routed through `internal/testutil`; its single `fake.NewSimpleClientset`
   call remains deprecated with no applyconfig replacement. Re-check on each
@@ -204,10 +206,101 @@ same migration note.
 **Status (v3.0.0): the default wire schema flip is executed.** Structured
 status/watch output (JSON, YAML, JSONL, JSONPath, Go template) now defaults to
 the grouped v2 projection; `--output-schema=v1` keeps the flat legacy shape,
-and the text path is schema-independent. Still open for a v3.x release: making
-the grouped views the primary in-memory storage and retiring the flat v1
-fields on `pkg/hpa.Analysis` (a wide internal refactor with no additional
-user-visible change beyond what the wire flip already shipped).
+and the text path is schema-independent. Still open on the v3.x line: making
+the grouped views the primary in-memory storage (a wide internal refactor with
+no additional user-visible change beyond what the wire flip already shipped).
+The flat-field retirement itself moved to the v4 plan below.
+
+## v4 Breaking Changes (Planned)
+
+v3.0.0 executed everything it decided except the in-memory `Analysis` storage
+flip (still open on the v3.x line, see above). v4 is planned as a
+**contract-slimming release**: one CLI surface with no deprecated aliases, one
+wire schema (v2), and one public Go model (the grouped views). Every item
+follows the same deprecation discipline as v3 — announced on the v3 line,
+executed only in the major release, and documented with a migration table in
+`CHANGELOG.md`.
+
+### v4 deprecated-alias removal
+
+The seven hidden top-level aliases that kept working through the v3 line
+(`cmd/deprecated_aliases.go`) are removed together with the file. The 3.0.0
+changelog already promised this ("will be removed in the next major
+release"). The grouped commands themselves are unchanged.
+
+| Removed top-level alias | Use instead |
+| --- | --- |
+| `readiness` | `doctor readiness` |
+| `rollout-context` | `doctor rollout` |
+| `node-context` | `doctor capacity` |
+| `trace` | `doctor trace` (equivalent to `status --decision-trace`) |
+| `path` | `doctor path` (equivalent to `status --scale-path`) |
+| `preflight` | `doctor preflight` |
+| `container-advisor` | `advisor container` |
+
+The release PR must also grep both READMEs, `docs/reference.md`, and the
+asciinema demo sources for the removed short names.
+
+### v4 v1 wire-schema retirement
+
+`--output-schema=v1` and the flat v1 projection are removed; the grouped v2
+schema (`apiVersion: "hpa-status/v2"`, checked in as
+`docs/output-schema-v2.json`) becomes the only structured contract. v1 was the
+default through the v2 line and remains an explicit option through the v3
+line, so consumers get two full major lines of notice.
+
+- **Flag surface:** `--output-schema` keeps accepting only `v2` (and empty,
+  which means v2). Removing the flag outright would break scripts that already
+  pin `--output-schema=v2` a second time; flag removal waits for v5.
+- **Code surface:** the v1 projection path behind `cmd/root_flags.go` /
+  `cmd/options_validation.go`, the v1 JSON Schema (`docs/output-schema.json`),
+  and the v1 branch of the root `output_schema_test.go` contract test.
+- **Consumer impact:** JSON/JSONL/YAML consumers of the flat shape must move
+  to the v2 projection or stay on the v3 line. The migration note shows one
+  before/after record pair, as the 3.0.0 note did for the batch envelope.
+
+### v4 `Analysis` flat-field retirement
+
+Completes the "Slim the `Analysis` god-struct" refactor, sequenced so the
+risky part ships with no user-visible change first:
+
+1. **v3.x (prep):** make the 13 grouped views the primary in-memory storage;
+   the flat fields become derived compatibility accessors over the groups. No
+   wire or text-output change, guarded by the existing fleet benchmarks and
+   golden output tests.
+2. **v4.0.0 (removal):** delete the 65 flat public fields on
+   `pkg/hpa.Analysis` (`pkg/hpa/types.go`) and the compatibility accessors.
+   Breaking for Go importers of `pkg/hpa`; the changelog carries a migration
+   table mapping each removed field group to its grouped view, in the same
+   table shape the 3.0.0 facade removal used.
+
+Removal criteria (mirroring the facade-removal policy in ARCHITECTURE.md):
+grouped-view test coverage at or above the flat fields', no in-tree reader of
+the flat fields, benchmark parity on the list/scan path, and the migration
+table in the release notes.
+
+### v4 extension envelope (conditional; not yet decided)
+
+The analysis-plugin-registry decision (`docs/analysis-plugin-registry.md`)
+names six preconditions for a dynamic registry and keys them to "a future
+major schema version". v4 takes that decision only if all six preconditions
+are demonstrably met during the v4 design phase; otherwise extensibility
+stays deferred and v4 remains a pure slimming release. If an extension
+envelope ships, it is a versioned, schema-described extension point with the
+registry still statically typed — not a backdoor plugin system.
+
+### Sequencing
+
+| When | Work |
+| --- | --- |
+| v3.x | In-memory storage flip: grouped views primary, flat fields derived (no wire change) |
+| v3.x | Additive record fields: typed numeric metric values on `TimelineSnapshot` (currently the formatted `TopMetric` string), unlocking weekly seasonality cycles in `alpha analyze-record --detect seasonality` |
+| v3.x | Optional additive features that harden the v4 line: opt-in informer-based watch (see Medium Term), KEDA `spec.idleReplicaCount` extraction |
+| v4.0.0 | Alias removal, v1 schema retirement, and flat-field removal in one release with a single migration section in `CHANGELOG.md` |
+
+KEP-6111 structured decision fields stay a prepared boundary (see
+ARCHITECTURE.md). If upstream ships them before v4, the adapter lands as an
+additive input signal and does not block any v4 item.
 
 ## Recently Added
 
