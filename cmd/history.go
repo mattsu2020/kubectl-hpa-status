@@ -51,7 +51,7 @@ func newHistoryCommand(opts *options) *cobra.Command {
 
 func runHistory(ctx context.Context, out io.Writer, opts *options, name string, since time.Duration, prometheusURL string) error {
 	local := applyCommandPreset(opts, presetHistory)
-	local.Events = EventOption{Enabled: true, Limit: 50}
+	local.Events = EventOption{Enabled: true, Limit: historyEventLimit}
 	local.TrendSince = since
 	report, err := buildStatusReportWithClient(ctx, &local, name, true, nil)
 	if err != nil {

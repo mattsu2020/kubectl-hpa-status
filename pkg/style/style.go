@@ -59,15 +59,21 @@ func NewTheme(colorEnabled bool) Theme {
 // Enabled returns true when the theme produces ANSI-styled output.
 func (t Theme) Enabled() bool { return t.enabled }
 
+// Health-score tier cutoffs: 90+ renders as Excellent, 70-89 as Warning,
+// anything below as Critical.
+const (
+	healthTierExcellent = 90
+	healthTierWarning   = 70
+)
+
 // HealthLabel renders a health status string (OK, ERROR, LIMITED) with
 // appropriate styling, prefix markers, and a score-based tier indicator.
-// Tier: 90+ = Excellent, 70-89 = Warning, <70 = Critical.
 func (t Theme) HealthLabel(health string, score int) string {
 	tier := "Critical"
 	switch {
-	case score >= 90:
+	case score >= healthTierExcellent:
 		tier = "Excellent"
-	case score >= 70:
+	case score >= healthTierWarning:
 		tier = "Warning"
 	}
 

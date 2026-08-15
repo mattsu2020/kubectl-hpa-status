@@ -35,15 +35,21 @@ func (v Value[T]) Known() bool { return v.State == StateKnown }
 
 // Snapshot memoizes workload reads for one HPA report. Returned data is
 // immutable by contract; consumers that need to mutate a slice must copy it.
+//
+// Only successful observations (known or not-applicable) are memoized: a
+// failed read — typically a cancelled or timed-out context — is retried on
+// the next call so a transient failure does not poison the snapshot forever.
 type Snapshot struct {
 	client kubernetes.Interface
 	hpa    autoscalingv2.HorizontalPodAutoscaler
 
-	targetOnce sync.Once
-	target     Value[*kube.ScaleTargetInfo]
+	targetMu sync.Mutex
+	targetOK bool
+	target   Value[*kube.ScaleTargetInfo]
 
-	podsOnce sync.Once
-	pods     Value[[]corev1.Pod]
+	podsMu sync.Mutex
+	podsOK bool
+	pods   Value[[]corev1.Pod]
 }
 
 // New creates a request-scoped workload observation snapshot.
@@ -59,17 +65,21 @@ func (s *Snapshot) ScaleTarget(ctx context.Context) Value[*kube.ScaleTargetInfo]
 	if s == nil || s.client == nil {
 		return Value[*kube.ScaleTargetInfo]{State: StateUnavailable, Err: fmt.Errorf("kubernetes client is unavailable")}
 	}
-	s.targetOnce.Do(func() {
-		info, err := kube.FetchScaleTargetInfo(ctx, s.client, s.hpa.Namespace, s.hpa.Spec.ScaleTargetRef)
-		switch {
-		case err != nil:
-			s.target = Value[*kube.ScaleTargetInfo]{State: StateUnavailable, Err: err}
-		case info == nil:
-			s.target = Value[*kube.ScaleTargetInfo]{State: StateNotApplicable}
-		default:
-			s.target = Value[*kube.ScaleTargetInfo]{Data: info, State: StateKnown}
-		}
-	})
+	s.targetMu.Lock()
+	defer s.targetMu.Unlock()
+	if s.targetOK {
+		return s.target
+	}
+	info, err := kube.FetchScaleTargetInfo(ctx, s.client, s.hpa.Namespace, s.hpa.Spec.ScaleTargetRef)
+	switch {
+	case err != nil:
+		return Value[*kube.ScaleTargetInfo]{State: StateUnavailable, Err: err}
+	case info == nil:
+		s.target = Value[*kube.ScaleTargetInfo]{State: StateNotApplicable}
+	default:
+		s.target = Value[*kube.ScaleTargetInfo]{Data: info, State: StateKnown}
+	}
+	s.targetOK = true
 	return s.target
 }
 
@@ -78,27 +88,31 @@ func (s *Snapshot) Pods(ctx context.Context) Value[[]corev1.Pod] {
 	if s == nil {
 		return Value[[]corev1.Pod]{State: StateUnavailable, Err: fmt.Errorf("observation snapshot is unavailable")}
 	}
-	s.podsOnce.Do(func() {
-		target := s.ScaleTarget(ctx)
-		switch target.State {
-		case StateUnavailable:
-			s.pods = Value[[]corev1.Pod]{State: StateUnavailable, Err: target.Err}
-			return
-		case StateNotApplicable:
-			s.pods = Value[[]corev1.Pod]{State: StateNotApplicable}
-			return
-		}
-		if target.Data.SelectorStr == "" {
-			s.pods = Value[[]corev1.Pod]{State: StateNotApplicable}
-			return
-		}
-		pods, err := kube.FetchPodObjectsForSelector(ctx, s.client, s.hpa.Namespace, target.Data.SelectorStr)
-		if err != nil {
-			s.pods = Value[[]corev1.Pod]{State: StateUnavailable, Err: err}
-			return
-		}
-		s.pods = Value[[]corev1.Pod]{Data: pods, State: StateKnown}
-	})
+	s.podsMu.Lock()
+	defer s.podsMu.Unlock()
+	if s.podsOK {
+		return s.pods
+	}
+	target := s.ScaleTarget(ctx)
+	switch target.State {
+	case StateUnavailable:
+		return Value[[]corev1.Pod]{State: StateUnavailable, Err: target.Err}
+	case StateNotApplicable:
+		s.pods = Value[[]corev1.Pod]{State: StateNotApplicable}
+		s.podsOK = true
+		return s.pods
+	}
+	if target.Data.SelectorStr == "" {
+		s.pods = Value[[]corev1.Pod]{State: StateNotApplicable}
+		s.podsOK = true
+		return s.pods
+	}
+	pods, err := kube.FetchPodObjectsForSelector(ctx, s.client, s.hpa.Namespace, target.Data.SelectorStr)
+	if err != nil {
+		return Value[[]corev1.Pod]{State: StateUnavailable, Err: err}
+	}
+	s.pods = Value[[]corev1.Pod]{Data: pods, State: StateKnown}
+	s.podsOK = true
 	return s.pods
 }
 

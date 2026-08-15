@@ -3,6 +3,7 @@
 package hpa
 
 import (
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/confidence"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/behavioradvisor"
@@ -21,7 +22,7 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/warmup"
 )
 
-const limitation = "[observed] This plugin uses existing HPA status, conditions, metrics, and events. It does not expose internal controller calculations."
+const limitation = confidence.BadgeObserved + " This plugin uses existing HPA status, conditions, metrics, and events. It does not expose internal controller calculations."
 
 const (
 	healthScoreMax = 100

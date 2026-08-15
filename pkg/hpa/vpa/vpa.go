@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/confidence"
+
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
@@ -104,23 +106,23 @@ func Analyze(hpa *autoscalingv2.HorizontalPodAutoscaler, v *Info) []string {
 
 	var lines []string
 
-	lines = append(lines, fmt.Sprintf("[observed] VPA %q targets the same resource %s/%s as this HPA.", v.Name, v.TargetKind, v.TargetName))
-	lines = append(lines, fmt.Sprintf("[observed] Both VPA and HPA manage the overlapping resource(s) %s; this can cause conflicting scaling decisions and instability.", strings.Join(conflictResources, ", ")))
-	lines = append(lines, "[observed] Consider setting the VPA updateMode to \"Off\" so it only provides recommendations without applying pod overrides, or remove the overlapping resource metric from one of the autoscalers.")
+	lines = append(lines, fmt.Sprintf(confidence.BadgeObserved+" VPA %q targets the same resource %s/%s as this HPA.", v.Name, v.TargetKind, v.TargetName))
+	lines = append(lines, fmt.Sprintf(confidence.BadgeObserved+" Both VPA and HPA manage the overlapping resource(s) %s; this can cause conflicting scaling decisions and instability.", strings.Join(conflictResources, ", ")))
+	lines = append(lines, confidence.BadgeObserved+" Consider setting the VPA updateMode to \"Off\" so it only provides recommendations without applying pod overrides, or remove the overlapping resource metric from one of the autoscalers.")
 
 	switch {
 	case strings.EqualFold(v.UpdateMode, "Auto"):
-		lines = append(lines, fmt.Sprintf("[observed] VPA %q is in \"Auto\" mode, which can evict and resize pods — this directly conflicts with HPA replica-based scaling.", v.Name))
+		lines = append(lines, fmt.Sprintf(confidence.BadgeObserved+" VPA %q is in \"Auto\" mode, which can evict and resize pods — this directly conflicts with HPA replica-based scaling.", v.Name))
 	case !strings.EqualFold(v.UpdateMode, "Initial"):
 		mode := valueOrUnknown(v.UpdateMode)
-		lines = append(lines, fmt.Sprintf("[observed] VPA %q is in active update mode %q, which can resize pod requests — this directly conflicts with HPA replica-based scaling.", v.Name, mode))
+		lines = append(lines, fmt.Sprintf(confidence.BadgeObserved+" VPA %q is in active update mode %q, which can resize pod requests — this directly conflicts with HPA replica-based scaling.", v.Name, mode))
 	}
 	for _, rec := range v.Recommendations {
 		if !containsResource(conflictResources, rec.Resource) ||
 			!recommendationOverlapsHPA(hpa, v, rec) {
 			continue
 		}
-		lines = append(lines, fmt.Sprintf("[estimated] VPA %q recommends %s target=%s for container %q while HPA also scales on %s; compare requests, limits, and HPA target utilization before applying both controllers.", v.Name, rec.Resource, valueOrUnknown(rec.Target), rec.Container, rec.Resource))
+		lines = append(lines, fmt.Sprintf(confidence.BadgeEstimated+" VPA %q recommends %s target=%s for container %q while HPA also scales on %s; compare requests, limits, and HPA target utilization before applying both controllers.", v.Name, rec.Resource, valueOrUnknown(rec.Target), rec.Container, rec.Resource))
 	}
 
 	return lines

@@ -80,6 +80,22 @@ jobs:
           GOARCH: amd64
         run: go build ./...
 
+      - name: Compile darwin/arm64 release target
+        # Same rationale as the Windows compile gate: the release publishes
+        # darwin/arm64 (Apple Silicon), which no CI runner builds natively.
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          CGO_ENABLED: "0"
+          GOOS: darwin
+          GOARCH: arm64
+        run: go build ./...
+
+      - name: Vet
+        # Explicit vet step so vet failures surface as their own error instead
+        # of appearing as lint noise inside golangci-lint. Mirrors `make vet`.
+        if: matrix.os == 'ubuntu-latest'
+        run: go vet ./...
+
       - name: Test
         run: go test -v ./...
 
@@ -250,6 +266,7 @@ jobs:
           - "1.28"
           - "1.30"
           - "1.35"
+          - "1.36"
         include:
           - kubernetes: "1.26"
             kind-node-image: kindest/node:v1.26.15
@@ -259,10 +276,10 @@ jobs:
             kind-node-image: kindest/node:v1.30.13
           - kubernetes: "1.35"
             kind-node-image: kindest/node:v1.35.0
-          # NOTE: Kubernetes 1.36 is intentionally omitted. As of 2026-06-16
-          # kindest/node:v1.36.0 has not been published to Docker Hub yet
-          # (kind's node images lag the upstream release). Re-add the 1.36
-          # matrix entry once the image is available.
+          # kindest/node v1.36 images shipped mid-2026 (v1.36.1 is the
+          # current kind default); the earlier v1.36.0-only gap is resolved.
+          - kubernetes: "1.36"
+            kind-node-image: kindest/node:v1.36.1
     steps:
       - name: Checkout
         uses: actions/checkout@v7

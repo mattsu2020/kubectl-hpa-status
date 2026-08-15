@@ -401,13 +401,24 @@ func computeReplayImpact(current, proposed replaylab.Summary) *replaylab.Impact 
 	return impact
 }
 
+// Flapping-score thresholds for the replay lab. Direction flips are weighted
+// heavier than raw scale events because a flip proves oscillation while events
+// may be legitimate load tracking.
+const (
+	flappingHighDirectionFlips = 6
+	flappingHighScaleEvents    = 15
+	flappingMedDirectionFlips  = 3
+	flappingMedScaleEvents     = 8
+	flappingLowScaleEvents     = 4
+)
+
 func replayFlappingScore(scaleEvents, directionFlips int) string {
 	switch {
-	case directionFlips >= 6 || scaleEvents >= 15:
+	case directionFlips >= flappingHighDirectionFlips || scaleEvents >= flappingHighScaleEvents:
 		return "high"
-	case directionFlips >= 3 || scaleEvents >= 8:
+	case directionFlips >= flappingMedDirectionFlips || scaleEvents >= flappingMedScaleEvents:
 		return "medium"
-	case directionFlips > 0 || scaleEvents >= 4:
+	case directionFlips > 0 || scaleEvents >= flappingLowScaleEvents:
 		return "low"
 	default:
 		return "none"

@@ -35,42 +35,31 @@ func newRolloutCommand(opts *options) *cobra.Command {
 }
 
 func runRollout(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	local := applyCommandPreset(opts, presetRollout)
+	return runPerHPACommand(ctx, out, opts, names, presetRollout,
+		func(ctx context.Context, local *options, client *kube.Client, name string) (rolloutOutput, error) {
+			hpa, err := fetchHPA(ctx, client, name)
+			if err != nil {
+				return rolloutOutput{}, err
+			}
+			report, err := buildStatusReportFromHPA(ctx, local, client, hpa, false, nil)
+			if err != nil {
+				return rolloutOutput{}, err
+			}
 
-	// Build the client once rather than per name: the per-name work below runs
-	// concurrently, so buildStatusReportWithClient would otherwise re-read and
-	// re-parse the kubeconfig once per HPA, in parallel.
-	client, err := newClientOrDefault(&local)
-	if err != nil {
-		return writeErrorIfStructured(out, local.Output, err)
-	}
-
-	outputs, err := collectPerHPA(ctx, &local, names, func(ctx context.Context, name string) (rolloutOutput, error) {
-		hpa, err := fetchHPA(ctx, client, name)
-		if err != nil {
-			return rolloutOutput{}, err
-		}
-		report, err := buildStatusReportFromHPA(ctx, &local, client, hpa, false, nil)
-		if err != nil {
-			return rolloutOutput{}, err
-		}
-
-		return rolloutOutput{
-			Namespace: report.Analysis.Namespace,
-			Name:      report.Analysis.Name,
-			Target:    report.Analysis.Target,
-			Report:    buildRolloutReport(ctx, client, hpa, &report.Analysis),
-		}, nil
-	})
-	if err != nil {
-		return writeErrorIfStructured(out, local.Output, err)
-	}
-
-	return renderPerHPA(out, &local, outputs, func(out io.Writer, o rolloutOutput) error {
-		theme := themeFor(local.Color, out)
-		return hpaanalysis.WriteRolloutReportText(out, o.Report, theme)
-	})
-
+			return rolloutOutput{
+				Namespace: report.Analysis.Namespace,
+				Name:      report.Analysis.Name,
+				Target:    report.Analysis.Target,
+				Report:    buildRolloutReport(ctx, client, hpa, &report.Analysis),
+			}, nil
+		},
+		func(out io.Writer, local *options, o rolloutOutput) error {
+			theme := themeFor(local.Color, out)
+			if err := hpaanalysis.WriteRolloutReportText(out, o.Report, theme); err != nil {
+				return fmt.Errorf("write rollout report for %s/%s: %w", o.Namespace, o.Name, err)
+			}
+			return nil
+		})
 }
 
 // buildRolloutReport assembles RolloutInput and runs the rollout analysis.

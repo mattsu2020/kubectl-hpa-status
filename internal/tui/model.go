@@ -41,25 +41,33 @@ type Model struct {
 	opts      Options
 	ctx       context.Context
 
-	items             []hpaanalysis.ListItem
-	reports           map[string]*hpaanalysis.StatusReport
-	cursor            int
-	viewMode          viewMode
-	paused            bool
-	filter            string
-	filterInput       textinput.Model
-	filtering         bool
-	interval          time.Duration
-	lastRefresh       time.Time
-	err               error
-	width             int
-	height            int
-	loading           bool
-	fetchRequestID    uint64
-	sortField         string
-	sortDescending    bool
-	selected          map[string]bool
-	initialFocused    bool
+	items          []hpaanalysis.ListItem
+	reports        map[string]*hpaanalysis.StatusReport
+	cursor         int
+	viewMode       viewMode
+	paused         bool
+	filter         string
+	filterInput    textinput.Model
+	filtering      bool
+	interval       time.Duration
+	lastRefresh    time.Time
+	err            error
+	width          int
+	height         int
+	loading        bool
+	fetchRequestID uint64
+	// fixEpoch invalidates fix-wizard apply/dry-run results across state
+	// boundaries: it is bumped whenever the suggestion set can change (a
+	// refresh or re-entering the fix wizard), and in-flight results carrying
+	// an older epoch are dropped instead of mutating the new state.
+	fixEpoch       int
+	sortField      string
+	sortDescending bool
+	selected       map[string]bool
+	initialFocused bool
+	// statusMessage is a transient one-line notice (e.g. the batch-apply
+	// outcome) shown in the status bar until the next refresh clears it.
+	statusMessage     string
 	batchApplyConfirm bool
 	batchApplyPreview []string
 

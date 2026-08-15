@@ -6,6 +6,8 @@ import (
 	"slices"
 	"sort"
 	"time"
+
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/confidence"
 )
 
 // dayProfile holds the per-bucket peak desiredReplicas for one local day.
@@ -37,7 +39,7 @@ func Analyze(obs []Observation, opts Options) *Analysis {
 	if len(obs) == 0 {
 		result.InsufficientData = true
 		result.Notes = append(result.Notes,
-			"[observed] no recorded observations; capture history with `record` before analyzing seasonality.")
+			confidence.BadgeObserved+" no recorded observations; capture history with `record` before analyzing seasonality.")
 		return result
 	}
 
@@ -48,9 +50,9 @@ func Analyze(obs []Observation, opts Options) *Analysis {
 	if len(days) < o.MinDays {
 		result.InsufficientData = true
 		result.Notes = append(result.Notes,
-			fmt.Sprintf("[observed] only %d distinct day(s) across %.1fh of recording; daily periodicity needs at least %d days.",
+			fmt.Sprintf(confidence.BadgeObserved+" only %d distinct day(s) across %.1fh of recording; daily periodicity needs at least %d days.",
 				len(days), result.SpanHours, o.MinDays),
-			fmt.Sprintf("[estimated] record for at least %d days (for example `record --duration 48h --interval 1m --output-file hpa.jsonl`) before re-running this detector.",
+			fmt.Sprintf(confidence.BadgeEstimated+" record for at least %d days (for example `record --duration 48h --interval 1m --output-file hpa.jsonl`) before re-running this detector.",
 				o.MinDays))
 		return result
 	}
@@ -62,7 +64,7 @@ func Analyze(obs []Observation, opts Options) *Analysis {
 	start, length, ok := findPeakRun(profile, covered, result.Threshold)
 	if !ok {
 		result.Notes = append(result.Notes,
-			fmt.Sprintf("[observed] desiredReplicas stayed near the daily baseline of %.1f across %d days; no recurring ramp to pre-scale for.",
+			fmt.Sprintf(confidence.BadgeObserved+" desiredReplicas stayed near the daily baseline of %.1f across %d days; no recurring ramp to pre-scale for.",
 				result.Baseline, len(days)))
 		return result
 	}
@@ -79,9 +81,9 @@ func Analyze(obs []Observation, opts Options) *Analysis {
 	if peak.DaysMatched < minMatchedDays || result.Confidence < minConsistency {
 		result.Peak = nil
 		result.Notes = append(result.Notes,
-			fmt.Sprintf("[observed] a peak near %s-%s appeared on %d of %d day(s), below the %.0f%% consistency needed to call it recurring.",
+			fmt.Sprintf(confidence.BadgeObserved+" a peak near %s-%s appeared on %d of %d day(s), below the %.0f%% consistency needed to call it recurring.",
 				peak.Start, peak.End, peak.DaysMatched, peak.DaysCovered, minConsistency*100),
-			"[estimated] this looks like a one-off event rather than a schedule; record for longer if you expect it to repeat.")
+			confidence.BadgeEstimated+" this looks like a one-off event rather than a schedule; record for longer if you expect it to repeat.")
 		return result
 	}
 
@@ -381,11 +383,11 @@ func weekdayNames(days []time.Weekday) []string {
 // convention shared with the other analysis domains.
 func detectionNotes(result *Analysis, peak *peakInternals, totalDays int) []string {
 	return []string{
-		fmt.Sprintf("[observed] desiredReplicas rises from a baseline of %.1f to %d between %s and %s on %d of %d recorded day(s).",
+		fmt.Sprintf(confidence.BadgeObserved+" desiredReplicas rises from a baseline of %.1f to %d between %s and %s on %d of %d recorded day(s).",
 			result.Baseline, peak.PeakDesired, peak.Start, peak.End, peak.DaysMatched, peak.DaysCovered),
-		fmt.Sprintf("[observed] the recording spans %.1fh across %d day(s) in %s.",
+		fmt.Sprintf(confidence.BadgeObserved+" the recording spans %.1fh across %d day(s) in %s.",
 			result.SpanHours, totalDays, result.Timezone),
-		fmt.Sprintf("[estimated] the HPA can only react after the ramp begins, so each cycle pays a scale-up delay from %.0f to %d replicas; pre-scaling removes it.",
+		fmt.Sprintf(confidence.BadgeEstimated+" the HPA can only react after the ramp begins, so each cycle pays a scale-up delay from %.0f to %d replicas; pre-scaling removes it.",
 			result.Baseline, peak.OnsetDesired),
 	}
 }

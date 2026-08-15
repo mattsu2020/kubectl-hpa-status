@@ -48,10 +48,10 @@ func (m Model) renderBatchAuditView() string {
 
 	// Table header
 	sb.WriteString(dimStyle.Render(
-		padRight("NAMESPACE", 12) + "  " +
-			padRight("NAME", 24) + "  " +
-			padRight("SCORE", 6) + "  " +
-			padRight("FINDINGS", 8) + "  " +
+		fitWidth("NAMESPACE", 12) + "  " +
+			fitWidth("NAME", 24) + "  " +
+			fitWidth("SCORE", 6) + "  " +
+			fitWidth("FINDINGS", 8) + "  " +
 			"SUMMARY",
 	))
 	sb.WriteString("\n")
@@ -64,8 +64,8 @@ func (m Model) renderBatchAuditView() string {
 		e := entries[i]
 		ns := truncate(e.Namespace, 12)
 		name := truncate(e.Name, 24)
-		score := padRight(fmt.Sprintf("%d", e.Score), 6)
-		findings := padRight(fmt.Sprintf("%d", e.Findings), 8)
+		score := fitWidth(fmt.Sprintf("%d", e.Score), 6)
+		findings := fitWidth(fmt.Sprintf("%d", e.Findings), 8)
 		summary := truncate(e.Summary, 40)
 
 		scoreSty := okStyle
@@ -76,8 +76,8 @@ func (m Model) renderBatchAuditView() string {
 			scoreSty = errorStyle
 		}
 
-		row := padRight(ns, 12) + "  " +
-			padRight(name, 24) + "  " +
+		row := fitWidth(ns, 12) + "  " +
+			fitWidth(name, 24) + "  " +
 			scoreSty.Render(score) + "  " +
 			dimStyle.Render(findings) + "  " +
 			summary

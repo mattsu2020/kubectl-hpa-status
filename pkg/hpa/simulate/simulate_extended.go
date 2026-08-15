@@ -7,10 +7,10 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
-// SimulateExtended wraps the existing simulation with time-series projection
+// Extended wraps the existing simulation with time-series projection
 // and extended risk assessment. It does not mutate the original HPA.
-func SimulateExtended(hpa *autoscalingv2.HorizontalPodAutoscaler, overrides map[string]string, weights HealthWeights, extOpts SimulationExtendedOptions) (*SimulationResult, error) {
-	return SimulateScenario(hpa, overrides, nil, weights, extOpts)
+func Extended(hpa *autoscalingv2.HorizontalPodAutoscaler, overrides map[string]string, weights HealthWeights, extOpts SimulationExtendedOptions) (*SimulationResult, error) {
+	return Scenario(hpa, overrides, nil, weights, extOpts)
 }
 
 // assessExtendedRisk generates risk warnings based on the simulation parameters

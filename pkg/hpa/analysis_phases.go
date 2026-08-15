@@ -3,6 +3,8 @@ package hpa
 import (
 	"fmt"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/confidence"
+
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/churn"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/tolerance"
 
@@ -167,7 +169,7 @@ func correlateStabilizationChurn(a Analysis) Analysis {
 	if a.ChurnAnalysis.Level != churn.ChurnHigh && a.ChurnAnalysis.Level != churn.ChurnCritical {
 		return a
 	}
-	line := "[estimated] Churn detected while stabilization window is active — consider increasing scaleDown.stabilizationWindowSeconds to reduce thrashing."
+	line := confidence.BadgeEstimated + " Churn detected while stabilization window is active — consider increasing scaleDown.stabilizationWindowSeconds to reduce thrashing."
 	for _, existing := range a.Interpretation {
 		if existing == line {
 			return a

@@ -67,7 +67,7 @@ func (m Model) renderParamSimFields() string {
 		sb.WriteString(fmt.Sprintf("%s %-42s [%s] (current: %s)\n",
 			marker,
 			field.Label,
-			padRight(valueStr, 10),
+			fitWidth(valueStr, 10),
 			field.Original,
 		))
 	}

@@ -10,7 +10,7 @@ permissions:
   # id-token: write is required for cosign keyless signing (OIDC) and for the
   # SLSA provenance generator to attest the build.
   id-token: write
-  # attestions: write lets the SLSA generator attach provenance to the release.
+  # attestations: write lets the SLSA generator attach provenance to the release.
   attestations: write
 
 jobs:

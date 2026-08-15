@@ -11,6 +11,7 @@ import (
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/audit"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/retrospective"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/simulate"
 )
 
 // pressTUIKey feeds a single key press through Update and returns the new model.
@@ -53,7 +54,7 @@ func detailModel(opts Options) Model {
 func TestUpdate_SimResultMsg(t *testing.T) {
 	m := detailModel(Options{})
 	m.simState = &simState{}
-	result := &hpaanalysis.SimulationResult{Parameter: "maxReplicas"}
+	result := &simulate.SimulationResult{Parameter: "maxReplicas"}
 	updated, _ := m.Update(simResultMsg{result: result, err: errors.New("boom")})
 	m2 := updated.(Model)
 	if m2.simState.result != result || m2.simState.err == nil {
@@ -590,7 +591,7 @@ func TestView_SimView(t *testing.T) {
 	}
 
 	// Result rendering.
-	m3.simState.result = &hpaanalysis.SimulationResult{
+	m3.simState.result = &simulate.SimulationResult{
 		Parameter:      "maxReplicas",
 		OriginalValue:  "5",
 		SimulatedValue: "10",

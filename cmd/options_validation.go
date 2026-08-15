@@ -19,7 +19,7 @@ func applyStatusDepthDefaults(cmd *cobra.Command, opts *options) {
 		opts.EventsConfigured = true
 	}
 	if cmd.Name() == "status" && opts.Explain && !opts.EventsConfigured {
-		opts.Events = EventOption{Enabled: true, Limit: 5}
+		opts.Events = EventOption{Enabled: true, Limit: explainEventLimit}
 	}
 }
 

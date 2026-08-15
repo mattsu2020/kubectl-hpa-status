@@ -19,7 +19,7 @@ func parseMetricQuantity(value, metricType string) (resource.Quantity, error) {
 	return q, nil
 }
 
-// applyResourceMetricOverride preserves the value field selected by the
+// ApplyResourceMetricOverride preserves the value field selected by the
 // metric target so ratio projection remains aligned with the spec.
 func ApplyResourceMetricOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, spec autoscalingv2.MetricSpec, idx int, value string) error {
 	resName := spec.Resource.Name

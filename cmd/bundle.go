@@ -164,7 +164,7 @@ func collectBundleData(ctx context.Context, client *kube.Client, opts *options, 
 
 	// 7. Events with wider scope (HPA + scale target + pods).
 	objectNames := bundleEventObjectNames(hpa, data.PodInfos)
-	events := kube.FetchRecentEventsForObjects(ctx, client.Interface, hpa.Namespace, objectNames, 30)
+	events := kube.FetchRecentEventsForObjects(ctx, client.Interface, hpa.Namespace, objectNames, bundleEventLimit)
 	data.Events = formatBundleEvents(events)
 
 	// 8. Metrics API status (reuse snapshot helper).
@@ -229,11 +229,7 @@ func collectBundleCapacityContext(ctx context.Context, client *kube.Client, hpa 
 // bundleEventObjectNames collects object names for event fetching:
 // HPA itself, the scale target, and all pods of the scale target.
 func bundleEventObjectNames(hpa *autoscalingv2.HorizontalPodAutoscaler, pods []kube.PodInfo) []string {
-	names := []string{hpa.Name, hpa.Spec.ScaleTargetRef.Name}
-	for _, pod := range pods {
-		names = append(names, pod.Name)
-	}
-	return names
+	return blockerEventObjectNames(hpa, pods)
 }
 
 // formatBundleEvents formats events as a markdown-compatible text block.

@@ -1,3 +1,6 @@
+// Package capacityplan analyzes whether raising an HPA maxReplicas is safe
+// given observable cluster capacity: node headroom, resource quotas, limit
+// ranges, PDBs, and pending pods.
 package capacityplan
 
 import (
@@ -16,7 +19,7 @@ import (
 // safe to raise HPA maxReplicas. It runs 7 checks against namespace quotas,
 // LimitRanges, node capacity, pending pods, PDBs, and Cluster Autoscaler
 // presence.
-func AnalyzeCapacityPlan(input CapacityPlanInput) *CapacityPlan {
+func AnalyzeCapacityPlan(input Input) *CapacityPlan {
 	input.ObservationErrors = append([]CapacityObservationError(nil), input.ObservationErrors...)
 	input.ObservationErrors = append(input.ObservationErrors, validateCapacityQuantityInputs(input)...)
 	input.ObservationErrors = append(input.ObservationErrors, unsupportedLimitRangeObservations(input.LimitRanges, input.ContainerResources)...)
@@ -43,7 +46,7 @@ func AnalyzeCapacityPlan(input CapacityPlanInput) *CapacityPlan {
 
 // resolveTargetMax determines the target maxReplicas for the plan, returning
 // plan-input observation errors when the target cannot be used.
-func resolveTargetMax(input CapacityPlanInput) (int32, []CapacityObservationError) {
+func resolveTargetMax(input Input) (int32, []CapacityObservationError) {
 	targetMax := input.TargetMaxReplicas
 	switch {
 	case targetMax == 0:
@@ -98,7 +101,7 @@ type capacityDemand struct {
 // computeCapacityDemand derives per-pod and total resource demand for the
 // additional pods, leaving requests unknown when the observation inputs
 // themselves were unusable.
-func computeCapacityDemand(input CapacityPlanInput, additionalPods int32, resourceInputsUnknown bool) capacityDemand {
+func computeCapacityDemand(input Input, additionalPods int32, resourceInputsUnknown bool) capacityDemand {
 	var perPodCPU, perPodMemory resource.Quantity
 	if !resourceInputsUnknown {
 		perPodCPU, perPodMemory = effectivePerPodResources(input)
@@ -118,7 +121,7 @@ func computeCapacityDemand(input CapacityPlanInput, additionalPods int32, resour
 
 // newCapacityPlan builds the plan skeleton shared by every check before the
 // checks and derived fields are populated.
-func newCapacityPlan(input CapacityPlanInput, targetMax, additionalPods int32, demand capacityDemand) *CapacityPlan {
+func newCapacityPlan(input Input, targetMax, additionalPods int32, demand capacityDemand) *CapacityPlan {
 	issue := "HPA is not at maxReplicas"
 	if input.CurrentReplicas >= input.MaxReplicas {
 		issue = "HPA is capped at maxReplicas"
@@ -139,7 +142,7 @@ func newCapacityPlan(input CapacityPlanInput, targetMax, additionalPods int32, d
 
 // finalizeCapacityPlan fills the derived fields that depend on check results
 // and on which observation domains came back unknown.
-func finalizeCapacityPlan(plan *CapacityPlan, input CapacityPlanInput, demand capacityDemand, resourceInputsUnknown bool) {
+func finalizeCapacityPlan(plan *CapacityPlan, input Input, demand capacityDemand, resourceInputsUnknown bool) {
 	// Estimate schedulable now from remaining node capacity.
 	nodeCapacityUnknown := hasObservationDomain(input.ObservationErrors, CapacityObservationNodeCapacity)
 	if !resourceInputsUnknown && !nodeCapacityUnknown {

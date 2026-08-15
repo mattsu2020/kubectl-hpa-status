@@ -6,7 +6,7 @@ import "fmt"
 // Recommendation builder
 // ---------------------------------------------------------------------------
 
-func buildRecommendation(plan *CapacityPlan, input CapacityPlanInput) (bool, string, []string) {
+func buildRecommendation(plan *CapacityPlan, input Input) (bool, string, []string) {
 	failedChecks := 0
 	unknownChecks := 0
 	for _, c := range plan.Checks {

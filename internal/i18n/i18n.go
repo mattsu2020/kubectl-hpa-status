@@ -1,10 +1,10 @@
-// Package i18n provides internationalization support using embedded locale files.
 // Package i18n provides internationalization support for kubectl-hpa-status
 // using embedded locale files.
 package i18n
 
 import (
 	"embed"
+	"log"
 	"path"
 	"strings"
 	"sync"
@@ -50,7 +50,9 @@ func loadAllBundles() map[string]map[string]string {
 
 	entries, err := localeFS.ReadDir("locales")
 	if err != nil {
-		// Ensure the fallback bundle exists even on read failure.
+		// Ensure the fallback bundle exists even on read failure. This cannot
+		// happen with a valid embed directive, but stay defensive.
+		log.Printf("i18n: reading embedded locales directory: %v", err)
 		result["en"] = map[string]string{}
 		return result
 	}
@@ -72,19 +74,26 @@ func loadAllBundles() map[string]map[string]string {
 
 	// Guarantee the fallback bundle is present.
 	if _, ok := result["en"]; !ok {
+		log.Printf("i18n: no en.yaml locale found; all messages will fall back to their keys")
 		result["en"] = map[string]string{}
 	}
 	return result
 }
 
+// loadYAML parses one locale file. A corrupt file degrades to an empty bundle
+// (keys fall back to themselves) but emits a diagnostic on stderr so the
+// breakage is visible instead of silently stripping every translation.
+// Non-string values are reported and skipped rather than dropped quietly.
 func loadYAML(locPath string) map[string]string {
 	data, err := localeFS.ReadFile(locPath)
 	if err != nil {
+		log.Printf("i18n: reading locale %s: %v", locPath, err)
 		return map[string]string{}
 	}
 
 	var raw map[string]any
 	if err := yaml.Unmarshal(data, &raw); err != nil {
+		log.Printf("i18n: parsing locale %s: %v (all %s messages will fall back to their keys)", locPath, err, strings.TrimSuffix(path.Base(locPath), ".yaml"))
 		return map[string]string{}
 	}
 
@@ -92,7 +101,9 @@ func loadYAML(locPath string) map[string]string {
 	for k, v := range raw {
 		if s, ok := v.(string); ok {
 			result[k] = strings.TrimSpace(s)
+			continue
 		}
+		log.Printf("i18n: locale %s: key %q has non-string value %T; skipping", locPath, k, v)
 	}
 	return result
 }

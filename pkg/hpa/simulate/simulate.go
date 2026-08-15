@@ -1,3 +1,6 @@
+// Package simulate projects HPA behavior under hypothetical spec or metric
+// overrides without touching the cluster, using the public HPA scaling
+// algorithm rather than controller-internal state.
 package simulate
 
 import (
@@ -23,19 +26,19 @@ var (
 	ErrUnsupportedSimulationSemantics = errors.New("simulation requires unavailable controller history")
 )
 
-// SimulateHPA creates a deep copy of the HPA, applies the given overrides, and
+// HPA creates a deep copy of the HPA, applies the given overrides, and
 // compares the analysis of the modified HPA against the original. Returns a
 // SimulationResult describing the before/after state, or an error if the
 // overrides are invalid.
-func SimulateHPA(hpa *autoscalingv2.HorizontalPodAutoscaler, overrides map[string]string, weights HealthWeights) (*SimulationResult, error) {
-	return SimulateScenario(hpa, overrides, nil, weights, SimulationExtendedOptions{})
+func HPA(hpa *autoscalingv2.HorizontalPodAutoscaler, overrides map[string]string, weights HealthWeights) (*SimulationResult, error) {
+	return Scenario(hpa, overrides, nil, weights, SimulationExtendedOptions{})
 }
 
-// SimulateScenario evaluates spec and current-metric overrides together. The
+// Scenario evaluates spec and current-metric overrides together. The
 // projected desired replica count is recomputed from all visible metrics using
 // the maximum per-metric recommendation, directional tolerance, and min/max
 // bounds. The original HPA is never mutated.
-func SimulateScenario(hpa *autoscalingv2.HorizontalPodAutoscaler, overrides, metricOverrides map[string]string, weights HealthWeights, extOpts SimulationExtendedOptions) (*SimulationResult, error) {
+func Scenario(hpa *autoscalingv2.HorizontalPodAutoscaler, overrides, metricOverrides map[string]string, weights HealthWeights, extOpts SimulationExtendedOptions) (*SimulationResult, error) {
 	if hpa == nil {
 		return nil, ErrNilHPA
 	}

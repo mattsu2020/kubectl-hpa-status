@@ -7,11 +7,11 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
-// SimulateMetricChange simulates metric value changes and returns a
+// MetricChange simulates metric value changes and returns a
 // SimulationResult with projected replica counts and impact analysis.
 // The original HPA is not mutated; a deep copy is used internally.
-func SimulateMetricChange(hpa *autoscalingv2.HorizontalPodAutoscaler, metricOverrides map[string]string, weights HealthWeights) (*SimulationResult, error) {
-	return SimulateScenario(hpa, nil, metricOverrides, weights, SimulationExtendedOptions{})
+func MetricChange(hpa *autoscalingv2.HorizontalPodAutoscaler, metricOverrides map[string]string, weights HealthWeights) (*SimulationResult, error) {
+	return Scenario(hpa, nil, metricOverrides, weights, SimulationExtendedOptions{})
 }
 
 // applyMetricOverride modifies the current metric value on the deep-copied HPA.

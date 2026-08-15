@@ -33,7 +33,7 @@ func detectStabilizationSource(hpa *autoscalingv2.HorizontalPodAutoscaler) strin
 	condition := FindCondition(hpa, ConditionAbleToScale)
 
 	// ScaleDownStabilized reason explicitly indicates scaleDown.
-	if condition != nil && condition.Reason == "ScaleDownStabilized" {
+	if condition != nil && condition.Reason == ReasonScaleDownStabilized {
 		return StabilizationSourceScaleDown
 	}
 

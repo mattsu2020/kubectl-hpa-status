@@ -6,6 +6,9 @@ import (
 	"io"
 
 	"golang.org/x/sync/errgroup"
+
+	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 )
 
 // perHPAResult is the outcome of one name's work in a multi-HPA command. It
@@ -15,6 +18,40 @@ type perHPAResult[T any] struct {
 	name  string
 	value T
 	err   error
+}
+
+// runPerHPACommand is the shared pipeline for dedicated multi-HPA commands:
+// it isolates execution from the shared root options (via preset when given,
+// otherwise a plain copy), builds one client for the whole run, collects one
+// output per name concurrently, and renders through the common one-vs-many
+// envelope. Commands with a different rendering contract (assumptions,
+// ownership, status) keep their own wiring on top of collectPerHPA.
+func runPerHPACommand[T any](ctx context.Context, out io.Writer, opts *options, names []string,
+	preset cmdoptions.CommandPreset,
+	buildOne func(ctx context.Context, local *options, client *kube.Client, name string) (T, error),
+	writeOne func(out io.Writer, local *options, o T) error) error {
+
+	var local options
+	if preset != "" {
+		local = applyCommandPreset(opts, preset)
+	} else {
+		local = copyOptions(opts)
+	}
+	client, err := newClientOrDefault(&local)
+	if err != nil {
+		return writeErrorIfStructured(out, local.Output, err)
+	}
+
+	outputs, err := collectPerHPA(ctx, &local, names, func(ctx context.Context, name string) (T, error) {
+		return buildOne(ctx, &local, client, name)
+	})
+	if err != nil {
+		return writeErrorIfStructured(out, local.Output, err)
+	}
+
+	return renderPerHPA(out, &local, outputs, func(out io.Writer, o T) error {
+		return writeOne(out, &local, o)
+	})
 }
 
 // renderPerHPA centralizes the one-vs-many structured envelope and text

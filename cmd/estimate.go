@@ -66,18 +66,35 @@ func runEstimate(ctx context.Context, out io.Writer, opts *options, name string,
 		AvailabilityNote:        "Higher maxReplicas can reduce capacity risk only if quota, node capacity, and metric availability are healthy; run preflight before applying.",
 	}
 	return renderWithOutput(out, opts, result, func(out io.Writer) error {
-		_, _ = fmt.Fprintln(out, "Estimate:")
-		_, _ = fmt.Fprintf(out, "- Current maxReplicas: %d\n", result.CurrentMaxReplicas)
-		_, _ = fmt.Fprintf(out, "- Proposed maxReplicas: %d\n", result.ProposedMaxReplicas)
-		_, _ = fmt.Fprintf(out, "- Additional worst-case pods: %d\n", result.AdditionalWorstCasePods)
+		w := func(format string, args ...any) error {
+			if _, err := fmt.Fprintf(out, format, args...); err != nil {
+				return fmt.Errorf("write estimate report for %s/%s: %w", hpa.Namespace, hpa.Name, err)
+			}
+			return nil
+		}
+		if err := w("Estimate:\n"); err != nil {
+			return err
+		}
+		if err := w("- Current maxReplicas: %d\n", result.CurrentMaxReplicas); err != nil {
+			return err
+		}
+		if err := w("- Proposed maxReplicas: %d\n", result.ProposedMaxReplicas); err != nil {
+			return err
+		}
+		if err := w("- Additional worst-case pods: %d\n", result.AdditionalWorstCasePods); err != nil {
+			return err
+		}
 		if podCost > 0 {
-			_, _ = fmt.Fprintf(out, "- Approx additional cost: $%.2f/hour\n", result.AdditionalCostPerHour)
+			if err := w("- Approx additional cost: $%.2f/hour\n", result.AdditionalCostPerHour); err != nil {
+				return err
+			}
 		}
 		if carbonKg > 0 {
-			_, _ = fmt.Fprintf(out, "- Approx additional carbon: %.4f kgCO2e/hour\n", result.AdditionalCarbonKgHour)
+			if err := w("- Approx additional carbon: %.4f kgCO2e/hour\n", result.AdditionalCarbonKgHour); err != nil {
+				return err
+			}
 		}
-		_, _ = fmt.Fprintf(out, "\n%s\n", result.AvailabilityNote)
-		return nil
+		return w("\n%s\n", result.AvailabilityNote)
 	})
 
 }

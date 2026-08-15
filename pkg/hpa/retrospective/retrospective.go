@@ -169,7 +169,7 @@ func classifyEvent(event eventutil.Event, prevDesired *int32, hpa *autoscalingv2
 			Confidence: "medium",
 		}
 
-	case "ScaleDownStabilized":
+	case conditions.ReasonScaleDownStabilized:
 		return &Entry{
 			Timestamp:  event.Timestamp,
 			Category:   "stabilized",

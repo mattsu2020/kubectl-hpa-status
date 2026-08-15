@@ -95,8 +95,8 @@ func (m Model) keyHandlers() []keyBindingHandler {
 		{m.keys.Replay, func(m Model) (tea.Model, tea.Cmd) { return m.handleReplayKey() }},
 		{m.keys.BatchAudit, func(m Model) (tea.Model, tea.Cmd) { return m.handleBatchAuditKey() }},
 		{m.keys.BatchApply, func(m Model) (tea.Model, tea.Cmd) { return m.handleBatchApplyKey() }},
-		{m.keys.IntervalUp, func(m Model) (tea.Model, tea.Cmd) { return m.handleIntervalKey(-1), nil }},
-		{m.keys.IntervalDown, func(m Model) (tea.Model, tea.Cmd) { return m.handleIntervalKey(+1), nil }},
+		{m.keys.IntervalFaster, func(m Model) (tea.Model, tea.Cmd) { return m.handleIntervalKey(-1), nil }},
+		{m.keys.IntervalSlower, func(m Model) (tea.Model, tea.Cmd) { return m.handleIntervalKey(+1), nil }},
 	}
 }
 
@@ -248,9 +248,10 @@ func (m Model) handleDryRunKey() (tea.Model, tea.Cmd) {
 	item := filtered[m.cursor]
 	dryRunFn := m.opts.DryRunFn
 	m.fixState.dryRunResult = "validating with Kubernetes API..."
+	epoch := m.fixEpoch
 	return m, func() tea.Msg {
 		err := dryRunFn(m.ctx, item.Namespace, item.Name, []hpaanalysis.Suggestion{suggestion})
-		return dryRunResultMsg{title: suggestion.Title, err: err}
+		return dryRunResultMsg{epoch: epoch, title: suggestion.Title, err: err}
 	}
 }
 

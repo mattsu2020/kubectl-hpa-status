@@ -24,6 +24,13 @@ const (
 	ConditionAbleToScale = conditions.AbleToScale
 )
 
+// HPA condition reason constants (re-exported from conditions package).
+const (
+	// ReasonScaleDownStabilized is the AbleToScale reason set while the
+	// scale-down stabilization window suppresses downscaling.
+	ReasonScaleDownStabilized = conditions.ReasonScaleDownStabilized
+)
+
 // Metric type display-name constants. These mirror the string forms of the
 // autoscalingv2 MetricSourceType values (Resource, ContainerResource, Pods,
 // Object, External) used in the formatted Metric.Type field and in rendering

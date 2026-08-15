@@ -37,48 +37,39 @@ func newCapacityPlanCommand(opts *options) *cobra.Command {
 }
 
 func runCapacityPlan(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	// The dedicated capacity path gathers only capacity observations. Avoid
-	// running the full status pipeline (and recording a health-history sample)
-	// before fetching the same HPA and workload a second time.
-	local := copyOptions(opts)
-	client, err := newClientOrDefault(&local)
-	if err != nil {
-		return writeErrorIfStructured(out, local.Output, err)
-	}
+	// No preset: the dedicated capacity path gathers only capacity observations
+	// and must not run the full status pipeline (or record a health-history
+	// sample) before fetching the same HPA and workload a second time.
+	return runPerHPACommand(ctx, out, opts, names, "",
+		func(ctx context.Context, local *options, client *kube.Client, name string) (capacityPlanOutput, error) {
+			hpa, err := fetchHPA(ctx, client, name)
+			if err != nil {
+				return capacityPlanOutput{}, err
+			}
+			analysis := hpaanalysis.AnalyzeWithOptions(hpa, false, analysisOptions(local.HealthWeights, local.Debug))
+			input := assembleCapacityPlanInputWithSnapshot(
+				ctx,
+				client,
+				hpa,
+				analysis,
+				local.TargetMax,
+				observation.New(client.Interface, hpa),
+			)
 
-	outputs, err := collectPerHPA(ctx, &local, names, func(ctx context.Context, name string) (capacityPlanOutput, error) {
-		hpa, err := fetchHPA(ctx, client, name)
-		if err != nil {
-			return capacityPlanOutput{}, err
-		}
-		analysis := hpaanalysis.AnalyzeWithOptions(hpa, false, analysisOptions(local.HealthWeights, local.Debug))
-		input := assembleCapacityPlanInputWithSnapshot(
-			ctx,
-			client,
-			hpa,
-			analysis,
-			local.TargetMax,
-			observation.New(client.Interface, hpa),
-		)
-
-		return capacityPlanOutput{
-			Namespace: analysis.Namespace,
-			Name:      analysis.Name,
-			Target:    analysis.Target,
-			Plan:      hpaanalysis.AnalyzeCapacityPlan(input),
-		}, nil
-	})
-	if err != nil {
-		return writeErrorIfStructured(out, local.Output, err)
-	}
-
-	return renderPerHPA(out, &local, outputs, func(out io.Writer, o capacityPlanOutput) error {
-		theme := themeFor(local.Color, out)
-		if err := hpaanalysis.WriteCapacityPlanText(out, o.Plan, theme); err != nil {
-			return fmt.Errorf("write capacity report for %s/%s: %w", o.Namespace, o.Name, err)
-		}
-		return nil
-	})
+			return capacityPlanOutput{
+				Namespace: analysis.Namespace,
+				Name:      analysis.Name,
+				Target:    analysis.Target,
+				Plan:      hpaanalysis.AnalyzeCapacityPlan(input),
+			}, nil
+		},
+		func(out io.Writer, local *options, o capacityPlanOutput) error {
+			theme := themeFor(local.Color, out)
+			if err := hpaanalysis.WriteCapacityPlanText(out, o.Plan, theme); err != nil {
+				return fmt.Errorf("write capacity report for %s/%s: %w", o.Namespace, o.Name, err)
+			}
+			return nil
+		})
 }
 
 func buildCapacityPlanForStatusWithSnapshot(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, target string, targetMax int32, snapshot *observation.Snapshot) *hpaanalysis.CapacityPlan {

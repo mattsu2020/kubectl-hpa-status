@@ -6,7 +6,7 @@ import (
 )
 
 type capacityCheckContext struct {
-	input          CapacityPlanInput
+	input          Input
 	demand         capacityDemand
 	additionalPods int32
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kubeconv"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/observation"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/simulate"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
@@ -193,9 +194,9 @@ func applySimulationOverrides(hpa *autoscalingv2.HorizontalPodAutoscaler, report
 		report.Analysis.Interpretation = append(report.Analysis.Interpretation,
 			fmt.Sprintf("simulation error: %v", simErr))
 	case cfg.DurationSeconds > 0:
-		sim, simErr := hpaanalysis.SimulateExtended(hpa, overrides,
-			cfg.HealthWeights,
-			hpaanalysis.SimulationExtendedOptions{
+		sim, simErr := simulate.Extended(hpa, overrides,
+			weightsForSimulate(cfg.HealthWeights),
+			simulate.SimulationExtendedOptions{
 				DurationSeconds: cfg.DurationSeconds,
 			})
 		if simErr != nil {
@@ -205,7 +206,7 @@ func applySimulationOverrides(hpa *autoscalingv2.HorizontalPodAutoscaler, report
 			report.Analysis.FlappingSimulation = sim
 		}
 	default:
-		sim, simErr := hpaanalysis.SimulateHPA(hpa, overrides, cfg.HealthWeights)
+		sim, simErr := simulate.HPA(hpa, overrides, weightsForSimulate(cfg.HealthWeights))
 		if simErr != nil {
 			report.Analysis.Interpretation = append(report.Analysis.Interpretation,
 				fmt.Sprintf("simulation error: %v", simErr))
@@ -220,7 +221,7 @@ func applyMetricSimulation(hpa *autoscalingv2.HorizontalPodAutoscaler, report *h
 	if metricErr != nil {
 		return fmt.Errorf("parsing --simulate-metric: %w", metricErr)
 	}
-	sim, simErr := hpaanalysis.SimulateMetricChange(hpa, metricOverrides, cfg.HealthWeights)
+	sim, simErr := simulate.MetricChange(hpa, metricOverrides, weightsForSimulate(cfg.HealthWeights))
 	if simErr != nil {
 		return fmt.Errorf("metric simulation: %w", simErr)
 	}

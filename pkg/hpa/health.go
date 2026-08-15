@@ -123,8 +123,8 @@ func applyConditionPenalties(acc *HealthAccumulator, conditions []autoscalingv2.
 			if health != HealthError {
 				health = HealthLimited
 			}
-		case condition.Type == ConditionAbleToScale && condition.Reason == "ScaleDownStabilized":
-			acc.AddPenalty("ScaleDownStabilized", w.scaleDownStabilized, HealthStabilized)
+		case condition.Type == ConditionAbleToScale && condition.Reason == ReasonScaleDownStabilized:
+			acc.AddPenalty(ReasonScaleDownStabilized, w.scaleDownStabilized, HealthStabilized)
 			if health == HealthOK {
 				health = HealthStabilized
 			}

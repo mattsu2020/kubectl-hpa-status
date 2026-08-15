@@ -6,6 +6,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/simulate"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -34,6 +35,7 @@ func (m Model) handleFixKey() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	m.fixEpoch++
 	m.fixState = &fixState{
 		suggestions: report.Analysis.Suggestions,
 		selected:    0,
@@ -127,10 +129,10 @@ func (m Model) runParamSimulation() tea.Cmd {
 	}
 
 	hpa := m.simState.hpa.DeepCopy()
-	weights := m.opts.HealthWeights
+	weights := simulateWeights(m.opts.HealthWeights)
 
 	return func() tea.Msg {
-		result, err := hpaanalysis.SimulateHPA(hpa, overrides, weights)
+		result, err := simulate.HPA(hpa, overrides, weights)
 		return simResultMsg{result: result, err: err}
 	}
 }
@@ -152,10 +154,10 @@ func (m Model) runMetricSimulation() tea.Cmd {
 	}
 
 	hpa := m.simState.hpa.DeepCopy()
-	weights := m.opts.HealthWeights
+	weights := simulateWeights(m.opts.HealthWeights)
 
 	return func() tea.Msg {
-		result, simErr := hpaanalysis.SimulateMetricChange(hpa, overrides, weights)
+		result, simErr := simulate.MetricChange(hpa, overrides, weights)
 		return simResultMsg{result: result, err: simErr}
 	}
 }
@@ -188,10 +190,11 @@ func (m Model) applyFix() tea.Cmd {
 	namespace := filtered[m.cursor].Namespace
 	name := filtered[m.cursor].Name
 	applyFn := m.opts.ApplyFn
+	epoch := m.fixEpoch
 
 	return func() tea.Msg {
 		err := applyFn(m.ctx, namespace, name, []hpaanalysis.Suggestion{suggestion})
-		return applyResultMsg{title: suggestion.Title, err: err}
+		return applyResultMsg{epoch: epoch, title: suggestion.Title, err: err}
 	}
 }
 
@@ -314,4 +317,10 @@ func trimSpaces(s string) string {
 		end--
 	}
 	return s[start:end]
+}
+
+// simulateWeights adapts the configured penalty weights to the simulate
+// package's representation.
+func simulateWeights(w hpaanalysis.HealthWeights) simulate.HealthWeights {
+	return simulate.HealthWeightsFrom(w.ScalingLimited, w.UnableToScale, w.ScaleDownStabilized)
 }

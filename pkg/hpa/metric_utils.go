@@ -3,8 +3,6 @@ package hpa
 import (
 	"fmt"
 	"sort"
-	"strconv"
-	"strings"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
@@ -65,14 +63,19 @@ func summarizeDirectionFromReplicas(current, desired, maxReplicas, minReplicas i
 // FindCondition is re-exported from pkg/hpa/internal/conditions; see
 // conditions.go for the canonical implementation.
 
-func calculateRatioAndNote(currentVal autoscalingv2.MetricValueStatus, targetVal autoscalingv2.MetricTarget, targetStr string) (*float64, string) {
+// calculateRatioAndNote derives the utilization/quantity ratio and the
+// human-readable comparison note from the numeric current value and target.
+// Both inputs come straight from the HPA status/spec — no formatted-string
+// round trips, so an unparseable display format can never silently drop a
+// ratio.
+func calculateRatioAndNote(currentVal autoscalingv2.MetricValueStatus, targetVal autoscalingv2.MetricTarget) (*float64, string) {
 	var ratio *float64
 	var note string
 
 	switch {
 	case currentVal.AverageUtilization != nil:
-		ratio = utilizationRatio(currentVal.AverageUtilization, targetStr)
-		note = CompareMetricToTarget(currentVal.AverageUtilization, targetStr)
+		ratio = utilizationRatio(currentVal.AverageUtilization, targetVal.AverageUtilization)
+		note = CompareMetricToTarget(currentVal.AverageUtilization, targetVal.AverageUtilization)
 	case currentVal.AverageValue != nil && targetVal.AverageValue != nil:
 		ratio = quantityRatio(currentVal.AverageValue, targetVal.AverageValue)
 		note = CompareQuantityToTarget(currentVal.AverageValue, targetVal.AverageValue)
@@ -83,25 +86,29 @@ func calculateRatioAndNote(currentVal autoscalingv2.MetricValueStatus, targetVal
 	return ratio, note
 }
 
-// CompareMetricToTarget returns a comparison description for utilization vs target.
-func CompareMetricToTarget(utilization *int32, target string) string {
-	if utilization == nil || !strings.HasSuffix(target, "%") {
-		return ""
-	}
-
-	targetUtilization, ok := parsePercent(target)
-	if !ok {
+// CompareMetricToTarget returns a comparison description for utilization vs
+// target. Both values are the numeric AverageUtilization fields straight off
+// the HPA status/spec; a nil target means the spec does not carry a utilization
+// target, in which case there is nothing to compare.
+func CompareMetricToTarget(utilization, target *int32) string {
+	if utilization == nil || target == nil {
 		return ""
 	}
 
 	switch {
-	case *utilization > targetUtilization:
+	case *utilization > *target:
 		return "current value is above target"
-	case *utilization < targetUtilization:
+	case *utilization < *target:
 		return "current value is below target"
 	default:
 		return "current value equals target"
 	}
+}
+
+// metricTargetUtilization returns the numeric utilization target of the named
+// resource metric, or nil when the spec carries no utilization target.
+func metricTargetUtilization(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) *int32 {
+	return FindResourceTargetSpec(hpa, name).AverageUtilization
 }
 
 // MetricOutsideTarget finds a resource metric whose ratio differs from 1.0.
@@ -113,7 +120,7 @@ func MetricOutsideTarget(hpa *autoscalingv2.HorizontalPodAutoscaler) (MetricImpa
 		if metric.Type != autoscalingv2.ResourceMetricSourceType || metric.Resource == nil {
 			continue
 		}
-		ratio := utilizationRatio(metric.Resource.Current.AverageUtilization, FindResourceTarget(hpa, string(metric.Resource.Name)))
+		ratio := utilizationRatio(metric.Resource.Current.AverageUtilization, metricTargetUtilization(hpa, string(metric.Resource.Name)))
 		if ratio != nil && *ratio != 1 {
 			return MetricImpactGuess{Name: string(metric.Resource.Name), Ratio: *ratio}, true
 		}
@@ -181,27 +188,12 @@ func prioritizedConditions(conditions []autoscalingv2.HorizontalPodAutoscalerCon
 	return out
 }
 
-func utilizationRatio(utilization *int32, target string) *float64 {
-	if utilization == nil {
+func utilizationRatio(utilization, target *int32) *float64 {
+	if utilization == nil || target == nil || *target == 0 {
 		return nil
 	}
-	targetUtilization, ok := parsePercent(target)
-	if !ok || targetUtilization == 0 {
-		return nil
-	}
-	ratio := float64(*utilization) / float64(targetUtilization)
+	ratio := float64(*utilization) / float64(*target)
 	return &ratio
-}
-
-func parsePercent(value string) (int32, bool) {
-	if !strings.HasSuffix(value, "%") {
-		return 0, false
-	}
-	n, err := strconv.ParseInt(strings.TrimSuffix(value, "%"), 10, 32)
-	if err != nil {
-		return 0, false
-	}
-	return int32(n), true
 }
 
 func quantityRatio(current, target *resource.Quantity) *float64 {

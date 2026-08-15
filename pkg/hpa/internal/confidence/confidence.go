@@ -60,3 +60,15 @@ const (
 	// Error indicates a critical finding requiring intervention.
 	Error Severity = "error"
 )
+
+// Badge prefixes for text output. Compose user-facing messages from these
+// constants instead of hardcoding "[observed]"-style literals, so the
+// Classification enum and the displayed prefix cannot drift apart.
+const (
+	// BadgeObserved prefixes findings read directly from HPA status.
+	BadgeObserved = "[" + string(ClassificationObserved) + "]"
+	// BadgeEstimated prefixes findings inferred from visible signals.
+	BadgeEstimated = "[" + string(ClassificationEstimated) + "]"
+	// BadgeUnknown prefixes information the HPA controller does not expose.
+	BadgeUnknown = "[" + string(ClassificationUnknown) + "]"
+)

@@ -20,7 +20,7 @@ func parseQuantityOrZero(s string) resource.Quantity {
 	return q
 }
 
-func effectivePerPodResources(input CapacityPlanInput) (resource.Quantity, resource.Quantity) {
+func effectivePerPodResources(input Input) (resource.Quantity, resource.Quantity) {
 	cpu, memory := sumContainerResources(input.ContainerResources)
 	if input.PodRequestCPU != "" {
 		cpu = parseQuantityOrZero(input.PodRequestCPU)
@@ -31,7 +31,7 @@ func effectivePerPodResources(input CapacityPlanInput) (resource.Quantity, resou
 	return cpu, memory
 }
 
-func effectivePerPodLimits(input CapacityPlanInput) (resource.Quantity, resource.Quantity) {
+func effectivePerPodLimits(input Input) (resource.Quantity, resource.Quantity) {
 	var cpu, memory resource.Quantity
 	for _, container := range input.ContainerResources {
 		if container.LimitCPU != "" {

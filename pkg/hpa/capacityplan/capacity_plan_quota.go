@@ -13,7 +13,7 @@ import (
 
 func checkQuotaHeadroom(
 	quotas []CapacityQuotaInfo,
-	input CapacityPlanInput,
+	input Input,
 	requiredCPU, requiredMemory, requiredLimitCPU, requiredLimitMemory resource.Quantity,
 	additionalPods int32,
 ) []CapacityCheckResult {
@@ -120,7 +120,7 @@ func checkQuotaHeadroom(
 //
 // A Pod-level declaration satisfies the quota outright; otherwise every
 // container must carry the corresponding field.
-func allContainersSpecifyQuotaResource(input CapacityPlanInput, quotaResource string) bool {
+func allContainersSpecifyQuotaResource(input Input, quotaResource string) bool {
 	// Pod-count quotas are always fully determined by the replica math.
 	if quotaResource == "pods" || quotaResource == "count/pods" {
 		return true
@@ -149,7 +149,7 @@ func allContainersSpecifyQuotaResource(input CapacityPlanInput, quotaResource st
 
 // podLevelQuotaValue returns the Pod-level (spec.resources) value backing a
 // quota resource, or "" when the quota is not one of the modelled kinds.
-func podLevelQuotaValue(input CapacityPlanInput, quotaResource string) string {
+func podLevelQuotaValue(input Input, quotaResource string) string {
 	switch quotaResource {
 	case "cpu", "requests.cpu":
 		return input.PodLevelRequestCPU

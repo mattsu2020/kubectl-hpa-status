@@ -183,9 +183,9 @@ func executeBatchApply(ctx context.Context, applyFn ApplyFunc, patches []batchAp
 		}
 	}
 	if len(errs) > 0 {
-		return applyResultMsg{title: fmt.Sprintf("batch: %d/%d HPAs failed", len(errs), len(groups)), err: errors.Join(errs...)}
+		return batchApplyResultMsg{title: fmt.Sprintf("batch: %d/%d HPAs failed", len(errs), len(groups)), err: errors.Join(errs...)}
 	}
-	return applyResultMsg{title: fmt.Sprintf("batch: %d patches applied to %d HPAs", len(patches), len(groups)), err: nil}
+	return batchApplyResultMsg{title: fmt.Sprintf("batch: %d patches applied to %d HPAs", len(patches), len(groups)), err: nil}
 }
 
 // selectedHPANames returns the keys of selected HPAs.

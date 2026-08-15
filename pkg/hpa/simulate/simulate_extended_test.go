@@ -58,7 +58,7 @@ func TestSimulateExtended(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := SimulateExtended(tt.hpa, tt.overrides, HealthWeights{}, tt.extOpts)
+			result, err := Extended(tt.hpa, tt.overrides, HealthWeights{}, tt.extOpts)
 			if tt.wantErr {
 				if err == nil {
 					t.Error("expected error, got nil")
@@ -135,9 +135,9 @@ func TestSimulateExtendedRiskUsesOverriddenReplicaBounds(t *testing.T) {
 	current := int32(150)
 	hpa.Status.CurrentMetrics[0].Resource.Current.AverageUtilization = &current
 
-	result, err := SimulateHPA(hpa, map[string]string{"maxReplicas": "20"}, HealthWeights{})
+	result, err := HPA(hpa, map[string]string{"maxReplicas": "20"}, HealthWeights{})
 	if err != nil {
-		t.Fatalf("SimulateHPA: %v", err)
+		t.Fatalf("HPA: %v", err)
 	}
 	if result.After.DesiredReplicas != 15 {
 		t.Fatalf("After.DesiredReplicas = %d, want 15", result.After.DesiredReplicas)
@@ -263,7 +263,7 @@ func TestFormatSimulationExtended(t *testing.T) {
 func TestTargetAverageUtilizationOverride(t *testing.T) {
 	hpa := buildTestHPAWithResourceMetric(5, 5, 1, 10, 50, 80)
 
-	result, err := SimulateHPA(hpa, map[string]string{"targetAverageUtilization": "60"}, HealthWeights{})
+	result, err := HPA(hpa, map[string]string{"targetAverageUtilization": "60"}, HealthWeights{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

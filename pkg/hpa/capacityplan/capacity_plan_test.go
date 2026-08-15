@@ -25,7 +25,7 @@ func TestCapacityCheckDecisionsUseTypedMetadata(t *testing.T) {
 		TargetMaxReplicas: 20,
 		Checks:            []CapacityCheckResult{nodeCheck},
 	}
-	safe, recommendation, _ := buildRecommendation(plan, CapacityPlanInput{ClusterAutoscaler: true})
+	safe, recommendation, _ := buildRecommendation(plan, Input{ClusterAutoscaler: true})
 	if safe || !strings.Contains(recommendation, "Cluster Autoscaler") {
 		t.Fatalf("Cluster Autoscaler must stay advisory: safe=%t recommendation=%q", safe, recommendation)
 	}
@@ -84,7 +84,7 @@ func TestCapacityCheckResultJSONCompatibility(t *testing.T) {
 }
 
 func TestAnalyzeCapacityPlan_AllChecksPass(t *testing.T) {
-	input := CapacityPlanInput{
+	input := Input{
 		Namespace:         "production",
 		HPAName:           "web",
 		Target:            "Deployment/web",
@@ -129,7 +129,7 @@ func TestAnalyzeCapacityPlan_AllChecksPass(t *testing.T) {
 }
 
 func TestAnalyzeCapacityPlan_DefaultTargetMax(t *testing.T) {
-	input := CapacityPlanInput{
+	input := Input{
 		Namespace:         "default",
 		HPAName:           "api",
 		Target:            "Deployment/api",
@@ -152,7 +152,7 @@ func TestAnalyzeCapacityPlan_DefaultTargetMax(t *testing.T) {
 }
 
 func TestAnalyzeCapacityPlan_TargetMaxOverride(t *testing.T) {
-	input := CapacityPlanInput{
+	input := Input{
 		Namespace:         "default",
 		HPAName:           "api",
 		Target:            "Deployment/api",
@@ -175,7 +175,7 @@ func TestAnalyzeCapacityPlan_TargetMaxOverride(t *testing.T) {
 }
 
 func TestAnalyzeCapacityPlan_QuotaShortfall(t *testing.T) {
-	input := CapacityPlanInput{
+	input := Input{
 		Namespace:         "production",
 		HPAName:           "web",
 		Target:            "Deployment/web",
@@ -223,7 +223,7 @@ func TestAnalyzeCapacityPlan_QuotaShortfall(t *testing.T) {
 }
 
 func TestAnalyzeCapacityPlan_LimitRangeViolation(t *testing.T) {
-	input := CapacityPlanInput{
+	input := Input{
 		Namespace:         "default",
 		HPAName:           "web",
 		Target:            "Deployment/web",
@@ -264,7 +264,7 @@ func TestAnalyzeCapacityPlan_LimitRangeViolation(t *testing.T) {
 }
 
 func TestAnalyzeCapacityPlan_PendingPods(t *testing.T) {
-	input := CapacityPlanInput{
+	input := Input{
 		Namespace:         "default",
 		HPAName:           "web",
 		Target:            "Deployment/web",
@@ -298,7 +298,7 @@ func TestAnalyzeCapacityPlan_PendingPods(t *testing.T) {
 }
 
 func TestAnalyzeCapacityPlan_NodeCapacityInsufficient(t *testing.T) {
-	input := CapacityPlanInput{
+	input := Input{
 		Namespace:         "default",
 		HPAName:           "web",
 		Target:            "Deployment/web",
@@ -337,7 +337,7 @@ func TestAnalyzeCapacityPlan_NodeCapacityInsufficient(t *testing.T) {
 }
 
 func TestAnalyzeCapacityPlan_ClusterAutoscalerDetected(t *testing.T) {
-	input := CapacityPlanInput{
+	input := Input{
 		Namespace:         "default",
 		HPAName:           "web",
 		Target:            "Deployment/web",
@@ -383,7 +383,7 @@ func TestAnalyzeCapacityPlan_ClusterAutoscalerDetected(t *testing.T) {
 }
 
 func TestAnalyzeCapacityPlan_NotAtMaxReplicas(t *testing.T) {
-	input := CapacityPlanInput{
+	input := Input{
 		Namespace:         "default",
 		HPAName:           "web",
 		Target:            "Deployment/web",
@@ -407,7 +407,7 @@ func TestAnalyzeCapacityPlan_NotAtMaxReplicas(t *testing.T) {
 }
 
 func TestAnalyzeCapacityPlan_PDBInformational(t *testing.T) {
-	input := CapacityPlanInput{
+	input := Input{
 		Namespace:         "default",
 		HPAName:           "web",
 		Target:            "Deployment/web",
@@ -502,7 +502,7 @@ func TestSumContainerResources_EmptyValues(t *testing.T) {
 }
 
 func TestAnalyzeCapacityPlan_NoContainerResources(t *testing.T) {
-	input := CapacityPlanInput{
+	input := Input{
 		Namespace:          "default",
 		HPAName:            "web",
 		Target:             "Deployment/web",
@@ -523,7 +523,7 @@ func TestAnalyzeCapacityPlan_NoContainerResources(t *testing.T) {
 }
 
 func TestAnalyzeCapacityPlan_ObservationErrorIsUnknownAndUnsafe(t *testing.T) {
-	input := CapacityPlanInput{
+	input := Input{
 		Namespace:         "default",
 		HPAName:           "web",
 		Target:            "Deployment/web",
@@ -561,7 +561,7 @@ func TestAnalyzeCapacityPlan_ObservationErrorIsUnknownAndUnsafe(t *testing.T) {
 }
 
 func TestAnalyzeCapacityPlan_EvaluatesEveryQuotaConstraint(t *testing.T) {
-	input := CapacityPlanInput{
+	input := Input{
 		Namespace:         "production",
 		HPAName:           "web",
 		Target:            "Deployment/web",
@@ -595,7 +595,7 @@ func TestAnalyzeCapacityPlan_EvaluatesEveryQuotaConstraint(t *testing.T) {
 }
 
 func TestAnalyzeCapacityPlan_PodCountQuotaShortfall(t *testing.T) {
-	input := CapacityPlanInput{
+	input := Input{
 		Namespace:         "production",
 		HPAName:           "web",
 		Target:            "Deployment/web",
@@ -638,7 +638,7 @@ func TestAnalyzeCapacityPlan_PodCountQuotaShortfall(t *testing.T) {
 }
 
 func TestAnalyzeCapacityPlan_UsesAvailableRequestHeadroom(t *testing.T) {
-	input := CapacityPlanInput{
+	input := Input{
 		Namespace:         "default",
 		HPAName:           "web",
 		Target:            "Deployment/web",
@@ -679,7 +679,7 @@ func TestAnalyzeCapacityPlan_UsesAvailableRequestHeadroom(t *testing.T) {
 }
 
 func TestAnalyzeCapacityPlan_UsesEffectivePodRequest(t *testing.T) {
-	input := CapacityPlanInput{
+	input := Input{
 		Namespace:         "default",
 		HPAName:           "web",
 		Target:            "Deployment/web",
@@ -704,7 +704,7 @@ func TestAnalyzeCapacityPlan_UsesEffectivePodRequest(t *testing.T) {
 }
 
 func TestAnalyzeCapacityPlan_InvalidQuantityIsUnknownAndUnsafe(t *testing.T) {
-	input := CapacityPlanInput{
+	input := Input{
 		Namespace:         "default",
 		HPAName:           "web",
 		Target:            "Deployment/web",
@@ -737,14 +737,14 @@ func TestValidateCapacityQuantityInputs_RejectsWhitespaceAndSkipsDependentChecks
 		name       string
 		domain     CapacityObservationDomain
 		source     string
-		mutate     func(*CapacityPlanInput)
+		mutate     func(*Input)
 		skippedIDs []CapacityCheckID
 	}{
 		{
 			name:   "effective Pod request",
 			domain: CapacityObservationPodResources,
 			source: "PodRequestCPU",
-			mutate: func(input *CapacityPlanInput) {
+			mutate: func(input *Input) {
 				input.PodRequestCPU = " \t "
 			},
 			skippedIDs: []CapacityCheckID{
@@ -757,7 +757,7 @@ func TestValidateCapacityQuantityInputs_RejectsWhitespaceAndSkipsDependentChecks
 			name:   "quota",
 			domain: CapacityObservationResourceQuotas,
 			source: `ResourceQuota "compute" requests.cpu used`,
-			mutate: func(input *CapacityPlanInput) {
+			mutate: func(input *Input) {
 				input.Quotas[0].Used = " "
 			},
 			skippedIDs: []CapacityCheckID{
@@ -768,7 +768,7 @@ func TestValidateCapacityQuantityInputs_RejectsWhitespaceAndSkipsDependentChecks
 			name:   "LimitRange",
 			domain: CapacityObservationLimitRanges,
 			source: `LimitRange "requests" cpu maximum`,
-			mutate: func(input *CapacityPlanInput) {
+			mutate: func(input *Input) {
 				input.LimitRanges[0].Max = "\n"
 			},
 			skippedIDs: []CapacityCheckID{
@@ -779,7 +779,7 @@ func TestValidateCapacityQuantityInputs_RejectsWhitespaceAndSkipsDependentChecks
 			name:   "node capacity",
 			domain: CapacityObservationNodeCapacity,
 			source: "node allocatable CPU",
-			mutate: func(input *CapacityPlanInput) {
+			mutate: func(input *Input) {
 				input.NodeCapacity.AllocCPU = "\t"
 			},
 			skippedIDs: []CapacityCheckID{
@@ -822,47 +822,47 @@ func TestValidateCapacityQuantityInputs_RejectsNegativeNonHeadroomValues(t *test
 	tests := []struct {
 		name   string
 		domain CapacityObservationDomain
-		mutate func(*CapacityPlanInput)
+		mutate func(*Input)
 	}{
 		{
 			name:   "effective Pod CPU request",
 			domain: CapacityObservationPodResources,
-			mutate: func(input *CapacityPlanInput) { input.PodRequestCPU = "-100m" },
+			mutate: func(input *Input) { input.PodRequestCPU = "-100m" },
 		},
 		{
 			name:   "container memory request",
 			domain: CapacityObservationPodResources,
-			mutate: func(input *CapacityPlanInput) { input.ContainerResources[0].Memory = "-1Mi" },
+			mutate: func(input *Input) { input.ContainerResources[0].Memory = "-1Mi" },
 		},
 		{
 			name:   "quota hard limit",
 			domain: CapacityObservationResourceQuotas,
-			mutate: func(input *CapacityPlanInput) { input.Quotas[0].Hard = "-10" },
+			mutate: func(input *Input) { input.Quotas[0].Hard = "-10" },
 		},
 		{
 			name:   "quota usage",
 			domain: CapacityObservationResourceQuotas,
-			mutate: func(input *CapacityPlanInput) { input.Quotas[0].Used = "-1" },
+			mutate: func(input *Input) { input.Quotas[0].Used = "-1" },
 		},
 		{
 			name:   "LimitRange minimum",
 			domain: CapacityObservationLimitRanges,
-			mutate: func(input *CapacityPlanInput) { input.LimitRanges[0].Min = "-1m" },
+			mutate: func(input *Input) { input.LimitRanges[0].Min = "-1m" },
 		},
 		{
 			name:   "LimitRange maximum",
 			domain: CapacityObservationLimitRanges,
-			mutate: func(input *CapacityPlanInput) { input.LimitRanges[0].Max = "-1" },
+			mutate: func(input *Input) { input.LimitRanges[0].Max = "-1" },
 		},
 		{
 			name:   "node allocatable",
 			domain: CapacityObservationNodeCapacity,
-			mutate: func(input *CapacityPlanInput) { input.NodeCapacity.AllocCPU = "-1" },
+			mutate: func(input *Input) { input.NodeCapacity.AllocCPU = "-1" },
 		},
 		{
 			name:   "node requested",
 			domain: CapacityObservationNodeCapacity,
-			mutate: func(input *CapacityPlanInput) { input.NodeCapacity.RequestedMemory = "-1Gi" },
+			mutate: func(input *Input) { input.NodeCapacity.RequestedMemory = "-1Gi" },
 		},
 	}
 
@@ -1106,8 +1106,8 @@ func TestAnalyzeCapacityPlanTreatsUnsyncedQuotaUsageAsUnknown(t *testing.T) {
 	}
 }
 
-func validCapacityQuantityInput() CapacityPlanInput {
-	return CapacityPlanInput{
+func validCapacityQuantityInput() Input {
+	return Input{
 		Namespace:         "default",
 		HPAName:           "web",
 		Target:            "Deployment/web",

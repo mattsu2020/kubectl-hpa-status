@@ -318,6 +318,8 @@ func metricSpecNameMatches(spec autoscalingv2.MetricSpec, name string) bool {
 	}
 }
 
+// MetricTargetPointer returns a pointer to the metric target inside the spec
+// for the metric type carried by spec, or nil when the source is absent.
 func MetricTargetPointer(spec *autoscalingv2.MetricSpec) *autoscalingv2.MetricTarget {
 	switch spec.Type {
 	case autoscalingv2.ResourceMetricSourceType:

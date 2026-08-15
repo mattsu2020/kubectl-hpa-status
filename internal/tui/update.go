@@ -1,6 +1,10 @@
 package tui
 
-import tea "charm.land/bubbletea/v2"
+import (
+	"fmt"
+
+	tea "charm.land/bubbletea/v2"
+)
 
 // Update handles all bubbletea messages.
 // Value receivers are intentional here: Bubbletea's architecture uses an
@@ -18,6 +22,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateTick()
 	case fetchResultMsg:
 		return m.updateFetchResult(msg)
+	case batchApplyResultMsg:
+		return m.updateBatchApplyResult(msg)
 	}
 	if updated, cmd, handled := dispatchViewMessage(m, msg); handled {
 		return updated, cmd
@@ -57,8 +63,13 @@ func (m Model) updateFetchResult(msg fetchResultMsg) (tea.Model, tea.Cmd) {
 	}
 	m.loading = false
 	m.lastRefresh = m.currentTime()
-	// A refresh can change the HPA state and regenerate suggestions. Never
-	// carry an armed live-apply confirmation across that state boundary.
+	// A refresh supersedes any transient status notice and can change the HPA
+	// state and regenerate suggestions. Never carry an armed live-apply
+	// confirmation across that state boundary, and invalidate any fix-wizard
+	// apply/dry-run still in flight (their results would otherwise mark a
+	// stale suggestion set as applied).
+	m.statusMessage = ""
+	m.fixEpoch++
 	if m.fixState != nil {
 		m.fixState.applyConfirm = false
 	}
@@ -109,6 +120,15 @@ func (m *Model) refocusAndClampCursorAfterFetch() {
 	}
 }
 
+func (m Model) updateBatchApplyResult(msg batchApplyResultMsg) (tea.Model, tea.Cmd) {
+	if msg.err != nil {
+		m.statusMessage = fmt.Sprintf("batch apply failed: %s (%v)", msg.title, msg.err)
+	} else {
+		m.statusMessage = msg.title
+	}
+	return m, nil
+}
+
 func (m Model) updateSimResult(msg simResultMsg) Model {
 	if m.simState != nil {
 		m.simState.update(msg)
@@ -117,16 +137,18 @@ func (m Model) updateSimResult(msg simResultMsg) Model {
 }
 
 func (m Model) updateApplyResult(msg applyResultMsg) Model {
-	if m.fixState != nil {
-		m.fixState.updateApply(msg)
+	if m.fixState == nil || msg.epoch != m.fixEpoch {
+		return m
 	}
+	m.fixState.updateApply(msg)
 	return m
 }
 
 func (m Model) updateDryRunResult(msg dryRunResultMsg) Model {
-	if m.fixState != nil {
-		m.fixState.updateDryRun(msg)
+	if m.fixState == nil || msg.epoch != m.fixEpoch {
+		return m
 	}
+	m.fixState.updateDryRun(msg)
 	return m
 }
 

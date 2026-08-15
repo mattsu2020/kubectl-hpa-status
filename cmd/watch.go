@@ -31,22 +31,11 @@ func runWatch(ctx context.Context, out io.Writer, opts *options, name string, in
 		return runTUI(ctx, out, opts, name, true)
 	}
 
-	if opts.WatchTimeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, opts.WatchTimeout)
-		defer cancel()
-	}
-
-	interval := opts.WatchInterval
-	if interval < time.Second {
-		_, _ = fmt.Fprintf(watchDiagnosticWriter(opts, out), "Warning: interval %s is below 1s; clamping to 1s to reduce API server load.\n", interval)
-		interval = time.Second
-	}
-
-	theme := themeFor(opts.Color, out)
-	ticker := time.NewTicker(interval)
+	ctx, cancel, ticker := startWatchLoop(ctx, out, opts)
+	defer cancel()
 	defer ticker.Stop()
 
+	theme := themeFor(opts.Color, out)
 	client, err := newClientOrDefault(opts)
 	if err != nil {
 		return err
@@ -108,11 +97,8 @@ func watchUsesHumanOutput(opts *options) bool {
 }
 
 func watchDiagnosticWriter(opts *options, fallback io.Writer) io.Writer {
-	if opts != nil && opts.Err != nil {
-		return opts.Err
-	}
 	if watchUsesHumanOutput(opts) {
-		return fallback
+		return errorWriter(opts, fallback)
 	}
 	return io.Discard
 }
@@ -174,31 +160,52 @@ func writeStabilizationCountdown(out io.Writer, a *hpaanalysis.Analysis) {
 	_, _ = fmt.Fprintf(out, "\n  STABILIZING: %s [%s] [estimated]\n", progress, source)
 }
 
-func runWatchList(ctx context.Context, out io.Writer, opts *options) error {
+// minWatchInterval protects the API server from polling floods.
+const minWatchInterval = time.Second
+
+// startWatchLoop applies the shared watch prologue: the optional timeout
+// context, the interval clamp warning, and the ticker. Callers must defer both
+// returned release functions.
+func startWatchLoop(ctx context.Context, out io.Writer, opts *options) (context.Context, context.CancelFunc, *time.Ticker) {
+	cancel := context.CancelFunc(func() {})
 	if opts.WatchTimeout > 0 {
-		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, opts.WatchTimeout)
-		defer cancel()
 	}
 
 	interval := opts.WatchInterval
-	if interval < time.Second {
+	if interval < minWatchInterval {
 		_, _ = fmt.Fprintf(watchDiagnosticWriter(opts, out), "Warning: interval %s is below 1s; clamping to 1s to reduce API server load.\n", interval)
-		interval = time.Second
+		interval = minWatchInterval
 	}
+	return ctx, cancel, time.NewTicker(interval)
+}
 
-	theme := themeFor(opts.Color, out)
-	ticker := time.NewTicker(interval)
+// waitWatchTick blocks until the next tick or cancellation, printing the
+// human-output blank separator line between frames.
+func waitWatchTick(ctx context.Context, out io.Writer, ticker *time.Ticker, humanOutput bool) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-ticker.C:
+		if humanOutput {
+			if _, err := fmt.Fprintln(out); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+}
+
+func runWatchList(ctx context.Context, out io.Writer, opts *options) error {
+	ctx, cancel, ticker := startWatchLoop(ctx, out, opts)
+	defer cancel()
 	defer ticker.Stop()
 
+	theme := themeFor(opts.Color, out)
 	humanOutput := watchUsesHumanOutput(opts)
 	for {
 		if humanOutput {
-			if clearScreen := theme.ScreenClear(); clearScreen != "" {
-				if _, err := out.Write([]byte(clearScreen)); err != nil {
-					return err
-				}
-			} else if _, err := fmt.Fprintf(out, "Updated: %s\n\n", opts.CurrentTime().Format(time.RFC3339)); err != nil {
+			if err := clearWatchScreen(out, theme, opts.CurrentTime()); err != nil {
 				return err
 			}
 		} else if err := writeWatchDocumentSeparator(out, opts); err != nil {
@@ -209,15 +216,8 @@ func runWatchList(ctx context.Context, out io.Writer, opts *options) error {
 			return err
 		}
 
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
-			if humanOutput {
-				if _, err := fmt.Fprintln(out); err != nil {
-					return err
-				}
-			}
+		if err := waitWatchTick(ctx, out, ticker, humanOutput); err != nil {
+			return err
 		}
 	}
 }

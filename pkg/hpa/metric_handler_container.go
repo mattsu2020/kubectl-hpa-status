@@ -17,7 +17,7 @@ func (containerResourceHandler) FormatStatus(hpa *autoscalingv2.HorizontalPodAut
 	targetSpec := FindContainerResourceTargetSpec(hpa, string(metric.ContainerResource.Name), metric.ContainerResource.Container)
 	target := FormatMetricTarget(targetSpec)
 	current := FormatMetricValueStatus(metric.ContainerResource.Current)
-	ratio, note := calculateRatioAndNote(metric.ContainerResource.Current, targetSpec, target)
+	ratio, note := calculateRatioAndNote(metric.ContainerResource.Current, targetSpec)
 	text := appendRatioAndNote(
 		fmt.Sprintf("ContainerResource %s/%s current=%s target=%s", metric.ContainerResource.Container, metric.ContainerResource.Name, current, target),
 		ratio, note,
@@ -33,8 +33,7 @@ func (containerResourceHandler) ImpactRatio(hpa *autoscalingv2.HorizontalPodAuto
 		return "", nil
 	}
 	targetSpec := FindContainerResourceTargetSpec(hpa, string(metric.ContainerResource.Name), metric.ContainerResource.Container)
-	target := FormatMetricTarget(targetSpec)
-	ratio := utilizationRatio(metric.ContainerResource.Current.AverageUtilization, target)
+	ratio := utilizationRatio(metric.ContainerResource.Current.AverageUtilization, targetSpec.AverageUtilization)
 	name := fmt.Sprintf("%s/%s", metric.ContainerResource.Container, metric.ContainerResource.Name)
 	if ratio != nil {
 		return name, ratio

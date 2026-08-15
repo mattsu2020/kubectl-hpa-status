@@ -8,6 +8,8 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
+// ApplyContainerResourceMetricOverride sets the current utilization or
+// average value of a ContainerResource metric, matching the spec target type.
 func ApplyContainerResourceMetricOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, spec autoscalingv2.MetricSpec, idx int, value string) error {
 	current := autoscalingv2.MetricValueStatus{}
 	if spec.ContainerResource.Target.Type == autoscalingv2.UtilizationMetricType {

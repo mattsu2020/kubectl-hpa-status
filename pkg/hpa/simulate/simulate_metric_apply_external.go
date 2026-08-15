@@ -6,7 +6,7 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
-// applyExternalMetricOverride sets the current value of an External metric,
+// ApplyExternalMetricOverride sets the current value of an External metric,
 // choosing AverageValue vs Value from the spec target type.
 func ApplyExternalMetricOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, spec autoscalingv2.MetricSpec, idx int, value string) error {
 	q, err := parseMetricQuantity(value, "external")
