@@ -44,7 +44,7 @@ func WriteAssumptionsText(w io.Writer, assumptions *ControllerAssumptions, theme
 			row.a.Value,
 			row.a.Source,
 			cs.Render(row.a.Confidence),
-			truncateImpact(row.a.Impact, 40)))
+			rendutil.TruncateDisplayWidth(row.a.Impact, 40, "...")))
 	}
 
 	if assumptions.Summary != "" {
@@ -121,10 +121,6 @@ func confidenceStyle(confidence string, theme style.Theme) lipgloss.Style {
 	}
 }
 
-func truncateImpact(s string, maxLen int) string {
-	return rendutil.TruncateDisplayWidth(s, maxLen, "...")
-}
-
 func assumptionsSummary(a *ControllerAssumptions) string {
 	high, medium, low, overridden := 0, 0, 0, 0
 	for _, row := range []Assumption{
@@ -181,7 +177,7 @@ func WriteAssumptionsTextWithExplain(w io.Writer, assumptions *ControllerAssumpt
 		for _, row := range assumptionRows {
 			cs := confidenceStyle(row.a.Confidence, theme)
 			out.WriteString(fmt.Sprintf("%-26s %-14s %-20s %-12s %s\n",
-				row.label, row.a.Value, row.a.Source, cs.Render(row.a.Confidence), truncateImpact(row.a.Impact, 40)))
+				row.label, row.a.Value, row.a.Source, cs.Render(row.a.Confidence), rendutil.TruncateDisplayWidth(row.a.Impact, 40, "...")))
 			if row.a.Description != "" {
 				out.WriteString(fmt.Sprintf("  %s\n", theme.Dim.Render(row.a.Description)))
 			}
@@ -193,7 +189,7 @@ func WriteAssumptionsTextWithExplain(w io.Writer, assumptions *ControllerAssumpt
 		for _, row := range assumptionRows {
 			cs := confidenceStyle(row.a.Confidence, theme)
 			out.WriteString(fmt.Sprintf("%-26s %-14s %-20s %-10s %s\n",
-				row.label, row.a.Value, row.a.Source, cs.Render(row.a.Confidence), truncateImpact(row.a.Impact, 40)))
+				row.label, row.a.Value, row.a.Source, cs.Render(row.a.Confidence), rendutil.TruncateDisplayWidth(row.a.Impact, 40, "...")))
 		}
 	}
 

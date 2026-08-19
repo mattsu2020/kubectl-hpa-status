@@ -145,7 +145,7 @@ func scanEventsForEvidence(events []Event, metricName, metricType string) []stri
 		// Check if the event message mentions this metric.
 		msgLower := strings.ToLower(msg)
 		if strings.Contains(msgLower, metricLower) || metricName == "" {
-			evidence = append(evidence, fmt.Sprintf("%s event detected: %s", reason, truncateMessage(msg, 120)))
+			evidence = append(evidence, fmt.Sprintf("%s event detected: %s", reason, rendutil.TruncateDisplayWidth(msg, 120, "...")))
 		}
 	}
 
@@ -330,10 +330,4 @@ func isMetricValueForTargetZero(v autoscalingv2.MetricValueStatus, targetType au
 	default:
 		return false
 	}
-}
-
-// truncateMessage truncates a message to maxLen characters, appending "..." if
-// truncated.
-func truncateMessage(msg string, maxLen int) string {
-	return rendutil.TruncateDisplayWidth(msg, maxLen, "...")
 }

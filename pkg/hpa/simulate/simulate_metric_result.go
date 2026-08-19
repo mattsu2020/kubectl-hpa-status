@@ -101,7 +101,7 @@ func formatMetricValue(metric autoscalingv2.MetricStatus, metricType autoscaling
 		}
 	}
 	if value != nil {
-		return formatMetricValueStatusInvoker(*value)
+		return formatMetricValueStatus(*value)
 	}
 	return "<unknown>"
 }

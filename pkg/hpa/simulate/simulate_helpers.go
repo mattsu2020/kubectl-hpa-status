@@ -102,7 +102,7 @@ func originalValue(hpa *autoscalingv2.HorizontalPodAutoscaler, path string) stri
 		name := strings.TrimSuffix(strings.TrimPrefix(normalizedPath, "metric."), ".target")
 		if spec, err := resolveMetricSpecUnique(hpa, name); err == nil {
 			if target := MetricTargetPointer(&spec); target != nil {
-				return formatMetricTargetInvoker(*target)
+				return formatMetricTarget(*target)
 			}
 		}
 	}

@@ -81,7 +81,7 @@ func unschedulableRule(input Input) []Finding {
 			ID:          "failed-scheduling",
 			Severity:    BlockerHigh,
 			Category:    "scheduling",
-			Message:     fmt.Sprintf("FailedScheduling: %s", truncateBlockerMessage(eventMsg, 120)),
+			Message:     fmt.Sprintf("FailedScheduling: %s", rendutil.TruncateDisplayWidth(eventMsg, 120, "...")),
 			Detail:      "The Kubernetes scheduler could not find a suitable node for this pod.",
 			NextCommand: "kubectl get events --field-selector reason=FailedScheduling",
 		})
@@ -286,11 +286,6 @@ func describeNamespace(input Input) string {
 		return input.Namespace
 	}
 	return "default"
-}
-
-// truncateBlockerMessage truncates a message to maxLen characters.
-func truncateBlockerMessage(msg string, maxLen int) string {
-	return rendutil.TruncateDisplayWidth(msg, maxLen, "...")
 }
 
 // deduplicateFindings replaces all findings with a given ID prefix by a single

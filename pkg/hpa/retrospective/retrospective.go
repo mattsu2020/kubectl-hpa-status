@@ -124,7 +124,7 @@ func classifyEvent(event eventutil.Event, prevDesired *int32, hpa *autoscalingv2
 		return &Entry{
 			Timestamp:  event.Timestamp,
 			Category:   "rescale",
-			Message:    fmt.Sprintf("failed to rescale: %s", truncateMessageRetro(event.Message, 80)),
+			Message:    fmt.Sprintf("failed to rescale: %s", rendutil.TruncateDisplayWidth(event.Message, 80, "...")),
 			Source:     "event",
 			Confidence: "high",
 		}
@@ -141,7 +141,7 @@ func classifyEvent(event eventutil.Event, prevDesired *int32, hpa *autoscalingv2
 	case conditions.ScalingLimited:
 		message := "ScalingLimited      scaling constraint recorded; exact historical limit unavailable"
 		if strings.TrimSpace(event.Message) != "" {
-			message = "ScalingLimited      " + truncateMessageRetro(event.Message, 80)
+			message = "ScalingLimited      " + rendutil.TruncateDisplayWidth(event.Message, 80, "...")
 		}
 		return &Entry{
 			Timestamp:  event.Timestamp,
@@ -184,7 +184,7 @@ func classifyEvent(event eventutil.Event, prevDesired *int32, hpa *autoscalingv2
 		return &Entry{
 			Timestamp:  event.Timestamp,
 			Category:   "metric-change",
-			Message:    truncateMessageRetro(event.Reason+": "+event.Message, 80),
+			Message:    rendutil.TruncateDisplayWidth(event.Reason+": "+event.Message, 80, "..."),
 			Source:     "event",
 			Confidence: "medium",
 		}
@@ -263,9 +263,4 @@ func parseDesiredRange(msg string) (from, to int32, ok bool) {
 		return 0, 0, false
 	}
 	return int32(parsedFrom), int32(parsedTo), true
-}
-
-// truncateMessageRetro truncates a message to maxLen terminal columns.
-func truncateMessageRetro(msg string, maxLen int) string {
-	return rendutil.TruncateDisplayWidth(msg, maxLen, "...")
 }

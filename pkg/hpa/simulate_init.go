@@ -53,8 +53,6 @@ func init() {
 
 	simulate.SetMatchingMetricTargetFunc(matchingMetricTarget)
 
-	simulate.SetFormatMetricTargetFunc(FormatMetricTarget)
-
 	// Inject tolerance functions
 	simulate.SetDirectionalToleranceFunc(directionalTolerance)
 
@@ -67,16 +65,6 @@ func init() {
 	simulate.SetEffectiveDirectionalTolerancesFunc(effectiveDirectionalTolerances)
 
 	// Inject formatting functions
-	simulate.SetFormatMetricValueStatusFunc(FormatMetricValueStatus)
-
-	simulate.SetRepeatCharFunc(func(count int, char string) string {
-		return repeatChar(char, count) // argument order differs; keep the adapter
-	})
-
-	simulate.SetFormatDurationFunc(func(seconds int32) string {
-		return FormatDuration(int64(seconds))
-	})
-
 	simulate.SetEstimatedDesiredForRatioFunc(estimatedDesiredForRatio)
 }
 
