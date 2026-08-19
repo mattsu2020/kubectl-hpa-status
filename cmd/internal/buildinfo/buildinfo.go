@@ -16,7 +16,7 @@ import "runtime/debug"
 // version/commit/date variables from the same constants this package compares
 // against; a drift between the two would silently disable the fallback.
 const (
-	DefaultVersion = "v2.0.0-dev"
+	DefaultVersion = "v3.0.0-dev"
 	DefaultCommit  = "unknown"
 	DefaultDate    = "unknown"
 )

@@ -15,7 +15,7 @@ const (
 	// with a dedicated code distinct from generic API errors. The current
 	// behavior keeps not-found at ExitError for backwards compatibility; the
 	// constant is exported so scripts and docs can adopt it incrementally.
-	// Application is gated behind a v2.0 version bump (see ROADMAP.md).
+	// Application is gated behind the v4.0.0 boundary (see ROADMAP.md).
 	ExitNotFound = 3
 )
 
@@ -72,7 +72,7 @@ func classifyError(err error) (int, bool) {
 	}
 	if errors.Is(err, ErrHPANotFound) {
 		// Kept at ExitError for backwards compatibility; flip to ExitNotFound
-		// at the v2.0 boundary tracked in ROADMAP.md.
+		// at the v4.0.0 boundary tracked in ROADMAP.md.
 		return ExitError, true
 	}
 	return ExitError, false

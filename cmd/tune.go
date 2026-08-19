@@ -26,6 +26,9 @@ func newTuneCommand(opts *options) *cobra.Command {
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: hpaNameCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateMode("--goal", goal, "stable", "fast-scale-up", "cost-saving"); err != nil {
+				return err
+			}
 			return runTune(cmd.Context(), cmd.OutOrStdout(), opts, args[0], goal, suggest)
 		},
 	}
@@ -63,23 +66,41 @@ func runTune(ctx context.Context, out io.Writer, opts *options, name, goal strin
 		report.SuggestedBehavior = ""
 	}
 	return renderWithOutput(out, opts, report, func(out io.Writer) error {
-		_, _ = fmt.Fprintf(out, "HPA Tuning Advisor: %s/%s\n\nGoal: %s\n\nFindings:\n", report.Namespace, report.Name, report.Goal)
-		if len(report.Findings) == 0 {
-			_, _ = fmt.Fprintln(out, "- behavior is configured; review current policy against workload goal")
-		}
-		for _, finding := range report.Findings {
-			_, _ = fmt.Fprintf(out, "- %s\n", finding)
-		}
-		if report.SuggestedBehavior != "" {
-			_, _ = fmt.Fprintf(out, "\nSuggested behavior:\n%s\n", report.SuggestedBehavior)
-		}
-		_, _ = fmt.Fprintln(out, "\nRisk:")
-		for _, risk := range report.Risks {
-			_, _ = fmt.Fprintf(out, "- %s\n", risk)
-		}
-		return nil
+		return writeTuneText(out, report)
 	})
 
+}
+
+// writeTuneText renders the tune report as plain text, propagating write
+// errors per the command-layer convention.
+func writeTuneText(out io.Writer, report tuneReport) error {
+	if _, err := fmt.Fprintf(out, "HPA Tuning Advisor: %s/%s\n\nGoal: %s\n\nFindings:\n", report.Namespace, report.Name, report.Goal); err != nil {
+		return fmt.Errorf("write tune report: %w", err)
+	}
+	if len(report.Findings) == 0 {
+		if _, err := fmt.Fprintln(out, "- behavior is configured; review current policy against workload goal"); err != nil {
+			return fmt.Errorf("write tune report: %w", err)
+		}
+	}
+	for _, finding := range report.Findings {
+		if _, err := fmt.Fprintf(out, "- %s\n", finding); err != nil {
+			return fmt.Errorf("write tune report: %w", err)
+		}
+	}
+	if report.SuggestedBehavior != "" {
+		if _, err := fmt.Fprintf(out, "\nSuggested behavior:\n%s\n", report.SuggestedBehavior); err != nil {
+			return fmt.Errorf("write tune report: %w", err)
+		}
+	}
+	if _, err := fmt.Fprintln(out, "\nRisk:"); err != nil {
+		return fmt.Errorf("write tune report: %w", err)
+	}
+	for _, risk := range report.Risks {
+		if _, err := fmt.Fprintf(out, "- %s\n", risk); err != nil {
+			return fmt.Errorf("write tune report: %w", err)
+		}
+	}
+	return nil
 }
 
 func suggestedBehaviorForGoal(goal string) string {

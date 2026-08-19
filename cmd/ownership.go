@@ -53,9 +53,9 @@ func runOwnership(ctx context.Context, out io.Writer, opts *options, names []str
 		return err
 	}
 	reports, err := collectPerHPA(ctx, opts, names, func(ctx context.Context, name string) (ownershipReport, error) {
-		hpa, err := client.Interface.AutoscalingV2().HorizontalPodAutoscalers(client.Namespace).Get(ctx, name, metav1.GetOptions{})
+		hpa, err := kube.GetHPAFromClient(ctx, client, name)
 		if err != nil {
-			return ownershipReport{}, err
+			return ownershipReport{}, wrapHPALookupError(client.Namespace, name, err)
 		}
 		return buildOwnershipReport(ctx, client, hpa)
 	})
