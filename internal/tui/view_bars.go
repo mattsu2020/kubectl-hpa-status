@@ -6,6 +6,7 @@ import (
 	"charm.land/lipgloss/v2"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
+	hpastyle "github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
 func renderScoreBar(score int) string {
@@ -110,14 +111,17 @@ func renderInlineSparkline(history []float64, width int, churnLevel string) stri
 	if len(history) < 2 {
 		return dimStyle.Render(fitWidth("·", width))
 	}
-	var style lipgloss.Style
-	switch churnLevel {
-	case "HIGH", "CRITICAL":
-		style = errorStyle
-	case "MEDIUM":
-		style = warnStyle
+	// churnLevel crosses vocabularies (uppercase blocker levels, lowercase
+	// audit/churn levels), so classify through the shared tier instead of
+	// matching strings from two domains in one switch.
+	var sparkStyle lipgloss.Style
+	switch hpastyle.ClassifySeverity(churnLevel) {
+	case hpastyle.SeverityCritical:
+		sparkStyle = errorStyle
+	case hpastyle.SeverityWarning:
+		sparkStyle = warnStyle
 	default:
-		style = okStyle
+		sparkStyle = okStyle
 	}
-	return renderSparkline(history, width, style)
+	return renderSparkline(history, width, sparkStyle)
 }
