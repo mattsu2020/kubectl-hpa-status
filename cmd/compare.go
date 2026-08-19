@@ -162,6 +162,10 @@ func renderCompareDriftText(out io.Writer, reports []compare.Report) error {
 }
 
 func newCompareClient(opts *options, contextName string) (*kube.Client, error) {
+	// Intentional opts.NewClient() bypass (see client_helpers.go): each compare
+	// side builds a per-context client from its own option clone, and the
+	// caller wraps failures per compare pair instead of using the standard
+	// "failed to create Kubernetes client" abort.
 	clone := copyOptions(opts)
 	if contextName != "" {
 		clone.ContextName = contextName
@@ -171,9 +175,9 @@ func newCompareClient(opts *options, contextName string) (*kube.Client, error) {
 
 func getCompareHPA(ctx context.Context, client *kube.Client, ref string) (*autoscalingv2.HorizontalPodAutoscaler, string, error) {
 	namespace, name := splitNamespacedRef(ref, client.Namespace)
-	hpa, err := client.Interface.AutoscalingV2().HorizontalPodAutoscalers(namespace).Get(ctx, name, metav1.GetOptions{})
+	hpa, err := kube.GetHPA(ctx, client.Interface, namespace, name)
 	if err != nil {
-		return nil, "", fmt.Errorf("get HPA %s/%s: %w", namespace, name, err)
+		return nil, "", wrapHPALookupError(namespace, name, err)
 	}
 	return hpa, namespace + "/" + name, nil
 }

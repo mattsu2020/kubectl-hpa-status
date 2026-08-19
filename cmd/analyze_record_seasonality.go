@@ -104,25 +104,29 @@ func writeSeasonalityText(out io.Writer, result recordSeasonality) error {
 		return err
 	}
 
+	// Items render into a builder first so the whole report reaches the
+	// writer through one checked write.
+	var sb strings.Builder
 	for i, item := range result.Items {
 		if i > 0 {
-			_, _ = fmt.Fprintln(out)
+			sb.WriteByte('\n')
 		}
-		writeSeasonalityItem(out, item)
+		writeSeasonalityItem(&sb, item)
 	}
-	return nil
+	_, err := io.WriteString(out, sb.String())
+	return err
 }
 
-func writeSeasonalityItem(out io.Writer, item recordSeasonalityItem) {
+func writeSeasonalityItem(sb *strings.Builder, item recordSeasonalityItem) {
 	a := item.Analysis
 	switch {
 	case a.InsufficientData:
-		_, _ = fmt.Fprintf(out, "%s/%s: insufficient data (%d snapshots)\n", item.Namespace, item.Name, item.Snapshots)
+		fmt.Fprintf(sb, "%s/%s: insufficient data (%d snapshots)\n", item.Namespace, item.Name, item.Snapshots)
 	case a.Detected:
-		_, _ = fmt.Fprintf(out, "%s/%s: recurring %s pattern detected (confidence: %s)\n",
+		fmt.Fprintf(sb, "%s/%s: recurring %s pattern detected (confidence: %s)\n",
 			item.Namespace, item.Name, a.Cycle, a.Recommendation.Confidence)
 	default:
-		_, _ = fmt.Fprintf(out, "%s/%s: no recurring pattern detected\n", item.Namespace, item.Name)
+		fmt.Fprintf(sb, "%s/%s: no recurring pattern detected\n", item.Namespace, item.Name)
 	}
 
 	if a.Peak != nil {
@@ -130,24 +134,24 @@ func writeSeasonalityItem(out io.Writer, item recordSeasonalityItem) {
 		if len(a.Peak.Weekdays) > 0 {
 			days = strings.Join(a.Peak.Weekdays, ",")
 		}
-		_, _ = fmt.Fprintf(out, "  window:   %s-%s %s (%s, %d of %d days)\n",
+		fmt.Fprintf(sb, "  window:   %s-%s %s (%s, %d of %d days)\n",
 			a.Peak.Start, a.Peak.End, a.Timezone, days, a.Peak.DaysMatched, a.Peak.DaysCovered)
-		_, _ = fmt.Fprintf(out, "  demand:   baseline %.1f -> peak %d replicas\n",
+		fmt.Fprintf(sb, "  demand:   baseline %.1f -> peak %d replicas\n",
 			a.Baseline, a.Peak.PeakDesired)
 	}
 
 	if rec := a.Recommendation; rec != nil {
-		_, _ = fmt.Fprintf(out, "  suggest:  raise minReplicas to %d at %s (%s before the ramp)\n",
+		fmt.Fprintf(sb, "  suggest:  raise minReplicas to %d at %s (%s before the ramp)\n",
 			rec.MinReplicas, rec.PrescaleAt, rec.LeadTime)
-		_, _ = fmt.Fprintf(out, "    cron:    %s\n", rec.CronExpression)
-		_, _ = fmt.Fprintf(out, "    release: %s\n", rec.ReleaseCronExpression)
-		_, _ = fmt.Fprintln(out, "    KEDA cron trigger:")
+		fmt.Fprintf(sb, "    cron:    %s\n", rec.CronExpression)
+		fmt.Fprintf(sb, "    release: %s\n", rec.ReleaseCronExpression)
+		fmt.Fprintln(sb, "    KEDA cron trigger:")
 		for line := range strings.SplitSeq(strings.TrimRight(rec.KEDATrigger, "\n"), "\n") {
-			_, _ = fmt.Fprintf(out, "      %s\n", line)
+			fmt.Fprintf(sb, "      %s\n", line)
 		}
 	}
 
 	for _, note := range a.Notes {
-		_, _ = fmt.Fprintf(out, "  %s\n", note)
+		fmt.Fprintf(sb, "  %s\n", note)
 	}
 }

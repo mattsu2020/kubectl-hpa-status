@@ -145,12 +145,13 @@ func WriteConflictMarkdown(w io.Writer, report *Conflict) error {
 		return err
 	}
 
-	_, err := fmt.Fprintf(w, "## GitOps Conflict: %s/%s (%s)\n\n", report.Namespace, report.Name, report.Target)
+	_, err := fmt.Fprintf(w, "## GitOps Conflict: %s/%s (%s)\n\n",
+		rendutil.MarkdownInline(report.Namespace), rendutil.MarkdownInline(report.Name), rendutil.MarkdownInline(report.Target))
 	if err != nil {
 		return err
 	}
 
-	if _, err = fmt.Fprintf(w, "**Summary:** %s\n\n", report.Summary); err != nil {
+	if _, err = fmt.Fprintf(w, "**Summary:** %s\n\n", rendutil.MarkdownInline(report.Summary)); err != nil {
 		return err
 	}
 
@@ -208,7 +209,7 @@ func writeGitOpsMarkdownWarnings(w io.Writer, warnings []string) error {
 	}
 	_, _ = fmt.Fprintln(w)
 	for _, warnMsg := range warnings {
-		if _, err := fmt.Fprintf(w, "- %s\n", warnMsg); err != nil {
+		if _, err := fmt.Fprintf(w, "- %s\n", rendutil.MarkdownInline(warnMsg)); err != nil {
 			return err
 		}
 	}

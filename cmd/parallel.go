@@ -7,7 +7,6 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 )
 
@@ -27,7 +26,7 @@ type perHPAResult[T any] struct {
 // envelope. Commands with a different rendering contract (assumptions,
 // ownership, status) keep their own wiring on top of collectPerHPA.
 func runPerHPACommand[T any](ctx context.Context, out io.Writer, opts *options, names []string,
-	preset cmdoptions.CommandPreset,
+	preset preset,
 	buildOne func(ctx context.Context, local *options, client *kube.Client, name string) (T, error),
 	writeOne func(out io.Writer, local *options, o T) error) error {
 

@@ -14,6 +14,7 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/conditions"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/event"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/model"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 )
 
 // PreventionReport holds the result of flapping prevention analysis
@@ -249,7 +250,7 @@ func describeFlappingPattern(flips []directionFlip) string {
 	}
 
 	windowSeconds := windowFromFlips(flips)
-	windowDesc := formatDuration(time.Duration(windowSeconds) * time.Second)
+	windowDesc := rendutil.DurationCompactMinutes(time.Duration(windowSeconds) * time.Second)
 
 	if len(flips) == 1 {
 		dir := "up-down"

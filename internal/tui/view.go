@@ -28,14 +28,23 @@ func (m Model) viewContent() string {
 		return "Loading HPA data..."
 	}
 
-	if m.err != nil {
+	// With no data at all the error is the only thing worth showing. Once at
+	// least one successful refresh produced items, a failed refresh keeps the
+	// still-valid list on screen and reports the failure in a banner so one
+	// transient API error does not blank an operating dashboard.
+	if m.err != nil && len(m.items) == 0 {
 		return errorStyle.Render(fmt.Sprintf("Error: %v", m.err)) + "\n\nPress q to quit."
+	}
+
+	banner := ""
+	if m.err != nil {
+		banner = errorStyle.Render(fmt.Sprintf("Refresh failed, showing last successful data: %v", m.err)) + "\n\n"
 	}
 
 	content := controllerForMode(m.viewMode).Render(m)
 	statusBar := m.renderStatusBar()
 
-	return content + "\n" + statusBar
+	return banner + content + "\n" + statusBar
 }
 
 func (m Model) renderHelpView() string {

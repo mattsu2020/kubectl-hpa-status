@@ -21,8 +21,16 @@ test:
 test-race:
 	$(GO) test -race -covermode=atomic ./...
 
+# test-ci is the single combined pass the CI workflow and `make ci` use:
+# every test executed once, under the race detector, with the coverage
+# profile written in the same run.
+.PHONY: test-ci
+test-ci:
+	$(GO) test -race -coverprofile=$(COVERAGE_OUT) -covermode=atomic ./...
+	@$(GO) tool cover -func=$(COVERAGE_OUT) > /dev/null
+
 .PHONY: ci
-ci: tidy build vet lint fmt-check test test-race coverage-check docs-check
+ci: tidy build vet lint fmt-check test-ci coverage-check docs-check
 	@echo "local CI checks passed"
 
 .PHONY: tidy
@@ -47,17 +55,26 @@ fmt-check:
 		echo "$$out"; \
 		exit 1; \
 	fi
-
+	@if command -v golangci-lint >/dev/null 2>&1; then \
+		golangci-lint fmt --diff ./... || (echo "golangci-lint fmt would reformat files (usually import grouping); run 'make fmt' and commit" && exit 1); \
+	else \
+		echo "golangci-lint not found; verified gofmt only (install golangci-lint to also check import grouping)"; \
+	fi
 
 .PHONY: coverage
 coverage:
 	$(GO) test -coverprofile=$(COVERAGE_OUT) ./...
 	$(GO) tool cover -func=$(COVERAGE_OUT)
 
-# coverage-check always regenerates the profile: a file-based target would
-# silently validate a stale coverage.out left over from an earlier run.
+# coverage-check validates the profile produced by `test-ci` (or `test`).
+# It regenerates the profile only when it is missing, so `make ci` runs the
+# suite exactly once; a bare `make coverage-check` after source edits should
+# run `make test-ci` first to refresh the profile deliberately.
 .PHONY: coverage-check
-coverage-check: coverage
+coverage-check:
+	@if [ ! -f $(COVERAGE_OUT) ]; then \
+		$(GO) test -coverprofile=$(COVERAGE_OUT) ./...; \
+	fi
 	bash scripts/check-coverage.sh $(COVERAGE_OUT)
 
 .PHONY: docs-check
@@ -75,6 +92,13 @@ vet:
 .PHONY: e2e
 e2e:
 	$(GO) test -v -tags=e2e ./test/e2e/...
+
+# e2e-kind drives scripts/e2e-kind.sh: creates a throwaway kind cluster,
+# installs metrics-server (plus KEDA/VPA CRDs via INSTALL_KEDA/INSTALL_VPA),
+# exercises the built binary against it, and tears the cluster down.
+.PHONY: e2e-kind
+e2e-kind:
+	bash scripts/e2e-kind.sh
 
 .PHONY: dev
 dev: build

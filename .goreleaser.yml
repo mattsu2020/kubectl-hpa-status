@@ -2,7 +2,7 @@ version: 2
 
 project_name: kubectl-hpa-status
 
-# snapshot governs local `goreleaser snapshot` builds (e.g. `make krew`).
+# snapshot governs local `goreleaser snapshot` builds (e.g. `make snapshot`).
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
 

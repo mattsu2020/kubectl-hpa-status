@@ -108,15 +108,7 @@ func runReplayWithHPA(out io.Writer, opts *options, request ReplayRequest, args 
 	if len(args) != 1 {
 		return fmt.Errorf("replay --hpa requires a record FILE argument")
 	}
-	if request.Compare != "" && request.Compare != "current,candidate" {
-		return fmt.Errorf("unsupported --compare %q (use current,candidate)", request.Compare)
-	}
-	overrides, err := parseSimulateOverrides(request.SetOverrides)
-	if err != nil {
-		return err
-	}
-	addReplayShortcutOverrides(overrides, request.MaxReplicas, request.MinReplicas, request.ScaleDownStabilization, request.CPUTarget, request.MemoryTarget)
-	return runReplayPolicyLab(out, opts, request.HPA, args[0], request.Candidates, overrides, request.Score)
+	return dispatchReplayPolicyLab(out, opts, request, request.HPA, args[0])
 }
 
 // runReplayWithFromRecord handles the `replay --from-record FILE NAME` form.
@@ -124,14 +116,7 @@ func runReplayWithFromRecord(out io.Writer, opts *options, request ReplayRequest
 	if len(args) != 1 {
 		return fmt.Errorf("replay --from-record requires an HPA name")
 	}
-	if request.Compare != "" && request.Compare != "current,candidate" {
-		return fmt.Errorf("unsupported --compare %q (use current,candidate)", request.Compare)
-	}
-	overrides, err := parseSimulateOverrides(request.SetOverrides)
-	if err != nil {
-		return err
-	}
-	return runReplayPolicyLab(out, opts, args[0], request.FromRecord, request.Candidates, overrides, request.Score)
+	return dispatchReplayPolicyLab(out, opts, request, args[0], request.FromRecord)
 }
 
 // runReplayWithCandidateOrScore handles the `replay --candidate/--score FILE` form.
@@ -139,12 +124,23 @@ func runReplayWithCandidateOrScore(out io.Writer, opts *options, request ReplayR
 	if len(args) != 1 {
 		return fmt.Errorf("replay with --candidate or --score requires a record FILE argument")
 	}
+	return dispatchReplayPolicyLab(out, opts, request, request.HPA, args[0])
+}
+
+// dispatchReplayPolicyLab resolves the (name, recordPath) pair for one replay
+// command form and runs the shared policy-lab pipeline. Every form shares the
+// --compare validation, --set parsing, and the --set-max-replicas family of
+// shortcut overrides so no path silently drops an override.
+func dispatchReplayPolicyLab(out io.Writer, opts *options, request ReplayRequest, name, recordPath string) error {
+	if request.Compare != "" && request.Compare != "current,candidate" {
+		return fmt.Errorf("unsupported --compare %q (use current,candidate)", request.Compare)
+	}
 	overrides, err := parseSimulateOverrides(request.SetOverrides)
 	if err != nil {
 		return err
 	}
 	addReplayShortcutOverrides(overrides, request.MaxReplicas, request.MinReplicas, request.ScaleDownStabilization, request.CPUTarget, request.MemoryTarget)
-	return runReplayPolicyLab(out, opts, request.HPA, args[0], request.Candidates, overrides, request.Score)
+	return runReplayPolicyLab(out, opts, name, recordPath, request.Candidates, overrides, request.Score)
 }
 
 func addReplayShortcutOverrides(overrides map[string]string, maxReplicas, minReplicas int32, stabilization time.Duration, cpuTarget, memoryTarget int32) {

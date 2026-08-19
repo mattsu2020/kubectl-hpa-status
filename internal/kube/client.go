@@ -112,10 +112,9 @@ func ListHPAsEachPage(ctx context.Context, iface kubernetes.Interface, namespace
 		if page.Continue == "" {
 			return nil
 		}
-		if seenContinue[page.Continue] {
-			return fmt.Errorf("listing HPAs in namespace %s: server returned a repeated continue token", namespace)
+		if err := guardRepeatedContinueToken(seenContinue, page.Continue, fmt.Sprintf("listing HPAs in namespace %s", namespace)); err != nil {
+			return err
 		}
-		seenContinue[page.Continue] = true
 		opts.Continue = page.Continue
 	}
 }

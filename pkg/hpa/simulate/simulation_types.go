@@ -124,7 +124,7 @@ func SetAnalyzeFunc(fn analyzeFunc) {
 // AnalysisFuncInvoker wraps the injected analysis function for convenience.
 func AnalysisFuncInvoker(hpa *autoscalingv2.HorizontalPodAutoscaler, includeMetrics bool, opts AnalysisOptions) Analysis {
 	if analyzeFuncInstance == nil {
-		panic("simulate: SetAnalyzeFunc must be called before using simulation functions")
+		panic("simulate: analysis dependency not installed; importing github.com/mattsu2020/kubectl-hpa-status/pkg/hpa (blank import is enough) installs it via that package's init")
 	}
 	return analyzeFuncInstance(hpa, includeMetrics, opts)
 }
@@ -157,14 +157,10 @@ type hasMetricValueForTargetFunc func(v autoscalingv2.MetricValueStatus, targetT
 type metricImpactRatioFunc func(hpa *autoscalingv2.HorizontalPodAutoscaler, metric autoscalingv2.MetricStatus) (string, *float64)
 type estimatedDesiredForRatioFunc func(hpa *autoscalingv2.HorizontalPodAutoscaler, ratio float64) int32
 type matchingMetricTargetFunc func(hpa *autoscalingv2.HorizontalPodAutoscaler, current autoscalingv2.MetricStatus) (*autoscalingv2.MetricTarget, bool)
-type formatMetricTargetFunc func(target autoscalingv2.MetricTarget) string
 type directionalToleranceFunc func(hpa *autoscalingv2.HorizontalPodAutoscaler, ratio float64) (float64, bool)
 type ratioWithinToleranceFunc func(hpa *autoscalingv2.HorizontalPodAutoscaler, ratio float64) (bool, float64)
 type toleranceDirectionFunc func(ratio float64, scaleUp, scaleDown *float64) string
-type formatMetricValueStatusFunc func(v autoscalingv2.MetricValueStatus) string
 type effectiveDirectionalTolerancesFunc func(hpa *autoscalingv2.HorizontalPodAutoscaler) (scaleUp, scaleDown float64)
-type repeatCharFunc func(count int, char string) string
-type formatDurationFunc func(seconds int32) string
 
 // Function pointer variables
 var (
@@ -175,14 +171,10 @@ var (
 	metricImpactRatioFuncImpl              metricImpactRatioFunc
 	estimatedDesiredForRatioFuncImpl       estimatedDesiredForRatioFunc
 	matchingMetricTargetFuncImpl           matchingMetricTargetFunc
-	formatMetricTargetFuncImpl             formatMetricTargetFunc
 	directionalToleranceFuncImpl           directionalToleranceFunc
 	ratioWithinToleranceFuncImpl           ratioWithinToleranceFunc
 	toleranceDirectionFuncImpl             toleranceDirectionFunc
-	formatMetricValueStatusFuncImpl        formatMetricValueStatusFunc
 	effectiveDirectionalTolerancesFuncImpl effectiveDirectionalTolerancesFunc
-	repeatCharFuncImpl                     repeatCharFunc
-	formatDurationFuncImpl                 formatDurationFunc
 )
 
 // SetMetricIDFromSpecFunc sets the MetricIDFromSpec function.
@@ -220,11 +212,6 @@ func SetMatchingMetricTargetFunc(fn matchingMetricTargetFunc) {
 	matchingMetricTargetFuncImpl = fn
 }
 
-// SetFormatMetricTargetFunc sets the FormatMetricTarget function.
-func SetFormatMetricTargetFunc(fn formatMetricTargetFunc) {
-	formatMetricTargetFuncImpl = fn
-}
-
 // SetDirectionalToleranceFunc sets the directionalTolerance function.
 func SetDirectionalToleranceFunc(fn directionalToleranceFunc) {
 	directionalToleranceFuncImpl = fn
@@ -240,24 +227,9 @@ func SetToleranceDirectionFunc(fn toleranceDirectionFunc) {
 	toleranceDirectionFuncImpl = fn
 }
 
-// SetFormatMetricValueStatusFunc sets the FormatMetricValueStatus function.
-func SetFormatMetricValueStatusFunc(fn formatMetricValueStatusFunc) {
-	formatMetricValueStatusFuncImpl = fn
-}
-
 // SetEffectiveDirectionalTolerancesFunc sets the effectiveDirectionalTolerances function.
 func SetEffectiveDirectionalTolerancesFunc(fn effectiveDirectionalTolerancesFunc) {
 	effectiveDirectionalTolerancesFuncImpl = fn
-}
-
-// SetRepeatCharFunc sets the repeatChar function.
-func SetRepeatCharFunc(fn repeatCharFunc) {
-	repeatCharFuncImpl = fn
-}
-
-// SetFormatDurationFunc sets the FormatDuration function.
-func SetFormatDurationFunc(fn formatDurationFunc) {
-	formatDurationFuncImpl = fn
 }
 
 // Invoker functions for convenience
@@ -310,13 +282,6 @@ func matchingMetricTargetInvoker(hpa *autoscalingv2.HorizontalPodAutoscaler, cur
 	return matchingMetricTargetFuncImpl(hpa, current)
 }
 
-func formatMetricTargetInvoker(target autoscalingv2.MetricTarget) string {
-	if formatMetricTargetFuncImpl == nil {
-		panic("simulate: SetFormatMetricTargetFunc must be called before using FormatMetricTarget")
-	}
-	return formatMetricTargetFuncImpl(target)
-}
-
 func directionalToleranceInvoker(hpa *autoscalingv2.HorizontalPodAutoscaler, ratio float64) (float64, bool) {
 	if directionalToleranceFuncImpl == nil {
 		panic("simulate: SetDirectionalToleranceFunc must be called before using directionalTolerance")
@@ -338,32 +303,11 @@ func toleranceDirectionInvoker(ratio float64, scaleUp, scaleDown *float64) strin
 	return toleranceDirectionFuncImpl(ratio, scaleUp, scaleDown)
 }
 
-func formatMetricValueStatusInvoker(v autoscalingv2.MetricValueStatus) string {
-	if formatMetricValueStatusFuncImpl == nil {
-		panic("simulate: SetFormatMetricValueStatusFunc must be called before using FormatMetricValueStatus")
-	}
-	return formatMetricValueStatusFuncImpl(v)
-}
-
 func effectiveDirectionalTolerancesInvoker(hpa *autoscalingv2.HorizontalPodAutoscaler) (scaleUp, scaleDown float64) {
 	if effectiveDirectionalTolerancesFuncImpl == nil {
 		panic("simulate: SetEffectiveDirectionalTolerancesFunc must be called before using effectiveDirectionalTolerances")
 	}
 	return effectiveDirectionalTolerancesFuncImpl(hpa)
-}
-
-func repeatCharInvoker(count int, char string) string {
-	if repeatCharFuncImpl == nil {
-		panic("simulate: SetRepeatCharFunc must be called before using repeatChar")
-	}
-	return repeatCharFuncImpl(count, char)
-}
-
-func formatDurationInvoker(seconds int32) string {
-	if formatDurationFuncImpl == nil {
-		panic("simulate: SetFormatDurationFunc must be called before using FormatDuration")
-	}
-	return formatDurationFuncImpl(seconds)
 }
 
 // SimulationResult holds the before/after comparison of an HPA simulation.

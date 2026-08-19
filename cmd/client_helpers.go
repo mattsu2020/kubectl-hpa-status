@@ -24,11 +24,13 @@ import (
 //     The known intentional bypasses are:
 //     - list, autoscaler_map: must surface the raw error so JSON/YAML output
 //       stays machine-parseable (an English prefix would break the schema).
-//     - blockers, capacity_plan, rollout: client failure is non-fatal; they
-//       return an empty result rather than aborting with an error.
-//     - completion (x2): shell completion failures stay silent and emit
-//       cobra.ShellCompDirectiveNoFileComp.
+//     - compare: per-context clients are constructed from option clones for
+//       each kubeconfig context, so the clone builds its own client and the
+//       caller wraps failures per compare pair.
 //     - apply: the caller wraps the error itself for the dual return path.
+//
+// blockers, capacity_plan, and rollout previously bypassed the wrapper but
+// now run through runPerHPACommand, which uses newClientOrDefault.
 //
 // Do not collapse these to a single idiom without addressing each reason,
 // since doing so silently changes user-facing output and exit semantics.

@@ -252,13 +252,13 @@ func extractInt32Ptr(m map[string]any, key string) *int32 {
 		if v < math.MinInt32 || v > math.MaxInt32 {
 			return nil
 		}
-		val := int32(v) //nolint:gosec // overflow checked above
+		val := int32(v) // #nosec G115 -- bounds checked immediately above
 		return &val
 	case int:
 		if v < math.MinInt32 || v > math.MaxInt32 {
 			return nil
 		}
-		val := int32(v) //nolint:gosec // overflow checked above
+		val := int32(v) // #nosec G115 -- bounds checked immediately above
 		return &val
 	case float64:
 		if v < math.MinInt32 || v > math.MaxInt32 {

@@ -241,6 +241,16 @@ release"). The grouped commands themselves are unchanged.
 The release PR must also grep both READMEs, `docs/reference.md`, and the
 asciinema demo sources for the removed short names.
 
+### v4 `ExitNotFound` application
+
+`cmd.ExitNotFound` (3) has been exported and reserved since the v2 line while
+HPA-not-found kept exiting `1` for script compatibility. v4.0.0 flips the
+`classifyError` mapping in `cmd/exitcode.go` so `ErrHPANotFound` resolves to
+exit code 3, letting scripts distinguish "the HPA does not exist" from generic
+API failures. The constant and the flip site already exist; the release only
+removes the backwards-compatibility branch and documents the code change in
+the migration table.
+
 ### v4 v1 wire-schema retirement
 
 `--output-schema=v1` and the flat v1 projection are removed; the grouped v2

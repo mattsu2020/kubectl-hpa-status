@@ -174,8 +174,8 @@ func FormatTrajectoryASCII(states []ProjectedState, width int) string {
 	}
 
 	// X-axis with time labels.
-	result += "    └" + repeatCharInvoker(width, "─") + "┘\n"
-	result += fmt.Sprintf("     0s%"+fmt.Sprintf("%d", width-4)+"s\n", formatDurationInvoker(maxOffset))
+	result += "    └" + repeatChar(width, "─") + "┘\n"
+	result += fmt.Sprintf("     0s%"+fmt.Sprintf("%d", width-4)+"s\n", formatDuration(maxOffset))
 
 	return result
 }

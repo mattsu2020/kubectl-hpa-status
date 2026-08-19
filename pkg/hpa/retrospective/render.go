@@ -20,7 +20,7 @@ func WriteTimeline(w io.Writer, tl Timeline, theme style.Theme) error {
 	var out strings.Builder
 
 	header := fmt.Sprintf("HPA Scaling Timeline: %s (%s)  since %s ago",
-		tl.HPAName, tl.Namespace, formatDuration(clock.Now().Sub(tl.Since)))
+		tl.HPAName, tl.Namespace, rendutil.DurationCompactMinutes(clock.Now().Sub(tl.Since)))
 	out.WriteString(theme.Header.Render(header) + "\n\n")
 
 	if len(tl.Warnings) > 0 {
@@ -144,23 +144,6 @@ func categoryPrefix(category string) string {
 	}
 }
 
-// formatDuration returns a human-readable duration string like "30m" or "1h30m".
-func formatDuration(d time.Duration) string {
-	d = d.Round(time.Minute)
-	if d < time.Minute {
-		return "0m"
-	}
-	h := int(d.Hours())
-	m := int(d.Minutes()) % 60
-	if h > 0 && m > 0 {
-		return fmt.Sprintf("%dh%dm", h, m)
-	}
-	if h > 0 {
-		return fmt.Sprintf("%dh", h)
-	}
-	return fmt.Sprintf("%dm", m)
-}
-
 // bottleneckDuration renders a bottleneck's duration as a table cell value:
 // "0s" when the duration is unset, the human-readable duration otherwise.
 // Shared by the Markdown and HTML replay renderers.
@@ -168,7 +151,7 @@ func bottleneckDuration(b BottleneckMarker) string {
 	if b.Duration <= 0 {
 		return "0s"
 	}
-	return formatDuration(b.Duration)
+	return rendutil.DurationCompactMinutes(b.Duration)
 }
 
 // suppressedLabel renders a tolerance effect's suppression state as a Yes/No
@@ -229,7 +212,7 @@ func replayBottleneckLine(b BottleneckMarker) string {
 	timeStr := b.Timestamp.Format("15:04")
 	durationStr := ""
 	if b.Duration > 0 {
-		durationStr = fmt.Sprintf(" (duration: %s)", formatDuration(b.Duration))
+		durationStr = fmt.Sprintf(" (duration: %s)", rendutil.DurationCompactMinutes(b.Duration))
 	}
 	return fmt.Sprintf("  %s%s %s — %s%s\n", severityPrefix, timeStr, b.Type, b.Message, durationStr)
 }
@@ -301,7 +284,7 @@ func replayStabilizationWindowsText(analysis *ReplayAnalysis) string {
 	for _, sw := range analysis.StabilizationWindows {
 		startStr := sw.Start.Format("15:04")
 		endStr := sw.End.Format("15:04")
-		durationStr := formatDuration(sw.Duration)
+		durationStr := rendutil.DurationCompactMinutes(sw.Duration)
 		out.WriteString(fmt.Sprintf("  %s - %s (%s) — suppressed scale-down replicas: %s\n",
 			startStr, endStr, durationStr, suppressedScaleDownText(sw.SuppressedScaleDown)))
 	}
@@ -382,7 +365,7 @@ func WriteReplayMarkdown(w io.Writer, analysis *ReplayAnalysis, tl Timeline) err
 			out.WriteString(fmt.Sprintf("| %s | %s | %s | %s |\n",
 				sw.Start.Format("15:04"),
 				sw.End.Format("15:04"),
-				formatDuration(sw.Duration),
+				rendutil.DurationCompactMinutes(sw.Duration),
 				suppressedScaleDownText(sw.SuppressedScaleDown)))
 		}
 		out.WriteString("\n")
@@ -485,7 +468,7 @@ func WriteReplayHTML(w io.Writer, analysis *ReplayAnalysis, tl Timeline) error {
 			out.WriteString("<tr>")
 			out.WriteString(fmt.Sprintf("<td>%s</td>", sw.Start.Format("15:04")))
 			out.WriteString(fmt.Sprintf("<td>%s</td>", sw.End.Format("15:04")))
-			out.WriteString(fmt.Sprintf("<td>%s</td>", formatDuration(sw.Duration)))
+			out.WriteString(fmt.Sprintf("<td>%s</td>", rendutil.DurationCompactMinutes(sw.Duration)))
 			out.WriteString(fmt.Sprintf("<td>%s</td>", suppressedScaleDownText(sw.SuppressedScaleDown)))
 			out.WriteString("</tr>\n")
 		}

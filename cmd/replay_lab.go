@@ -57,17 +57,12 @@ func runReplayPolicyLab(out io.Writer, opts *options, name, recordPath string, c
 		},
 	}
 	for i, candidatePath := range candidatePaths {
-		candidate, loadErr := buildReplayCandidate(candidatePath, nil)
+		// Overrides apply to every candidate equally; a per-candidate manifest
+		// supplies the base config and --set/--set-* values win on top, so the
+		// same override is never silently dropped for multi-candidate runs.
+		candidate, loadErr := buildReplayCandidate(candidatePath, overrides)
 		if loadErr != nil {
 			return loadErr
-		}
-		if len(candidatePaths) == 1 {
-			for key, value := range overrides {
-				if err := applyReplayCandidateOverride(&candidate, key, value); err != nil {
-					return err
-				}
-				candidate.Proposed[key] = value
-			}
 		}
 		candidateTrace := applyReplayCandidate(*trace, candidate)
 		candidateSummary := summarizeReplayTraceWithDemand(candidateTrace, candidate.MaxReplicas, trace)

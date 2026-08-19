@@ -161,26 +161,16 @@ func fetchRecentHPAEvents(ctx context.Context, client kubernetes.Interface, name
 }
 
 func listCoreEventsBySelector(ctx context.Context, client kubernetes.Interface, namespace, selector string) ([]corev1.Event, error) {
-	var result []corev1.Event
-	continueToken := ""
-	for {
-		page, err := client.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{
-			FieldSelector: selector,
-			Limit:         eventsSinceFetchLimit,
-			Continue:      continueToken,
-		})
+	return collectListPages(ctx, metav1.ListOptions{
+		FieldSelector: selector,
+		Limit:         eventsSinceFetchLimit,
+	}, func(ctx context.Context, page metav1.ListOptions) ([]corev1.Event, string, error) {
+		list, err := client.CoreV1().Events(namespace).List(ctx, page)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
-		result = append(result, page.Items...)
-		if page.Continue == "" {
-			return result, nil
-		}
-		if page.Continue == continueToken {
-			return nil, fmt.Errorf("events pagination returned repeated continue token %q", continueToken)
-		}
-		continueToken = page.Continue
-	}
+		return list.Items, list.Continue, nil
+	})
 }
 
 // FetchRecentHPAEventsSince fetches Kubernetes events for the specified HPA

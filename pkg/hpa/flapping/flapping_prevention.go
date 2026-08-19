@@ -273,25 +273,6 @@ func buildFlappingSummary(directionFlips int, currentWindow int32, recommendatio
 		directionFlips, currentWindow, best.WindowSeconds, best.EstimatedFlapReduction)
 }
 
-// formatDuration formats a duration as a compact human-readable string (e.g.
-// "2h30m"). Local copy of pkg/hpa.formatDuration to keep this leaf package
-// self-contained; keep in sync with retrospective_render.go.
-func formatDuration(d time.Duration) string {
-	d = d.Round(time.Minute)
-	if d < time.Minute {
-		return "0m"
-	}
-	h := int(d.Hours())
-	m := int(d.Minutes()) % 60
-	if h > 0 && m > 0 {
-		return fmt.Sprintf("%dh%dm", h, m)
-	}
-	if h > 0 {
-		return fmt.Sprintf("%dh", h)
-	}
-	return fmt.Sprintf("%dm", m)
-}
-
 // currentStabilizationWindowSeconds returns the HPA scale-down stabilization
 // window, defaulting to the Kubernetes default when unset.
 func currentStabilizationWindowSeconds(hpa *autoscalingv2.HorizontalPodAutoscaler) int32 {

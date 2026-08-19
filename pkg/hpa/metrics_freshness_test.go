@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -573,11 +574,11 @@ func TestIsMetricValueZero(t *testing.T) {
 
 func TestTruncateMessage(t *testing.T) {
 	t.Parallel()
-	if got := truncateMessage("short", 10); got != "short" {
+	if got := rendutil.TruncateDisplayWidth("short", 10, "..."); got != "short" {
 		t.Errorf("truncateMessage(%q, 10) = %q, want %q", "short", got, "short")
 	}
 	long := strings.Repeat("a", 200)
-	got := truncateMessage(long, 50)
+	got := rendutil.TruncateDisplayWidth(long, 50, "...")
 	if !strings.HasSuffix(got, "...") {
 		t.Errorf("expected truncated message to end with '...', got: %q", got)
 	}

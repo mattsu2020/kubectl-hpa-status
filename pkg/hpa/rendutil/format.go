@@ -6,6 +6,26 @@ import (
 	"time"
 )
 
+// DurationCompactMinutes formats a duration rounded to whole minutes in the
+// compact "1h30m" / "45m" shape shared by the retrospective and flapping
+// reports. Durations under half a minute round to "0m".
+func DurationCompactMinutes(d time.Duration) string {
+	d = d.Round(time.Minute)
+	if d < time.Minute {
+		return "0m"
+	}
+	h := int(d.Hours())
+	m := int(d.Minutes()) % 60
+	switch {
+	case h > 0 && m > 0:
+		return fmt.Sprintf("%dh%dm", h, m)
+	case h > 0:
+		return fmt.Sprintf("%dh", h)
+	default:
+		return fmt.Sprintf("%dm", m)
+	}
+}
+
 // DurationSpaced formats a duration using spaces between units. It keeps the
 // two most useful units and is intended for prose such as "4m 12s".
 func DurationSpaced(d time.Duration) string {

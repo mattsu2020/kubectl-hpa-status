@@ -2,7 +2,7 @@ package tui
 
 import tea "charm.land/bubbletea/v2"
 
-func (m Model) handleSimFieldInput(msg tea.KeyMsg) (tea.Model, bool) {
+func (m Model) handleSimFieldInput(msg tea.KeyMsg) (Model, bool) {
 	if m.simState == nil || len(m.simState.fields) == 0 {
 		return m, false
 	}

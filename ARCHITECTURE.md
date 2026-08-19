@@ -84,12 +84,11 @@ Refactoring notes:
 - Client creation goes through `newClientOrDefault` (`cmd/client_helpers.go`,
   re-exporting `cmd/internal/client`) so the standard "failed to create
   Kubernetes client" message is shared. A small set of commands
-  (`list`, `autoscaler_map`, `blockers`, `capacity_plan`, `rollout`,
-  `completion`, `apply`) intentionally call `opts.NewClient()` directly to
-  bypass that wrapper — each bypass site carries a comment stating why (e.g.
-  structured JSON/YAML output must stay schema-clean, shell completion must
-  stay silent, client failure is non-fatal). See `client_helpers.go` for the
-  full rationale.
+  (`list`, `autoscaler_map`, `compare`, `apply`) intentionally call
+  `opts.NewClient()` directly to bypass that wrapper — each bypass site
+  carries a comment stating why (e.g. structured JSON/YAML output must stay
+  schema-clean, per-context compare clients, the apply dual-return contract).
+  See `client_helpers.go` for the full rationale.
 - `EnrichmentStatus` on `Analysis` is a typed
   `*hpaanalysis.EnrichmentStatus`. `internal/enrichment` aliases that canonical
   model, so internal and public output cannot drift through hand-maintained
@@ -217,10 +216,9 @@ Refactoring notes:
   (`cmd/client_helpers.go`) so the standard "failed to create Kubernetes
   client" prefix is applied consistently. The intentional bypass sites (which
   need a different error contract) are documented in `client_helpers.go`:
-  best-effort nil-return paths (`rollout.go`, `blockers.go`,
-  `capacity_plan.go`), silent shell completion (`completion.go`), structured
-  JSON/YAML error output (`autoscaler_map.go`, `list.go`), and the
-  `applySuggestions` dual-return contract (`apply.go`).
+  structured JSON/YAML error output (`autoscaler_map.go`, `list.go`),
+  per-context compare clients (`compare.go`), and the `applySuggestions`
+  dual-return contract (`apply.go`).
 - The metric dispatch layer lives in `metrics_handler.go` (the
   `MetricHandler` interface + the public `FormatMetricStatus` /
   `FormatMetricTarget` / `FormatMetricSelector` API and the spec/status lookup
@@ -327,13 +325,20 @@ Refactoring notes:
     code can import the dependency-light core directly. Time-dependent domains
     share the public `pkg/clock` abstraction.
 - Audit, blocker, warmup, flapping, churn, policy, lint, readiness, keda,
-  vpa, and healthtrend have been extracted into self-contained sub-packages. The remaining
-  domains (pod-analysis, events, capacity, simulate, decision, gitops, metrics,
-  health, retrospective, timeline, behavior, container-advisor, assumptions,
-  hidden-factors) each depend on root domain types such as `TimelineSnapshot`
-  and `Analysis`, or on cross-domain finalization. They are intentionally left
-  in `pkg/hpa` until a narrower typed boundary can be introduced; labels and
-  metric formatting are already available from `pkg/hpa/core`.
+  vpa, healthtrend, capacityplan, simulate, gitops, retrospective,
+  behavioradvisor, containeradvisor, seasonality, compare, fleet, and
+  autoscalermap have been extracted into self-contained sub-packages (events
+  lives under `pkg/hpa/internal/event`, re-exported from `pkg/hpa`). The
+  remaining root domains (pod-analysis, the metrics family
+  (metrics_handler/metric_identity/metric_trace/metrics_freshness/
+  metrics_contract/metric_hints), health, timeline, assumptions,
+  hidden-factors, and the decision_* family) each depend on root domain types
+  such as `TimelineSnapshot` and `Analysis`, or on cross-domain finalization.
+  They are intentionally left in `pkg/hpa` until a narrower typed boundary can
+  be introduced; labels and metric formatting are already available from
+  `pkg/hpa/core` (the simulate package formats metrics directly through
+  `core.FormatMetricTarget`/`core.FormatMetricValueStatus` rather than via
+  injection).
   Additionally, `pkg/hpa/internal/suggestion` holds the shared `Suggestion`,
   `GuardResult`, `GuardBlocked`, and `GuardWarning` types used by policy and
   the suggestion pipeline.

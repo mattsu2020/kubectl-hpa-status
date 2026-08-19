@@ -3,3 +3,4 @@ kubectl-hpa-status
 *.test
 coverage.out
 dist/
+.claude/settings.local.json
