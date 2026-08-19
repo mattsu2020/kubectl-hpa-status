@@ -219,7 +219,7 @@ func (m Model) handleMetricModeKey() Model {
 
 // handleDryRunKey validates the selected suggestion with Kubernetes
 // server-side dry-run without persisting it.
-func (m Model) handleDryRunKey() (tea.Model, tea.Cmd) {
+func (m Model) handleDryRunKey() (Model, tea.Cmd) {
 	if m.viewMode != fixView || m.fixState == nil || len(m.fixState.suggestions) == 0 {
 		return m, nil
 	}

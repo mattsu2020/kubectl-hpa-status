@@ -207,7 +207,7 @@ func loadReplayTrace(path string) tea.Cmd {
 }
 
 // handleSimInput handles text input when in simulation metric mode.
-func (m Model) handleSimInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) handleSimInput(msg tea.KeyMsg) (Model, tea.Cmd) {
 	if m.simState == nil {
 		return m, nil
 	}

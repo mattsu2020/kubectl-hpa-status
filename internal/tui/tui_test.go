@@ -655,6 +655,24 @@ func TestView_Error(t *testing.T) {
 	}
 }
 
+func TestView_ErrorWithStaleItemsKeepsList(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.width = 120
+	m.height = 40
+	m.loading = false
+	m.items = []hpaanalysis.ListItem{
+		{Namespace: "default", Name: "web", Health: "OK", HealthScore: 100},
+	}
+	m.err = fmt.Errorf("connection refused")
+	output := m.View().Content
+	if !containsSubstring(output, "web") {
+		t.Fatalf("expected stale list to stay visible, got %q", output)
+	}
+	if !containsSubstring(output, "Refresh failed") {
+		t.Fatalf("expected refresh-failure banner, got %q", output)
+	}
+}
+
 func TestView_ListView(t *testing.T) {
 	m := NewModel(nil, "default", Options{})
 	m.width = 120

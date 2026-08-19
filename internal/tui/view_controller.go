@@ -203,11 +203,11 @@ func handleSimViewInput(m Model, msg tea.KeyMsg) (Model, tea.Cmd, bool) {
 	}
 	if m.simState.metricMode && m.simState.metricInput.Focused() {
 		updated, cmd := m.handleSimInput(msg)
-		return updated.(Model), cmd, true
+		return updated, cmd, true
 	}
 	if !m.simState.metricMode {
 		if updated, handled := m.handleSimFieldInput(msg); handled {
-			return updated.(Model), nil, true
+			return updated, nil, true
 		}
 	}
 	if key.Matches(msg, m.keys.MetricMode) {
@@ -227,7 +227,7 @@ func handleFixViewKey(m Model, msg tea.KeyMsg) (Model, tea.Cmd, bool) {
 		return m, nil, false
 	}
 	updated, cmd := m.handleDryRunKey()
-	return updated.(Model), cmd, true
+	return updated, cmd, true
 }
 
 // fallbackViewController keeps a corrupt or future unknown mode usable. It
