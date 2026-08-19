@@ -1,0 +1,46 @@
+name: fuzz
+
+# Short scheduled fuzzing pass over the analysis engine. The seed corpus of
+# FuzzAnalyze runs as a plain unit test in CI on every push; this job adds a
+# bounded mutation budget so regressions that need non-seed inputs surface
+# without waiting for a contributor to run -fuzz locally.
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly, shortly after the codeql schedule, on an off-peak minute.
+    - cron: '41 4 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+
+      - name: Fuzz Analyze
+        # -run='^$' skips the rest of the package's unit tests; they already
+        # ran in the ci workflow. A crash writes a reproducer under
+        # testdata/fuzz/, which the artifact step below preserves so the
+        # failing input can be committed as a new seed.
+        env:
+          FUZZ_TIME: 2m
+        run: go test -run='^$' -fuzz=FuzzAnalyze -fuzztime=${FUZZ_TIME} ./pkg/hpa/
+
+      - name: Upload crash corpus
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: fuzz-crashers
+          path: testdata/fuzz/
+          if-no-files-found: ignore

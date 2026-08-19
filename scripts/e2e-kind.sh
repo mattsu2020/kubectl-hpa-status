@@ -20,7 +20,9 @@
 set -euo pipefail
 
 CLUSTER_NAME="hpa-status-e2e"
-KIND_NODE_IMAGE="${KIND_NODE_IMAGE:-kindest/node:v1.31.0}"
+# Keep the default node image inside the CI compatibility matrix
+# (.github/workflows/ci.yml e2e job) so local runs exercise a tested version.
+KIND_NODE_IMAGE="${KIND_NODE_IMAGE:-kindest/node:v1.36.1}"
 INSTALL_KEDA="${INSTALL_KEDA:-false}"
 INSTALL_VPA="${INSTALL_VPA:-false}"
 METRICS_SERVER_VERSION="${METRICS_SERVER_VERSION:-v0.7.0}"
@@ -110,7 +112,9 @@ fi
 # --- Optional: Install VPA CRDs ---
 if [ "$INSTALL_VPA" = "true" ]; then
     log "Installing VPA CRDs..."
-    kubectl apply --server-side -f "https://github.com/kubernetes/autoscaler/releases/download/${VPA_VERSION}/vpa-crds.yaml" 2>/dev/null || warn "VPA CRD install failed (non-fatal)"
+    # Same CRD source as the CI e2e job: the generated v1 CRD manifest on the
+    # autoscaler release branch.
+    kubectl apply --server-side -f "https://raw.githubusercontent.com/kubernetes/autoscaler/${VPA_VERSION}/vertical-pod-autoscaler/deploy/vpa-v1-crd-gen.yaml" 2>/dev/null || warn "VPA CRD install failed (non-fatal)"
 fi
 
 # --- Test: list command ---
