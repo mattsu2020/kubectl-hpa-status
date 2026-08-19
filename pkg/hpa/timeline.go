@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
@@ -70,17 +71,11 @@ func WriteTimelineTable(w io.Writer, trace TimelineTrace, theme style.Theme) err
 
 		health := theme.HealthLabel(snap.Health, snap.HealthScore)
 
-		topSignal := snap.TopMetric
-		if len(topSignal) > 30 {
-			topSignal = topSignal[:27] + "..."
-		}
+		topSignal := rendutil.TruncateDisplayWidth(snap.TopMetric, 30, "...")
 
 		interpretation := ""
 		if len(snap.Interpretation) > 0 {
-			interpretation = snap.Interpretation[0]
-			if len(interpretation) > 50 {
-				interpretation = interpretation[:47] + "..."
-			}
+			interpretation = rendutil.TruncateDisplayWidth(snap.Interpretation[0], 50, "...")
 		}
 
 		out.WriteString(fmt.Sprintf("%-10s %-14s %-14s %-30s %s\n",
@@ -88,10 +83,7 @@ func WriteTimelineTable(w io.Writer, trace TimelineTrace, theme style.Theme) err
 
 		// Show event changes
 		for _, event := range snap.Events {
-			msg := event.Message
-			if len(msg) > 80 {
-				msg = msg[:77] + "..."
-			}
+			msg := rendutil.TruncateDisplayWidth(event.Message, 80, "...")
 			out.WriteString(fmt.Sprintf("  event: %s: %s\n", event.Reason, msg))
 		}
 

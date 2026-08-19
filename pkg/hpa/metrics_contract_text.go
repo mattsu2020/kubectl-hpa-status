@@ -77,16 +77,17 @@ func appendMetricContractText(out *[]byte, report *MetricContractReport, theme s
 func WriteMetricContractMarkdown(w io.Writer, report *MetricContractReport) error {
 	var out []byte
 
-	out = fmt.Appendf(out, "## Metrics Contract: %s/%s (%s)\n\n", report.Namespace, report.Name, report.Target)
+	out = fmt.Appendf(out, "## Metrics Contract: %s/%s (%s)\n\n",
+		rendutil.MarkdownInline(report.Namespace), rendutil.MarkdownInline(report.Name), rendutil.MarkdownInline(report.Target))
 
 	// Overall status
 	out = fmt.Appendf(out, "**Overall Status:** %s\n\n", report.OverallStatus)
-	out = fmt.Appendf(out, "**Summary:** %s\n\n", report.Summary)
+	out = fmt.Appendf(out, "**Summary:** %s\n\n", rendutil.MarkdownInline(report.Summary))
 
 	if len(report.Remediation) > 0 {
 		out = append(out, "### Remediation\n\n"...)
 		for _, step := range report.Remediation {
-			out = fmt.Appendf(out, "- %s\n", step)
+			out = fmt.Appendf(out, "- %s\n", rendutil.MarkdownInline(step))
 		}
 		out = append(out, '\n')
 	}
@@ -95,33 +96,33 @@ func WriteMetricContractMarkdown(w io.Writer, report *MetricContractReport) erro
 	if len(report.Checks) > 0 {
 		out = append(out, "### Checks\n\n"...)
 		for i, check := range report.Checks {
-			out = fmt.Appendf(out, "%d. **%s/%s** — %s\n", i+1, check.MetricType, check.MetricName, check.Status)
+			out = fmt.Appendf(out, "%d. **%s/%s** — %s\n", i+1, check.MetricType, rendutil.MarkdownInline(check.MetricName), check.Status)
 
 			// APIService status
 			apiStatus := "Available"
 			if !check.APIServiceAvailable {
 				apiStatus = "Unavailable"
 			}
-			out = fmt.Appendf(out, "   - APIService: `%s` — %s\n", check.APIService, apiStatus)
+			out = fmt.Appendf(out, "   - APIService: `%s` — %s\n", rendutil.MarkdownInline(check.APIService), apiStatus)
 			if check.APIServiceMessage != "" {
-				out = fmt.Appendf(out, "   - Message: %s\n", check.APIServiceMessage)
+				out = fmt.Appendf(out, "   - Message: %s\n", rendutil.MarkdownInline(check.APIServiceMessage))
 			}
 
 			// Data status
 			if !check.DataAvailable {
 				out = fmt.Appendf(out, "   - Data: not available")
 				if check.DataMessage != "" {
-					out = fmt.Appendf(out, " (%s)", check.DataMessage)
+					out = fmt.Appendf(out, " (%s)", rendutil.MarkdownInline(check.DataMessage))
 				}
 				out = append(out, '\n')
 			}
 
 			// Detail and remediation
 			if check.Detail != "" {
-				out = fmt.Appendf(out, "   - Detail: %s\n", check.Detail)
+				out = fmt.Appendf(out, "   - Detail: %s\n", rendutil.MarkdownInline(check.Detail))
 			}
 			if check.Remediation != "" {
-				out = fmt.Appendf(out, "   - Remediation: %s\n", check.Remediation)
+				out = fmt.Appendf(out, "   - Remediation: %s\n", rendutil.MarkdownInline(check.Remediation))
 			}
 
 			if i < len(report.Checks)-1 {
