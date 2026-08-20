@@ -246,18 +246,18 @@ func appendMarkdownSimulation(out *strings.Builder, a *hpa.Analysis) {
 	}
 	sim := a.FlappingSimulation
 	out.WriteString("## Simulation\n\n")
-	out.WriteString(fmt.Sprintf("- **Parameter:** %s\n", sim.Parameter))
-	out.WriteString(fmt.Sprintf("- **Original:** %s  **Simulated:** %s\n", sim.OriginalValue, sim.SimulatedValue))
+	out.WriteString(fmt.Sprintf("- **Parameter:** %s\n", rendutil.MarkdownInline(sim.Parameter)))
+	out.WriteString(fmt.Sprintf("- **Original:** %s  **Simulated:** %s\n", rendutil.MarkdownInline(sim.OriginalValue), rendutil.MarkdownInline(sim.SimulatedValue)))
 	out.WriteString(fmt.Sprintf("- **Before:** desired=%d health=%s(%d)  **After:** desired=%d health=%s(%d)\n",
-		sim.Before.DesiredReplicas, sim.Before.Health, sim.Before.HealthScore,
-		sim.After.DesiredReplicas, sim.After.Health, sim.After.HealthScore))
+		sim.Before.DesiredReplicas, rendutil.MarkdownInline(sim.Before.Health), sim.Before.HealthScore,
+		sim.After.DesiredReplicas, rendutil.MarkdownInline(sim.After.Health), sim.After.HealthScore))
 	if sim.RiskAssessment != "" {
-		out.WriteString(fmt.Sprintf("- **Risk:** %s\n", sim.RiskAssessment))
+		out.WriteString(fmt.Sprintf("- **Risk:** %s\n", rendutil.MarkdownInline(sim.RiskAssessment)))
 	}
 	if len(sim.Interpretation) > 0 {
 		out.WriteString("\n")
 		for _, line := range sim.Interpretation {
-			out.WriteString(fmt.Sprintf("- %s\n", line))
+			out.WriteString(fmt.Sprintf("- %s\n", rendutil.MarkdownInline(line)))
 		}
 	}
 	out.WriteString("\n")
@@ -270,26 +270,26 @@ func appendMarkdownMetricFreshness(out *strings.Builder, a *hpa.Analysis) {
 	}
 	out.WriteString("## Metrics Freshness\n\n")
 	for _, mf := range a.MetricFreshnessEntries {
-		out.WriteString(fmt.Sprintf("### %s (%s) — %s\n\n", mf.Name, mf.Type, mf.Status))
+		out.WriteString(fmt.Sprintf("### %s (%s) — %s\n\n", rendutil.MarkdownInline(mf.Name), rendutil.MarkdownInline(mf.Type), rendutil.MarkdownInline(mf.Status)))
 		if mf.Source != "" {
-			out.WriteString(fmt.Sprintf("- **Source:** %s\n", mf.Source))
+			out.WriteString(fmt.Sprintf("- **Source:** %s\n", rendutil.MarkdownInline(mf.Source)))
 		}
 		if mf.Window != "" {
-			out.WriteString(fmt.Sprintf("- **Window:** %s\n", mf.Window))
+			out.WriteString(fmt.Sprintf("- **Window:** %s\n", rendutil.MarkdownInline(mf.Window)))
 		}
 		if mf.Risk != "" {
-			out.WriteString(fmt.Sprintf("- **Risk:** %s\n", mf.Risk))
+			out.WriteString(fmt.Sprintf("- **Risk:** %s\n", rendutil.MarkdownInline(mf.Risk)))
 		}
 		if len(mf.Evidence) > 0 {
 			out.WriteString("- **Evidence:**\n")
 			for _, e := range mf.Evidence {
-				out.WriteString(fmt.Sprintf("  - %s\n", e))
+				out.WriteString(fmt.Sprintf("  - %s\n", rendutil.MarkdownInline(e)))
 			}
 		}
 		if len(mf.NextSteps) > 0 {
 			out.WriteString("- **Next Steps:**\n")
 			for _, ns := range mf.NextSteps {
-				out.WriteString(fmt.Sprintf("  - `%s`\n", ns))
+				out.WriteString(fmt.Sprintf("  - %s\n", rendutil.MarkdownInline(ns)))
 			}
 		}
 		out.WriteString("\n")
@@ -313,7 +313,7 @@ func appendMarkdownCapacityContext(out *strings.Builder, a *hpa.Analysis) {
 	if len(cc.NodeHints) > 0 {
 		out.WriteString("### Hints\n\n")
 		for _, hint := range cc.NodeHints {
-			out.WriteString(fmt.Sprintf("- %s\n", hint))
+			out.WriteString(fmt.Sprintf("- %s\n", rendutil.MarkdownInline(hint)))
 		}
 		out.WriteString("\n")
 	}
