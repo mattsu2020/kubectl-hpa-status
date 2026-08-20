@@ -343,6 +343,40 @@ func TestEvaluateRule_UnknownRuleIsInfo(t *testing.T) {
 	}
 }
 
+func TestPolicyRejectsInvalidNumericParameters(t *testing.T) {
+	tests := []Rule{
+		{ID: "max-replicas-multiplier", Name: "multiplier", Parameters: Params{"multiplier": -3}},
+		{ID: "replica-range", Name: "ratio", Parameters: Params{"maxRatio": 0}},
+		{ID: "target-utilization-range", Name: "utilization", Parameters: Params{"min": 90, "max": 30}},
+		{ID: "metric-coverage", Name: "metrics", Parameters: Params{"minMetrics": 1.5}},
+	}
+	for _, rule := range tests {
+		file := File{Rules: []Rule{rule}}
+		if err := file.Validate(); err == nil {
+			t.Fatalf("expected invalid parameters for %s", rule.ID)
+		}
+	}
+}
+
+func TestReplicaPoliciesUseCheckedExactArithmetic(t *testing.T) {
+	hpa := policyTestHPA()
+	minReplicas := int32(2)
+	hpa.Spec.MinReplicas = &minReplicas
+	hpa.Spec.MaxReplicas = 11
+	violations := EvaluateRule(hpa, Rule{ID: "replica-range", Name: "ratio", Parameters: Params{"maxRatio": 5}})
+	if len(violations) != 1 {
+		t.Fatalf("expected ratio 5.5 to violate maxRatio 5, got %#v", violations)
+	}
+
+	largeMin := int32(1_500_000_000)
+	hpa.Spec.MinReplicas = &largeMin
+	hpa.Spec.MaxReplicas = 2_000_000_000
+	violations = EvaluateRule(hpa, Rule{ID: "max-replicas-multiplier", Name: "multiplier", Parameters: Params{"multiplier": 3}})
+	if len(violations) != 1 {
+		t.Fatalf("expected checked multiplication violation, got %#v", violations)
+	}
+}
+
 func TestEvaluatePolicies_SeverityOverride(t *testing.T) {
 	t.Parallel()
 	// stabilization-window defaults to warning; the rule overrides it to critical.
