@@ -189,3 +189,179 @@ func TestRunAnalyzeRecordSeasonalityFlatTraffic(t *testing.T) {
 		t.Errorf("expected no detection for flat traffic, got:\n%s", output)
 	}
 }
+
+// writeSeasonalRecordWithMetrics writes a JSONL record whose desiredReplicas
+// ramp from base to peak between 09:00 and 17:00 UTC and whose cpu
+// utilization ramps alongside it, exercising the typed metric signal path.
+func writeSeasonalRecordWithMetrics(t *testing.T, days int, base, peak int32, cpuBase, cpuPeak float64) string {
+	t.Helper()
+
+	tmp, err := os.CreateTemp(t.TempDir(), "hpa-seasonal-metric-*.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tmp.Close() }()
+
+	start := time.Date(2026, 1, 5, 0, 0, 0, 0, time.UTC) // a Monday
+	for d := range days {
+		day := start.AddDate(0, 0, d)
+		var snapshots []hpaanalysis.TimelineSnapshot
+		for minute := 0; minute < 24*60; minute += 15 {
+			desired := base
+			cpu := cpuBase
+			if minute >= 9*60 && minute < 17*60 {
+				desired = peak
+				cpu = cpuPeak
+			}
+			snapshots = append(snapshots, hpaanalysis.TimelineSnapshot{
+				Timestamp: day.Add(time.Duration(minute) * time.Minute),
+				Current:   desired,
+				Desired:   desired,
+				MetricValues: []hpaanalysis.MetricReading{
+					{Type: "Resource", Name: "cpu", Value: cpu, Target: 60, Unit: "%"},
+				},
+			})
+		}
+		trace := hpaanalysis.TimelineTrace{
+			Namespace: "prod",
+			HPAName:   "web",
+			Snapshots: snapshots,
+		}
+		if err := writeRecordLine(tmp, trace); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return tmp.Name()
+}
+
+func TestRunAnalyzeRecordSeasonalityAutoUsesMetricSignal(t *testing.T) {
+	path := writeSeasonalRecordWithMetrics(t, 5, 3, 12, 20, 80)
+
+	var buf bytes.Buffer
+	params := analyzeRecordOptions{detect: detectSeasonality, timezone: "UTC"}
+	if err := runAnalyzeRecord(&buf, &options{}, path, params); err != nil {
+		t.Fatalf("runAnalyzeRecord returned error: %v", err)
+	}
+
+	output := buf.String()
+	for _, want := range []string{
+		"signal:  metric:cpu (%)",
+		"demand:   baseline 20.0% -> peak 80.0%",
+		"raise minReplicas to 12",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("output missing %q:\n%s", want, output)
+		}
+	}
+}
+
+func TestRunAnalyzeRecordSeasonalitySignalReplicasOverridesMetric(t *testing.T) {
+	path := writeSeasonalRecordWithMetrics(t, 5, 3, 12, 20, 80)
+
+	var buf bytes.Buffer
+	params := analyzeRecordOptions{detect: detectSeasonality, timezone: "UTC", signal: "replicas"}
+	if err := runAnalyzeRecord(&buf, &options{}, path, params); err != nil {
+		t.Fatalf("runAnalyzeRecord returned error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "signal:  replicas") {
+		t.Errorf("expected the replica signal to win over recorded metrics, got:\n%s", output)
+	}
+	if !strings.Contains(output, "demand:   baseline 3.0 -> peak 12 replicas") {
+		t.Errorf("expected replica-space demand line, got:\n%s", output)
+	}
+}
+
+func TestRunAnalyzeRecordSeasonalityMetricSignalJSON(t *testing.T) {
+	path := writeSeasonalRecordWithMetrics(t, 5, 3, 12, 20, 80)
+
+	var buf bytes.Buffer
+	opts := &options{}
+	opts.Output = "json"
+	params := analyzeRecordOptions{detect: detectSeasonality, timezone: "UTC"}
+	if err := runAnalyzeRecord(&buf, opts, path, params); err != nil {
+		t.Fatalf("runAnalyzeRecord returned error: %v", err)
+	}
+
+	var decoded recordSeasonality
+	if err := json.Unmarshal(buf.Bytes(), &decoded); err != nil {
+		t.Fatalf("output is not valid JSON: %v\n%s", err, buf.String())
+	}
+	if len(decoded.Items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(decoded.Items))
+	}
+	a := decoded.Items[0].Analysis
+	if !a.Detected {
+		t.Fatalf("expected Detected=true, notes=%v", a.Notes)
+	}
+	if a.Signal != "metric:cpu" {
+		t.Errorf("Signal = %q, want metric:cpu", a.Signal)
+	}
+	if a.SignalUnit != "%" {
+		t.Errorf("SignalUnit = %q, want %%", a.SignalUnit)
+	}
+	if a.Peak == nil || a.Peak.PeakSignal != 80 {
+		t.Errorf("PeakSignal = %+v, want 80", a.Peak)
+	}
+}
+
+func TestRunAnalyzeRecordSeasonalityForcedMetricOnLegacyRecord(t *testing.T) {
+	path := writeSeasonalRecord(t, 5, 3, 12) // no metricValues recorded
+
+	var buf bytes.Buffer
+	params := analyzeRecordOptions{detect: detectSeasonality, timezone: "UTC", signal: "metric"}
+	if err := runAnalyzeRecord(&buf, &options{}, path, params); err != nil {
+		t.Fatalf("runAnalyzeRecord returned error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "no typed metric values") {
+		t.Errorf("expected an explanation instead of a silent fallback, got:\n%s", output)
+	}
+	if !strings.Contains(output, "no recurring pattern detected") {
+		t.Errorf("forced metric on a legacy record must not report a detection, got:\n%s", output)
+	}
+	if strings.Contains(output, "recurring daily") || strings.Contains(output, "recurring weekly") {
+		t.Errorf("forced metric on a legacy record must not report a detection, got:\n%s", output)
+	}
+}
+
+func TestRunAnalyzeRecordSeasonalityInvalidSignal(t *testing.T) {
+	path := writeSeasonalRecord(t, 2, 3, 12)
+
+	params := analyzeRecordOptions{detect: detectSeasonality, timezone: "UTC", signal: "queue"}
+	err := runAnalyzeRecord(&bytes.Buffer{}, &options{}, path, params)
+	if err == nil {
+		t.Fatal("expected an error for an invalid signal")
+	}
+	if !strings.Contains(err.Error(), "--signal") {
+		t.Errorf("error should name the offending flag, got: %v", err)
+	}
+}
+
+func TestObservationsFromTraceCarriesMetricSamples(t *testing.T) {
+	trace := hpaanalysis.TimelineTrace{
+		Snapshots: []hpaanalysis.TimelineSnapshot{
+			{
+				Timestamp: time.Date(2026, 1, 5, 9, 0, 0, 0, time.UTC),
+				Desired:   5,
+				MetricValues: []hpaanalysis.MetricReading{
+					{Type: "Resource", Name: "cpu", Value: 80, Target: 60, Unit: "%"},
+					{Type: "External", Name: "queue_depth", Value: 120},
+				},
+			},
+		},
+	}
+
+	got := observationsFromTrace(trace)
+	if len(got) != 1 {
+		t.Fatalf("expected 1 observation, got %d", len(got))
+	}
+	if len(got[0].Metrics) != 2 {
+		t.Fatalf("expected both metric samples to ride along, got %d", len(got[0].Metrics))
+	}
+	if got[0].Metrics[0].Name != "cpu" || got[0].Metrics[0].Value != 80 || got[0].Metrics[0].Unit != "%" {
+		t.Errorf("cpu sample = %+v", got[0].Metrics[0])
+	}
+}

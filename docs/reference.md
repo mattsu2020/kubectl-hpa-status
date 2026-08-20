@@ -449,14 +449,17 @@ kubectl hpa status alpha analyze-record hpa-history.jsonl --detect seasonality -
 
 ```text
 prod/web: recurring daily pattern detected (confidence: high)
+  signal:  metric:cpu (%)
   window:   08:00-18:00 UTC (Mon,Tue,Wed,Thu,Fri, 10 of 10 days)
-  demand:   baseline 3.0 -> peak 14 replicas
+  demand:   baseline 20.0% -> peak 85.0%, replicas -> 14
   suggest:  raise minReplicas to 6 at 07:45 (15m0s before the ramp)
     cron:    45 7 * * 1-5
     release: 0 18 * * 1-5
 ```
 
-The detector builds a time-of-day profile of `desiredReplicas`, finds the recurring peak window (including windows that cross midnight), and reports the fraction of days that exhibited it as confidence. It recommends raising `minReplicas` to the level needed at *ramp onset* rather than at peak, leaving the HPA to scale the rest of the way.
+The detector builds a time-of-day profile of the recorded demand signal, finds the recurring peak window (including windows that cross midnight), and reports the fraction of days that exhibited it as confidence. It recommends raising `minReplicas` to the level needed at *ramp onset* rather than at peak, leaving the HPA to scale the rest of the way.
+
+Records written by current builds carry a typed numeric reading (`metricValues`) for every current metric. When they are present, the detector profiles the metric with the widest coverage instead of `desiredReplicas` — metric values are neither quantized to whole pods nor clamped by `minReplicas`/`maxReplicas`, so they expose demand ramps the replica count alone cannot show (headroom between bounds, controller tolerance, saturation at `maxReplicas`). Recommendation levels still come from the observed replica history, because pre-scaling changes replica floors, not metrics. When the metric ramps but `desiredReplicas` never moved, the ramp is reported as staying within the HPA's headroom and no pre-scale is proposed. A pattern that recurs only on a weekday subset is labeled a `weekly` cycle and the emitted cron is narrowed accordingly.
 
 | Flag | Default | Purpose |
 | --- | --- | --- |
@@ -464,6 +467,7 @@ The detector builds a time-of-day profile of `desiredReplicas`, finds the recurr
 | `--lead-time` | `15m` | How far ahead of the ramp to pre-scale |
 | `--bucket-minutes` | `30` | Time-of-day resolution; must divide 1440 evenly |
 | `--min-days` | `2` | Distinct days required before claiming periodicity |
+| `--signal` | `auto` | Demand signal to profile: `auto` (metric when recorded, else replicas), `metric`, or `replicas` |
 
 Guardrails, so a one-off incident is not turned into a schedule:
 
@@ -471,6 +475,7 @@ Guardrails, so a one-off incident is not turned into a schedule:
 - A candidate window must appear on at least 2 days and on over 50% of the days the schedule covers.
 - The schedule narrows to specific weekdays (for example `1-5`) only when each weekday was observed at least twice. Recording Monday to Friday is *not* evidence that weekends differ, so it yields `*`.
 - Peak and onset levels are computed from the days that matched, never averaged with quiet days.
+- `--signal metric` on a legacy record without typed readings is reported as unusable rather than silently falling back to replicas.
 
 The emitted KEDA cron trigger is preferred over a static `minReplicas` bump because it releases the floor after the window, so pre-scaling costs nothing off-peak. The `patch` field in `-o json` carries the static fallback for clusters without KEDA.
 

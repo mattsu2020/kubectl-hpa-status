@@ -23,11 +23,35 @@ func SnapshotFromReport(report StatusReport) TimelineSnapshot {
 		Health:         a.Health,
 		HealthScore:    a.HealthScore,
 		TopMetric:      topMetricFromAnalysis(&a),
+		MetricValues:   metricReadingsFromAnalysis(&a),
 		Conditions:     a.Conditions,
 		Summary:        a.Summary,
 		Interpretation: a.Interpretation,
 		Events:         report.Events,
 	}
+}
+
+// metricReadingsFromAnalysis projects the typed numeric readings off the
+// formatted metric statuses. Metrics without a numeric value (missing status
+// details) are skipped rather than recorded as zero.
+func metricReadingsFromAnalysis(a *Analysis) []MetricReading {
+	var out []MetricReading
+	for _, m := range a.Metrics {
+		if !m.HasReading() {
+			continue
+		}
+		reading := MetricReading{
+			Type:  m.Type,
+			Name:  m.Name,
+			Value: *m.NumericValue,
+			Unit:  m.Unit,
+		}
+		if m.NumericTarget != nil {
+			reading.Target = *m.NumericTarget
+		}
+		out = append(out, reading)
+	}
+	return out
 }
 
 // topMetricFromAnalysis extracts the most influential metric description.

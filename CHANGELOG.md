@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Typed numeric metric values on recorded snapshots.** `record` now stores
+  `metricValues` on every timeline snapshot: the typed numeric reading (value,
+  target, unit) of each current metric, projected from the HPA status
+  quantities at record time instead of the formatted `topMetric` string. The
+  field is additive; records written by older builds simply omit it.
+- **Metric-signal and weekly-cycle seasonality detection.**
+  `alpha analyze-record --detect seasonality` profiles the typed metric with
+  the widest coverage when the record carries `metricValues`
+  (`--signal auto|metric|replicas` overrides the choice). Metric values are
+  neither quantized to whole pods nor clamped by min/maxReplicas, so the
+  detector now sees demand ramps the replica count alone hides; weekday-only
+  patterns are labeled `weekly` cycles with narrowed cron schedules. When the
+  metric ramps but `desiredReplicas` never moved, the ramp is reported as
+  staying within HPA headroom and no pre-scale is proposed. Recommendation
+  levels still come from the observed replica history.
+
 ## [3.0.0] - 2026-08-15
 
 This major release executes the v3 breaking changes decided in `ROADMAP.md` —

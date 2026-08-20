@@ -86,6 +86,37 @@ func calculateRatioAndNote(currentVal autoscalingv2.MetricValueStatus, targetVal
 	return ratio, note
 }
 
+// numericReading extracts the typed numeric current/target pair that the
+// formatted Current/Target strings render. Utilization becomes a percent
+// value; quantities become their canonical decimal value, so readings stay
+// comparable across snapshots even when the server formats them with
+// different suffixes ("812m" and "0.812" both yield 0.812). A nil value means
+// the status carried no numeric field.
+func numericReading(currentVal autoscalingv2.MetricValueStatus, targetVal autoscalingv2.MetricTarget) (value, target *float64, unit string) {
+	numeric := func(v float64) *float64 { return &v }
+	switch {
+	case currentVal.AverageUtilization != nil:
+		value = numeric(float64(*currentVal.AverageUtilization))
+		if targetVal.AverageUtilization != nil {
+			target = numeric(float64(*targetVal.AverageUtilization))
+		}
+		return value, target, "%"
+	case currentVal.AverageValue != nil:
+		value = numeric(currentVal.AverageValue.AsApproximateFloat64())
+		if targetVal.AverageValue != nil {
+			target = numeric(targetVal.AverageValue.AsApproximateFloat64())
+		}
+		return value, target, ""
+	case currentVal.Value != nil:
+		value = numeric(currentVal.Value.AsApproximateFloat64())
+		if targetVal.Value != nil {
+			target = numeric(targetVal.Value.AsApproximateFloat64())
+		}
+		return value, target, ""
+	}
+	return nil, nil, ""
+}
+
 // CompareMetricToTarget returns a comparison description for utilization vs
 // target. Both values are the numeric AverageUtilization fields straight off
 // the HPA status/spec; a nil target means the spec does not carry a utilization

@@ -18,6 +18,7 @@ func (podsHandler) FormatStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, metr
 	target := FormatMetricTarget(targetSpec)
 	current := FormatMetricValueStatus(metric.Pods.Current)
 	ratio, note := calculateRatioAndNote(metric.Pods.Current, targetSpec)
+	value, numericTarget, unit := numericReading(metric.Pods.Current, targetSpec)
 	selector := FormatMetricSelector(metric.Pods.Metric.Selector)
 	text := fmt.Sprintf("Pods %s current=%s target=%s", metric.Pods.Metric.Name, current, target)
 	if selector != "" {
@@ -27,6 +28,7 @@ func (podsHandler) FormatStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, metr
 	return Metric{
 		Type: MetricTypePods, Name: metric.Pods.Metric.Name, Selector: selector,
 		Current: current, Target: target, Ratio: ratio, Note: note, Text: text,
+		NumericValue: value, NumericTarget: numericTarget, Unit: unit,
 	}
 }
 

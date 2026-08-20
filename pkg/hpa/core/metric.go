@@ -20,6 +20,21 @@ type Metric struct {
 	Ratio    *float64 `json:"ratio,omitempty" yaml:"ratio,omitempty"`
 	Note     string   `json:"note,omitempty" yaml:"note,omitempty"`
 	Text     string   `json:"text" yaml:"text"`
+	// NumericValue is the typed reading behind Current: the utilization
+	// percent, or the canonical decimal value of the quantity. nil when the
+	// status carried no numeric value.
+	NumericValue *float64 `json:"-" yaml:"-"`
+	// NumericTarget is the typed target behind Target, when the spec carries
+	// a matching numeric target.
+	NumericTarget *float64 `json:"-" yaml:"-"`
+	// Unit qualifies the numeric pair: "%" for utilization targets, "" for
+	// canonical decimal quantities.
+	Unit string `json:"-" yaml:"-"`
+}
+
+// HasReading reports whether the metric carries a typed numeric value.
+func (m Metric) HasReading() bool {
+	return m.NumericValue != nil
 }
 
 // MetricStatusFormatter formats one supported metric source type.

@@ -19,6 +19,24 @@ type Cycle string
 // CycleDaily indicates a pattern that repeats once per calendar day.
 const CycleDaily Cycle = "daily"
 
+// CycleWeekly indicates a pattern that repeats on a specific weekday subset
+// rather than every calendar day.
+const CycleWeekly Cycle = "weekly"
+
+// Signal selects which recorded signal the detector profiles.
+type Signal string
+
+const (
+	// SignalAuto profiles typed metric values when the recording carries them
+	// and falls back to desiredReplicas on legacy records.
+	SignalAuto Signal = "auto"
+	// SignalReplicas profiles desiredReplicas only.
+	SignalReplicas Signal = "replicas"
+	// SignalMetric profiles typed metric values only; recordings without them
+	// are reported as unusable rather than silently falling back.
+	SignalMetric Signal = "metric"
+)
+
 const (
 	// minutesPerDay is the size of the time-of-day profile in minutes.
 	minutesPerDay = 24 * 60
@@ -63,6 +81,36 @@ type Observation struct {
 	Timestamp time.Time `json:"timestamp" yaml:"timestamp"`
 	// Desired is the HPA's desiredReplicas at that moment.
 	Desired int32 `json:"desiredReplicas" yaml:"desiredReplicas"`
+	// Metrics carries the typed numeric metric readings recorded at
+	// Timestamp. Empty on legacy records written before typed metric capture;
+	// the detector picks one consistent metric name as its signal.
+	Metrics []MetricSample `json:"metrics,omitempty" yaml:"metrics,omitempty"`
+}
+
+// MetricSample is one typed numeric metric reading attached to an
+// Observation. Unlike desiredReplicas it is neither quantized to whole pods
+// nor clamped by min/maxReplicas, so it exposes demand ramps the replica
+// count cannot show.
+type MetricSample struct {
+	// Name identifies the metric (container-qualified for
+	// ContainerResource metrics).
+	Name string `json:"name" yaml:"name"`
+	// Value is the numeric reading: utilization percent or canonical decimal
+	// quantity.
+	Value float64 `json:"value" yaml:"value"`
+	// Unit qualifies Value: "%" for utilization, "" for canonical decimal
+	// quantities.
+	Unit string `json:"unit,omitempty" yaml:"unit,omitempty"`
+}
+
+// metricValue returns the reading for the named metric.
+func (o Observation) metricValue(name string) (float64, bool) {
+	for _, s := range o.Metrics {
+		if s.Name == name {
+			return s.Value, true
+		}
+	}
+	return 0, false
 }
 
 // Options tunes detection. The zero value is valid and yields the documented
@@ -80,6 +128,9 @@ type Options struct {
 	// Location is the timezone whose calendar days and clock times define
 	// the profile. Schedules are emitted in this timezone.
 	Location *time.Location
+	// Signal selects the demand signal to profile. Empty behaves as
+	// SignalAuto.
+	Signal Signal
 }
 
 // withDefaults returns a copy of o with unset or invalid fields replaced by
@@ -118,6 +169,12 @@ type Analysis struct {
 	InsufficientData bool `json:"insufficientData" yaml:"insufficientData"`
 	// Cycle is the periodicity tested against.
 	Cycle Cycle `json:"cycle" yaml:"cycle"`
+	// Signal names the profiled demand signal: "replicas", or
+	// "metric:<name>" when detection ran on typed metric values.
+	Signal string `json:"signal" yaml:"signal"`
+	// SignalUnit qualifies the metric signal values ("%" or ""), empty when
+	// the signal is desiredReplicas.
+	SignalUnit string `json:"signalUnit,omitempty" yaml:"signalUnit,omitempty"`
 	// Timezone is the location used for calendar days and clock times.
 	Timezone string `json:"timezone" yaml:"timezone"`
 	// BucketMinutes is the resolution of the time-of-day profile.
@@ -126,7 +183,7 @@ type Analysis struct {
 	DaysObserved int `json:"daysObserved" yaml:"daysObserved"`
 	// SpanHours is the wall-clock span of the recording.
 	SpanHours float64 `json:"spanHours" yaml:"spanHours"`
-	// Baseline is the typical off-peak desiredReplicas level.
+	// Baseline is the typical off-peak level of the profiled signal.
 	Baseline float64 `json:"baseline" yaml:"baseline"`
 	// Threshold is the level a bucket must reach to count as peak.
 	Threshold float64 `json:"threshold" yaml:"threshold"`
@@ -159,6 +216,10 @@ type PeakWindow struct {
 	CrossesMidnight bool `json:"crossesMidnight" yaml:"crossesMidnight"`
 	// PeakDesired is the highest averaged desiredReplicas in the window.
 	PeakDesired int32 `json:"peakDesired" yaml:"peakDesired"`
+	// PeakSignal is the highest profiled signal value in the window across
+	// matched days. Set only in metric mode; in replica space PeakDesired
+	// already carries the level.
+	PeakSignal float64 `json:"peakSignal,omitempty" yaml:"peakSignal,omitempty"`
 	// OnsetDesired is the typical desiredReplicas at the window's first
 	// bucket: the level the workload needs the moment the ramp begins.
 	OnsetDesired int32 `json:"onsetDesired" yaml:"onsetDesired"`
