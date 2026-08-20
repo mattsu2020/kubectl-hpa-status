@@ -45,7 +45,7 @@ func BuildSuggestions(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas in
 func BuildSuggestionsWithContext(ctx SuggestionContext) []Suggestion {
 	var suggestions []Suggestion
 	if items := scalingActiveRule(ctx); len(items) > 0 {
-		return items
+		return stampSuggestionSource(items, ctx.HPA)
 	}
 	for _, rule := range coreSuggestionRules()[1:] {
 		items := rule(ctx)
@@ -56,6 +56,17 @@ func BuildSuggestionsWithContext(ctx SuggestionContext) []Suggestion {
 	}
 	if len(suggestions) == 0 {
 		suggestions = append(suggestions, noSafeFixSuggestion())
+	}
+	return stampSuggestionSource(suggestions, ctx.HPA)
+}
+
+func stampSuggestionSource(suggestions []Suggestion, hpa *autoscalingv2.HorizontalPodAutoscaler) []Suggestion {
+	if hpa == nil {
+		return suggestions
+	}
+	for i := range suggestions {
+		suggestions[i].SourceUID = string(hpa.UID)
+		suggestions[i].SourceResourceVersion = hpa.ResourceVersion
 	}
 	return suggestions
 }
