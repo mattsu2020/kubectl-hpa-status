@@ -15,7 +15,7 @@ import (
 // each nested slice so both the Markdown and HTML section writers walk their
 // row/table loops instead of only their "no data" early returns.
 func populatedAnalysis() hpa.Analysis {
-	return hpa.Analysis{
+	return *hpa.NewAnalysis(hpa.FlatAnalysis{
 		Namespace: "default",
 		Name:      "web",
 		Health:    "OK",
@@ -48,7 +48,7 @@ func populatedAnalysis() hpa.Analysis {
 			CurrentReplicas:        8,
 			VisibleDesiredReplicas: 8,
 		},
-	}
+	})
 }
 
 func TestWriteMarkdownReport_PopulatedSections(t *testing.T) {

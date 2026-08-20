@@ -49,14 +49,14 @@ func runBlockers(ctx context.Context, out io.Writer, opts *options, names []stri
 				ctx,
 				client,
 				hpa,
-				analysis.Target,
+				analysis.Target(),
 				observation.New(client.Interface, hpa),
 			)
 
 			return blockerOutput{
-				Namespace: analysis.Namespace,
-				Name:      analysis.Name,
-				Target:    analysis.Target,
+				Namespace: analysis.Namespace(),
+				Name:      analysis.Name(),
+				Target:    analysis.Target(),
 				Report:    blockerReport,
 			}, nil
 		},

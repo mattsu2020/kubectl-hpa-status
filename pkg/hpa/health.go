@@ -219,12 +219,12 @@ func ensureDynamicHealthBaseline(a *Analysis) *dynamicHealthBaseline {
 	if a.dynamicHealthBaseline != nil {
 		return a.dynamicHealthBaseline
 	}
-	score := a.HealthScore
-	state := HealthState(a.Health)
+	score := a.HealthScore()
+	state := HealthState(a.Health())
 	var signals []HealthSignal
 	removedDynamicSignal := false
-	if a.HealthResult != nil {
-		for _, signal := range a.HealthResult.Signals {
+	if a.HealthResult() != nil {
+		for _, signal := range a.HealthResult().Signals {
 			if isDynamicHealthSignal(signal.Reason) {
 				// Best-effort recovery for a value produced by an older
 				// in-memory caller that did not retain a baseline.
@@ -265,10 +265,10 @@ func healthStateFromSignals(signals []HealthSignal) HealthState {
 }
 
 func hasInactiveKEDATrigger(a *Analysis) bool {
-	if a.KEDAInfo == nil {
+	if a.KEDAInfo() == nil {
 		return false
 	}
-	for _, trigger := range a.KEDAInfo.Triggers {
+	for _, trigger := range a.KEDAInfo().Triggers {
 		if strings.EqualFold(trigger.Status, "Inactive") || strings.EqualFold(trigger.Status, "False") {
 			return true
 		}
@@ -277,8 +277,8 @@ func hasInactiveKEDATrigger(a *Analysis) bool {
 }
 
 func hasHighChurn(a *Analysis) bool {
-	return a.ChurnAnalysis != nil &&
-		(a.ChurnAnalysis.Level == churn.ChurnHigh || a.ChurnAnalysis.Level == churn.ChurnCritical)
+	return a.ChurnAnalysis() != nil &&
+		(a.ChurnAnalysis().Level == churn.ChurnHigh || a.ChurnAnalysis().Level == churn.ChurnCritical)
 }
 
 func reconcileDynamicHealthPenalties(a *Analysis, weights HealthWeights) {
@@ -295,7 +295,7 @@ func reconcileDynamicHealthPenalties(a *Analysis, weights HealthWeights) {
 		acc.AddPenalty(enrichmentPenaltyKEDAInactive, resolved.kedaInactiveTrigger, HealthLimited)
 		hasDynamicPenalty = true
 	}
-	if a.VPAConflict != nil {
+	if a.VPAConflict() != nil {
 		acc.AddPenalty(enrichmentPenaltyVPAConflict, resolved.vpaConflict, HealthLimited)
 		hasDynamicPenalty = true
 	}
@@ -313,9 +313,9 @@ func reconcileDynamicHealthPenalties(a *Analysis, weights HealthWeights) {
 	if result.Score < 0 {
 		result.Score = 0
 	}
-	a.HealthScore = result.Score
-	a.Health = string(result.State)
-	a.HealthResult = &result
+	a.SetHealthScore(result.Score)
+	a.SetHealth(string(result.State))
+	a.SetHealthResult(&result)
 }
 
 // ApplyEnrichmentPenalties reconciles KEDA and VPA enrichment data with the

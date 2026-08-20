@@ -96,7 +96,7 @@ func TestRenderDetailSummary(t *testing.T) {
 
 func TestRenderDetailScoreBreakdown_WithSignals(t *testing.T) {
 	report := &hpaanalysis.StatusReport{
-		Analysis: hpaanalysis.Analysis{
+		Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
 			HealthScore: 55,
 			HealthResult: &hpaanalysis.HealthResult{
 				Signals: []hpaanalysis.HealthSignal{
@@ -104,7 +104,7 @@ func TestRenderDetailScoreBreakdown_WithSignals(t *testing.T) {
 					{Penalty: 20, Reason: "implicit maxReplicas", Severity: "LIMITED"},
 				},
 			},
-		},
+		}),
 	}
 	out := renderToString(func(sb *strings.Builder) { renderDetailScoreBreakdown(sb, report) })
 	for _, want := range []string{"Score Breakdown:", "base: 100", "-25 ScalingLimited (LIMITED)", "final: 55"} {
@@ -126,11 +126,11 @@ func TestRenderDetailScoreBreakdown_NoSignals(t *testing.T) {
 // --- Hidden factors ---
 
 func TestRenderDetailHiddenFactors(t *testing.T) {
-	a := &hpaanalysis.Analysis{
+	a := hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
 		HiddenFactors: []hpaanalysis.HiddenDecisionFactor{
 			{Name: "tolerance", Status: "assumed 0.1", Confidence: "medium", Impact: "small adjustments may not trigger scaling"},
 		},
-	}
+	})
 	out := renderToString(func(sb *strings.Builder) { renderDetailHiddenFactors(sb, a) })
 	for _, want := range []string{"Hidden decision factors:", "tolerance: assumed 0.1 (medium)", "small adjustments may not trigger scaling"} {
 		if !strings.Contains(out, want) {
@@ -150,11 +150,11 @@ func TestRenderDetailHiddenFactors_Empty(t *testing.T) {
 // --- Stabilization ---
 
 func TestRenderDetailStabilization_Active(t *testing.T) {
-	a := &hpaanalysis.Analysis{
+	a := hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
 		StabilizationRemaining:     ptr.To(int64(45)),
 		StabilizationWindowSeconds: ptr.To(int32(300)),
 		StabilizationSource:        "scaleDown",
-	}
+	})
 	out := renderToString(func(sb *strings.Builder) { renderDetailStabilization(sb, a) })
 	for _, want := range []string{"Stabilized (scaleDown)", "[estimated]"} {
 		if !strings.Contains(out, want) {
@@ -174,12 +174,12 @@ func TestRenderDetailStabilization_Inactive(t *testing.T) {
 // --- Conditions ---
 
 func TestRenderDetailConditions(t *testing.T) {
-	a := &hpaanalysis.Analysis{
+	a := hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
 		Conditions: []hpaanalysis.Condition{
 			{Type: "ScalingActive", Status: "True", Reason: "ValidMetricFound"},
 			{Type: "AbleToScale", Status: "False", Reason: "Backoff"},
 		},
-	}
+	})
 	out := renderToString(func(sb *strings.Builder) { renderDetailConditions(sb, a) })
 	for _, want := range []string{"Conditions:", "ScalingActive", "AbleToScale", "ValidMetricFound"} {
 		if !strings.Contains(out, want) {
@@ -200,11 +200,11 @@ func TestRenderDetailConditions_Empty(t *testing.T) {
 
 func TestRenderDetailMetrics(t *testing.T) {
 	ratio := 1.5
-	a := &hpaanalysis.Analysis{
+	a := hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
 		Metrics: []hpaanalysis.Metric{
 			{Name: "cpu", Current: "92%", Target: "60%", Ratio: &ratio},
 		},
-	}
+	})
 	out := renderToString(func(sb *strings.Builder) { renderDetailMetrics(sb, a) })
 	for _, want := range []string{"Metrics:", "cpu", "current=92%", "target=60%", "ratio=1.500"} {
 		if !strings.Contains(out, want) {
@@ -215,9 +215,9 @@ func TestRenderDetailMetrics(t *testing.T) {
 
 func TestRenderDetailMetrics_FallsBackToType(t *testing.T) {
 	// When Name is empty, the Type label is shown.
-	a := &hpaanalysis.Analysis{
+	a := hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
 		Metrics: []hpaanalysis.Metric{{Type: "Resource", Current: "10%", Target: "80%", Text: "Resource cpu current=10% target=80%"}},
-	}
+	})
 	out := renderToString(func(sb *strings.Builder) { renderDetailMetrics(sb, a) })
 	if !strings.Contains(out, "Resource") {
 		t.Errorf("metrics: expected Type fallback 'Resource', got:\n%s", out)
@@ -227,7 +227,7 @@ func TestRenderDetailMetrics_FallsBackToType(t *testing.T) {
 // --- Actions / Interpretation / Decision signals ---
 
 func TestRenderDetailActions(t *testing.T) {
-	a := &hpaanalysis.Analysis{Actions: []string{"Raise maxReplicas", "Check node capacity"}}
+	a := hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{Actions: []string{"Raise maxReplicas", "Check node capacity"}})
 	out := renderToString(func(sb *strings.Builder) { renderDetailActions(sb, a) })
 	if !strings.Contains(out, "Actions:") || !strings.Contains(out, "Raise maxReplicas") {
 		t.Errorf("actions: missing heading or value, got:\n%s", out)
@@ -240,7 +240,7 @@ func TestRenderDetailInterpretation_Truncates(t *testing.T) {
 	for i := range lines {
 		lines[i] = "line"
 	}
-	a := &hpaanalysis.Analysis{Interpretation: lines}
+	a := hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{Interpretation: lines})
 	out := renderToString(func(sb *strings.Builder) { renderDetailInterpretation(sb, a) })
 	if !strings.Contains(out, "and 3 more") {
 		t.Errorf("interpretation: expected truncation notice 'and 3 more', got:\n%s", out)
@@ -248,11 +248,11 @@ func TestRenderDetailInterpretation_Truncates(t *testing.T) {
 }
 
 func TestRenderDetailDecisionSignals(t *testing.T) {
-	a := &hpaanalysis.Analysis{
+	a := hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
 		DecisionSignals: []hpaanalysis.DecisionSignal{
 			{Reason: "DesiredWithinTolerance", Message: "all metrics within target", MetricName: "cpu", Confidence: "high"},
 		},
-	}
+	})
 	out := renderToString(func(sb *strings.Builder) { renderDetailDecisionSignals(sb, a) })
 	for _, want := range []string{"Decision Signals:", "DesiredWithinTolerance", "metric=cpu", "[high]"} {
 		if !strings.Contains(out, want) {
@@ -264,14 +264,14 @@ func TestRenderDetailDecisionSignals(t *testing.T) {
 // --- Target replicas ---
 
 func TestRenderDetailTargetReplicas_NotReady(t *testing.T) {
-	a := &hpaanalysis.Analysis{
+	a := hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
 		TargetReplicas: &hpaanalysis.TargetReplicaInfo{
 			TotalReplicas: 10,
 			NotReady:      3,
 			Pending:       1,
 			Unschedulable: 1,
 		},
-	}
+	})
 	out := renderToString(func(sb *strings.Builder) { renderDetailTargetReplicas(sb, a) })
 	for _, want := range []string{"3 of 10 pods not ready", "1 pods pending (1 unschedulable)"} {
 		if !strings.Contains(out, want) {
@@ -293,7 +293,7 @@ func TestRenderDetailTargetReplicas_Nil(t *testing.T) {
 func TestRenderDetailKEDA(t *testing.T) {
 	polling := int32(30)
 	cooldown := int32(300)
-	a := &hpaanalysis.Analysis{
+	a := hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
 		KEDAInfo: &hpakeda.Analysis{
 			ScaledObjectName: "web-scaledobject",
 			Triggers: []hpakeda.TriggerSummary{
@@ -303,7 +303,7 @@ func TestRenderDetailKEDA(t *testing.T) {
 			CooldownPeriod:  &cooldown,
 			Fallback:        &hpakeda.FallbackInfo{FailureThreshold: 3, Replicas: 1},
 		},
-	}
+	})
 	out := renderToString(func(sb *strings.Builder) { renderDetailKEDA(sb, a) })
 	for _, want := range []string{
 		"KEDA:",
@@ -341,11 +341,11 @@ func TestRenderDetailKEDATrigger_AuthRef(t *testing.T) {
 // --- Suggestions / VPA ---
 
 func TestRenderDetailSuggestions(t *testing.T) {
-	a := &hpaanalysis.Analysis{
+	a := hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
 		Suggestions: []hpaanalysis.Suggestion{
 			{Title: "Raise maxReplicas to 30", Risk: "medium"},
 		},
-	}
+	})
 	out := renderToString(func(sb *strings.Builder) { renderDetailSuggestions(sb, a) })
 	for _, want := range []string{"Suggestions:", "Raise maxReplicas to 30 (medium)", "--fix --apply"} {
 		if !strings.Contains(out, want) {
@@ -355,7 +355,7 @@ func TestRenderDetailSuggestions(t *testing.T) {
 }
 
 func TestRenderDetailVPA(t *testing.T) {
-	a := &hpaanalysis.Analysis{
+	a := hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
 		VPAConflict: &hpavpa.ConflictInfo{
 			VPAName:    "web-vpa",
 			UpdateMode: "Auto",
@@ -363,7 +363,7 @@ func TestRenderDetailVPA(t *testing.T) {
 				{Container: "app", Resource: "cpu", Target: "500m"},
 			},
 		},
-	}
+	})
 	out := renderToString(func(sb *strings.Builder) { renderDetailVPA(sb, a) })
 	for _, want := range []string{"VPA:", "web-vpa updateMode=Auto", "app/cpu target=500m"} {
 		if !strings.Contains(out, want) {

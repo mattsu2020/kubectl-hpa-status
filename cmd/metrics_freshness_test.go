@@ -26,17 +26,17 @@ func TestEnrichMetricFreshnessAddsAPIDiscoveryStatus(t *testing.T) {
 	}
 	client := &kube.Client{Interface: fakeClient, Namespace: "default"}
 	report := hpaanalysis.StatusReport{
-		Analysis: hpaanalysis.Analysis{
+		Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
 			MetricFreshnessEntries: hpaanalysis.AnalyzeMetricFreshness(hpa, nil),
-		},
+		}),
 	}
 
 	enrichMetricFreshness(context.Background(), client, hpa, &report)
 
-	if len(report.Analysis.MetricFreshnessEntries) != 1 {
-		t.Fatalf("expected one freshness entry, got %d", len(report.Analysis.MetricFreshnessEntries))
+	if len(report.Analysis.MetricFreshnessEntries()) != 1 {
+		t.Fatalf("expected one freshness entry, got %d", len(report.Analysis.MetricFreshnessEntries()))
 	}
-	entry := report.Analysis.MetricFreshnessEntries[0]
+	entry := report.Analysis.MetricFreshnessEntries()[0]
 	if entry.APIServiceAvailable == nil || !*entry.APIServiceAvailable {
 		t.Fatalf("expected APIServiceAvailable=true, got %#v", entry.APIServiceAvailable)
 	}
@@ -51,7 +51,7 @@ func TestEnrichMetricFreshnessAddsKEDAEvidence(t *testing.T) {
 	)
 	client := &kube.Client{Interface: testutil.NewFakeClient(hpa), Namespace: "production"}
 	report := hpaanalysis.StatusReport{
-		Analysis: hpaanalysis.Analysis{
+		Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
 			MetricFreshnessEntries: hpaanalysis.AnalyzeMetricFreshness(hpa, nil),
 			KEDAInfo: &hpakeda.Analysis{
 				ScaledObjectName: "web",
@@ -65,12 +65,12 @@ func TestEnrichMetricFreshnessAddsKEDAEvidence(t *testing.T) {
 					},
 				},
 			},
-		},
+		}),
 	}
 
 	enrichMetricFreshness(context.Background(), client, hpa, &report)
 
-	entry := report.Analysis.MetricFreshnessEntries[0]
+	entry := report.Analysis.MetricFreshnessEntries()[0]
 	evidence := strings.Join(entry.Evidence, "\n")
 	if !strings.Contains(evidence, `KEDA ScaledObject "web"`) {
 		t.Fatalf("expected KEDA ScaledObject evidence, got %v", entry.Evidence)

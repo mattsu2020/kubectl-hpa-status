@@ -3,23 +3,10 @@
 package hpa
 
 import (
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/confidence"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/behavioradvisor"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/churn"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/containeradvisor"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/core"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/flapping"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/gitops"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/healthtrend"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/confidence"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/suggestion"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/keda"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/readiness"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/simulate"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/warmup"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const limitation = confidence.BadgeObserved + " This plugin uses existing HPA status, conditions, metrics, and events. It does not expose internal controller calculations."
@@ -131,199 +118,46 @@ func (w HealthWeights) Clone() HealthWeights {
 
 // Analysis holds the complete analysis result for a single HPA.
 //
+// Storage policy: the 13 grouped views are the primary in-memory storage
+// (unexported fields below); the flat v1 field surface lives on as accessor
+// methods in analysis_accessors.go, and the v1 wire shape comes from
+// FlatAnalysis via Analysis.MarshalJSON (see docs/analysis-storage-flip.md).
+// In-tree code reads the accessors or the view methods (Meta, Replicas,
+// MetricsGroup, ...); nothing reads a flat field because none exists.
+//
 // Field policy: Analysis is the JSON/YAML output surface consumed by scripts
 // and external tools, so existing field names and shapes are frozen (renames
 // and removals require a SchemaVersion bump; see docs/output-schema.json and
 // the consistency test in output_schema_test.go). New analysis domains must
-// NOT add loose scalar fields here; group them into a dedicated sub-struct
+// NOT add loose accessor pairs here; group them into a dedicated sub-struct
 // exposed through a single pointer field (as HealthResult, CapacityContext,
-// and BlockerReport do) so the struct grows by feature, stays navigable, and
-// omits empty domains from serialized output via omitempty.
+// and BlockerReport do) so the surface grows by feature, stays navigable,
+// and omits empty domains from serialized output via omitempty.
 type Analysis struct {
-	// Namespace is the Kubernetes namespace of the HPA.
-	Namespace string `json:"namespace" yaml:"namespace"`
-	// Name is the HPA resource name.
-	Name string `json:"name" yaml:"name"`
-	// Target is the scaleTargetRef in "Kind/Name" format.
-	Target string `json:"target" yaml:"target"`
-	// Current is the current replica count from HPA status.
-	Current int32 `json:"currentReplicas" yaml:"currentReplicas"`
-	// Desired is the desired replica count from HPA status.
-	Desired int32 `json:"desiredReplicas" yaml:"desiredReplicas"`
-	// Min is the minimum replica count (defaults to 1 if spec.minReplicas is nil).
-	Min int32 `json:"minReplicas" yaml:"minReplicas"`
-	// Max is the maximum replica count from spec.maxReplicas.
-	Max int32 `json:"maxReplicas" yaml:"maxReplicas"`
-	// Health is the health state: "OK", "ERROR", "LIMITED", or "STABILIZED".
-	Health string `json:"health" yaml:"health"`
-	// HealthScore is the numeric health score from 0 (worst) to 100 (best).
-	HealthScore int `json:"healthScore" yaml:"healthScore"`
-	// HealthResult holds the typed health state, score, and individual penalty
-	// signals. Populated when --debug is enabled or for JSON/YAML output.
-	HealthResult *HealthResult `json:"healthResult,omitempty" yaml:"healthResult,omitempty"`
+	// creationTimestamp keeps full time.Time fidelity for the HPA creation
+	// time; MetaView serializes it as second-precision RFC3339 on the v2
+	// wire, and the v1 wire marshals it via FlatAnalysis.
+	creationTimestamp metav1.Time
+
+	meta        MetaView
+	replicas    ReplicasView
+	decision    DecisionView
+	metrics     MetricsView
+	conditions  ConditionsView
+	capacity    CapacityView
+	scaleToZero ScaleToZeroView
+	stability   StabilityView
+	advisory    AdvisoryView
+	controllers ControllersView
+	blockers    BlockersView
+	actions     ActionsView
+	lifecycle   LifecycleView
+
 	// dynamicHealthBaseline is the immutable pre-enrichment health state used
 	// to reconcile KEDA, VPA, and churn penalties without accumulating or
 	// losing score through zero-value clamping. It is excluded from the wire
 	// model.
 	dynamicHealthBaseline *dynamicHealthBaseline
-	// HiddenFactors lists HPA decision factors that influence the controller
-	// but are only partially visible through public status fields.
-	HiddenFactors []HiddenDecisionFactor `json:"hiddenFactors,omitempty" yaml:"hiddenFactors,omitempty"`
-	// Summary is a one-line direction summary of the HPA scaling state.
-	Summary string `json:"summary" yaml:"summary"`
-	// SummaryKey is the stable i18n key (e.g. "dir_scale_up") that identifies
-	// which branch of SummarizeDirection produced Summary. It lets renderers
-	// translate Summary without re-deriving the decision switch from the
-	// English text, and gives machine consumers a stable enum. Empty only when
-	// Summary has been overwritten outside SummarizeDirection (e.g. the stale
-	// prefix); in that case Summary renders verbatim.
-	SummaryKey string `json:"summaryKey,omitempty" yaml:"summaryKey,omitempty"`
-	// Conditions lists the HPA conditions sorted by priority.
-	Conditions []Condition `json:"conditions" yaml:"conditions"`
-	// Metrics lists formatted metric data for each current metric.
-	Metrics []Metric `json:"metrics" yaml:"metrics"`
-	// Behavior lists the scale-up and scale-down behavior rules, if configured.
-	Behavior []BehaviorRule `json:"behavior,omitempty" yaml:"behavior,omitempty"`
-	// Actions lists recommended action strings for the operator.
-	Actions []string `json:"recommendedActions,omitempty" yaml:"recommendedActions,omitempty"`
-	// Suggestions lists patch suggestions with safety metadata.
-	Suggestions []Suggestion `json:"suggestions,omitempty" yaml:"suggestions,omitempty"`
-	// Interpretation lists detailed interpretation lines with confidence labels.
-	Interpretation []string `json:"interpretation,omitempty" yaml:"interpretation,omitempty"`
-	// KEDAInfo holds KEDA-specific analysis, populated when --keda is enabled.
-	KEDAInfo *keda.Analysis `json:"keda,omitempty" yaml:"keda,omitempty"`
-	// VPAConflict holds VPA conflict detection results, populated when --vpa is enabled.
-	VPAConflict *vpa.ConflictInfo `json:"vpaConflict,omitempty" yaml:"vpaConflict,omitempty"`
-	// TargetReplicas holds replica status from the scale target resource.
-	TargetReplicas *TargetReplicaInfo `json:"targetReplicas,omitempty" yaml:"targetReplicas,omitempty"`
-	// Debug lists verbose debug lines, populated when the debug option is enabled.
-	Debug []string `json:"debug,omitempty" yaml:"debug,omitempty"`
-	// ImpactMetric estimates which metric has the largest scaling impact.
-	ImpactMetric *MetricImpactGuess `json:"impactMetric,omitempty" yaml:"impactMetric,omitempty"`
-	// CreationTimestamp is the HPA creation time.
-	CreationTimestamp metav1.Time `json:"creationTimestamp,omitempty" yaml:"creationTimestamp,omitempty"`
-	// StaleStatus indicates observedGeneration lag, if detected.
-	StaleStatus *StaleStatusInfo `json:"staleStatus,omitempty" yaml:"staleStatus,omitempty"`
-	// StabilizationRemaining estimates seconds remaining in the scale-down stabilization window.
-	StabilizationRemaining *int64 `json:"stabilizationRemaining,omitempty" yaml:"stabilizationRemaining,omitempty"`
-	// ScaleToZero holds scale-to-zero information, populated when minReplicas=0.
-	ScaleToZero *ScaleToZeroInfo `json:"scaleToZero,omitempty" yaml:"scaleToZero,omitempty"`
-	// StructuredInterpretation provides machine-readable interpretation entries.
-	StructuredInterpretation []StructuredMessage `json:"structuredInterpretation,omitempty" yaml:"structuredInterpretation,omitempty"`
-	// StructuredActions provides machine-readable action entries.
-	StructuredActions []StructuredMessage `json:"structuredActions,omitempty" yaml:"structuredActions,omitempty"`
-	// DecisionSignals holds future-proof scaling decision data for KEP-6111 compatibility.
-	// Currently unused; future HPA API versions may populate this field.
-	DecisionSignals []DecisionSignal `json:"decisionSignals,omitempty" yaml:"decisionSignals,omitempty"`
-	// StabilizationWindowSeconds is the configured scale-down stabilization window.
-	StabilizationWindowSeconds *int32 `json:"stabilizationWindowSeconds,omitempty" yaml:"stabilizationWindowSeconds,omitempty"`
-	// StabilizationSource indicates which behavior direction caused stabilization:
-	// "scaleDown" or "scaleUp". Populated when StabilizationRemaining > 0.
-	StabilizationSource string `json:"stabilizationSource,omitempty" yaml:"stabilizationSource,omitempty"`
-	// StabilizationConfidence is the confidence label for stabilization estimates.
-	// Always "medium (API limitation)" since the estimate is based on LastScaleTime.
-	StabilizationConfidence string `json:"stabilizationConfidence,omitempty" yaml:"stabilizationConfidence,omitempty"`
-	// MetricsDiagnostics holds per-metric health check results for the metrics pipeline.
-	MetricsDiagnostics *MetricsPipelineDiagnostics `json:"metricsDiagnostics,omitempty" yaml:"metricsDiagnostics,omitempty"`
-	// MetricFreshnessEntries holds per-metric freshness analysis results.
-	// Populated when --metrics-freshness is enabled.
-	MetricFreshnessEntries []MetricFreshness `json:"metricFreshness,omitempty" yaml:"metricFreshness,omitempty"`
-	// ResourceCheck holds warnings about resource request/limit consistency with HPA targets.
-	ResourceCheck *ResourceCheckResult `json:"resourceCheck,omitempty" yaml:"resourceCheck,omitempty"`
-	// PodAnalysis holds per-pod readiness and resource analysis for the scale target.
-	PodAnalysis *PodAnalysis `json:"podAnalysis,omitempty" yaml:"podAnalysis,omitempty"`
-	// MetricDecisionTrace holds a comprehensive per-metric analysis explaining
-	// which metric drove the HPA scaling decision and why. Populated when
-	// multiple current metrics are present.
-	MetricDecisionTrace *MetricDecisionTrace `json:"metricDecisionTrace,omitempty" yaml:"metricDecisionTrace,omitempty"`
-	// DecisionTrace holds the human-oriented step-by-step HPA decision trace.
-	// It is best-effort and uses only stable Kubernetes API fields.
-	DecisionTrace *DecisionTrace `json:"decisionTrace,omitempty" yaml:"decisionTrace,omitempty"`
-	// FlappingSimulation holds what-if analysis results from --simulate.
-	FlappingSimulation *simulate.SimulationResult `json:"simulation,omitempty" yaml:"simulation,omitempty"`
-	// CapacityContext holds infrastructure capacity analysis for the scale target.
-	CapacityContext *CapacityContext `json:"capacityContext,omitempty" yaml:"capacityContext,omitempty"`
-	// CapacityHeadroom estimates whether the cluster can absorb additional pods
-	// up to maxReplicas.
-	CapacityHeadroom *CapacityHeadroom `json:"capacityHeadroom,omitempty" yaml:"capacityHeadroom,omitempty"`
-	// ReadinessImpact explains how not-yet-ready pods and missing PodMetrics may
-	// affect HPA CPU/resource decisions.
-	ReadinessImpact *readiness.Impact `json:"readinessImpact,omitempty" yaml:"readinessImpact,omitempty"`
-	// ScalePath explains the visible path from HPA desired replicas to scheduled pods.
-	ScalePath *ScalePath `json:"scalePath,omitempty" yaml:"scalePath,omitempty"`
-	// RolloutDiagnosis holds Deployment/StatefulSet rollout context for HPA diagnosis.
-	RolloutDiagnosis *RolloutDiagnosis `json:"rolloutDiagnosis,omitempty" yaml:"rolloutDiagnosis,omitempty"`
-	// ControllerProfile holds cluster-wide HPA controller timing assumptions.
-	ControllerProfile *ControllerProfile `json:"controllerProfile,omitempty" yaml:"controllerProfile,omitempty"`
-	// BlockerReport holds scale-out blocker analysis for the HPA scale target.
-	// Populated when --capacity-deep is enabled or via the blockers subcommand.
-	BlockerReport *blocker.Report `json:"blockerReport,omitempty" yaml:"blockerReport,omitempty"`
-	// CapacityPlan holds a pre-flight capacity check result, diagnosing whether
-	// it is safe to raise maxReplicas. Populated when --capacity-plan is enabled
-	// or via the capacity subcommand.
-	CapacityPlan *CapacityPlan `json:"capacityPlan,omitempty" yaml:"capacityPlan,omitempty"`
-	// EnrichmentStatus holds KEDA/VPA enrichment skip reasons for diagnostic
-	// output, populated during enrichment to explain why data may be absent.
-	//
-	// This is the canonical status model; internal/enrichment aliases it rather
-	// than maintaining a second field/enum mirror. Treat the serialized shape
-	// as a public contract: add fields additively and never rename existing keys.
-	EnrichmentStatus *EnrichmentStatus `json:"enrichmentStatus,omitempty" yaml:"enrichmentStatus,omitempty"`
-	// MetricContract holds metrics contract validation results, populated when
-	// --metric-contract is enabled.
-	MetricContract *MetricContractReport `json:"metricContract,omitempty" yaml:"metricContract,omitempty"`
-	// GitOpsConflict holds GitOps manifest conflict detection results, populated when
-	// --gitops-check is enabled or --manifest is provided.
-	GitOpsConflict *gitops.Conflict `json:"gitopsConflict,omitempty" yaml:"gitopsConflict,omitempty"`
-	// ChurnAnalysis holds the thrashing/churn detection result for the HPA timeline.
-	// Populated when --churn-detect is enabled or during doctor command.
-	ChurnAnalysis *churn.ChurnAnalysis `json:"churnAnalysis,omitempty" yaml:"churnAnalysis,omitempty"`
-	// VPAAdvisory holds the VPA-HPA coexistence advisory result, providing
-	// structured recommendations when VPA and HPA target the same workload.
-	// Populated when --vpa is enabled and a VPA conflict is detected.
-	VPAAdvisory *vpa.Advisory `json:"vpaAdvisory,omitempty" yaml:"vpaAdvisory,omitempty"`
-	// MetricHints holds troubleshooting hints for custom/external metrics,
-	// identifying common failure patterns with remediation steps.
-	// Populated when --metric-hints is enabled.
-	MetricHints *MetricHintsReport `json:"metricHints,omitempty" yaml:"metricHints,omitempty"`
-	// WarmupAnalysis holds the warmup analysis result, diagnosing why pods
-	// are not yet ready after HPA scales out. Populated when --warmup is enabled
-	// or during the doctor command.
-	WarmupAnalysis *warmup.Analysis `json:"warmupAnalysis,omitempty" yaml:"warmupAnalysis,omitempty"`
-	// ContainerAdvisor holds the ContainerResource advisor result, suggesting
-	// ContainerResource metrics for multi-container workloads.
-	// Populated when --container-advisor is enabled.
-	ContainerAdvisor *containeradvisor.Result `json:"containerAdvisor,omitempty" yaml:"containerAdvisor,omitempty"`
-	// BehaviorAdvisor holds the behavior tuning advisor result, analyzing
-	// scaleUp/scaleDown policies, stabilization windows, and tolerance.
-	// Populated when --behavior-advisor is enabled.
-	BehaviorAdvisor *behavioradvisor.Result `json:"behaviorAdvisor,omitempty" yaml:"behaviorAdvisor,omitempty"`
-	// HealthTrend holds the health score trend analysis over time.
-	// Populated when --trend is enabled and sufficient history is available.
-	HealthTrend *healthtrend.Result `json:"healthTrend,omitempty" yaml:"healthTrend,omitempty"`
-	// StructuredDecisionTrace holds the comprehensive structured decision trace
-	// with schema version, winner metric, tolerance/stabilization effects, and
-	// full condition evaluation. Populated when --decision-trace-format is set.
-	StructuredDecisionTrace *StructuredDecisionTrace `json:"structuredDecisionTrace,omitempty" yaml:"structuredDecisionTrace,omitempty"`
-	// FlappingPrevention holds the flapping prevention advisor result with
-	// what-if simulations for different stabilization window values.
-	// Populated when --flapping-advisor is enabled.
-	FlappingPrevention *flapping.PreventionReport `json:"flappingPrevention,omitempty" yaml:"flappingPrevention,omitempty"`
-	// FlappingDiagnosis holds the result of event-based flapping detection with
-	// root-cause analysis (tight target, short stabilization window, etc.).
-	FlappingDiagnosis *flapping.Diagnosis `json:"flappingDiagnosis,omitempty" yaml:"flappingDiagnosis,omitempty"`
-	// AdapterDiagnostics holds custom/external metrics adapter diagnostics.
-	// Populated when --adapter-diagnostics is enabled.
-	AdapterDiagnostics *AdapterDiagnosticsReport `json:"adapterDiagnostics,omitempty" yaml:"adapterDiagnostics,omitempty"`
-	// Assumptions documents inferred/estimated values the analysis relies on
-	// (tolerance, stabilizationRemaining, ...), each with its derivation source
-	// and a confidence label so consumers can judge reliability.
-	Assumptions []Assumption `json:"assumptions,omitempty" yaml:"assumptions,omitempty"`
-	// Warnings records enrichment-pipeline errors and notable skip reasons so
-	// operators can see why an expected piece of analysis is missing. Empty by
-	// default; populated only when an enricher fails or a critical enrichment
-	// step is skipped.
-	Warnings []string `json:"warnings,omitempty" yaml:"warnings,omitempty"`
 }
 
 // HiddenDecisionFactor describes a partially visible HPA decision input such

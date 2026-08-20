@@ -73,7 +73,8 @@ func BuildReport(fromLabel, toLabel string, from, to *autoscalingv2.HorizontalPo
 // full HPA analyzer. Keeping the dependency here makes the rest of report
 // construction independent of Analysis and its derived output model.
 func healthScore(hpa *autoscalingv2.HorizontalPodAutoscaler) string {
-	return fmt.Sprintf("%d", hpaanalysis.Analyze(hpa, false).HealthScore)
+	analysis := hpaanalysis.Analyze(hpa, false)
+	return fmt.Sprintf("%d", analysis.HealthScore())
 }
 
 // MetricSummary returns a compact string representation of an HPA's metric

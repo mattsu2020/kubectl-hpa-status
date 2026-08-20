@@ -75,25 +75,25 @@ func FormatASCIIProgressBar(ratio float64, width int) string {
 // block for --explain mode output. It includes the status, progress bar,
 // remaining time, source behavior, and confidence label.
 func FormatStabilizationExplain(a Analysis) string {
-	if a.StabilizationRemaining == nil || *a.StabilizationRemaining <= 0 {
+	if a.StabilizationRemaining() == nil || *a.StabilizationRemaining() <= 0 {
 		return ""
 	}
 
-	remaining := *a.StabilizationRemaining
+	remaining := *a.StabilizationRemaining()
 	window := int64(0)
-	if a.StabilizationWindowSeconds != nil {
-		window = int64(*a.StabilizationWindowSeconds)
+	if a.StabilizationWindowSeconds() != nil {
+		window = int64(*a.StabilizationWindowSeconds())
 	}
 
 	// Basic progress line.
-	progress := FormatStabilizationProgress(a.StabilizationRemaining, a.StabilizationWindowSeconds)
+	progress := FormatStabilizationProgress(a.StabilizationRemaining(), a.StabilizationWindowSeconds())
 
 	var lines []string
 	lines = append(lines, fmt.Sprintf("ScalingDownStabilized: True (%s)", progress))
 
 	// Progress bar.
 	if window > 0 {
-		ratio := StabilizationProgressRatio(a.StabilizationRemaining, a.StabilizationWindowSeconds)
+		ratio := StabilizationProgressRatio(a.StabilizationRemaining(), a.StabilizationWindowSeconds())
 		bar := FormatASCIIProgressBar(ratio, 24)
 		lines = append(lines, bar)
 	}
@@ -108,11 +108,11 @@ func FormatStabilizationExplain(a Analysis) string {
 	}
 
 	// Source and confidence.
-	source := a.StabilizationSource
+	source := a.StabilizationSource()
 	if source == "" {
 		source = StabilizationSourceScaleDown
 	}
-	lines = append(lines, fmt.Sprintf("  source: %s behavior  [%s]", source, a.StabilizationConfidence))
+	lines = append(lines, fmt.Sprintf("  source: %s behavior  [%s]", source, a.StabilizationConfidence()))
 
 	// Join with newlines and indent continuation lines.
 	result := lines[0]

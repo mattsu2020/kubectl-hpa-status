@@ -39,16 +39,17 @@ type MetaView struct {
 	CreationTimestamp string `json:"creationTimestamp,omitempty" yaml:"creationTimestamp,omitempty"` // RFC3339 of a.CreationTimestamp
 }
 
-// Meta returns the identity group view.
+// Meta returns the identity group view. The stored creation timestamp is
+// rendered as second-precision RFC3339 for the v2 wire.
 func (a *Analysis) Meta() MetaView {
 	ts := ""
-	if !a.CreationTimestamp.IsZero() {
-		ts = a.CreationTimestamp.UTC().Format("2006-01-02T15:04:05Z07:00")
+	if !a.creationTimestamp.IsZero() {
+		ts = a.creationTimestamp.UTC().Format("2006-01-02T15:04:05Z07:00")
 	}
 	return MetaView{
-		Namespace:         a.Namespace,
-		Name:              a.Name,
-		Target:            a.Target,
+		Namespace:         a.meta.Namespace,
+		Name:              a.meta.Name,
+		Target:            a.meta.Target,
 		CreationTimestamp: ts,
 	}
 }
@@ -63,15 +64,7 @@ type ReplicasView struct {
 }
 
 // Replicas returns the core scaling-envelope group view.
-func (a *Analysis) Replicas() ReplicasView {
-	return ReplicasView{
-		Current:        a.Current,
-		Desired:        a.Desired,
-		Min:            a.Min,
-		Max:            a.Max,
-		TargetReplicas: a.TargetReplicas,
-	}
-}
+func (a *Analysis) Replicas() ReplicasView { return a.replicas }
 
 // DecisionView groups the "why this replica count" signals.
 type DecisionView struct {
@@ -88,20 +81,7 @@ type DecisionView struct {
 }
 
 // Decision returns the decision/health group view.
-func (a *Analysis) Decision() DecisionView {
-	return DecisionView{
-		Health:                  a.Health,
-		HealthScore:             a.HealthScore,
-		HealthResult:            a.HealthResult,
-		Summary:                 a.Summary,
-		SummaryKey:              a.SummaryKey,
-		ImpactMetric:            a.ImpactMetric,
-		DecisionTrace:           a.DecisionTrace,
-		MetricDecisionTrace:     a.MetricDecisionTrace,
-		StructuredDecisionTrace: a.StructuredDecisionTrace,
-		DecisionSignals:         a.DecisionSignals,
-	}
-}
+func (a *Analysis) Decision() DecisionView { return a.decision }
 
 // MetricsView groups the metric-pipeline health signals.
 type MetricsView struct {
@@ -114,17 +94,8 @@ type MetricsView struct {
 }
 
 // MetricsGroup returns the metric-pipeline group view. The method name avoids
-// a collision with the existing Metrics field.
-func (a *Analysis) MetricsGroup() MetricsView {
-	return MetricsView{
-		Metrics:            a.Metrics,
-		MetricsDiagnostics: a.MetricsDiagnostics,
-		MetricFreshness:    a.MetricFreshnessEntries,
-		MetricContract:     a.MetricContract,
-		MetricHints:        a.MetricHints,
-		AdapterDiagnostics: a.AdapterDiagnostics,
-	}
-}
+// a collision with the flat Metrics accessor.
+func (a *Analysis) MetricsGroup() MetricsView { return a.metrics }
 
 // ConditionsView groups HPA controller conditions and behavior configuration.
 type ConditionsView struct {
@@ -137,16 +108,7 @@ type ConditionsView struct {
 }
 
 // ConditionsGroup returns the conditions/behavior group view.
-func (a *Analysis) ConditionsGroup() ConditionsView {
-	return ConditionsView{
-		Conditions:                 a.Conditions,
-		Behavior:                   a.Behavior,
-		StabilizationWindowSeconds: a.StabilizationWindowSeconds,
-		StabilizationSource:        a.StabilizationSource,
-		StabilizationConfidence:    a.StabilizationConfidence,
-		StabilizationRemaining:     a.StabilizationRemaining,
-	}
-}
+func (a *Analysis) ConditionsGroup() ConditionsView { return a.conditions }
 
 // ActionsView groups the recommendation/explainability output.
 type ActionsView struct {
@@ -160,17 +122,7 @@ type ActionsView struct {
 }
 
 // ActionsGroup returns the recommendations/explainability group view.
-func (a *Analysis) ActionsGroup() ActionsView {
-	return ActionsView{
-		Actions:                  a.Actions,
-		Suggestions:              a.Suggestions,
-		StructuredActions:        a.StructuredActions,
-		StructuredInterpretation: a.StructuredInterpretation,
-		Interpretation:           a.Interpretation,
-		Assumptions:              a.Assumptions,
-		Warnings:                 a.Warnings,
-	}
-}
+func (a *Analysis) ActionsGroup() ActionsView { return a.actions }
 
 // LifecycleView groups freshness/trend/telemetry signals.
 type LifecycleView struct {
@@ -182,15 +134,7 @@ type LifecycleView struct {
 }
 
 // Lifecycle returns the freshness/trend group view.
-func (a *Analysis) Lifecycle() LifecycleView {
-	return LifecycleView{
-		StaleStatus:      a.StaleStatus,
-		HealthTrend:      a.HealthTrend,
-		Debug:            a.Debug,
-		HiddenFactors:    a.HiddenFactors,
-		EnrichmentStatus: a.EnrichmentStatus,
-	}
-}
+func (a *Analysis) Lifecycle() LifecycleView { return a.lifecycle }
 
 // CapacityView groups scheduling and cluster capacity signals.
 type CapacityView struct {
@@ -204,17 +148,7 @@ type CapacityView struct {
 }
 
 // Capacity returns the scheduling/capacity group view.
-func (a *Analysis) Capacity() CapacityView {
-	return CapacityView{
-		CapacityContext:  a.CapacityContext,
-		CapacityHeadroom: a.CapacityHeadroom,
-		CapacityPlan:     a.CapacityPlan,
-		ResourceCheck:    a.ResourceCheck,
-		PodAnalysis:      a.PodAnalysis,
-		ScalePath:        a.ScalePath,
-		ReadinessImpact:  a.ReadinessImpact,
-	}
-}
+func (a *Analysis) Capacity() CapacityView { return a.capacity }
 
 // ScaleToZeroView groups scale-to-zero and cold-start/warmup signals.
 type ScaleToZeroView struct {
@@ -223,13 +157,8 @@ type ScaleToZeroView struct {
 }
 
 // ScaleToZeroGroup returns the scale-to-zero/warmup group view. The method
-// name avoids a collision with the existing ScaleToZero field.
-func (a *Analysis) ScaleToZeroGroup() ScaleToZeroView {
-	return ScaleToZeroView{
-		ScaleToZero:    a.ScaleToZero,
-		WarmupAnalysis: a.WarmupAnalysis,
-	}
-}
+// name avoids a collision with the flat ScaleToZero accessor.
+func (a *Analysis) ScaleToZeroGroup() ScaleToZeroView { return a.scaleToZero }
 
 // StabilityView groups flapping and churn diagnosis signals.
 type StabilityView struct {
@@ -240,14 +169,7 @@ type StabilityView struct {
 }
 
 // Stability returns the flapping/churn group view.
-func (a *Analysis) Stability() StabilityView {
-	return StabilityView{
-		FlappingSimulation: a.FlappingSimulation,
-		FlappingPrevention: a.FlappingPrevention,
-		FlappingDiagnosis:  a.FlappingDiagnosis,
-		ChurnAnalysis:      a.ChurnAnalysis,
-	}
-}
+func (a *Analysis) Stability() StabilityView { return a.stability }
 
 // AdvisoryView groups VPA and container/behavior tuning advice.
 type AdvisoryView struct {
@@ -258,14 +180,7 @@ type AdvisoryView struct {
 }
 
 // Advisory returns the VPA/container/behavior advisory group view.
-func (a *Analysis) Advisory() AdvisoryView {
-	return AdvisoryView{
-		VPAConflict:      a.VPAConflict,
-		VPAAdvisory:      a.VPAAdvisory,
-		ContainerAdvisor: a.ContainerAdvisor,
-		BehaviorAdvisor:  a.BehaviorAdvisor,
-	}
-}
+func (a *Analysis) Advisory() AdvisoryView { return a.advisory }
 
 // ControllersView groups external controller integrations.
 type ControllersView struct {
@@ -275,13 +190,7 @@ type ControllersView struct {
 }
 
 // Controllers returns the external-controller group view.
-func (a *Analysis) Controllers() ControllersView {
-	return ControllersView{
-		KEDAInfo:          a.KEDAInfo,
-		RolloutDiagnosis:  a.RolloutDiagnosis,
-		ControllerProfile: a.ControllerProfile,
-	}
-}
+func (a *Analysis) Controllers() ControllersView { return a.controllers }
 
 // BlockersView groups apply-time gating signals.
 type BlockersView struct {
@@ -290,12 +199,7 @@ type BlockersView struct {
 }
 
 // Blockers returns the apply-time gating group view.
-func (a *Analysis) Blockers() BlockersView {
-	return BlockersView{
-		BlockerReport:  a.BlockerReport,
-		GitOpsConflict: a.GitOpsConflict,
-	}
-}
+func (a *Analysis) Blockers() BlockersView { return a.blockers }
 
 // GroupedAnalysis is the nested representation used by the v2 output schema.
 // The existing flat Analysis remains the v1 wire contract; serializers can
@@ -316,25 +220,26 @@ type GroupedAnalysis struct {
 	Lifecycle   LifecycleView   `json:"lifecycle" yaml:"lifecycle"`
 }
 
-// Grouped returns all v2 groups in one stable value. It is intentionally
-// additive and does not change v1 JSON/YAML serialization.
+// Grouped returns all v2 groups in one stable value. The grouped views are
+// the primary storage, so this is a plain copy-out; the v1 flat shape is the
+// inverse projection (Analysis.Flat).
 func (a *Analysis) Grouped() GroupedAnalysis {
 	if a == nil {
 		return GroupedAnalysis{}
 	}
 	return GroupedAnalysis{
 		Meta:        a.Meta(),
-		Replicas:    a.Replicas(),
-		Decision:    a.Decision(),
-		Metrics:     a.MetricsGroup(),
-		Conditions:  a.ConditionsGroup(),
-		Capacity:    a.Capacity(),
-		ScaleToZero: a.ScaleToZeroGroup(),
-		Stability:   a.Stability(),
-		Advisory:    a.Advisory(),
-		Controllers: a.Controllers(),
-		Blockers:    a.Blockers(),
-		Actions:     a.ActionsGroup(),
-		Lifecycle:   a.Lifecycle(),
+		Replicas:    a.replicas,
+		Decision:    a.decision,
+		Metrics:     a.metrics,
+		Conditions:  a.conditions,
+		Capacity:    a.capacity,
+		ScaleToZero: a.scaleToZero,
+		Stability:   a.stability,
+		Advisory:    a.advisory,
+		Controllers: a.controllers,
+		Blockers:    a.blockers,
+		Actions:     a.actions,
+		Lifecycle:   a.lifecycle,
 	}
 }

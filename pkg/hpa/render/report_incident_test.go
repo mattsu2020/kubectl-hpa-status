@@ -10,7 +10,7 @@ import (
 
 func TestWriteIncidentReport(t *testing.T) {
 	var buf bytes.Buffer
-	report := hpa.StatusReport{Analysis: hpa.Analysis{Namespace: "default", Name: "web", Health: "OK"}}
+	report := hpa.StatusReport{Analysis: *hpa.NewAnalysis(hpa.FlatAnalysis{Namespace: "default", Name: "web", Health: "OK"})}
 	if err := WriteIncidentReport(&buf, report); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -23,7 +23,7 @@ func EnrichVPA(ctx context.Context, ec *Context, hpa *autoscalingv2.HorizontalPo
 		entry.Reason = "dynamic client is unavailable"
 		return entry
 	}
-	vpaInfo, err := FindConflictingVPA(ctx, ec.dynClient, report.Analysis.Namespace, hpa)
+	vpaInfo, err := FindConflictingVPA(ctx, ec.dynClient, report.Analysis.Namespace(), hpa)
 	if err != nil {
 		entry.State = StateError
 		entry.Reason = err.Error()
@@ -35,8 +35,8 @@ func EnrichVPA(ctx context.Context, ec *Context, hpa *autoscalingv2.HorizontalPo
 	}
 
 	analysisVPA := kubeconv.VPAInfo(vpaInfo)
-	report.Analysis.VPAConflict = hpavpa.NewConflictInfoForHPA(hpa, analysisVPA)
-	report.Analysis.Interpretation = append(report.Analysis.Interpretation, hpavpa.Analyze(hpa, analysisVPA)...)
+	report.Analysis.SetVPAConflict(hpavpa.NewConflictInfoForHPA(hpa, analysisVPA))
+	report.Analysis.SetInterpretation(append(report.Analysis.Interpretation(), hpavpa.Analyze(hpa, analysisVPA)...))
 	entry.State = StateActive
 	return entry
 }

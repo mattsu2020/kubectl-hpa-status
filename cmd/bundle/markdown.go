@@ -106,31 +106,31 @@ func writeBundleRecommendations(b *Writer, data *Data) {
 	b.Print("## Recommendations\n\n")
 	a := data.StatusReport.Analysis
 
-	if len(a.Actions) > 0 {
+	if len(a.Actions()) > 0 {
 		b.Print("### Actions\n\n")
-		for _, action := range a.Actions {
+		for _, action := range a.Actions() {
 			b.Printf("- %s\n", mdEscape(action))
 		}
 		b.Println()
 	}
 
-	if len(a.Suggestions) > 0 {
+	if len(a.Suggestions()) > 0 {
 		b.Print("### Suggestions\n\n")
-		for _, s := range a.Suggestions {
+		for _, s := range a.Suggestions() {
 			b.Printf("- %s\n", mdEscape(s.Description))
 		}
 		b.Println()
 	}
 
-	if len(a.Interpretation) > 0 {
+	if len(a.Interpretation()) > 0 {
 		b.Print("### Interpretation\n\n")
-		for _, interp := range a.Interpretation {
+		for _, interp := range a.Interpretation() {
 			b.Printf("- %s\n", mdEscape(interp))
 		}
 		b.Println()
 	}
 
-	if len(a.Actions) == 0 && len(a.Suggestions) == 0 && len(a.Interpretation) == 0 {
+	if len(a.Actions()) == 0 && len(a.Suggestions()) == 0 && len(a.Interpretation()) == 0 {
 		b.Print("_No recommendations available._\n")
 	}
 

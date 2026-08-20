@@ -98,31 +98,31 @@ func runStatusSingle(ctx context.Context, out io.Writer, opts *options, name str
 		return err
 	}
 	if opts.Format == "structured" {
-		if report.Analysis.StructuredDecisionTrace == nil {
-			report.Analysis.StructuredDecisionTrace = hpaanalysis.ExportStructuredDecisionTrace(nil, report.Analysis)
+		if report.Analysis.StructuredDecisionTrace() == nil {
+			report.Analysis.SetStructuredDecisionTrace(hpaanalysis.ExportStructuredDecisionTrace(nil, report.Analysis))
 		}
 		return joinOutputAndExit(
-			render.Format(out, "json", "", report.Analysis.StructuredDecisionTrace, nil),
-			warningExitCode(report.Analysis.Health, report.Analysis.Name, report.Analysis.Namespace, watchMode),
+			render.Format(out, "json", "", report.Analysis.StructuredDecisionTrace(), nil),
+			warningExitCode(report.Analysis.Health(), report.Analysis.Name(), report.Analysis.Namespace(), watchMode),
 		)
 	}
 	if opts.ContextForAI || opts.Ask != "" {
 		return joinOutputAndExit(
 			writeAIContext(out, report, opts.Ask),
-			warningExitCode(report.Analysis.Health, report.Analysis.Name, report.Analysis.Namespace, watchMode),
+			warningExitCode(report.Analysis.Health(), report.Analysis.Name(), report.Analysis.Namespace(), watchMode),
 		)
 	}
 	if opts.Apply {
-		applied, err := applySuggestions(ctx, out, opts, name, report.Analysis.Suggestions)
+		applied, err := applySuggestions(ctx, out, opts, name, report.Analysis.Suggestions())
 		if err != nil {
 			return err
 		}
-		report.Analysis.Actions = append(report.Analysis.Actions, applied...)
+		report.Analysis.SetActions(append(report.Analysis.Actions(), applied...))
 	}
 	if opts.Export != "" {
 		return joinOutputAndExit(
 			writeGitOpsExport(out, opts.Export, report),
-			warningExitCode(report.Analysis.Health, report.Analysis.Name, report.Analysis.Namespace, watchMode),
+			warningExitCode(report.Analysis.Health(), report.Analysis.Name(), report.Analysis.Namespace(), watchMode),
 		)
 	}
 
@@ -131,7 +131,7 @@ func runStatusSingle(ctx context.Context, out io.Writer, opts *options, name str
 	}); err != nil {
 		return err
 	}
-	return warningExitCode(report.Analysis.Health, report.Analysis.Name, report.Analysis.Namespace, watchMode)
+	return warningExitCode(report.Analysis.Health(), report.Analysis.Name(), report.Analysis.Namespace(), watchMode)
 }
 
 func unresolvedStatusNamespace(opts *options) string {
@@ -224,7 +224,7 @@ func renderStructuredDecisionTraces(out io.Writer, results []reportResult) error
 		if !results[i].hasReport {
 			continue
 		}
-		tr := results[i].report.Analysis.StructuredDecisionTrace
+		tr := results[i].report.Analysis.StructuredDecisionTrace()
 		if tr == nil {
 			tr = hpaanalysis.ExportStructuredDecisionTrace(nil, results[i].report.Analysis)
 		}

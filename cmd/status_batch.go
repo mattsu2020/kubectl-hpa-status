@@ -29,7 +29,7 @@ func (r reportResult) batchStatus() hpaanalysis.StatusBatchStatus {
 	if !r.hasReport {
 		return hpaanalysis.BatchStatusError
 	}
-	switch hpaanalysis.HealthState(r.report.Analysis.Health) {
+	switch hpaanalysis.HealthState(r.report.Analysis.Health()) {
 	case hpaanalysis.HealthError, hpaanalysis.HealthLimited, hpaanalysis.HealthWarning:
 		return hpaanalysis.BatchStatusWarning
 	default:
@@ -233,7 +233,7 @@ func aggregateBatchExitCode(results []reportResult, watchMode bool) error {
 			hasError = true
 			break
 		}
-		if healthIsWarning(results[i].report.Analysis.Health) {
+		if healthIsWarning(results[i].report.Analysis.Health()) {
 			hasWarning = true
 		}
 	}
@@ -243,7 +243,7 @@ func aggregateBatchExitCode(results []reportResult, watchMode bool) error {
 	if hasWarning && !watchMode {
 		// Reuse the single-HPA helper to format a representative message.
 		for i := range results {
-			if err := warningExitCode(results[i].report.Analysis.Health, results[i].report.Analysis.Name, results[i].report.Analysis.Namespace, watchMode); err != nil {
+			if err := warningExitCode(results[i].report.Analysis.Health(), results[i].report.Analysis.Name(), results[i].report.Analysis.Namespace(), watchMode); err != nil {
 				return err
 			}
 		}

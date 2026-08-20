@@ -47,9 +47,9 @@ func runRollout(ctx context.Context, out io.Writer, opts *options, names []strin
 			}
 
 			return rolloutOutput{
-				Namespace: report.Analysis.Namespace,
-				Name:      report.Analysis.Name,
-				Target:    report.Analysis.Target,
+				Namespace: report.Analysis.Namespace(),
+				Name:      report.Analysis.Name(),
+				Target:    report.Analysis.Target(),
 				Report:    buildRolloutReport(ctx, client, hpa, &report.Analysis),
 			}, nil
 		},
@@ -77,7 +77,7 @@ func assembleRolloutInput(ctx context.Context, client *kube.Client, hpa *autosca
 	input := hpaanalysis.RolloutInput{
 		Namespace: hpa.Namespace,
 		HPAName:   hpa.Name,
-		Target:    analysis.Target,
+		Target:    analysis.Target(),
 	}
 
 	ref := hpa.Spec.ScaleTargetRef
@@ -110,7 +110,7 @@ func assembleRolloutInput(ctx context.Context, client *kube.Client, hpa *autosca
 		} else {
 			// Surface the fetch failure so RolloutInProgress=0 isn't mistaken
 			// for "no rollout in progress" on an RBAC-denied or transient error.
-			analysis.Warnings = append(analysis.Warnings, fmt.Sprintf("could not read Deployment %s/%s rollout status: %v", hpa.Namespace, ref.Name, err))
+			analysis.SetWarnings(append(analysis.Warnings(), fmt.Sprintf("could not read Deployment %s/%s rollout status: %v", hpa.Namespace, ref.Name, err)))
 		}
 	case "StatefulSet":
 		sts, err := client.Interface.AppsV1().StatefulSets(hpa.Namespace).Get(ctx, ref.Name, metav1.GetOptions{})
@@ -122,13 +122,13 @@ func assembleRolloutInput(ctx context.Context, client *kube.Client, hpa *autosca
 				input.NewReplicaSetContainerNames = append(input.NewReplicaSetContainerNames, c.Name)
 			}
 		} else {
-			analysis.Warnings = append(analysis.Warnings, fmt.Sprintf("could not read StatefulSet %s/%s rollout status: %v", hpa.Namespace, ref.Name, err))
+			analysis.SetWarnings(append(analysis.Warnings(), fmt.Sprintf("could not read StatefulSet %s/%s rollout status: %v", hpa.Namespace, ref.Name, err)))
 		}
 	}
 
 	// Fetch pod issues from the existing rollout diagnosis.
-	if analysis.RolloutDiagnosis != nil {
-		input.PodIssues = analysis.RolloutDiagnosis.PodIssues
+	if analysis.RolloutDiagnosis() != nil {
+		input.PodIssues = analysis.RolloutDiagnosis().PodIssues
 	}
 
 	return input

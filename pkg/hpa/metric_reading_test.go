@@ -111,7 +111,7 @@ func TestSnapshotFromReportRecordsMetricValues(t *testing.T) {
 	value := 83.0
 	target := 60.0
 	report := StatusReport{
-		Analysis: Analysis{
+		Analysis: *NewAnalysis(FlatAnalysis{
 			Namespace: "default",
 			Name:      "web",
 			Metrics: []Metric{
@@ -125,7 +125,7 @@ func TestSnapshotFromReportRecordsMetricValues(t *testing.T) {
 				},
 				{Type: MetricTypeExternal, Name: "queue_depth", Text: "External queue_depth: details unavailable"},
 			},
-		},
+		}),
 	}
 
 	snap := SnapshotFromReport(report)

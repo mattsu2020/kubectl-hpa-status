@@ -173,12 +173,12 @@ func TestFormatStabilizationExplain(t *testing.T) {
 	}{
 		{
 			name: "full stabilization display",
-			analysis: Analysis{
+			analysis: *NewAnalysis(FlatAnalysis{
 				StabilizationRemaining:     &remaining,
 				StabilizationWindowSeconds: &window,
 				StabilizationSource:        StabilizationSourceScaleDown,
 				StabilizationConfidence:    stabilizationConfidenceLabel,
-			},
+			}),
 			wantContains: []string{
 				"ScalingDownStabilized: True",
 				"38%",
@@ -189,27 +189,27 @@ func TestFormatStabilizationExplain(t *testing.T) {
 		},
 		{
 			name: "nil remaining returns empty",
-			analysis: Analysis{
+			analysis: *NewAnalysis(FlatAnalysis{
 				StabilizationRemaining: nil,
-			},
+			}),
 			wantEmpty: true,
 		},
 		{
 			name: "zero remaining returns empty",
-			analysis: Analysis{
+			analysis: *NewAnalysis(FlatAnalysis{
 				StabilizationRemaining:     ptr.To(int64(0)),
 				StabilizationWindowSeconds: &window,
-			},
+			}),
 			wantEmpty: true,
 		},
 		{
 			name: "without window still shows remaining",
-			analysis: Analysis{
+			analysis: *NewAnalysis(FlatAnalysis{
 				StabilizationRemaining:     &remaining,
 				StabilizationWindowSeconds: nil,
 				StabilizationSource:        StabilizationSourceScaleUp,
 				StabilizationConfidence:    stabilizationConfidenceLabel,
-			},
+			}),
 			wantContains: []string{
 				"ScalingDownStabilized: True",
 				"scaleUp behavior",

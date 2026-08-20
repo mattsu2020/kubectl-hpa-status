@@ -27,7 +27,7 @@ func (f *fakeEnricher) AbortOnError() bool { return f.abortOnErr }
 func (f *fakeEnricher) Run(_ context.Context, _ *PipelineContext, _ *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
 	f.ran = true
 	if f.recordValue != "" {
-		report.Analysis.Warnings = append(report.Analysis.Warnings, f.recordValue)
+		report.Analysis.SetWarnings(append(report.Analysis.Warnings(), f.recordValue))
 	}
 	return f.runErr
 }
@@ -57,8 +57,8 @@ func TestRunEnrichers_SkipsDisabled(t *testing.T) {
 	if !enabled.ran {
 		t.Error("enabled enricher should run")
 	}
-	if len(report.Analysis.Warnings) != 1 || report.Analysis.Warnings[0] != "ran" {
-		t.Errorf("expected 1 warning from enabled enricher, got %v", report.Analysis.Warnings)
+	if len(report.Analysis.Warnings()) != 1 || report.Analysis.Warnings()[0] != "ran" {
+		t.Errorf("expected 1 warning from enabled enricher, got %v", report.Analysis.Warnings())
 	}
 }
 
@@ -78,11 +78,11 @@ func TestRunEnrichers_ErrorRecordedAsWarningWhenNotAborting(t *testing.T) {
 		t.Error("pipeline should continue past a best-effort error")
 	}
 	// Warning from runner + record from after enricher.
-	if len(report.Analysis.Warnings) != 2 {
-		t.Fatalf("expected 2 warnings (error + after), got %v", report.Analysis.Warnings)
+	if len(report.Analysis.Warnings()) != 2 {
+		t.Fatalf("expected 2 warnings (error + after), got %v", report.Analysis.Warnings())
 	}
-	if report.Analysis.Warnings[0] != `enrichment "best-effort" failed: boom` {
-		t.Errorf("unexpected warning text: %q", report.Analysis.Warnings[0])
+	if report.Analysis.Warnings()[0] != `enrichment "best-effort" failed: boom` {
+		t.Errorf("unexpected warning text: %q", report.Analysis.Warnings()[0])
 	}
 }
 
@@ -102,8 +102,8 @@ func TestRunEnrichers_AbortsOnAbortOnError(t *testing.T) {
 		t.Error("pipeline should not continue past an aborting error")
 	}
 	// The runner still records the warning before propagating.
-	if len(report.Analysis.Warnings) != 1 {
-		t.Errorf("expected 1 warning recorded before abort, got %v", report.Analysis.Warnings)
+	if len(report.Analysis.Warnings()) != 1 {
+		t.Errorf("expected 1 warning recorded before abort, got %v", report.Analysis.Warnings())
 	}
 }
 

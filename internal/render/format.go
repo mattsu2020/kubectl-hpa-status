@@ -165,8 +165,27 @@ func JSONLines(out io.Writer, value any) error {
 	}
 }
 
+// projectForReflection converts Analysis-bearing report values to their flat
+// v1 projection before reflection-driven rendering (jsonpath, Go templates).
+// Both engines walk struct fields, not accessor methods, so post storage-flip
+// Analysis values must be projected to keep expressions like {.analysis.name}
+// and {{ .Analysis.Name }} working unchanged.
+func projectForReflection(value any) any {
+	switch v := value.(type) {
+	case hpaanalysis.StatusReport:
+		return hpaanalysis.ProjectStatusReportV1(v)
+	case []hpaanalysis.StatusReport:
+		return hpaanalysis.ProjectStatusReportsV1(v)
+	case hpaanalysis.StatusBatch:
+		return hpaanalysis.ProjectStatusBatchV1(v)
+	default:
+		return value
+	}
+}
+
 // JSONPath evaluates a jsonpath expression against value and writes the result.
 func JSONPath(out io.Writer, expression string, value any) error {
+	value = projectForReflection(value)
 	parser := jsonpath.New("output")
 	parser.AllowMissingKeys(true)
 	if err := parser.Parse(expression); err != nil {
@@ -181,6 +200,7 @@ func JSONPath(out io.Writer, expression string, value any) error {
 
 // Template evaluates a Go text/template against value and writes the result.
 func Template(out io.Writer, expression string, value any) error {
+	value = projectForReflection(value)
 	tmpl, err := template.New("output").Parse(expression)
 	if err != nil {
 		return fmt.Errorf("invalid template expression: %w", err)
@@ -207,7 +227,7 @@ func Prometheus(w io.Writer, value any) error {
 		return nil
 	case hpaanalysis.StatusReport:
 		a := report.Analysis
-		return PrometheusMetrics(w, a.Namespace, a.Name, a.HealthScore, a.Current, a.Desired, a.Min, a.Max)
+		return PrometheusMetrics(w, a.Namespace(), a.Name(), a.HealthScore(), a.Current(), a.Desired(), a.Min(), a.Max())
 	default:
 		return fmt.Errorf("prometheus output requires a StatusReport or ListReport, got %T", value)
 	}

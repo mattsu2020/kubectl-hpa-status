@@ -28,24 +28,24 @@ func WriteStatusDiffWithOptions(w io.Writer, state WatchState, opts StatusTextOp
 	labels := resolveLabels(opts.Labels)
 	var out []byte
 
-	out = fmt.Appendf(out, "HPA %s/%s\n", a.Namespace, a.Name)
-	out = fmt.Appendf(out, "%s: %s\n", labels.Target, a.Target)
+	out = fmt.Appendf(out, "HPA %s/%s\n", a.Namespace(), a.Name())
+	out = fmt.Appendf(out, "%s: %s\n", labels.Target, a.Target())
 
 	// Replicas: highlight when changed
-	desiredChanged := a.Desired != prev.Desired
-	currentChanged := a.Current != prev.Current
-	desired := theme.ReplicaHighlight(a.Desired, desiredChanged)
-	current := fmt.Sprintf("%d", a.Current)
+	desiredChanged := a.Desired() != prev.Desired()
+	currentChanged := a.Current() != prev.Current()
+	desired := theme.ReplicaHighlight(a.Desired(), desiredChanged)
+	current := fmt.Sprintf("%d", a.Current())
 	if currentChanged {
 		current = theme.Bold.Render(current)
 	}
-	out = fmt.Appendf(out, "%s: current=%s desired=%s min=%d max=%d\n", labels.Replicas, current, desired, a.Min, a.Max)
+	out = fmt.Appendf(out, "%s: current=%s desired=%s min=%d max=%d\n", labels.Replicas, current, desired, a.Min(), a.Max())
 
 	out = append(out, '\n')
-	summary := opts.translateSummary(a.Summary, a.SummaryKey)
-	summaryChanged := a.Summary != prev.Summary
+	summary := opts.translateSummary(a.Summary(), a.SummaryKey())
+	summaryChanged := a.Summary() != prev.Summary()
 	if summaryChanged {
-		out = fmt.Appendf(out, "%s: %s\n", labels.Summary, theme.SummaryColorForKey(summary, a.SummaryKey))
+		out = fmt.Appendf(out, "%s: %s\n", labels.Summary, theme.SummaryColorForKey(summary, a.SummaryKey()))
 	} else {
 		out = fmt.Appendf(out, "%s: %s\n", labels.Summary, theme.Dim.Render(summary))
 	}

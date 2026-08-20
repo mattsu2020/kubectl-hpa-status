@@ -22,8 +22,8 @@ func TestWriteHTMLReports(t *testing.T) {
 	t.Run("multiple reports render as separate sections", func(t *testing.T) {
 		var buf bytes.Buffer
 		reports := []hpa.StatusReport{
-			{Analysis: hpa.Analysis{Namespace: "default", Name: "web", Health: "OK"}},
-			{Analysis: hpa.Analysis{Namespace: "default", Name: "api", Health: "ERROR"}},
+			{Analysis: *hpa.NewAnalysis(hpa.FlatAnalysis{Namespace: "default", Name: "web", Health: "OK"})},
+			{Analysis: *hpa.NewAnalysis(hpa.FlatAnalysis{Namespace: "default", Name: "api", Health: "ERROR"})},
 		}
 		if err := WriteHTMLReports(&buf, reports); err != nil {
 			t.Fatalf("unexpected error: %v", err)

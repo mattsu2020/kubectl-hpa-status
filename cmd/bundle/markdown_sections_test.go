@@ -20,12 +20,12 @@ func richAnalysisFixture() hpaanalysis.Analysis {
 	pollingInterval := int32(30)
 	var a hpaanalysis.Analysis
 
-	a.ResourceCheck = &hpaanalysis.ResourceCheckResult{
+	a.SetResourceCheck(&hpaanalysis.ResourceCheckResult{
 		Warnings: []hpaanalysis.ResourceWarning{
 			{Container: "app", Resource: "cpu", Category: "missing-requests", Details: "no cpu request | set one", Severity: "warning"},
 		},
-	}
-	a.CapacityContext = &hpaanalysis.CapacityContext{
+	})
+	a.SetCapacityContext(&hpaanalysis.CapacityContext{
 		PendingPods: []hpaanalysis.PendingPodInfo{
 			{Name: "web-2", Phase: "Pending", Unschedulable: true, Reasons: []string{"Insufficient cpu"}},
 		},
@@ -36,8 +36,8 @@ func richAnalysisFixture() hpaanalysis.Analysis {
 			{Name: "web-pdb", MinAvailable: "2", MaxUnavailable: "", Disruption: "blocked"},
 		},
 		NodeHints: []string{"2 nodes tainted NoSchedule"},
-	}
-	a.ScalePath = &hpaanalysis.ScalePath{
+	})
+	a.SetScalePath(&hpaanalysis.ScalePath{
 		Steps: []hpaanalysis.ScalePathStep{
 			{Name: "HPA", Summary: "wants 5 replicas"},
 			{Name: "Deployment", Summary: "updated"},
@@ -45,8 +45,8 @@ func richAnalysisFixture() hpaanalysis.Analysis {
 		BlockingPoint: "scheduler",
 		Evidence:      []string{"pod web-2 unschedulable"},
 		NextActions:   []string{"add nodes"},
-	}
-	a.BlockerReport = &blocker.Report{
+	})
+	a.SetBlockerReport(&blocker.Report{
 		Namespace:       "production",
 		Name:            "web",
 		Target:          "Deployment/web",
@@ -59,8 +59,8 @@ func richAnalysisFixture() hpaanalysis.Analysis {
 		},
 		Interpretation: "cluster is out of cpu",
 		NextCommands:   []string{"kubectl describe nodes"},
-	}
-	a.KEDAInfo = &hpakeda.Analysis{
+	})
+	a.SetKEDAInfo(&hpakeda.Analysis{
 		ScaledObjectName: "web-so",
 		PollingInterval:  &pollingInterval,
 		Triggers: []hpakeda.TriggerSummary{
@@ -68,27 +68,27 @@ func richAnalysisFixture() hpaanalysis.Analysis {
 		},
 		Fallback: &hpakeda.FallbackInfo{FailureThreshold: 3, Replicas: 2},
 		Lines:    []string{"[observed] HPA is owned by KEDA"},
-	}
-	a.MetricsDiagnostics = &hpaanalysis.MetricsPipelineDiagnostics{
+	})
+	a.SetMetricsDiagnostics(&hpaanalysis.MetricsPipelineDiagnostics{
 		OverallStatus: "DEGRADED",
 		PerMetricChecks: []hpaanalysis.PerMetricHealthCheck{
 			{MetricType: "Resource", MetricName: "cpu", Status: "OK", Details: "fresh"},
 		},
 		RemediationSteps: []string{"restart metrics-server"},
-	}
-	a.MetricFreshnessEntries = []hpaanalysis.MetricFreshness{
+	})
+	a.SetMetricFreshnessEntries([]hpaanalysis.MetricFreshness{
 		{Name: "cpu", Type: "Resource", Status: "OK", Age: 30 * time.Second, Source: "metrics-server"},
 		{Name: "queue_depth", Type: "External", Status: "Missing"},
-	}
-	a.MetricContract = &hpaanalysis.MetricContractReport{
+	})
+	a.SetMetricContract(&hpaanalysis.MetricContractReport{
 		OverallStatus: "BROKEN",
 		Checks: []hpaanalysis.MetricContractCheck{
 			{MetricType: "External", MetricName: "queue_depth", APIService: "v1beta1.external.metrics.k8s.io", APIServiceAvailable: true, DataAvailable: false, Status: "NoData"},
 		},
-	}
-	a.Actions = []string{"raise maxReplicas"}
-	a.Suggestions = []hpaanalysis.Suggestion{{Title: "tune", Description: "add stabilization window"}}
-	a.Interpretation = []string{"HPA is throttled"}
+	})
+	a.SetActions([]string{"raise maxReplicas"})
+	a.SetSuggestions([]hpaanalysis.Suggestion{{Title: "tune", Description: "add stabilization window"}})
+	a.SetInterpretation([]string{"HPA is throttled"})
 	return a
 }
 

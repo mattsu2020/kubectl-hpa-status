@@ -125,11 +125,11 @@ func collectBatchApplyPatches(selected []string, reports map[string]*hpaanalysis
 		if !ok || report == nil {
 			continue
 		}
-		for _, s := range report.Analysis.Suggestions {
+		for _, s := range report.Analysis.Suggestions() {
 			if s.Apply && s.Patch != "" {
 				patches = append(patches, batchApplyPatchEntry{
-					namespace: report.Analysis.Namespace,
-					name:      report.Analysis.Name,
+					namespace: report.Analysis.Namespace(),
+					name:      report.Analysis.Name(),
 					patch:     s.Patch,
 					title:     s.Title,
 				})

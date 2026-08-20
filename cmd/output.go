@@ -88,7 +88,7 @@ func analysisOptions(hw hpaanalysis.HealthWeights, debug bool) hpaanalysis.Analy
 
 func reportHasCondition(report hpaanalysis.StatusReport, condition string) bool {
 	want := normalizeSelector(condition)
-	for _, current := range report.Analysis.Conditions {
+	for _, current := range report.Analysis.Conditions() {
 		if normalizeSelector(current.Type) == want {
 			return true
 		}

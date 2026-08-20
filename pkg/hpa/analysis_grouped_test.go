@@ -3,7 +3,7 @@ package hpa
 import "testing"
 
 func TestGroupedAnalysisMapsFlatFields(t *testing.T) {
-	a := Analysis{Namespace: "ns", Name: "hpa", Current: 2, Desired: 3, Summary: "scale up", Warnings: []string{"warning"}}
+	a := *NewAnalysis(FlatAnalysis{Namespace: "ns", Name: "hpa", Current: 2, Desired: 3, Summary: "scale up", Warnings: []string{"warning"}})
 	grouped := a.Grouped()
 	if grouped.Meta.Namespace != "ns" || grouped.Meta.Name != "hpa" {
 		t.Fatalf("meta mapping failed: %#v", grouped.Meta)

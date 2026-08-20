@@ -22,8 +22,8 @@ func ExportStructuredDecisionTrace(hpa *autoscalingv2.HorizontalPodAutoscaler, a
 		Name:                   hpa.Name,
 		CurrentReplicas:        hpa.Status.CurrentReplicas,
 		VisibleDesiredReplicas: hpa.Status.DesiredReplicas,
-		MinReplicas:            a.Min,
-		MaxReplicas:            a.Max,
+		MinReplicas:            a.Min(),
+		MaxReplicas:            a.Max(),
 		Confidence:             ConfidenceMedium,
 	}
 
@@ -111,8 +111,8 @@ func buildStructuredMetricTraces(hpa *autoscalingv2.HorizontalPodAutoscaler) []S
 // MetricDecisionTrace on Analysis, falling back to computing it from the
 // structured metric traces.
 func resolveStructuredWinner(hpa *autoscalingv2.HorizontalPodAutoscaler, a Analysis, metrics []StructuredMetricTrace) (string, Confidence) {
-	if a.MetricDecisionTrace != nil && a.MetricDecisionTrace.Winner != "" {
-		return a.MetricDecisionTrace.Winner, a.MetricDecisionTrace.WinnerConfidence
+	if a.MetricDecisionTrace() != nil && a.MetricDecisionTrace().Winner != "" {
+		return a.MetricDecisionTrace().Winner, a.MetricDecisionTrace().WinnerConfidence
 	}
 
 	if len(metrics) == 0 {
@@ -228,8 +228,8 @@ func buildStructuredStabilizationTrace(hpa *autoscalingv2.HorizontalPodAutoscale
 	}
 
 	direction := "scaleDown"
-	if a.StabilizationSource != "" {
-		direction = a.StabilizationSource
+	if a.StabilizationSource() != "" {
+		direction = a.StabilizationSource()
 	}
 
 	trace := &StabilizationTrace{

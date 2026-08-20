@@ -4,7 +4,7 @@ import "strings"
 
 func writeBundleCapacityContextSection(b *Writer, data *Data) {
 	b.Print("## Capacity Context\n\n")
-	cc := data.StatusReport.Analysis.CapacityContext
+	cc := data.StatusReport.Analysis.CapacityContext()
 	if cc == nil {
 		b.Print("_No capacity context available._\n\n---\n\n")
 		return
@@ -65,7 +65,7 @@ func writeBundleCapacityContextSection(b *Writer, data *Data) {
 
 func writeBundleScalePathSection(b *Writer, data *Data) {
 	b.Print("## Scale Path\n\n")
-	sp := data.StatusReport.Analysis.ScalePath
+	sp := data.StatusReport.Analysis.ScalePath()
 	if sp == nil {
 		b.Print("_No scale path analysis available._\n\n---\n\n")
 		return
@@ -106,7 +106,7 @@ func writeBundleScalePathSection(b *Writer, data *Data) {
 
 func writeBundleBlockerSection(b *Writer, data *Data) {
 	b.Print("## Blocker Analysis\n\n")
-	br := data.StatusReport.Analysis.BlockerReport
+	br := data.StatusReport.Analysis.BlockerReport()
 	if br == nil {
 		b.Print("_No blocker analysis available._\n\n---\n\n")
 		return

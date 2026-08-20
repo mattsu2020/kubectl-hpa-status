@@ -15,11 +15,11 @@ func TestBuildSuggestionsAddsBehaviorAndToleranceRecommendations(t *testing.T) {
 	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{resourceMetricStatus(corev1.ResourceCPU, 75)}
 
 	got := Analyze(hpa, true)
-	if !containsSuggestion(got.Suggestions, "Add explicit scale-up policy") {
-		t.Fatalf("expected scale-up policy suggestion, got %#v", got.Suggestions)
+	if !containsSuggestion(got.Suggestions(), "Add explicit scale-up policy") {
+		t.Fatalf("expected scale-up policy suggestion, got %#v", got.Suggestions())
 	}
-	if !containsSuggestion(got.Suggestions, "Review scale-up tolerance") {
-		t.Fatalf("expected tolerance suggestion, got %#v", got.Suggestions)
+	if !containsSuggestion(got.Suggestions(), "Review scale-up tolerance") {
+		t.Fatalf("expected tolerance suggestion, got %#v", got.Suggestions())
 	}
 }
 

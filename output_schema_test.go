@@ -385,7 +385,7 @@ func validateOutputNumberBounds(node outputSchemaNode, number json.Number, path 
 
 func TestOutputSchemaValidatesSerializedOutputVariants(t *testing.T) {
 	schema := loadOutputSchema(t)
-	analysis := hpaanalysis.Analysis{
+	analysis := *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
 		Namespace:   "default",
 		Name:        "web",
 		Target:      "Deployment/web",
@@ -427,7 +427,7 @@ func TestOutputSchemaValidatesSerializedOutputVariants(t *testing.T) {
 			Note:       "inferred from visible metrics",
 			Confidence: string(hpaanalysis.ConfidenceLow),
 		},
-	}
+	})
 	status := hpaanalysis.StatusReport{
 		APIVersion: hpaanalysis.SchemaVersion,
 		Analysis:   analysis,
@@ -508,7 +508,7 @@ func TestOutputSchemaV2ValidatesProjectedOutputVariants(t *testing.T) {
 	schema := loadOutputSchemaFile(t, "docs/output-schema-v2.json")
 	status := hpaanalysis.StatusReport{
 		APIVersion: hpaanalysis.SchemaVersion,
-		Analysis: hpaanalysis.Analysis{
+		Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
 			Namespace:   "default",
 			Name:        "web",
 			Target:      "Deployment/web",
@@ -521,7 +521,7 @@ func TestOutputSchemaV2ValidatesProjectedOutputVariants(t *testing.T) {
 			Summary:     "HPA is healthy",
 			Conditions:  []hpaanalysis.Condition{{Type: "AbleToScale", Status: "True"}},
 			Metrics:     []hpaanalysis.Metric{{Type: "Resource", Name: "cpu", Text: "50% / 70%"}},
-		},
+		}),
 		Events: []hpaanalysis.Event{{Reason: "SuccessfulRescale", Message: "New size: 4"}},
 	}
 	batchReport := status

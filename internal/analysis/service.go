@@ -55,7 +55,7 @@ func AnalyzeOne(hpa *autoscalingv2.HorizontalPodAutoscaler, opts Options, enrich
 	)
 	analysis, report := builder.Build()
 
-	key := analysis.Namespace + "/" + analysis.Name
+	key := analysis.Namespace() + "/" + analysis.Name()
 	return Result{
 		Key:       key,
 		Analysis:  analysis,

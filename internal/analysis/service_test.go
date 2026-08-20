@@ -33,13 +33,13 @@ func TestAnalyzeBatchAppliesEnrichmentWarningsAndPreservesOrder(t *testing.T) {
 	if results[0].Key != "team-a/first" || results[1].Key != "team-b/second" {
 		t.Fatalf("AnalyzeBatch() order = %q, %q", results[0].Key, results[1].Key)
 	}
-	if results[0].Analysis.KEDAInfo == nil {
+	if results[0].Analysis.KEDAInfo() == nil {
 		t.Fatal("first result is missing KEDA enrichment")
 	}
-	if len(results[0].Analysis.Warnings) != 1 || results[0].Analysis.Warnings[0] != "KEDA list unavailable" {
-		t.Fatalf("first warnings = %#v", results[0].Analysis.Warnings)
+	if len(results[0].Analysis.Warnings()) != 1 || results[0].Analysis.Warnings()[0] != "KEDA list unavailable" {
+		t.Fatalf("first warnings = %#v", results[0].Analysis.Warnings())
 	}
-	if results[1].Analysis.VPAConflict == nil {
+	if results[1].Analysis.VPAConflict() == nil {
 		t.Fatal("second result is missing VPA enrichment")
 	}
 	if results[0].Report.APIVersion != hpaanalysis.SchemaVersion {
@@ -58,7 +58,7 @@ func TestAnalyzeBatchDoesNotAliasNamespaceWarnings(t *testing.T) {
 		BatchEnrichment{Warnings: map[string][]string{"team-a": warnings}},
 	)
 	warnings[0] = "mutated"
-	if got := results[0].Analysis.Warnings[0]; got != "unavailable" {
+	if got := results[0].Analysis.Warnings()[0]; got != "unavailable" {
 		t.Fatalf("warning aliased caller storage: %q", got)
 	}
 }

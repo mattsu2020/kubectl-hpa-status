@@ -136,7 +136,7 @@ func TestRunStatus_ExplainPods_JSON(t *testing.T) {
 		t.Fatalf("failed to parse JSON output: %v", err)
 	}
 
-	_ = report.Analysis.PodAnalysis
+	_ = report.Analysis.PodAnalysis()
 }
 
 // --------------------------------------------------------------------------
@@ -177,17 +177,17 @@ func TestRunStatus_Simulate(t *testing.T) {
 		t.Fatalf("failed to parse JSON output: %v", err)
 	}
 
-	if report.Analysis.FlappingSimulation == nil {
+	if report.Analysis.FlappingSimulation() == nil {
 		t.Fatal("expected Simulation to be populated")
 	}
-	if report.Analysis.FlappingSimulation.Parameter != "maxReplicas" {
-		t.Errorf("expected parameter=maxReplicas, got %q", report.Analysis.FlappingSimulation.Parameter)
+	if report.Analysis.FlappingSimulation().Parameter != "maxReplicas" {
+		t.Errorf("expected parameter=maxReplicas, got %q", report.Analysis.FlappingSimulation().Parameter)
 	}
-	if report.Analysis.FlappingSimulation.OriginalValue != "10" {
-		t.Errorf("expected originalValue=10, got %q", report.Analysis.FlappingSimulation.OriginalValue)
+	if report.Analysis.FlappingSimulation().OriginalValue != "10" {
+		t.Errorf("expected originalValue=10, got %q", report.Analysis.FlappingSimulation().OriginalValue)
 	}
-	if report.Analysis.FlappingSimulation.SimulatedValue != "20" {
-		t.Errorf("expected simulatedValue=20, got %q", report.Analysis.FlappingSimulation.SimulatedValue)
+	if report.Analysis.FlappingSimulation().SimulatedValue != "20" {
+		t.Errorf("expected simulatedValue=20, got %q", report.Analysis.FlappingSimulation().SimulatedValue)
 	}
 }
 
@@ -261,7 +261,7 @@ func TestRunStatus_CapacityContext(t *testing.T) {
 		t.Fatalf("failed to parse JSON output: %v", err)
 	}
 
-	if report.Analysis.CapacityContext == nil {
+	if report.Analysis.CapacityContext() == nil {
 		t.Error("expected CapacityContext to be populated")
 	}
 }

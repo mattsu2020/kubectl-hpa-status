@@ -77,14 +77,14 @@ func TestEnrichVPA_NoConflict(t *testing.T) {
 	)
 	ec := &Context{vpaEnabled: true, dynClient: dyn}
 	hpa := hpaWithResourceMetric("default", "web", "web")
-	report := &hpaanalysis.StatusReport{Analysis: hpaanalysis.Analysis{Namespace: "default", Name: "web"}}
+	report := &hpaanalysis.StatusReport{Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{Namespace: "default", Name: "web"})}
 
 	entry := EnrichVPA(context.Background(), ec, hpa, report)
 	if entry.State != StateSkipped || entry.Reason == "" {
 		t.Errorf("expected skipped state with reason, got %+v", entry)
 	}
-	if report.Analysis.VPAConflict != nil {
-		t.Errorf("expected no VPA conflict recorded, got %+v", report.Analysis.VPAConflict)
+	if report.Analysis.VPAConflict() != nil {
+		t.Errorf("expected no VPA conflict recorded, got %+v", report.Analysis.VPAConflict())
 	}
 }
 
@@ -96,13 +96,13 @@ func TestEnrichVPA_ConflictFound(t *testing.T) {
 	)
 	ec := &Context{vpaEnabled: true, dynClient: dyn}
 	hpa := hpaWithResourceMetric("default", "web", "web")
-	report := &hpaanalysis.StatusReport{Analysis: hpaanalysis.Analysis{Namespace: "default", Name: "web"}}
+	report := &hpaanalysis.StatusReport{Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{Namespace: "default", Name: "web"})}
 
 	entry := EnrichVPA(context.Background(), ec, hpa, report)
 	if entry.State != StateActive {
 		t.Errorf("expected active state, got %+v", entry)
 	}
-	if report.Analysis.VPAConflict == nil {
+	if report.Analysis.VPAConflict() == nil {
 		t.Fatal("expected VPA conflict to be recorded on the report")
 	}
 }
@@ -124,17 +124,17 @@ func TestEnrichReport_FullPath(t *testing.T) {
 		Type:     autoscalingv2.ResourceMetricSourceType,
 		Resource: &autoscalingv2.ResourceMetricSource{Name: corev1.ResourceCPU},
 	}}
-	report := &hpaanalysis.StatusReport{Analysis: hpaanalysis.Analysis{Namespace: "default", Name: "web"}}
+	report := &hpaanalysis.StatusReport{Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{Namespace: "default", Name: "web"})}
 
 	EnrichReport(context.Background(), ec, hpa, report, hpaanalysis.HealthWeights{})
 
-	if report.Analysis.KEDAInfo == nil {
+	if report.Analysis.KEDAInfo() == nil {
 		t.Error("expected KEDA info to be populated")
 	}
-	if report.Analysis.VPAConflict == nil {
+	if report.Analysis.VPAConflict() == nil {
 		t.Error("expected VPA conflict to be populated")
 	}
-	if report.Analysis.EnrichmentStatus.KEDA == nil || report.Analysis.EnrichmentStatus.VPA == nil {
-		t.Errorf("expected enrichment status for both KEDA and VPA, got %+v", report.Analysis.EnrichmentStatus)
+	if report.Analysis.EnrichmentStatus().KEDA == nil || report.Analysis.EnrichmentStatus().VPA == nil {
+		t.Errorf("expected enrichment status for both KEDA and VPA, got %+v", report.Analysis.EnrichmentStatus())
 	}
 }
