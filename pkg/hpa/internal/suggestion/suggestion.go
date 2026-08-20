@@ -14,6 +14,11 @@ type Suggestion struct {
 	Preconditions []string `json:"preconditions,omitempty" yaml:"preconditions,omitempty"`
 	Warnings      []string `json:"warnings,omitempty" yaml:"warnings,omitempty"`
 	Apply         bool     `json:"apply,omitempty" yaml:"apply,omitempty"`
+	// SourceUID and SourceResourceVersion identify the HPA state from which the
+	// suggestion was derived. They are process-local safety metadata rather than
+	// part of the public output schema.
+	SourceUID             string `json:"-" yaml:"-"`
+	SourceResourceVersion string `json:"-" yaml:"-"`
 }
 
 // GuardResult holds policy guard decisions for suggested patches.

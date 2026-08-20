@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -114,7 +116,10 @@ func TestExtractReplicasFromUnstructured(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			u := &unstructured.Unstructured{Object: tt.object}
-			got, found := extractReplicasFromUnstructured(u, tt.targetKind, tt.targetName)
+			got, found, err := extractReplicasFromUnstructured(u, tt.targetKind, tt.targetName)
+			if err != nil {
+				t.Fatal(err)
+			}
 			if found != tt.wantFound {
 				t.Fatalf("found = %v, want %v", found, tt.wantFound)
 			}
@@ -127,6 +132,52 @@ func TestExtractReplicasFromUnstructured(t *testing.T) {
 				t.Fatalf("got = %d, want %d", *got, *tt.want)
 			}
 		})
+	}
+}
+
+func TestParseManifestReplicasReadsYAMLDocumentStream(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "resources.yaml")
+	data := `apiVersion: v1
+kind: Service
+metadata:
+  name: web
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  replicas: 7
+`
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := parseManifestReplicas(path, "Deployment", "web")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil || *got != 7 {
+		t.Fatalf("expected replicas 7 from second YAML document, got %v", got)
+	}
+}
+
+func TestParseManifestReplicasReportsMalformedAndOverflow(t *testing.T) {
+	dir := t.TempDir()
+	malformed := filepath.Join(dir, "malformed.yaml")
+	if err := os.WriteFile(malformed, []byte("kind: ["), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := parseManifestReplicas(malformed, "Deployment", "web"); err == nil {
+		t.Fatal("expected malformed YAML error")
+	}
+
+	overflow := filepath.Join(dir, "overflow.yaml")
+	data := "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  replicas: 2147483648\n"
+	if err := os.WriteFile(overflow, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := parseManifestReplicas(overflow, "Deployment", "web"); err == nil {
+		t.Fatal("expected replicas overflow error")
 	}
 }
 

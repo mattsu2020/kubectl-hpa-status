@@ -8,6 +8,7 @@ package policy
 
 import (
 	"fmt"
+	"math"
 	"strings"
 )
 
@@ -124,6 +125,114 @@ func (f File) Validate() error {
 		case "critical", "warning", "info", "":
 		default:
 			return fmt.Errorf("policy rule %q has invalid severity %q; use critical, warning, or info", rule.ID, rule.Severity)
+		}
+		if err := validateRuleParameters(rule); err != nil {
+			return fmt.Errorf("policy rule %q: %w", rule.ID, err)
+		}
+	}
+	return nil
+}
+
+func validateRuleParameters(rule Rule) error {
+	allowed := map[string]map[string]struct{}{
+		"stabilization-window":      {"min": {}, "max": {}},
+		"max-replicas-multiplier":   {"multiplier": {}},
+		"max-replicas-from-current": {"maxMultiplierFromCurrent": {}},
+		"behavior-policy-required":  {"requireScaleUp": {}, "requireScaleDown": {}},
+		"metric-coverage":           {"requireResource": {}, "minMetrics": {}},
+		"target-utilization-range":  {"min": {}, "max": {}},
+		"replica-range":             {"maxRatio": {}},
+	}
+	keys, known := allowed[rule.ID]
+	if !known {
+		return nil
+	}
+	for key := range rule.Parameters {
+		if _, ok := keys[key]; !ok {
+			return fmt.Errorf("unknown parameter %q", key)
+		}
+	}
+
+	switch rule.ID {
+	case "stabilization-window":
+		return validateIntRangePair(rule.Parameters, "min", 60, "max", 3600, 0, math.MaxInt32)
+	case "max-replicas-multiplier":
+		return validatePositiveInt(rule.Parameters, "multiplier", 3)
+	case "max-replicas-from-current":
+		return validatePositiveInt(rule.Parameters, "maxMultiplierFromCurrent", 5)
+	case "behavior-policy-required":
+		return validateBoolParameters(rule.Parameters, "requireScaleUp", "requireScaleDown")
+	case "metric-coverage":
+		if err := validateBoolParameters(rule.Parameters, "requireResource"); err != nil {
+			return err
+		}
+		return validatePositiveInt(rule.Parameters, "minMetrics", 1)
+	case "target-utilization-range":
+		return validateIntRangePair(rule.Parameters, "min", 30, "max", 90, 1, 100)
+	case "replica-range":
+		return validatePositiveInt(rule.Parameters, "maxRatio", 10)
+	default:
+		return nil
+	}
+}
+
+func validatePositiveInt(params Params, key string, defaultValue int64) error {
+	value, err := parameterInt64(params, key, defaultValue)
+	if err != nil {
+		return err
+	}
+	if value <= 0 || value > math.MaxInt32 {
+		return fmt.Errorf("parameter %q must be between 1 and %d", key, math.MaxInt32)
+	}
+	return nil
+}
+
+func validateIntRangePair(params Params, minKey string, minDefault int64, maxKey string, maxDefault, lower, upper int64) error {
+	minimum, err := parameterInt64(params, minKey, minDefault)
+	if err != nil {
+		return err
+	}
+	maximum, err := parameterInt64(params, maxKey, maxDefault)
+	if err != nil {
+		return err
+	}
+	if minimum < lower || minimum > upper || maximum < lower || maximum > upper {
+		return fmt.Errorf("parameters %q and %q must be between %d and %d", minKey, maxKey, lower, upper)
+	}
+	if minimum > maximum {
+		return fmt.Errorf("parameter %q must not exceed %q", minKey, maxKey)
+	}
+	return nil
+}
+
+func parameterInt64(params Params, key string, defaultValue int64) (int64, error) {
+	value, ok := params[key]
+	if !ok {
+		return defaultValue, nil
+	}
+	switch number := value.(type) {
+	case int:
+		return int64(number), nil
+	case int32:
+		return int64(number), nil
+	case int64:
+		return number, nil
+	case float64:
+		if math.IsNaN(number) || math.IsInf(number, 0) || math.Trunc(number) != number || number < math.MinInt64 || number > math.MaxInt64 {
+			return 0, fmt.Errorf("parameter %q must be an integer", key)
+		}
+		return int64(number), nil
+	default:
+		return 0, fmt.Errorf("parameter %q must be an integer", key)
+	}
+}
+
+func validateBoolParameters(params Params, keys ...string) error {
+	for _, key := range keys {
+		if value, ok := params[key]; ok {
+			if _, valid := value.(bool); !valid {
+				return fmt.Errorf("parameter %q must be a boolean", key)
+			}
 		}
 	}
 	return nil

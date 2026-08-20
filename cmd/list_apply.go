@@ -74,6 +74,11 @@ func exportListPatchesDirectory(out io.Writer, opts *options, hpas []autoscaling
 	if err := os.MkdirAll(dir, 0o755); err != nil { // #nosec G301 -- GitOps patch directory is intentionally user-readable.
 		return fmt.Errorf("create patch export directory %s: %w", dir, err)
 	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return fmt.Errorf("open patch export directory %s: %w", dir, err)
+	}
+	defer func() { _ = root.Close() }()
 	written := 0
 	for i := range hpas {
 		hpa := &hpas[i]
@@ -93,7 +98,7 @@ func exportListPatchesDirectory(out io.Writer, opts *options, hpas []autoscaling
 		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(path, []byte(buf.String()), 0o644); err != nil { // #nosec G306 -- exported GitOps manifests are intended for review/commit.
+		if err := writePatchExportFile(root, filepath.Base(path), []byte(buf.String())); err != nil {
 			return fmt.Errorf("write patch file %s: %w", path, err)
 		}
 		written++
@@ -101,6 +106,46 @@ func exportListPatchesDirectory(out io.Writer, opts *options, hpas []autoscaling
 	if _, err := fmt.Fprintf(out, "Exported %d HPA patch file(s) to %s\n", written, dir); err != nil {
 		return fmt.Errorf("write output: %w", err)
 	}
+	return nil
+}
+
+func writePatchExportFile(root *os.Root, name string, data []byte) error {
+	if info, err := root.Lstat(name); err == nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("refusing to overwrite symlink %s", name)
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("refusing to overwrite non-regular file %s", name)
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("inspect existing export %s: %w", name, err)
+	}
+
+	tempName := fmt.Sprintf(".%s.tmp-%d", name, os.Getpid())
+	temp, err := root.OpenFile(tempName, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return fmt.Errorf("create temporary export: %w", err)
+	}
+	removeTemp := true
+	defer func() {
+		_ = temp.Close()
+		if removeTemp {
+			_ = root.Remove(tempName)
+		}
+	}()
+	if _, err := temp.Write(data); err != nil {
+		return fmt.Errorf("write temporary export: %w", err)
+	}
+	if err := temp.Sync(); err != nil {
+		return fmt.Errorf("sync temporary export: %w", err)
+	}
+	if err := temp.Close(); err != nil {
+		return fmt.Errorf("close temporary export: %w", err)
+	}
+	if err := root.Rename(tempName, name); err != nil {
+		return fmt.Errorf("publish export: %w", err)
+	}
+	removeTemp = false
 	return nil
 }
 

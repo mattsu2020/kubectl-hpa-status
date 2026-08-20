@@ -260,3 +260,24 @@ func TestMergePatchWithResourceVersionPreservesMetadata(t *testing.T) {
 		}
 	}
 }
+
+func TestApplyRejectsSuggestionFromStaleAnalysis(t *testing.T) {
+	t.Parallel()
+	hpa := testutil.BuildHPA("default", "web", testutil.WithMinMax(1, 10))
+	hpa.UID = "uid-1"
+	hpa.ResourceVersion = "2"
+	client := testutil.NewFakeClient(hpa)
+	opts := &options{Common: commonOptions{
+		ConnectionOptions: ConnectionOptions{ClientOverride: client},
+		ApplyOptions:      ApplyOptions{Yes: true, DryRun: false},
+	}}
+	var out bytes.Buffer
+
+	_, err := applySuggestionsInNamespace(context.Background(), &out, opts, "default", "web", []hpaanalysis.Suggestion{{
+		Title: "raise max", Apply: true, Patch: `{"spec":{"maxReplicas":20}}`,
+		SourceUID: "uid-1", SourceResourceVersion: "1",
+	}}, true)
+	if err == nil || !strings.Contains(err.Error(), "changed after it was analyzed") {
+		t.Fatalf("expected stale-analysis rejection, got %v", err)
+	}
+}

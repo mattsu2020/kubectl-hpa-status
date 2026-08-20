@@ -2,7 +2,9 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -127,48 +129,65 @@ func parseManifestReplicas(manifestPath string, targetKind, targetName string) (
 		files = []string{manifestPath}
 	}
 
+	var parseErrors []error
 	for _, file := range files {
-		if replicas, found := parseFileForReplicas(file, targetKind, targetName); found {
-			return replicas, nil
+		replicas, found, err := parseFileForReplicas(file, targetKind, targetName)
+		if err != nil {
+			parseErrors = append(parseErrors, err)
+		}
+		if found {
+			return replicas, errors.Join(parseErrors...)
 		}
 	}
 
-	return nil, nil
+	return nil, errors.Join(parseErrors...)
 }
 
 // parseFileForReplicas parses a single manifest file and extracts spec.replicas
 // if the file contains the target resource.
-func parseFileForReplicas(filePath, targetKind, targetName string) (*int32, bool) {
+func parseFileForReplicas(filePath, targetKind, targetName string) (*int32, bool, error) {
 	data, err := readFileBounded(filePath)
 	if err != nil {
-		return nil, false
+		return nil, false, fmt.Errorf("read manifest %s: %w", filePath, err)
 	}
 
-	// Try parsing as a single document first
-	var single unstructured.Unstructured
-	if err := yaml.Unmarshal(data, &single); err == nil {
-		if replicas, found := extractReplicasFromUnstructured(&single, targetKind, targetName); found {
-			return replicas, true
+	docs, err := readYAMLDocuments(data)
+	if err != nil {
+		return nil, false, fmt.Errorf("parse manifest %s: %w", filePath, err)
+	}
+	for index, doc := range docs {
+		var object unstructured.Unstructured
+		if err := yaml.Unmarshal(doc, &object); err != nil {
+			return nil, false, fmt.Errorf("parse manifest %s document %d: %w", filePath, index+1, err)
 		}
-	}
-
-	// Try multi-document YAML
-	var multi []map[string]any
-	if err := yaml.Unmarshal(data, &multi); err == nil {
-		for _, doc := range multi {
-			u := &unstructured.Unstructured{Object: doc}
-			if replicas, found := extractReplicasFromUnstructured(u, targetKind, targetName); found {
-				return replicas, true
+		if replicas, found, err := extractReplicasFromUnstructured(&object, targetKind, targetName); err != nil {
+			return nil, false, fmt.Errorf("parse manifest %s document %d: %w", filePath, index+1, err)
+		} else if found {
+			return replicas, true, nil
+		}
+		if object.IsList() {
+			items, err := object.ToList()
+			if err != nil {
+				return nil, false, fmt.Errorf("parse manifest %s document %d list: %w", filePath, index+1, err)
+			}
+			for itemIndex := range items.Items {
+				replicas, found, err := extractReplicasFromUnstructured(&items.Items[itemIndex], targetKind, targetName)
+				if err != nil {
+					return nil, false, fmt.Errorf("parse manifest %s document %d item %d: %w", filePath, index+1, itemIndex+1, err)
+				}
+				if found {
+					return replicas, true, nil
+				}
 			}
 		}
 	}
 
-	return nil, false
+	return nil, false, nil
 }
 
 // extractReplicasFromUnstructured extracts spec.replicas from an unstructured object
 // if it matches the target kind and name.
-func extractReplicasFromUnstructured(u *unstructured.Unstructured, targetKind, targetName string) (*int32, bool) {
+func extractReplicasFromUnstructured(u *unstructured.Unstructured, targetKind, targetName string) (*int32, bool, error) {
 	kind := u.GetKind()
 	name := u.GetName()
 
@@ -181,21 +200,27 @@ func extractReplicasFromUnstructured(u *unstructured.Unstructured, targetKind, t
 	}
 
 	if kind != targetKind || name != targetName {
-		return nil, false
+		return nil, false, nil
 	}
 
 	// Only process Deployment and StatefulSet
 	if kind != "Deployment" && kind != "StatefulSet" {
-		return nil, false
+		return nil, false, nil
 	}
 
 	replicas, found, err := unstructured.NestedInt64(u.Object, "spec", "replicas")
-	if err != nil || !found {
-		return nil, false
+	if err != nil {
+		return nil, false, fmt.Errorf("read spec.replicas for %s/%s: %w", kind, name, err)
+	}
+	if !found {
+		return nil, false, nil
+	}
+	if replicas < 0 || replicas > math.MaxInt32 {
+		return nil, false, fmt.Errorf("spec.replicas for %s/%s must be between 0 and %d, got %d", kind, name, math.MaxInt32, replicas)
 	}
 
 	result := int32(replicas)
-	return &result, true
+	return &result, true, nil
 }
 
 // extractGitOpsAnnotations extracts Argo CD and Flux annotations from the resource.

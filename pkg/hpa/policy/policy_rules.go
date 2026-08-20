@@ -122,6 +122,12 @@ func EvaluatePolicies(hpa *autoscalingv2.HorizontalPodAutoscaler, policyFile Fil
 // EvaluateRule evaluates a single policy rule against an HPA.
 func EvaluateRule(hpa *autoscalingv2.HorizontalPodAutoscaler, rule Rule) []Violation {
 	rule = normalizePolicyRule(rule)
+	if err := validateRuleParameters(rule); err != nil {
+		return []Violation{{
+			RuleID: rule.ID, RuleName: rule.Name, Severity: "critical",
+			Description: fmt.Sprintf("invalid policy configuration: %v", err),
+		}}
+	}
 	ruleFunc, ok := builtinRules[rule.ID]
 	if !ok {
 		return []Violation{{
@@ -217,8 +223,8 @@ func maxReplicasMultiplierPolicy(hpa *autoscalingv2.HorizontalPodAutoscaler, par
 		minReplicas = *hpa.Spec.MinReplicas
 	}
 
-	required := minReplicas * int32(multiplier)
-	if hpa.Spec.MaxReplicas >= required {
+	required := int64(minReplicas) * int64(multiplier)
+	if int64(hpa.Spec.MaxReplicas) >= required {
 		return nil
 	}
 
@@ -240,8 +246,8 @@ func maxReplicasFromCurrentPolicy(hpa *autoscalingv2.HorizontalPodAutoscaler, pa
 	if current < 1 {
 		current = 1
 	}
-	allowed := current * int32(multiplier)
-	if hpa.Spec.MaxReplicas <= allowed {
+	allowed := int64(current) * int64(multiplier)
+	if int64(hpa.Spec.MaxReplicas) <= allowed {
 		return nil
 	}
 	return []Violation{
@@ -392,18 +398,21 @@ func replicaRangePolicy(hpa *autoscalingv2.HorizontalPodAutoscaler, params Param
 		return nil
 	}
 
-	ratio := int(hpa.Spec.MaxReplicas) / int(minReplicas)
-	if ratio <= maxRatio {
+	maxReplicas := int64(hpa.Spec.MaxReplicas)
+	minValue := int64(minReplicas)
+	limit := minValue * int64(maxRatio)
+	if maxReplicas <= limit {
 		return nil
 	}
+	ratio := float64(maxReplicas) / float64(minValue)
 
 	return []Violation{
 		{
 			RuleID:      "replica-range",
 			RuleName:    "Replica Range",
 			Severity:    "warning",
-			Description: fmt.Sprintf("maxReplicas/minReplicas ratio is %d (max=%d, min=%d), exceeds maximum allowed ratio of %d", ratio, hpa.Spec.MaxReplicas, minReplicas, maxRatio),
-			Current:     fmt.Sprintf("ratio=%d", ratio),
+			Description: fmt.Sprintf("maxReplicas/minReplicas ratio is %.2f (max=%d, min=%d), exceeds maximum allowed ratio of %d", ratio, hpa.Spec.MaxReplicas, minReplicas, maxRatio),
+			Current:     fmt.Sprintf("ratio=%.2f", ratio),
 			Required:    fmt.Sprintf("<= %d", maxRatio),
 		},
 	}

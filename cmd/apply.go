@@ -46,6 +46,9 @@ func applySuggestionsInNamespace(ctx context.Context, out io.Writer, opts *optio
 	if err != nil {
 		return nil, wrapHPALookupError(namespace, name, err)
 	}
+	if err := verifySuggestionSource(current, patches); err != nil {
+		return nil, err
+	}
 
 	patches, mergedPatch, mergeErr, err := guardAndMergePatches(out, opts, current, patches)
 	if err != nil {
@@ -83,6 +86,18 @@ func applySuggestionsInNamespace(ctx context.Context, out io.Writer, opts *optio
 	}
 
 	return executePatches(ctx, out, client, namespace, name, patches, opts.AllowPartial, current.ResourceVersion)
+}
+
+func verifySuggestionSource(current *autoscalingv2.HorizontalPodAutoscaler, suggestions []hpaanalysis.Suggestion) error {
+	for _, suggestion := range suggestions {
+		if suggestion.SourceUID != "" && string(current.UID) != suggestion.SourceUID {
+			return fmt.Errorf("HPA %s/%s was replaced after it was analyzed (UID %q -> %q); no changes were applied, analyze the current HPA and retry", current.Namespace, current.Name, suggestion.SourceUID, current.UID)
+		}
+		if suggestion.SourceResourceVersion != "" && current.ResourceVersion != suggestion.SourceResourceVersion {
+			return fmt.Errorf("HPA %s/%s changed after it was analyzed (resourceVersion %q -> %q); no changes were applied, analyze the updated HPA and retry", current.Namespace, current.Name, suggestion.SourceResourceVersion, current.ResourceVersion)
+		}
+	}
+	return nil
 }
 
 // guardAndMergePatches runs the per-patch policy guard, then merges the
