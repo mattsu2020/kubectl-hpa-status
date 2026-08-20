@@ -77,3 +77,29 @@ func TestValidatePatchExportDirectory_AcceptsMissingOrDirectory(t *testing.T) {
 		t.Fatalf("existing directory should be accepted: %v", err)
 	}
 }
+
+func TestWritePatchExportFileRejectsDestinationSymlink(t *testing.T) {
+	dir := t.TempDir()
+	victim := filepath.Join(t.TempDir(), "victim")
+	if err := os.WriteFile(victim, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(victim, filepath.Join(dir, "default-web.yaml")); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = root.Close() }()
+	if err := writePatchExportFile(root, "default-web.yaml", []byte("replace")); err == nil || !strings.Contains(err.Error(), "symlink") {
+		t.Fatalf("expected symlink rejection, got %v", err)
+	}
+	got, err := os.ReadFile(victim)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "keep" {
+		t.Fatalf("symlink target was modified: %q", got)
+	}
+}
