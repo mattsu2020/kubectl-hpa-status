@@ -24,6 +24,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   metric ramps but `desiredReplicas` never moved, the ramp is reported as
   staying within HPA headroom and no pre-scale is proposed. Recommendation
   levels still come from the observed replica history.
+- **v1 wire decoupling for the `Analysis` storage flip** (Stage A of
+  `docs/analysis-storage-flip.md`). `Analysis` now serializes through an
+  explicit `FlatAnalysis` projection (`Analysis.Flat()` /
+  `Analysis.MarshalJSON`), the flat v1 emit path for status JSON/YAML/JSONL
+  is the explicit `ProjectStatusReportV1`/`ProjectStatusBatchV1` family, and
+  the output-schema contract test pins the `analysis` definition to
+  `FlatAnalysis`. Output bytes are unchanged (guarded by a mirror test, a
+  round-trip property test, and byte-identity tests); the change only makes
+  the v1 wire independent of `Analysis`'s in-memory layout so the upcoming
+  grouped-primary storage flip cannot alter output.
+- **Storage-flip execution design** recorded in
+  `docs/analysis-storage-flip.md`: measured migration surface (~479 non-test
+  sites in `pkg/hpa`, ~250 in `cmd`/`internal`, ~600 in tests), compile-green
+  stage plan, and per-stage verification gates.
 
 ## [3.0.0] - 2026-08-15
 
