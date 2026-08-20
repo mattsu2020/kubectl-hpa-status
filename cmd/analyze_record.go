@@ -26,6 +26,7 @@ type analyzeRecordOptions struct {
 	leadTime      time.Duration
 	bucketMinutes int
 	minDays       int
+	signal        string
 }
 
 func newAnalyzeRecordCommand(opts *options) *cobra.Command {
@@ -48,6 +49,8 @@ func newAnalyzeRecordCommand(opts *options) *cobra.Command {
 		"time-of-day resolution in minutes for seasonality detection (default 30)")
 	cmd.Flags().IntVar(&params.minDays, "min-days", 0,
 		"minimum distinct days required to claim daily periodicity (default 2)")
+	cmd.Flags().StringVar(&params.signal, "signal", "auto",
+		"demand signal for seasonality detection: auto, metric, replicas (default auto)")
 	return cmd
 }
 

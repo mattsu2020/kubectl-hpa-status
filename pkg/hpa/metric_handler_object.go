@@ -18,6 +18,7 @@ func (objectHandler) FormatStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, me
 	target := FormatMetricTarget(targetSpec)
 	current := FormatMetricValueStatus(metric.Object.Current)
 	ratio, note := calculateRatioAndNote(metric.Object.Current, targetSpec)
+	value, numericTarget, unit := numericReading(metric.Object.Current, targetSpec)
 	name := fmt.Sprintf("%s/%s", metric.Object.DescribedObject.Kind, metric.Object.DescribedObject.Name)
 	selector := FormatMetricSelector(metric.Object.Metric.Selector)
 	text := fmt.Sprintf("Object %s %s current=%s target=%s", name, metric.Object.Metric.Name, current, target)
@@ -28,6 +29,7 @@ func (objectHandler) FormatStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, me
 	return Metric{
 		Type: MetricTypeObject, Name: metric.Object.Metric.Name, Selector: selector,
 		Object: name, Current: current, Target: target, Ratio: ratio, Note: note, Text: text,
+		NumericValue: value, NumericTarget: numericTarget, Unit: unit,
 	}
 }
 

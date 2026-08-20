@@ -10,18 +10,28 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/confidence"
 )
 
-// dayProfile holds the per-bucket peak desiredReplicas for one local day.
+// dayProfile holds the per-bucket peak readings for one local day.
 type dayProfile struct {
 	date    string
 	weekday time.Weekday
-	// max[b] is the highest desiredReplicas observed in bucket b, or -1 when
-	// the bucket holds no observation (partial first/last day, gaps in the
-	// recording).
-	max []int32
+	// signal[b] is the highest profiled signal value observed in bucket b
+	// (desiredReplicas, or the typed metric reading), or -1 when the bucket
+	// holds no observation (partial first/last day, gaps in the recording).
+	signal []float64
+	// desired[b] is the highest desiredReplicas observed in bucket b, or -1
+	// when empty. Recommendation levels always come from replicas, even when
+	// detection ran on metric values: pre-scaling changes replica floors, not
+	// metrics.
+	desired []int32
 }
 
-// Analyze looks for a recurring daily peak in the recorded desired-replica
-// history and, when it finds one, proposes a pre-scaling schedule.
+// Analyze looks for a recurring peak in the recorded demand history and, when
+// it finds one, proposes a pre-scaling schedule.
+//
+// The profiled signal is chosen by Options.Signal: typed metric values when
+// the recording carries them (auto), or desiredReplicas. Metric values see
+// demand ramps that replicas hide — headroom between min and max, controller
+// tolerance, and whole-pod quantization all flatten the replica signal.
 //
 // It is pure: the input slice is neither reordered nor modified. The returned
 // Analysis is always non-nil; check Detected and InsufficientData to interpret
@@ -30,10 +40,21 @@ func Analyze(obs []Observation, opts Options) *Analysis {
 	o := opts.withDefaults()
 	buckets := minutesPerDay / o.BucketMinutes
 
+	metricName, metricUnit, useMetric, usable := selectSignal(obs, o.Signal)
 	result := &Analysis{
 		Cycle:         CycleDaily,
 		Timezone:      o.Location.String(),
 		BucketMinutes: o.BucketMinutes,
+		Signal:        signalLabel(useMetric, metricName),
+		SignalUnit:    metricUnit,
+	}
+
+	if !usable {
+		result.Signal = string(SignalMetric)
+		result.Notes = append(result.Notes,
+			confidence.BadgeObserved+" the recording carries no typed metric values; the metric signal needs records written after typed metric capture landed.",
+			confidence.BadgeEstimated+" profile desiredReplicas instead with --signal replicas, or re-record with a current build.")
+		return result
 	}
 
 	if len(obs) == 0 {
@@ -43,7 +64,7 @@ func Analyze(obs []Observation, opts Options) *Analysis {
 		return result
 	}
 
-	days := buildDayProfiles(obs, o, buckets)
+	days := buildDayProfiles(obs, o, buckets, metricName, useMetric)
 	result.DaysObserved = len(days)
 	result.SpanHours = spanHours(obs)
 
@@ -57,22 +78,27 @@ func Analyze(obs []Observation, opts Options) *Analysis {
 		return result
 	}
 
-	profile, covered := averageProfile(days, buckets)
-	result.Baseline = median(coveredValues(profile, covered))
+	signalProfile, signalCovered := averageBuckets(days, buckets, func(d dayProfile) []float64 { return d.signal })
+	desiredProfile, desiredCovered := averageBuckets(days, buckets, func(d dayProfile) []int32 { return d.desired })
+	result.Baseline = median(coveredValues(signalProfile, signalCovered))
 	result.Threshold = math.Max(result.Baseline*o.PeakRatio, result.Baseline+1)
+	replicaBaseline := median(coveredValues(desiredProfile, desiredCovered))
 
-	start, length, ok := findPeakRun(profile, covered, result.Threshold)
+	start, length, ok := findPeakRun(signalProfile, signalCovered, result.Threshold)
 	if !ok {
 		result.Notes = append(result.Notes,
-			fmt.Sprintf(confidence.BadgeObserved+" desiredReplicas stayed near the daily baseline of %.1f across %d days; no recurring ramp to pre-scale for.",
-				result.Baseline, len(days)))
+			fmt.Sprintf(confidence.BadgeObserved+" the %s signal stayed near the daily baseline of %.1f across %d days; no recurring ramp to pre-scale for.",
+				result.Signal, result.Baseline, len(days)))
 		return result
 	}
 
-	peak := buildPeakWindow(days, start, length, buckets, o, result.Threshold)
+	peak := buildPeakWindow(days, start, length, buckets, o, result.Threshold, useMetric)
 	result.Peak = peak.PeakWindow
 
 	scheduleDays, narrowed := scheduleWeekdays(days, peak.matched)
+	if narrowed {
+		result.Cycle = CycleWeekly
+	}
 	peak.DaysMatched, peak.DaysCovered = countScheduled(days, peak.matched, peak.coveredDay, scheduleDays)
 	if peak.DaysCovered > 0 {
 		result.Confidence = float64(peak.DaysMatched) / float64(peak.DaysCovered)
@@ -88,30 +114,120 @@ func Analyze(obs []Observation, opts Options) *Analysis {
 	}
 
 	result.Detected = true
+	if useMetric && float64(peak.PeakDesired) <= replicaBaseline {
+		result.Notes = append(result.Notes,
+			fmt.Sprintf(confidence.BadgeObserved+" the %s signal ramps from a baseline of %.1f%s%s to %.1f%s%s between %s and %s, but desiredReplicas stayed at the %.0f-replica baseline.",
+				result.Signal, result.Baseline, metricUnit, unitSep(metricUnit), peak.PeakSignal, metricUnit, unitSep(metricUnit), peak.Start, peak.End, replicaBaseline),
+			confidence.BadgeEstimated+" the ramp stayed within the HPA's headroom (controller tolerance or minReplicas), so there is no replica floor to pre-scale; the scale-up delay it would cause is not visible in the replica history either.")
+		return result
+	}
 	result.Recommendation = buildRecommendation(peak, scheduleDays, narrowed, o, result.Confidence)
-	result.Notes = append(result.Notes, detectionNotes(result, peak, len(days))...)
+	result.Notes = append(result.Notes, detectionNotes(result, peak, len(days), replicaBaseline)...)
 	return result
+}
+
+// selectSignal resolves the profiled signal. With SignalAuto it picks the
+// metric name covering the most observations — ties break lexicographically
+// so repeated runs choose the same name — provided that name covers more than
+// half the observations; otherwise it falls back to desiredReplicas, which
+// legacy records always carry. With SignalMetric, usable=false reports that
+// the recording carries no metric samples at all.
+func selectSignal(obs []Observation, want Signal) (name, unit string, useMetric, usable bool) {
+	if want == SignalReplicas {
+		return "", "", false, true
+	}
+
+	coverage := map[string]int{}
+	units := map[string]string{}
+	for _, ob := range obs {
+		seen := map[string]bool{}
+		for _, s := range ob.Metrics {
+			if seen[s.Name] {
+				continue
+			}
+			seen[s.Name] = true
+			coverage[s.Name]++
+			if _, ok := units[s.Name]; !ok {
+				units[s.Name] = s.Unit
+			}
+		}
+	}
+
+	best := ""
+	for candidate, n := range coverage {
+		// Auto requires more than half the observations to carry the metric;
+		// a forced metric signal accepts whatever coverage exists.
+		if n <= len(obs)/2 && want != SignalMetric {
+			continue
+		}
+		if best == "" || n > coverage[best] || (n == coverage[best] && candidate < best) {
+			best = candidate
+		}
+	}
+
+	if best == "" {
+		if want == SignalMetric {
+			return "", "", true, false
+		}
+		return "", "", false, true
+	}
+	return best, units[best], true, true
+}
+
+// signalLabel renders the Analysis.Signal value for the resolved signal.
+func signalLabel(useMetric bool, name string) string {
+	if !useMetric {
+		return string(SignalReplicas)
+	}
+	return "metric:" + name
+}
+
+// unitSep separates a value from its unit in notes: "%" glues to the number,
+// unitless quantities get a space.
+func unitSep(unit string) string {
+	if unit == "%" {
+		return ""
+	}
+	return " "
 }
 
 // buildDayProfiles groups observations into local calendar days and reduces
 // each day to per-bucket maxima. Using the maximum (rather than the mean)
-// within a bucket keeps short ramps visible at coarse resolutions.
-func buildDayProfiles(obs []Observation, o Options, buckets int) []dayProfile {
+// within a bucket keeps short ramps visible at coarse resolutions. In metric
+// mode, observations without a reading for the selected metric still record
+// their desiredReplicas but leave the signal bucket empty.
+func buildDayProfiles(obs []Observation, o Options, buckets int, metricName string, useMetric bool) []dayProfile {
 	byDate := map[string]*dayProfile{}
 	for _, ob := range obs {
 		local := ob.Timestamp.In(o.Location)
 		date := local.Format("2006-01-02")
 		day, exists := byDate[date]
 		if !exists {
-			day = &dayProfile{date: date, weekday: local.Weekday(), max: newEmptyBuckets(buckets)}
+			day = &dayProfile{
+				date:    date,
+				weekday: local.Weekday(),
+				signal:  newEmptySignalBuckets(buckets),
+				desired: newEmptyDesiredBuckets(buckets),
+			}
 			byDate[date] = day
 		}
 		idx := (local.Hour()*60 + local.Minute()) / o.BucketMinutes
 		if idx >= buckets {
 			idx = buckets - 1
 		}
-		if ob.Desired > day.max[idx] {
-			day.max[idx] = ob.Desired
+		if ob.Desired > day.desired[idx] {
+			day.desired[idx] = ob.Desired
+		}
+		signal := float64(ob.Desired)
+		if useMetric {
+			v, found := ob.metricValue(metricName)
+			if !found {
+				continue
+			}
+			signal = v
+		}
+		if signal > day.signal[idx] {
+			day.signal[idx] = signal
 		}
 	}
 
@@ -123,8 +239,19 @@ func buildDayProfiles(obs []Observation, o Options, buckets int) []dayProfile {
 	return out
 }
 
-// newEmptyBuckets returns a bucket slice marked entirely as "no observation".
-func newEmptyBuckets(buckets int) []int32 {
+// newEmptySignalBuckets returns a signal slice marked entirely as "no
+// observation".
+func newEmptySignalBuckets(buckets int) []float64 {
+	out := make([]float64, buckets)
+	for i := range out {
+		out[i] = -1
+	}
+	return out
+}
+
+// newEmptyDesiredBuckets returns a desiredReplicas slice marked entirely as
+// "no observation".
+func newEmptyDesiredBuckets(buckets int) []int32 {
 	out := make([]int32, buckets)
 	for i := range out {
 		out[i] = -1
@@ -132,19 +259,21 @@ func newEmptyBuckets(buckets int) []int32 {
 	return out
 }
 
-// averageProfile collapses the per-day profiles into a single time-of-day
-// shape by averaging each bucket across the days that observed it.
-func averageProfile(days []dayProfile, buckets int) ([]float64, []bool) {
+// averageBuckets collapses the per-day profiles into a single time-of-day
+// shape by averaging each bucket across the days that observed it. Values
+// below 0 mark unobserved buckets and are skipped.
+func averageBuckets[B float64 | int32](days []dayProfile, buckets int, at func(dayProfile) []B) ([]float64, []bool) {
 	profile := make([]float64, buckets)
 	covered := make([]bool, buckets)
 	for b := range buckets {
 		var sum float64
 		var n int
 		for _, day := range days {
-			if day.max[b] < 0 {
+			v := at(day)[b]
+			if v < 0 {
 				continue
 			}
-			sum += float64(day.max[b])
+			sum += float64(v)
 			n++
 		}
 		if n == 0 {
@@ -228,8 +357,10 @@ type peakInternals struct {
 }
 
 // buildPeakWindow turns a bucket run into a PeakWindow and records which days
-// exhibited it.
-func buildPeakWindow(days []dayProfile, start, length, buckets int, o Options, threshold float64) *peakInternals {
+// exhibited it. Match bookkeeping runs on the profiled signal; the Peak/
+// Onset replica levels come from desiredReplicas so the recommendation stays
+// a replica floor even in metric mode.
+func buildPeakWindow(days []dayProfile, start, length, buckets int, o Options, threshold float64, useMetric bool) *peakInternals {
 	window := &PeakWindow{
 		StartMinute:     start * o.BucketMinutes,
 		EndMinute:       ((start + length) % buckets) * o.BucketMinutes,
@@ -244,24 +375,35 @@ func buildPeakWindow(days []dayProfile, start, length, buckets int, o Options, t
 	// the pattern. Averaging over every recorded day would dilute them with
 	// the quiet days (a weekday-only ramp would report a peak no day ever
 	// reached), which would understate the replicas the workload needs.
-	var onsets, peaks []float64
+	var onsets, peaks, signalPeaks []float64
 	for di, day := range days {
 		var dayMax int32 = -1
+		var signalMax float64 = -1
 		for i := range length {
-			v := day.max[(start+i)%buckets]
-			if v < 0 {
-				continue
+			bucket := (start + i) % buckets
+			if v := day.desired[bucket]; v >= 0 {
+				coveredDay[di] = true
+				if v > dayMax {
+					dayMax = v
+				}
 			}
-			coveredDay[di] = true
-			if v > dayMax {
-				dayMax = v
+			if s := day.signal[bucket]; s >= 0 {
+				coveredDay[di] = true
+				if s > signalMax {
+					signalMax = s
+				}
 			}
 		}
-		if dayMax >= 0 && float64(dayMax) >= threshold {
+		if signalMax >= 0 && signalMax >= threshold {
 			matched[di] = true
-			peaks = append(peaks, float64(dayMax))
-			if onset := day.max[start]; onset >= 0 {
+			if dayMax >= 0 {
+				peaks = append(peaks, float64(dayMax))
+			}
+			if onset := day.desired[start]; onset >= 0 {
 				onsets = append(onsets, float64(onset))
+			}
+			if useMetric {
+				signalPeaks = append(signalPeaks, signalMax)
 			}
 		}
 	}
@@ -269,6 +411,9 @@ func buildPeakWindow(days []dayProfile, start, length, buckets int, o Options, t
 	window.OnsetDesired = int32(math.Ceil(median(onsets)))
 	if window.OnsetDesired <= 0 {
 		window.OnsetDesired = window.PeakDesired
+	}
+	if useMetric {
+		window.PeakSignal = median(signalPeaks)
 	}
 	window.Weekdays = weekdayNames(matchedWeekdays(days, matched))
 
@@ -381,15 +526,26 @@ func weekdayNames(days []time.Weekday) []string {
 
 // detectionNotes explains a positive detection in the [observed]/[estimated]
 // convention shared with the other analysis domains.
-func detectionNotes(result *Analysis, peak *peakInternals, totalDays int) []string {
-	return []string{
-		fmt.Sprintf(confidence.BadgeObserved+" desiredReplicas rises from a baseline of %.1f to %d between %s and %s on %d of %d recorded day(s).",
-			result.Baseline, peak.PeakDesired, peak.Start, peak.End, peak.DaysMatched, peak.DaysCovered),
+func detectionNotes(result *Analysis, peak *peakInternals, totalDays int, replicaBaseline float64) []string {
+	notes := []string{
 		fmt.Sprintf(confidence.BadgeObserved+" the recording spans %.1fh across %d day(s) in %s.",
 			result.SpanHours, totalDays, result.Timezone),
-		fmt.Sprintf(confidence.BadgeEstimated+" the HPA can only react after the ramp begins, so each cycle pays a scale-up delay from %.0f to %d replicas; pre-scaling removes it.",
-			result.Baseline, peak.OnsetDesired),
 	}
+	if result.SignalUnit != "" {
+		notes = append(notes,
+			fmt.Sprintf(confidence.BadgeObserved+" the %s signal rises from a baseline of %.1f%s%s to %.1f%s%s between %s and %s on %d of %d recorded day(s); desiredReplicas reaches %d in the window.",
+				result.Signal, result.Baseline, result.SignalUnit, unitSep(result.SignalUnit), peak.PeakSignal, result.SignalUnit, unitSep(result.SignalUnit),
+				peak.Start, peak.End, peak.DaysMatched, peak.DaysCovered, peak.PeakDesired),
+			fmt.Sprintf(confidence.BadgeEstimated+" the HPA can only react after the ramp begins, so each cycle pays a scale-up delay from %.0f to %d replicas; pre-scaling removes it.",
+				replicaBaseline, peak.OnsetDesired))
+		return notes
+	}
+	notes = append(notes,
+		fmt.Sprintf(confidence.BadgeObserved+" desiredReplicas rises from a baseline of %.1f to %d between %s and %s on %d of %d recorded day(s).",
+			result.Baseline, peak.PeakDesired, peak.Start, peak.End, peak.DaysMatched, peak.DaysCovered),
+		fmt.Sprintf(confidence.BadgeEstimated+" the HPA can only react after the ramp begins, so each cycle pays a scale-up delay from %.0f to %d replicas; pre-scaling removes it.",
+			result.Baseline, peak.OnsetDesired))
+	return notes
 }
 
 // spanHours returns the wall-clock span covered by the observations.

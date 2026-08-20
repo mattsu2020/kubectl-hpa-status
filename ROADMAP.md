@@ -6,7 +6,7 @@ This roadmap tracks planned work that is visible to users and contributors. It i
 
 - **E2E scenario coverage:** Expand kind E2E coverage for multi-metric HPAs, KEDA-style external metrics, VPA conflict detection, and stabilization boundary cases. Behavior-policy visualization is covered by `TestE2E_BehaviorPolicies`.
 - **README sync quality gate:** Keep `README.md` and `README.ja.md` structurally aligned through `make docs-check` and CI.
-- **v4 preparation on the v3.x line:** Land the grouped-primary in-memory `Analysis` storage flip and additive record fields (typed numeric metric values on `TimelineSnapshot`) so that v4.0.0 only has to delete. See "v4 Breaking Changes (Planned)" below.
+- **v4 preparation on the v3.x line:** Land the grouped-primary in-memory `Analysis` storage flip (still open) so that v4.0.0 only has to delete. The additive record fields landed: typed numeric metric values on `TimelineSnapshot` (`metricValues`) now feed metric-signal seasonality detection with weekly-cycle labeling. See "v4 Breaking Changes (Planned)" below.
 
 ## Done through 3.0.0
 
@@ -303,8 +303,8 @@ registry still statically typed — not a backdoor plugin system.
 
 | When | Work |
 | --- | --- |
-| v3.x | In-memory storage flip: grouped views primary, flat fields derived (no wire change) |
-| v3.x | Additive record fields: typed numeric metric values on `TimelineSnapshot` (currently the formatted `TopMetric` string), unlocking weekly seasonality cycles in `alpha analyze-record --detect seasonality` |
+| v3.x | In-memory storage flip: grouped views primary, flat fields derived (no wire change) — **open** |
+| v3.x | Additive record fields: typed numeric metric values on `TimelineSnapshot` — **done**: `metricValues` on recorded snapshots feed `analyze-record --detect seasonality --signal metric\|auto`, including weekly-cycle labeling |
 | v3.x | Optional additive features that harden the v4 line: opt-in informer-based watch (see Medium Term), KEDA `spec.idleReplicaCount` extraction |
 | v4.0.0 | Alias removal, v1 schema retirement, and flat-field removal in one release with a single migration section in `CHANGELOG.md` |
 
@@ -320,7 +320,7 @@ additive input signal and does not block any v4 item.
 - **CI/report outputs:** `lint -o github` emits GitHub Actions annotations and `scan --summary --report markdown|html` produces cluster summary reports.
 - **GitOps and policy workflows:** `--export`, `recommend --policy`, and `compare -A --only-drift` support PR-based operations and environment drift review.
 - **Operationalization:** `alerts generate` creates starter monitoring rules and `alpha analyze-record --detect flapping` turns durable records into churn insights.
-- **Seasonality detection:** `alpha analyze-record --detect seasonality` finds recurring daily demand ramps in durable records and proposes scheduled pre-scaling (cron + KEDA cron trigger), addressing the HPA's reactive-only scale-up delay. Weekly cycles and metric-value-based (rather than replica-based) detection remain open; the latter needs a typed numeric metric field on `TimelineSnapshot`, which is currently a formatted string.
+- **Seasonality detection:** `alpha analyze-record --detect seasonality` finds recurring daily demand ramps in durable records and proposes scheduled pre-scaling (cron + KEDA cron trigger), addressing the HPA's reactive-only scale-up delay. Records now carry typed numeric metric values (`metricValues`), and the detector profiles them by default (`--signal auto|metric|replicas`): metric-based detection sees ramps the replica count hides, and weekday-only patterns are labeled weekly cycles with narrowed schedules.
 - **Explainability and TUI safety:** `--format structured`, `explain`, score breakdowns, hidden decision factors, and in-TUI two-step batch apply preview improve operator confidence.
 - **Trend and tuning workflows:** `history`, `tune`, `slo`, Prometheus query links, and carbon-aware `estimate` connect HPA behavior to incidents, SLOs, cost, and sustainability.
 - **CI/CD and GitOps reporting:** `scan/list --report junit|sarif`, `list --gitops-drift`, `export --prometheus`, and local AI context packs make HPA health easier to automate and share.

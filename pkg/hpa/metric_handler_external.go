@@ -18,6 +18,7 @@ func (externalHandler) FormatStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, 
 	target := FormatMetricTarget(targetSpec)
 	current := FormatMetricValueStatus(metric.External.Current)
 	ratio, note := calculateRatioAndNote(metric.External.Current, targetSpec)
+	value, numericTarget, unit := numericReading(metric.External.Current, targetSpec)
 	selector := FormatMetricSelector(metric.External.Metric.Selector)
 	text := fmt.Sprintf("External %s current=%s target=%s", metric.External.Metric.Name, current, target)
 	if selector != "" {
@@ -27,6 +28,7 @@ func (externalHandler) FormatStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, 
 	return Metric{
 		Type: MetricTypeExternal, Name: metric.External.Metric.Name, Selector: selector,
 		Current: current, Target: target, Ratio: ratio, Note: note, Text: text,
+		NumericValue: value, NumericTarget: numericTarget, Unit: unit,
 	}
 }
 

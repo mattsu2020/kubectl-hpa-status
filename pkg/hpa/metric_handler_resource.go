@@ -18,6 +18,7 @@ func (resourceHandler) FormatStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, 
 	target := FormatMetricTarget(targetSpec)
 	current := FormatMetricValue(metric.Resource.Current.AverageUtilization, metric.Resource.Current.AverageValue)
 	ratio, note := calculateRatioAndNote(metric.Resource.Current, targetSpec)
+	value, numericTarget, unit := numericReading(metric.Resource.Current, targetSpec)
 	text := appendRatioAndNote(
 		fmt.Sprintf("Resource %s current=%s target=%s", metric.Resource.Name, current, target),
 		ratio, note,
@@ -25,6 +26,7 @@ func (resourceHandler) FormatStatus(hpa *autoscalingv2.HorizontalPodAutoscaler, 
 	return Metric{
 		Type: MetricTypeResource, Name: string(metric.Resource.Name),
 		Current: current, Target: target, Ratio: ratio, Note: note, Text: text,
+		NumericValue: value, NumericTarget: numericTarget, Unit: unit,
 	}
 }
 

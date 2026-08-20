@@ -70,6 +70,12 @@ func seasonalityOptions(params analyzeRecordOptions) (seasonality.Options, error
 		LeadTime:      params.leadTime,
 		BucketMinutes: params.bucketMinutes,
 		MinDays:       params.minDays,
+		Signal:        seasonality.Signal(params.signal),
+	}
+	switch sopts.Signal {
+	case "", seasonality.SignalAuto, seasonality.SignalReplicas, seasonality.SignalMetric:
+	default:
+		return sopts, fmt.Errorf("invalid --signal %q (use auto, metric, or replicas)", params.signal)
 	}
 	if params.timezone != "" {
 		loc, err := time.LoadLocation(params.timezone)
@@ -84,16 +90,26 @@ func seasonalityOptions(params analyzeRecordOptions) (seasonality.Options, error
 // observationsFromTrace projects recorded snapshots onto the detector's input
 // type. Snapshots without a timestamp are dropped: the detector's whole basis
 // is time-of-day placement, so an undated sample would corrupt the profile.
+// Typed metric readings ride along when the recording carries them; the
+// detector picks which metric to profile.
 func observationsFromTrace(trace hpaanalysis.TimelineTrace) []seasonality.Observation {
 	out := make([]seasonality.Observation, 0, len(trace.Snapshots))
 	for _, snap := range trace.Snapshots {
 		if snap.Timestamp.IsZero() {
 			continue
 		}
-		out = append(out, seasonality.Observation{
+		ob := seasonality.Observation{
 			Timestamp: snap.Timestamp,
 			Desired:   snap.Desired,
-		})
+		}
+		for _, reading := range snap.MetricValues {
+			ob.Metrics = append(ob.Metrics, seasonality.MetricSample{
+				Name:  reading.Name,
+				Value: reading.Value,
+				Unit:  reading.Unit,
+			})
+		}
+		out = append(out, ob)
 	}
 	return out
 }
@@ -123,10 +139,19 @@ func writeSeasonalityItem(sb *strings.Builder, item recordSeasonalityItem) {
 	case a.InsufficientData:
 		fmt.Fprintf(sb, "%s/%s: insufficient data (%d snapshots)\n", item.Namespace, item.Name, item.Snapshots)
 	case a.Detected:
+		confidence := fmt.Sprintf("%.0f%%", a.Confidence*100)
+		if a.Recommendation != nil {
+			confidence = a.Recommendation.Confidence
+		}
 		fmt.Fprintf(sb, "%s/%s: recurring %s pattern detected (confidence: %s)\n",
-			item.Namespace, item.Name, a.Cycle, a.Recommendation.Confidence)
+			item.Namespace, item.Name, a.Cycle, confidence)
 	default:
 		fmt.Fprintf(sb, "%s/%s: no recurring pattern detected\n", item.Namespace, item.Name)
+	}
+
+	fmt.Fprintf(sb, "  signal:  %s\n", signalDisplay(a))
+	if a.Detected && a.Recommendation == nil {
+		fmt.Fprintf(sb, "  note:    metric ramp stayed within replica headroom; no pre-scale needed\n")
 	}
 
 	if a.Peak != nil {
@@ -136,8 +161,14 @@ func writeSeasonalityItem(sb *strings.Builder, item recordSeasonalityItem) {
 		}
 		fmt.Fprintf(sb, "  window:   %s-%s %s (%s, %d of %d days)\n",
 			a.Peak.Start, a.Peak.End, a.Timezone, days, a.Peak.DaysMatched, a.Peak.DaysCovered)
-		fmt.Fprintf(sb, "  demand:   baseline %.1f -> peak %d replicas\n",
-			a.Baseline, a.Peak.PeakDesired)
+		if a.SignalUnit != "" {
+			fmt.Fprintf(sb, "  demand:   baseline %.1f%s%s -> peak %.1f%s%s, replicas -> %d\n",
+				a.Baseline, a.SignalUnit, signalUnitGap(a.SignalUnit),
+				a.Peak.PeakSignal, a.SignalUnit, signalUnitGap(a.SignalUnit), a.Peak.PeakDesired)
+		} else {
+			fmt.Fprintf(sb, "  demand:   baseline %.1f -> peak %d replicas\n",
+				a.Baseline, a.Peak.PeakDesired)
+		}
 	}
 
 	if rec := a.Recommendation; rec != nil {
@@ -154,4 +185,21 @@ func writeSeasonalityItem(sb *strings.Builder, item recordSeasonalityItem) {
 	for _, note := range a.Notes {
 		fmt.Fprintf(sb, "  %s\n", note)
 	}
+}
+
+// signalDisplay renders the profiled signal for the text report, appending
+// the unit for metric signals ("metric:cpu (%)").
+func signalDisplay(a *seasonality.Analysis) string {
+	if a.SignalUnit == "" {
+		return a.Signal
+	}
+	return fmt.Sprintf("%s (%s)", a.Signal, a.SignalUnit)
+}
+
+// signalUnitGap keeps "%" glued to the number and separates unitless values.
+func signalUnitGap(unit string) string {
+	if unit == "%" {
+		return ""
+	}
+	return " "
 }

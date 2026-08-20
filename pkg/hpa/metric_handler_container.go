@@ -18,6 +18,7 @@ func (containerResourceHandler) FormatStatus(hpa *autoscalingv2.HorizontalPodAut
 	target := FormatMetricTarget(targetSpec)
 	current := FormatMetricValueStatus(metric.ContainerResource.Current)
 	ratio, note := calculateRatioAndNote(metric.ContainerResource.Current, targetSpec)
+	value, numericTarget, unit := numericReading(metric.ContainerResource.Current, targetSpec)
 	text := appendRatioAndNote(
 		fmt.Sprintf("ContainerResource %s/%s current=%s target=%s", metric.ContainerResource.Container, metric.ContainerResource.Name, current, target),
 		ratio, note,
@@ -25,6 +26,7 @@ func (containerResourceHandler) FormatStatus(hpa *autoscalingv2.HorizontalPodAut
 	return Metric{
 		Type: MetricTypeContainerResource, Name: fmt.Sprintf("%s/%s", metric.ContainerResource.Container, metric.ContainerResource.Name),
 		Current: current, Target: target, Ratio: ratio, Note: note, Text: text,
+		NumericValue: value, NumericTarget: numericTarget, Unit: unit,
 	}
 }
 

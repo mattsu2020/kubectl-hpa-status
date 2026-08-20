@@ -366,10 +366,24 @@ func TestAnalyze_DoesNotMutateInput(t *testing.T) {
 	Analyze(obs, Options{Location: time.UTC})
 
 	for i := range obs {
-		if obs[i] != before[i] {
+		if !observationsEqual(obs[i], before[i]) {
 			t.Fatalf("Analyze mutated input at index %d: %+v != %+v", i, obs[i], before[i])
 		}
 	}
+}
+
+// observationsEqual compares two Observations field by field; Observation
+// cannot use == once it carries a slice of metric samples.
+func observationsEqual(a, b Observation) bool {
+	if a.Timestamp != b.Timestamp || a.Desired != b.Desired || len(a.Metrics) != len(b.Metrics) {
+		return false
+	}
+	for i := range a.Metrics {
+		if a.Metrics[i] != b.Metrics[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func TestConfidenceLabel(t *testing.T) {
