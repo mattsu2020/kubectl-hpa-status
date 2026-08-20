@@ -6,7 +6,15 @@ This roadmap tracks planned work that is visible to users and contributors. It i
 
 - **E2E scenario coverage:** Expand kind E2E coverage for multi-metric HPAs, KEDA-style external metrics, VPA conflict detection, and stabilization boundary cases. Behavior-policy visualization is covered by `TestE2E_BehaviorPolicies`.
 - **README sync quality gate:** Keep `README.md` and `README.ja.md` structurally aligned through `make docs-check` and CI.
-- **v4 preparation on the v3.x line:** Land the grouped-primary in-memory `Analysis` storage flip (still open) so that v4.0.0 only has to delete. The additive record fields landed: typed numeric metric values on `TimelineSnapshot` (`metricValues`) now feed metric-signal seasonality detection with weekly-cycle labeling. See "v4 Breaking Changes (Planned)" below.
+- **v4 preparation on the v3.x line:** the storage flip is staged per
+  `docs/analysis-storage-flip.md`. Stage A (v1 wire decoupling: `FlatAnalysis`
+  projection, `Analysis.MarshalJSON` through `Flat()`, explicit V1 emit path,
+  schema contract pinned to the projection) has landed; the flip itself
+  (Stages B–D) is the remaining open item, alongside the grouped-primary
+  in-memory storage flip it describes. The additive record fields landed:
+  typed numeric metric values on `TimelineSnapshot` (`metricValues`) now feed
+  metric-signal seasonality detection with weekly-cycle labeling. See
+  "v4 Breaking Changes (Planned)" below.
 
 ## Done through 3.0.0
 
@@ -303,9 +311,9 @@ registry still statically typed — not a backdoor plugin system.
 
 | When | Work |
 | --- | --- |
-| v3.x | In-memory storage flip: grouped views primary, flat fields derived (no wire change) — **open** |
+| v3.x | In-memory storage flip: grouped views primary, flat fields derived (no wire change) — **open**; Stage A (v1 wire decoupling via `FlatAnalysis`) landed, execution plan in `docs/analysis-storage-flip.md` |
 | v3.x | Additive record fields: typed numeric metric values on `TimelineSnapshot` — **done**: `metricValues` on recorded snapshots feed `analyze-record --detect seasonality --signal metric\|auto`, including weekly-cycle labeling |
-| v3.x | Optional additive features that harden the v4 line: opt-in informer-based watch (see Medium Term), KEDA `spec.idleReplicaCount` extraction |
+| v3.x | Optional additive features that harden the v4 line: opt-in informer-based watch (see Medium Term, open), KEDA `spec.idleReplicaCount` extraction — **done** (extract → enrich → render chain with tests) |
 | v4.0.0 | Alias removal, v1 schema retirement, and flat-field removal in one release with a single migration section in `CHANGELOG.md` |
 
 KEP-6111 structured decision fields stay a prepared boundary (see

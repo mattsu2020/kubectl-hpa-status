@@ -92,7 +92,10 @@ func TestOutputSchemaFieldsExistInStructs(t *testing.T) {
 		{"statusBatch", reflect.TypeOf(hpaanalysis.StatusBatch{}), true},
 		{"statusBatchItem", reflect.TypeOf(hpaanalysis.StatusBatchItem{}), true},
 		{"listReport", reflect.TypeOf(hpaanalysis.ListReport{}), true},
-		{"analysis", reflect.TypeOf(hpaanalysis.Analysis{}), false},
+		// The analysis contract tracks the FlatAnalysis projection (the v1
+		// wire shape emitted via Analysis.MarshalJSON), not the Analysis
+		// storage type whose field tags no longer drive serialization.
+		{"analysis", reflect.TypeOf(hpaanalysis.FlatAnalysis{}), false},
 		{"listItem", reflect.TypeOf(hpaanalysis.ListItem{}), true},
 		{"structuredEntry", reflect.TypeOf(hpaanalysis.StructuredMessage{}), false},
 		{"decisionSignal", reflect.TypeOf(hpaanalysis.DecisionSignal{}), false},

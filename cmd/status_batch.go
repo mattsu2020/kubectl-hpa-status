@@ -66,8 +66,12 @@ func batchOutputCarriesErrors(opts *options) bool {
 // batchValue picks the value passed to render.Format for the multi-HPA path.
 // json/yaml carry the StatusBatch envelope so failed items are visible. v2
 // JSONL emits canonical StatusRecordV2 values one per line; v1 JSONL keeps
-// its historical one-line successful-report array. Other formats render only
-// successful reports.
+// its historical one-line successful-report array. The structured v1 formats
+// emit the explicit FlatAnalysis projection (byte-identical to the historical
+// Analysis-based shape, and independent of Analysis's storage layout — see
+// docs/analysis-storage-flip.md). Other formats render only successful
+// reports and keep receiving StatusReport values because their renderers
+// type-assert them.
 func batchValue(opts *options, results []reportResult, reports []hpaanalysis.StatusReport) any {
 	switch opts.Output {
 	case "json", "yaml":
@@ -75,12 +79,12 @@ func batchValue(opts *options, results []reportResult, reports []hpaanalysis.Sta
 		if statusUsesV2Schema(opts) {
 			return hpaanalysis.ProjectStatusBatchV2(batch)
 		}
-		return batch
+		return hpaanalysis.ProjectStatusBatchV1(batch)
 	case "jsonl":
 		if statusUsesV2Schema(opts) {
 			return hpaanalysis.ProjectStatusRecordsV2(buildStatusBatch(results))
 		}
-		return reports
+		return hpaanalysis.ProjectStatusReportsV1(reports)
 	default:
 		if statusUsesV2Schema(opts) {
 			return hpaanalysis.ProjectStatusReportsV2(reports)
@@ -90,7 +94,9 @@ func batchValue(opts *options, results []reportResult, reports []hpaanalysis.Sta
 }
 
 // statusOutputValue picks the value passed to render.Format for the
-// single-HPA path, projecting to the v2 schema when requested.
+// single-HPA path, projecting to the v2 schema when requested. Structured v1
+// formats emit the FlatAnalysis projection; renderer formats that
+// type-assert StatusReport keep the live value.
 func statusOutputValue(opts *options, report hpaanalysis.StatusReport) any {
 	if statusUsesV2Schema(opts) {
 		if opts.Output == "jsonl" {
@@ -98,7 +104,12 @@ func statusOutputValue(opts *options, report hpaanalysis.StatusReport) any {
 		}
 		return hpaanalysis.ProjectStatusReportV2(report)
 	}
-	return report
+	switch opts.Output {
+	case "json", "yaml", "jsonl":
+		return hpaanalysis.ProjectStatusReportV1(report)
+	default:
+		return report
+	}
 }
 
 // buildStatusBatch assembles the StatusBatch envelope from per-item results,
