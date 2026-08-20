@@ -207,7 +207,7 @@ func TestCapacityDeepFlagOnDoctor(t *testing.T) {
 		t.Fatalf("failed to parse JSON output: %v\n%s", err, buf.String())
 	}
 
-	if report.Analysis.BlockerReport == nil {
+	if report.Analysis.BlockerReport() == nil {
 		t.Fatal("expected BlockerReport to be populated with --capacity-deep")
 	}
 }

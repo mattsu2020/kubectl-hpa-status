@@ -373,7 +373,7 @@ func TestWriteOutput_JA(t *testing.T) {
 
 func TestWriteOutput_JSON(t *testing.T) {
 	report := hpaanalysis.StatusReport{
-		Analysis: hpaanalysis.Analysis{Name: "web"},
+		Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{Name: "web"}),
 	}
 	var out bytes.Buffer
 	err := render.Format(&out, "json", "", report, nil)
@@ -387,7 +387,7 @@ func TestWriteOutput_JSON(t *testing.T) {
 
 func TestWriteOutput_YAML(t *testing.T) {
 	report := hpaanalysis.StatusReport{
-		Analysis: hpaanalysis.Analysis{Name: "web"},
+		Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{Name: "web"}),
 	}
 	var out bytes.Buffer
 	err := render.Format(&out, "yaml", "", report, nil)
@@ -401,7 +401,7 @@ func TestWriteOutput_YAML(t *testing.T) {
 
 func TestWriteOutput_JsonpathPrefix(t *testing.T) {
 	report := hpaanalysis.StatusReport{
-		Analysis: hpaanalysis.Analysis{Name: "web", Summary: "OK"},
+		Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{Name: "web", Summary: "OK"}),
 	}
 	var out bytes.Buffer
 	err := render.Format(&out, "jsonpath={.analysis.name}", "", report, nil)
@@ -415,7 +415,7 @@ func TestWriteOutput_JsonpathPrefix(t *testing.T) {
 
 func TestWriteOutput_TemplatePrefix(t *testing.T) {
 	report := hpaanalysis.StatusReport{
-		Analysis: hpaanalysis.Analysis{Name: "web"},
+		Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{Name: "web"}),
 	}
 	var out bytes.Buffer
 	err := render.Format(&out, "template={{ .Analysis.Name }}", "", report, nil)
@@ -440,7 +440,7 @@ func TestWriteOutput_Unsupported(t *testing.T) {
 
 func TestWriteOutput_GoTemplateEquals(t *testing.T) {
 	report := hpaanalysis.StatusReport{
-		Analysis: hpaanalysis.Analysis{Name: "web"},
+		Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{Name: "web"}),
 	}
 	var out bytes.Buffer
 	err := render.Format(&out, "go-template={{ .Analysis.Name }}", "", report, nil)

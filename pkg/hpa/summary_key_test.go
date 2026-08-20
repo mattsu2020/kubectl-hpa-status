@@ -231,10 +231,10 @@ func TestAnalyzePopulatesSummaryKey(t *testing.T) {
 	)
 
 	got := Analyze(hpa, false)
-	if got.Summary != "HPA currently wants to scale up." {
-		t.Fatalf("Summary: got %q", got.Summary)
+	if got.Summary() != "HPA currently wants to scale up." {
+		t.Fatalf("Summary: got %q", got.Summary())
 	}
-	if got.SummaryKey != "dir_scale_up" {
-		t.Errorf("SummaryKey: got %q want %q", got.SummaryKey, "dir_scale_up")
+	if got.SummaryKey() != "dir_scale_up" {
+		t.Errorf("SummaryKey: got %q want %q", got.SummaryKey(), "dir_scale_up")
 	}
 }

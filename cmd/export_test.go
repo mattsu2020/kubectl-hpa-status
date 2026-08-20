@@ -12,11 +12,11 @@ import (
 func exportTestReport(namespace, name string, suggestions ...hpaanalysis.Suggestion) hpaanalysis.StatusReport {
 	return hpaanalysis.StatusReport{
 		APIVersion: hpaanalysis.SchemaVersion,
-		Analysis: hpaanalysis.Analysis{
+		Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
 			Namespace:   namespace,
 			Name:        name,
 			Suggestions: suggestions,
-		},
+		}),
 	}
 }
 

@@ -193,10 +193,10 @@ func (m Model) handleHintsKey() Model {
 	item := filtered[m.cursor]
 	k := item.Namespace + "/" + item.Name
 	report, ok := m.reports[k]
-	if !ok || report.Analysis.MetricHints == nil {
+	if !ok || report.Analysis.MetricHints() == nil {
 		return m
 	}
-	flows := hpaanalysis.BuildTroubleshootingFlows(report.Analysis.MetricHints.Hints)
+	flows := hpaanalysis.BuildTroubleshootingFlows(report.Analysis.MetricHints().Hints)
 	if len(flows) > 0 {
 		m.hintsState = &hintsState{flows: flows}
 		m.viewMode = hintsView

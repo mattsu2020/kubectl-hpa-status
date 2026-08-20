@@ -12,7 +12,7 @@ import (
 func sampleStatusReport() hpa.StatusReport {
 	ratio := 0.975
 	return hpa.StatusReport{
-		Analysis: hpa.Analysis{
+		Analysis: *hpa.NewAnalysis(hpa.FlatAnalysis{
 			Namespace:   "default",
 			Name:        "web-hpa",
 			Target:      "Deployment/web",
@@ -36,7 +36,7 @@ func sampleStatusReport() hpa.StatusReport {
 			Suggestions: []hpa.Suggestion{
 				{Title: "Increase maxReplicas", Description: "Consider raising maxReplicas to allow more headroom.", Command: "kubectl patch hpa web-hpa -p '{\"spec\":{\"maxReplicas\":20}}'", Risk: "low"},
 			},
-		},
+		}),
 		Events: []hpa.Event{
 			{Reason: "SuccessfulRescale", Message: "New size: 5; reason: cpu resource utilization"},
 		},
@@ -89,12 +89,12 @@ func TestWriteMarkdownReportMetricRatio(t *testing.T) {
 
 func TestWriteMarkdownReportEmptyFields(t *testing.T) {
 	report := hpa.StatusReport{
-		Analysis: hpa.Analysis{
+		Analysis: *hpa.NewAnalysis(hpa.FlatAnalysis{
 			Namespace:   "default",
 			Name:        "empty-hpa",
 			Health:      "OK",
 			HealthScore: 0,
-		},
+		}),
 	}
 	var buf bytes.Buffer
 	if err := WriteMarkdownReport(&buf, report); err != nil {
@@ -118,14 +118,14 @@ func TestWriteMarkdownReportEmptyFields(t *testing.T) {
 
 func TestWriteMarkdownReportEscapesPipes(t *testing.T) {
 	report := hpa.StatusReport{
-		Analysis: hpa.Analysis{
+		Analysis: *hpa.NewAnalysis(hpa.FlatAnalysis{
 			Namespace: "default",
 			Name:      "pipe-test",
 			Target:    "Deployment/svc|web",
 			Conditions: []hpa.Condition{
 				{Type: "ScalingActive", Status: "True", Reason: "OK", Message: "metric | pipe"},
 			},
-		},
+		}),
 	}
 	var buf bytes.Buffer
 	if err := WriteMarkdownReport(&buf, report); err != nil {
@@ -216,11 +216,11 @@ func TestWriteHTMLReportHealthColorCoding(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.health, func(t *testing.T) {
 			report := hpa.StatusReport{
-				Analysis: hpa.Analysis{
+				Analysis: *hpa.NewAnalysis(hpa.FlatAnalysis{
 					Name:        "test",
 					Health:      tc.health,
 					HealthScore: 50,
-				},
+				}),
 			}
 			var buf bytes.Buffer
 			if err := WriteHTMLReport(&buf, report); err != nil {
@@ -235,10 +235,10 @@ func TestWriteHTMLReportHealthColorCoding(t *testing.T) {
 
 func TestWriteHTMLReportEmptyFields(t *testing.T) {
 	report := hpa.StatusReport{
-		Analysis: hpa.Analysis{
+		Analysis: *hpa.NewAnalysis(hpa.FlatAnalysis{
 			Namespace: "default",
 			Name:      "empty-hpa",
-		},
+		}),
 	}
 	var buf bytes.Buffer
 	if err := WriteHTMLReport(&buf, report); err != nil {

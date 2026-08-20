@@ -268,13 +268,13 @@ func TestAssembleCapacityPlanInput_RecordsFetchErrorsAsUnknown(t *testing.T) {
 		return true, nil, errors.New("forbidden")
 	})
 	client := &kube.Client{Interface: fakeClient, Namespace: "default"}
-	analysis := hpaanalysis.Analysis{
+	analysis := *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
 		Namespace: "default",
 		Name:      "web",
 		Target:    "Deployment/web",
 		Current:   5,
 		Max:       5,
-	}
+	})
 
 	input := assembleCapacityPlanInput(context.Background(), client, hpa, analysis, 10)
 	plan := hpaanalysis.AnalyzeCapacityPlan(input)

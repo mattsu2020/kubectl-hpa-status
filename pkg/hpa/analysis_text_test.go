@@ -10,10 +10,10 @@ import (
 
 func TestWriteStatusTextWithOptions_RendersWarnings(t *testing.T) {
 	report := StatusReport{Analysis: Analyze(baseHPA(), true)}
-	report.Analysis.Warnings = []string{
+	report.Analysis.SetWarnings([]string{
 		"resource check unavailable: failed to read scale target resources: connection refused",
 		"health trend append failed: permission denied",
-	}
+	})
 
 	var buf bytes.Buffer
 	if err := WriteStatusTextWithOptions(&buf, report, StatusTextOptions{Theme: style.NewTheme(false)}); err != nil {
@@ -24,7 +24,7 @@ func TestWriteStatusTextWithOptions_RendersWarnings(t *testing.T) {
 	if !strings.Contains(output, "warning:") {
 		t.Fatalf("expected 'warning:' section header, got:\n%s", output)
 	}
-	for _, w := range report.Analysis.Warnings {
+	for _, w := range report.Analysis.Warnings() {
 		if !strings.Contains(output, w) {
 			t.Fatalf("expected warning %q in output:\n%s", w, output)
 		}

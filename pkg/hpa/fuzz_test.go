@@ -95,9 +95,9 @@ func FuzzAnalyze(f *testing.F) {
 
 		// These calls should never panic
 		analysis := Analyze(hpa, true)
-		_ = analysis.Summary
-		_ = analysis.Health
-		_ = analysis.HealthScore
+		_ = analysis.Summary()
+		_ = analysis.Health()
+		_ = analysis.HealthScore()
 
 		_, _ = Health(hpa, int32(minVal))
 		_ = HealthWithWeights(hpa, int32(minVal), HealthWeights{})
@@ -120,6 +120,6 @@ func FuzzAnalyzeNil(f *testing.F) {
 	f.Fuzz(func(_ *testing.T, _ int) {
 		// nil HPA should never panic
 		analysis := Analyze(nil, true)
-		_ = analysis.Health
+		_ = analysis.Health()
 	})
 }

@@ -17,11 +17,11 @@ import (
 
 func TestWriteOutputJSONPath(t *testing.T) {
 	report := hpaanalysis.StatusReport{
-		Analysis: hpaanalysis.Analysis{
+		Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
 			Namespace: "default",
 			Name:      "web",
 			Summary:   "HPA currently keeps the replica count unchanged.",
-		},
+		}),
 	}
 
 	var out bytes.Buffer
@@ -44,10 +44,10 @@ func TestWriteOutputJSONPath(t *testing.T) {
 
 func TestWriteOutputTemplate(t *testing.T) {
 	report := hpaanalysis.StatusReport{
-		Analysis: hpaanalysis.Analysis{
+		Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
 			Namespace: "default",
 			Name:      "web",
-		},
+		}),
 	}
 
 	var out bytes.Buffer
@@ -240,9 +240,9 @@ func TestPatchDiffIncludesCurrentDesiredReplicas(t *testing.T) {
 
 func TestReportHasConditionNormalizesConditionName(t *testing.T) {
 	report := hpaanalysis.StatusReport{
-		Analysis: hpaanalysis.Analysis{
+		Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
 			Conditions: []hpaanalysis.Condition{{Type: "ScalingLimited"}},
-		},
+		}),
 	}
 
 	if !reportHasCondition(report, "scaling-limited") {
@@ -379,7 +379,7 @@ func TestWriteOutputPrometheus(t *testing.T) {
 
 func TestWriteOutputPrometheusStatusReport(t *testing.T) {
 	report := hpaanalysis.StatusReport{
-		Analysis: hpaanalysis.Analysis{
+		Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
 			Namespace:   "staging",
 			Name:        "worker",
 			HealthScore: 50,
@@ -387,7 +387,7 @@ func TestWriteOutputPrometheusStatusReport(t *testing.T) {
 			Desired:     8,
 			Min:         2,
 			Max:         20,
-		},
+		}),
 	}
 
 	var out bytes.Buffer

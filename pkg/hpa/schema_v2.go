@@ -83,8 +83,8 @@ func ProjectStatusRecordV2(report StatusReport) StatusRecordV2 {
 	projected := ProjectStatusReportV2(report)
 	return StatusRecordV2{
 		APIVersion: SchemaVersionV2,
-		Namespace:  report.Analysis.Namespace,
-		Name:       report.Analysis.Name,
+		Namespace:  report.Analysis.Namespace(),
+		Name:       report.Analysis.Name(),
 		Status:     statusRecordReportStatusV2(report),
 		Report:     &projected,
 	}
@@ -122,11 +122,11 @@ func ProjectStatusRecordsV2(batch StatusBatch) []StatusRecordV2 {
 }
 
 func statusRecordReportStatusV2(report StatusReport) StatusRecordStatusV2 {
-	switch HealthState(report.Analysis.Health) {
+	switch HealthState(report.Analysis.Health()) {
 	case HealthError, HealthLimited:
 		return StatusRecordWarningV2
 	default:
-		if report.Analysis.Health == "WARNING" {
+		if report.Analysis.Health() == "WARNING" {
 			return StatusRecordWarningV2
 		}
 		return StatusRecordSuccessV2

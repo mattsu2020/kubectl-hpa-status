@@ -387,9 +387,9 @@ func TestEscapePrometheusLabelValue(t *testing.T) {
 
 func TestReportHasCondition_NoMatch(t *testing.T) {
 	report := hpaanalysis.StatusReport{
-		Analysis: hpaanalysis.Analysis{
+		Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
 			Conditions: []hpaanalysis.Condition{{Type: "AbleToScale"}},
-		},
+		}),
 	}
 	if reportHasCondition(report, "ScalingActive") {
 		t.Fatal("expected no match")

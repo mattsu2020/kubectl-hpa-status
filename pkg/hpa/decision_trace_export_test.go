@@ -27,7 +27,7 @@ func TestStructuredWinnerUsesMaximumEstimatedDesired(t *testing.T) {
 		testutil.WithReplicas(10, 15),
 		testutil.WithMinMax(1, 30),
 	)
-	result := ExportStructuredDecisionTrace(hpa, Analysis{Min: 1, Max: 30})
+	result := ExportStructuredDecisionTrace(hpa, *NewAnalysis(FlatAnalysis{Min: 1, Max: 30}))
 	if result.WinnerMetric != "memory" {
 		t.Fatalf("winner = %q, want memory", result.WinnerMetric)
 	}
@@ -52,7 +52,7 @@ func TestResourceAverageValueParticipatesInDecisionTrace(t *testing.T) {
 			Current: autoscalingv2.MetricValueStatus{AverageValue: &current}},
 	}}
 
-	result := ExportStructuredDecisionTrace(hpa, Analysis{Min: 1, Max: 20})
+	result := ExportStructuredDecisionTrace(hpa, *NewAnalysis(FlatAnalysis{Min: 1, Max: 20}))
 	if len(result.Metrics) != 1 || result.Metrics[0].Ratio == nil {
 		t.Fatalf("AverageValue ratio missing: %+v", result.Metrics)
 	}
@@ -105,10 +105,10 @@ func TestExportStructuredDecisionTrace_SingleResourceMetric(t *testing.T) {
 		testutil.WithReplicas(3, 3),
 	)
 
-	a := Analysis{
+	a := *NewAnalysis(FlatAnalysis{
 		Min: 1,
 		Max: 10,
-	}
+	})
 
 	result := ExportStructuredDecisionTrace(hpa, a)
 	if result == nil {
@@ -181,14 +181,14 @@ func TestExportStructuredDecisionTrace_MultiMetricWinner(t *testing.T) {
 		testutil.WithReplicas(5, 8),
 	)
 
-	a := Analysis{
+	a := *NewAnalysis(FlatAnalysis{
 		Min: 1,
 		Max: 20,
 		MetricDecisionTrace: &MetricDecisionTrace{
 			Winner:           "cpu",
 			WinnerConfidence: ConfidenceMedium,
 		},
-	}
+	})
 
 	result := ExportStructuredDecisionTrace(hpa, a)
 	if result == nil {
@@ -234,10 +234,10 @@ func TestExportStructuredDecisionTrace_WinnerFallback(t *testing.T) {
 	)
 
 	// No MetricDecisionTrace on Analysis, so winner should be computed from metrics.
-	a := Analysis{
+	a := *NewAnalysis(FlatAnalysis{
 		Min: 1,
 		Max: 10,
-	}
+	})
 
 	result := ExportStructuredDecisionTrace(hpa, a)
 	if result == nil {
@@ -256,10 +256,10 @@ func TestExportStructuredDecisionTrace_ToleranceSuppression(t *testing.T) {
 		testutil.WithReplicas(3, 3),
 	)
 
-	a := Analysis{
+	a := *NewAnalysis(FlatAnalysis{
 		Min: 1,
 		Max: 10,
-	}
+	})
 
 	result := ExportStructuredDecisionTrace(hpa, a)
 	if result == nil {
@@ -295,10 +295,10 @@ func TestExportStructuredDecisionTrace_LimitClamp(t *testing.T) {
 		testutil.WithMinMax(1, 10),
 	)
 
-	a := Analysis{
+	a := *NewAnalysis(FlatAnalysis{
 		Min: 1,
 		Max: 10,
-	}
+	})
 
 	result := ExportStructuredDecisionTrace(hpa, a)
 	if result == nil {
@@ -346,11 +346,11 @@ func TestExportStructuredDecisionTrace_Stabilization(t *testing.T) {
 		},
 	}
 
-	a := Analysis{
+	a := *NewAnalysis(FlatAnalysis{
 		Min:                 1,
 		Max:                 10,
 		StabilizationSource: "scaleDown",
-	}
+	})
 
 	result := ExportStructuredDecisionTrace(hpa, a)
 	if result == nil {
@@ -386,10 +386,10 @@ func TestExportStructuredDecisionTrace_NoMetrics(t *testing.T) {
 		testutil.WithReplicas(3, 3),
 	)
 
-	a := Analysis{
+	a := *NewAnalysis(FlatAnalysis{
 		Min: 1,
 		Max: 10,
-	}
+	})
 
 	result := ExportStructuredDecisionTrace(hpa, a)
 	if result == nil {
@@ -415,10 +415,10 @@ func TestExportStructuredDecisionTrace_JSONRoundTrip(t *testing.T) {
 		testutil.WithReplicas(3, 3),
 	)
 
-	a := Analysis{
+	a := *NewAnalysis(FlatAnalysis{
 		Min: 1,
 		Max: 10,
-	}
+	})
 
 	result := ExportStructuredDecisionTrace(hpa, a)
 	if result == nil {
@@ -463,10 +463,10 @@ func TestExportStructuredDecisionTrace_YAMLRoundTrip(t *testing.T) {
 		testutil.WithReplicas(5, 7),
 	)
 
-	a := Analysis{
+	a := *NewAnalysis(FlatAnalysis{
 		Min: 1,
 		Max: 10,
-	}
+	})
 
 	result := ExportStructuredDecisionTrace(hpa, a)
 	if result == nil {

@@ -58,14 +58,14 @@ func runHistory(ctx context.Context, out io.Writer, opts *options, name string, 
 		return err
 	}
 	result := historyReport{
-		Namespace:         report.Analysis.Namespace,
-		Name:              report.Analysis.Name,
+		Namespace:         report.Analysis.Namespace(),
+		Name:              report.Analysis.Name(),
 		Since:             since.String(),
 		Prometheus:        prometheusURL,
-		Health:            report.Analysis.Health,
-		HealthScore:       report.Analysis.HealthScore,
-		Churn:             report.Analysis.ChurnAnalysis,
-		StructuredSummary: report.Analysis.Summary,
+		Health:            report.Analysis.Health(),
+		HealthScore:       report.Analysis.HealthScore(),
+		Churn:             report.Analysis.ChurnAnalysis(),
+		StructuredSummary: report.Analysis.Summary(),
 		Anomalies:         historyAnomalies(report.Analysis),
 	}
 	if prometheusURL != "" {
@@ -93,13 +93,13 @@ func runHistory(ctx context.Context, out io.Writer, opts *options, name string, 
 
 func historyAnomalies(a hpaanalysis.Analysis) []string {
 	var anomalies []string
-	if a.Health == string(hpaanalysis.HealthLimited) && a.Current == a.Max {
+	if a.Health() == string(hpaanalysis.HealthLimited) && a.Current() == a.Max() {
 		anomalies = append(anomalies, "HPA is capped at maxReplicas; investigate capacity and target metric demand")
 	}
-	if a.ChurnAnalysis != nil && (a.ChurnAnalysis.Level == hpachurn.ChurnHigh || a.ChurnAnalysis.Level == hpachurn.ChurnCritical) {
+	if a.ChurnAnalysis() != nil && (a.ChurnAnalysis().Level == hpachurn.ChurnHigh || a.ChurnAnalysis().Level == hpachurn.ChurnCritical) {
 		anomalies = append(anomalies, "replica churn suggests oscillation; review stabilization windows and tolerance")
 	}
-	if a.StabilizationRemaining != nil && *a.StabilizationRemaining > 0 {
+	if a.StabilizationRemaining() != nil && *a.StabilizationRemaining() > 0 {
 		anomalies = append(anomalies, "scale-down appears to be held by stabilization")
 	}
 	return anomalies
@@ -123,9 +123,9 @@ func buildPrometheusHistoryQueriesAt(base string, a hpaanalysis.Analysis, since 
 	}
 	queries := []prometheusQuery{{
 		Name: "replicas",
-		URL:  params(fmt.Sprintf(`kube_horizontalpodautoscaler_status_current_replicas{namespace="%s",horizontalpodautoscaler="%s"}`, a.Namespace, a.Name)),
+		URL:  params(fmt.Sprintf(`kube_horizontalpodautoscaler_status_current_replicas{namespace="%s",horizontalpodautoscaler="%s"}`, a.Namespace(), a.Name())),
 	}}
-	for _, metric := range a.Metrics {
+	for _, metric := range a.Metrics() {
 		if metric.Name == "" {
 			continue
 		}

@@ -13,12 +13,12 @@ import (
 func sampleStatusReport() hpaanalysis.StatusReport {
 	return hpaanalysis.StatusReport{
 		APIVersion: "hpa-status/v1",
-		Analysis: hpaanalysis.Analysis{
+		Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
 			Namespace: "ns1", Name: "my-hpa",
 			Current: 3, Desired: 5, Min: 1, Max: 10,
 			Health:      "OK",
 			HealthScore: 90,
-		},
+		}),
 	}
 }
 
@@ -334,8 +334,8 @@ func TestHTML_RejectsUnknownType(t *testing.T) {
 func TestHTML_MultipleReportsProduceSingleDocument(t *testing.T) {
 	t.Parallel()
 	reports := []hpaanalysis.StatusReport{
-		{Analysis: hpaanalysis.Analysis{Name: "one", Namespace: "default"}},
-		{Analysis: hpaanalysis.Analysis{Name: "two", Namespace: "default"}},
+		{Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{Name: "one", Namespace: "default"})},
+		{Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{Name: "two", Namespace: "default"})},
 	}
 	var buf bytes.Buffer
 	if err := HTML(&buf, reports); err != nil {

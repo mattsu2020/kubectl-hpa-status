@@ -22,9 +22,9 @@ func (b *AnalysisBuilder) AddEnrichment(keda *hpakeda.Analysis, vpa *hpavpa.Conf
 	if b == nil || b.built {
 		return b
 	}
-	b.analysis.Warnings = append(b.analysis.Warnings, warnings...)
-	b.analysis.KEDAInfo = keda
-	b.analysis.VPAConflict = vpa
+	b.analysis.SetWarnings(append(b.analysis.Warnings(), warnings...))
+	b.analysis.SetKEDAInfo(keda)
+	b.analysis.SetVPAConflict(vpa)
 	if keda != nil || vpa != nil {
 		ApplyEnrichmentPenalties(&b.analysis, weights)
 	}

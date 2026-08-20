@@ -11,12 +11,12 @@ func writeIncidentAffectedWorkloads(buf *strings.Builder, reports []StatusReport
 	buf.WriteString("## Affected Workloads\n\n")
 	for _, r := range reports {
 		a := r.Analysis
-		buf.WriteString(fmt.Sprintf("### %s/%s\n\n", a.Namespace, a.Name))
-		buf.WriteString(fmt.Sprintf("- **Target:** %s\n", a.Target))
+		buf.WriteString(fmt.Sprintf("### %s/%s\n\n", a.Namespace(), a.Name()))
+		buf.WriteString(fmt.Sprintf("- **Target:** %s\n", a.Target()))
 		buf.WriteString(fmt.Sprintf("- **Replicas:** current=%d desired=%d min=%d max=%d\n",
-			a.Current, a.Desired, a.Min, a.Max))
-		if a.TargetReplicas != nil {
-			tr := a.TargetReplicas
+			a.Current(), a.Desired(), a.Min(), a.Max()))
+		if a.TargetReplicas() != nil {
+			tr := a.TargetReplicas()
 			buf.WriteString(fmt.Sprintf("- **Scale Target Replicas:** total=%d ready=%d notReady=%d",
 				tr.TotalReplicas, tr.ReadyReplicas, tr.NotReady))
 			if tr.Pending > 0 {
@@ -29,9 +29,9 @@ func writeIncidentAffectedWorkloads(buf *strings.Builder, reports []StatusReport
 		}
 
 		// Metrics context
-		if len(a.Metrics) > 0 {
+		if len(a.Metrics()) > 0 {
 			buf.WriteString("- **Metrics:**\n")
-			for _, m := range a.Metrics {
+			for _, m := range a.Metrics() {
 				name := m.Name
 				if name == "" {
 					name = m.Type
@@ -54,7 +54,7 @@ func writeIncidentRemediationSteps(buf *strings.Builder, reports []StatusReport)
 	orderedReports := make([]StatusReport, len(reports))
 	copy(orderedReports, reports)
 	sort.Slice(orderedReports, func(i, j int) bool {
-		return healthPriority(orderedReports[i].Analysis.Health) < healthPriority(orderedReports[j].Analysis.Health)
+		return healthPriority(orderedReports[i].Analysis.Health()) < healthPriority(orderedReports[j].Analysis.Health())
 	})
 
 	stepNum := 1
@@ -62,9 +62,9 @@ func writeIncidentRemediationSteps(buf *strings.Builder, reports []StatusReport)
 		a := r.Analysis
 
 		// Suggestions first
-		for _, s := range a.Suggestions {
+		for _, s := range a.Suggestions() {
 			buf.WriteString(fmt.Sprintf("%d. **[%s/%s] %s**: %s\n",
-				stepNum, a.Namespace, a.Name, s.Title, s.Description))
+				stepNum, a.Namespace(), a.Name(), s.Title, s.Description))
 			if s.Command != "" {
 				buf.WriteString(fmt.Sprintf("   ```\n   %s\n   ```\n", s.Command))
 			}
@@ -78,10 +78,10 @@ func writeIncidentRemediationSteps(buf *strings.Builder, reports []StatusReport)
 		}
 
 		// Actions as fallback
-		if len(a.Suggestions) == 0 && len(a.Actions) > 0 {
-			for _, action := range a.Actions {
+		if len(a.Suggestions()) == 0 && len(a.Actions()) > 0 {
+			for _, action := range a.Actions() {
 				buf.WriteString(fmt.Sprintf("%d. **[%s/%s]** %s\n",
-					stepNum, a.Namespace, a.Name, action))
+					stepNum, a.Namespace(), a.Name(), action))
 				stepNum++
 			}
 		}
@@ -107,13 +107,13 @@ func writeIncidentCapacityContext(buf *strings.Builder, reports []StatusReport) 
 // anyReportHasCapacity reports whether any report carries pending pods, quota constraints, node hints, or capacity headroom.
 func anyReportHasCapacity(reports []StatusReport) bool {
 	for _, r := range reports {
-		if r.Analysis.CapacityContext != nil {
-			cc := r.Analysis.CapacityContext
+		if r.Analysis.CapacityContext() != nil {
+			cc := r.Analysis.CapacityContext()
 			if len(cc.PendingPods) > 0 || len(cc.QuotaConstraints) > 0 || len(cc.NodeHints) > 0 {
 				return true
 			}
 		}
-		if r.Analysis.CapacityHeadroom != nil {
+		if r.Analysis.CapacityHeadroom() != nil {
 			return true
 		}
 	}
@@ -124,10 +124,10 @@ func anyReportHasCapacity(reports []StatusReport) bool {
 func writeIncidentReportCapacity(buf *strings.Builder, a Analysis) {
 	wroteHeader := false
 
-	if a.CapacityContext != nil {
-		cc := a.CapacityContext
+	if a.CapacityContext() != nil {
+		cc := a.CapacityContext()
 		if len(cc.PendingPods) > 0 || len(cc.QuotaConstraints) > 0 || len(cc.NodeHints) > 0 {
-			buf.WriteString(fmt.Sprintf("### %s/%s\n\n", a.Namespace, a.Name))
+			buf.WriteString(fmt.Sprintf("### %s/%s\n\n", a.Namespace(), a.Name()))
 			wroteHeader = true
 
 			writeIncidentPendingPods(buf, cc.PendingPods)
@@ -136,7 +136,7 @@ func writeIncidentReportCapacity(buf *strings.Builder, a Analysis) {
 		}
 	}
 
-	if a.CapacityHeadroom != nil {
+	if a.CapacityHeadroom() != nil {
 		writeIncidentCapacityHeadroom(buf, a, wroteHeader)
 	}
 }
@@ -182,9 +182,9 @@ func writeIncidentNodeHints(buf *strings.Builder, hints []string) {
 
 func writeIncidentCapacityHeadroom(buf *strings.Builder, a Analysis, wroteHeader bool) {
 	if !wroteHeader {
-		buf.WriteString(fmt.Sprintf("### %s/%s\n\n", a.Namespace, a.Name))
+		buf.WriteString(fmt.Sprintf("### %s/%s\n\n", a.Namespace(), a.Name()))
 	}
-	ch := a.CapacityHeadroom
+	ch := a.CapacityHeadroom()
 	buf.WriteString(fmt.Sprintf("**Capacity Headroom:** %s (risk: %s)\n",
 		ch.ClusterSchedulableHeadroom, ch.Risk))
 	if len(ch.Evidence) > 0 {

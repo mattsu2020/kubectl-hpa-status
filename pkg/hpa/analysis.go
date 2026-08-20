@@ -20,18 +20,18 @@ func Analyze(src *autoscalingv2.HorizontalPodAutoscaler, includeInterpretation b
 // Analysis if validation fails. Returns nil if the HPA is valid.
 func validateHPA(src *autoscalingv2.HorizontalPodAutoscaler) *Analysis {
 	if src == nil {
-		return &Analysis{
+		return NewAnalysis(FlatAnalysis{
 			Health:      string(HealthError),
 			HealthScore: 0,
 			Summary:     "HPA data is unavailable.",
 			Interpretation: []string{
 				confidence.BadgeObserved + " HPA input was nil; no Kubernetes status can be analyzed.",
 			},
-		}
+		})
 	}
 
 	if src.Spec.ScaleTargetRef.Kind == "" || src.Spec.ScaleTargetRef.Name == "" {
-		return &Analysis{
+		return NewAnalysis(FlatAnalysis{
 			Namespace:   src.Namespace,
 			Name:        src.Name,
 			Health:      string(HealthError),
@@ -40,11 +40,11 @@ func validateHPA(src *autoscalingv2.HorizontalPodAutoscaler) *Analysis {
 			Interpretation: []string{
 				confidence.BadgeObserved + " This HPA has no valid scaleTargetRef; it cannot function.",
 			},
-		}
+		})
 	}
 
 	if src.Spec.MaxReplicas <= 0 {
-		return &Analysis{
+		return NewAnalysis(FlatAnalysis{
 			Namespace:   src.Namespace,
 			Name:        src.Name,
 			Health:      string(HealthError),
@@ -53,7 +53,7 @@ func validateHPA(src *autoscalingv2.HorizontalPodAutoscaler) *Analysis {
 			Interpretation: []string{
 				confidence.BadgeObserved + " This HPA has spec.maxReplicas set to 0 or negative; it cannot scale.",
 			},
-		}
+		})
 	}
 
 	minCheck := DefaultMinReplicas
@@ -61,7 +61,7 @@ func validateHPA(src *autoscalingv2.HorizontalPodAutoscaler) *Analysis {
 		minCheck = *src.Spec.MinReplicas
 	}
 	if minCheck > src.Spec.MaxReplicas {
-		return &Analysis{
+		return NewAnalysis(FlatAnalysis{
 			Namespace:   src.Namespace,
 			Name:        src.Name,
 			Health:      string(HealthError),
@@ -70,7 +70,7 @@ func validateHPA(src *autoscalingv2.HorizontalPodAutoscaler) *Analysis {
 			Interpretation: []string{
 				fmt.Sprintf(confidence.BadgeObserved+" spec.minReplicas (%d) is greater than spec.maxReplicas (%d); the HPA configuration is contradictory.", minCheck, src.Spec.MaxReplicas),
 			},
-		}
+		})
 	}
 
 	return nil

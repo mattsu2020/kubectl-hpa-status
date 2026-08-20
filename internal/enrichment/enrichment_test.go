@@ -318,7 +318,7 @@ func TestEnrichVPA_NilContext(t *testing.T) {
 		},
 	}
 	report := &hpaanalysis.StatusReport{
-		Analysis: hpaanalysis.Analysis{Namespace: "default", Name: "hpa"},
+		Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{Namespace: "default", Name: "hpa"}),
 	}
 	// EnrichVPA doesn't check vpaEnabled; it tries to use dynClient.
 	// With nil dynClient, FindConflictingVPA will fail and return early.
@@ -343,14 +343,14 @@ func TestEnrichReport_BothDisabled(t *testing.T) {
 		VPA:  &Entry{Source: SourceVPA, State: StateDisabled},
 	}}
 	report := &hpaanalysis.StatusReport{
-		Analysis: hpaanalysis.Analysis{Name: "test"},
+		Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{Name: "test"}),
 	}
 	hpa := &autoscalingv2.HorizontalPodAutoscaler{}
 	EnrichReport(context.Background(), ec, hpa, report, hpaanalysis.HealthWeights{})
-	if report.Analysis.KEDAInfo != nil {
+	if report.Analysis.KEDAInfo() != nil {
 		t.Fatal("expected no KEDA info when both disabled")
 	}
-	if report.Analysis.EnrichmentStatus == nil || report.Analysis.EnrichmentStatus.KEDA.State != hpaanalysis.EnrichmentStateDisabled {
+	if report.Analysis.EnrichmentStatus() == nil || report.Analysis.EnrichmentStatus().KEDA.State != hpaanalysis.EnrichmentStateDisabled {
 		t.Fatal("expected disabled enrichment status to be attached")
 	}
 }

@@ -46,24 +46,24 @@ func runSLO(ctx context.Context, out io.Writer, opts *options, name, metric, tar
 		return err
 	}
 	result := sloReport{
-		Namespace:   report.Analysis.Namespace,
-		Name:        report.Analysis.Name,
+		Namespace:   report.Analysis.Namespace(),
+		Name:        report.Analysis.Name(),
 		Metric:      metric,
 		Target:      target,
-		Health:      report.Analysis.Health,
-		HealthScore: report.Analysis.HealthScore,
+		Health:      report.Analysis.Health(),
+		HealthScore: report.Analysis.HealthScore(),
 		Findings: []string{
-			fmt.Sprintf("HPA health is %s (%d/100)", report.Analysis.Health, report.Analysis.HealthScore),
+			fmt.Sprintf("HPA health is %s (%d/100)", report.Analysis.Health(), report.Analysis.HealthScore()),
 		},
 		Actions: []string{
 			"Correlate the SLO time series with HPA desiredReplicas and current metrics.",
 			"If SLO burn continues while HPA is at maxReplicas, run capacity-plan or preflight before raising limits.",
 		},
 	}
-	if report.Analysis.Current == report.Analysis.Max {
+	if report.Analysis.Current() == report.Analysis.Max() {
 		result.Findings = append(result.Findings, "current replicas are at maxReplicas; SLO risk may be capacity-limited")
 	}
-	if len(report.Analysis.Metrics) == 0 {
+	if len(report.Analysis.Metrics()) == 0 {
 		result.Findings = append(result.Findings, "no current HPA metrics are visible; SLO correlation may require adapter diagnostics")
 	}
 	format, templateStr := outputSelection(outputConfig{output: opts.Output, template: opts.Template, outputTemplates: opts.OutputTemplates})

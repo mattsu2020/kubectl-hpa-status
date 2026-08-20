@@ -109,9 +109,9 @@ func TestWriteZip_PrivatePermissionsAndFinalRedaction(t *testing.T) {
 	t.Parallel()
 	data := fullZipFixture()
 	data.Redacted = true
-	data.StatusReport.Analysis.Warnings = []string{
+	data.StatusReport.Analysis.SetWarnings([]string{
 		"node: private-worker at 10.20.30.40",
-	}
+	})
 	out := filepath.Join(t.TempDir(), "redacted.zip")
 	if err := WriteZip(data, out); err != nil {
 		t.Fatalf("WriteZip: %v", err)

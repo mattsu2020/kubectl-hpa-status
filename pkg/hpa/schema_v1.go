@@ -279,6 +279,18 @@ func (a Analysis) MarshalJSON() ([]byte, error) {
 	return json.Marshal(a.Flat())
 }
 
+// UnmarshalJSON decodes the flat v1 wire shape into group storage, so
+// consumers that decode v1 JSON into Analysis keep working across the
+// storage flip.
+func (a *Analysis) UnmarshalJSON(data []byte) error {
+	var f FlatAnalysis
+	if err := json.Unmarshal(data, &f); err != nil {
+		return err
+	}
+	*a = *NewAnalysis(f)
+	return nil
+}
+
 // StatusReportV1 is the flat v1 wire envelope for a single-HPA status output.
 // It mirrors StatusReport's tags so the emitted bytes are identical to the
 // historical Analysis-based output.

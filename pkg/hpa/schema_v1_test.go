@@ -39,28 +39,32 @@ func exportedFields(t *testing.T, typ reflect.Type) []fieldSpec {
 	return out
 }
 
-// TestFlatAnalysisMirrorsAnalysis guards the storage-flip precondition: the
-// flat v1 DTO must declare exactly the exported fields of Analysis, in the
-// same order, with the same tags and types, so the v1 wire bytes emitted via
-// FlatAnalysis are identical to the historical Analysis-based output. New
-// Analysis fields must be added to FlatAnalysis (and to a group view) in the
-// same commit.
-func TestFlatAnalysisMirrorsAnalysis(t *testing.T) {
-	want := exportedFields(t, reflect.TypeOf(Analysis{}))
-	got := exportedFields(t, reflect.TypeOf(FlatAnalysis{}))
-
-	if len(want) != len(got) {
-		t.Fatalf("FlatAnalysis has %d exported fields, Analysis has %d; they must mirror exactly", len(got), len(want))
-	}
-	for i := range want {
-		if want[i].name != got[i].name {
-			t.Errorf("field %d: name %q, want %q (declaration order must match for stable JSON key order)", i, got[i].name, want[i].name)
+// TestFlatAccessorSurface guards the storage-flip compatibility contract:
+// every FlatAnalysis wire field must have a same-named getter and a Set*
+// setter on Analysis with matching types, so the retired flat fields stay
+// reachable (with parentheses) for callers and the v1 surface cannot drift
+// from the projection. Adding a FlatAnalysis field without accessors (or
+// vice versa) fails here.
+func TestFlatAccessorSurface(t *testing.T) {
+	analysisType := reflect.TypeOf(&Analysis{})
+	for _, spec := range exportedFields(t, reflect.TypeOf(FlatAnalysis{})) {
+		getter, ok := analysisType.MethodByName(spec.name)
+		if !ok {
+			t.Errorf("Analysis has no getter %s() for FlatAnalysis field %s", spec.name, spec.name)
+			continue
 		}
-		if want[i].typ != got[i].typ {
-			t.Errorf("field %s: type %v, want %v", want[i].name, got[i].typ, want[i].typ)
+		getterType := getter.Type
+		if getterType.NumIn() != 1 || getterType.NumOut() != 1 || getterType.Out(0) != spec.typ {
+			t.Errorf("getter %s has signature %s, want (receiver) () %s", spec.name, getterType, spec.typ)
 		}
-		if want[i].json != got[i].json || want[i].yaml != got[i].yaml {
-			t.Errorf("field %s: tags json=%q yaml=%q, want json=%q yaml=%q", want[i].name, got[i].json, got[i].yaml, want[i].json, want[i].yaml)
+		setter, ok := analysisType.MethodByName("Set" + spec.name)
+		if !ok {
+			t.Errorf("Analysis has no setter Set%s() for FlatAnalysis field %s", spec.name, spec.name)
+			continue
+		}
+		setterType := setter.Type
+		if setterType.NumIn() != 2 || setterType.In(1) != spec.typ || setterType.NumOut() != 0 {
+			t.Errorf("setter Set%s has signature %s, want (receiver) (%s)", spec.name, setterType, spec.typ)
 		}
 	}
 }
@@ -107,45 +111,67 @@ func fillDeep(v reflect.Value, path string) {
 	}
 }
 
-// filledAnalysis builds an Analysis with every exported field populated.
-func filledAnalysis() Analysis {
-	var a Analysis
-	fillDeep(reflect.ValueOf(&a).Elem(), "a")
-	return a
+// filledFlat builds a FlatAnalysis with every field populated.
+func filledFlat() FlatAnalysis {
+	var f FlatAnalysis
+	fillDeep(reflect.ValueOf(&f).Elem(), "f")
+	return f
 }
 
-// TestFlatRoundTripsGroupedViews verifies Analysis.Flat() reproduces the flat
-// fields field-for-field after the detour through Grouped(). This is the
-// inverse mapping the storage flip depends on: once the grouped views become
-// the primary storage, Flat() must keep producing these exact values.
-func TestFlatRoundTripsGroupedViews(t *testing.T) {
-	src := filledAnalysis()
+// TestNewAnalysisFlatRoundTrip is the core storage-fidelity guarantee of the
+// flip: constructing Analysis from a flat fixture and projecting back must
+// reproduce the fixture field-for-field. Flat() inverts the grouped storage,
+// so any field routed to (or read from) the wrong group fails here.
+func TestNewAnalysisFlatRoundTrip(t *testing.T) {
+	fixture := filledFlat()
 
-	flat := src.Flat()
+	got := NewAnalysis(fixture).Flat()
 
-	srcFields := exportedFields(t, reflect.TypeOf(Analysis{}))
-	flatValue := reflect.ValueOf(flat)
-	srcValue := reflect.ValueOf(src)
-	for _, spec := range srcFields {
-		want := srcValue.FieldByName(spec.name)
-		got := flatValue.FieldByName(spec.name)
-		if !want.IsValid() || !got.IsValid() {
-			t.Fatalf("field %s missing on one side", spec.name)
+	fields := exportedFields(t, reflect.TypeOf(FlatAnalysis{}))
+	gotValue := reflect.ValueOf(got)
+	fixtureValue := reflect.ValueOf(fixture)
+	if len(fields) == 0 {
+		t.Fatal("FlatAnalysis unexpectedly has no exported fields")
+	}
+	for _, spec := range fields {
+		want := fixtureValue.FieldByName(spec.name)
+		have := gotValue.FieldByName(spec.name)
+		if !reflect.DeepEqual(want.Interface(), have.Interface()) {
+			t.Errorf("round trip %s = %+v, want %+v", spec.name, have.Interface(), want.Interface())
 		}
-		if !reflect.DeepEqual(want.Interface(), got.Interface()) {
-			t.Errorf("Flat().%s = %+v, want %+v", spec.name, got.Interface(), want.Interface())
+	}
+}
+
+// TestAccessorsReturnFixtureValues verifies each getter reads the storage the
+// constructor populated — the in-tree read path after the flip.
+func TestAccessorsReturnFixtureValues(t *testing.T) {
+	fixture := filledFlat()
+	a := NewAnalysis(fixture)
+	analysisType := reflect.TypeOf(&Analysis{})
+	fixtureValue := reflect.ValueOf(fixture)
+
+	for _, spec := range exportedFields(t, reflect.TypeOf(FlatAnalysis{})) {
+		method, ok := analysisType.MethodByName(spec.name)
+		if !ok {
+			t.Fatalf("missing getter %s", spec.name)
+		}
+		got := method.Func.Call([]reflect.Value{reflect.ValueOf(a)})[0]
+		want := fixtureValue.FieldByName(spec.name)
+		if !reflect.DeepEqual(got.Interface(), want.Interface()) {
+			t.Errorf("getter %s() = %+v, want %+v", spec.name, got.Interface(), want.Interface())
 		}
 	}
 }
 
 // TestProjectStatusReportV1IsByteIdentical pins the wire guarantee the flip
-// must preserve: the v1 projection serializes to exactly the bytes the
-// Analysis-based StatusReport produces, for both populated and empty shapes.
+// must preserve: the v1 projection serializes to exactly the bytes a report
+// carrying the same storage serializes to directly, for both populated and
+// empty shapes.
 func TestProjectStatusReportV1IsByteIdentical(t *testing.T) {
 	reports := []StatusReport{
-		{APIVersion: SchemaVersion, Analysis: filledAnalysis()},
+		{APIVersion: SchemaVersion, Analysis: *NewAnalysis(filledFlat())},
 		{APIVersion: SchemaVersion},
-		{APIVersion: SchemaVersion, Analysis: filledAnalysis(), Events: []Event{{Reason: "SuccessfulRescale", Message: "New size: 5"}}},
+		{APIVersion: SchemaVersion, Analysis: *NewAnalysis(filledFlat()), Events: []Event{{Reason: "SuccessfulRescale", Message: "New size: 5"}}},
 	}
 
 	for i, report := range reports {
@@ -160,6 +186,32 @@ func TestProjectStatusReportV1IsByteIdentical(t *testing.T) {
 		if string(want) != string(got) {
 			t.Errorf("report %d: v1 projection bytes diverge:\nwant: %s\ngot:  %s", i, want, got)
 		}
+	}
+}
+
+// TestAnalysisJSONRoundTripDecodes verifies the decode side of the wire
+// contract: v1 JSON unmarshaled into Analysis (as external consumers and
+// in-tree tests do) re-serializes to identical bytes. Fields the wire never
+// carried (json:"-" runtime fields inside domain types) are not expected to
+// survive; byte stability is the contract.
+func TestAnalysisJSONRoundTripDecodes(t *testing.T) {
+	fixture := filledFlat()
+	data, err := json.Marshal(fixture)
+	if err != nil {
+		t.Fatalf("marshal fixture: %v", err)
+	}
+
+	var decoded Analysis
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("unmarshal into Analysis: %v", err)
+	}
+
+	remarshaled, err := json.Marshal(decoded.Flat())
+	if err != nil {
+		t.Fatalf("remarshal decoded analysis: %v", err)
+	}
+	if string(remarshaled) != string(data) {
+		t.Errorf("decode/encode is not byte-stable:\nwant: %s\ngot:  %s", data, remarshaled)
 	}
 }
 

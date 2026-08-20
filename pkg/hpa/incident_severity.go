@@ -14,8 +14,8 @@ func writeIncidentRecommendations(buf *strings.Builder, reports []StatusReport) 
 		a := r.Analysis
 
 		// Churn recommendations
-		if a.ChurnAnalysis != nil && len(a.ChurnAnalysis.Recommendations) > 0 {
-			for _, rec := range a.ChurnAnalysis.Recommendations {
+		if a.ChurnAnalysis() != nil && len(a.ChurnAnalysis().Recommendations) > 0 {
+			for _, rec := range a.ChurnAnalysis().Recommendations {
 				buf.WriteString(fmt.Sprintf("%d. **%s**: Change %s to %s — %s\n",
 					recNum, rec.Type, rec.CurrentValue, rec.RecommendedValue, rec.Rationale))
 				recNum++
@@ -24,8 +24,8 @@ func writeIncidentRecommendations(buf *strings.Builder, reports []StatusReport) 
 		}
 
 		// Behavior tuning
-		if a.BehaviorAdvisor != nil && len(a.BehaviorAdvisor.Findings) > 0 {
-			for _, f := range a.BehaviorAdvisor.Findings {
+		if a.BehaviorAdvisor() != nil && len(a.BehaviorAdvisor().Findings) > 0 {
+			for _, f := range a.BehaviorAdvisor().Findings {
 				buf.WriteString(fmt.Sprintf("%d. **%s**: %s\n", recNum, f.Category, f.Message))
 				recNum++
 				hasRecs = true
@@ -33,8 +33,8 @@ func writeIncidentRecommendations(buf *strings.Builder, reports []StatusReport) 
 		}
 
 		// Interpretation as long-term advice
-		if len(a.Interpretation) > 0 {
-			for _, line := range a.Interpretation {
+		if len(a.Interpretation()) > 0 {
+			for _, line := range a.Interpretation() {
 				buf.WriteString(fmt.Sprintf("%d. %s\n", recNum, line))
 				recNum++
 				hasRecs = true
@@ -53,14 +53,14 @@ func writeIncidentEscalationNotes(buf *strings.Builder, reports []StatusReport) 
 	escalationWritten := false
 	for _, r := range reports {
 		a := r.Analysis
-		switch a.Health {
+		switch a.Health() {
 		case string(HealthError):
 			buf.WriteString(fmt.Sprintf("- **%s/%s**: Escalate to **platform team** — metrics pipeline or HPA controller may be unavailable.\n",
-				a.Namespace, a.Name))
+				a.Namespace(), a.Name()))
 			escalationWritten = true
 		case string(HealthLimited):
 			buf.WriteString(fmt.Sprintf("- **%s/%s**: Escalate to **application team** — HPA is capped; review scaling limits and workload configuration.\n",
-				a.Namespace, a.Name))
+				a.Namespace(), a.Name()))
 			escalationWritten = true
 		}
 	}
@@ -77,7 +77,7 @@ func overallSeverity(reports []StatusReport) string {
 	}
 	worst := "LOW"
 	for _, r := range reports {
-		s := healthSeverity(r.Analysis.Health, r.Analysis.HealthScore)
+		s := healthSeverity(r.Analysis.Health(), r.Analysis.HealthScore())
 		if severityHigher(s, worst) {
 			worst = s
 		}
@@ -157,11 +157,11 @@ func incidentReportNames(reports []StatusReport) string {
 	}
 	if len(reports) == 1 {
 		a := reports[0].Analysis
-		return fmt.Sprintf("%s/%s", a.Namespace, a.Name)
+		return fmt.Sprintf("%s/%s", a.Namespace(), a.Name())
 	}
 	names := make([]string, len(reports))
 	for i, r := range reports {
-		names[i] = fmt.Sprintf("%s/%s", r.Analysis.Namespace, r.Analysis.Name)
+		names[i] = fmt.Sprintf("%s/%s", r.Analysis.Namespace(), r.Analysis.Name())
 	}
 	return strings.Join(names, ", ")
 }

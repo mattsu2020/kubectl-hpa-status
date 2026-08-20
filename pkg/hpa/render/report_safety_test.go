@@ -10,12 +10,12 @@ import (
 )
 
 func TestReportsEscapeUntrustedFieldsAndIncludeWarnings(t *testing.T) {
-	report := hpa.StatusReport{Analysis: hpa.Analysis{
+	report := hpa.StatusReport{Analysis: *hpa.NewAnalysis(hpa.FlatAnalysis{
 		Name:      `<script>alert(1)</script>`,
 		Namespace: "ns|next\nrow",
 		Summary:   "summary\nsecond",
 		Warnings:  []string{"warning <script>|next\nrow"},
-	}}
+	})}
 
 	var markdown bytes.Buffer
 	if err := WriteMarkdownReport(&markdown, report); err != nil {
@@ -38,7 +38,7 @@ func TestReportsEscapeUntrustedFieldsAndIncludeWarnings(t *testing.T) {
 }
 
 func TestMarkdownEscapesExtendedSections(t *testing.T) {
-	report := hpa.StatusReport{Analysis: hpa.Analysis{
+	report := hpa.StatusReport{Analysis: *hpa.NewAnalysis(hpa.FlatAnalysis{
 		FlappingSimulation: &simulate.SimulationResult{
 			Parameter: "max<script>\nnext", RiskAssessment: "<b>risk</b>",
 			Interpretation: []string{"line\n<script>alert(1)</script>"},
@@ -48,7 +48,7 @@ func TestMarkdownEscapesExtendedSections(t *testing.T) {
 			NextSteps: []string{"`break`\n<script>alert(3)</script>"},
 		}},
 		CapacityContext: &hpa.CapacityContext{NodeHints: []string{"hint\n<script>alert(4)</script>"}},
-	}}
+	})}
 	var out bytes.Buffer
 	if err := WriteMarkdownReport(&out, report); err != nil {
 		t.Fatal(err)

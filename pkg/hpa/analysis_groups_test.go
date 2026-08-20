@@ -9,7 +9,7 @@ import (
 // migration (ROADMAP.md): the flat fields stay the source of truth and keep
 // their JSON tags, while new code reaches related fields via these views.
 func TestAnalysisGroupViews(t *testing.T) {
-	a := &Analysis{
+	a := NewAnalysis(FlatAnalysis{
 		Namespace:   "production",
 		Name:        "web",
 		Target:      "Deployment/web",
@@ -25,7 +25,7 @@ func TestAnalysisGroupViews(t *testing.T) {
 		Metrics:     []Metric{{Name: "cpu"}},
 		Actions:     []string{"raise maxReplicas"},
 		Warnings:    []string{"enrichment skipped"},
-	}
+	})
 
 	t.Run("Meta snapshots identity", func(t *testing.T) {
 		m := a.Meta()
@@ -137,7 +137,7 @@ func TestAnalysisGroupViews(t *testing.T) {
 func TestAnalysisGroupViews_SharedPointersAreReadOnly(t *testing.T) {
 	tr := &TargetReplicaInfo{ReadyReplicas: 5}
 	plan := &CapacityPlan{Safe: true}
-	a := &Analysis{TargetReplicas: tr, CapacityPlan: plan}
+	a := NewAnalysis(FlatAnalysis{TargetReplicas: tr, CapacityPlan: plan})
 
 	r := a.Replicas()
 	if r.TargetReplicas != tr {

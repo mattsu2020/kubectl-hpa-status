@@ -15,7 +15,7 @@ import (
 // creation timestamp from the HPA source.
 func collectBase(src *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) Analysis {
 	summary, summaryKey := SummarizeDirectionWithKey(src, minReplicas)
-	return Analysis{
+	return *NewAnalysis(FlatAnalysis{
 		Namespace:         src.Namespace,
 		Name:              src.Name,
 		Target:            fmt.Sprintf("%s/%s", src.Spec.ScaleTargetRef.Kind, src.Spec.ScaleTargetRef.Name),
@@ -28,19 +28,19 @@ func collectBase(src *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) 
 		Summary:           summary,
 		SummaryKey:        summaryKey,
 		CreationTimestamp: src.CreationTimestamp,
-	}
+	})
 }
 
 // collectConditions populates the Conditions slice from HPA status conditions,
 // sorted by priority.
 func collectConditions(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler) Analysis {
 	for _, condition := range prioritizedConditions(src.Status.Conditions) {
-		a.Conditions = append(a.Conditions, Condition{
+		a.SetConditions(append(a.Conditions(), Condition{
 			Type:    string(condition.Type),
 			Status:  string(condition.Status),
 			Reason:  condition.Reason,
 			Message: condition.Message,
-		})
+		}))
 	}
 	return a
 }
@@ -48,26 +48,26 @@ func collectConditions(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler) A
 // collectMetrics populates the Metrics slice from HPA current metrics.
 func collectMetrics(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler) Analysis {
 	for _, metric := range src.Status.CurrentMetrics {
-		a.Metrics = append(a.Metrics, FormatMetricStatus(src, metric))
+		a.SetMetrics(append(a.Metrics(), FormatMetricStatus(src, metric)))
 	}
 	return a
 }
 
 // collectBehavior populates the Behavior slice from HPA spec behavior rules.
 func collectBehavior(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler) Analysis {
-	a.Behavior = FormatBehavior(src)
+	a.SetBehavior(FormatBehavior(src))
 	return a
 }
 
 // detectStaleStatus checks for observedGeneration lag and prefixes the summary.
 func detectStaleStatus(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler) Analysis {
 	if src.Status.ObservedGeneration != nil && *src.Status.ObservedGeneration < src.Generation {
-		a.Summary = "[STALE STATUS] " + a.Summary
-		a.StaleStatus = &StaleStatusInfo{
+		a.SetSummary("[STALE STATUS] " + a.Summary())
+		a.SetStaleStatus(&StaleStatusInfo{
 			ObservedGeneration: *src.Status.ObservedGeneration,
 			CurrentGeneration:  src.Generation,
 			Diff:               src.Generation - *src.Status.ObservedGeneration,
-		}
+		})
 	}
 	return a
 }
@@ -86,7 +86,7 @@ func detectImpactMetric(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler) 
 	} else {
 		guess.Confidence = string(ConfidenceMedium)
 	}
-	a.ImpactMetric = &guess
+	a.SetImpactMetric(&guess)
 	return a
 }
 
@@ -102,7 +102,7 @@ func detectScaleToZero(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler, m
 	} else if src.Status.DesiredReplicas == 0 && src.Status.CurrentReplicas == 0 {
 		info.Note = "HPA is at zero replicas (scaled to zero). The next scale-up requires a cold start."
 	}
-	a.ScaleToZero = info
+	a.SetScaleToZero(info)
 	return a
 }
 
@@ -110,14 +110,14 @@ func detectScaleToZero(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler, m
 // stabilization window and populates the source and confidence fields.
 func detectStabilization(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler) Analysis {
 	if remaining := estimateStabilizationRemaining(src); remaining != nil {
-		a.StabilizationRemaining = remaining
+		a.SetStabilizationRemaining(remaining)
 	}
 	if window := scaleDownStabilizationWindow(src); window != nil {
-		a.StabilizationWindowSeconds = window
+		a.SetStabilizationWindowSeconds(window)
 	}
-	if a.StabilizationRemaining != nil && *a.StabilizationRemaining > 0 {
-		a.StabilizationSource = detectStabilizationSource(src)
-		a.StabilizationConfidence = stabilizationConfidenceLabel
+	if a.StabilizationRemaining() != nil && *a.StabilizationRemaining() > 0 {
+		a.SetStabilizationSource(detectStabilizationSource(src))
+		a.SetStabilizationConfidence(stabilizationConfidenceLabel)
 	}
 	return a
 }
@@ -128,20 +128,20 @@ func attachInterpretation(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler
 	if !includeInterpretation {
 		return a
 	}
-	a.Actions = RecommendedActions(src, minReplicas)
-	a.Suggestions = BuildSuggestions(src, minReplicas)
-	a.Interpretation = Interpret(src, minReplicas)
-	a.StructuredInterpretation = buildStructuredInterpretation(src, minReplicas)
-	a.StructuredActions = buildStructuredActions(src, minReplicas)
+	a.SetActions(RecommendedActions(src, minReplicas))
+	a.SetSuggestions(BuildSuggestions(src, minReplicas))
+	a.SetInterpretation(Interpret(src, minReplicas))
+	a.SetStructuredInterpretation(buildStructuredInterpretation(src, minReplicas))
+	a.SetStructuredActions(buildStructuredActions(src, minReplicas))
 	return a
 }
 
 // attachHealth computes and attaches the typed health result.
 func attachHealth(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32, opts AnalysisOptions) Analysis {
 	healthResult := HealthWithWeights(src, minReplicas, opts.HealthWeights)
-	a.Health = string(healthResult.State)
-	a.HealthScore = healthResult.Score
-	a.HealthResult = &healthResult
+	a.SetHealth(string(healthResult.State))
+	a.SetHealthScore(healthResult.Score)
+	a.SetHealthResult(&healthResult)
 	a.dynamicHealthBaseline = newDynamicHealthBaseline(healthResult.Score, healthResult.State, healthResult.Signals)
 	return a
 }
@@ -152,7 +152,7 @@ func detectMetricDecisionTrace(a Analysis, src *autoscalingv2.HorizontalPodAutos
 	if len(src.Status.CurrentMetrics) <= 1 {
 		return a
 	}
-	a.MetricDecisionTrace = BuildMetricDecisionTrace(src, minReplicas)
+	a.SetMetricDecisionTrace(BuildMetricDecisionTrace(src, minReplicas))
 	return a
 }
 
@@ -160,22 +160,22 @@ func detectMetricDecisionTrace(a Analysis, src *autoscalingv2.HorizontalPodAutos
 // stabilization is active AND churn is detected, warning that the
 // stabilization window may be too short.
 func correlateStabilizationChurn(a Analysis) Analysis {
-	if a.StabilizationRemaining == nil || *a.StabilizationRemaining <= 0 {
+	if a.StabilizationRemaining() == nil || *a.StabilizationRemaining() <= 0 {
 		return a
 	}
-	if a.ChurnAnalysis == nil {
+	if a.ChurnAnalysis() == nil {
 		return a
 	}
-	if a.ChurnAnalysis.Level != churn.ChurnHigh && a.ChurnAnalysis.Level != churn.ChurnCritical {
+	if a.ChurnAnalysis().Level != churn.ChurnHigh && a.ChurnAnalysis().Level != churn.ChurnCritical {
 		return a
 	}
 	line := confidence.BadgeEstimated + " Churn detected while stabilization window is active — consider increasing scaleDown.stabilizationWindowSeconds to reduce thrashing."
-	for _, existing := range a.Interpretation {
+	for _, existing := range a.Interpretation() {
 		if existing == line {
 			return a
 		}
 	}
-	a.Interpretation = append(a.Interpretation, line)
+	a.SetInterpretation(append(a.Interpretation(), line))
 	return a
 }
 
@@ -196,8 +196,8 @@ func FinalizeAnalysis(a Analysis) Analysis {
 func collectAssumptions(a Analysis) Analysis {
 	// Finalization may be invoked by more than one workflow layer. Rebuild the
 	// assumptions owned by this phase instead of appending duplicates.
-	assumptions := make([]Assumption, 0, len(a.Assumptions)+2)
-	for _, assumption := range a.Assumptions {
+	assumptions := make([]Assumption, 0, len(a.Assumptions())+2)
+	for _, assumption := range a.Assumptions() {
 		if assumption.Name != "tolerance" && assumption.Name != "stabilizationRemaining" {
 			assumptions = append(assumptions, assumption)
 		}
@@ -208,15 +208,15 @@ func collectAssumptions(a Analysis) Analysis {
 		Source:     "assumed-controller-default",
 		Confidence: "medium",
 	})
-	if a.StabilizationRemaining != nil && *a.StabilizationRemaining > 0 {
+	if a.StabilizationRemaining() != nil && *a.StabilizationRemaining() > 0 {
 		assumptions = append(assumptions, Assumption{
 			Name:       "stabilizationRemaining",
-			Value:      fmt.Sprintf("%ds", *a.StabilizationRemaining),
+			Value:      fmt.Sprintf("%ds", *a.StabilizationRemaining()),
 			Source:     "lastScaleTimeApproximation",
 			Confidence: "low",
 		})
 	}
-	a.Assumptions = assumptions
+	a.SetAssumptions(assumptions)
 	return a
 }
 
@@ -225,7 +225,7 @@ func attachDebug(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler, opts An
 	if !opts.Debug {
 		return a
 	}
-	a.Debug = DebugLines(src, a)
+	a.SetDebug(DebugLines(src, a))
 	return a
 }
 
@@ -245,7 +245,7 @@ func attachDecisionSignals(a Analysis, src *autoscalingv2.HorizontalPodAutoscale
 			signals = signalsAdapter.FromEstimation(src)
 		}
 		if len(signals) > 0 {
-			a.DecisionSignals = signals
+			a.SetDecisionSignals(signals)
 		}
 		return a
 	}
@@ -256,7 +256,7 @@ func attachDecisionSignals(a Analysis, src *autoscalingv2.HorizontalPodAutoscale
 		signals = adapter.FromEstimation(src)
 	}
 	if len(signals) > 0 {
-		a.DecisionSignals = signals
+		a.SetDecisionSignals(signals)
 	}
 	return a
 }

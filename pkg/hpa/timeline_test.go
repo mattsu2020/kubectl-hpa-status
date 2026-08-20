@@ -11,7 +11,7 @@ import (
 
 func TestSnapshotFromReport(t *testing.T) {
 	report := StatusReport{
-		Analysis: Analysis{
+		Analysis: *NewAnalysis(FlatAnalysis{
 			Namespace:   "default",
 			Name:        "web",
 			Current:     3,
@@ -28,7 +28,7 @@ func TestSnapshotFromReport(t *testing.T) {
 				Ratio: 1.42,
 				Note:  "above target",
 			},
-		},
+		}),
 		Events: []Event{
 			{Reason: "SuccessfulRescale", Message: "New size: 5"},
 		},
@@ -240,12 +240,12 @@ func TestWriteTimelineHTML(t *testing.T) {
 
 func TestSnapshotFromReport_EmptyMetrics(t *testing.T) {
 	report := StatusReport{
-		Analysis: Analysis{
+		Analysis: *NewAnalysis(FlatAnalysis{
 			Current:     2,
 			Desired:     2,
 			Health:      "OK",
 			HealthScore: 100,
-		},
+		}),
 	}
 
 	snap := SnapshotFromReport(report)

@@ -257,18 +257,18 @@ func attachHealthTrend(recorder *history.Recorder, analysis *hpaanalysis.Analysi
 		return
 	}
 	result := recorder.RecordAndAnalyze(history.RecordInput{
-		Namespace:       analysis.Namespace,
-		Name:            analysis.Name,
-		HealthScore:     analysis.HealthScore,
-		HealthState:     analysis.Health,
-		DesiredReplicas: analysis.Desired,
-		CurrentReplicas: analysis.Current,
-		Stabilizing:     analysis.StabilizationRemaining != nil && *analysis.StabilizationRemaining > 0,
+		Namespace:       analysis.Namespace(),
+		Name:            analysis.Name(),
+		HealthScore:     analysis.HealthScore(),
+		HealthState:     analysis.Health(),
+		DesiredReplicas: analysis.Desired(),
+		CurrentReplicas: analysis.Current(),
+		Stabilizing:     analysis.StabilizationRemaining() != nil && *analysis.StabilizationRemaining() > 0,
 		Since:           since,
 		Retention:       retention,
 	})
-	analysis.Warnings = append(analysis.Warnings, result.Warnings...)
-	analysis.HealthTrend = result.Trend
+	analysis.SetWarnings(append(analysis.Warnings(), result.Warnings...))
+	analysis.SetHealthTrend(result.Trend)
 }
 
 // writeListResult renders the list report in the selected output format.

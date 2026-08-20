@@ -39,6 +39,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sites in `pkg/hpa`, ~250 in `cmd`/`internal`, ~600 in tests), compile-green
   stage plan, and per-stage verification gates.
 
+### Changed
+
+- **`Analysis` storage flip executed (no wire change).** The 13 grouped views
+  are now `pkg/hpa.Analysis`'s primary in-memory storage; the 65 flat v1
+  fields became accessor methods. Wire output is byte-identical (v1
+  serializes through the `FlatAnalysis` projection; the flip also adds
+  `Analysis.UnmarshalJSON` so decoding v1 JSON into `Analysis` keeps
+  working), jsonpath/Go-template rendering projects report values to the flat
+  shape before executing expressions, and the full golden/contract suite
+  passes unchanged. Benchmarks: ≈+250ns per analysis on the construction
+  path, everything else within noise. **Go-API migration** for importers of
+  `pkg/hpa`: field reads/writes become accessor calls (`a.Current` →
+  `a.Current()`, `a.Current = v` → `a.SetCurrent(v)`) and flat composite
+  literals become `NewAnalysis(FlatAnalysis{...})`; the full retired-API →
+  grouped-view table is in `docs/analysis-storage-flip.md`.
+
 ## [3.0.0] - 2026-08-15
 
 This major release executes the v3 breaking changes decided in `ROADMAP.md` —

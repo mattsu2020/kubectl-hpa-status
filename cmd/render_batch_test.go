@@ -88,7 +88,7 @@ func TestWriteListCIReports(t *testing.T) {
 }
 
 func TestWriteAIContext(t *testing.T) {
-	report := hpaanalysis.StatusReport{Analysis: hpaanalysis.Analysis{
+	report := hpaanalysis.StatusReport{Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
 		Namespace:   "prod",
 		Name:        "web",
 		Target:      "Deployment/web",
@@ -99,7 +99,7 @@ func TestWriteAIContext(t *testing.T) {
 		Health:      "LIMITED",
 		HealthScore: 75,
 		Summary:     "Scaling up",
-	}}
+	})}
 	var buf bytes.Buffer
 	if err := writeAIContext(&buf, report, "why is it slow?"); err != nil {
 		t.Fatalf("writeAIContext returned error: %v", err)

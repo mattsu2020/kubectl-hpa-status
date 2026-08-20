@@ -100,8 +100,8 @@ func TestUpdate_EnterDetailView(t *testing.T) {
 		{Namespace: "default", Name: "api", Health: "ERROR"},
 	}
 	m.reports = map[string]*hpaanalysis.StatusReport{
-		"default/web": {Analysis: hpaanalysis.Analysis{Name: "web", Namespace: "default"}},
-		"default/api": {Analysis: hpaanalysis.Analysis{Name: "api", Namespace: "default"}},
+		"default/web": {Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{Name: "web", Namespace: "default"})},
+		"default/api": {Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{Name: "api", Namespace: "default"})},
 	}
 
 	// Move to second item and enter detail.
@@ -204,7 +204,7 @@ func TestFetchResult_UpdatesItems(t *testing.T) {
 			{Name: "web", Health: "OK", HealthScore: 100},
 		},
 		reports: map[string]*hpaanalysis.StatusReport{
-			"/web": {Analysis: hpaanalysis.Analysis{Name: "web"}},
+			"/web": {Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{Name: "web"})},
 		},
 	})
 	m2 := updated.(Model)
@@ -231,8 +231,8 @@ func TestFetchResult_FocusesInitialDetailItem(t *testing.T) {
 			{Namespace: "default", Name: "api", Health: "WARN"},
 		},
 		reports: map[string]*hpaanalysis.StatusReport{
-			"default/web": {Analysis: hpaanalysis.Analysis{Name: "web", Namespace: "default"}},
-			"default/api": {Analysis: hpaanalysis.Analysis{Name: "api", Namespace: "default"}},
+			"default/web": {Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{Name: "web", Namespace: "default"})},
+			"default/api": {Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{Name: "api", Namespace: "default"})},
 		},
 	})
 	m2 := updated.(Model)
@@ -314,7 +314,7 @@ func TestBatchApplyKeyRequiresSecondConfirmation(t *testing.T) {
 	m.items = []hpaanalysis.ListItem{{Namespace: "default", Name: "web"}}
 	m.selected = map[string]bool{"default/web": true}
 	m.reports = map[string]*hpaanalysis.StatusReport{
-		"default/web": {Analysis: hpaanalysis.Analysis{
+		"default/web": {Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
 			Namespace: "default",
 			Name:      "web",
 			Suggestions: []hpaanalysis.Suggestion{
@@ -329,7 +329,7 @@ func TestBatchApplyKeyRequiresSecondConfirmation(t *testing.T) {
 					Apply: true,
 				},
 			},
-		}},
+		})},
 	}
 
 	updated, cmd := m.Update(tea.KeyPressMsg{Text: "x"})
@@ -725,11 +725,11 @@ func TestView_DetailView(t *testing.T) {
 			Summary: "Scaling up"},
 	}
 	m.reports = map[string]*hpaanalysis.StatusReport{
-		"default/web": {Analysis: hpaanalysis.Analysis{
+		"default/web": {Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
 			Name: "web", Namespace: "default", Target: "Deployment/web",
 			Health: "OK", HealthScore: 90, Current: 3, Desired: 5, Min: 1, Max: 10,
 			Summary: "Scaling up",
-		}},
+		})},
 	}
 	output := m.View().Content
 	if !containsSubstring(output, "HPA default/web") {
@@ -753,7 +753,7 @@ func TestView_DetailViewWithKEDAInfo(t *testing.T) {
 	}
 	polling := int32(30)
 	m.reports = map[string]*hpaanalysis.StatusReport{
-		"default/keda-worker": {Analysis: hpaanalysis.Analysis{
+		"default/keda-worker": {Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
 			Name: "keda-worker", Namespace: "default",
 			KEDAInfo: &hpakeda.Analysis{
 				ScaledObjectName: "worker-so",
@@ -762,7 +762,7 @@ func TestView_DetailViewWithKEDAInfo(t *testing.T) {
 				},
 				PollingInterval: &polling,
 			},
-		}},
+		})},
 	}
 	output := m.View().Content
 	if !containsSubstring(output, "KEDA") {
@@ -785,7 +785,7 @@ func TestView_DetailViewWithVPAConflict(t *testing.T) {
 			Summary: "OK"},
 	}
 	m.reports = map[string]*hpaanalysis.StatusReport{
-		"default/web": {Analysis: hpaanalysis.Analysis{
+		"default/web": {Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
 			Name: "web", Namespace: "default",
 			VPAConflict: &hpavpa.ConflictInfo{
 				VPAName:    "web-vpa",
@@ -794,7 +794,7 @@ func TestView_DetailViewWithVPAConflict(t *testing.T) {
 					{Container: "app", Resource: "cpu", Target: "500m"},
 				},
 			},
-		}},
+		})},
 	}
 	output := m.View().Content
 	if !containsSubstring(output, "VPA") {
@@ -817,13 +817,13 @@ func TestView_DetailViewWithConditions(t *testing.T) {
 			Summary: "OK"},
 	}
 	m.reports = map[string]*hpaanalysis.StatusReport{
-		"default/web": {Analysis: hpaanalysis.Analysis{
+		"default/web": {Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
 			Name: "web", Namespace: "default",
 			Conditions: []hpaanalysis.Condition{
 				{Type: "ScalingActive", Status: "True", Reason: "ValidMetricFound"},
 				{Type: "AbleToScale", Status: "True", Reason: "ReadyForNewScale"},
 			},
-		}},
+		})},
 	}
 	output := m.View().Content
 	if !containsSubstring(output, "Conditions") {
@@ -844,12 +844,12 @@ func TestView_DetailViewWithMetrics(t *testing.T) {
 	}
 	ratio := 0.85
 	m.reports = map[string]*hpaanalysis.StatusReport{
-		"default/web": {Analysis: hpaanalysis.Analysis{
+		"default/web": {Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
 			Name: "web", Namespace: "default",
 			Metrics: []hpaanalysis.Metric{
 				{Name: "cpu", Type: "Resource", Current: "85%", Target: "80%", Ratio: &ratio},
 			},
-		}},
+		})},
 	}
 	output := m.View().Content
 	if !containsSubstring(output, "Metrics") {
@@ -876,11 +876,11 @@ func TestView_DetailViewWithInterpretation(t *testing.T) {
 		lines[i] = fmt.Sprintf("Interpretation line %d", i)
 	}
 	m.reports = map[string]*hpaanalysis.StatusReport{
-		"default/web": {Analysis: hpaanalysis.Analysis{
+		"default/web": {Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
 			Name:           "web",
 			Namespace:      "default",
 			Interpretation: lines,
-		}},
+		})},
 	}
 	output := m.View().Content
 	if !containsSubstring(output, "Interpretation") {
@@ -904,12 +904,12 @@ func TestView_MetricsView(t *testing.T) {
 	}
 	ratio := 1.2
 	m.reports = map[string]*hpaanalysis.StatusReport{
-		"default/web": {Analysis: hpaanalysis.Analysis{
+		"default/web": {Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
 			Name: "web", Namespace: "default",
 			Metrics: []hpaanalysis.Metric{
 				{Name: "cpu", Type: "Resource", Current: "120%", Target: "80%", Ratio: &ratio, Note: "within tolerance"},
 			},
-		}},
+		})},
 	}
 	output := m.View().Content
 	if !containsSubstring(output, "Metrics Diagnostics") {
@@ -932,13 +932,13 @@ func TestView_MetricsViewBelowTarget(t *testing.T) {
 	}
 	ratio := 0.5
 	m.reports = map[string]*hpaanalysis.StatusReport{
-		"default/web": {Analysis: hpaanalysis.Analysis{
+		"default/web": {Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
 			Name:      "web",
 			Namespace: "default",
 			Metrics: []hpaanalysis.Metric{
 				{Name: "cpu", Type: "Resource", Current: "50%", Target: "80%", Ratio: &ratio},
 			},
-		}},
+		})},
 	}
 	output := m.View().Content
 	if !containsSubstring(output, "below target") {

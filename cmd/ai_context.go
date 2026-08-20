@@ -11,7 +11,7 @@ import (
 // All write failures are wrapped with a "write ai context" prefix to match the
 // project's convention (see cmd/list_apply.go) and aid debugging.
 func writeAIContext(out io.Writer, report hpaanalysis.StatusReport, question string) error {
-	return writeAIContextMany(out, []reportResult{{name: report.Analysis.Name, namespace: report.Analysis.Namespace, report: report, hasReport: true}}, question)
+	return writeAIContextMany(out, []reportResult{{name: report.Analysis.Name(), namespace: report.Analysis.Namespace(), report: report, hasReport: true}}, question)
 }
 
 // writeAIContextMany renders the AI context for a multi-HPA run. Per the
@@ -52,23 +52,23 @@ func writeAIContextError(out io.Writer, namespace, name string, err error) error
 }
 
 func writeAIContextReport(out io.Writer, a hpaanalysis.Analysis) error {
-	if _, err := fmt.Fprintf(out, "\n## %s/%s\n", a.Namespace, a.Name); err != nil {
+	if _, err := fmt.Fprintf(out, "\n## %s/%s\n", a.Namespace(), a.Name()); err != nil {
 		return fmt.Errorf("write ai context heading: %w", err)
 	}
 	if _, err := fmt.Fprintf(out, "- target: %s\n- replicas: current=%d desired=%d min=%d max=%d\n- health: %s (%d/100)\n- summary: %s\n",
-		a.Target, a.Current, a.Desired, a.Min, a.Max, a.Health, a.HealthScore, a.Summary); err != nil {
+		a.Target(), a.Current(), a.Desired(), a.Min(), a.Max(), a.Health(), a.HealthScore(), a.Summary()); err != nil {
 		return fmt.Errorf("write ai context summary: %w", err)
 	}
-	if err := writeAIContextConditions(out, a.Conditions); err != nil {
+	if err := writeAIContextConditions(out, a.Conditions()); err != nil {
 		return err
 	}
-	if err := writeAIContextMetrics(out, a.Metrics); err != nil {
+	if err := writeAIContextMetrics(out, a.Metrics()); err != nil {
 		return err
 	}
-	if err := writeAIContextHiddenFactors(out, a.HiddenFactors); err != nil {
+	if err := writeAIContextHiddenFactors(out, a.HiddenFactors()); err != nil {
 		return err
 	}
-	return writeAIContextSuggestions(out, a.Suggestions)
+	return writeAIContextSuggestions(out, a.Suggestions())
 }
 
 func writeAIContextConditions(out io.Writer, conditions []hpaanalysis.Condition) error {

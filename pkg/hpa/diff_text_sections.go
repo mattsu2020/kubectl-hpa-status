@@ -13,12 +13,12 @@ import (
 func appendDiffConditionsSection(out *[]byte, a, prev *Analysis, theme style.Theme, labels labels) {
 	*out = append(*out, '\n')
 	*out = fmt.Appendf(*out, "%s:\n", labels.Conditions)
-	if len(a.Conditions) == 0 {
+	if len(a.Conditions()) == 0 {
 		*out = append(*out, "  No conditions reported.\n"...)
 		return
 	}
-	prevCondMap := conditionMap(prev.Conditions)
-	for _, condition := range a.Conditions {
+	prevCondMap := conditionMap(prev.Conditions())
+	for _, condition := range a.Conditions() {
 		statusText := theme.ConditionStatus(condition.Type, condition.Status)
 		previous, found := prevCondMap[condition.Type]
 		switch {
@@ -35,12 +35,12 @@ func appendDiffConditionsSection(out *[]byte, a, prev *Analysis, theme style.The
 func appendDiffMetricsSection(out *[]byte, a, prev *Analysis, theme style.Theme, labels labels) {
 	*out = append(*out, '\n')
 	*out = fmt.Appendf(*out, "%s:\n", labels.Metrics)
-	if len(a.Metrics) == 0 {
+	if len(a.Metrics()) == 0 {
 		*out = append(*out, "  No current metrics reported.\n"...)
 		return
 	}
-	prevMetricMap := metricMap(prev.Metrics)
-	for _, metric := range a.Metrics {
+	prevMetricMap := metricMap(prev.Metrics())
+	for _, metric := range a.Metrics() {
 		note := theme.MetricNote(metric.Note)
 		text := formatMetricText(metric, note)
 		if previous, ok := prevMetricMap[metricIdentity(metric)]; !ok || !metricEqual(previous, metric) {
@@ -52,34 +52,34 @@ func appendDiffMetricsSection(out *[]byte, a, prev *Analysis, theme style.Theme,
 }
 
 func appendDiffBehaviorSection(out *[]byte, a *Analysis, labels labels) {
-	if len(a.Behavior) == 0 {
+	if len(a.Behavior()) == 0 {
 		return
 	}
 	*out = append(*out, '\n')
 	*out = fmt.Appendf(*out, "%s:\n", labels.Behavior)
-	for _, behavior := range a.Behavior {
+	for _, behavior := range a.Behavior() {
 		*out = fmt.Appendf(*out, "  - %s\n", behavior.Text)
 	}
 }
 
 func appendDiffActionsSection(out *[]byte, a *Analysis, theme style.Theme, labels labels) {
-	if len(a.Actions) == 0 {
+	if len(a.Actions()) == 0 {
 		return
 	}
 	*out = append(*out, '\n')
 	*out = fmt.Appendf(*out, "%s:\n", labels.Actions)
-	for _, action := range a.Actions {
+	for _, action := range a.Actions() {
 		*out = fmt.Appendf(*out, "  - %s\n", theme.ActionLine(action))
 	}
 }
 
 func appendDiffInterpretationSection(out *[]byte, a *Analysis, theme style.Theme, labels labels) {
-	if len(a.Interpretation) == 0 {
+	if len(a.Interpretation()) == 0 {
 		return
 	}
 	*out = append(*out, '\n')
 	*out = fmt.Appendf(*out, "%s:\n", labels.Interpretation)
-	for _, line := range a.Interpretation {
+	for _, line := range a.Interpretation() {
 		*out = fmt.Appendf(*out, "  - %s\n", theme.InterpretationLine(line))
 	}
 }

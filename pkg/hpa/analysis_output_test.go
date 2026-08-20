@@ -26,7 +26,7 @@ func TestNewListItemHighlightsImplicitMaxReplicasLimit(t *testing.T) {
 }
 
 func TestNewListItemPreservesZeroHealthScore(t *testing.T) {
-	got := NewListItem(Analysis{
+	got := NewListItem(*NewAnalysis(FlatAnalysis{
 		Namespace:   "default",
 		Name:        "broken",
 		Health:      "ERROR",
@@ -34,7 +34,7 @@ func TestNewListItemPreservesZeroHealthScore(t *testing.T) {
 		Conditions: []Condition{
 			{Type: "ScalingActive", Status: "False", Reason: "FailedGetResourceMetric"},
 		},
-	})
+	}))
 
 	if got.HealthScore != 0 {
 		t.Fatalf("HealthScore = %d, want 0", got.HealthScore)
@@ -99,12 +99,12 @@ func TestWriteStatusDiff_NoChanges(t *testing.T) {
 
 func TestWriteStatusDiff_ReplicasChanged(t *testing.T) {
 	prev := Analyze(baseHPA(), false)
-	prev.Current = 3
-	prev.Desired = 3
+	prev.SetCurrent(3)
+	prev.SetDesired(3)
 
 	curr := Analyze(baseHPA(), false)
-	curr.Current = 5
-	curr.Desired = 7
+	curr.SetCurrent(5)
+	curr.SetDesired(7)
 
 	state := WatchState{Previous: &prev, Current: &curr}
 	var buf bytes.Buffer
@@ -145,8 +145,8 @@ func TestWriteStatusDiff_ConditionsChanged(t *testing.T) {
 }
 
 func TestWriteStatusDiff_ConditionMessageOnlyChange(t *testing.T) {
-	previous := &Analysis{Conditions: []Condition{{Type: "AbleToScale", Status: "True", Reason: "Ready", Message: "old"}}}
-	current := &Analysis{Conditions: []Condition{{Type: "AbleToScale", Status: "True", Reason: "Ready", Message: "new"}}}
+	previous := NewAnalysis(FlatAnalysis{Conditions: []Condition{{Type: "AbleToScale", Status: "True", Reason: "Ready", Message: "old"}}})
+	current := NewAnalysis(FlatAnalysis{Conditions: []Condition{{Type: "AbleToScale", Status: "True", Reason: "Ready", Message: "new"}}})
 	var buf bytes.Buffer
 	if err := WriteStatusDiff(&buf, WatchState{Previous: previous, Current: current}, style.NewTheme(false)); err != nil {
 		t.Fatal(err)

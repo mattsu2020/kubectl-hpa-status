@@ -15,7 +15,7 @@ import (
 func TestWriteRichIncidentMarkdown_SingleHealthyHPA(t *testing.T) {
 	reports := []StatusReport{
 		{
-			Analysis: Analysis{
+			Analysis: *NewAnalysis(FlatAnalysis{
 				Namespace:   "default",
 				Name:        "web-hpa",
 				Target:      "Deployment/web",
@@ -32,7 +32,7 @@ func TestWriteRichIncidentMarkdown_SingleHealthyHPA(t *testing.T) {
 				Metrics: []Metric{
 					{Name: "cpu", Current: "78%", Target: "80%", Ratio: ptr.To(0.975), Text: "cpu 78%/80%"},
 				},
-			},
+			}),
 		},
 	}
 
@@ -72,7 +72,7 @@ func TestWriteRichIncidentMarkdown_SingleHealthyHPA(t *testing.T) {
 func TestWriteRichIncidentMarkdown_SingleUnhealthyHPA(t *testing.T) {
 	reports := []StatusReport{
 		{
-			Analysis: Analysis{
+			Analysis: *NewAnalysis(FlatAnalysis{
 				Namespace:   "prod",
 				Name:        "api-hpa",
 				Target:      "Deployment/api",
@@ -88,7 +88,7 @@ func TestWriteRichIncidentMarkdown_SingleUnhealthyHPA(t *testing.T) {
 					{Type: "AbleToScale", Status: "True", Reason: "ReadyForNewScale", Message: "ready for new scale"},
 				},
 				Metrics: []Metric{},
-			},
+			}),
 		},
 	}
 
@@ -115,7 +115,7 @@ func TestWriteRichIncidentMarkdown_SingleUnhealthyHPA(t *testing.T) {
 func TestWriteRichIncidentMarkdown_MultipleHPAs(t *testing.T) {
 	reports := []StatusReport{
 		{
-			Analysis: Analysis{
+			Analysis: *NewAnalysis(FlatAnalysis{
 				Namespace:   "default",
 				Name:        "web-hpa",
 				Target:      "Deployment/web",
@@ -126,10 +126,10 @@ func TestWriteRichIncidentMarkdown_MultipleHPAs(t *testing.T) {
 				Health:      "OK",
 				HealthScore: 95,
 				Summary:     "Operating normally.",
-			},
+			}),
 		},
 		{
-			Analysis: Analysis{
+			Analysis: *NewAnalysis(FlatAnalysis{
 				Namespace:   "prod",
 				Name:        "api-hpa",
 				Target:      "Deployment/api",
@@ -140,7 +140,7 @@ func TestWriteRichIncidentMarkdown_MultipleHPAs(t *testing.T) {
 				Health:      "LIMITED",
 				HealthScore: 75,
 				Summary:     "Scaling limited by maxReplicas.",
-			},
+			}),
 		},
 	}
 
@@ -165,7 +165,7 @@ func TestWriteRichIncidentMarkdown_WithEvents(t *testing.T) {
 	ts := time.Date(2025, 1, 15, 10, 30, 0, 0, time.UTC)
 	reports := []StatusReport{
 		{
-			Analysis: Analysis{
+			Analysis: *NewAnalysis(FlatAnalysis{
 				Namespace:   "default",
 				Name:        "web-hpa",
 				Target:      "Deployment/web",
@@ -176,7 +176,7 @@ func TestWriteRichIncidentMarkdown_WithEvents(t *testing.T) {
 				Health:      "LIMITED",
 				HealthScore: 75,
 				Summary:     "Scaling in progress.",
-			},
+			}),
 			Events: []Event{
 				{Reason: "SuccessfulRescale", Message: "New size: 7; reason: cpu utilization above target", Timestamp: ts},
 				{Reason: "FailedGetResourceMetric", Message: "unable to get metric cpu: the server could not find the requested resource", Timestamp: ts.Add(-5 * time.Minute)},
@@ -204,7 +204,7 @@ func TestWriteRichIncidentMarkdown_WithEvents(t *testing.T) {
 func TestWriteRichIncidentMarkdown_WithSuggestions(t *testing.T) {
 	reports := []StatusReport{
 		{
-			Analysis: Analysis{
+			Analysis: *NewAnalysis(FlatAnalysis{
 				Namespace:   "default",
 				Name:        "web-hpa",
 				Target:      "Deployment/web",
@@ -224,7 +224,7 @@ func TestWriteRichIncidentMarkdown_WithSuggestions(t *testing.T) {
 						Patch:       `{"spec":{"maxReplicas":20}}`,
 					},
 				},
-			},
+			}),
 		},
 	}
 
@@ -245,13 +245,13 @@ func TestWriteRichIncidentMarkdown_WithSuggestions(t *testing.T) {
 func TestWriteRichIncidentMarkdown_NoOptionalFields(t *testing.T) {
 	reports := []StatusReport{
 		{
-			Analysis: Analysis{
+			Analysis: *NewAnalysis(FlatAnalysis{
 				Namespace:   "default",
 				Name:        "minimal-hpa",
 				Target:      "Deployment/minimal",
 				Health:      "OK",
 				HealthScore: 100,
-			},
+			}),
 		},
 	}
 
@@ -278,7 +278,7 @@ func TestWriteRichIncidentMarkdown_NoOptionalFields(t *testing.T) {
 func TestWriteRichIncidentMarkdown_WithChurnAnalysis(t *testing.T) {
 	reports := []StatusReport{
 		{
-			Analysis: Analysis{
+			Analysis: *NewAnalysis(FlatAnalysis{
 				Namespace:   "default",
 				Name:        "web-hpa",
 				Target:      "Deployment/web",
@@ -296,7 +296,7 @@ func TestWriteRichIncidentMarkdown_WithChurnAnalysis(t *testing.T) {
 					ScaleDownCount: 7,
 					DirectionFlips: 6,
 				},
-			},
+			}),
 		},
 	}
 
@@ -317,7 +317,7 @@ func TestWriteRichIncidentMarkdown_WithChurnAnalysis(t *testing.T) {
 func TestWriteRichIncidentMarkdown_WithHealthTrendAnomalies(t *testing.T) {
 	reports := []StatusReport{
 		{
-			Analysis: Analysis{
+			Analysis: *NewAnalysis(FlatAnalysis{
 				Namespace:   "default",
 				Name:        "web-hpa",
 				Target:      "Deployment/web",
@@ -346,7 +346,7 @@ func TestWriteRichIncidentMarkdown_WithHealthTrendAnomalies(t *testing.T) {
 						},
 					},
 				},
-			},
+			}),
 		},
 	}
 
@@ -367,7 +367,7 @@ func TestWriteRichIncidentMarkdown_WithHealthTrendAnomalies(t *testing.T) {
 func TestWriteRichIncidentMarkdown_WithCapacityContext(t *testing.T) {
 	reports := []StatusReport{
 		{
-			Analysis: Analysis{
+			Analysis: *NewAnalysis(FlatAnalysis{
 				Namespace:   "default",
 				Name:        "web-hpa",
 				Target:      "Deployment/web",
@@ -387,7 +387,7 @@ func TestWriteRichIncidentMarkdown_WithCapacityContext(t *testing.T) {
 					},
 					NodeHints: []string{"Consider adding nodes to increase capacity"},
 				},
-			},
+			}),
 		},
 	}
 
@@ -424,13 +424,13 @@ func TestWriteRichIncidentMarkdown_EscalationNotes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			reports := []StatusReport{
 				{
-					Analysis: Analysis{
+					Analysis: *NewAnalysis(FlatAnalysis{
 						Namespace:   "default",
 						Name:        "test-hpa",
 						Target:      "Deployment/test",
 						Health:      tc.health,
 						HealthScore: 50,
-					},
+					}),
 				},
 			}
 
@@ -453,7 +453,7 @@ func TestWriteRichIncidentMarkdown_EscalationNotes(t *testing.T) {
 func TestWriteRichIncidentMarkdown_ValidMarkdown(t *testing.T) {
 	reports := []StatusReport{
 		{
-			Analysis: Analysis{
+			Analysis: *NewAnalysis(FlatAnalysis{
 				Namespace:   "default",
 				Name:        "web-hpa",
 				Target:      "Deployment/web",
@@ -470,7 +470,7 @@ func TestWriteRichIncidentMarkdown_ValidMarkdown(t *testing.T) {
 				Metrics: []Metric{
 					{Name: "cpu", Current: "78%", Target: "80%", Ratio: ptr.To(0.975), Text: "cpu 78%/80%"},
 				},
-			},
+			}),
 			Events: []Event{
 				{Reason: "SuccessfulRescale", Message: "New size: 5", Timestamp: time.Now()},
 			},
@@ -520,7 +520,7 @@ func TestWriteRichIncidentMarkdown_EmptyReports(t *testing.T) {
 func TestWriteRichIncidentMarkdown_WithMetricsDiagnostics(t *testing.T) {
 	reports := []StatusReport{
 		{
-			Analysis: Analysis{
+			Analysis: *NewAnalysis(FlatAnalysis{
 				Namespace:   "default",
 				Name:        "web-hpa",
 				Target:      "Deployment/web",
@@ -537,7 +537,7 @@ func TestWriteRichIncidentMarkdown_WithMetricsDiagnostics(t *testing.T) {
 						{MetricType: "Resource", MetricName: "cpu", Status: "missing", Details: "No current data", Remediation: "Check metrics-server"},
 					},
 				},
-			},
+			}),
 		},
 	}
 
@@ -572,13 +572,13 @@ func TestWriteRichIncidentMarkdown_SeverityAssessment(t *testing.T) {
 		t.Run(tc.health+"_"+string(rune(tc.score+'0')), func(t *testing.T) {
 			reports := []StatusReport{
 				{
-					Analysis: Analysis{
+					Analysis: *NewAnalysis(FlatAnalysis{
 						Name:        "test",
 						Namespace:   "default",
 						Target:      "Deployment/test",
 						Health:      tc.health,
 						HealthScore: tc.score,
-					},
+					}),
 				},
 			}
 			var buf bytes.Buffer

@@ -56,16 +56,16 @@ func TestRunDoctorEnablesBundledDiagnostics(t *testing.T) {
 		t.Fatalf("failed to parse JSON output: %v\n%s", err, buf.String())
 	}
 
-	if report.Analysis.MetricsDiagnostics == nil {
+	if report.Analysis.MetricsDiagnostics() == nil {
 		t.Fatal("expected MetricsDiagnostics to be populated")
 	}
-	if len(report.Analysis.MetricFreshnessEntries) == 0 {
+	if len(report.Analysis.MetricFreshnessEntries()) == 0 {
 		t.Fatal("expected MetricFreshnessEntries to be populated")
 	}
-	if report.Analysis.CapacityContext == nil {
+	if report.Analysis.CapacityContext() == nil {
 		t.Fatal("expected CapacityContext to be populated")
 	}
-	if len(report.Analysis.Interpretation) == 0 {
+	if len(report.Analysis.Interpretation()) == 0 {
 		t.Fatal("expected Interpretation to be populated")
 	}
 }

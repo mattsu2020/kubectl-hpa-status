@@ -17,26 +17,26 @@ import (
 
 // appendScoreBreakdown renders the optional score breakdown table.
 func appendScoreBreakdown(out *[]byte, a *Analysis) {
-	if a.HealthResult == nil || len(a.HealthResult.Signals) == 0 {
+	if a.HealthResult() == nil || len(a.HealthResult().Signals) == 0 {
 		return
 	}
 	*out = append(*out, "Score Breakdown:\n"...)
 	*out = append(*out, "  base: 100\n"...)
-	for _, signal := range a.HealthResult.Signals {
+	for _, signal := range a.HealthResult().Signals {
 		*out = fmt.Appendf(*out, "  -%d %s (%s)\n", signal.Penalty, signal.Reason, signal.Severity)
 	}
-	*out = fmt.Appendf(*out, "  final: %d\n", a.HealthScore)
+	*out = fmt.Appendf(*out, "  final: %d\n", a.HealthScore())
 }
 
 // appendConditionsSection renders the Conditions section.
 func appendConditionsSection(out *[]byte, a *Analysis, theme style.Theme, labels labels) {
 	*out = append(*out, '\n')
 	*out = fmt.Appendf(*out, "%s:\n", labels.Conditions)
-	if len(a.Conditions) == 0 {
+	if len(a.Conditions()) == 0 {
 		*out = append(*out, "  No conditions reported.\n"...)
 		return
 	}
-	for _, condition := range a.Conditions {
+	for _, condition := range a.Conditions() {
 		statusText := theme.ConditionStatus(condition.Type, condition.Status)
 		*out = fmt.Appendf(*out, "  %-15s %-7s %-24s %s\n",
 			SanitizeTerminalText(string(condition.Type)), statusText,
@@ -48,11 +48,11 @@ func appendConditionsSection(out *[]byte, a *Analysis, theme style.Theme, labels
 func appendMetricsSection(out *[]byte, a *Analysis, theme style.Theme, labels labels) {
 	*out = append(*out, '\n')
 	*out = fmt.Appendf(*out, "%s:\n", labels.Metrics)
-	if len(a.Metrics) == 0 {
+	if len(a.Metrics()) == 0 {
 		*out = append(*out, "  No current metrics reported.\n"...)
 		return
 	}
-	for _, metric := range a.Metrics {
+	for _, metric := range a.Metrics() {
 		note := theme.MetricNote(metric.Note)
 		text := formatMetricText(metric, note)
 		*out = fmt.Appendf(*out, "  - %s\n", SanitizeTerminalText(text))
@@ -61,20 +61,20 @@ func appendMetricsSection(out *[]byte, a *Analysis, theme style.Theme, labels la
 
 // appendStabilizationAndBehavior renders the stabilization window and behavior sections.
 func appendStabilizationAndBehavior(out *[]byte, a *Analysis, theme style.Theme, labels labels) {
-	if a.StabilizationRemaining != nil && *a.StabilizationRemaining > 0 {
+	if a.StabilizationRemaining() != nil && *a.StabilizationRemaining() > 0 {
 		*out = append(*out, '\n')
-		if a.StabilizationConfidence != "" {
+		if a.StabilizationConfidence() != "" {
 			explain := FormatStabilizationExplain(*a)
 			*out = fmt.Appendf(*out, "%s\n", theme.Warning.Render(explain))
 		} else {
-			progress := FormatStabilizationProgress(a.StabilizationRemaining, a.StabilizationWindowSeconds)
+			progress := FormatStabilizationProgress(a.StabilizationRemaining(), a.StabilizationWindowSeconds())
 			*out = fmt.Appendf(*out, "Stabilization: %s\n", theme.Warning.Render(progress))
 		}
 	}
-	if len(a.Behavior) > 0 {
+	if len(a.Behavior()) > 0 {
 		*out = append(*out, '\n')
 		*out = fmt.Appendf(*out, "%s:\n", labels.Behavior)
-		for _, behavior := range a.Behavior {
+		for _, behavior := range a.Behavior() {
 			*out = fmt.Appendf(*out, "  - %s\n", SanitizeTerminalText(behavior.Text))
 		}
 	}
@@ -82,12 +82,12 @@ func appendStabilizationAndBehavior(out *[]byte, a *Analysis, theme style.Theme,
 
 // appendHiddenFactors renders the hidden decision factors section when requested.
 func appendHiddenFactors(out *[]byte, a *Analysis, opts StatusTextOptions) {
-	if !opts.HiddenFactors || len(a.HiddenFactors) == 0 {
+	if !opts.HiddenFactors || len(a.HiddenFactors()) == 0 {
 		return
 	}
 	*out = append(*out, '\n')
 	*out = append(*out, "Hidden decision factors:\n"...)
-	for _, factor := range a.HiddenFactors {
+	for _, factor := range a.HiddenFactors() {
 		*out = fmt.Appendf(*out, "  - %s: %s\n", factor.Name, factor.Status)
 		for _, evidence := range factor.Evidence {
 			*out = fmt.Appendf(*out, "    evidence: %s\n", evidence)
@@ -99,7 +99,7 @@ func appendHiddenFactors(out *[]byte, a *Analysis, opts StatusTextOptions) {
 
 // appendSuggestionsSection renders the suggestions (or fix-mode) section.
 func appendSuggestionsSection(out *[]byte, a *Analysis, opts StatusTextOptions, theme style.Theme, labels labels) {
-	if len(a.Suggestions) == 0 {
+	if len(a.Suggestions()) == 0 {
 		return
 	}
 	*out = append(*out, '\n')
@@ -108,7 +108,7 @@ func appendSuggestionsSection(out *[]byte, a *Analysis, opts StatusTextOptions, 
 	} else {
 		*out = fmt.Appendf(*out, "%s:\n", labels.Suggestions)
 	}
-	for _, suggestion := range a.Suggestions {
+	for _, suggestion := range a.Suggestions() {
 		*out = fmt.Appendf(*out, "  - %s: %s", suggestion.Title, suggestion.Description)
 		if suggestion.Risk != "" {
 			*out = fmt.Appendf(*out, " (%s: %s)", labels.Risk, suggestion.Risk)
@@ -118,8 +118,8 @@ func appendSuggestionsSection(out *[]byte, a *Analysis, opts StatusTextOptions, 
 			*out = fmt.Appendf(*out, "    $ %s\n", theme.ActionLine(suggestion.Command))
 		}
 		if opts.Diff && suggestion.Patch != "" {
-			currentMin := a.Min
-			*out = fmt.Appendf(*out, "    diff:\n%s", indentBlock(SuggestionDiff(&currentMin, a.Desired, a.Max, suggestion.Patch), "      "))
+			currentMin := a.Min()
+			*out = fmt.Appendf(*out, "    diff:\n%s", indentBlock(SuggestionDiff(&currentMin, a.Desired(), a.Max(), suggestion.Patch), "      "))
 		}
 		for _, precondition := range suggestion.Preconditions {
 			*out = fmt.Appendf(*out, "    %s: %s\n", labels.Precondition, precondition)
@@ -132,15 +132,15 @@ func appendSuggestionsSection(out *[]byte, a *Analysis, opts StatusTextOptions, 
 
 // appendKEDASection renders the KEDA ScaledObject section.
 func appendKEDASection(out *[]byte, a *Analysis, theme style.Theme, labels labels) {
-	if a.KEDAInfo == nil {
+	if a.KEDAInfo() == nil {
 		return
 	}
 	*out = append(*out, '\n')
 	*out = fmt.Appendf(*out, "%s:\n", labels.KEDA)
-	*out = fmt.Appendf(*out, "  ScaledObject: %s\n", a.KEDAInfo.ScaledObjectName)
-	if len(a.KEDAInfo.Triggers) > 0 {
+	*out = fmt.Appendf(*out, "  ScaledObject: %s\n", a.KEDAInfo().ScaledObjectName)
+	if len(a.KEDAInfo().Triggers) > 0 {
 		*out = fmt.Appendf(*out, "  Triggers:\n")
-		for _, t := range a.KEDAInfo.Triggers {
+		for _, t := range a.KEDAInfo().Triggers {
 			*out = fmt.Appendf(*out, "    - %s\n", kedaTriggerLabel(t, theme))
 			if detail := kedaTriggerDetail(t); detail != "" {
 				*out = fmt.Appendf(*out, "      %s\n", detail)
@@ -150,22 +150,22 @@ func appendKEDASection(out *[]byte, a *Analysis, theme style.Theme, labels label
 			}
 		}
 	}
-	if a.KEDAInfo.Fallback != nil {
-		*out = fmt.Appendf(*out, "  Fallback: failureThreshold=%d, replicas=%d\n", a.KEDAInfo.Fallback.FailureThreshold, a.KEDAInfo.Fallback.Replicas)
+	if a.KEDAInfo().Fallback != nil {
+		*out = fmt.Appendf(*out, "  Fallback: failureThreshold=%d, replicas=%d\n", a.KEDAInfo().Fallback.FailureThreshold, a.KEDAInfo().Fallback.Replicas)
 	}
-	if a.KEDAInfo.PollingInterval != nil {
-		*out = fmt.Appendf(*out, "  Polling interval: %ds\n", *a.KEDAInfo.PollingInterval)
+	if a.KEDAInfo().PollingInterval != nil {
+		*out = fmt.Appendf(*out, "  Polling interval: %ds\n", *a.KEDAInfo().PollingInterval)
 	}
-	if a.KEDAInfo.CooldownPeriod != nil {
-		*out = fmt.Appendf(*out, "  Cooldown period: %ds\n", *a.KEDAInfo.CooldownPeriod)
+	if a.KEDAInfo().CooldownPeriod != nil {
+		*out = fmt.Appendf(*out, "  Cooldown period: %ds\n", *a.KEDAInfo().CooldownPeriod)
 	}
-	if a.KEDAInfo.MinReplicaCount != nil {
-		*out = fmt.Appendf(*out, "  Min replica count: %d\n", *a.KEDAInfo.MinReplicaCount)
+	if a.KEDAInfo().MinReplicaCount != nil {
+		*out = fmt.Appendf(*out, "  Min replica count: %d\n", *a.KEDAInfo().MinReplicaCount)
 	}
-	if a.KEDAInfo.MaxReplicaCount != nil {
-		*out = fmt.Appendf(*out, "  Max replica count: %d\n", *a.KEDAInfo.MaxReplicaCount)
+	if a.KEDAInfo().MaxReplicaCount != nil {
+		*out = fmt.Appendf(*out, "  Max replica count: %d\n", *a.KEDAInfo().MaxReplicaCount)
 	}
-	for _, line := range a.KEDAInfo.Lines {
+	for _, line := range a.KEDAInfo().Lines {
 		*out = fmt.Appendf(*out, "  - %s\n", theme.InterpretationLine(line))
 	}
 }
@@ -205,36 +205,36 @@ func kedaTriggerDetail(t keda.TriggerSummary) string {
 
 // appendVPASection renders the VPA conflict section.
 func appendVPASection(out *[]byte, a *Analysis, theme style.Theme) {
-	if a.VPAConflict == nil {
+	if a.VPAConflict() == nil {
 		return
 	}
 	*out = append(*out, '\n')
 	*out = fmt.Appendf(*out, "VPA:\n")
-	*out = fmt.Appendf(*out, "  %s targets %s/%s", a.VPAConflict.VPAName, a.VPAConflict.TargetKind, a.VPAConflict.TargetName)
-	if a.VPAConflict.UpdateMode != "" {
-		*out = fmt.Appendf(*out, " updateMode=%s", a.VPAConflict.UpdateMode)
+	*out = fmt.Appendf(*out, "  %s targets %s/%s", a.VPAConflict().VPAName, a.VPAConflict().TargetKind, a.VPAConflict().TargetName)
+	if a.VPAConflict().UpdateMode != "" {
+		*out = fmt.Appendf(*out, " updateMode=%s", a.VPAConflict().UpdateMode)
 	}
 	*out = append(*out, '\n')
-	if len(a.VPAConflict.ControlledResources) > 0 {
-		*out = fmt.Appendf(*out, "  Controlled resources: %s\n", strings.Join(a.VPAConflict.ControlledResources, ", "))
+	if len(a.VPAConflict().ControlledResources) > 0 {
+		*out = fmt.Appendf(*out, "  Controlled resources: %s\n", strings.Join(a.VPAConflict().ControlledResources, ", "))
 	}
-	for _, rec := range a.VPAConflict.Recommendations {
+	for _, rec := range a.VPAConflict().Recommendations {
 		*out = fmt.Appendf(*out, "  - %s/%s target=%s lower=%s upper=%s\n", rec.Container, rec.Resource, emptyAsUnknown(rec.Target), emptyAsUnknown(rec.Lower), emptyAsUnknown(rec.Upper))
 	}
-	*out = fmt.Appendf(*out, "  warning: %s\n", theme.ActionLine(a.VPAConflict.Warning))
+	*out = fmt.Appendf(*out, "  warning: %s\n", theme.ActionLine(a.VPAConflict().Warning))
 }
 
 // appendMetricsDiagnosticsSection renders the metrics pipeline diagnostics section.
 func appendMetricsDiagnosticsSection(out *[]byte, a *Analysis, theme style.Theme, labels labels) {
-	if a.MetricsDiagnostics == nil {
+	if a.MetricsDiagnostics() == nil {
 		return
 	}
 	*out = append(*out, '\n')
 	*out = fmt.Appendf(*out, "%s:\n", labels.MetricsDiagnostics)
-	*out = fmt.Appendf(*out, "  %s: %s\n", labels.Health, metricsDiagnosticsStatus(a.MetricsDiagnostics.OverallStatus, theme))
-	if len(a.MetricsDiagnostics.PerMetricChecks) > 0 {
+	*out = fmt.Appendf(*out, "  %s: %s\n", labels.Health, metricsDiagnosticsStatus(a.MetricsDiagnostics().OverallStatus, theme))
+	if len(a.MetricsDiagnostics().PerMetricChecks) > 0 {
 		*out = append(*out, "  Checks:\n"...)
-		for _, check := range a.MetricsDiagnostics.PerMetricChecks {
+		for _, check := range a.MetricsDiagnostics().PerMetricChecks {
 			indicator := metricsDiagnosticsIndicator(check.Status, theme)
 			*out = fmt.Appendf(*out, "    - %s %s/%s: %s\n", indicator, check.MetricType, check.MetricName, check.Details)
 			if check.Remediation != "" {
@@ -242,9 +242,9 @@ func appendMetricsDiagnosticsSection(out *[]byte, a *Analysis, theme style.Theme
 			}
 		}
 	}
-	if len(a.MetricsDiagnostics.RemediationSteps) > 0 {
+	if len(a.MetricsDiagnostics().RemediationSteps) > 0 {
 		*out = append(*out, "  Remediation:\n"...)
-		for _, step := range a.MetricsDiagnostics.RemediationSteps {
+		for _, step := range a.MetricsDiagnostics().RemediationSteps {
 			*out = fmt.Appendf(*out, "    - %s\n", step)
 		}
 	}
@@ -252,12 +252,12 @@ func appendMetricsDiagnosticsSection(out *[]byte, a *Analysis, theme style.Theme
 
 // appendMetricFreshnessSection renders the metric freshness section.
 func appendMetricFreshnessSection(out *[]byte, a *Analysis, theme style.Theme, labels labels) {
-	if len(a.MetricFreshnessEntries) == 0 {
+	if len(a.MetricFreshnessEntries()) == 0 {
 		return
 	}
 	*out = append(*out, '\n')
 	*out = fmt.Appendf(*out, "%s:\n", labels.MetricFreshness)
-	for _, mf := range a.MetricFreshnessEntries {
+	for _, mf := range a.MetricFreshnessEntries() {
 		appendMetricFreshnessEntry(out, mf, theme)
 	}
 }
@@ -315,12 +315,12 @@ func appendMetricFreshnessEntry(out *[]byte, mf MetricFreshness, theme style.The
 
 // appendResourceCheckSection renders the resource-consistency warnings section.
 func appendResourceCheckSection(out *[]byte, a *Analysis) {
-	if a.ResourceCheck == nil || len(a.ResourceCheck.Warnings) == 0 {
+	if a.ResourceCheck() == nil || len(a.ResourceCheck().Warnings) == 0 {
 		return
 	}
 	*out = append(*out, '\n')
 	*out = append(*out, "Resource Check:\n"...)
-	for _, w := range a.ResourceCheck.Warnings {
+	for _, w := range a.ResourceCheck().Warnings {
 		indicator := "warning"
 		if w.Severity == "error" {
 			indicator = "error"
@@ -331,12 +331,12 @@ func appendResourceCheckSection(out *[]byte, a *Analysis) {
 
 // appendPodAnalysisSection renders the pod-level analysis section.
 func appendPodAnalysisSection(out *[]byte, a *Analysis, labels labels) {
-	if a.PodAnalysis == nil {
+	if a.PodAnalysis() == nil {
 		return
 	}
 	*out = append(*out, '\n')
 	*out = fmt.Appendf(*out, "%s:\n", labels.PodAnalysis)
-	pa := a.PodAnalysis
+	pa := a.PodAnalysis()
 	*out = fmt.Appendf(*out, "  Total: %d  Ready: %d  Unready: %d  Pending: %d  Terminating: %d\n",
 		pa.Total, pa.Ready, pa.Unready, pa.Pending, pa.Terminating)
 	for _, issue := range pa.ResourceIssues {
@@ -351,12 +351,12 @@ func appendPodAnalysisSection(out *[]byte, a *Analysis, labels labels) {
 
 // appendSimulationSection renders the --simulate output section.
 func appendSimulationSection(out *[]byte, a *Analysis, theme style.Theme, labels labels) {
-	if a.FlappingSimulation == nil {
+	if a.FlappingSimulation() == nil {
 		return
 	}
 	*out = append(*out, '\n')
 	*out = fmt.Appendf(*out, "%s (--simulate):\n", labels.Simulation)
-	sim := a.FlappingSimulation
+	sim := a.FlappingSimulation()
 	*out = fmt.Appendf(*out, "  Parameter: %s\n", sim.Parameter)
 	*out = fmt.Appendf(*out, "  Original: %s  Simulated: %s\n", sim.OriginalValue, sim.SimulatedValue)
 	*out = fmt.Appendf(*out, "  Before: desired=%d health=%s(%d)  After: desired=%d health=%s(%d)\n",
@@ -379,10 +379,10 @@ func appendSimulationSection(out *[]byte, a *Analysis, theme style.Theme, labels
 
 // appendCapacityContextSection renders the capacity-context section.
 func appendCapacityContextSection(out *[]byte, a *Analysis, theme style.Theme, labels labels) {
-	if a.CapacityContext == nil {
+	if a.CapacityContext() == nil {
 		return
 	}
-	cc := a.CapacityContext
+	cc := a.CapacityContext()
 	if len(cc.PendingPods) == 0 && len(cc.QuotaConstraints) == 0 && len(cc.PDBInterference) == 0 && len(cc.NodeHints) == 0 {
 		return
 	}
@@ -447,12 +447,12 @@ func appendEventsSection(out *[]byte, report StatusReport, labels labels) {
 // Without this section the warnings only surfaced in JSON/YAML output, leaving
 // plain-text users unaware of why an expected piece of analysis was missing.
 func appendWarningsSection(out *[]byte, a *Analysis, labels labels) {
-	if len(a.Warnings) == 0 {
+	if len(a.Warnings()) == 0 {
 		return
 	}
 	*out = append(*out, '\n')
 	*out = fmt.Appendf(*out, "%s:\n", labels.Warning)
-	for _, warning := range a.Warnings {
+	for _, warning := range a.Warnings() {
 		*out = fmt.Appendf(*out, "  - %s\n", SanitizeTerminalText(warning))
 	}
 }

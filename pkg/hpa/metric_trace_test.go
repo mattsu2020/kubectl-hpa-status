@@ -633,11 +633,11 @@ func TestDetectMetricDecisionTrace(t *testing.T) {
 			a := Analysis{}
 			result := detectMetricDecisionTrace(a, tt.hpa, tt.minReplicas)
 
-			if tt.wantTrace && result.MetricDecisionTrace == nil {
+			if tt.wantTrace && result.MetricDecisionTrace() == nil {
 				t.Fatal("expected MetricDecisionTrace to be set, got nil")
 			}
-			if !tt.wantTrace && result.MetricDecisionTrace != nil {
-				t.Fatalf("expected no MetricDecisionTrace, got %+v", result.MetricDecisionTrace)
+			if !tt.wantTrace && result.MetricDecisionTrace() != nil {
+				t.Fatalf("expected no MetricDecisionTrace, got %+v", result.MetricDecisionTrace())
 			}
 		})
 	}

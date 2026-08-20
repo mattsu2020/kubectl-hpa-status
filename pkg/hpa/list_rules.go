@@ -10,40 +10,40 @@ import (
 
 // NewListItem converts an Analysis into a compact ListItem for list output.
 func NewListItem(src Analysis) ListItem {
-	errors, limiteds := classifyListConditions(src.Conditions)
-	if src.Current == src.Desired && src.Desired == src.Max {
+	errors, limiteds := classifyListConditions(src.Conditions())
+	if src.Current() == src.Desired() && src.Desired() == src.Max() {
 		limiteds = append(limiteds, "LIMITED: maxReplicas")
 	}
 
-	health := deriveListHealth(src.Health, errors, limiteds)
+	health := deriveListHealth(src.Health(), errors, limiteds)
 	issue := joinListIssues(errors, limiteds)
-	conditions := compactConditions(src.Conditions)
-	metrics := compactMetrics(src.Metrics)
-	behavior := compactBehavior(src.Behavior)
+	conditions := compactConditions(src.Conditions())
+	metrics := compactMetrics(src.Metrics())
+	behavior := compactBehavior(src.Behavior())
 
 	return ListItem{
-		Namespace:          src.Namespace,
-		Name:               src.Name,
-		Target:             src.Target,
-		Current:            src.Current,
-		Desired:            src.Desired,
-		Min:                src.Min,
-		Max:                src.Max,
-		Summary:            src.Summary,
-		SummaryKey:         src.SummaryKey,
+		Namespace:          src.Namespace(),
+		Name:               src.Name(),
+		Target:             src.Target(),
+		Current:            src.Current(),
+		Desired:            src.Desired(),
+		Min:                src.Min(),
+		Max:                src.Max(),
+		Summary:            src.Summary(),
+		SummaryKey:         src.SummaryKey(),
 		Health:             health,
-		HealthScore:        src.HealthScore,
+		HealthScore:        src.HealthScore(),
 		Issue:              issue,
 		Metrics:            metrics,
 		Behavior:           behavior,
 		Conditions:         conditions,
-		CreationTimestamp:  src.CreationTimestamp,
-		Stabilizing:        src.StabilizationRemaining != nil && *src.StabilizationRemaining > 0,
-		StabilizationLabel: FormatCountdownBadge(src.StabilizationRemaining),
-		ChurnLevel:         churnLevelFromAnalysis(src.ChurnAnalysis),
-		ChurnScore:         churnScoreFromAnalysis(src.ChurnAnalysis),
-		TrendSparkline:     trendSparklineFromAnalysis(src.HealthTrend),
-		TrendFlapping:      trendFlappingFromAnalysis(src.HealthTrend),
+		CreationTimestamp:  src.CreationTimestamp(),
+		Stabilizing:        src.StabilizationRemaining() != nil && *src.StabilizationRemaining() > 0,
+		StabilizationLabel: FormatCountdownBadge(src.StabilizationRemaining()),
+		ChurnLevel:         churnLevelFromAnalysis(src.ChurnAnalysis()),
+		ChurnScore:         churnScoreFromAnalysis(src.ChurnAnalysis()),
+		TrendSparkline:     trendSparklineFromAnalysis(src.HealthTrend()),
+		TrendFlapping:      trendFlappingFromAnalysis(src.HealthTrend()),
 	}
 }
 
