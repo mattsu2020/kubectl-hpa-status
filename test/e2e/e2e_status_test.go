@@ -466,14 +466,14 @@ func TestE2E_MultiMetricWinner(t *testing.T) {
 	multiRaw := runStatusJSON(t, kubeconfig, nsName, "multi-hpa", "--explain")
 	assertStatusReportShape(t, multiRaw, "multi-hpa")
 	multiReport := decodeStatusReport(t, multiRaw)
-	if multiReport.Analysis.ImpactMetric == nil {
+	if multiReport.Analysis.ImpactMetric() == nil {
 		t.Fatal("expected Analysis.ImpactMetric to be populated for a multi-metric HPA")
 	}
-	if multiReport.Analysis.ImpactMetric.Name != "cpu" {
-		t.Errorf("expected winner metric cpu, got %q", multiReport.Analysis.ImpactMetric.Name)
+	if multiReport.Analysis.ImpactMetric().Name != "cpu" {
+		t.Errorf("expected winner metric cpu, got %q", multiReport.Analysis.ImpactMetric().Name)
 	}
-	if len(multiReport.Analysis.Metrics) < 2 {
-		t.Errorf("expected at least 2 metrics in Analysis.Metrics, got %d", len(multiReport.Analysis.Metrics))
+	if len(multiReport.Analysis.Metrics()) < 2 {
+		t.Errorf("expected at least 2 metrics in Analysis.Metrics, got %d", len(multiReport.Analysis.Metrics()))
 	}
 }
 
@@ -514,16 +514,16 @@ func TestE2E_StabilizationWindow(t *testing.T) {
 	assertStatusReportShape(t, stabRaw, "stabilized-hpa")
 	stabReport := decodeStatusReport(t, stabRaw)
 	a := stabReport.Analysis
-	if a.StabilizationWindowSeconds == nil {
+	if a.StabilizationWindowSeconds() == nil {
 		t.Fatal("expected Analysis.StabilizationWindowSeconds to be populated for a stabilized HPA")
 	}
-	if *a.StabilizationWindowSeconds != 300 {
-		t.Errorf("StabilizationWindowSeconds = %d, want 300", *a.StabilizationWindowSeconds)
+	if *a.StabilizationWindowSeconds() != 300 {
+		t.Errorf("StabilizationWindowSeconds = %d, want 300", *a.StabilizationWindowSeconds())
 	}
-	if a.StabilizationSource != "scaleDown" {
-		t.Errorf("StabilizationSource = %q, want %q", a.StabilizationSource, "scaleDown")
+	if a.StabilizationSource() != "scaleDown" {
+		t.Errorf("StabilizationSource = %q, want %q", a.StabilizationSource(), "scaleDown")
 	}
-	if a.StabilizationConfidence == "" {
+	if a.StabilizationConfidence() == "" {
 		t.Error("StabilizationConfidence is empty; expected a confidence label for stabilization estimates")
 	}
 }
@@ -669,31 +669,31 @@ func TestE2E_JSONTypedDecode(t *testing.T) {
 	a := report.Analysis
 
 	// Identity fields must round-trip exactly.
-	if a.Name != "typed-hpa" {
-		t.Errorf("expected Analysis.Name=%q, got %q", "typed-hpa", a.Name)
+	if a.Name() != "typed-hpa" {
+		t.Errorf("expected Analysis.Name=%q, got %q", "typed-hpa", a.Name())
 	}
-	if a.Namespace != nsName {
-		t.Errorf("expected Analysis.Namespace=%q, got %q", nsName, a.Namespace)
+	if a.Namespace() != nsName {
+		t.Errorf("expected Analysis.Namespace=%q, got %q", nsName, a.Namespace())
 	}
 
 	// Health must be a non-empty known state.
-	switch a.Health {
+	switch a.Health() {
 	case "OK", "ERROR", "LIMITED", "STABILIZED":
 		// ok
 	default:
-		t.Errorf("expected Analysis.Health to be a known state, got %q", a.Health)
+		t.Errorf("expected Analysis.Health to be a known state, got %q", a.Health())
 	}
 
 	// HealthScore must be in [0, 100].
-	if a.HealthScore < 0 || a.HealthScore > 100 {
-		t.Errorf("expected HealthScore in [0,100], got %d", a.HealthScore)
+	if a.HealthScore() < 0 || a.HealthScore() > 100 {
+		t.Errorf("expected HealthScore in [0,100], got %d", a.HealthScore())
 	}
 
 	// The healthy HPA fixture has one CPU resource metric.
-	if len(a.Metrics) == 0 {
+	if len(a.Metrics()) == 0 {
 		t.Error("expected at least one Analysis.Metrics entry, got empty slice")
 	} else {
-		m := a.Metrics[0]
+		m := a.Metrics()[0]
 		if m.Type != "Resource" {
 			t.Errorf("expected first metric Type=%q, got %q", "Resource", m.Type)
 		}
@@ -703,15 +703,15 @@ func TestE2E_JSONTypedDecode(t *testing.T) {
 	}
 
 	// The healthy HPA fixture reports current=3, desired=5.
-	if a.Current != 3 {
-		t.Errorf("expected Analysis.Current=3, got %d", a.Current)
+	if a.Current() != 3 {
+		t.Errorf("expected Analysis.Current=3, got %d", a.Current())
 	}
-	if a.Desired != 5 {
-		t.Errorf("expected Analysis.Desired=5, got %d", a.Desired)
+	if a.Desired() != 5 {
+		t.Errorf("expected Analysis.Desired=5, got %d", a.Desired())
 	}
 
 	// --explain populates the structured interpretation.
-	if len(a.StructuredInterpretation) == 0 {
+	if len(a.StructuredInterpretation()) == 0 {
 		t.Error("expected non-empty StructuredInterpretation from --explain")
 	}
 }

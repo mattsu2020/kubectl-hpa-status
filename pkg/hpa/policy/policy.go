@@ -155,7 +155,7 @@ func validateRuleParameters(rule Rule) error {
 
 	switch rule.ID {
 	case "stabilization-window":
-		return validateIntRangePair(rule.Parameters, "min", 60, "max", 3600, 0, math.MaxInt32)
+		return validateIntRangePair(rule.Parameters, 60, 3600, 0, math.MaxInt32)
 	case "max-replicas-multiplier":
 		return validatePositiveInt(rule.Parameters, "multiplier", 3)
 	case "max-replicas-from-current":
@@ -168,7 +168,7 @@ func validateRuleParameters(rule Rule) error {
 		}
 		return validatePositiveInt(rule.Parameters, "minMetrics", 1)
 	case "target-utilization-range":
-		return validateIntRangePair(rule.Parameters, "min", 30, "max", 90, 1, 100)
+		return validateIntRangePair(rule.Parameters, 30, 90, 1, 100)
 	case "replica-range":
 		return validatePositiveInt(rule.Parameters, "maxRatio", 10)
 	default:
@@ -187,20 +187,22 @@ func validatePositiveInt(params Params, key string, defaultValue int64) error {
 	return nil
 }
 
-func validateIntRangePair(params Params, minKey string, minDefault int64, maxKey string, maxDefault, lower, upper int64) error {
-	minimum, err := parameterInt64(params, minKey, minDefault)
+// validateIntRangePair validates the "min"/"max" parameter pair shared by
+// the range rules; the keys are fixed so error messages stay stable.
+func validateIntRangePair(params Params, minDefault, maxDefault, lower, upper int64) error {
+	minimum, err := parameterInt64(params, "min", minDefault)
 	if err != nil {
 		return err
 	}
-	maximum, err := parameterInt64(params, maxKey, maxDefault)
+	maximum, err := parameterInt64(params, "max", maxDefault)
 	if err != nil {
 		return err
 	}
 	if minimum < lower || minimum > upper || maximum < lower || maximum > upper {
-		return fmt.Errorf("parameters %q and %q must be between %d and %d", minKey, maxKey, lower, upper)
+		return fmt.Errorf("parameters %q and %q must be between %d and %d", "min", "max", lower, upper)
 	}
 	if minimum > maximum {
-		return fmt.Errorf("parameter %q must not exceed %q", minKey, maxKey)
+		return fmt.Errorf("parameter %q must not exceed %q", "min", "max")
 	}
 	return nil
 }

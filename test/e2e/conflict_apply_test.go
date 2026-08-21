@@ -131,22 +131,22 @@ func TestE2E_VPAConflict(t *testing.T) {
 	assertStatusReportShape(t, raw, "vpa-conflict-hpa")
 
 	a := decodeStatusReport(t, raw).Analysis
-	if a.VPAConflict == nil {
+	if a.VPAConflict() == nil {
 		t.Fatal("expected Analysis.VPAConflict to be populated with --vpa=on and a conflicting VPA present")
 	}
-	if a.VPAConflict.VPAName != "vpa-conflict-vpa" {
-		t.Errorf("VPAConflict.VPAName = %q, want %q", a.VPAConflict.VPAName, "vpa-conflict-vpa")
+	if a.VPAConflict().VPAName != "vpa-conflict-vpa" {
+		t.Errorf("VPAConflict.VPAName = %q, want %q", a.VPAConflict().VPAName, "vpa-conflict-vpa")
 	}
-	if a.VPAConflict.Warning == "" {
+	if a.VPAConflict().Warning == "" {
 		t.Error("VPAConflict.Warning is empty; expected a human-readable warning string")
 	}
-	if !strings.Contains(a.VPAConflict.Warning, "vpa-conflict-vpa") {
-		t.Errorf("VPAConflict.Warning %q does not mention the VPA name", a.VPAConflict.Warning)
+	if !strings.Contains(a.VPAConflict().Warning, "vpa-conflict-vpa") {
+		t.Errorf("VPAConflict.Warning %q does not mention the VPA name", a.VPAConflict().Warning)
 	}
 
 	// VPA conflict carries a -20 health penalty; verify it was applied.
-	if a.Health != "LIMITED" {
-		t.Errorf("expected Health=LIMITED for VPA conflict, got %q (score=%d)", a.Health, a.HealthScore)
+	if a.Health() != "LIMITED" {
+		t.Errorf("expected Health=LIMITED for VPA conflict, got %q (score=%d)", a.Health(), a.HealthScore())
 	}
 
 	// The text path should also surface the conflict via --explain output.
@@ -185,8 +185,8 @@ func TestE2E_VPANoConflict(t *testing.T) {
 	assertStatusReportShape(t, raw, "vpa-clean-hpa")
 
 	a := decodeStatusReport(t, raw).Analysis
-	if a.VPAConflict != nil {
-		t.Errorf("expected nil VPAConflict with no VPA present, got %+v", a.VPAConflict)
+	if a.VPAConflict() != nil {
+		t.Errorf("expected nil VPAConflict with no VPA present, got %+v", a.VPAConflict())
 	}
 }
 
