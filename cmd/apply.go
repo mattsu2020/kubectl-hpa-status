@@ -28,25 +28,9 @@ func applySuggestionsInNamespace(ctx context.Context, out io.Writer, opts *optio
 	if len(patches) == 0 {
 		return []string{"No applicable HPA patch was suggested."}, nil
 	}
-	// applySuggestions returns (messages, err) rather than a single error,
-	// so it surfaces the raw client-creation error to the caller instead of
-	// the standard wrapper. The caller wraps it for display.
-	client, err := opts.NewClient()
-	if err != nil {
-		return nil, err
-	}
-	if namespace == "" {
-		namespace = client.Namespace
-	}
 
-	// Fetch current HPA state once for diff display.
-	current, err := client.Interface.AutoscalingV2().
-		HorizontalPodAutoscalers(namespace).
-		Get(ctx, name, metav1.GetOptions{})
+	client, namespace, current, err := applyTarget(ctx, opts, namespace, name, patches)
 	if err != nil {
-		return nil, wrapHPALookupError(namespace, name, err)
-	}
-	if err := verifySuggestionSource(current, patches); err != nil {
 		return nil, err
 	}
 
@@ -86,6 +70,34 @@ func applySuggestionsInNamespace(ctx context.Context, out io.Writer, opts *optio
 	}
 
 	return executePatches(ctx, out, client, namespace, name, patches, opts.AllowPartial, current.ResourceVersion)
+}
+
+// applyTarget resolves the client and default namespace, fetches the current
+// HPA state for diff display, and verifies the suggestions still describe
+// that state (UID and resourceVersion freshness).
+func applyTarget(ctx context.Context, opts *options, namespace, name string, patches []hpaanalysis.Suggestion) (*kube.Client, string, *autoscalingv2.HorizontalPodAutoscaler, error) {
+	// applySuggestions returns (messages, err) rather than a single error,
+	// so it surfaces the raw client-creation error to the caller instead of
+	// the standard wrapper. The caller wraps it for display.
+	client, err := opts.NewClient()
+	if err != nil {
+		return nil, "", nil, err
+	}
+	if namespace == "" {
+		namespace = client.Namespace
+	}
+
+	// Fetch current HPA state once for diff display.
+	current, err := client.Interface.AutoscalingV2().
+		HorizontalPodAutoscalers(namespace).
+		Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, "", nil, wrapHPALookupError(namespace, name, err)
+	}
+	if err := verifySuggestionSource(current, patches); err != nil {
+		return nil, "", nil, err
+	}
+	return client, namespace, current, nil
 }
 
 func verifySuggestionSource(current *autoscalingv2.HorizontalPodAutoscaler, suggestions []hpaanalysis.Suggestion) error {

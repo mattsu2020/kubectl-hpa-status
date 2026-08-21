@@ -107,48 +107,48 @@ func assertStatusReportShape(t *testing.T, raw string, wantName string) {
 	}
 
 	// Identity.
-	if a.Name == "" {
+	if a.Name() == "" {
 		t.Error("Analysis.Name is empty")
 	}
-	if wantName != "" && a.Name != wantName {
-		t.Errorf("Analysis.Name = %q, want %q", a.Name, wantName)
+	if wantName != "" && a.Name() != wantName {
+		t.Errorf("Analysis.Name = %q, want %q", a.Name(), wantName)
 	}
-	if a.Namespace == "" {
+	if a.Namespace() == "" {
 		t.Error("Analysis.Namespace is empty")
 	}
-	if a.Target == "" {
+	if a.Target() == "" {
 		t.Error("Analysis.Target (scaleTargetRef) is empty")
 	}
 
 	// Health state must be in the closed known set.
-	if !validHealthStates[a.Health] {
-		t.Errorf("Analysis.Health = %q, not a known state %v", a.Health, validHealthStates)
+	if !validHealthStates[a.Health()] {
+		t.Errorf("Analysis.Health = %q, not a known state %v", a.Health(), validHealthStates)
 	}
 
 	// Health score is clamped to [0, 100] by the model.
-	if a.HealthScore < 0 || a.HealthScore > 100 {
-		t.Errorf("Analysis.HealthScore = %d, want range [0, 100]", a.HealthScore)
+	if a.HealthScore() < 0 || a.HealthScore() > 100 {
+		t.Errorf("Analysis.HealthScore = %d, want range [0, 100]", a.HealthScore())
 	}
 
 	// Summary is always populated by the analyzer.
-	if a.Summary == "" {
+	if a.Summary() == "" {
 		t.Error("Analysis.Summary is empty")
 	}
 
 	// Conditions and metrics slices must be present (possibly empty for
 	// metrics on a broken HPA, but the slice itself must round-trip).
-	if a.Conditions == nil {
+	if a.Conditions() == nil {
 		t.Error("Analysis.Conditions is nil; expected an initialized slice")
 	}
-	if len(a.Conditions) == 0 {
+	if len(a.Conditions()) == 0 {
 		t.Error("Analysis.Conditions is empty; every HPA has at least one condition")
 	}
-	if a.Metrics == nil {
+	if a.Metrics() == nil {
 		t.Error("Analysis.Metrics is nil; expected an initialized slice")
 	}
 
 	// Each condition must carry a Type and Status at minimum.
-	for i, c := range a.Conditions {
+	for i, c := range a.Conditions() {
 		if c.Type == "" {
 			t.Errorf("Conditions[%d].Type is empty", i)
 		}
@@ -158,7 +158,7 @@ func assertStatusReportShape(t *testing.T, raw string, wantName string) {
 	}
 
 	// Each metric must carry a Type and non-empty Text.
-	for i, m := range a.Metrics {
+	for i, m := range a.Metrics() {
 		if m.Type == "" {
 			t.Errorf("Metrics[%d].Type is empty", i)
 		}

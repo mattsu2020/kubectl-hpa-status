@@ -290,18 +290,18 @@ func TestE2E_MaxReplicasCap(t *testing.T) {
 	report := decodeStatusReport(t, raw)
 	a := report.Analysis
 
-	if a.Health != "LIMITED" {
-		t.Errorf("expected Health=LIMITED at maxReplicas, got %q (score=%d)", a.Health, a.HealthScore)
+	if a.Health() != "LIMITED" {
+		t.Errorf("expected Health=LIMITED at maxReplicas, got %q (score=%d)", a.Health(), a.HealthScore())
 	}
 
 	// Summary must announce the maxReplicas cap.
-	if !strings.Contains(a.Summary, "maxReplicas") {
-		t.Errorf("expected Summary to mention maxReplicas, got %q", a.Summary)
+	if !strings.Contains(a.Summary(), "maxReplicas") {
+		t.Errorf("expected Summary to mention maxReplicas, got %q", a.Summary())
 	}
 
 	// ScalingLimited condition should be present once the controller reports it.
-	if !conditionPresent(a.Conditions, "ScalingLimited") {
-		t.Logf("Note: ScalingLimited condition not present yet (controller may still be converging); summary=%q", a.Summary)
+	if !conditionPresent(a.Conditions(), "ScalingLimited") {
+		t.Logf("Note: ScalingLimited condition not present yet (controller may still be converging); summary=%q", a.Summary())
 	}
 }
 
