@@ -23,7 +23,7 @@ const (
 // Empty or unknown values are returned as HealthState(a.Health) unchanged so
 // callers can compare against the Health* constants.
 func (a Analysis) HealthState() HealthState {
-	return HealthState(a.Health())
+	return HealthState(a.Decision.Health)
 }
 
 // HealthSignal records a single penalty signal that contributed to the final

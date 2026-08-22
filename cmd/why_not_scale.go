@@ -54,13 +54,13 @@ func runWhyNotScale(ctx context.Context, out io.Writer, opts *options, names []s
 // below the gocyclo threshold.
 func collectWhyNotScaleObservations(analysis hpaanalysis.Analysis) []string {
 	var observed []string
-	observed = appendIfNotEmpty(observed, analysis.Summary())
-	for _, cond := range analysis.Conditions() {
+	observed = appendIfNotEmpty(observed, analysis.Decision.Summary)
+	for _, cond := range analysis.Conditions.Conditions {
 		if cond.Status == "True" || cond.Status == "False" {
 			observed = append(observed, fmt.Sprintf("%s=%s: %s", cond.Type, cond.Status, cond.Reason))
 		}
 	}
-	for _, metric := range analysis.Metrics() {
+	for _, metric := range analysis.Metrics.Metrics {
 		line := metric.Text
 		if line == "" {
 			line = fmt.Sprintf("%s %s current=%s target=%s", metric.Type, metric.Name, metric.Current, metric.Target)
@@ -69,14 +69,14 @@ func collectWhyNotScaleObservations(analysis hpaanalysis.Analysis) []string {
 			observed = append(observed, line)
 		}
 	}
-	if analysis.Desired() == analysis.Max() && analysis.Max() > 0 {
+	if analysis.Replicas.Desired == analysis.Replicas.Max && analysis.Replicas.Max > 0 {
 		observed = append(observed, "maxReplicas may be capping scale-up")
 	}
-	if analysis.ImpactMetric() != nil && analysis.ImpactMetric().Ratio > 1.0 {
+	if analysis.Decision.ImpactMetric != nil && analysis.Decision.ImpactMetric.Ratio > 1.0 {
 		observed = append(observed,
-			fmt.Sprintf("Resource metric %s ratio=%.2f", analysis.ImpactMetric().Name, analysis.ImpactMetric().Ratio))
+			fmt.Sprintf("Resource metric %s ratio=%.2f", analysis.Decision.ImpactMetric.Name, analysis.Decision.ImpactMetric.Ratio))
 	}
-	for _, warning := range analysis.Warnings() {
+	for _, warning := range analysis.Actions.Warnings {
 		observed = appendIfNotEmpty(observed, warning)
 	}
 	if len(observed) == 0 {
@@ -87,15 +87,15 @@ func collectWhyNotScaleObservations(analysis hpaanalysis.Analysis) []string {
 
 func buildWhyNotScaleReport(analysis hpaanalysis.Analysis) whyNotScaleReport {
 	report := whyNotScaleReport{
-		Namespace: analysis.Namespace(),
-		Name:      analysis.Name(),
-		Target:    analysis.Target(),
-		Summary:   analysis.Summary(),
+		Namespace: analysis.Meta.Namespace,
+		Name:      analysis.Meta.Name,
+		Target:    analysis.Meta.Target,
+		Summary:   analysis.Decision.Summary,
 		Unknown: []string{
 			"controller-internal per-metric replica recommendations are not exposed through the HPA API",
 		},
 		NextChecks: []string{
-			fmt.Sprintf("kubectl describe hpa %s -n %s", analysis.Name(), analysis.Namespace()),
+			fmt.Sprintf("kubectl describe hpa %s -n %s", analysis.Meta.Name, analysis.Meta.Namespace),
 		},
 	}
 

@@ -15,31 +15,31 @@ import (
 func writeHTMLOverview(out *strings.Builder, a hpa.Analysis) {
 	out.WriteString(`<table class="overview">
 <tr><th>Target</th><td>`)
-	out.WriteString(rendutil.HTMLEscape(a.Target()))
+	out.WriteString(rendutil.HTMLEscape(a.Meta.Target))
 	out.WriteString("</td></tr>\n<tr><th>Health</th><td>")
-	out.WriteString(rendutil.HTMLHealthBadge(a.Health(), a.HealthScore()))
+	out.WriteString(rendutil.HTMLHealthBadge(a.Decision.Health, a.Decision.HealthScore))
 	out.WriteString("</td></tr>\n<tr><th>Replicas</th><td>")
-	out.WriteString(fmt.Sprintf("current=%d desired=%d min=%d max=%d", a.Current(), a.Desired(), a.Min(), a.Max()))
+	out.WriteString(fmt.Sprintf("current=%d desired=%d min=%d max=%d", a.Replicas.Current, a.Replicas.Desired, a.Replicas.Min, a.Replicas.Max))
 	out.WriteString("</td></tr>\n</table>\n")
 }
 
 func writeHTMLSummary(out *strings.Builder, a hpa.Analysis) {
-	if a.Summary() == "" {
+	if a.Decision.Summary == "" {
 		return
 	}
 	out.WriteString("<h2>Summary</h2>\n<p>")
-	out.WriteString(rendutil.HTMLEscape(a.Summary()))
+	out.WriteString(rendutil.HTMLEscape(a.Decision.Summary))
 	out.WriteString("</p>\n")
 }
 
 func writeHTMLConditions(out *strings.Builder, a hpa.Analysis) {
 	out.WriteString("<h2>Conditions</h2>\n")
-	if len(a.Conditions()) == 0 {
+	if len(a.Conditions.Conditions) == 0 {
 		out.WriteString("<p><em>No conditions reported.</em></p>\n")
 		return
 	}
 	out.WriteString("<table>\n<tr><th>Type</th><th>Status</th><th>Reason</th><th>Message</th></tr>\n")
-	for _, c := range a.Conditions() {
+	for _, c := range a.Conditions.Conditions {
 		out.WriteString("<tr><td>")
 		out.WriteString(rendutil.HTMLEscape(c.Type))
 		out.WriteString("</td><td>")
@@ -55,12 +55,12 @@ func writeHTMLConditions(out *strings.Builder, a hpa.Analysis) {
 
 func writeHTMLMetrics(out *strings.Builder, a hpa.Analysis) {
 	out.WriteString("<h2>Metrics</h2>\n")
-	if len(a.Metrics()) == 0 {
+	if len(a.Metrics.Metrics) == 0 {
 		out.WriteString("<p><em>No current metrics reported.</em></p>\n")
 		return
 	}
 	out.WriteString("<table>\n<tr><th>Metric</th><th>Current</th><th>Target</th><th>Ratio</th></tr>\n")
-	for _, m := range a.Metrics() {
+	for _, m := range a.Metrics.Metrics {
 		name := m.Name
 		if name == "" {
 			name = m.Type
@@ -83,11 +83,11 @@ func writeHTMLMetrics(out *strings.Builder, a hpa.Analysis) {
 }
 
 func writeHTMLRecommendations(out *strings.Builder, a hpa.Analysis) {
-	if len(a.Actions()) == 0 {
+	if len(a.Actions.Actions) == 0 {
 		return
 	}
 	out.WriteString("<h2>Recommendations</h2>\n<ul>\n")
-	for _, action := range a.Actions() {
+	for _, action := range a.Actions.Actions {
 		out.WriteString("<li>")
 		out.WriteString(rendutil.HTMLEscape(action))
 		out.WriteString("</li>\n")
@@ -96,11 +96,11 @@ func writeHTMLRecommendations(out *strings.Builder, a hpa.Analysis) {
 }
 
 func writeHTMLSuggestions(out *strings.Builder, a hpa.Analysis) {
-	if len(a.Suggestions()) == 0 {
+	if len(a.Actions.Suggestions) == 0 {
 		return
 	}
 	out.WriteString("<h2>Suggestions</h2>\n<ul>\n")
-	for _, s := range a.Suggestions() {
+	for _, s := range a.Actions.Suggestions {
 		out.WriteString("<li><strong>")
 		out.WriteString(rendutil.HTMLEscape(s.Title))
 		out.WriteString("</strong>: ")
@@ -137,10 +137,10 @@ func writeHTMLEvents(out *strings.Builder, report hpa.StatusReport) {
 }
 
 func writeHTMLPodAnalysis(out *strings.Builder, a hpa.Analysis) {
-	if a.PodAnalysis() == nil {
+	if a.Capacity.PodAnalysis == nil {
 		return
 	}
-	pa := a.PodAnalysis()
+	pa := a.Capacity.PodAnalysis
 	out.WriteString("<h2>Pod Analysis</h2>\n")
 	out.WriteString(fmt.Sprintf("<p>Total: %d  Ready: %d  Unready: %d  Pending: %d  Terminating: %d</p>\n", pa.Total, pa.Ready, pa.Unready, pa.Pending, pa.Terminating))
 	if len(pa.ResourceIssues) > 0 {
@@ -166,10 +166,10 @@ func writeHTMLPodAnalysis(out *strings.Builder, a hpa.Analysis) {
 }
 
 func writeHTMLSimulation(out *strings.Builder, a hpa.Analysis) {
-	if a.FlappingSimulation() == nil {
+	if a.Stability.FlappingSimulation == nil {
 		return
 	}
-	sim := a.FlappingSimulation()
+	sim := a.Stability.FlappingSimulation
 	out.WriteString("<h2>Simulation</h2>\n")
 	out.WriteString(fmt.Sprintf("<p><strong>Parameter:</strong> %s &mdash; Original: %s, Simulated: %s</p>\n", rendutil.HTMLEscape(sim.Parameter), rendutil.HTMLEscape(sim.OriginalValue), rendutil.HTMLEscape(sim.SimulatedValue)))
 	out.WriteString("<table class=\"overview\">\n")
@@ -190,18 +190,18 @@ func writeHTMLSimulation(out *strings.Builder, a hpa.Analysis) {
 }
 
 func writeHTMLMetricFreshness(out *strings.Builder, a hpa.Analysis) {
-	if len(a.MetricFreshnessEntries()) == 0 {
+	if len(a.Metrics.MetricFreshness) == 0 {
 		return
 	}
 	out.WriteString("<h2>Metrics Freshness</h2>\n")
 	out.WriteString("<table>\n<tr><th>Metric</th><th>Type</th><th>Status</th><th>Source</th><th>Window</th><th>Risk</th></tr>\n")
-	for _, mf := range a.MetricFreshnessEntries() {
+	for _, mf := range a.Metrics.MetricFreshness {
 		statusBadge := htmlFreshnessBadge(mf.Status)
 		out.WriteString(fmt.Sprintf("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",
 			rendutil.HTMLEscape(mf.Name), rendutil.HTMLEscape(mf.Type), statusBadge, rendutil.HTMLEscape(mf.Source), rendutil.HTMLEscape(mf.Window), rendutil.HTMLEscape(mf.Risk)))
 	}
 	out.WriteString("</table>\n")
-	for _, mf := range a.MetricFreshnessEntries() {
+	for _, mf := range a.Metrics.MetricFreshness {
 		if len(mf.Evidence) == 0 && len(mf.NextSteps) == 0 {
 			continue
 		}
@@ -224,7 +224,7 @@ func writeHTMLMetricFreshness(out *strings.Builder, a hpa.Analysis) {
 }
 
 func writeHTMLCapacityContext(out *strings.Builder, a hpa.Analysis) {
-	cc := a.CapacityContext()
+	cc := a.Capacity.CapacityContext
 	if cc == nil {
 		return
 	}
@@ -246,7 +246,7 @@ func writeHTMLCapacityContext(out *strings.Builder, a hpa.Analysis) {
 }
 
 func writeHTMLStructuredDecisionTrace(out *strings.Builder, a hpa.Analysis) {
-	sdt := a.StructuredDecisionTrace()
+	sdt := a.Decision.StructuredDecisionTrace
 	if sdt == nil {
 		return
 	}
@@ -278,11 +278,11 @@ func writeHTMLStructuredDecisionTrace(out *strings.Builder, a hpa.Analysis) {
 }
 
 func writeHTMLWarnings(out *strings.Builder, a hpa.Analysis) {
-	if len(a.Warnings()) == 0 {
+	if len(a.Actions.Warnings) == 0 {
 		return
 	}
 	out.WriteString("<h2>Warnings</h2>\n<ul>\n")
-	for _, warning := range a.Warnings() {
+	for _, warning := range a.Actions.Warnings {
 		out.WriteString("<li>")
 		out.WriteString(rendutil.HTMLEscape(warning))
 		out.WriteString("</li>\n")

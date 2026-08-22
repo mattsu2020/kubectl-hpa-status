@@ -54,19 +54,21 @@ func TestApplyEnrichmentPenalties(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			a := NewAnalysis(FlatAnalysis{Health: tc.health, HealthScore: tc.score})
+			a := &Analysis{
+				Decision: DecisionView{Health: tc.health, HealthScore: tc.score},
+			}
 			if tc.keda != nil {
-				a.SetKEDAInfo(tc.keda())
+				a.Controllers.KEDAInfo = tc.keda()
 			}
 			if tc.vpa != nil {
-				a.SetVPAConflict(tc.vpa())
+				a.Advisory.VPAConflict = tc.vpa()
 			}
 			ApplyEnrichmentPenalties(a, tc.weights)
-			if a.HealthScore() != tc.wantScore {
-				t.Errorf("HealthScore = %d, want %d", a.HealthScore(), tc.wantScore)
+			if a.Decision.HealthScore != tc.wantScore {
+				t.Errorf("HealthScore = %d, want %d", a.Decision.HealthScore, tc.wantScore)
 			}
-			if a.Health() != tc.wantHealth {
-				t.Errorf("Health = %q, want %q", a.Health(), tc.wantHealth)
+			if a.Decision.Health != tc.wantHealth {
+				t.Errorf("Health = %q, want %q", a.Decision.Health, tc.wantHealth)
 			}
 		})
 	}
@@ -81,126 +83,121 @@ func TestApplyEnrichmentPenalties_NilAnalysis(_ *testing.T) {
 
 func TestApplyEnrichmentPenaltiesIsIdempotentAcrossFinalize(t *testing.T) {
 	remaining := int64(30)
-	a := *NewAnalysis(FlatAnalysis{
-		Health:                 string(HealthOK),
-		HealthScore:            95,
-		StabilizationRemaining: &remaining,
-		KEDAInfo: &keda.Analysis{
+	a := Analysis{
+		Decision:   DecisionView{Health: string(HealthOK), HealthScore: 95},
+		Conditions: ConditionsView{StabilizationRemaining: &remaining},
+		Advisory:   AdvisoryView{VPAConflict: &vpa.ConflictInfo{VPAName: "my-vpa", UpdateMode: "Auto"}},
+		Controllers: ControllersView{KEDAInfo: &keda.Analysis{
 			Triggers: []keda.TriggerSummary{{Type: "prometheus", Status: "Inactive"}},
-		},
-		VPAConflict: &vpa.ConflictInfo{VPAName: "my-vpa", UpdateMode: "Auto"},
-	})
-
-	ApplyEnrichmentPenalties(&a, HealthWeights{})
-	firstScore := a.HealthScore()
-	firstSignalCount := len(a.HealthResult().Signals)
-
-	ApplyEnrichmentPenalties(&a, HealthWeights{})
-	if a.HealthScore() != firstScore {
-		t.Fatalf("second application changed HealthScore from %d to %d", firstScore, a.HealthScore())
+		}},
 	}
-	if len(a.HealthResult().Signals) != firstSignalCount {
-		t.Fatalf("second application duplicated signals: first=%d second=%d", firstSignalCount, len(a.HealthResult().Signals))
+
+	ApplyEnrichmentPenalties(&a, HealthWeights{})
+	firstScore := a.Decision.HealthScore
+	firstSignalCount := len(a.Decision.HealthResult.Signals)
+
+	ApplyEnrichmentPenalties(&a, HealthWeights{})
+	if a.Decision.HealthScore != firstScore {
+		t.Fatalf("second application changed HealthScore from %d to %d", firstScore, a.Decision.HealthScore)
+	}
+	if len(a.Decision.HealthResult.Signals) != firstSignalCount {
+		t.Fatalf("second application duplicated signals: first=%d second=%d", firstSignalCount, len(a.Decision.HealthResult.Signals))
 	}
 
 	finalized := FinalizeAnalysis(a)
 	ApplyEnrichmentPenalties(&finalized, HealthWeights{})
-	if finalized.HealthScore() != firstScore {
-		t.Fatalf("application after FinalizeAnalysis changed HealthScore from %d to %d", firstScore, finalized.HealthScore())
+	if finalized.Decision.HealthScore != firstScore {
+		t.Fatalf("application after FinalizeAnalysis changed HealthScore from %d to %d", firstScore, finalized.Decision.HealthScore)
 	}
-	if finalized.HealthResult() == nil {
+	if finalized.Decision.HealthResult == nil {
 		t.Fatal("HealthResult must be initialized by enrichment")
 	}
-	if finalized.HealthResult().Score != finalized.HealthScore() ||
-		string(finalized.HealthResult().State) != finalized.Health() {
+	if finalized.Decision.HealthResult.Score != finalized.Decision.HealthScore ||
+		string(finalized.Decision.HealthResult.State) != finalized.Decision.Health {
 		t.Fatalf("flat health fields and HealthResult diverged: health=%q score=%d result=%+v",
-			finalized.Health(), finalized.HealthScore(), finalized.HealthResult())
+			finalized.Decision.Health, finalized.Decision.HealthScore, finalized.Decision.HealthResult)
 	}
-	if len(finalized.HealthResult().Signals) != firstSignalCount {
+	if len(finalized.Decision.HealthResult.Signals) != firstSignalCount {
 		t.Fatalf("application after FinalizeAnalysis duplicated signals: first=%d final=%d",
-			firstSignalCount, len(finalized.HealthResult().Signals))
+			firstSignalCount, len(finalized.Decision.HealthResult.Signals))
 	}
 }
 
 func TestApplyChurnPenaltyIsIdempotentAndInitializesTypedResult(t *testing.T) {
-	a := *NewAnalysis(FlatAnalysis{
-		Health:        string(HealthOK),
-		HealthScore:   90,
-		ChurnAnalysis: &churn.ChurnAnalysis{Level: churn.ChurnHigh},
-	})
-
-	ApplyChurnPenalty(&a, HealthWeights{})
-	firstScore := a.HealthScore()
-	ApplyChurnPenalty(&a, HealthWeights{})
-
-	if a.HealthScore() != firstScore {
-		t.Fatalf("second churn penalty changed score from %d to %d", firstScore, a.HealthScore())
+	a := Analysis{
+		Decision:  DecisionView{Health: string(HealthOK), HealthScore: 90},
+		Stability: StabilityView{ChurnAnalysis: &churn.ChurnAnalysis{Level: churn.ChurnHigh}},
 	}
-	if a.HealthResult() == nil {
+
+	ApplyChurnPenalty(&a, HealthWeights{})
+	firstScore := a.Decision.HealthScore
+	ApplyChurnPenalty(&a, HealthWeights{})
+
+	if a.Decision.HealthScore != firstScore {
+		t.Fatalf("second churn penalty changed score from %d to %d", firstScore, a.Decision.HealthScore)
+	}
+	if a.Decision.HealthResult == nil {
 		t.Fatal("churn penalty did not initialize HealthResult")
 	}
-	if a.HealthResult().Score != a.HealthScore() || string(a.HealthResult().State) != a.Health() {
+	if a.Decision.HealthResult.Score != a.Decision.HealthScore || string(a.Decision.HealthResult.State) != a.Decision.Health {
 		t.Fatalf("flat health fields and HealthResult diverged: health=%q score=%d result=%+v",
-			a.Health(), a.HealthScore(), a.HealthResult())
+			a.Decision.Health, a.Decision.HealthScore, a.Decision.HealthResult)
 	}
-	if len(a.HealthResult().Signals) != 1 || a.HealthResult().Signals[0].Reason != enrichmentPenaltyChurn {
-		t.Fatalf("churn signals = %+v, want one stable signal", a.HealthResult().Signals)
+	if len(a.Decision.HealthResult.Signals) != 1 || a.Decision.HealthResult.Signals[0].Reason != enrichmentPenaltyChurn {
+		t.Fatalf("churn signals = %+v, want one stable signal", a.Decision.HealthResult.Signals)
 	}
 }
 
 func TestDynamicHealthPenaltiesRecomputeFromUnclampedBaseline(t *testing.T) {
-	a := *NewAnalysis(FlatAnalysis{
-		Health:      string(HealthOK),
-		HealthScore: 10,
-		KEDAInfo: &keda.Analysis{
+	a := Analysis{
+		Decision: DecisionView{Health: string(HealthOK), HealthScore: 10},
+		Controllers: ControllersView{KEDAInfo: &keda.Analysis{
 			Triggers: []keda.TriggerSummary{{Status: "Inactive"}},
-		},
-	})
+		}},
+	}
 	ApplyEnrichmentPenalties(&a, HealthWeights{KEDAInactiveTrigger: IntWeight(15)})
-	if a.HealthScore() != 0 {
-		t.Fatalf("first score = %d, want 0", a.HealthScore())
+	if a.Decision.HealthScore != 0 {
+		t.Fatalf("first score = %d, want 0", a.Decision.HealthScore)
 	}
 	ApplyEnrichmentPenalties(&a, HealthWeights{KEDAInactiveTrigger: IntWeight(5)})
-	if a.HealthScore() != 5 {
-		t.Fatalf("reweighted score = %d, want 5", a.HealthScore())
+	if a.Decision.HealthScore != 5 {
+		t.Fatalf("reweighted score = %d, want 5", a.Decision.HealthScore)
 	}
 }
 
 func TestDynamicHealthPenaltiesRemoveInactiveSignals(t *testing.T) {
-	a := *NewAnalysis(FlatAnalysis{
-		Health:      string(HealthOK),
-		HealthScore: 90,
-		KEDAInfo: &keda.Analysis{
-			Triggers: []keda.TriggerSummary{{Status: "Inactive"}},
-		},
-		VPAConflict: &vpa.ConflictInfo{VPAName: "web-vpa"},
-		ChurnAnalysis: &churn.ChurnAnalysis{
+	a := Analysis{
+		Decision: DecisionView{Health: string(HealthOK), HealthScore: 90},
+		Stability: StabilityView{ChurnAnalysis: &churn.ChurnAnalysis{
 			Level: churn.ChurnHigh,
-		},
-	})
+		}},
+		Advisory: AdvisoryView{VPAConflict: &vpa.ConflictInfo{VPAName: "web-vpa"}},
+		Controllers: ControllersView{KEDAInfo: &keda.Analysis{
+			Triggers: []keda.TriggerSummary{{Status: "Inactive"}},
+		}},
+	}
 	ApplyChurnPenalty(&a, HealthWeights{})
-	if a.Health() != string(HealthLimited) || len(a.HealthResult().Signals) != 3 {
-		t.Fatalf("dynamic health = %+v", a.HealthResult())
+	if a.Decision.Health != string(HealthLimited) || len(a.Decision.HealthResult.Signals) != 3 {
+		t.Fatalf("dynamic health = %+v", a.Decision.HealthResult)
 	}
 
-	a.KEDAInfo().Triggers[0].Status = "Active"
-	a.SetVPAConflict(nil)
-	a.ChurnAnalysis().Level = churn.ChurnLow
+	a.Controllers.KEDAInfo.Triggers[0].Status = "Active"
+	a.Advisory.VPAConflict = nil
+	a.Stability.ChurnAnalysis.Level = churn.ChurnLow
 	ApplyEnrichmentPenalties(&a, HealthWeights{})
-	if a.HealthScore() != 90 || a.Health() != string(HealthOK) {
-		t.Fatalf("restored health = %s/%d, want OK/90", a.Health(), a.HealthScore())
+	if a.Decision.HealthScore != 90 || a.Decision.Health != string(HealthOK) {
+		t.Fatalf("restored health = %s/%d, want OK/90", a.Decision.Health, a.Decision.HealthScore)
 	}
-	if len(a.HealthResult().Signals) != 0 {
-		t.Fatalf("stale dynamic signals remain: %+v", a.HealthResult().Signals)
+	if len(a.Decision.HealthResult.Signals) != 0 {
+		t.Fatalf("stale dynamic signals remain: %+v", a.Decision.HealthResult.Signals)
 	}
 }
 
 func TestDynamicHealthPenaltiesRestoreBaseStateAfterJSONRoundTrip(t *testing.T) {
-	original := *NewAnalysis(FlatAnalysis{
-		Health:      string(HealthOK),
-		HealthScore: 100,
-		VPAConflict: &vpa.ConflictInfo{VPAName: "web-vpa"},
-	})
+	original := Analysis{
+		Decision: DecisionView{Health: string(HealthOK), HealthScore: 100},
+		Advisory: AdvisoryView{VPAConflict: &vpa.ConflictInfo{VPAName: "web-vpa"}},
+	}
 	ApplyEnrichmentPenalties(&original, HealthWeights{})
 
 	data, err := json.Marshal(original)
@@ -211,14 +208,14 @@ func TestDynamicHealthPenaltiesRestoreBaseStateAfterJSONRoundTrip(t *testing.T) 
 	if err := json.Unmarshal(data, &restored); err != nil {
 		t.Fatal(err)
 	}
-	restored.SetVPAConflict(nil)
+	restored.Advisory.VPAConflict = nil
 	ApplyEnrichmentPenalties(&restored, HealthWeights{})
 
-	if restored.Health() != string(HealthOK) || restored.HealthScore() != 100 {
-		t.Fatalf("round-trip health = %s/%d, want OK/100", restored.Health(), restored.HealthScore())
+	if restored.Decision.Health != string(HealthOK) || restored.Decision.HealthScore != 100 {
+		t.Fatalf("round-trip health = %s/%d, want OK/100", restored.Decision.Health, restored.Decision.HealthScore)
 	}
-	if restored.HealthResult() == nil || restored.HealthResult().State != HealthOK || len(restored.HealthResult().Signals) != 0 {
-		t.Fatalf("round-trip HealthResult = %+v", restored.HealthResult())
+	if restored.Decision.HealthResult == nil || restored.Decision.HealthResult.State != HealthOK || len(restored.Decision.HealthResult.Signals) != 0 {
+		t.Fatalf("round-trip HealthResult = %+v", restored.Decision.HealthResult)
 	}
 }
 

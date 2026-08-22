@@ -38,7 +38,7 @@ func runStatusJSON(t *testing.T, kubeconfig, namespace, hpaName string, extraArg
 	t.Helper()
 	// v1 keeps the flat shape this suite asserts; the default flipped to v2
 	// in v3 and is smoke-checked in TestE2E_JSONDefaultSchemaV2.
-	args := []string{"status", hpaName, "-n", namespace, "-o", "json", "--output-schema=v1"}
+	args := []string{"status", hpaName, "-n", namespace, "-o", "json", "--output-schema=v2"}
 	args = append(args, extraArgs...)
 	args = append(args, "--kubeconfig", kubeconfig)
 
@@ -102,53 +102,51 @@ func assertStatusReportShape(t *testing.T, raw string, wantName string) {
 	if report.APIVersion != hpaanalysis.SchemaVersion {
 		t.Errorf("apiVersion = %q, want %q", report.APIVersion, hpaanalysis.SchemaVersion)
 	}
-	if !strings.HasSuffix(report.APIVersion, "/v1") {
-		t.Errorf("apiVersion %q does not end with the expected /v1 suffix", report.APIVersion)
+	if !strings.HasSuffix(report.APIVersion, "/v2") {
+		t.Errorf("apiVersion %q does not end with the expected /v2 suffix", report.APIVersion)
 	}
 
 	// Identity.
-	if a.Name() == "" {
+	if a.Meta.Name == "" {
 		t.Error("Analysis.Name is empty")
 	}
-	if wantName != "" && a.Name() != wantName {
-		t.Errorf("Analysis.Name = %q, want %q", a.Name(), wantName)
+	if wantName != "" && a.Meta.Name != wantName {
+		t.Errorf("Analysis.Name = %q, want %q", a.Meta.Name, wantName)
 	}
-	if a.Namespace() == "" {
+	if a.Meta.Namespace == "" {
 		t.Error("Analysis.Namespace is empty")
 	}
-	if a.Target() == "" {
+	if a.Meta.Target == "" {
 		t.Error("Analysis.Target (scaleTargetRef) is empty")
 	}
 
 	// Health state must be in the closed known set.
-	if !validHealthStates[a.Health()] {
-		t.Errorf("Analysis.Health = %q, not a known state %v", a.Health(), validHealthStates)
+	if !validHealthStates[a.Decision.Health] {
+		t.Errorf("Analysis.Health = %q, not a known state %v", a.Decision.Health, validHealthStates)
 	}
 
 	// Health score is clamped to [0, 100] by the model.
-	if a.HealthScore() < 0 || a.HealthScore() > 100 {
-		t.Errorf("Analysis.HealthScore = %d, want range [0, 100]", a.HealthScore())
+	if a.Decision.HealthScore < 0 || a.Decision.HealthScore > 100 {
+		t.Errorf("Analysis.HealthScore = %d, want range [0, 100]", a.Decision.HealthScore)
 	}
 
 	// Summary is always populated by the analyzer.
-	if a.Summary() == "" {
+	if a.Decision.Summary == "" {
 		t.Error("Analysis.Summary is empty")
 	}
 
-	// Conditions and metrics slices must be present (possibly empty for
-	// metrics on a broken HPA, but the slice itself must round-trip).
-	if a.Conditions() == nil {
+	// Conditions must be present (every HPA has at least one). The grouped
+	// v2 schema omits an empty metrics list (omitempty), so a nil decoded
+	// slice is valid for HPAs whose status carries no current metrics.
+	if a.Conditions.Conditions == nil {
 		t.Error("Analysis.Conditions is nil; expected an initialized slice")
 	}
-	if len(a.Conditions()) == 0 {
+	if len(a.Conditions.Conditions) == 0 {
 		t.Error("Analysis.Conditions is empty; every HPA has at least one condition")
-	}
-	if a.Metrics() == nil {
-		t.Error("Analysis.Metrics is nil; expected an initialized slice")
 	}
 
 	// Each condition must carry a Type and Status at minimum.
-	for i, c := range a.Conditions() {
+	for i, c := range a.Conditions.Conditions {
 		if c.Type == "" {
 			t.Errorf("Conditions[%d].Type is empty", i)
 		}
@@ -158,7 +156,7 @@ func assertStatusReportShape(t *testing.T, raw string, wantName string) {
 	}
 
 	// Each metric must carry a Type and non-empty Text.
-	for i, m := range a.Metrics() {
+	for i, m := range a.Metrics.Metrics {
 		if m.Type == "" {
 			t.Errorf("Metrics[%d].Type is empty", i)
 		}
@@ -228,17 +226,24 @@ func TestE2E_JSONShapeSnapshot(t *testing.T) {
 		t.Errorf("top-level apiVersion = %q, want %q", got, hpaanalysis.SchemaVersion)
 	}
 
-	// --explain populates structuredInterpretation (additive field).
-	structInterp, ok := a["structuredInterpretation"].([]any)
+	actions, ok := a["actions"].(map[string]any)
 	if !ok {
-		t.Error("analysis.structuredInterpretation missing or wrong type after --explain")
-	} else if len(structInterp) == 0 {
-		t.Error("analysis.structuredInterpretation is empty after --explain")
+		t.Fatal("analysis.actions group missing (grouped v2 schema)")
 	}
 
-	// suggestions is always an array (possibly empty).
-	if _, ok := a["suggestions"].([]any); !ok {
-		t.Errorf("analysis.suggestions missing or wrong type; got %T", a["suggestions"])
+	// --explain populates structuredInterpretation (additive field).
+	structInterp, ok := actions["structuredInterpretation"].([]any)
+	if !ok {
+		t.Error("analysis.actions.structuredInterpretation missing or wrong type after --explain")
+	} else if len(structInterp) == 0 {
+		t.Error("analysis.actions.structuredInterpretation is empty after --explain")
+	}
+
+	// suggestions is an array when present (omitempty when empty).
+	if sugg, present := actions["suggestions"]; present {
+		if _, ok := sugg.([]any); !ok {
+			t.Errorf("analysis.actions.suggestions wrong type; got %T", sugg)
+		}
 	}
 
 	// events is optional (omitempty), but when present must be an array.
@@ -249,14 +254,18 @@ func TestE2E_JSONShapeSnapshot(t *testing.T) {
 	}
 
 	// 3. Replica fields round-trip as numbers (decoded as float64 by encoding/json).
+	replicas, ok := a["replicas"].(map[string]any)
+	if !ok {
+		t.Fatal("analysis.replicas group missing (grouped v2 schema)")
+	}
 	for _, key := range []string{"currentReplicas", "desiredReplicas", "minReplicas", "maxReplicas"} {
-		v, ok := a[key].(float64)
+		v, ok := replicas[key].(float64)
 		if !ok {
-			t.Errorf("analysis.%s missing or not numeric; got %T", key, a[key])
+			t.Errorf("analysis.replicas.%s missing or not numeric; got %T", key, replicas[key])
 			continue
 		}
 		if v < 0 {
-			t.Errorf("analysis.%s = %v, must be non-negative", key, v)
+			t.Errorf("analysis.replicas.%s = %v, must be non-negative", key, v)
 		}
 	}
 }

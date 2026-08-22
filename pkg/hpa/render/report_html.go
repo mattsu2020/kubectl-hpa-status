@@ -21,7 +21,7 @@ func WriteHTMLReport(w io.Writer, report hpa.StatusReport) error {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>HPA Status Report: `)
-	out.WriteString(rendutil.HTMLEscape(a.Name()))
+	out.WriteString(rendutil.HTMLEscape(a.Meta.Name))
 	out.WriteString("</title>\n<style>\n")
 	out.WriteString(rendutil.HTMLCSS())
 	out.WriteString("</style>\n</head>\n<body>\n")
@@ -63,10 +63,10 @@ func writeHTMLReportContent(out *strings.Builder, report hpa.StatusReport) {
 	a := report.Analysis
 
 	out.WriteString(`<h1>HPA Status Report: `)
-	out.WriteString(rendutil.HTMLEscape(a.Name()))
-	if a.Namespace() != "" {
+	out.WriteString(rendutil.HTMLEscape(a.Meta.Name))
+	if a.Meta.Namespace != "" {
 		out.WriteString(" <span class=\"namespace\">(")
-		out.WriteString(rendutil.HTMLEscape(a.Namespace()))
+		out.WriteString(rendutil.HTMLEscape(a.Meta.Namespace))
 		out.WriteString(")</span>")
 	}
 	out.WriteString("</h1>\n")

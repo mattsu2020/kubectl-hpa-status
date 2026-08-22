@@ -29,7 +29,7 @@ func (r reportResult) batchStatus() hpaanalysis.StatusBatchStatus {
 	if !r.hasReport {
 		return hpaanalysis.BatchStatusError
 	}
-	switch hpaanalysis.HealthState(r.report.Analysis.Health()) {
+	switch hpaanalysis.HealthState(r.report.Analysis.Decision.Health) {
 	case hpaanalysis.HealthError, hpaanalysis.HealthLimited, hpaanalysis.HealthWarning:
 		return hpaanalysis.BatchStatusWarning
 	default:
@@ -64,52 +64,33 @@ func batchOutputCarriesErrors(opts *options) bool {
 }
 
 // batchValue picks the value passed to render.Format for the multi-HPA path.
-// json/yaml carry the StatusBatch envelope so failed items are visible. v2
-// JSONL emits canonical StatusRecordV2 values one per line; v1 JSONL keeps
-// its historical one-line successful-report array. The structured v1 formats
-// emit the explicit FlatAnalysis projection (byte-identical to the historical
-// Analysis-based shape, and independent of Analysis's storage layout — see
-// docs/analysis-storage-flip.md). Other formats render only successful
-// reports and keep receiving StatusReport values because their renderers
-// type-assert them.
+// json/yaml carry the StatusBatchV2 envelope so failed items are visible;
+// JSONL emits canonical StatusRecordV2 values one per line. The grouped v2
+// schema is the only structured contract since v4 (the flat v1 projection
+// was removed). Other formats render only successful reports and keep
+// receiving StatusReport values because their renderers type-assert them.
 func batchValue(opts *options, results []reportResult, reports []hpaanalysis.StatusReport) any {
 	switch opts.Output {
 	case "json", "yaml":
-		batch := buildStatusBatch(results)
-		if statusUsesV2Schema(opts) {
-			return hpaanalysis.ProjectStatusBatchV2(batch)
-		}
-		return hpaanalysis.ProjectStatusBatchV1(batch)
+		return hpaanalysis.ProjectStatusBatchV2(buildStatusBatch(results))
 	case "jsonl":
-		if statusUsesV2Schema(opts) {
-			return hpaanalysis.ProjectStatusRecordsV2(buildStatusBatch(results))
-		}
-		return hpaanalysis.ProjectStatusReportsV1(reports)
+		return hpaanalysis.ProjectStatusRecordsV2(buildStatusBatch(results))
 	default:
-		if statusUsesV2Schema(opts) {
-			return hpaanalysis.ProjectStatusReportsV2(reports)
-		}
 		return reports
 	}
 }
 
 // statusOutputValue picks the value passed to render.Format for the
-// single-HPA path, projecting to the v2 schema when requested. Structured v1
-// formats emit the FlatAnalysis projection; renderer formats that
-// type-assert StatusReport keep the live value.
+// single-HPA path: the grouped v2 projection for structured output, the live
+// report for renderer formats that type-assert StatusReport.
 func statusOutputValue(opts *options, report hpaanalysis.StatusReport) any {
-	if statusUsesV2Schema(opts) {
+	if structuredStatusOutput(opts) {
 		if opts.Output == "jsonl" {
 			return hpaanalysis.ProjectStatusRecordV2(report)
 		}
 		return hpaanalysis.ProjectStatusReportV2(report)
 	}
-	switch opts.Output {
-	case "json", "yaml", "jsonl":
-		return hpaanalysis.ProjectStatusReportV1(report)
-	default:
-		return report
-	}
+	return report
 }
 
 // buildStatusBatch assembles the StatusBatch envelope from per-item results,
@@ -233,7 +214,7 @@ func aggregateBatchExitCode(results []reportResult, watchMode bool) error {
 			hasError = true
 			break
 		}
-		if healthIsWarning(results[i].report.Analysis.Health()) {
+		if healthIsWarning(results[i].report.Analysis.Decision.Health) {
 			hasWarning = true
 		}
 	}
@@ -243,7 +224,7 @@ func aggregateBatchExitCode(results []reportResult, watchMode bool) error {
 	if hasWarning && !watchMode {
 		// Reuse the single-HPA helper to format a representative message.
 		for i := range results {
-			if err := warningExitCode(results[i].report.Analysis.Health(), results[i].report.Analysis.Name(), results[i].report.Analysis.Namespace(), watchMode); err != nil {
+			if err := warningExitCode(results[i].report.Analysis.Decision.Health, results[i].report.Analysis.Meta.Name, results[i].report.Analysis.Meta.Namespace, watchMode); err != nil {
 				return err
 			}
 		}

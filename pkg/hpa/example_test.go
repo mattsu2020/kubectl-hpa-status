@@ -53,9 +53,9 @@ func ExampleAnalyze() {
 	}
 
 	result := hpa.Analyze(hpaObj, false)
-	_, _ = fmt.Fprintf(os.Stdout, "HPA: %s/%s\n", result.Namespace(), result.Name())
-	_, _ = fmt.Fprintf(os.Stdout, "Health: %s (score %d)\n", result.Health(), result.HealthScore())
-	_, _ = fmt.Fprintf(os.Stdout, "Replicas: current=%d desired=%d\n", result.Current(), result.Desired())
+	_, _ = fmt.Fprintf(os.Stdout, "HPA: %s/%s\n", result.Meta.Namespace, result.Meta.Name)
+	_, _ = fmt.Fprintf(os.Stdout, "Health: %s (score %d)\n", result.Decision.Health, result.Decision.HealthScore)
+	_, _ = fmt.Fprintf(os.Stdout, "Replicas: current=%d desired=%d\n", result.Replicas.Current, result.Replicas.Desired)
 	// Output:
 	// HPA: default/web
 	// Health: OK (score 100)
@@ -83,7 +83,7 @@ func ExampleAnalyzeWithOptions() {
 	result := hpa.AnalyzeWithOptions(hpaObj, true, hpa.AnalysisOptions{
 		Debug: true,
 	})
-	_, _ = fmt.Fprintf(os.Stdout, "Debug lines: %d\n", len(result.Debug()))
+	_, _ = fmt.Fprintf(os.Stdout, "Debug lines: %d\n", len(result.Lifecycle.Debug))
 	// Output:
 	// Debug lines: 3
 }

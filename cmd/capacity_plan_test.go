@@ -225,20 +225,22 @@ func TestCapacityPlanFlagOnStatus(t *testing.T) {
 
 	var report struct {
 		Analysis struct {
-			CapacityPlan *struct {
-				TargetMaxReplicas int `json:"targetMaxReplicas"`
-				Checks            []struct {
-					Pass    bool   `json:"pass"`
-					Message string `json:"message"`
-				} `json:"checks"`
-			} `json:"capacityPlan"`
+			Capacity struct {
+				CapacityPlan *struct {
+					TargetMaxReplicas int `json:"targetMaxReplicas"`
+					Checks            []struct {
+						Pass    bool   `json:"pass"`
+						Message string `json:"message"`
+					} `json:"checks"`
+				} `json:"capacityPlan"`
+			} `json:"capacity"`
 		} `json:"analysis"`
 	}
 	if err := json.Unmarshal(buf.Bytes(), &report); err != nil {
 		t.Fatalf("failed to parse JSON output: %v\n%s", err, buf.String())
 	}
 
-	if report.Analysis.CapacityPlan == nil {
+	if report.Analysis.Capacity.CapacityPlan == nil {
 		t.Fatal("expected CapacityPlan to be populated with --capacity-plan flag")
 	}
 }
@@ -268,13 +270,10 @@ func TestAssembleCapacityPlanInput_RecordsFetchErrorsAsUnknown(t *testing.T) {
 		return true, nil, errors.New("forbidden")
 	})
 	client := &kube.Client{Interface: fakeClient, Namespace: "default"}
-	analysis := *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
-		Namespace: "default",
-		Name:      "web",
-		Target:    "Deployment/web",
-		Current:   5,
-		Max:       5,
-	})
+	analysis := hpaanalysis.Analysis{
+		Meta:     hpaanalysis.MetaView{Namespace: "default", Name: "web", Target: "Deployment/web"},
+		Replicas: hpaanalysis.ReplicasView{Current: 5, Max: 5},
+	}
 
 	input := assembleCapacityPlanInput(context.Background(), client, hpa, analysis, 10)
 	plan := hpaanalysis.AnalyzeCapacityPlan(input)

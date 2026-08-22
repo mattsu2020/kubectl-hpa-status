@@ -17,15 +17,14 @@ import (
 
 func TestWriteOutputJSONPath(t *testing.T) {
 	report := hpaanalysis.StatusReport{
-		Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
-			Namespace: "default",
-			Name:      "web",
-			Summary:   "HPA currently keeps the replica count unchanged.",
-		}),
+		Analysis: hpaanalysis.Analysis{
+			Meta:     hpaanalysis.MetaView{Namespace: "default", Name: "web"},
+			Decision: hpaanalysis.DecisionView{Summary: "HPA currently keeps the replica count unchanged."},
+		},
 	}
 
 	var out bytes.Buffer
-	if err := render.Format(&out, "jsonpath={.analysis.summary}", "", report, nil); err != nil {
+	if err := render.Format(&out, "jsonpath={.analysis.decision.summary}", "", report, nil); err != nil {
 		t.Fatal(err)
 	}
 	if strings.TrimSpace(out.String()) != "HPA currently keeps the replica count unchanged." {
@@ -34,7 +33,7 @@ func TestWriteOutputJSONPath(t *testing.T) {
 
 	// Test separate jsonpath format and template argument
 	out.Reset()
-	if err := render.Format(&out, "jsonpath", "{.analysis.summary}", report, nil); err != nil {
+	if err := render.Format(&out, "jsonpath", "{.analysis.decision.summary}", report, nil); err != nil {
 		t.Fatal(err)
 	}
 	if strings.TrimSpace(out.String()) != "HPA currently keeps the replica count unchanged." {
@@ -44,14 +43,13 @@ func TestWriteOutputJSONPath(t *testing.T) {
 
 func TestWriteOutputTemplate(t *testing.T) {
 	report := hpaanalysis.StatusReport{
-		Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
-			Namespace: "default",
-			Name:      "web",
-		}),
+		Analysis: hpaanalysis.Analysis{
+			Meta: hpaanalysis.MetaView{Namespace: "default", Name: "web"},
+		},
 	}
 
 	var out bytes.Buffer
-	if err := render.Format(&out, "template={{ .Analysis.Namespace }}/{{ .Analysis.Name }}", "", report, nil); err != nil {
+	if err := render.Format(&out, "template={{ .Analysis.Meta.Namespace }}/{{ .Analysis.Meta.Name }}", "", report, nil); err != nil {
 		t.Fatal(err)
 	}
 	if strings.TrimSpace(out.String()) != "default/web" {
@@ -60,7 +58,7 @@ func TestWriteOutputTemplate(t *testing.T) {
 
 	// Test separate template format and template argument
 	out.Reset()
-	if err := render.Format(&out, "go-template", "{{ .Analysis.Namespace }}/{{ .Analysis.Name }}", report, nil); err != nil {
+	if err := render.Format(&out, "go-template", "{{ .Analysis.Meta.Namespace }}/{{ .Analysis.Meta.Name }}", report, nil); err != nil {
 		t.Fatal(err)
 	}
 	if strings.TrimSpace(out.String()) != "default/web" {
@@ -73,7 +71,7 @@ func TestOutputSelectionUsesNamedConfigTemplate(t *testing.T) {
 		Common: commonOptions{
 			OutputOptions: OutputOptions{
 				Output:          "names",
-				OutputTemplates: map[string]outputTemplateConfig{"names": {Type: "go-template", Template: "{{ .Analysis.Namespace }}/{{ .Analysis.Name }}"}},
+				OutputTemplates: map[string]outputTemplateConfig{"names": {Type: "go-template", Template: "{{ .Analysis.Meta.Namespace }}/{{ .Analysis.Meta.Name }}"}},
 			},
 		},
 	}
@@ -84,7 +82,7 @@ func TestOutputSelectionUsesNamedConfigTemplate(t *testing.T) {
 	if format != "go-template" {
 		t.Fatalf("expected go-template format, got %q", format)
 	}
-	if templateStr != "{{ .Analysis.Namespace }}/{{ .Analysis.Name }}" {
+	if templateStr != "{{ .Analysis.Meta.Namespace }}/{{ .Analysis.Meta.Name }}" {
 		t.Fatalf("unexpected template %q", templateStr)
 	}
 }
@@ -240,9 +238,9 @@ func TestPatchDiffIncludesCurrentDesiredReplicas(t *testing.T) {
 
 func TestReportHasConditionNormalizesConditionName(t *testing.T) {
 	report := hpaanalysis.StatusReport{
-		Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
-			Conditions: []hpaanalysis.Condition{{Type: "ScalingLimited"}},
-		}),
+		Analysis: hpaanalysis.Analysis{
+			Conditions: hpaanalysis.ConditionsView{Conditions: []hpaanalysis.Condition{{Type: "ScalingLimited"}}},
+		},
 	}
 
 	if !reportHasCondition(report, "scaling-limited") {
@@ -379,15 +377,11 @@ func TestWriteOutputPrometheus(t *testing.T) {
 
 func TestWriteOutputPrometheusStatusReport(t *testing.T) {
 	report := hpaanalysis.StatusReport{
-		Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
-			Namespace:   "staging",
-			Name:        "worker",
-			HealthScore: 50,
-			Current:     4,
-			Desired:     8,
-			Min:         2,
-			Max:         20,
-		}),
+		Analysis: hpaanalysis.Analysis{
+			Meta:     hpaanalysis.MetaView{Namespace: "staging", Name: "worker"},
+			Replicas: hpaanalysis.ReplicasView{Current: 4, Desired: 8, Min: 2, Max: 20},
+			Decision: hpaanalysis.DecisionView{HealthScore: 50},
+		},
 	}
 
 	var out bytes.Buffer

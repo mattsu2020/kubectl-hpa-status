@@ -10,40 +10,40 @@ import (
 
 // NewListItem converts an Analysis into a compact ListItem for list output.
 func NewListItem(src Analysis) ListItem {
-	errors, limiteds := classifyListConditions(src.Conditions())
-	if src.Current() == src.Desired() && src.Desired() == src.Max() {
+	errors, limiteds := classifyListConditions(src.Conditions.Conditions)
+	if src.Replicas.Current == src.Replicas.Desired && src.Replicas.Desired == src.Replicas.Max {
 		limiteds = append(limiteds, "LIMITED: maxReplicas")
 	}
 
-	health := deriveListHealth(src.Health(), errors, limiteds)
+	health := deriveListHealth(src.Decision.Health, errors, limiteds)
 	issue := joinListIssues(errors, limiteds)
-	conditions := compactConditions(src.Conditions())
-	metrics := compactMetrics(src.Metrics())
-	behavior := compactBehavior(src.Behavior())
+	conditions := compactConditions(src.Conditions.Conditions)
+	metrics := compactMetrics(src.Metrics.Metrics)
+	behavior := compactBehavior(src.Conditions.Behavior)
 
 	return ListItem{
-		Namespace:          src.Namespace(),
-		Name:               src.Name(),
-		Target:             src.Target(),
-		Current:            src.Current(),
-		Desired:            src.Desired(),
-		Min:                src.Min(),
-		Max:                src.Max(),
-		Summary:            src.Summary(),
-		SummaryKey:         src.SummaryKey(),
+		Namespace:          src.Meta.Namespace,
+		Name:               src.Meta.Name,
+		Target:             src.Meta.Target,
+		Current:            src.Replicas.Current,
+		Desired:            src.Replicas.Desired,
+		Min:                src.Replicas.Min,
+		Max:                src.Replicas.Max,
+		Summary:            src.Decision.Summary,
+		SummaryKey:         src.Decision.SummaryKey,
 		Health:             health,
-		HealthScore:        src.HealthScore(),
+		HealthScore:        src.Decision.HealthScore,
 		Issue:              issue,
 		Metrics:            metrics,
 		Behavior:           behavior,
 		Conditions:         conditions,
-		CreationTimestamp:  src.CreationTimestamp(),
-		Stabilizing:        src.StabilizationRemaining() != nil && *src.StabilizationRemaining() > 0,
-		StabilizationLabel: FormatCountdownBadge(src.StabilizationRemaining()),
-		ChurnLevel:         churnLevelFromAnalysis(src.ChurnAnalysis()),
-		ChurnScore:         churnScoreFromAnalysis(src.ChurnAnalysis()),
-		TrendSparkline:     trendSparklineFromAnalysis(src.HealthTrend()),
-		TrendFlapping:      trendFlappingFromAnalysis(src.HealthTrend()),
+		CreationTimestamp:  parseMetaTimestamp(src.Meta.CreationTimestamp),
+		Stabilizing:        src.Conditions.StabilizationRemaining != nil && *src.Conditions.StabilizationRemaining > 0,
+		StabilizationLabel: FormatCountdownBadge(src.Conditions.StabilizationRemaining),
+		ChurnLevel:         churnLevelFromAnalysis(src.Stability.ChurnAnalysis),
+		ChurnScore:         churnScoreFromAnalysis(src.Stability.ChurnAnalysis),
+		TrendSparkline:     trendSparklineFromAnalysis(src.Lifecycle.HealthTrend),
+		TrendFlapping:      trendFlappingFromAnalysis(src.Lifecycle.HealthTrend),
 	}
 }
 

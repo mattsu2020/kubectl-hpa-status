@@ -219,17 +219,17 @@ the grouped views the primary in-memory storage (a wide internal refactor with
 no additional user-visible change beyond what the wire flip already shipped).
 The flat-field retirement itself moved to the v4 plan below.
 
-## v4 Breaking Changes (Planned)
+## v4 Breaking Changes (Executed)
 
-v3.0.0 executed everything it decided except the in-memory `Analysis` storage
-flip (still open on the v3.x line, see above). v4 is planned as a
-**contract-slimming release**: one CLI surface with no deprecated aliases, one
-wire schema (v2), and one public Go model (the grouped views). Every item
-follows the same deprecation discipline as v3 — announced on the v3 line,
+v4.0.0 is a **contract-slimming release**: one CLI surface with no deprecated
+aliases, one wire schema (v2), and one public Go model (the grouped views).
+Every item followed the v3 deprecation discipline — announced on the v3 line
+(v3.1.0 shipped the storage flip and its accessor transition surface),
 executed only in the major release, and documented with a migration table in
-`CHANGELOG.md`.
+`CHANGELOG.md`. Status per item: alias removal, ExitNotFound, v1 schema
+retirement, and flat-field removal are all executed.
 
-### v4 deprecated-alias removal
+### v4 deprecated-alias removal (executed)
 
 The seven hidden top-level aliases that kept working through the v3 line
 (`cmd/deprecated_aliases.go`) are removed together with the file. The 3.0.0
@@ -249,7 +249,7 @@ release"). The grouped commands themselves are unchanged.
 The release PR must also grep both READMEs, `docs/reference.md`, and the
 asciinema demo sources for the removed short names.
 
-### v4 `ExitNotFound` application
+### v4 `ExitNotFound` application (executed)
 
 `cmd.ExitNotFound` (3) has been exported and reserved since the v2 line while
 HPA-not-found kept exiting `1` for script compatibility. v4.0.0 flips the
@@ -259,7 +259,7 @@ API failures. The constant and the flip site already exist; the release only
 removes the backwards-compatibility branch and documents the code change in
 the migration table.
 
-### v4 v1 wire-schema retirement
+### v4 v1 wire-schema retirement (executed)
 
 `--output-schema=v1` and the flat v1 projection are removed; the grouped v2
 schema (`apiVersion: "hpa-status/v2"`, checked in as
@@ -277,7 +277,7 @@ line, so consumers get two full major lines of notice.
   to the v2 projection or stay on the v3 line. The migration note shows one
   before/after record pair, as the 3.0.0 note did for the batch envelope.
 
-### v4 `Analysis` flat-field retirement
+### v4 `Analysis` flat-field retirement (executed)
 
 Completes the "Slim the `Analysis` god-struct" refactor, sequenced so the
 risky part ships with no user-visible change first:
@@ -314,7 +314,7 @@ registry still statically typed — not a backdoor plugin system.
 | v3.x | In-memory storage flip: grouped views primary, flat fields derived (no wire change) — **done**: wire decoupled via `FlatAnalysis`, storage flipped, ~1,525 mechanical edits; record in `docs/analysis-storage-flip.md` |
 | v3.x | Additive record fields: typed numeric metric values on `TimelineSnapshot` — **done**: `metricValues` on recorded snapshots feed `analyze-record --detect seasonality --signal metric\|auto`, including weekly-cycle labeling |
 | v3.x | Optional additive features that harden the v4 line: opt-in informer-based watch (see Medium Term, open), KEDA `spec.idleReplicaCount` extraction — **done** (extract → enrich → render chain with tests) |
-| v4.0.0 | Alias removal, v1 schema retirement, and flat-field removal in one release with a single migration section in `CHANGELOG.md` |
+| v4.0.0 | Alias removal, v1 schema retirement, and flat-field removal in one release with a single migration section in `CHANGELOG.md` — **done** |
 
 KEP-6111 structured decision fields stay a prepared boundary (see
 ARCHITECTURE.md). If upstream ships them before v4, the adapter lands as an

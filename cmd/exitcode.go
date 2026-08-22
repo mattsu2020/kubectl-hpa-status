@@ -8,14 +8,12 @@ import (
 // Exit codes for script integration.
 const (
 	ExitSuccess = 0 // healthy / success
-	ExitError   = 1 // error (API failure, HPA not found)
+	ExitError   = 1 // error (API failure)
 	ExitWarning = 2 // limited or warning (ScalingActive=False, ScalingLimited, health score below threshold)
 
-	// ExitNotFound is reserved for a future release where HPA-not-found exits
-	// with a dedicated code distinct from generic API errors. The current
-	// behavior keeps not-found at ExitError for backwards compatibility; the
-	// constant is exported so scripts and docs can adopt it incrementally.
-	// Application is gated behind the v4.0.0 boundary (see ROADMAP.md).
+	// ExitNotFound is the dedicated code for "the HPA does not exist",
+	// letting scripts distinguish it from generic API failures. Applied
+	// from v4.0.0; through v3 it exited ExitError for script compatibility.
 	ExitNotFound = 3
 )
 
@@ -58,10 +56,6 @@ func warningExitCode(health, name, namespace string, watchMode bool) error {
 // error is recognised, or (ExitError, false) as the generic fallback. This is
 // the single place where sentinel -> exit-code mapping lives so new sentinels
 // are added here instead of leaking ad-hoc switches into command Run handlers.
-//
-// Currently every sentinel still resolves to ExitError to preserve existing
-// script behavior; the function exists so the mapping can be tightened in a
-// single place when the dedicated exit codes roll out.
 func classifyError(err error) (int, bool) {
 	if err == nil {
 		return ExitSuccess, true
@@ -71,9 +65,7 @@ func classifyError(err error) (int, bool) {
 		return exitErr.Code, true
 	}
 	if errors.Is(err, ErrHPANotFound) {
-		// Kept at ExitError for backwards compatibility; flip to ExitNotFound
-		// at the v4.0.0 boundary tracked in ROADMAP.md.
-		return ExitError, true
+		return ExitNotFound, true
 	}
 	return ExitError, false
 }

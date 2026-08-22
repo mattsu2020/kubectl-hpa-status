@@ -100,19 +100,19 @@ func TestRunStatusMany_AllEnrichersEnabled(t *testing.T) {
 	if err := json.Unmarshal(buf.Bytes(), &report); err != nil {
 		t.Fatalf("failed to parse JSON output: %v\noutput:\n%s", err, buf.String())
 	}
-	if report.Analysis.Name() != "web" {
-		t.Errorf("expected analysis for web, got %q", report.Analysis.Name())
+	if report.Analysis.Meta.Name != "web" {
+		t.Errorf("expected analysis for web, got %q", report.Analysis.Meta.Name)
 	}
 	// Spot-check that deep enrichment actually populated its sections rather
 	// than silently skipping. The fixture's memory metric has no memory
 	// request, so the resource check must report the inconsistency.
-	if report.Analysis.ResourceCheck() == nil || len(report.Analysis.ResourceCheck().Warnings) == 0 {
+	if report.Analysis.Capacity.ResourceCheck == nil || len(report.Analysis.Capacity.ResourceCheck.Warnings) == 0 {
 		t.Error("expected ResourceCheck warnings for memory metric without memory request")
 	}
-	if report.Analysis.BlockerReport() == nil {
+	if report.Analysis.Blockers.BlockerReport == nil {
 		t.Error("expected BlockerReport to be populated with --scaleout-blockers")
 	}
-	if report.Analysis.CapacityContext() == nil {
+	if report.Analysis.Capacity.CapacityContext == nil {
 		t.Error("expected CapacityContext to be populated with --capacity-context")
 	}
 
@@ -154,8 +154,8 @@ func TestRunStatusMany_NoEnrich(t *testing.T) {
 	if err := json.Unmarshal(buf.Bytes(), &report); err != nil {
 		t.Fatalf("parse: %v\n%s", err, buf.String())
 	}
-	if report.Analysis.Name() != "web" {
-		t.Errorf("expected bare analysis, got %q", report.Analysis.Name())
+	if report.Analysis.Meta.Name != "web" {
+		t.Errorf("expected bare analysis, got %q", report.Analysis.Meta.Name)
 	}
 }
 

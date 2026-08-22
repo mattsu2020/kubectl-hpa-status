@@ -6,7 +6,6 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/core"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/confidence"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/suggestion"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const limitation = confidence.BadgeObserved + " This plugin uses existing HPA status, conditions, metrics, and events. It does not expose internal controller calculations."
@@ -118,40 +117,47 @@ func (w HealthWeights) Clone() HealthWeights {
 
 // Analysis holds the complete analysis result for a single HPA.
 //
-// Storage policy: the 13 grouped views are the primary in-memory storage
-// (unexported fields below); the flat v1 field surface lives on as accessor
-// methods in analysis_accessors.go, and the v1 wire shape comes from
-// FlatAnalysis via Analysis.MarshalJSON (see docs/analysis-storage-flip.md).
-// In-tree code reads the accessors or the view methods (Meta, Replicas,
-// MetricsGroup, ...); nothing reads a flat field because none exists.
+// Storage and API policy (v4): the 13 grouped views below ARE both the
+// in-memory storage and the public Go surface — reads and writes go through
+// the exported group fields (a.Replicas.Current). The historical flat v1
+// fields and their accessor methods were removed in v4.0.0; the changelog
+// migration table maps each retired field to its group, and
+// docs/analysis-storage-flip.md records the transition. Analysis serializes
+// as the grouped v2 shape (see GroupedAnalysis / ProjectStatusReportV2).
 //
-// Field policy: Analysis is the JSON/YAML output surface consumed by scripts
-// and external tools, so existing field names and shapes are frozen (renames
-// and removals require a SchemaVersion bump; see docs/output-schema.json and
-// the consistency test in output_schema_test.go). New analysis domains must
-// NOT add loose accessor pairs here; group them into a dedicated sub-struct
-// exposed through a single pointer field (as HealthResult, CapacityContext,
-// and BlockerReport do) so the surface grows by feature, stays navigable,
-// and omits empty domains from serialized output via omitempty.
+// Field policy: new analysis domains must NOT add loose scalar fields here;
+// group them into a dedicated sub-struct exposed through a single pointer
+// field (as HealthResult, CapacityContext, and BlockerReport do) so the
+// struct grows by feature, stays navigable, and omits empty domains from
+// serialized output via omitempty.
 type Analysis struct {
-	// creationTimestamp keeps full time.Time fidelity for the HPA creation
-	// time; MetaView serializes it as second-precision RFC3339 on the v2
-	// wire, and the v1 wire marshals it via FlatAnalysis.
-	creationTimestamp metav1.Time
-
-	meta        MetaView
-	replicas    ReplicasView
-	decision    DecisionView
-	metrics     MetricsView
-	conditions  ConditionsView
-	capacity    CapacityView
-	scaleToZero ScaleToZeroView
-	stability   StabilityView
-	advisory    AdvisoryView
-	controllers ControllersView
-	blockers    BlockersView
-	actions     ActionsView
-	lifecycle   LifecycleView
+	// Meta carries the identity group: namespace, name, target, and the
+	// creation timestamp as second-precision RFC3339 (the v2 wire shape).
+	Meta MetaView `json:"meta" yaml:"meta"`
+	// Replicas carries the core scaling envelope.
+	Replicas ReplicasView `json:"replicas" yaml:"replicas"`
+	// Decision carries the "why this replica count" signals.
+	Decision DecisionView `json:"decision" yaml:"decision"`
+	// Metrics carries the metric-pipeline health signals.
+	Metrics MetricsView `json:"metrics" yaml:"metrics"`
+	// Conditions carries HPA controller conditions and behavior configuration.
+	Conditions ConditionsView `json:"conditions" yaml:"conditions"`
+	// Capacity carries scheduling and cluster capacity signals.
+	Capacity CapacityView `json:"capacity" yaml:"capacity"`
+	// ScaleToZero carries scale-to-zero and cold-start/warmup signals.
+	ScaleToZero ScaleToZeroView `json:"scaleToZero" yaml:"scaleToZero"`
+	// Stability carries flapping and churn diagnosis signals.
+	Stability StabilityView `json:"stability" yaml:"stability"`
+	// Advisory carries VPA and container/behavior tuning advice.
+	Advisory AdvisoryView `json:"advisory" yaml:"advisory"`
+	// Controllers carries external controller integrations.
+	Controllers ControllersView `json:"controllers" yaml:"controllers"`
+	// Blockers carries apply-time gating signals.
+	Blockers BlockersView `json:"blockers" yaml:"blockers"`
+	// Actions carries the recommendation/explainability output.
+	Actions ActionsView `json:"actions" yaml:"actions"`
+	// Lifecycle carries freshness/trend/telemetry signals.
+	Lifecycle LifecycleView `json:"lifecycle" yaml:"lifecycle"`
 
 	// dynamicHealthBaseline is the immutable pre-enrichment health state used
 	// to reconcile KEDA, VPA, and churn penalties without accumulating or

@@ -7,10 +7,10 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
-// SchemaVersion is the API version embedded in JSON/YAML output so consumers
-// can detect schema drift. Bump when a breaking field rename/removal occurs;
-// additive fields do not require a bump. Current shape: "hpa-status/v1".
-const SchemaVersion = "hpa-status/v1"
+// SchemaVersion is the API version embedded in report envelopes so consumers
+// can detect schema drift. v4 removed the flat v1 projection, so the report
+// envelope now carries the grouped v2 shape: "hpa-status/v2".
+const SchemaVersion = "hpa-status/v2"
 
 // StatusReport holds the analysis result and events for a single HPA.
 type StatusReport struct {
@@ -100,24 +100,24 @@ func writeStatusDashboard(w io.Writer, report StatusReport, theme style.Theme) e
 func WriteStatusDashboardWithOptions(w io.Writer, report StatusReport, opts StatusTextOptions) error {
 	a := report.Analysis
 	theme := opts.Theme
-	diff := a.Desired() - a.Current()
+	diff := a.Replicas.Desired - a.Replicas.Current
 	var out []byte
 	out = fmt.Appendf(out, "kubectl-hpa-status dashboard\n")
-	out = fmt.Appendf(out, "HPA      %s/%s\n", a.Namespace(), a.Name())
-	out = fmt.Appendf(out, "Target   %s\n", a.Target())
-	out = fmt.Appendf(out, "Health   %s %d/100\n", theme.HealthLabel(a.Health(), a.HealthScore()), a.HealthScore())
-	out = fmt.Appendf(out, "Replicas current=%d desired=%d diff=%+d min=%d max=%d\n", a.Current(), a.Desired(), diff, a.Min(), a.Max())
-	if a.StabilizationRemaining() != nil && *a.StabilizationRemaining() > 0 {
-		progress := FormatStabilizationWithSource(a.StabilizationRemaining(), a.StabilizationWindowSeconds(), a.StabilizationSource())
+	out = fmt.Appendf(out, "HPA      %s/%s\n", a.Meta.Namespace, a.Meta.Name)
+	out = fmt.Appendf(out, "Target   %s\n", a.Meta.Target)
+	out = fmt.Appendf(out, "Health   %s %d/100\n", theme.HealthLabel(a.Decision.Health, a.Decision.HealthScore), a.Decision.HealthScore)
+	out = fmt.Appendf(out, "Replicas current=%d desired=%d diff=%+d min=%d max=%d\n", a.Replicas.Current, a.Replicas.Desired, diff, a.Replicas.Min, a.Replicas.Max)
+	if a.Conditions.StabilizationRemaining != nil && *a.Conditions.StabilizationRemaining > 0 {
+		progress := FormatStabilizationWithSource(a.Conditions.StabilizationRemaining, a.Conditions.StabilizationWindowSeconds, a.Conditions.StabilizationSource)
 		out = fmt.Appendf(out, "Stabilizing %s\n", progress)
 	}
-	out = fmt.Appendf(out, "Summary  %s\n", theme.SummaryColorForKey(opts.translateSummary(a.Summary(), a.SummaryKey()), a.SummaryKey()))
+	out = fmt.Appendf(out, "Summary  %s\n", theme.SummaryColorForKey(opts.translateSummary(a.Decision.Summary, a.Decision.SummaryKey), a.Decision.SummaryKey))
 
 	out = append(out, "\nConditions\n"...)
-	if len(a.Conditions()) == 0 {
+	if len(a.Conditions.Conditions) == 0 {
 		out = append(out, "  No conditions reported.\n"...)
 	} else {
-		for _, condition := range a.Conditions() {
+		for _, condition := range a.Conditions.Conditions {
 			out = fmt.Appendf(out, "  %-15s %s %-24s %s\n",
 				SanitizeTerminalText(string(condition.Type)), theme.ConditionStatus(condition.Type, condition.Status),
 				SanitizeTerminalText(condition.Reason), SanitizeTerminalText(condition.Message))
@@ -125,10 +125,10 @@ func WriteStatusDashboardWithOptions(w io.Writer, report StatusReport, opts Stat
 	}
 
 	out = append(out, "\nMetrics\n"...)
-	if len(a.Metrics()) == 0 {
+	if len(a.Metrics.Metrics) == 0 {
 		out = append(out, "  No current metrics reported.\n"...)
 	} else {
-		for _, metric := range a.Metrics() {
+		for _, metric := range a.Metrics.Metrics {
 			name := metric.Name
 			if name == "" {
 				name = metric.Type
@@ -141,9 +141,9 @@ func WriteStatusDashboardWithOptions(w io.Writer, report StatusReport, opts Stat
 		}
 	}
 
-	if len(a.Actions()) > 0 {
+	if len(a.Actions.Actions) > 0 {
 		out = append(out, "\nNext actions\n"...)
-		for _, action := range a.Actions() {
+		for _, action := range a.Actions.Actions {
 			out = fmt.Appendf(out, "  - %s\n", theme.ActionLine(action))
 		}
 	}
@@ -164,17 +164,17 @@ func WriteStatusTextWithOptions(w io.Writer, report StatusReport, opts StatusTex
 	theme := opts.Theme
 	labels := resolveLabels(opts.Labels)
 	var out []byte
-	out = fmt.Appendf(out, "HPA %s/%s\n", a.Namespace(), a.Name())
-	out = fmt.Appendf(out, "%s: %s\n", labels.Target, a.Target())
+	out = fmt.Appendf(out, "HPA %s/%s\n", a.Meta.Namespace, a.Meta.Name)
+	out = fmt.Appendf(out, "%s: %s\n", labels.Target, a.Meta.Target)
 
 	// Replicas: highlight desired when it differs from current
-	desired := theme.ReplicaHighlight(a.Desired(), a.Desired() != a.Current())
-	out = fmt.Appendf(out, "%s: current=%d desired=%s min=%d max=%d\n", labels.Replicas, a.Current(), desired, a.Min(), a.Max())
-	out = fmt.Appendf(out, "%s: %s %d/100\n", labels.Health, theme.HealthLabel(a.Health(), a.HealthScore()), a.HealthScore())
+	desired := theme.ReplicaHighlight(a.Replicas.Desired, a.Replicas.Desired != a.Replicas.Current)
+	out = fmt.Appendf(out, "%s: current=%d desired=%s min=%d max=%d\n", labels.Replicas, a.Replicas.Current, desired, a.Replicas.Min, a.Replicas.Max)
+	out = fmt.Appendf(out, "%s: %s %d/100\n", labels.Health, theme.HealthLabel(a.Decision.Health, a.Decision.HealthScore), a.Decision.HealthScore)
 	appendScoreBreakdown(&out, a)
 
 	out = append(out, '\n')
-	out = fmt.Appendf(out, "%s: %s\n", labels.Summary, theme.SummaryColorForKey(opts.translateSummary(a.Summary(), a.SummaryKey()), a.SummaryKey()))
+	out = fmt.Appendf(out, "%s: %s\n", labels.Summary, theme.SummaryColorForKey(opts.translateSummary(a.Decision.Summary, a.Decision.SummaryKey), a.Decision.SummaryKey))
 
 	appendConditionsSection(&out, a, theme, labels)
 	appendMetricsSection(&out, a, theme, labels)

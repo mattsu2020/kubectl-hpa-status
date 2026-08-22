@@ -20,7 +20,7 @@ import (
 // normalizes user input before comparison.
 var (
 	validColorValues        = []string{"auto", "always", "never"}
-	validOutputSchemaValues = []string{"v1", "v2"}
+	validOutputSchemaValues = []string{"v2"}
 	validOutputValues       = canonicalOutputValues()
 	validLangValues         = []string{"en", "ja"}
 

@@ -160,7 +160,7 @@ func collectBatchEntries(opts *options, hpas []autoscalingv2.HorizontalPodAutosc
 		}
 		analysis := hpaanalysis.AnalyzeWithOptions(hpa, true, analysisOptions(opts.HealthWeights, opts.Debug))
 		var suggestions []hpaanalysis.Suggestion
-		for _, s := range analysis.Suggestions() {
+		for _, s := range analysis.Actions.Suggestions {
 			if s.Apply && s.Patch != "" {
 				suggestions = append(suggestions, s)
 			}

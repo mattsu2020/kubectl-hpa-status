@@ -353,12 +353,12 @@ func churnSparkStyle(churn *hpachurn.ChurnAnalysis) lipgloss.Style {
 }
 
 func appendHistoryMetricTrends(sb *strings.Builder, report *hpaanalysis.StatusReport) {
-	if report == nil || len(report.Analysis.Metrics()) == 0 {
+	if report == nil || len(report.Analysis.Metrics.Metrics) == 0 {
 		return
 	}
 	sb.WriteString("\n")
 	sb.WriteString("Metric Trends:\n")
-	for _, metric := range report.Analysis.Metrics() {
+	for _, metric := range report.Analysis.Metrics.Metrics {
 		name := metric.Name
 		if name == "" {
 			name = metric.Type

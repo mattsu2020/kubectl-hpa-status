@@ -19,13 +19,13 @@ func enrichMetricFreshness(ctx context.Context, client *kube.Client, hpa *autosc
 }
 
 func enrichMetricFreshnessAt(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, now time.Time) {
-	if client == nil || hpa == nil || report == nil || len(report.Analysis.MetricFreshnessEntries()) == 0 {
+	if client == nil || hpa == nil || report == nil || len(report.Analysis.Metrics.MetricFreshness) == 0 {
 		return
 	}
 
 	apiCache := map[string]apiDiscoveryStatus{}
-	for i := range report.Analysis.MetricFreshnessEntries() {
-		entry := &report.Analysis.MetricFreshnessEntries()[i]
+	for i := range report.Analysis.Metrics.MetricFreshness {
+		entry := &report.Analysis.Metrics.MetricFreshness[i]
 		if entry.Source != "" {
 			status, ok := apiCache[entry.Source]
 			if !ok {
@@ -120,7 +120,7 @@ func freshnessEventMatchesType(reason, metricType string) bool {
 }
 
 func enrichResourceMetricSamples(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, now time.Time) {
-	if !hasResourceFreshnessEntry(report.Analysis.MetricFreshnessEntries()) {
+	if !hasResourceFreshnessEntry(report.Analysis.Metrics.MetricFreshness) {
 		return
 	}
 	selector, err := resolveScaleTargetSelector(ctx, client, hpa.Namespace, hpa.Spec.ScaleTargetRef)
@@ -132,8 +132,8 @@ func enrichResourceMetricSamples(ctx context.Context, client *kube.Client, hpa *
 		return
 	}
 
-	for i := range report.Analysis.MetricFreshnessEntries() {
-		entry := &report.Analysis.MetricFreshnessEntries()[i]
+	for i := range report.Analysis.Metrics.MetricFreshness {
+		entry := &report.Analysis.Metrics.MetricFreshness[i]
 		resourceName, containerName, ok := resourceIdentityForFreshnessEntry(hpa, i, *entry)
 		if !ok {
 			continue
@@ -260,12 +260,12 @@ func formatAgeForEvidence(d time.Duration) string {
 }
 
 func enrichKEDAFreshness(namespace string, report *hpaanalysis.StatusReport) {
-	keda := report.Analysis.KEDAInfo()
+	keda := report.Analysis.Controllers.KEDAInfo
 	if keda == nil {
 		return
 	}
-	for i := range report.Analysis.MetricFreshnessEntries() {
-		entry := &report.Analysis.MetricFreshnessEntries()[i]
+	for i := range report.Analysis.Metrics.MetricFreshness {
+		entry := &report.Analysis.Metrics.MetricFreshness[i]
 		if entry.Type != "External" {
 			continue
 		}

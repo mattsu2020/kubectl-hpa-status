@@ -36,17 +36,17 @@ func (m Model) renderMetricsView() string {
 
 // appendMetricsReportBody renders the per-metric rows and pipeline diagnostics section of the metrics view.
 func appendMetricsReportBody(sb *strings.Builder, a hpaanalysis.Analysis) {
-	if len(a.Metrics()) == 0 {
+	if len(a.Metrics.Metrics) == 0 {
 		sb.WriteString(dimStyle.Render("No metrics configured for this HPA."))
 		sb.WriteString("\n")
 	}
 
-	for i, metric := range a.Metrics() {
-		appendMetricRow(sb, metric, i, len(a.Metrics()))
+	for i, metric := range a.Metrics.Metrics {
+		appendMetricRow(sb, metric, i, len(a.Metrics.Metrics))
 	}
 
-	if a.MetricsDiagnostics() != nil {
-		appendMetricsPipelineDiagnostics(sb, a.MetricsDiagnostics())
+	if a.Metrics.MetricsDiagnostics != nil {
+		appendMetricsPipelineDiagnostics(sb, a.Metrics.MetricsDiagnostics)
 	}
 }
 

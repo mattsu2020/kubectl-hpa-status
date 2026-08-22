@@ -88,18 +88,11 @@ func TestWriteListCIReports(t *testing.T) {
 }
 
 func TestWriteAIContext(t *testing.T) {
-	report := hpaanalysis.StatusReport{Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
-		Namespace:   "prod",
-		Name:        "web",
-		Target:      "Deployment/web",
-		Current:     2,
-		Desired:     4,
-		Min:         2,
-		Max:         10,
-		Health:      "LIMITED",
-		HealthScore: 75,
-		Summary:     "Scaling up",
-	})}
+	report := hpaanalysis.StatusReport{Analysis: hpaanalysis.Analysis{
+		Meta:     hpaanalysis.MetaView{Namespace: "prod", Name: "web", Target: "Deployment/web"},
+		Replicas: hpaanalysis.ReplicasView{Current: 2, Desired: 4, Min: 2, Max: 10},
+		Decision: hpaanalysis.DecisionView{Health: "LIMITED", HealthScore: 75, Summary: "Scaling up"},
+	}}
 	var buf bytes.Buffer
 	if err := writeAIContext(&buf, report, "why is it slow?"); err != nil {
 		t.Fatalf("writeAIContext returned error: %v", err)

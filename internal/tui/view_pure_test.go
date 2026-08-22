@@ -101,11 +101,11 @@ func TestAppendMetricsReportBody(t *testing.T) {
 
 	t.Run("metrics render without panic", func(t *testing.T) {
 		var sb strings.Builder
-		a := *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
-			Metrics: []hpaanalysis.Metric{
+		a := hpaanalysis.Analysis{
+			Metrics: hpaanalysis.MetricsView{Metrics: []hpaanalysis.Metric{
 				{Name: "cpu", Target: "70%", Current: "65%", Type: "Resource"},
-			},
-		})
+			}},
+		}
 		appendMetricsReportBody(&sb, a)
 		// Must mention the metric name and not include the no-metrics message.
 		if !strings.Contains(sb.String(), "cpu") {

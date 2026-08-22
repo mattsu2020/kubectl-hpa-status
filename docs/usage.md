@@ -62,7 +62,7 @@ kubectl-hpa-status completion zsh
 | `--chunk-size` | `list`, `scan`, `tui` | Kubernetes list page size. Defaults to 500; set 0 to disable pagination. |
 | `--health-weight name=value` | all analysis commands | Override one health score penalty from the CLI. Repeatable; names include `scalingInactive`, `unableToScale`, `scalingLimited`, `implicitMaxReplicas`, `scaleDownStabilized`, and `atMinimumReplicas`. |
 | `-o table\|wide\|json\|jsonl\|yaml\|jsonpath=...\|template=...\|prometheus\|junit\|sarif` | status, doctor, list, scan | Output format. YAML is supported for both single and multiple HPA output. `junit` and `sarif` are intended for `list`/`scan`. `jsonl` streams one JSON object per line for `list`/`scan` and keeps memory flat on large clusters when enrichment and whole-report features are disabled. For the JSON schemas, see [v1](output-schema.json) and [v2](output-schema-v2.json). |
-| `--output-schema v1\|v2` | status | Select the flat v1 or grouped v2 structured status projection. v2 is the default since v3; pass `v1` to keep the flat legacy shape. v2 applies to JSON, YAML, JSONL, JSONPath, and Go template output. |
+| `--output-schema v2` | status | Accepts only the grouped v2 structured status projection (the default). The flat v1 projection was removed in v4. Applies to JSON, YAML, JSONL, JSONPath, and Go template output. |
 | `--wide` | table output | Show target, min, max, and replica delta columns where applicable. |
 | `--sort-by namespace\|name\|current\|desired\|diff\|health-score\|issue\|problem` | `list`, `scan` | Sort list output. `problem` puts the lowest health score and largest replica delta first. |
 | `--filter all\|ok\|error\|limited\|scaling-limited\|issue` | `list`, `scan` | Filter by health or issue text. |
@@ -230,7 +230,7 @@ kubectl hpa status list -A -o jsonl --keda=off --vpa=off
 kubectl hpa status scan -o jsonl --keda=off --vpa=off
 ```
 
-Since v3 the structured default is the grouped v2 projection; `--output-schema=v1` keeps the flat shape below. For machine-readable validation, see the [flat v1 schema](output-schema.json)
+The structured output is the grouped v2 projection; the flat v1 shape was removed in v4. For machine-readable validation, see the [v2 schema](output-schema-v2.json)
 and the [grouped v2 schema](output-schema-v2.json).
 
 For `status --output-schema=v2 -o jsonl`, every line uses the same

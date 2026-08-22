@@ -57,9 +57,9 @@ func runCapacityPlan(ctx context.Context, out io.Writer, opts *options, names []
 			)
 
 			return capacityPlanOutput{
-				Namespace: analysis.Namespace(),
-				Name:      analysis.Name(),
-				Target:    analysis.Target(),
+				Namespace: analysis.Meta.Namespace,
+				Name:      analysis.Meta.Name,
+				Target:    analysis.Meta.Target,
 				Plan:      hpaanalysis.AnalyzeCapacityPlan(input),
 			}, nil
 		},
@@ -73,14 +73,10 @@ func runCapacityPlan(ctx context.Context, out io.Writer, opts *options, names []
 }
 
 func buildCapacityPlanForStatusWithSnapshot(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, target string, targetMax int32, snapshot *observation.Snapshot) *hpaanalysis.CapacityPlan {
-	analysis := *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
-		Namespace: hpa.Namespace,
-		Name:      hpa.Name,
-		Target:    target,
-		Current:   hpa.Status.CurrentReplicas,
-		Desired:   hpa.Status.DesiredReplicas,
-		Max:       hpa.Spec.MaxReplicas,
-	})
+	analysis := hpaanalysis.Analysis{
+		Meta:     hpaanalysis.MetaView{Namespace: hpa.Namespace, Name: hpa.Name, Target: target},
+		Replicas: hpaanalysis.ReplicasView{Current: hpa.Status.CurrentReplicas, Desired: hpa.Status.DesiredReplicas, Max: hpa.Spec.MaxReplicas},
+	}
 	input := assembleCapacityPlanInputWithSnapshot(ctx, client, hpa, analysis, targetMax, snapshot)
 	return hpaanalysis.AnalyzeCapacityPlan(input)
 }
@@ -95,7 +91,7 @@ func assembleCapacityPlanInputWithSnapshot(ctx context.Context, client *kube.Cli
 	input := hpaanalysis.CapacityPlanInput{
 		Namespace:         hpa.Namespace,
 		HPAName:           hpa.Name,
-		Target:            analysis.Target(),
+		Target:            analysis.Meta.Target,
 		CurrentReplicas:   hpa.Status.CurrentReplicas,
 		MaxReplicas:       hpa.Spec.MaxReplicas,
 		TargetMaxReplicas: targetMax,

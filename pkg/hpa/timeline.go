@@ -18,15 +18,15 @@ func SnapshotFromReport(report StatusReport) TimelineSnapshot {
 	a := report.Analysis
 	return TimelineSnapshot{
 		Timestamp:      now(),
-		Current:        a.Current(),
-		Desired:        a.Desired(),
-		Health:         a.Health(),
-		HealthScore:    a.HealthScore(),
+		Current:        a.Replicas.Current,
+		Desired:        a.Replicas.Desired,
+		Health:         a.Decision.Health,
+		HealthScore:    a.Decision.HealthScore,
 		TopMetric:      topMetricFromAnalysis(&a),
 		MetricValues:   metricReadingsFromAnalysis(&a),
-		Conditions:     a.Conditions(),
-		Summary:        a.Summary(),
-		Interpretation: a.Interpretation(),
+		Conditions:     a.Conditions.Conditions,
+		Summary:        a.Decision.Summary,
+		Interpretation: a.Actions.Interpretation,
 		Events:         report.Events,
 	}
 }
@@ -36,7 +36,7 @@ func SnapshotFromReport(report StatusReport) TimelineSnapshot {
 // details) are skipped rather than recorded as zero.
 func metricReadingsFromAnalysis(a *Analysis) []MetricReading {
 	var out []MetricReading
-	for _, m := range a.Metrics() {
+	for _, m := range a.Metrics.Metrics {
 		if !m.HasReading() {
 			continue
 		}
@@ -56,11 +56,11 @@ func metricReadingsFromAnalysis(a *Analysis) []MetricReading {
 
 // topMetricFromAnalysis extracts the most influential metric description.
 func topMetricFromAnalysis(a *Analysis) string {
-	if a.ImpactMetric() != nil {
-		return fmt.Sprintf("%s (ratio=%.2f %s)", a.ImpactMetric().Name, a.ImpactMetric().Ratio, a.ImpactMetric().Note)
+	if a.Decision.ImpactMetric != nil {
+		return fmt.Sprintf("%s (ratio=%.2f %s)", a.Decision.ImpactMetric.Name, a.Decision.ImpactMetric.Ratio, a.Decision.ImpactMetric.Note)
 	}
-	if len(a.Metrics()) > 0 {
-		return a.Metrics()[0].Text
+	if len(a.Metrics.Metrics) > 0 {
+		return a.Metrics.Metrics[0].Text
 	}
 	return ""
 }

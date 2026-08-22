@@ -30,14 +30,14 @@ func (m Model) handleFixKey() (tea.Model, tea.Cmd) {
 	}
 
 	report := m.currentReport()
-	if report == nil || len(report.Analysis.Suggestions()) == 0 {
+	if report == nil || len(report.Analysis.Actions.Suggestions) == 0 {
 		m.err = fmt.Errorf("no suggestions available for this HPA")
 		return m, nil
 	}
 
 	m.fixEpoch++
 	m.fixState = &fixState{
-		suggestions: report.Analysis.Suggestions(),
+		suggestions: report.Analysis.Actions.Suggestions,
 		selected:    0,
 	}
 	m.viewMode = fixView
@@ -244,16 +244,16 @@ func (m Model) currentReport() *hpaanalysis.StatusReport {
 func buildHPAFromAnalysis(a hpaanalysis.Analysis) *autoscalingv2.HorizontalPodAutoscaler {
 	hpa := &autoscalingv2.HorizontalPodAutoscaler{
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: a.Namespace(),
-			Name:      a.Name(),
+			Namespace: a.Meta.Namespace,
+			Name:      a.Meta.Name,
 		},
 		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-			MaxReplicas: a.Max(),
-			MinReplicas: int32Ptr(a.Min()),
+			MaxReplicas: a.Replicas.Max,
+			MinReplicas: int32Ptr(a.Replicas.Min),
 		},
 		Status: autoscalingv2.HorizontalPodAutoscalerStatus{
-			CurrentReplicas: a.Current(),
-			DesiredReplicas: a.Desired(),
+			CurrentReplicas: a.Replicas.Current,
+			DesiredReplicas: a.Replicas.Desired,
 		},
 	}
 	return hpa

@@ -8,14 +8,11 @@ import (
 func TestProjectStatusReportV2UsesNestedSchemaWithoutMutatingV1(t *testing.T) {
 	report := StatusReport{
 		APIVersion: SchemaVersion,
-		Analysis: *NewAnalysis(FlatAnalysis{
-			Namespace:   "default",
-			Name:        "web",
-			Current:     2,
-			Desired:     3,
-			Health:      "OK",
-			HealthScore: 100,
-		}),
+		Analysis: Analysis{
+			Meta:     MetaView{Namespace: "default", Name: "web"},
+			Replicas: ReplicasView{Current: 2, Desired: 3},
+			Decision: DecisionView{Health: "OK", HealthScore: 100},
+		},
 		Events: []Event{{Reason: "SuccessfulRescale"}},
 	}
 
@@ -52,9 +49,12 @@ func TestProjectStatusReportV2UsesNestedSchemaWithoutMutatingV1(t *testing.T) {
 }
 
 func TestProjectStatusReportV2UsesFrozenCanonicalSnapshot(t *testing.T) {
-	report := StatusReport{APIVersion: SchemaVersion, Analysis: *NewAnalysis(FlatAnalysis{Name: "before", Health: "OK"})}
+	report := StatusReport{APIVersion: SchemaVersion, Analysis: Analysis{
+		Meta:     MetaView{Name: "before"},
+		Decision: DecisionView{Health: "OK"},
+	}}
 	report.FreezeCanonical()
-	report.Analysis.SetName("legacy-mutated")
+	report.Analysis.Meta.Name = "legacy-mutated"
 	projected := ProjectStatusReportV2(report)
 	if projected.Analysis.Meta.Name != "before" {
 		t.Fatalf("canonical name = %q, want frozen value", projected.Analysis.Meta.Name)
@@ -62,7 +62,9 @@ func TestProjectStatusReportV2UsesFrozenCanonicalSnapshot(t *testing.T) {
 }
 
 func TestProjectStatusBatchV2PreservesErrors(t *testing.T) {
-	report := StatusReport{APIVersion: SchemaVersion, Analysis: *NewAnalysis(FlatAnalysis{Name: "ok"})}
+	report := StatusReport{APIVersion: SchemaVersion, Analysis: Analysis{
+		Meta: MetaView{Name: "ok"},
+	}}
 	batch := StatusBatch{APIVersion: SchemaVersion, Items: []StatusBatchItem{
 		{Name: "ok", Status: BatchStatusOK, Report: &report},
 		{Name: "missing", Status: BatchStatusError, Error: "not found"},
@@ -83,10 +85,9 @@ func TestProjectStatusBatchV2PreservesErrors(t *testing.T) {
 func TestProjectStatusRecordV2UsesStableSuccessEnvelope(t *testing.T) {
 	report := StatusReport{
 		APIVersion: SchemaVersion,
-		Analysis: *NewAnalysis(FlatAnalysis{
-			Namespace: "default",
-			Name:      "web",
-		}),
+		Analysis: Analysis{
+			Meta: MetaView{Namespace: "default", Name: "web"},
+		},
 	}
 
 	record := ProjectStatusRecordV2(report)
@@ -103,10 +104,9 @@ func TestProjectStatusRecordV2UsesStableSuccessEnvelope(t *testing.T) {
 func TestProjectStatusRecordsV2PreservesPartialFailures(t *testing.T) {
 	report := StatusReport{
 		APIVersion: SchemaVersion,
-		Analysis: *NewAnalysis(FlatAnalysis{
-			Namespace: "default",
-			Name:      "web",
-		}),
+		Analysis: Analysis{
+			Meta: MetaView{Namespace: "default", Name: "web"},
+		},
 	}
 	batch := StatusBatch{APIVersion: SchemaVersion, Items: []StatusBatchItem{
 		{Namespace: "default", Name: "web", Status: BatchStatusOK, Report: &report},

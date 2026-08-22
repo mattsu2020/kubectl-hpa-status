@@ -31,6 +31,17 @@ func executeOutputSchemaV2CLI(t *testing.T, client kubernetes.Interface, args ..
 	return stdout.String()
 }
 
+func executeOutputSchemaV2CLIWithError(t *testing.T, client kubernetes.Interface, args ...string) (string, error) {
+	t.Helper()
+	root := newOutputSchemaV2CLIRoot(client)
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs(args)
+	err := root.Execute()
+	return stderr.String() + stdout.String(), err
+}
+
 func assertV2SingleOutputShape(t *testing.T, data []byte) {
 	t.Helper()
 	var decoded map[string]any
@@ -97,18 +108,11 @@ func TestStatusOutputSchemaV2StructuredFormats(t *testing.T) {
 func TestWatchOutputSchemaV2UsesProjectedValueForEverySupportedFormat(t *testing.T) {
 	report := hpaanalysis.StatusReport{
 		APIVersion: hpaanalysis.SchemaVersion,
-		Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
-			Namespace:   "default",
-			Name:        "web",
-			Target:      "Deployment/web",
-			Current:     3,
-			Desired:     3,
-			Min:         1,
-			Max:         10,
-			Health:      string(hpaanalysis.HealthOK),
-			HealthScore: 100,
-			Summary:     "HPA is healthy",
-		}),
+		Analysis: hpaanalysis.Analysis{
+			Meta:     hpaanalysis.MetaView{Namespace: "default", Name: "web", Target: "Deployment/web"},
+			Replicas: hpaanalysis.ReplicasView{Current: 3, Desired: 3, Min: 1, Max: 10},
+			Decision: hpaanalysis.DecisionView{Health: string(hpaanalysis.HealthOK), HealthScore: 100, Summary: "HPA is healthy"},
+		},
 	}
 
 	t.Run("json", func(t *testing.T) {
@@ -314,22 +318,15 @@ func TestWatchCLIOutputSchemaV2KeepsStdoutMachineReadable(t *testing.T) {
 	}
 }
 
-func TestStatusOutputSchemaV1JSONLPreservesOneLineArray(t *testing.T) {
+func TestStatusOutputSchemaV1IsRejected(t *testing.T) {
 	web := testutil.BuildHPA("default", "web", testutil.WithReplicas(3, 3))
-	api := testutil.BuildHPA("default", "api", testutil.WithReplicas(2, 2))
-	output := executeOutputSchemaV2CLI(t, testutil.NewFakeClient(web, api),
-		"status", "web", "api", "--no-enrich", "--output-schema=v1", "--output=jsonl")
-
-	lines := strings.Split(strings.TrimSpace(output), "\n")
-	if len(lines) != 1 || !strings.HasPrefix(lines[0], "[") {
-		t.Fatalf("v1 JSONL = %q, want one JSON-array line", output)
+	_, err := executeOutputSchemaV2CLIWithError(t, testutil.NewFakeClient(web),
+		"status", "web", "--no-enrich", "--output-schema=v1", "--output=jsonl")
+	if err == nil {
+		t.Fatal("expected --output-schema=v1 to be rejected in v4")
 	}
-	var reports []hpaanalysis.StatusReport
-	if err := json.Unmarshal([]byte(lines[0]), &reports); err != nil {
-		t.Fatalf("decode v1 JSONL compatibility array: %v", err)
-	}
-	if len(reports) != 2 {
-		t.Fatalf("v1 JSONL reports = %d, want 2", len(reports))
+	if !strings.Contains(err.Error(), "v1") || !strings.Contains(err.Error(), "v2") {
+		t.Fatalf("error should point from v1 to v2, got: %v", err)
 	}
 }
 

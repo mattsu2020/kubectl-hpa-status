@@ -264,7 +264,7 @@ func TestE2E_JSONOutput(t *testing.T) {
 	rootCmd := cmd.NewRootCommand()
 	rootCmd.SetOut(buf)
 	rootCmd.SetErr(buf)
-	rootCmd.SetArgs([]string{"status", "test-hpa", "-n", nsName, "-o", "json", "--output-schema=v1", "--kubeconfig", kubeconfig})
+	rootCmd.SetArgs([]string{"status", "test-hpa", "-n", nsName, "-o", "json", "--output-schema=v2", "--kubeconfig", kubeconfig})
 
 	if err := rootCmd.Execute(); err != nil {
 		t.Fatalf("failed to execute status -o json command: %v. Output:\n%s", err, buf.String())
@@ -283,17 +283,25 @@ func TestE2E_JSONOutput(t *testing.T) {
 		t.Fatal("JSON output missing top-level 'analysis' object")
 	}
 
-	if _, exists := analysis["health"]; !exists {
-		t.Error("JSON analysis missing 'health' field")
-	}
-	if _, exists := analysis["healthScore"]; !exists {
-		t.Error("JSON analysis missing 'healthScore' field")
-	}
-	metrics, ok := analysis["metrics"].([]any)
+	decision, ok := analysis["decision"].(map[string]any)
 	if !ok {
-		t.Error("JSON analysis missing 'metrics' array")
+		t.Fatal("JSON analysis missing 'decision' group (grouped v2 schema)")
+	}
+	if _, exists := decision["health"]; !exists {
+		t.Error("JSON analysis.decision missing 'health' field")
+	}
+	if _, exists := decision["healthScore"]; !exists {
+		t.Error("JSON analysis.decision missing 'healthScore' field")
+	}
+	metricsGroup, ok := analysis["metrics"].(map[string]any)
+	if !ok {
+		t.Fatal("JSON analysis missing 'metrics' group (grouped v2 schema)")
+	}
+	metrics, ok := metricsGroup["metrics"].([]any)
+	if !ok {
+		t.Error("JSON analysis.metrics missing 'metrics' array")
 	} else if len(metrics) == 0 {
-		t.Error("JSON analysis 'metrics' array is empty; expected at least one metric")
+		t.Error("JSON analysis.metrics 'metrics' array is empty; expected at least one metric")
 	}
 }
 
@@ -466,14 +474,14 @@ func TestE2E_MultiMetricWinner(t *testing.T) {
 	multiRaw := runStatusJSON(t, kubeconfig, nsName, "multi-hpa", "--explain")
 	assertStatusReportShape(t, multiRaw, "multi-hpa")
 	multiReport := decodeStatusReport(t, multiRaw)
-	if multiReport.Analysis.ImpactMetric() == nil {
+	if multiReport.Analysis.Decision.ImpactMetric == nil {
 		t.Fatal("expected Analysis.ImpactMetric to be populated for a multi-metric HPA")
 	}
-	if multiReport.Analysis.ImpactMetric().Name != "cpu" {
-		t.Errorf("expected winner metric cpu, got %q", multiReport.Analysis.ImpactMetric().Name)
+	if multiReport.Analysis.Decision.ImpactMetric.Name != "cpu" {
+		t.Errorf("expected winner metric cpu, got %q", multiReport.Analysis.Decision.ImpactMetric.Name)
 	}
-	if len(multiReport.Analysis.Metrics()) < 2 {
-		t.Errorf("expected at least 2 metrics in Analysis.Metrics, got %d", len(multiReport.Analysis.Metrics()))
+	if len(multiReport.Analysis.Metrics.Metrics) < 2 {
+		t.Errorf("expected at least 2 metrics in Analysis.Metrics, got %d", len(multiReport.Analysis.Metrics.Metrics))
 	}
 }
 
@@ -514,16 +522,16 @@ func TestE2E_StabilizationWindow(t *testing.T) {
 	assertStatusReportShape(t, stabRaw, "stabilized-hpa")
 	stabReport := decodeStatusReport(t, stabRaw)
 	a := stabReport.Analysis
-	if a.StabilizationWindowSeconds() == nil {
+	if a.Conditions.StabilizationWindowSeconds == nil {
 		t.Fatal("expected Analysis.StabilizationWindowSeconds to be populated for a stabilized HPA")
 	}
-	if *a.StabilizationWindowSeconds() != 300 {
-		t.Errorf("StabilizationWindowSeconds = %d, want 300", *a.StabilizationWindowSeconds())
+	if *a.Conditions.StabilizationWindowSeconds != 300 {
+		t.Errorf("StabilizationWindowSeconds = %d, want 300", *a.Conditions.StabilizationWindowSeconds)
 	}
-	if a.StabilizationSource() != "scaleDown" {
-		t.Errorf("StabilizationSource = %q, want %q", a.StabilizationSource(), "scaleDown")
+	if a.Conditions.StabilizationSource != "scaleDown" {
+		t.Errorf("StabilizationSource = %q, want %q", a.Conditions.StabilizationSource, "scaleDown")
 	}
-	if a.StabilizationConfidence() == "" {
+	if a.Conditions.StabilizationConfidence == "" {
 		t.Error("StabilizationConfidence is empty; expected a confidence label for stabilization estimates")
 	}
 }
@@ -649,7 +657,7 @@ func TestE2E_JSONTypedDecode(t *testing.T) {
 	rootCmd := cmd.NewRootCommand()
 	rootCmd.SetOut(buf)
 	rootCmd.SetErr(buf)
-	rootCmd.SetArgs([]string{"status", "typed-hpa", "-n", nsName, "-o", "json", "--output-schema=v1", "--explain", "--kubeconfig", kubeconfig})
+	rootCmd.SetArgs([]string{"status", "typed-hpa", "-n", nsName, "-o", "json", "--output-schema=v2", "--explain", "--kubeconfig", kubeconfig})
 
 	if err := rootCmd.Execute(); err != nil {
 		var exitErr *cmd.ExitCodeError
@@ -669,31 +677,31 @@ func TestE2E_JSONTypedDecode(t *testing.T) {
 	a := report.Analysis
 
 	// Identity fields must round-trip exactly.
-	if a.Name() != "typed-hpa" {
-		t.Errorf("expected Analysis.Name=%q, got %q", "typed-hpa", a.Name())
+	if a.Meta.Name != "typed-hpa" {
+		t.Errorf("expected Analysis.Name=%q, got %q", "typed-hpa", a.Meta.Name)
 	}
-	if a.Namespace() != nsName {
-		t.Errorf("expected Analysis.Namespace=%q, got %q", nsName, a.Namespace())
+	if a.Meta.Namespace != nsName {
+		t.Errorf("expected Analysis.Namespace=%q, got %q", nsName, a.Meta.Namespace)
 	}
 
 	// Health must be a non-empty known state.
-	switch a.Health() {
+	switch a.Decision.Health {
 	case "OK", "ERROR", "LIMITED", "STABILIZED":
 		// ok
 	default:
-		t.Errorf("expected Analysis.Health to be a known state, got %q", a.Health())
+		t.Errorf("expected Analysis.Health to be a known state, got %q", a.Decision.Health)
 	}
 
 	// HealthScore must be in [0, 100].
-	if a.HealthScore() < 0 || a.HealthScore() > 100 {
-		t.Errorf("expected HealthScore in [0,100], got %d", a.HealthScore())
+	if a.Decision.HealthScore < 0 || a.Decision.HealthScore > 100 {
+		t.Errorf("expected HealthScore in [0,100], got %d", a.Decision.HealthScore)
 	}
 
 	// The healthy HPA fixture has one CPU resource metric.
-	if len(a.Metrics()) == 0 {
+	if len(a.Metrics.Metrics) == 0 {
 		t.Error("expected at least one Analysis.Metrics entry, got empty slice")
 	} else {
-		m := a.Metrics()[0]
+		m := a.Metrics.Metrics[0]
 		if m.Type != "Resource" {
 			t.Errorf("expected first metric Type=%q, got %q", "Resource", m.Type)
 		}
@@ -703,15 +711,15 @@ func TestE2E_JSONTypedDecode(t *testing.T) {
 	}
 
 	// The healthy HPA fixture reports current=3, desired=5.
-	if a.Current() != 3 {
-		t.Errorf("expected Analysis.Current=3, got %d", a.Current())
+	if a.Replicas.Current != 3 {
+		t.Errorf("expected Analysis.Current=3, got %d", a.Replicas.Current)
 	}
-	if a.Desired() != 5 {
-		t.Errorf("expected Analysis.Desired=5, got %d", a.Desired())
+	if a.Replicas.Desired != 5 {
+		t.Errorf("expected Analysis.Desired=5, got %d", a.Replicas.Desired)
 	}
 
 	// --explain populates the structured interpretation.
-	if len(a.StructuredInterpretation()) == 0 {
+	if len(a.Actions.StructuredInterpretation) == 0 {
 		t.Error("expected non-empty StructuredInterpretation from --explain")
 	}
 }

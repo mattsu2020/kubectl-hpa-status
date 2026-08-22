@@ -60,7 +60,7 @@ func writeBundleContainerStatusTable(b *Writer, data *Data) {
 
 func writeBundleResourceRequests(b *Writer, data *Data) {
 	b.Print("## Resource Requests/Limits\n\n")
-	rc := data.StatusReport.Analysis.ResourceCheck()
+	rc := data.StatusReport.Analysis.Capacity.ResourceCheck
 	if rc == nil || len(rc.Warnings) == 0 {
 		b.Print("_No resource consistency issues detected._\n\n---\n\n")
 		return

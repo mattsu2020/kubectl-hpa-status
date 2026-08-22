@@ -18,11 +18,11 @@ func TestStructuredInterpretation_ScalingInactive(t *testing.T) {
 	}
 
 	got := Analyze(hpa, true)
-	if len(got.StructuredInterpretation()) == 0 {
+	if len(got.Actions.StructuredInterpretation) == 0 {
 		t.Fatalf("expected structured interpretation, got none")
 	}
 	found := false
-	for _, msg := range got.StructuredInterpretation() {
+	for _, msg := range got.Actions.StructuredInterpretation {
 		if msg.Reason == "ScalingInactive" {
 			found = true
 			if msg.Severity != "error" {
@@ -34,7 +34,7 @@ func TestStructuredInterpretation_ScalingInactive(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatalf("expected StructuredMessage with reason=ScalingInactive, got %#v", got.StructuredInterpretation())
+		t.Fatalf("expected StructuredMessage with reason=ScalingInactive, got %#v", got.Actions.StructuredInterpretation)
 	}
 }
 
@@ -46,7 +46,7 @@ func TestStructuredInterpretation_StaleStatus(t *testing.T) {
 
 	got := Analyze(hpa, true)
 	found := false
-	for _, msg := range got.StructuredInterpretation() {
+	for _, msg := range got.Actions.StructuredInterpretation {
 		if msg.Reason == "StaleStatus" {
 			found = true
 			if msg.Severity != "warning" {
@@ -58,7 +58,7 @@ func TestStructuredInterpretation_StaleStatus(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatalf("expected StructuredMessage with reason=StaleStatus, got %#v", got.StructuredInterpretation())
+		t.Fatalf("expected StructuredMessage with reason=StaleStatus, got %#v", got.Actions.StructuredInterpretation)
 	}
 }
 
@@ -73,7 +73,7 @@ func TestStructuredInterpretation_ScaleDownStabilized(t *testing.T) {
 
 	got := Analyze(hpa, true)
 	found := false
-	for _, msg := range got.StructuredInterpretation() {
+	for _, msg := range got.Actions.StructuredInterpretation {
 		if msg.Reason == "ScaleDownStabilized" {
 			found = true
 			if msg.Severity != "info" {
@@ -82,7 +82,7 @@ func TestStructuredInterpretation_ScaleDownStabilized(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatalf("expected StructuredMessage with reason=ScaleDownStabilized, got %#v", got.StructuredInterpretation())
+		t.Fatalf("expected StructuredMessage with reason=ScaleDownStabilized, got %#v", got.Actions.StructuredInterpretation)
 	}
 }
 
@@ -95,11 +95,11 @@ func TestStructuredActions_RestoreMetrics(t *testing.T) {
 	}
 
 	got := Analyze(hpa, true)
-	if len(got.StructuredActions()) == 0 {
+	if len(got.Actions.StructuredActions) == 0 {
 		t.Fatalf("expected structured actions, got none")
 	}
 	found := false
-	for _, msg := range got.StructuredActions() {
+	for _, msg := range got.Actions.StructuredActions {
 		if msg.Reason == "RestoreMetrics" {
 			found = true
 			if msg.Severity != "error" {
@@ -111,7 +111,7 @@ func TestStructuredActions_RestoreMetrics(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatalf("expected StructuredMessage with reason=RestoreMetrics, got %#v", got.StructuredActions())
+		t.Fatalf("expected StructuredMessage with reason=RestoreMetrics, got %#v", got.Actions.StructuredActions)
 	}
 }
 
@@ -227,7 +227,7 @@ func TestInterpretDetectsMetricDisagreement(t *testing.T) {
 
 	// No disagreement when both are below target
 	got := Analyze(hpa, true)
-	if containsLine(got.Interpretation(), "Metric disagreement detected") {
+	if containsLine(got.Actions.Interpretation, "Metric disagreement detected") {
 		t.Fatal("did not expect disagreement when both metrics are below target")
 	}
 
@@ -242,14 +242,14 @@ func TestInterpretDetectsMetricDisagreement(t *testing.T) {
 	}
 
 	got2 := Analyze(hpa, true)
-	if !containsLine(got2.Interpretation(), "Metric disagreement detected") {
-		t.Fatalf("expected metric disagreement warning, got %#v", got2.Interpretation())
+	if !containsLine(got2.Actions.Interpretation, "Metric disagreement detected") {
+		t.Fatalf("expected metric disagreement warning, got %#v", got2.Actions.Interpretation)
 	}
-	if !containsLine(got2.Interpretation(), "cpu") {
-		t.Fatalf("expected cpu mentioned in disagreement, got %#v", got2.Interpretation())
+	if !containsLine(got2.Actions.Interpretation, "cpu") {
+		t.Fatalf("expected cpu mentioned in disagreement, got %#v", got2.Actions.Interpretation)
 	}
-	if !containsLine(got2.Interpretation(), "queue_depth") {
-		t.Fatalf("expected queue_depth mentioned in disagreement, got %#v", got2.Interpretation())
+	if !containsLine(got2.Actions.Interpretation, "queue_depth") {
+		t.Fatalf("expected queue_depth mentioned in disagreement, got %#v", got2.Actions.Interpretation)
 	}
 }
 
@@ -268,7 +268,7 @@ func TestStructuredInterpretation_IncludesExternalMetricDiagnostics(t *testing.T
 
 	got := Analyze(hpa, true)
 	found := false
-	for _, msg := range got.StructuredInterpretation() {
+	for _, msg := range got.Actions.StructuredInterpretation {
 		if msg.Reason == "ExternalMetricDiagnostic" && strings.Contains(msg.Message, "queue_depth") {
 			found = true
 			if msg.Severity == "" {
@@ -277,7 +277,7 @@ func TestStructuredInterpretation_IncludesExternalMetricDiagnostics(t *testing.T
 		}
 	}
 	if !found {
-		t.Fatalf("expected StructuredMessage with reason=ExternalMetricDiagnostic, got %#v", got.StructuredInterpretation())
+		t.Fatalf("expected StructuredMessage with reason=ExternalMetricDiagnostic, got %#v", got.Actions.StructuredInterpretation)
 	}
 }
 
@@ -285,13 +285,13 @@ func TestStructuredInterpretation_IncludesLimitation(t *testing.T) {
 	hpa := baseHPA()
 	got := Analyze(hpa, true)
 	found := false
-	for _, msg := range got.StructuredInterpretation() {
+	for _, msg := range got.Actions.StructuredInterpretation {
 		if msg.Reason == "Limitation" {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("expected StructuredMessage with reason=Limitation, got %#v", got.StructuredInterpretation())
+		t.Fatalf("expected StructuredMessage with reason=Limitation, got %#v", got.Actions.StructuredInterpretation)
 	}
 }
 
@@ -304,7 +304,7 @@ func TestInterpret_NoDuplicateLimitation(t *testing.T) {
 	}
 	got := Analyze(hpa, true)
 	count := 0
-	for _, line := range got.Interpretation() {
+	for _, line := range got.Actions.Interpretation {
 		if strings.Contains(line, "This plugin uses existing HPA status") {
 			count++
 		}

@@ -146,16 +146,16 @@ func writeWatchReport(out io.Writer, opts *options, report hpaanalysis.StatusRep
 
 // writeStabilizationCountdown prints the prominent stabilization countdown line when scale-down stabilization is active.
 func writeStabilizationCountdown(out io.Writer, a *hpaanalysis.Analysis) {
-	if a.StabilizationRemaining() == nil || *a.StabilizationRemaining() <= 0 {
+	if a.Conditions.StabilizationRemaining == nil || *a.Conditions.StabilizationRemaining <= 0 {
 		return
 	}
-	source := a.StabilizationSource()
+	source := a.Conditions.StabilizationSource
 	if source == "" {
 		source = "scaleDown"
 	}
 	progress := hpaanalysis.FormatStabilizationProgress(
-		a.StabilizationRemaining(),
-		a.StabilizationWindowSeconds(),
+		a.Conditions.StabilizationRemaining,
+		a.Conditions.StabilizationWindowSeconds,
 	)
 	_, _ = fmt.Fprintf(out, "\n  STABILIZING: %s [%s] [estimated]\n", progress, source)
 }

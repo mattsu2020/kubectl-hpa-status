@@ -239,7 +239,7 @@ For `-o json` / `-o yaml`, multi-HPA output is wrapped in a `StatusBatch` envelo
 }
 ```
 
-Since v3, structured output defaults to the grouped v2 projection (`apiVersion: "hpa-status/v2"`); pass `--output-schema=v1` for the flat legacy shape shown above. Single-HPA `status NAME -o json` keeps the historical bare report shape (no envelope). Text output renders successful items normally and a single `Error: <message>` row per failed item.
+Since v3, structured output uses the grouped v2 projection (`apiVersion: "hpa-status/v2"`); the flat v1 shape was removed in v4. Single-HPA `status NAME -o json` emits the v2 report envelope. Text output renders successful items normally and a single `Error: <message>` row per failed item.
 
 ## Documentation
 

@@ -38,10 +38,6 @@ type outputSchema struct {
 	Defs  map[string]outputSchemaNode `json:"$defs"`
 }
 
-func loadOutputSchema(t *testing.T) outputSchema {
-	return loadOutputSchemaFile(t, "docs/output-schema.json")
-}
-
 func loadOutputSchemaFile(t *testing.T, schemaPath string) outputSchema {
 	t.Helper()
 	data, err := os.ReadFile(schemaPath)
@@ -73,66 +69,6 @@ func jsonTagSet(t *testing.T, typ reflect.Type) map[string]struct{} {
 		tags[name] = struct{}{}
 	}
 	return tags
-}
-
-// TestOutputSchemaFieldsExistInStructs verifies that every documented property
-// still exists on its Go struct. Public envelope types are checked in both
-// directions so additive fields cannot silently ship without documentation.
-// Analysis remains a documented stable-core subset because its optional feature
-// domains are intentionally broader than this interoperability schema.
-func TestOutputSchemaFieldsExistInStructs(t *testing.T) {
-	schema := loadOutputSchema(t)
-
-	cases := []struct {
-		def   string
-		typ   reflect.Type
-		exact bool
-	}{
-		{"statusReport", reflect.TypeOf(hpaanalysis.StatusReport{}), true},
-		{"statusBatch", reflect.TypeOf(hpaanalysis.StatusBatch{}), true},
-		{"statusBatchItem", reflect.TypeOf(hpaanalysis.StatusBatchItem{}), true},
-		{"listReport", reflect.TypeOf(hpaanalysis.ListReport{}), true},
-		// The analysis contract tracks the FlatAnalysis projection (the v1
-		// wire shape emitted via Analysis.MarshalJSON), not the Analysis
-		// storage type whose field tags no longer drive serialization.
-		{"analysis", reflect.TypeOf(hpaanalysis.FlatAnalysis{}), false},
-		{"listItem", reflect.TypeOf(hpaanalysis.ListItem{}), true},
-		{"structuredEntry", reflect.TypeOf(hpaanalysis.StructuredMessage{}), false},
-		{"decisionSignal", reflect.TypeOf(hpaanalysis.DecisionSignal{}), false},
-		{"impactMetric", reflect.TypeOf(hpaanalysis.MetricImpactGuess{}), false},
-	}
-	for _, tc := range cases {
-		def, ok := schema.Defs[tc.def]
-		if !ok {
-			t.Errorf("docs/output-schema.json is missing $defs.%s", tc.def)
-			continue
-		}
-		tags := jsonTagSet(t, tc.typ)
-		for prop := range def.Properties {
-			if _, ok := tags[prop]; !ok {
-				t.Errorf("$defs.%s documents property %q but %s has no matching json tag", tc.def, prop, tc.typ)
-			}
-		}
-		if tc.exact {
-			for tag := range tags {
-				if _, ok := def.Properties[tag]; !ok {
-					t.Errorf("%s emits property %q but $defs.%s does not document it", tc.typ, tag, tc.def)
-				}
-			}
-		}
-		for _, req := range def.Required {
-			if _, ok := def.Properties[req]; !ok {
-				t.Errorf("$defs.%s requires %q but does not define it in properties", tc.def, req)
-			}
-		}
-	}
-}
-
-// TestOutputSchemaAPIVersionMatchesCode derives the output variants from the
-// schema's top-level oneOf and ensures each pins the same version emitted by the
-// code. This catches a SchemaVersion bump that forgets the published schema.
-func TestOutputSchemaAPIVersionMatchesCode(t *testing.T) {
-	assertOutputSchemaVersion(t, loadOutputSchema(t), hpaanalysis.SchemaVersion)
 }
 
 func assertOutputSchemaVersion(t *testing.T, schema outputSchema, want string) {
@@ -383,145 +319,17 @@ func validateOutputNumberBounds(node outputSchemaNode, number json.Number, path 
 	return nil
 }
 
-func TestOutputSchemaValidatesSerializedOutputVariants(t *testing.T) {
-	schema := loadOutputSchema(t)
-	analysis := *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
-		Namespace:   "default",
-		Name:        "web",
-		Target:      "Deployment/web",
-		Current:     3,
-		Desired:     4,
-		Min:         1,
-		Max:         10,
-		Health:      string(hpaanalysis.HealthOK),
-		HealthScore: 90,
-		Summary:     "HPA is healthy",
-		Conditions: []hpaanalysis.Condition{{
-			Type:    "AbleToScale",
-			Status:  "True",
-			Reason:  "ReadyForNewScale",
-			Message: "recommended size matches current size",
-		}},
-		Metrics: []hpaanalysis.Metric{{
-			Type: "Resource",
-			Name: "cpu",
-			Text: "50% / 70%",
-		}},
-		StructuredInterpretation: []hpaanalysis.StructuredMessage{{
-			Reason:         "MetricWinnerUnknown",
-			Message:        "the controller does not expose its internal winner",
-			Severity:       hpaanalysis.SeverityInfo,
-			Confidence:     hpaanalysis.ConfidenceLow,
-			Classification: hpaanalysis.ClassificationUnknown,
-		}},
-		DecisionSignals: []hpaanalysis.DecisionSignal{{
-			Reason:         "EstimatedWinner",
-			Message:        "best effort only",
-			Confidence:     string(hpaanalysis.ConfidenceLow),
-			Classification: string(hpaanalysis.ClassificationUnknown),
-			AdapterVersion: "estimation-v1",
-		}},
-		ImpactMetric: &hpaanalysis.MetricImpactGuess{
-			Name:       "cpu",
-			Ratio:      0.7,
-			Note:       "inferred from visible metrics",
-			Confidence: string(hpaanalysis.ConfidenceLow),
-		},
-	})
-	status := hpaanalysis.StatusReport{
-		APIVersion: hpaanalysis.SchemaVersion,
-		Analysis:   analysis,
-		Events: []hpaanalysis.Event{{
-			Reason:  "SuccessfulRescale",
-			Message: "New size: 4",
-		}},
-	}
-	statusForBatch := status
-
-	samples := []struct {
-		name  string
-		value any
-	}{
-		{
-			name:  "single status",
-			value: status,
-		},
-		{
-			name: "status batch",
-			value: hpaanalysis.StatusBatch{
-				APIVersion: hpaanalysis.SchemaVersion,
-				Items: []hpaanalysis.StatusBatchItem{
-					{
-						Namespace: "default",
-						Name:      "web",
-						Status:    hpaanalysis.BatchStatusOK,
-						Report:    &statusForBatch,
-					},
-					{
-						Namespace: "default",
-						Name:      "missing",
-						Status:    hpaanalysis.BatchStatusError,
-						Error:     "horizontalpodautoscaler not found",
-					},
-				},
-			},
-		},
-		{
-			name: "list",
-			value: hpaanalysis.ListReport{
-				APIVersion: hpaanalysis.SchemaVersion,
-				Items: []hpaanalysis.ListItem{{
-					Namespace:   "default",
-					Name:        "web",
-					Target:      "Deployment/web",
-					Current:     3,
-					Desired:     4,
-					Min:         1,
-					Max:         10,
-					Summary:     "HPA is healthy",
-					Health:      string(hpaanalysis.HealthOK),
-					HealthScore: 90,
-				}},
-			},
-		},
-		{
-			name: "empty list",
-			value: hpaanalysis.ListReport{
-				APIVersion: hpaanalysis.SchemaVersion,
-				Items:      []hpaanalysis.ListItem{},
-			},
-		},
-	}
-
-	topLevel := outputSchemaNode{OneOf: schema.OneOf}
-	for _, sample := range samples {
-		t.Run(sample.name, func(t *testing.T) {
-			serialized := decodeSerializedJSON(t, sample.value)
-			if errs := validateOutputSchemaNode(schema, topLevel, serialized, "$"); len(errs) > 0 {
-				t.Fatalf("serialized %T does not satisfy docs/output-schema.json:\n%s", sample.value, strings.Join(errs, "\n"))
-			}
-		})
-	}
-}
-
 func TestOutputSchemaV2ValidatesProjectedOutputVariants(t *testing.T) {
 	schema := loadOutputSchemaFile(t, "docs/output-schema-v2.json")
 	status := hpaanalysis.StatusReport{
 		APIVersion: hpaanalysis.SchemaVersion,
-		Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
-			Namespace:   "default",
-			Name:        "web",
-			Target:      "Deployment/web",
-			Current:     3,
-			Desired:     4,
-			Min:         1,
-			Max:         10,
-			Health:      string(hpaanalysis.HealthOK),
-			HealthScore: 90,
-			Summary:     "HPA is healthy",
-			Conditions:  []hpaanalysis.Condition{{Type: "AbleToScale", Status: "True"}},
-			Metrics:     []hpaanalysis.Metric{{Type: "Resource", Name: "cpu", Text: "50% / 70%"}},
-		}),
+		Analysis: hpaanalysis.Analysis{
+			Meta:       hpaanalysis.MetaView{Namespace: "default", Name: "web", Target: "Deployment/web"},
+			Replicas:   hpaanalysis.ReplicasView{Current: 3, Desired: 4, Min: 1, Max: 10},
+			Decision:   hpaanalysis.DecisionView{Health: string(hpaanalysis.HealthOK), HealthScore: 90, Summary: "HPA is healthy"},
+			Metrics:    hpaanalysis.MetricsView{Metrics: []hpaanalysis.Metric{{Type: "Resource", Name: "cpu", Text: "50% / 70%"}}},
+			Conditions: hpaanalysis.ConditionsView{Conditions: []hpaanalysis.Condition{{Type: "AbleToScale", Status: "True"}}},
+		},
 		Events: []hpaanalysis.Event{{Reason: "SuccessfulRescale", Message: "New size: 4"}},
 	}
 	batchReport := status

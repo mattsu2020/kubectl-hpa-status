@@ -15,32 +15,25 @@ import (
 // creation timestamp from the HPA source.
 func collectBase(src *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) Analysis {
 	summary, summaryKey := SummarizeDirectionWithKey(src, minReplicas)
-	return *NewAnalysis(FlatAnalysis{
-		Namespace:         src.Namespace,
-		Name:              src.Name,
-		Target:            fmt.Sprintf("%s/%s", src.Spec.ScaleTargetRef.Kind, src.Spec.ScaleTargetRef.Name),
-		Current:           src.Status.CurrentReplicas,
-		Desired:           src.Status.DesiredReplicas,
-		Min:               minReplicas,
-		Max:               src.Spec.MaxReplicas,
-		Conditions:        make([]Condition, 0, len(src.Status.Conditions)),
-		Metrics:           make([]Metric, 0, len(src.Status.CurrentMetrics)),
-		Summary:           summary,
-		SummaryKey:        summaryKey,
-		CreationTimestamp: src.CreationTimestamp,
-	})
+	return Analysis{
+		Meta:       MetaView{Namespace: src.Namespace, Name: src.Name, Target: fmt.Sprintf("%s/%s", src.Spec.ScaleTargetRef.Kind, src.Spec.ScaleTargetRef.Name), CreationTimestamp: formatMetaTimestamp(src.CreationTimestamp)},
+		Replicas:   ReplicasView{Current: src.Status.CurrentReplicas, Desired: src.Status.DesiredReplicas, Min: minReplicas, Max: src.Spec.MaxReplicas},
+		Decision:   DecisionView{Summary: summary, SummaryKey: summaryKey},
+		Metrics:    MetricsView{Metrics: make([]Metric, 0, len(src.Status.CurrentMetrics))},
+		Conditions: ConditionsView{Conditions: make([]Condition, 0, len(src.Status.Conditions))},
+	}
 }
 
 // collectConditions populates the Conditions slice from HPA status conditions,
 // sorted by priority.
 func collectConditions(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler) Analysis {
 	for _, condition := range prioritizedConditions(src.Status.Conditions) {
-		a.SetConditions(append(a.Conditions(), Condition{
+		a.Conditions.Conditions = append(a.Conditions.Conditions, Condition{
 			Type:    string(condition.Type),
 			Status:  string(condition.Status),
 			Reason:  condition.Reason,
 			Message: condition.Message,
-		}))
+		})
 	}
 	return a
 }
@@ -48,26 +41,26 @@ func collectConditions(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler) A
 // collectMetrics populates the Metrics slice from HPA current metrics.
 func collectMetrics(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler) Analysis {
 	for _, metric := range src.Status.CurrentMetrics {
-		a.SetMetrics(append(a.Metrics(), FormatMetricStatus(src, metric)))
+		a.Metrics.Metrics = append(a.Metrics.Metrics, FormatMetricStatus(src, metric))
 	}
 	return a
 }
 
 // collectBehavior populates the Behavior slice from HPA spec behavior rules.
 func collectBehavior(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler) Analysis {
-	a.SetBehavior(FormatBehavior(src))
+	a.Conditions.Behavior = FormatBehavior(src)
 	return a
 }
 
 // detectStaleStatus checks for observedGeneration lag and prefixes the summary.
 func detectStaleStatus(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler) Analysis {
 	if src.Status.ObservedGeneration != nil && *src.Status.ObservedGeneration < src.Generation {
-		a.SetSummary("[STALE STATUS] " + a.Summary())
-		a.SetStaleStatus(&StaleStatusInfo{
+		a.Decision.Summary = "[STALE STATUS] " + a.Decision.Summary
+		a.Lifecycle.StaleStatus = &StaleStatusInfo{
 			ObservedGeneration: *src.Status.ObservedGeneration,
 			CurrentGeneration:  src.Generation,
 			Diff:               src.Generation - *src.Status.ObservedGeneration,
-		})
+		}
 	}
 	return a
 }
@@ -86,7 +79,7 @@ func detectImpactMetric(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler) 
 	} else {
 		guess.Confidence = string(ConfidenceMedium)
 	}
-	a.SetImpactMetric(&guess)
+	a.Decision.ImpactMetric = &guess
 	return a
 }
 
@@ -102,7 +95,7 @@ func detectScaleToZero(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler, m
 	} else if src.Status.DesiredReplicas == 0 && src.Status.CurrentReplicas == 0 {
 		info.Note = "HPA is at zero replicas (scaled to zero). The next scale-up requires a cold start."
 	}
-	a.SetScaleToZero(info)
+	a.ScaleToZero.ScaleToZero = info
 	return a
 }
 
@@ -110,14 +103,14 @@ func detectScaleToZero(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler, m
 // stabilization window and populates the source and confidence fields.
 func detectStabilization(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler) Analysis {
 	if remaining := estimateStabilizationRemaining(src); remaining != nil {
-		a.SetStabilizationRemaining(remaining)
+		a.Conditions.StabilizationRemaining = remaining
 	}
 	if window := scaleDownStabilizationWindow(src); window != nil {
-		a.SetStabilizationWindowSeconds(window)
+		a.Conditions.StabilizationWindowSeconds = window
 	}
-	if a.StabilizationRemaining() != nil && *a.StabilizationRemaining() > 0 {
-		a.SetStabilizationSource(detectStabilizationSource(src))
-		a.SetStabilizationConfidence(stabilizationConfidenceLabel)
+	if a.Conditions.StabilizationRemaining != nil && *a.Conditions.StabilizationRemaining > 0 {
+		a.Conditions.StabilizationSource = detectStabilizationSource(src)
+		a.Conditions.StabilizationConfidence = stabilizationConfidenceLabel
 	}
 	return a
 }
@@ -128,20 +121,20 @@ func attachInterpretation(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler
 	if !includeInterpretation {
 		return a
 	}
-	a.SetActions(RecommendedActions(src, minReplicas))
-	a.SetSuggestions(BuildSuggestions(src, minReplicas))
-	a.SetInterpretation(Interpret(src, minReplicas))
-	a.SetStructuredInterpretation(buildStructuredInterpretation(src, minReplicas))
-	a.SetStructuredActions(buildStructuredActions(src, minReplicas))
+	a.Actions.Actions = RecommendedActions(src, minReplicas)
+	a.Actions.Suggestions = BuildSuggestions(src, minReplicas)
+	a.Actions.Interpretation = Interpret(src, minReplicas)
+	a.Actions.StructuredInterpretation = buildStructuredInterpretation(src, minReplicas)
+	a.Actions.StructuredActions = buildStructuredActions(src, minReplicas)
 	return a
 }
 
 // attachHealth computes and attaches the typed health result.
 func attachHealth(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32, opts AnalysisOptions) Analysis {
 	healthResult := HealthWithWeights(src, minReplicas, opts.HealthWeights)
-	a.SetHealth(string(healthResult.State))
-	a.SetHealthScore(healthResult.Score)
-	a.SetHealthResult(&healthResult)
+	a.Decision.Health = string(healthResult.State)
+	a.Decision.HealthScore = healthResult.Score
+	a.Decision.HealthResult = &healthResult
 	a.dynamicHealthBaseline = newDynamicHealthBaseline(healthResult.Score, healthResult.State, healthResult.Signals)
 	return a
 }
@@ -152,7 +145,7 @@ func detectMetricDecisionTrace(a Analysis, src *autoscalingv2.HorizontalPodAutos
 	if len(src.Status.CurrentMetrics) <= 1 {
 		return a
 	}
-	a.SetMetricDecisionTrace(BuildMetricDecisionTrace(src, minReplicas))
+	a.Decision.MetricDecisionTrace = BuildMetricDecisionTrace(src, minReplicas)
 	return a
 }
 
@@ -160,22 +153,22 @@ func detectMetricDecisionTrace(a Analysis, src *autoscalingv2.HorizontalPodAutos
 // stabilization is active AND churn is detected, warning that the
 // stabilization window may be too short.
 func correlateStabilizationChurn(a Analysis) Analysis {
-	if a.StabilizationRemaining() == nil || *a.StabilizationRemaining() <= 0 {
+	if a.Conditions.StabilizationRemaining == nil || *a.Conditions.StabilizationRemaining <= 0 {
 		return a
 	}
-	if a.ChurnAnalysis() == nil {
+	if a.Stability.ChurnAnalysis == nil {
 		return a
 	}
-	if a.ChurnAnalysis().Level != churn.ChurnHigh && a.ChurnAnalysis().Level != churn.ChurnCritical {
+	if a.Stability.ChurnAnalysis.Level != churn.ChurnHigh && a.Stability.ChurnAnalysis.Level != churn.ChurnCritical {
 		return a
 	}
 	line := confidence.BadgeEstimated + " Churn detected while stabilization window is active — consider increasing scaleDown.stabilizationWindowSeconds to reduce thrashing."
-	for _, existing := range a.Interpretation() {
+	for _, existing := range a.Actions.Interpretation {
 		if existing == line {
 			return a
 		}
 	}
-	a.SetInterpretation(append(a.Interpretation(), line))
+	a.Actions.Interpretation = append(a.Actions.Interpretation, line)
 	return a
 }
 
@@ -196,8 +189,8 @@ func FinalizeAnalysis(a Analysis) Analysis {
 func collectAssumptions(a Analysis) Analysis {
 	// Finalization may be invoked by more than one workflow layer. Rebuild the
 	// assumptions owned by this phase instead of appending duplicates.
-	assumptions := make([]Assumption, 0, len(a.Assumptions())+2)
-	for _, assumption := range a.Assumptions() {
+	assumptions := make([]Assumption, 0, len(a.Actions.Assumptions)+2)
+	for _, assumption := range a.Actions.Assumptions {
 		if assumption.Name != "tolerance" && assumption.Name != "stabilizationRemaining" {
 			assumptions = append(assumptions, assumption)
 		}
@@ -208,15 +201,15 @@ func collectAssumptions(a Analysis) Analysis {
 		Source:     "assumed-controller-default",
 		Confidence: "medium",
 	})
-	if a.StabilizationRemaining() != nil && *a.StabilizationRemaining() > 0 {
+	if a.Conditions.StabilizationRemaining != nil && *a.Conditions.StabilizationRemaining > 0 {
 		assumptions = append(assumptions, Assumption{
 			Name:       "stabilizationRemaining",
-			Value:      fmt.Sprintf("%ds", *a.StabilizationRemaining()),
+			Value:      fmt.Sprintf("%ds", *a.Conditions.StabilizationRemaining),
 			Source:     "lastScaleTimeApproximation",
 			Confidence: "low",
 		})
 	}
-	a.SetAssumptions(assumptions)
+	a.Actions.Assumptions = assumptions
 	return a
 }
 
@@ -225,7 +218,7 @@ func attachDebug(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler, opts An
 	if !opts.Debug {
 		return a
 	}
-	a.SetDebug(DebugLines(src, a))
+	a.Lifecycle.Debug = DebugLines(src, a)
 	return a
 }
 
@@ -245,7 +238,7 @@ func attachDecisionSignals(a Analysis, src *autoscalingv2.HorizontalPodAutoscale
 			signals = signalsAdapter.FromEstimation(src)
 		}
 		if len(signals) > 0 {
-			a.SetDecisionSignals(signals)
+			a.Decision.DecisionSignals = signals
 		}
 		return a
 	}
@@ -256,7 +249,7 @@ func attachDecisionSignals(a Analysis, src *autoscalingv2.HorizontalPodAutoscale
 		signals = adapter.FromEstimation(src)
 	}
 	if len(signals) > 0 {
-		a.SetDecisionSignals(signals)
+		a.Decision.DecisionSignals = signals
 	}
 	return a
 }

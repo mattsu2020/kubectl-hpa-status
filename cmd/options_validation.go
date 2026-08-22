@@ -117,7 +117,7 @@ func validateEnumModes(opts *options) error {
 		{"--decision-trace-format", opts.DecisionTraceFormat, []string{"", "text", "json", "yaml"}},
 		{"--report", opts.Report, []string{"", "markdown", "md", "html", "incident", "junit", "sarif"}},
 		{"--export", opts.Export, []string{"", "yaml", "kustomize", "helm-values", "directory"}},
-		{"--output-schema", opts.OutputSchema, []string{"", "v1", "v2"}},
+		{"--output-schema", opts.OutputSchema, []string{"", "v2"}},
 	}
 	for _, mode := range modes {
 		if err := validateMode(mode.flag, mode.value, mode.accepted...); err != nil {
@@ -128,7 +128,7 @@ func validateEnumModes(opts *options) error {
 }
 
 func validateOutputSchemaOption(cmd *cobra.Command, opts *options) error {
-	if opts.OutputSchema == "" || opts.OutputSchema == "v1" {
+	if opts.OutputSchema == "" {
 		return nil
 	}
 	if cmd != nil && cmd.Parent() != nil && cmd.Name() != "status" && cmd.Name() != "watch" {

@@ -21,10 +21,10 @@ func EnrichReport(ctx context.Context, ec *Context, hpa *autoscalingv2.Horizonta
 	if ec.kedaEnabled {
 		var outcome Entry
 		kedaInfo, outcome := enrichKEDA(ctx, ec, hpa)
-		report.Analysis.SetKEDAInfo(kedaInfo)
+		report.Analysis.Controllers.KEDAInfo = kedaInfo
 		status.KEDA = &outcome
 		if outcome.State == StateError {
-			report.Analysis.SetWarnings(append(report.Analysis.Warnings(), "KEDA enrichment failed: "+outcome.Reason))
+			report.Analysis.Actions.Warnings = append(report.Analysis.Actions.Warnings, "KEDA enrichment failed: "+outcome.Reason)
 		}
 	}
 
@@ -32,14 +32,14 @@ func EnrichReport(ctx context.Context, ec *Context, hpa *autoscalingv2.Horizonta
 		outcome := EnrichVPA(ctx, ec, hpa, report)
 		status.VPA = &outcome
 		if outcome.State == StateError {
-			report.Analysis.SetWarnings(append(report.Analysis.Warnings(), "VPA enrichment failed: "+outcome.Reason))
+			report.Analysis.Actions.Warnings = append(report.Analysis.Actions.Warnings, "VPA enrichment failed: "+outcome.Reason)
 		}
 	}
 
-	if report.Analysis.KEDAInfo() != nil || report.Analysis.VPAConflict() != nil {
+	if report.Analysis.Controllers.KEDAInfo != nil || report.Analysis.Advisory.VPAConflict != nil {
 		hpaanalysis.ApplyEnrichmentPenalties(&report.Analysis, weights)
 	}
 
 	// Attach enrichment status to analysis for diagnostic output.
-	report.Analysis.SetEnrichmentStatus(&status)
+	report.Analysis.Lifecycle.EnrichmentStatus = &status
 }

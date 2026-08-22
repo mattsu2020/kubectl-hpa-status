@@ -88,7 +88,18 @@ stash on 2026-08-20). CI presumably runs a pinned golangci-lint/coverage
 setup that agrees with main. Do not treat these as flip regressions; do not
 "fix" them inside flip PRs.
 
-## v4.0.0 removal (ready)
+## v4.0.0 removal (executed)
+
+v4.0.0 executed the removal as planned, with one design refinement: instead
+of deleting the accessors and keeping unexported storage, the 13 group
+fields themselves were **exported** (`a.Replicas.Current`) and now serve as
+both storage and public Go API; the view reader methods, the 65 accessor
+pairs, `FlatAnalysis`, the V1 envelopes, and `MarshalJSON`/`UnmarshalJSON`
+were all removed, and Analysis marshals natively as the grouped v2 shape
+(the structured renderers project report values through
+`ProjectStatusReportV2` for the `apiVersion` envelope). A third mechanical
+sweep (~1,450 edits) migrated in-tree call sites and literals. The original
+removal table follows for migration reference.
 
 With no in-tree flat readers left, v4.0.0 deletes the accessor methods (or
 the whole flat surface) and ships the migration table mapping each retired

@@ -41,7 +41,9 @@ func detailModel(opts Options) Model {
 	m := NewModel(nil, "default", opts)
 	m.items = []hpaanalysis.ListItem{{Namespace: "default", Name: "web", Health: "OK"}}
 	m.reports = map[string]*hpaanalysis.StatusReport{
-		"default/web": {Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{Name: "web", Namespace: "default"})},
+		"default/web": {Analysis: hpaanalysis.Analysis{
+			Meta: hpaanalysis.MetaView{Name: "web", Namespace: "default"},
+		}},
 	}
 	m.viewMode = detailView
 	m.width = 120
@@ -154,11 +156,11 @@ func TestKeyFlow_HintsOpenAndClose(t *testing.T) {
 		t.Fatal("expected no-op without metric hints")
 	}
 
-	m.reports["default/web"].Analysis.SetMetricHints(&hpaanalysis.MetricHintsReport{
+	m.reports["default/web"].Analysis.Metrics.MetricHints = &hpaanalysis.MetricHintsReport{
 		Hints: []hpaanalysis.MetricHint{
 			{Pattern: "external-metric-missing", Severity: "warning", Title: "missing external metric", MetricType: "External", MetricName: "queue_depth"},
 		},
-	})
+	}
 	m3, _ := pressTUIKey(t, m, "h")
 	if m3.viewMode != hintsView || m3.hintsState == nil || len(m3.hintsState.flows) == 0 {
 		t.Fatal("expected hintsView with flows after h")
@@ -292,11 +294,11 @@ func TestKeyFlow_FixWizard(t *testing.T) {
 		t.Fatal("expected error for fix key without suggestions")
 	}
 
-	m.reports["default/web"].Analysis.SetSuggestions([]hpaanalysis.Suggestion{
+	m.reports["default/web"].Analysis.Actions.Suggestions = []hpaanalysis.Suggestion{
 		{Title: "patch it", Description: "apply patch", Patch: `{"spec":{"maxReplicas":10}}`, Apply: true},
 		{Title: "run cmd", Description: "run kubectl", Command: "kubectl scale"},
 		{Title: "advice", Description: "read docs"},
-	})
+	}
 	m3, _ := pressTUIKey(t, m, "f")
 	if m3.viewMode != fixView || m3.fixState == nil {
 		t.Fatal("expected fixView after f with suggestions")
@@ -358,9 +360,9 @@ func TestKeyFlow_FixApplyWithApplyFn(t *testing.T) {
 			return nil
 		},
 	})
-	m.reports["default/web"].Analysis.SetSuggestions([]hpaanalysis.Suggestion{
+	m.reports["default/web"].Analysis.Actions.Suggestions = []hpaanalysis.Suggestion{
 		{Title: "patch it", Patch: `{"spec":{"maxReplicas":10}}`, Apply: true},
-	})
+	}
 	m2, _ := pressTUIKey(t, m, "f")
 	m3, cmd := pressTUIKey(t, m2, "enter")
 	if cmd != nil || !m3.fixState.applyConfirm || applied {
@@ -552,7 +554,9 @@ func TestParseMetricInput(t *testing.T) {
 
 func TestBuildHPAFromAnalysis(t *testing.T) {
 	t.Parallel()
-	a := *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{Name: "web", Namespace: "default"})
+	a := hpaanalysis.Analysis{
+		Meta: hpaanalysis.MetaView{Name: "web", Namespace: "default"},
+	}
 	hpa := buildHPAFromAnalysis(a)
 	if hpa == nil || hpa.Name != "web" || hpa.Namespace != "default" {
 		t.Fatalf("buildHPAFromAnalysis = %+v", hpa)

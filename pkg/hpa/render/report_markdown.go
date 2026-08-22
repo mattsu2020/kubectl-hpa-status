@@ -63,31 +63,31 @@ func appendMarkdownSection(out *strings.Builder, report hpa.StatusReport, sectio
 
 func appendMarkdownHeader(out *strings.Builder, a *hpa.Analysis) {
 	out.WriteString("# HPA Status Report: ")
-	out.WriteString(rendutil.MarkdownInline(a.Name()))
-	if a.Namespace() != "" {
+	out.WriteString(rendutil.MarkdownInline(a.Meta.Name))
+	if a.Meta.Namespace != "" {
 		out.WriteString(" (")
-		out.WriteString(rendutil.MarkdownInline(a.Namespace()))
+		out.WriteString(rendutil.MarkdownInline(a.Meta.Namespace))
 		out.WriteString(")")
 	}
 	out.WriteString("\n\n")
 
 	out.WriteString("**Target:** ")
-	out.WriteString(rendutil.MarkdownInline(a.Target()))
+	out.WriteString(rendutil.MarkdownInline(a.Meta.Target))
 	out.WriteString("\n")
 
 	out.WriteString("**Health:** ")
-	out.WriteString(a.Health())
-	out.WriteString(fmt.Sprintf(" (%d/100)", a.HealthScore()))
+	out.WriteString(a.Decision.Health)
+	out.WriteString(fmt.Sprintf(" (%d/100)", a.Decision.HealthScore))
 	out.WriteString("\n")
 
-	out.WriteString(fmt.Sprintf("**Replicas:** current=%d desired=%d min=%d max=%d\n", a.Current(), a.Desired(), a.Min(), a.Max()))
+	out.WriteString(fmt.Sprintf("**Replicas:** current=%d desired=%d min=%d max=%d\n", a.Replicas.Current, a.Replicas.Desired, a.Replicas.Min, a.Replicas.Max))
 	out.WriteString("\n")
 }
 
 func appendMarkdownSummary(out *strings.Builder, a *hpa.Analysis) {
 	out.WriteString("## Summary\n\n")
-	if a.Summary() != "" {
-		out.WriteString(rendutil.MarkdownInline(a.Summary()))
+	if a.Decision.Summary != "" {
+		out.WriteString(rendutil.MarkdownInline(a.Decision.Summary))
 		out.WriteString("\n")
 	} else {
 		out.WriteString("_No summary available._\n")
@@ -98,12 +98,12 @@ func appendMarkdownSummary(out *strings.Builder, a *hpa.Analysis) {
 func appendMarkdownConditions(out *strings.Builder, a *hpa.Analysis) {
 	// Conditions table
 	out.WriteString("## Conditions\n\n")
-	if len(a.Conditions()) == 0 {
+	if len(a.Conditions.Conditions) == 0 {
 		out.WriteString("_No conditions reported._\n")
 	} else {
 		out.WriteString("| Type | Status | Reason | Message |\n")
 		out.WriteString("|------|--------|--------|--------|\n")
-		for _, c := range a.Conditions() {
+		for _, c := range a.Conditions.Conditions {
 			out.WriteString("| ")
 			out.WriteString(rendutil.MarkdownCell(c.Type))
 			out.WriteString(" | ")
@@ -121,12 +121,12 @@ func appendMarkdownConditions(out *strings.Builder, a *hpa.Analysis) {
 func appendMarkdownMetrics(out *strings.Builder, a *hpa.Analysis) {
 	// Metrics table
 	out.WriteString("## Metrics\n\n")
-	if len(a.Metrics()) == 0 {
+	if len(a.Metrics.Metrics) == 0 {
 		out.WriteString("_No current metrics reported._\n")
 	} else {
 		out.WriteString("| Metric | Current | Target | Ratio |\n")
 		out.WriteString("|--------|---------|--------|-------|\n")
-		for _, m := range a.Metrics() {
+		for _, m := range a.Metrics.Metrics {
 			name := m.Name
 			if name == "" {
 				name = m.Type
@@ -151,11 +151,11 @@ func appendMarkdownMetrics(out *strings.Builder, a *hpa.Analysis) {
 
 func appendMarkdownActions(out *strings.Builder, a *hpa.Analysis) {
 	// Recommendations
-	if len(a.Actions()) == 0 {
+	if len(a.Actions.Actions) == 0 {
 		return
 	}
 	out.WriteString("## Recommendations\n\n")
-	for _, action := range a.Actions() {
+	for _, action := range a.Actions.Actions {
 		out.WriteString("- ")
 		out.WriteString(rendutil.MarkdownInline(action))
 		out.WriteString("\n")
@@ -165,11 +165,11 @@ func appendMarkdownActions(out *strings.Builder, a *hpa.Analysis) {
 
 func appendMarkdownSuggestions(out *strings.Builder, a *hpa.Analysis) {
 	// Suggestions
-	if len(a.Suggestions()) == 0 {
+	if len(a.Actions.Suggestions) == 0 {
 		return
 	}
 	out.WriteString("## Suggestions\n\n")
-	for _, s := range a.Suggestions() {
+	for _, s := range a.Actions.Suggestions {
 		out.WriteString("- **")
 		out.WriteString(rendutil.MarkdownInline(s.Title))
 		out.WriteString("**: ")
@@ -209,10 +209,10 @@ func appendMarkdownEvents(out *strings.Builder, report hpa.StatusReport) {
 
 func appendMarkdownPodAnalysis(out *strings.Builder, a *hpa.Analysis) {
 	// Pod Analysis
-	if a.PodAnalysis() == nil {
+	if a.Capacity.PodAnalysis == nil {
 		return
 	}
-	pa := a.PodAnalysis()
+	pa := a.Capacity.PodAnalysis
 	out.WriteString("## Pod Analysis\n\n")
 	out.WriteString(fmt.Sprintf("- **Total:** %d  **Ready:** %d  **Unready:** %d  **Pending:** %d  **Terminating:** %d\n", pa.Total, pa.Ready, pa.Unready, pa.Pending, pa.Terminating))
 	if len(pa.ResourceIssues) > 0 {
@@ -241,10 +241,10 @@ func appendMarkdownPodAnalysis(out *strings.Builder, a *hpa.Analysis) {
 
 func appendMarkdownSimulation(out *strings.Builder, a *hpa.Analysis) {
 	// Simulation
-	if a.FlappingSimulation() == nil {
+	if a.Stability.FlappingSimulation == nil {
 		return
 	}
-	sim := a.FlappingSimulation()
+	sim := a.Stability.FlappingSimulation
 	out.WriteString("## Simulation\n\n")
 	out.WriteString(fmt.Sprintf("- **Parameter:** %s\n", rendutil.MarkdownInline(sim.Parameter)))
 	out.WriteString(fmt.Sprintf("- **Original:** %s  **Simulated:** %s\n", rendutil.MarkdownInline(sim.OriginalValue), rendutil.MarkdownInline(sim.SimulatedValue)))
@@ -265,11 +265,11 @@ func appendMarkdownSimulation(out *strings.Builder, a *hpa.Analysis) {
 
 func appendMarkdownMetricFreshness(out *strings.Builder, a *hpa.Analysis) {
 	// Metrics Freshness
-	if len(a.MetricFreshnessEntries()) == 0 {
+	if len(a.Metrics.MetricFreshness) == 0 {
 		return
 	}
 	out.WriteString("## Metrics Freshness\n\n")
-	for _, mf := range a.MetricFreshnessEntries() {
+	for _, mf := range a.Metrics.MetricFreshness {
 		out.WriteString(fmt.Sprintf("### %s (%s) — %s\n\n", rendutil.MarkdownInline(mf.Name), rendutil.MarkdownInline(mf.Type), rendutil.MarkdownInline(mf.Status)))
 		if mf.Source != "" {
 			out.WriteString(fmt.Sprintf("- **Source:** %s\n", rendutil.MarkdownInline(mf.Source)))
@@ -298,7 +298,7 @@ func appendMarkdownMetricFreshness(out *strings.Builder, a *hpa.Analysis) {
 
 func appendMarkdownCapacityContext(out *strings.Builder, a *hpa.Analysis) {
 	// Capacity Context
-	cc := a.CapacityContext()
+	cc := a.Capacity.CapacityContext
 	if cc == nil {
 		return
 	}
@@ -321,10 +321,10 @@ func appendMarkdownCapacityContext(out *strings.Builder, a *hpa.Analysis) {
 
 func appendMarkdownStructuredDecisionTrace(out *strings.Builder, a *hpa.Analysis) {
 	// Structured Decision Trace
-	if a.StructuredDecisionTrace() == nil {
+	if a.Decision.StructuredDecisionTrace == nil {
 		return
 	}
-	sdt := a.StructuredDecisionTrace()
+	sdt := a.Decision.StructuredDecisionTrace
 	out.WriteString("## Structured Decision Trace\n\n")
 	out.WriteString(fmt.Sprintf("- **Schema:** %s\n", rendutil.MarkdownInline(sdt.SchemaVersion)))
 	out.WriteString(fmt.Sprintf("- **HPA:** %s/%s\n", rendutil.MarkdownInline(sdt.Namespace), rendutil.MarkdownInline(sdt.Name)))
@@ -375,11 +375,11 @@ func appendMarkdownStructuredDecisionTrace(out *strings.Builder, a *hpa.Analysis
 }
 
 func appendMarkdownWarnings(out *strings.Builder, a *hpa.Analysis) {
-	if len(a.Warnings()) == 0 {
+	if len(a.Actions.Warnings) == 0 {
 		return
 	}
 	out.WriteString("## Warnings\n\n")
-	for _, warning := range a.Warnings() {
+	for _, warning := range a.Actions.Warnings {
 		out.WriteString("- ")
 		out.WriteString(rendutil.MarkdownInline(warning))
 		out.WriteByte('\n')

@@ -241,7 +241,7 @@ func TestExternalMetricMatching_DistinguishesSelector(t *testing.T) {
 	// Both metrics should be found (no "missing" diagnostic for either)
 	paymentsFound := false
 	ordersFound := false
-	for _, line := range got.Interpretation() {
+	for _, line := range got.Actions.Interpretation {
 		if strings.Contains(line, `queue_depth`) && strings.Contains(line, "payments") && strings.Contains(line, "is configured but no matching") {
 			t.Errorf("payments metric should not be reported missing: %s", line)
 		}
@@ -360,7 +360,7 @@ func TestObjectMetricMatching_DistinguishesDescribedObject(t *testing.T) {
 	}
 
 	got := Analyze(hpa, true)
-	if !containsLine(got.Interpretation(), "Object metric \"requests\"") {
+	if !containsLine(got.Actions.Interpretation, "Object metric \"requests\"") {
 		t.Fatal("expected object metric diagnostic")
 	}
 

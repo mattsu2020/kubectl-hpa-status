@@ -15,24 +15,17 @@ import (
 func TestWriteRichIncidentMarkdown_SingleHealthyHPA(t *testing.T) {
 	reports := []StatusReport{
 		{
-			Analysis: *NewAnalysis(FlatAnalysis{
-				Namespace:   "default",
-				Name:        "web-hpa",
-				Target:      "Deployment/web",
-				Current:     5,
-				Desired:     5,
-				Min:         2,
-				Max:         10,
-				Health:      "OK",
-				HealthScore: 95,
-				Summary:     "HPA is operating normally.",
-				Conditions: []Condition{
-					{Type: "ScalingActive", Status: "True", Reason: "ValidMetricFound", Message: "the HPA was able to successfully calculate a replica count"},
-				},
-				Metrics: []Metric{
+			Analysis: Analysis{
+				Meta:     MetaView{Namespace: "default", Name: "web-hpa", Target: "Deployment/web"},
+				Replicas: ReplicasView{Current: 5, Desired: 5, Min: 2, Max: 10},
+				Decision: DecisionView{Health: "OK", HealthScore: 95, Summary: "HPA is operating normally."},
+				Metrics: MetricsView{Metrics: []Metric{
 					{Name: "cpu", Current: "78%", Target: "80%", Ratio: ptr.To(0.975), Text: "cpu 78%/80%"},
-				},
-			}),
+				}},
+				Conditions: ConditionsView{Conditions: []Condition{
+					{Type: "ScalingActive", Status: "True", Reason: "ValidMetricFound", Message: "the HPA was able to successfully calculate a replica count"},
+				}},
+			},
 		},
 	}
 
@@ -72,23 +65,16 @@ func TestWriteRichIncidentMarkdown_SingleHealthyHPA(t *testing.T) {
 func TestWriteRichIncidentMarkdown_SingleUnhealthyHPA(t *testing.T) {
 	reports := []StatusReport{
 		{
-			Analysis: *NewAnalysis(FlatAnalysis{
-				Namespace:   "prod",
-				Name:        "api-hpa",
-				Target:      "Deployment/api",
-				Current:     10,
-				Desired:     10,
-				Min:         2,
-				Max:         10,
-				Health:      "ERROR",
-				HealthScore: 30,
-				Summary:     "Metrics pipeline unavailable.",
-				Conditions: []Condition{
+			Analysis: Analysis{
+				Meta:     MetaView{Namespace: "prod", Name: "api-hpa", Target: "Deployment/api"},
+				Replicas: ReplicasView{Current: 10, Desired: 10, Min: 2, Max: 10},
+				Decision: DecisionView{Health: "ERROR", HealthScore: 30, Summary: "Metrics pipeline unavailable."},
+				Metrics:  MetricsView{Metrics: []Metric{}},
+				Conditions: ConditionsView{Conditions: []Condition{
 					{Type: "ScalingActive", Status: "False", Reason: "FailedGetResourceMetric", Message: "unable to get metric cpu"},
 					{Type: "AbleToScale", Status: "True", Reason: "ReadyForNewScale", Message: "ready for new scale"},
-				},
-				Metrics: []Metric{},
-			}),
+				}},
+			},
 		},
 	}
 
@@ -115,32 +101,18 @@ func TestWriteRichIncidentMarkdown_SingleUnhealthyHPA(t *testing.T) {
 func TestWriteRichIncidentMarkdown_MultipleHPAs(t *testing.T) {
 	reports := []StatusReport{
 		{
-			Analysis: *NewAnalysis(FlatAnalysis{
-				Namespace:   "default",
-				Name:        "web-hpa",
-				Target:      "Deployment/web",
-				Current:     5,
-				Desired:     5,
-				Min:         2,
-				Max:         10,
-				Health:      "OK",
-				HealthScore: 95,
-				Summary:     "Operating normally.",
-			}),
+			Analysis: Analysis{
+				Meta:     MetaView{Namespace: "default", Name: "web-hpa", Target: "Deployment/web"},
+				Replicas: ReplicasView{Current: 5, Desired: 5, Min: 2, Max: 10},
+				Decision: DecisionView{Health: "OK", HealthScore: 95, Summary: "Operating normally."},
+			},
 		},
 		{
-			Analysis: *NewAnalysis(FlatAnalysis{
-				Namespace:   "prod",
-				Name:        "api-hpa",
-				Target:      "Deployment/api",
-				Current:     3,
-				Desired:     5,
-				Min:         1,
-				Max:         20,
-				Health:      "LIMITED",
-				HealthScore: 75,
-				Summary:     "Scaling limited by maxReplicas.",
-			}),
+			Analysis: Analysis{
+				Meta:     MetaView{Namespace: "prod", Name: "api-hpa", Target: "Deployment/api"},
+				Replicas: ReplicasView{Current: 3, Desired: 5, Min: 1, Max: 20},
+				Decision: DecisionView{Health: "LIMITED", HealthScore: 75, Summary: "Scaling limited by maxReplicas."},
+			},
 		},
 	}
 
@@ -165,18 +137,11 @@ func TestWriteRichIncidentMarkdown_WithEvents(t *testing.T) {
 	ts := time.Date(2025, 1, 15, 10, 30, 0, 0, time.UTC)
 	reports := []StatusReport{
 		{
-			Analysis: *NewAnalysis(FlatAnalysis{
-				Namespace:   "default",
-				Name:        "web-hpa",
-				Target:      "Deployment/web",
-				Current:     5,
-				Desired:     7,
-				Min:         2,
-				Max:         10,
-				Health:      "LIMITED",
-				HealthScore: 75,
-				Summary:     "Scaling in progress.",
-			}),
+			Analysis: Analysis{
+				Meta:     MetaView{Namespace: "default", Name: "web-hpa", Target: "Deployment/web"},
+				Replicas: ReplicasView{Current: 5, Desired: 7, Min: 2, Max: 10},
+				Decision: DecisionView{Health: "LIMITED", HealthScore: 75, Summary: "Scaling in progress."},
+			},
 			Events: []Event{
 				{Reason: "SuccessfulRescale", Message: "New size: 7; reason: cpu utilization above target", Timestamp: ts},
 				{Reason: "FailedGetResourceMetric", Message: "unable to get metric cpu: the server could not find the requested resource", Timestamp: ts.Add(-5 * time.Minute)},
@@ -204,18 +169,11 @@ func TestWriteRichIncidentMarkdown_WithEvents(t *testing.T) {
 func TestWriteRichIncidentMarkdown_WithSuggestions(t *testing.T) {
 	reports := []StatusReport{
 		{
-			Analysis: *NewAnalysis(FlatAnalysis{
-				Namespace:   "default",
-				Name:        "web-hpa",
-				Target:      "Deployment/web",
-				Current:     5,
-				Desired:     5,
-				Min:         2,
-				Max:         10,
-				Health:      "LIMITED",
-				HealthScore: 75,
-				Summary:     "Scaling limited.",
-				Suggestions: []Suggestion{
+			Analysis: Analysis{
+				Meta:     MetaView{Namespace: "default", Name: "web-hpa", Target: "Deployment/web"},
+				Replicas: ReplicasView{Current: 5, Desired: 5, Min: 2, Max: 10},
+				Decision: DecisionView{Health: "LIMITED", HealthScore: 75, Summary: "Scaling limited."},
+				Actions: ActionsView{Suggestions: []Suggestion{
 					{
 						Title:       "Increase maxReplicas",
 						Description: "Consider raising maxReplicas to allow more headroom.",
@@ -223,8 +181,8 @@ func TestWriteRichIncidentMarkdown_WithSuggestions(t *testing.T) {
 						Risk:        "low",
 						Patch:       `{"spec":{"maxReplicas":20}}`,
 					},
-				},
-			}),
+				}},
+			},
 		},
 	}
 
@@ -245,13 +203,10 @@ func TestWriteRichIncidentMarkdown_WithSuggestions(t *testing.T) {
 func TestWriteRichIncidentMarkdown_NoOptionalFields(t *testing.T) {
 	reports := []StatusReport{
 		{
-			Analysis: *NewAnalysis(FlatAnalysis{
-				Namespace:   "default",
-				Name:        "minimal-hpa",
-				Target:      "Deployment/minimal",
-				Health:      "OK",
-				HealthScore: 100,
-			}),
+			Analysis: Analysis{
+				Meta:     MetaView{Namespace: "default", Name: "minimal-hpa", Target: "Deployment/minimal"},
+				Decision: DecisionView{Health: "OK", HealthScore: 100},
+			},
 		},
 	}
 
@@ -278,25 +233,18 @@ func TestWriteRichIncidentMarkdown_NoOptionalFields(t *testing.T) {
 func TestWriteRichIncidentMarkdown_WithChurnAnalysis(t *testing.T) {
 	reports := []StatusReport{
 		{
-			Analysis: *NewAnalysis(FlatAnalysis{
-				Namespace:   "default",
-				Name:        "web-hpa",
-				Target:      "Deployment/web",
-				Current:     5,
-				Desired:     5,
-				Min:         2,
-				Max:         10,
-				Health:      "LIMITED",
-				HealthScore: 70,
-				Summary:     "Scaling churn detected.",
-				ChurnAnalysis: &churn.ChurnAnalysis{
+			Analysis: Analysis{
+				Meta:     MetaView{Namespace: "default", Name: "web-hpa", Target: "Deployment/web"},
+				Replicas: ReplicasView{Current: 5, Desired: 5, Min: 2, Max: 10},
+				Decision: DecisionView{Health: "LIMITED", HealthScore: 70, Summary: "Scaling churn detected."},
+				Stability: StabilityView{ChurnAnalysis: &churn.ChurnAnalysis{
 					Score:          65,
 					Level:          churn.ChurnHigh,
 					ScaleUpCount:   8,
 					ScaleDownCount: 7,
 					DirectionFlips: 6,
-				},
-			}),
+				}},
+			},
 		},
 	}
 
@@ -317,18 +265,11 @@ func TestWriteRichIncidentMarkdown_WithChurnAnalysis(t *testing.T) {
 func TestWriteRichIncidentMarkdown_WithHealthTrendAnomalies(t *testing.T) {
 	reports := []StatusReport{
 		{
-			Analysis: *NewAnalysis(FlatAnalysis{
-				Namespace:   "default",
-				Name:        "web-hpa",
-				Target:      "Deployment/web",
-				Current:     5,
-				Desired:     5,
-				Min:         2,
-				Max:         10,
-				Health:      "ERROR",
-				HealthScore: 40,
-				Summary:     "Health degrading.",
-				HealthTrend: &healthtrend.Result{
+			Analysis: Analysis{
+				Meta:     MetaView{Namespace: "default", Name: "web-hpa", Target: "Deployment/web"},
+				Replicas: ReplicasView{Current: 5, Desired: 5, Min: 2, Max: 10},
+				Decision: DecisionView{Health: "ERROR", HealthScore: 40, Summary: "Health degrading."},
+				Lifecycle: LifecycleView{HealthTrend: &healthtrend.Result{
 					Snapshots: []healthtrend.HealthSnapshot{
 						{Timestamp: time.Now().Add(-10 * time.Minute), HealthScore: 90, HealthState: "OK"},
 						{Timestamp: time.Now(), HealthScore: 40, HealthState: "ERROR"},
@@ -345,8 +286,8 @@ func TestWriteRichIncidentMarkdown_WithHealthTrendAnomalies(t *testing.T) {
 							Remediation:   "Check metrics-server availability",
 						},
 					},
-				},
-			}),
+				}},
+			},
 		},
 	}
 
@@ -367,18 +308,11 @@ func TestWriteRichIncidentMarkdown_WithHealthTrendAnomalies(t *testing.T) {
 func TestWriteRichIncidentMarkdown_WithCapacityContext(t *testing.T) {
 	reports := []StatusReport{
 		{
-			Analysis: *NewAnalysis(FlatAnalysis{
-				Namespace:   "default",
-				Name:        "web-hpa",
-				Target:      "Deployment/web",
-				Current:     5,
-				Desired:     10,
-				Min:         2,
-				Max:         10,
-				Health:      "LIMITED",
-				HealthScore: 75,
-				Summary:     "At maxReplicas.",
-				CapacityContext: &CapacityContext{
+			Analysis: Analysis{
+				Meta:     MetaView{Namespace: "default", Name: "web-hpa", Target: "Deployment/web"},
+				Replicas: ReplicasView{Current: 5, Desired: 10, Min: 2, Max: 10},
+				Decision: DecisionView{Health: "LIMITED", HealthScore: 75, Summary: "At maxReplicas."},
+				Capacity: CapacityView{CapacityContext: &CapacityContext{
 					PendingPods: []PendingPodInfo{
 						{Name: "web-abc12", Unschedulable: true, Reasons: []string{"Insufficient cpu"}},
 					},
@@ -386,8 +320,8 @@ func TestWriteRichIncidentMarkdown_WithCapacityContext(t *testing.T) {
 						{Name: "compute", Resource: "requests.cpu", Used: "19", Hard: "20", Message: "Near CPU quota limit"},
 					},
 					NodeHints: []string{"Consider adding nodes to increase capacity"},
-				},
-			}),
+				}},
+			},
 		},
 	}
 
@@ -424,13 +358,10 @@ func TestWriteRichIncidentMarkdown_EscalationNotes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			reports := []StatusReport{
 				{
-					Analysis: *NewAnalysis(FlatAnalysis{
-						Namespace:   "default",
-						Name:        "test-hpa",
-						Target:      "Deployment/test",
-						Health:      tc.health,
-						HealthScore: 50,
-					}),
+					Analysis: Analysis{
+						Meta:     MetaView{Namespace: "default", Name: "test-hpa", Target: "Deployment/test"},
+						Decision: DecisionView{Health: tc.health, HealthScore: 50},
+					},
 				},
 			}
 
@@ -453,24 +384,17 @@ func TestWriteRichIncidentMarkdown_EscalationNotes(t *testing.T) {
 func TestWriteRichIncidentMarkdown_ValidMarkdown(t *testing.T) {
 	reports := []StatusReport{
 		{
-			Analysis: *NewAnalysis(FlatAnalysis{
-				Namespace:   "default",
-				Name:        "web-hpa",
-				Target:      "Deployment/web",
-				Current:     5,
-				Desired:     5,
-				Min:         2,
-				Max:         10,
-				Health:      "OK",
-				HealthScore: 95,
-				Summary:     "Operating normally.",
-				Conditions: []Condition{
-					{Type: "ScalingActive", Status: "True", Reason: "ValidMetricFound", Message: "the HPA was able to successfully calculate a replica count"},
-				},
-				Metrics: []Metric{
+			Analysis: Analysis{
+				Meta:     MetaView{Namespace: "default", Name: "web-hpa", Target: "Deployment/web"},
+				Replicas: ReplicasView{Current: 5, Desired: 5, Min: 2, Max: 10},
+				Decision: DecisionView{Health: "OK", HealthScore: 95, Summary: "Operating normally."},
+				Metrics: MetricsView{Metrics: []Metric{
 					{Name: "cpu", Current: "78%", Target: "80%", Ratio: ptr.To(0.975), Text: "cpu 78%/80%"},
-				},
-			}),
+				}},
+				Conditions: ConditionsView{Conditions: []Condition{
+					{Type: "ScalingActive", Status: "True", Reason: "ValidMetricFound", Message: "the HPA was able to successfully calculate a replica count"},
+				}},
+			},
 			Events: []Event{
 				{Reason: "SuccessfulRescale", Message: "New size: 5", Timestamp: time.Now()},
 			},
@@ -520,24 +444,17 @@ func TestWriteRichIncidentMarkdown_EmptyReports(t *testing.T) {
 func TestWriteRichIncidentMarkdown_WithMetricsDiagnostics(t *testing.T) {
 	reports := []StatusReport{
 		{
-			Analysis: *NewAnalysis(FlatAnalysis{
-				Namespace:   "default",
-				Name:        "web-hpa",
-				Target:      "Deployment/web",
-				Current:     5,
-				Desired:     5,
-				Min:         2,
-				Max:         10,
-				Health:      "ERROR",
-				HealthScore: 50,
-				Summary:     "Metrics pipeline degraded.",
-				MetricsDiagnostics: &MetricsPipelineDiagnostics{
+			Analysis: Analysis{
+				Meta:     MetaView{Namespace: "default", Name: "web-hpa", Target: "Deployment/web"},
+				Replicas: ReplicasView{Current: 5, Desired: 5, Min: 2, Max: 10},
+				Decision: DecisionView{Health: "ERROR", HealthScore: 50, Summary: "Metrics pipeline degraded."},
+				Metrics: MetricsView{MetricsDiagnostics: &MetricsPipelineDiagnostics{
 					OverallStatus: "error",
 					PerMetricChecks: []PerMetricHealthCheck{
 						{MetricType: "Resource", MetricName: "cpu", Status: "missing", Details: "No current data", Remediation: "Check metrics-server"},
 					},
-				},
-			}),
+				}},
+			},
 		},
 	}
 
@@ -572,13 +489,10 @@ func TestWriteRichIncidentMarkdown_SeverityAssessment(t *testing.T) {
 		t.Run(tc.health+"_"+string(rune(tc.score+'0')), func(t *testing.T) {
 			reports := []StatusReport{
 				{
-					Analysis: *NewAnalysis(FlatAnalysis{
-						Name:        "test",
-						Namespace:   "default",
-						Target:      "Deployment/test",
-						Health:      tc.health,
-						HealthScore: tc.score,
-					}),
+					Analysis: Analysis{
+						Meta:     MetaView{Name: "test", Namespace: "default", Target: "Deployment/test"},
+						Decision: DecisionView{Health: tc.health, HealthScore: tc.score},
+					},
 				},
 			}
 			var buf bytes.Buffer
