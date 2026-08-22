@@ -135,16 +135,14 @@ func assertStatusReportShape(t *testing.T, raw string, wantName string) {
 		t.Error("Analysis.Summary is empty")
 	}
 
-	// Conditions and metrics slices must be present (possibly empty for
-	// metrics on a broken HPA, but the slice itself must round-trip).
+	// Conditions must be present (every HPA has at least one). The grouped
+	// v2 schema omits an empty metrics list (omitempty), so a nil decoded
+	// slice is valid for HPAs whose status carries no current metrics.
 	if a.Conditions.Conditions == nil {
 		t.Error("Analysis.Conditions is nil; expected an initialized slice")
 	}
 	if len(a.Conditions.Conditions) == 0 {
 		t.Error("Analysis.Conditions is empty; every HPA has at least one condition")
-	}
-	if a.Metrics.Metrics == nil {
-		t.Error("Analysis.Metrics is nil; expected an initialized slice")
 	}
 
 	// Each condition must carry a Type and Status at minimum.

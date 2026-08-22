@@ -379,10 +379,13 @@ func TestE2E_KEDACRDPresent(t *testing.T) {
 	// analysis.keda object. The exact trigger status depends on controller
 	// reconciliation, so we only assert the ScaledObject name is attached.
 	result := decodeStatusReportJSON(t, raw)
-	a := analysisMap(t, result)
-	keda, ok := a["keda"].(map[string]any)
+	controllers, ok := analysisMap(t, result)["controllers"].(map[string]any)
 	if !ok {
-		t.Fatalf("analysis.keda missing or wrong type with --keda=on and CRD present; got %T", a["keda"])
+		t.Fatal("analysis.controllers group missing (grouped v2 schema)")
+	}
+	keda, ok := controllers["keda"].(map[string]any)
+	if !ok {
+		t.Fatalf("analysis.controllers.keda missing or wrong type with --keda=on and CRD present; got %T", controllers["keda"])
 	}
 	scaledObjectName, _ := keda["scaledObjectName"].(string)
 	if scaledObjectName != soName {
