@@ -148,9 +148,7 @@ var commandGroups = []commandGroup{
 			workflowCommand(newStatusCommand, true),
 			rootCommand(newDoctorCommand), rootCommand(newReadinessDoctorCommand),
 			rootCommand(newWhyNotScaleCommand), rootCommand(newBlockersCommand),
-			rootCommand(newDeprecatedTraceAlias), rootCommand(newDeprecatedPathAlias),
-			rootCommand(newDeprecatedReadinessAlias), rootCommand(newRolloutCommand),
-			rootCommand(newDeprecatedRolloutContextAlias), rootCommand(newDeprecatedNodeContextAlias),
+			rootCommand(newRolloutCommand), rootCommand(newNodeContextCommand),
 			rootCommand(newMetricsCommand), rootCommand(newExplainCommand),
 		},
 	},
@@ -172,10 +170,10 @@ var commandGroups = []commandGroup{
 	{
 		group: cobra.Group{ID: "tune", Title: "Tuning & Planning Commands:"},
 		commands: []commandSpec{
-			rootCommand(newAdvisorCommand), rootCommand(newDeprecatedContainerAdvisorAlias),
+			rootCommand(newAdvisorCommand),
 			rootCommand(newTuneCommand), rootCommand(newBehaviorCommand),
 			rootCommand(newSimulateCommand), rootCommand(newEstimateCommand),
-			rootCommand(newRecommendCommand), rootCommand(newDeprecatedPreflightAlias),
+			rootCommand(newRecommendCommand),
 			rootCommand(newAssumptionsCommand), rootCommand(newProfileCommand), rootCommand(newSLOCommand),
 		},
 	},

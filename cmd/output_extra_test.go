@@ -92,13 +92,12 @@ func TestClassifyError_WrappedExitCodeErrorResolvedViaErrorsAs(t *testing.T) {
 	}
 }
 
-func TestClassifyError_ErrHPANotFoundFallsBackToExitError(t *testing.T) {
-	// not-found currently maps to ExitError for backwards compatibility;
-	// the sentinel is still recognised so the future ExitNotFound switch is
-	// a single-line change in classifyError.
+func TestClassifyError_ErrHPANotFoundIsExitNotFound(t *testing.T) {
+	// Since v4.0.0 not-found has its own exit code so scripts can
+	// distinguish "the HPA does not exist" from generic API failures.
 	err := fmt.Errorf("get hpa: %w", ErrHPANotFound)
-	if code, ok := classifyError(err); code != ExitError || !ok {
-		t.Errorf("ErrHPANotFound -> (ExitError, true), got (%d, %v)", code, ok)
+	if code, ok := classifyError(err); code != ExitNotFound || !ok {
+		t.Errorf("ErrHPANotFound -> (ExitNotFound, true), got (%d, %v)", code, ok)
 	}
 }
 

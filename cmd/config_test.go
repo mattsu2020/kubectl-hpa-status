@@ -30,7 +30,7 @@ func TestValidateConfig(t *testing.T) {
 		{name: "valid output json accepted", cfg: configFile{Output: "json"}},
 		{name: "valid output go-template normalized accepted", cfg: configFile{Output: "go-template"}},
 		{name: "invalid output schema rejected", cfg: configFile{OutputSchema: "v3"}, wantErr: "outputSchema"},
-		{name: "valid output schema v1 accepted", cfg: configFile{OutputSchema: "v1"}},
+		{name: "output schema v1 rejected since v4", cfg: configFile{OutputSchema: "v1"}, wantErr: "outputSchema"},
 		{name: "valid output schema v2 accepted", cfg: configFile{OutputSchema: "v2"}},
 		{name: "invalid lang rejected", cfg: configFile{Lang: "fr"}, wantErr: "lang"},
 		{name: "valid lang en accepted", cfg: configFile{Lang: "en"}},
