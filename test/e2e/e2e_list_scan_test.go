@@ -65,7 +65,7 @@ func TestE2E_JSONStructuredOutput(t *testing.T) {
 	rootCmd := cmd.NewRootCommand()
 	rootCmd.SetOut(buf)
 	rootCmd.SetErr(buf)
-	rootCmd.SetArgs([]string{"status", "json-struct-hpa", "-n", nsName, "-o", "json", "--output-schema=v1", "--explain", "--kubeconfig", kubeconfig})
+	rootCmd.SetArgs([]string{"status", "json-struct-hpa", "-n", nsName, "-o", "json", "--output-schema=v2", "--explain", "--kubeconfig", kubeconfig})
 
 	if err := rootCmd.Execute(); err != nil {
 		var exitErr *cmd.ExitCodeError
@@ -87,26 +87,37 @@ func TestE2E_JSONStructuredOutput(t *testing.T) {
 		t.Fatal("JSON output missing top-level 'analysis' object")
 	}
 
-	// Verify structuredInterpretation array is present.
-	structuredInterp, ok := analysis["structuredInterpretation"].([]any)
+	actions, ok := analysis["actions"].(map[string]any)
 	if !ok {
-		t.Error("JSON analysis missing 'structuredInterpretation' array")
-	} else if len(structuredInterp) == 0 {
-		t.Error("JSON analysis 'structuredInterpretation' array is empty")
+		t.Fatal("JSON analysis missing 'actions' group (grouped v2 schema)")
+	}
+	decision, ok := analysis["decision"].(map[string]any)
+	if !ok {
+		t.Fatal("JSON analysis missing 'decision' group (grouped v2 schema)")
 	}
 
-	// Verify suggestions array exists.
-	suggestions, ok := analysis["suggestions"].([]any)
+	// Verify structuredInterpretation array is present.
+	structuredInterp, ok := actions["structuredInterpretation"].([]any)
 	if !ok {
-		t.Error("JSON analysis missing 'suggestions' array")
-	} else {
-		t.Logf("Found %d suggestions", len(suggestions))
+		t.Error("JSON analysis.actions missing 'structuredInterpretation' array")
+	} else if len(structuredInterp) == 0 {
+		t.Error("JSON analysis.actions 'structuredInterpretation' array is empty")
+	}
+
+	// Verify suggestions array exists when present (omitempty).
+	if sugg, present := actions["suggestions"]; present {
+		suggestions, ok := sugg.([]any)
+		if !ok {
+			t.Errorf("JSON analysis.actions 'suggestions' wrong type, got %T", sugg)
+		} else {
+			t.Logf("Found %d suggestions", len(suggestions))
+		}
 	}
 
 	// Verify healthScore is numeric.
-	healthScore, ok := analysis["healthScore"].(float64)
+	healthScore, ok := decision["healthScore"].(float64)
 	if !ok {
-		t.Errorf("JSON analysis 'healthScore' is not numeric, got: %T", analysis["healthScore"])
+		t.Errorf("JSON analysis.decision 'healthScore' is not numeric, got: %T", decision["healthScore"])
 	} else {
 		t.Logf("Health score: %.0f", healthScore)
 		if healthScore < 0 || healthScore > 100 {

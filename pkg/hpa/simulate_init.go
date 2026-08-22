@@ -18,18 +18,18 @@ func init() {
 
 		// Convert hpa.Analysis to simulate.Analysis
 		return simulate.Analysis{
-			Namespace:   result.Namespace(),
-			Name:        result.Name(),
-			Target:      result.Target(),
-			Current:     result.Current(),
-			Desired:     result.Desired(),
-			Min:         result.Min(),
-			Max:         result.Max(),
-			Health:      result.Health(),
-			HealthScore: result.HealthScore(),
-			Summary:     result.Summary(),
-			Metrics:     convertMetricsToSimulate(result.Metrics()),
-			Conditions:  convertConditionsToSimulate(result.Conditions()),
+			Namespace:   result.Meta.Namespace,
+			Name:        result.Meta.Name,
+			Target:      result.Meta.Target,
+			Current:     result.Replicas.Current,
+			Desired:     result.Replicas.Desired,
+			Min:         result.Replicas.Min,
+			Max:         result.Replicas.Max,
+			Health:      result.Decision.Health,
+			HealthScore: result.Decision.HealthScore,
+			Summary:     result.Decision.Summary,
+			Metrics:     convertMetricsToSimulate(result.Metrics.Metrics),
+			Conditions:  convertConditionsToSimulate(result.Conditions.Conditions),
 		}
 	})
 

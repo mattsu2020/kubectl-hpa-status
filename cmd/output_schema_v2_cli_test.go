@@ -108,18 +108,11 @@ func TestStatusOutputSchemaV2StructuredFormats(t *testing.T) {
 func TestWatchOutputSchemaV2UsesProjectedValueForEverySupportedFormat(t *testing.T) {
 	report := hpaanalysis.StatusReport{
 		APIVersion: hpaanalysis.SchemaVersion,
-		Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
-			Namespace:   "default",
-			Name:        "web",
-			Target:      "Deployment/web",
-			Current:     3,
-			Desired:     3,
-			Min:         1,
-			Max:         10,
-			Health:      string(hpaanalysis.HealthOK),
-			HealthScore: 100,
-			Summary:     "HPA is healthy",
-		}),
+		Analysis: hpaanalysis.Analysis{
+			Meta:     hpaanalysis.MetaView{Namespace: "default", Name: "web", Target: "Deployment/web"},
+			Replicas: hpaanalysis.ReplicasView{Current: 3, Desired: 3, Min: 1, Max: 10},
+			Decision: hpaanalysis.DecisionView{Health: string(hpaanalysis.HealthOK), HealthScore: 100, Summary: "HPA is healthy"},
+		},
 	}
 
 	t.Run("json", func(t *testing.T) {

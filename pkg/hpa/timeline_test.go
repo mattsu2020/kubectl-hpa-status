@@ -11,24 +11,19 @@ import (
 
 func TestSnapshotFromReport(t *testing.T) {
 	report := StatusReport{
-		Analysis: *NewAnalysis(FlatAnalysis{
-			Namespace:   "default",
-			Name:        "web",
-			Current:     3,
-			Desired:     5,
-			Health:      "LIMITED",
-			HealthScore: 75,
-			Summary:     "Scaling up",
-			Conditions: []Condition{
-				{Type: "ScalingLimited", Status: "True", Reason: "LimitedByMaxReplicas"},
-			},
-			Interpretation: []string{"within tolerance"},
-			ImpactMetric: &MetricImpactGuess{
+		Analysis: Analysis{
+			Meta:     MetaView{Namespace: "default", Name: "web"},
+			Replicas: ReplicasView{Current: 3, Desired: 5},
+			Decision: DecisionView{Health: "LIMITED", HealthScore: 75, Summary: "Scaling up", ImpactMetric: &MetricImpactGuess{
 				Name:  "cpu",
 				Ratio: 1.42,
 				Note:  "above target",
-			},
-		}),
+			}},
+			Conditions: ConditionsView{Conditions: []Condition{
+				{Type: "ScalingLimited", Status: "True", Reason: "LimitedByMaxReplicas"},
+			}},
+			Actions: ActionsView{Interpretation: []string{"within tolerance"}},
+		},
 		Events: []Event{
 			{Reason: "SuccessfulRescale", Message: "New size: 5"},
 		},
@@ -240,12 +235,10 @@ func TestWriteTimelineHTML(t *testing.T) {
 
 func TestSnapshotFromReport_EmptyMetrics(t *testing.T) {
 	report := StatusReport{
-		Analysis: *NewAnalysis(FlatAnalysis{
-			Current:     2,
-			Desired:     2,
-			Health:      "OK",
-			HealthScore: 100,
-		}),
+		Analysis: Analysis{
+			Replicas: ReplicasView{Current: 2, Desired: 2},
+			Decision: DecisionView{Health: "OK", HealthScore: 100},
+		},
 	}
 
 	snap := SnapshotFromReport(report)

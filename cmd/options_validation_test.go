@@ -189,7 +189,7 @@ func TestLoadConfigFileIsStrictAndCanonical(t *testing.T) {
 	}
 
 	path := filepath.Join(t.TempDir(), "config.yaml")
-	content := "output: names\ntemplates:\n  names:\n    type: go-template\n    template: '{{ .Analysis.Name }}'\n"
+	content := "output: names\ntemplates:\n  names:\n    type: go-template\n    template: '{{ .Analysis.Meta.Name }}'\n"
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}

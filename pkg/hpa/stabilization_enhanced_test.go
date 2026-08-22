@@ -173,12 +173,9 @@ func TestFormatStabilizationExplain(t *testing.T) {
 	}{
 		{
 			name: "full stabilization display",
-			analysis: *NewAnalysis(FlatAnalysis{
-				StabilizationRemaining:     &remaining,
-				StabilizationWindowSeconds: &window,
-				StabilizationSource:        StabilizationSourceScaleDown,
-				StabilizationConfidence:    stabilizationConfidenceLabel,
-			}),
+			analysis: Analysis{
+				Conditions: ConditionsView{StabilizationRemaining: &remaining, StabilizationWindowSeconds: &window, StabilizationSource: StabilizationSourceScaleDown, StabilizationConfidence: stabilizationConfidenceLabel},
+			},
 			wantContains: []string{
 				"ScalingDownStabilized: True",
 				"38%",
@@ -189,27 +186,23 @@ func TestFormatStabilizationExplain(t *testing.T) {
 		},
 		{
 			name: "nil remaining returns empty",
-			analysis: *NewAnalysis(FlatAnalysis{
-				StabilizationRemaining: nil,
-			}),
+			analysis: Analysis{
+				Conditions: ConditionsView{StabilizationRemaining: nil},
+			},
 			wantEmpty: true,
 		},
 		{
 			name: "zero remaining returns empty",
-			analysis: *NewAnalysis(FlatAnalysis{
-				StabilizationRemaining:     ptr.To(int64(0)),
-				StabilizationWindowSeconds: &window,
-			}),
+			analysis: Analysis{
+				Conditions: ConditionsView{StabilizationRemaining: ptr.To(int64(0)), StabilizationWindowSeconds: &window},
+			},
 			wantEmpty: true,
 		},
 		{
 			name: "without window still shows remaining",
-			analysis: *NewAnalysis(FlatAnalysis{
-				StabilizationRemaining:     &remaining,
-				StabilizationWindowSeconds: nil,
-				StabilizationSource:        StabilizationSourceScaleUp,
-				StabilizationConfidence:    stabilizationConfidenceLabel,
-			}),
+			analysis: Analysis{
+				Conditions: ConditionsView{StabilizationRemaining: &remaining, StabilizationWindowSeconds: nil, StabilizationSource: StabilizationSourceScaleUp, StabilizationConfidence: stabilizationConfidenceLabel},
+			},
 			wantContains: []string{
 				"ScalingDownStabilized: True",
 				"scaleUp behavior",

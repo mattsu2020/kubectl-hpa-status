@@ -77,14 +77,14 @@ func writeIncidentExecutiveSummary(buf *strings.Builder, reports []StatusReport)
 	for _, r := range reports {
 		a := r.Analysis
 		buf.WriteString(fmt.Sprintf("| %s | %s | %s | %d | %d | %d | %d | %d |\n",
-			escapeMarkdown(a.Namespace()),
-			escapeMarkdown(a.Name()),
-			severityPrefix(a.Health()),
-			a.HealthScore(),
-			a.Current(),
-			a.Desired(),
-			a.Min(),
-			a.Max(),
+			escapeMarkdown(a.Meta.Namespace),
+			escapeMarkdown(a.Meta.Name),
+			severityPrefix(a.Decision.Health),
+			a.Decision.HealthScore,
+			a.Replicas.Current,
+			a.Replicas.Desired,
+			a.Replicas.Min,
+			a.Replicas.Max,
 		))
 	}
 	buf.WriteString("\n")
@@ -108,7 +108,7 @@ func writeIncidentTimeline(buf *strings.Builder, reports []StatusReport) {
 			continue
 		}
 		a := r.Analysis
-		buf.WriteString(fmt.Sprintf("### %s/%s\n\n", a.Namespace(), a.Name()))
+		buf.WriteString(fmt.Sprintf("### %s/%s\n\n", a.Meta.Namespace, a.Meta.Name))
 		buf.WriteString("| Timestamp | Reason | Message |\n")
 		buf.WriteString("|-----------|--------|--------|\n")
 		sorted := make([]Event, len(r.Events))
@@ -136,7 +136,7 @@ func writeIncidentRootCause(buf *strings.Builder, reports []StatusReport) {
 	buf.WriteString("## Root Cause Analysis\n\n")
 	for _, r := range reports {
 		a := r.Analysis
-		buf.WriteString(fmt.Sprintf("### %s/%s\n\n", a.Namespace(), a.Name()))
+		buf.WriteString(fmt.Sprintf("### %s/%s\n\n", a.Meta.Namespace, a.Meta.Name))
 
 		writeRootCauseConditions(buf, a)
 		writeRootCauseMetricsPipeline(buf, a)
@@ -144,9 +144,9 @@ func writeIncidentRootCause(buf *strings.Builder, reports []StatusReport) {
 		writeRootCauseAnomalies(buf, a)
 
 		// If no specific analysis was available, emit the summary.
-		if len(a.Conditions()) == 0 && a.MetricsDiagnostics() == nil && a.ChurnAnalysis() == nil && a.HealthTrend() == nil {
-			if a.Summary() != "" {
-				buf.WriteString(fmt.Sprintf("%s\n\n", a.Summary()))
+		if len(a.Conditions.Conditions) == 0 && a.Metrics.MetricsDiagnostics == nil && a.Stability.ChurnAnalysis == nil && a.Lifecycle.HealthTrend == nil {
+			if a.Decision.Summary != "" {
+				buf.WriteString(fmt.Sprintf("%s\n\n", a.Decision.Summary))
 			} else {
 				buf.WriteString("No detailed root cause data available.\n\n")
 			}
@@ -156,11 +156,11 @@ func writeIncidentRootCause(buf *strings.Builder, reports []StatusReport) {
 
 // writeRootCauseConditions renders the Conditions subsection of root cause.
 func writeRootCauseConditions(buf *strings.Builder, a Analysis) {
-	if len(a.Conditions()) == 0 {
+	if len(a.Conditions.Conditions) == 0 {
 		return
 	}
 	buf.WriteString("**Conditions:**\n\n")
-	for _, c := range a.Conditions() {
+	for _, c := range a.Conditions.Conditions {
 		implication := conditionImplication(c)
 		buf.WriteString(fmt.Sprintf("- **%s** (%s): %s — %s\n",
 			c.Type, c.Status, escapeMarkdown(c.Reason), implication))
@@ -170,17 +170,17 @@ func writeRootCauseConditions(buf *strings.Builder, a Analysis) {
 
 // writeRootCauseMetricsPipeline renders the metrics pipeline diagnostics subsection.
 func writeRootCauseMetricsPipeline(buf *strings.Builder, a Analysis) {
-	if a.MetricsDiagnostics() == nil {
+	if a.Metrics.MetricsDiagnostics == nil {
 		return
 	}
-	buf.WriteString(fmt.Sprintf("**Metrics Pipeline:** %s\n\n", a.MetricsDiagnostics().OverallStatus))
-	for _, check := range a.MetricsDiagnostics().PerMetricChecks {
+	buf.WriteString(fmt.Sprintf("**Metrics Pipeline:** %s\n\n", a.Metrics.MetricsDiagnostics.OverallStatus))
+	for _, check := range a.Metrics.MetricsDiagnostics.PerMetricChecks {
 		buf.WriteString(fmt.Sprintf("- %s/%s: %s — %s\n",
 			check.MetricType, check.MetricName, check.Status, escapeMarkdown(check.Details)))
 	}
-	if len(a.MetricsDiagnostics().RemediationSteps) > 0 {
+	if len(a.Metrics.MetricsDiagnostics.RemediationSteps) > 0 {
 		buf.WriteString("\n**Remediation Steps:**\n\n")
-		for _, step := range a.MetricsDiagnostics().RemediationSteps {
+		for _, step := range a.Metrics.MetricsDiagnostics.RemediationSteps {
 			buf.WriteString(fmt.Sprintf("- %s\n", step))
 		}
 	}
@@ -189,10 +189,10 @@ func writeRootCauseMetricsPipeline(buf *strings.Builder, a Analysis) {
 
 // writeRootCauseChurn renders the churn analysis subsection.
 func writeRootCauseChurn(buf *strings.Builder, a Analysis) {
-	if a.ChurnAnalysis() == nil {
+	if a.Stability.ChurnAnalysis == nil {
 		return
 	}
-	ca := a.ChurnAnalysis()
+	ca := a.Stability.ChurnAnalysis
 	buf.WriteString(fmt.Sprintf("**Churn Detected:** level=%s score=%d flips=%d (scale-ups=%d scale-downs=%d)\n\n",
 		ca.Level, ca.Score, ca.DirectionFlips, ca.ScaleUpCount, ca.ScaleDownCount))
 	for _, rec := range ca.Recommendations {
@@ -204,11 +204,11 @@ func writeRootCauseChurn(buf *strings.Builder, a Analysis) {
 
 // writeRootCauseAnomalies renders the health-trend anomaly subsection.
 func writeRootCauseAnomalies(buf *strings.Builder, a Analysis) {
-	if a.HealthTrend() == nil || len(a.HealthTrend().Anomalies) == 0 {
+	if a.Lifecycle.HealthTrend == nil || len(a.Lifecycle.HealthTrend.Anomalies) == 0 {
 		return
 	}
 	buf.WriteString("**Anomaly Detection:**\n\n")
-	for _, anomaly := range a.HealthTrend().Anomalies {
+	for _, anomaly := range a.Lifecycle.HealthTrend.Anomalies {
 		buf.WriteString(fmt.Sprintf("- **%s** (severity: %s): score changed %d -> %d",
 			anomaly.Type, anomaly.Severity, anomaly.ScoreBefore, anomaly.ScoreAfter))
 		if anomaly.CauseEstimate != "" {
@@ -219,8 +219,8 @@ func writeRootCauseAnomalies(buf *strings.Builder, a Analysis) {
 		}
 		buf.WriteString("\n")
 	}
-	if a.HealthTrend().FlappingDetected {
-		buf.WriteString(fmt.Sprintf("- **Flapping detected** (variance: %.1f)\n", a.HealthTrend().Variance))
+	if a.Lifecycle.HealthTrend.FlappingDetected {
+		buf.WriteString(fmt.Sprintf("- **Flapping detected** (variance: %.1f)\n", a.Lifecycle.HealthTrend.Variance))
 	}
 	buf.WriteString("\n")
 }

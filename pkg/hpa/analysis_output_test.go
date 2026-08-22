@@ -26,15 +26,13 @@ func TestNewListItemHighlightsImplicitMaxReplicasLimit(t *testing.T) {
 }
 
 func TestNewListItemPreservesZeroHealthScore(t *testing.T) {
-	got := NewListItem(*NewAnalysis(FlatAnalysis{
-		Namespace:   "default",
-		Name:        "broken",
-		Health:      "ERROR",
-		HealthScore: 0,
-		Conditions: []Condition{
+	got := NewListItem(Analysis{
+		Meta:     MetaView{Namespace: "default", Name: "broken"},
+		Decision: DecisionView{Health: "ERROR", HealthScore: 0},
+		Conditions: ConditionsView{Conditions: []Condition{
 			{Type: "ScalingActive", Status: "False", Reason: "FailedGetResourceMetric"},
-		},
-	}))
+		}},
+	})
 
 	if got.HealthScore != 0 {
 		t.Fatalf("HealthScore = %d, want 0", got.HealthScore)
@@ -99,12 +97,12 @@ func TestWriteStatusDiff_NoChanges(t *testing.T) {
 
 func TestWriteStatusDiff_ReplicasChanged(t *testing.T) {
 	prev := Analyze(baseHPA(), false)
-	prev.SetCurrent(3)
-	prev.SetDesired(3)
+	prev.Replicas.Current = 3
+	prev.Replicas.Desired = 3
 
 	curr := Analyze(baseHPA(), false)
-	curr.SetCurrent(5)
-	curr.SetDesired(7)
+	curr.Replicas.Current = 5
+	curr.Replicas.Desired = 7
 
 	state := WatchState{Previous: &prev, Current: &curr}
 	var buf bytes.Buffer
@@ -145,8 +143,12 @@ func TestWriteStatusDiff_ConditionsChanged(t *testing.T) {
 }
 
 func TestWriteStatusDiff_ConditionMessageOnlyChange(t *testing.T) {
-	previous := NewAnalysis(FlatAnalysis{Conditions: []Condition{{Type: "AbleToScale", Status: "True", Reason: "Ready", Message: "old"}}})
-	current := NewAnalysis(FlatAnalysis{Conditions: []Condition{{Type: "AbleToScale", Status: "True", Reason: "Ready", Message: "new"}}})
+	previous := &Analysis{
+		Conditions: ConditionsView{Conditions: []Condition{{Type: "AbleToScale", Status: "True", Reason: "Ready", Message: "old"}}},
+	}
+	current := &Analysis{
+		Conditions: ConditionsView{Conditions: []Condition{{Type: "AbleToScale", Status: "True", Reason: "Ready", Message: "new"}}},
+	}
 	var buf bytes.Buffer
 	if err := WriteStatusDiff(&buf, WatchState{Previous: previous, Current: current}, style.NewTheme(false)); err != nil {
 		t.Fatal(err)

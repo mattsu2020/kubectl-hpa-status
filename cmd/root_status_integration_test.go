@@ -282,11 +282,11 @@ func TestRunStatus_JSONOutput(t *testing.T) {
 	if err := json.Unmarshal(buf.Bytes(), &report); err != nil {
 		t.Fatalf("failed to parse JSON output: %v\noutput:\n%s", err, buf.String())
 	}
-	if report.Analysis.Name() != "web" {
-		t.Errorf("expected analysis.name=web, got %s", report.Analysis.Name())
+	if report.Analysis.Meta.Name != "web" {
+		t.Errorf("expected analysis.name=web, got %s", report.Analysis.Meta.Name)
 	}
-	if report.Analysis.Current() != 3 {
-		t.Errorf("expected current=3, got %d", report.Analysis.Current())
+	if report.Analysis.Replicas.Current != 3 {
+		t.Errorf("expected current=3, got %d", report.Analysis.Replicas.Current)
 	}
 }
 
@@ -340,12 +340,13 @@ func TestRunStatusMany_JSONOutput(t *testing.T) {
 		t.Fatalf("runStatusMany returned error: %v", err)
 	}
 
-	// Multi-HPA output uses the StatusBatch envelope: {"apiVersion":..., "items":[...]}.
-	var batch hpaanalysis.StatusBatch
+	// Multi-HPA output uses the StatusBatchV2 envelope (the only structured
+	// contract since v4): {"apiVersion":..., "items":[...]}.
+	var batch hpaanalysis.StatusBatchV2
 	if err := json.Unmarshal(buf.Bytes(), &batch); err != nil {
 		t.Fatalf("failed to parse JSON output: %v\noutput:\n%s", err, buf.String())
 	}
-	if batch.APIVersion != hpaanalysis.SchemaVersion {
+	if batch.APIVersion != hpaanalysis.SchemaVersionV2 {
 		t.Fatalf("unexpected apiVersion %q", batch.APIVersion)
 	}
 	if len(batch.Items) != 2 {
@@ -540,8 +541,12 @@ func TestRunStatusMany_PartialFailure_WarningAggregation(t *testing.T) {
 
 func TestAggregateBatchExitCode_AllOK(t *testing.T) {
 	results := []reportResult{
-		{name: "a", hasReport: true, report: hpaanalysis.StatusReport{Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{Health: string(hpaanalysis.HealthOK)})}},
-		{name: "b", hasReport: true, report: hpaanalysis.StatusReport{Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{Health: string(hpaanalysis.HealthStabilized)})}},
+		{name: "a", hasReport: true, report: hpaanalysis.StatusReport{Analysis: hpaanalysis.Analysis{
+			Decision: hpaanalysis.DecisionView{Health: string(hpaanalysis.HealthOK)},
+		}}},
+		{name: "b", hasReport: true, report: hpaanalysis.StatusReport{Analysis: hpaanalysis.Analysis{
+			Decision: hpaanalysis.DecisionView{Health: string(hpaanalysis.HealthStabilized)},
+		}}},
 	}
 	if err := aggregateBatchExitCode(results, false); err != nil {
 		t.Fatalf("expected nil, got %v", err)
@@ -550,8 +555,12 @@ func TestAggregateBatchExitCode_AllOK(t *testing.T) {
 
 func TestAggregateBatchExitCode_HasWarning(t *testing.T) {
 	results := []reportResult{
-		{name: "a", hasReport: true, report: hpaanalysis.StatusReport{Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{Health: string(hpaanalysis.HealthOK)})}},
-		{name: "b", hasReport: true, report: hpaanalysis.StatusReport{Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{Health: string(hpaanalysis.HealthLimited)})}},
+		{name: "a", hasReport: true, report: hpaanalysis.StatusReport{Analysis: hpaanalysis.Analysis{
+			Decision: hpaanalysis.DecisionView{Health: string(hpaanalysis.HealthOK)},
+		}}},
+		{name: "b", hasReport: true, report: hpaanalysis.StatusReport{Analysis: hpaanalysis.Analysis{
+			Decision: hpaanalysis.DecisionView{Health: string(hpaanalysis.HealthLimited)},
+		}}},
 	}
 	err := aggregateBatchExitCode(results, false)
 	if !isExitCodeWarning(err) {
@@ -561,7 +570,9 @@ func TestAggregateBatchExitCode_HasWarning(t *testing.T) {
 
 func TestAggregateBatchExitCode_HasError(t *testing.T) {
 	results := []reportResult{
-		{name: "a", hasReport: true, report: hpaanalysis.StatusReport{Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{Health: string(hpaanalysis.HealthLimited)})}},
+		{name: "a", hasReport: true, report: hpaanalysis.StatusReport{Analysis: hpaanalysis.Analysis{
+			Decision: hpaanalysis.DecisionView{Health: string(hpaanalysis.HealthLimited)},
+		}}},
 		{name: "b", hasReport: false, err: errors.New("not found")},
 	}
 	err := aggregateBatchExitCode(results, false)
@@ -573,7 +584,9 @@ func TestAggregateBatchExitCode_HasError(t *testing.T) {
 
 func TestAggregateBatchExitCode_WatchModeSuppressesWarning(t *testing.T) {
 	results := []reportResult{
-		{name: "a", hasReport: true, report: hpaanalysis.StatusReport{Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{Health: string(hpaanalysis.HealthLimited)})}},
+		{name: "a", hasReport: true, report: hpaanalysis.StatusReport{Analysis: hpaanalysis.Analysis{
+			Decision: hpaanalysis.DecisionView{Health: string(hpaanalysis.HealthLimited)},
+		}}},
 	}
 	if err := aggregateBatchExitCode(results, true); err != nil {
 		t.Fatalf("watch mode should suppress warning, got %v", err)

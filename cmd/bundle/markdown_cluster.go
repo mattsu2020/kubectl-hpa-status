@@ -1,7 +1,7 @@
 package bundle
 
 func writeBundleKEDASection(b *Writer, data *Data) {
-	ki := data.StatusReport.Analysis.KEDAInfo()
+	ki := data.StatusReport.Analysis.Controllers.KEDAInfo
 	if ki == nil {
 		return // Omit entire section when KEDA is not detected.
 	}

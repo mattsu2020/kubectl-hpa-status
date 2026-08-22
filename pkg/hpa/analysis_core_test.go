@@ -19,24 +19,24 @@ func TestAnalyzeDoesNotTreatInactiveDesiredZeroAsScaleDown(t *testing.T) {
 	}
 
 	got := Analyze(hpa, true)
-	if got.Summary() != "HPA cannot currently compute a scaling recommendation from metrics." {
-		t.Fatalf("unexpected summary: %s", got.Summary())
+	if got.Decision.Summary != "HPA cannot currently compute a scaling recommendation from metrics." {
+		t.Fatalf("unexpected summary: %s", got.Decision.Summary)
 	}
-	if !containsLine(got.Interpretation(), "avoids treating desiredReplicas=0 as a scale-down") {
-		t.Fatalf("expected inactive metric interpretation, got %#v", got.Interpretation())
+	if !containsLine(got.Actions.Interpretation, "avoids treating desiredReplicas=0 as a scale-down") {
+		t.Fatalf("expected inactive metric interpretation, got %#v", got.Actions.Interpretation)
 	}
 }
 
 func TestAnalyzeNilHPADoesNotPanic(t *testing.T) {
 	got := Analyze(nil, true)
-	if got.Health() != "ERROR" {
-		t.Fatalf("expected ERROR health, got %s", got.Health())
+	if got.Decision.Health != "ERROR" {
+		t.Fatalf("expected ERROR health, got %s", got.Decision.Health)
 	}
-	if got.HealthScore() != 0 {
-		t.Fatalf("expected zero health score, got %d", got.HealthScore())
+	if got.Decision.HealthScore != 0 {
+		t.Fatalf("expected zero health score, got %d", got.Decision.HealthScore)
 	}
-	if !containsLine(got.Interpretation(), "HPA input was nil") {
-		t.Fatalf("expected nil input interpretation, got %#v", got.Interpretation())
+	if !containsLine(got.Actions.Interpretation, "HPA input was nil") {
+		t.Fatalf("expected nil input interpretation, got %#v", got.Actions.Interpretation)
 	}
 }
 
@@ -48,11 +48,11 @@ func TestAnalyzeDetectsToleranceLikeNoScale(t *testing.T) {
 	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{resourceMetricStatus(corev1.ResourceMemory, 73)}
 
 	got := Analyze(hpa, true)
-	if got.ImpactMetric() == nil || got.ImpactMetric().Name != "memory" {
-		t.Fatalf("expected memory impact estimate, got %#v", got.ImpactMetric())
+	if got.Decision.ImpactMetric == nil || got.Decision.ImpactMetric.Name != "memory" {
+		t.Fatalf("expected memory impact estimate, got %#v", got.Decision.ImpactMetric)
 	}
-	if !containsLine(got.Interpretation(), "within the Kubernetes default scaleUp tolerance") {
-		t.Fatalf("expected directional tolerance interpretation, got %#v", got.Interpretation())
+	if !containsLine(got.Actions.Interpretation, "within the Kubernetes default scaleUp tolerance") {
+		t.Fatalf("expected directional tolerance interpretation, got %#v", got.Actions.Interpretation)
 	}
 }
 
@@ -98,17 +98,17 @@ func TestAnalyzeMultiMetricMaxReplicasExplainsLimitAndImpactEstimate(t *testing.
 	}
 
 	got := Analyze(hpa, true)
-	if got.Summary() != "HPA is at maxReplicas." {
-		t.Fatalf("unexpected summary: %s", got.Summary())
+	if got.Decision.Summary != "HPA is at maxReplicas." {
+		t.Fatalf("unexpected summary: %s", got.Decision.Summary)
 	}
-	if got.ImpactMetric() == nil || got.ImpactMetric().Name != "memory" {
-		t.Fatalf("expected memory impact estimate, got %#v", got.ImpactMetric())
+	if got.Decision.ImpactMetric == nil || got.Decision.ImpactMetric.Name != "memory" {
+		t.Fatalf("expected memory impact estimate, got %#v", got.Decision.ImpactMetric)
 	}
-	if !containsLine(got.Interpretation(), "constrained by maxReplicas") {
-		t.Fatalf("expected maxReplicas interpretation, got %#v", got.Interpretation())
+	if !containsLine(got.Actions.Interpretation, "constrained by maxReplicas") {
+		t.Fatalf("expected maxReplicas interpretation, got %#v", got.Actions.Interpretation)
 	}
-	if !containsLine(got.Interpretation(), "winning metric cannot be reliably determined") {
-		t.Fatalf("expected maxReplicas winner-detection warning, got %#v", got.Interpretation())
+	if !containsLine(got.Actions.Interpretation, "winning metric cannot be reliably determined") {
+		t.Fatalf("expected maxReplicas winner-detection warning, got %#v", got.Actions.Interpretation)
 	}
 }
 
@@ -121,11 +121,11 @@ func TestAnalyzeReportsMaxReplicasWhileCurrentReplicasConverge(t *testing.T) {
 	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{resourceMetricStatus(corev1.ResourceCPU, 60)}
 
 	got := Analyze(hpa, false)
-	if got.Summary() != "HPA is at maxReplicas." {
-		t.Fatalf("summary = %q, want maxReplicas summary", got.Summary())
+	if got.Decision.Summary != "HPA is at maxReplicas." {
+		t.Fatalf("summary = %q, want maxReplicas summary", got.Decision.Summary)
 	}
-	if got.Health() != string(HealthLimited) {
-		t.Fatalf("health = %q, want %q", got.Health(), HealthLimited)
+	if got.Decision.Health != string(HealthLimited) {
+		t.Fatalf("health = %q, want %q", got.Decision.Health, HealthLimited)
 	}
 }
 
@@ -135,10 +135,10 @@ func TestAnalyzeInitializesEmptyStatusSlices(t *testing.T) {
 	hpa.Status.CurrentMetrics = nil
 
 	got := Analyze(hpa, false)
-	if got.Conditions() == nil {
+	if got.Conditions.Conditions == nil {
 		t.Fatal("conditions is nil, want initialized empty slice")
 	}
-	if got.Metrics() == nil {
+	if got.Metrics.Metrics == nil {
 		t.Fatal("metrics is nil, want initialized empty slice")
 	}
 }
@@ -153,8 +153,8 @@ func TestAnalyzeScaleDownStabilized(t *testing.T) {
 	}
 
 	got := Analyze(hpa, true)
-	if !containsLine(got.Interpretation(), "Scale down appears stabilized") {
-		t.Fatalf("expected stabilization interpretation, got %#v", got.Interpretation())
+	if !containsLine(got.Actions.Interpretation, "Scale down appears stabilized") {
+		t.Fatalf("expected stabilization interpretation, got %#v", got.Actions.Interpretation)
 	}
 }
 
@@ -198,14 +198,14 @@ func TestAnalyzeFormatsNonResourceMetrics(t *testing.T) {
 	}
 
 	got := Analyze(hpa, false)
-	if len(got.Metrics()) != 2 {
-		t.Fatalf("expected 2 metrics, got %#v", got.Metrics())
+	if len(got.Metrics.Metrics) != 2 {
+		t.Fatalf("expected 2 metrics, got %#v", got.Metrics.Metrics)
 	}
-	if got.Metrics()[0].Text != "External queue_depth current=12 target=10 ratio=1.200 note=\"current value is above target\"" {
-		t.Fatalf("unexpected external metric text: %s", got.Metrics()[0].Text)
+	if got.Metrics.Metrics[0].Text != "External queue_depth current=12 target=10 ratio=1.200 note=\"current value is above target\"" {
+		t.Fatalf("unexpected external metric text: %s", got.Metrics.Metrics[0].Text)
 	}
-	if got.Metrics()[1].Text != "Pods requests_per_second current=120m target=100m ratio=1.200 note=\"current value is above target\"" {
-		t.Fatalf("unexpected pods metric text: %s", got.Metrics()[1].Text)
+	if got.Metrics.Metrics[1].Text != "Pods requests_per_second current=120m target=100m ratio=1.200 note=\"current value is above target\"" {
+		t.Fatalf("unexpected pods metric text: %s", got.Metrics.Metrics[1].Text)
 	}
 }
 
@@ -223,14 +223,14 @@ func TestAnalyzeBehaviorAddsRecommendedScaleDownAction(t *testing.T) {
 	}
 
 	got := Analyze(hpa, true)
-	if len(got.Behavior()) != 1 {
-		t.Fatalf("expected behavior entry, got %#v", got.Behavior())
+	if len(got.Conditions.Behavior) != 1 {
+		t.Fatalf("expected behavior entry, got %#v", got.Conditions.Behavior)
 	}
-	if !strings.Contains(got.Behavior()[0].Text, "stabilizationWindow=300s") {
-		t.Fatalf("expected stabilization window text, got %s", got.Behavior()[0].Text)
+	if !strings.Contains(got.Conditions.Behavior[0].Text, "stabilizationWindow=300s") {
+		t.Fatalf("expected stabilization window text, got %s", got.Conditions.Behavior[0].Text)
 	}
-	if !containsLine(got.Actions(), "estimated wait up to ~300s") {
-		t.Fatalf("expected scale-down action, got %#v", got.Actions())
+	if !containsLine(got.Actions.Actions, "estimated wait up to ~300s") {
+		t.Fatalf("expected scale-down action, got %#v", got.Actions.Actions)
 	}
 }
 
@@ -245,23 +245,23 @@ func TestAnalyzeAddsConcretePatchSuggestionForMaxReplicas(t *testing.T) {
 	}
 
 	got := Analyze(hpa, true)
-	if got.HealthScore() >= 100 {
-		t.Fatalf("expected reduced health score, got %d", got.HealthScore())
+	if got.Decision.HealthScore >= 100 {
+		t.Fatalf("expected reduced health score, got %d", got.Decision.HealthScore)
 	}
-	if len(got.Suggestions()) == 0 {
+	if len(got.Actions.Suggestions) == 0 {
 		t.Fatalf("expected suggestions")
 	}
-	if !strings.Contains(got.Suggestions()[0].Command, "kubectl patch hpa web") {
-		t.Fatalf("expected kubectl patch command, got %#v", got.Suggestions()[0])
+	if !strings.Contains(got.Actions.Suggestions[0].Command, "kubectl patch hpa web") {
+		t.Fatalf("expected kubectl patch command, got %#v", got.Actions.Suggestions[0])
 	}
-	if !strings.Contains(got.Suggestions()[0].Command, "--dry-run=server") {
-		t.Fatalf("expected dry-run command, got %#v", got.Suggestions()[0])
+	if !strings.Contains(got.Actions.Suggestions[0].Command, "--dry-run=server") {
+		t.Fatalf("expected dry-run command, got %#v", got.Actions.Suggestions[0])
 	}
-	if !strings.Contains(got.Suggestions()[0].Patch, `"maxReplicas":20`) {
-		t.Fatalf("expected maxReplicas patch, got %#v", got.Suggestions()[0])
+	if !strings.Contains(got.Actions.Suggestions[0].Patch, `"maxReplicas":20`) {
+		t.Fatalf("expected maxReplicas patch, got %#v", got.Actions.Suggestions[0])
 	}
-	if len(got.Suggestions()[0].Preconditions) == 0 || len(got.Suggestions()[0].Warnings) == 0 {
-		t.Fatalf("expected safety preconditions and warnings, got %#v", got.Suggestions()[0])
+	if len(got.Actions.Suggestions[0].Preconditions) == 0 || len(got.Actions.Suggestions[0].Warnings) == 0 {
+		t.Fatalf("expected safety preconditions and warnings, got %#v", got.Actions.Suggestions[0])
 	}
 }
 
@@ -275,11 +275,11 @@ func TestAnalyzeWithOptionsDebugAndCustomHealthWeights(t *testing.T) {
 		HealthWeights: HealthWeights{ScalingLimited: IntWeight(40)},
 		Debug:         true,
 	})
-	if got.HealthScore() != 55 {
-		t.Fatalf("expected custom score 55, got %d", got.HealthScore())
+	if got.Decision.HealthScore != 55 {
+		t.Fatalf("expected custom score 55, got %d", got.Decision.HealthScore)
 	}
-	if !containsLine(got.Debug(), "health: state=LIMITED score=55") {
-		t.Fatalf("expected debug health line, got %#v", got.Debug())
+	if !containsLine(got.Lifecycle.Debug, "health: state=LIMITED score=55") {
+		t.Fatalf("expected debug health line, got %#v", got.Lifecycle.Debug)
 	}
 }
 
@@ -297,11 +297,11 @@ func TestAnalyzeExternalMetricDiagnosticsWhenStatusMissing(t *testing.T) {
 	}
 
 	got := Analyze(hpa, true)
-	if !containsLine(got.Interpretation(), "External metric \"queue_depth\" is configured but no matching current metric status is reported") {
-		t.Fatalf("expected external metric diagnostic, got %#v", got.Interpretation())
+	if !containsLine(got.Actions.Interpretation, "External metric \"queue_depth\" is configured but no matching current metric status is reported") {
+		t.Fatalf("expected external metric diagnostic, got %#v", got.Actions.Interpretation)
 	}
-	if !containsSuggestion(got.Suggestions(), "Investigate stale external metric") {
-		t.Fatalf("expected stale external metric suggestion, got %#v", got.Suggestions())
+	if !containsSuggestion(got.Actions.Suggestions, "Investigate stale external metric") {
+		t.Fatalf("expected stale external metric suggestion, got %#v", got.Actions.Suggestions)
 	}
 }
 
@@ -331,8 +331,8 @@ func TestAnalyzeObjectMetricDiagnosticsShowsTargetComparison(t *testing.T) {
 	}
 
 	got := Analyze(hpa, true)
-	if !containsLine(got.Interpretation(), "Object metric \"requests\" on Service/web is 1.500x its target") {
-		t.Fatalf("expected object metric target comparison, got %#v", got.Interpretation())
+	if !containsLine(got.Actions.Interpretation, "Object metric \"requests\" on Service/web is 1.500x its target") {
+		t.Fatalf("expected object metric target comparison, got %#v", got.Actions.Interpretation)
 	}
 }
 
@@ -352,11 +352,11 @@ func TestAnalyzeAddsKEDADiagnosticsAndSuggestion(t *testing.T) {
 	}
 
 	got := Analyze(hpa, true)
-	if !containsLine(got.Interpretation(), "appears to be managed by KEDA") {
-		t.Fatalf("expected KEDA diagnostic, got %#v", got.Interpretation())
+	if !containsLine(got.Actions.Interpretation, "appears to be managed by KEDA") {
+		t.Fatalf("expected KEDA diagnostic, got %#v", got.Actions.Interpretation)
 	}
-	if !containsSuggestion(got.Suggestions(), "Inspect KEDA ScaledObject") {
-		t.Fatalf("expected KEDA suggestion, got %#v", got.Suggestions())
+	if !containsSuggestion(got.Actions.Suggestions, "Inspect KEDA ScaledObject") {
+		t.Fatalf("expected KEDA suggestion, got %#v", got.Actions.Suggestions)
 	}
 }
 
@@ -369,8 +369,8 @@ func TestAnalyzeToleranceBoundaries(t *testing.T) {
 	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{resourceMetricStatus(corev1.ResourceCPU, 73)}
 
 	got := Analyze(hpa, true)
-	if !containsLine(got.Interpretation(), "within the Kubernetes default scaleUp tolerance") {
-		t.Fatalf("expected directional tolerance mention within 10%% margin, got %#v", got.Interpretation())
+	if !containsLine(got.Actions.Interpretation, "within the Kubernetes default scaleUp tolerance") {
+		t.Fatalf("expected directional tolerance mention within 10%% margin, got %#v", got.Actions.Interpretation)
 	}
 
 	// Case 2: Outside tolerance (e.g. 90% vs 70% target -> ratio ~1.286)
@@ -381,8 +381,8 @@ func TestAnalyzeToleranceBoundaries(t *testing.T) {
 	hpa2.Status.CurrentMetrics = []autoscalingv2.MetricStatus{resourceMetricStatus(corev1.ResourceCPU, 90)}
 
 	got2 := Analyze(hpa2, true)
-	if containsLine(got2.Interpretation(), "consistent with tolerance-based no-scale") {
-		t.Fatalf("did not expect tolerance mention for ratio outside margin, got %#v", got2.Interpretation())
+	if containsLine(got2.Actions.Interpretation, "consistent with tolerance-based no-scale") {
+		t.Fatalf("did not expect tolerance mention for ratio outside margin, got %#v", got2.Actions.Interpretation)
 	}
 }
 
@@ -405,15 +405,15 @@ func TestAnalyzeMultipleMetricsCappedByMaxReplicas(t *testing.T) {
 	}
 
 	got := Analyze(hpa, true)
-	if got.Summary() != "HPA is at maxReplicas." {
-		t.Fatalf("expected HPA is at maxReplicas summary, got %s", got.Summary())
+	if got.Decision.Summary != "HPA is at maxReplicas." {
+		t.Fatalf("expected HPA is at maxReplicas summary, got %s", got.Decision.Summary)
 	}
-	if got.ImpactMetric() == nil || got.ImpactMetric().Name != "cpu" {
-		t.Fatalf("expected cpu as the most influential metric, got %#v", got.ImpactMetric())
+	if got.Decision.ImpactMetric == nil || got.Decision.ImpactMetric.Name != "cpu" {
+		t.Fatalf("expected cpu as the most influential metric, got %#v", got.Decision.ImpactMetric)
 	}
 	// When desiredReplicas == maxReplicas, the winner metric cannot be reliably determined
-	if !containsLine(got.Interpretation(), "winning metric cannot be reliably determined") {
-		t.Fatalf("expected maxReplicas winner-detection warning, got %#v", got.Interpretation())
+	if !containsLine(got.Actions.Interpretation, "winning metric cannot be reliably determined") {
+		t.Fatalf("expected maxReplicas winner-detection warning, got %#v", got.Actions.Interpretation)
 	}
 }
 
@@ -431,8 +431,8 @@ func TestAnalyzeStabilizationWindowSpecificRules(t *testing.T) {
 	}
 
 	got := Analyze(hpa, true)
-	if !containsLine(got.Actions(), "estimated wait up to ~600s") {
-		t.Fatalf("expected wait action referring to 600s window, got %#v", got.Actions())
+	if !containsLine(got.Actions.Actions, "estimated wait up to ~600s") {
+		t.Fatalf("expected wait action referring to 600s window, got %#v", got.Actions.Actions)
 	}
 }
 
@@ -444,14 +444,14 @@ func TestAnalyzeScaleToZeroMinReplicasZero(t *testing.T) {
 	hpa.Status.DesiredReplicas = 0
 
 	got := Analyze(hpa, true)
-	if got.ScaleToZero() == nil || !got.ScaleToZero().Enabled {
-		t.Fatalf("expected ScaleToZero enabled, got %#v", got.ScaleToZero())
+	if got.ScaleToZero.ScaleToZero == nil || !got.ScaleToZero.ScaleToZero.Enabled {
+		t.Fatalf("expected ScaleToZero enabled, got %#v", got.ScaleToZero.ScaleToZero)
 	}
-	if got.Summary() != "HPA is scaled to zero (minReplicas=0); awaiting trigger to scale up." {
-		t.Fatalf("unexpected summary: %s", got.Summary())
+	if got.Decision.Summary != "HPA is scaled to zero (minReplicas=0); awaiting trigger to scale up." {
+		t.Fatalf("unexpected summary: %s", got.Decision.Summary)
 	}
-	if !containsLine(got.Interpretation(), "Scale-to-zero is enabled") {
-		t.Fatalf("expected scale-to-zero interpretation, got %#v", got.Interpretation())
+	if !containsLine(got.Actions.Interpretation, "Scale-to-zero is enabled") {
+		t.Fatalf("expected scale-to-zero interpretation, got %#v", got.Actions.Interpretation)
 	}
 }
 
@@ -466,14 +466,14 @@ func TestAnalyzeScaleToZeroColdStart(t *testing.T) {
 	}
 
 	got := Analyze(hpa, true)
-	if got.ScaleToZero() == nil || !got.ScaleToZero().Enabled {
-		t.Fatalf("expected ScaleToZero enabled, got %#v", got.ScaleToZero())
+	if got.ScaleToZero.ScaleToZero == nil || !got.ScaleToZero.ScaleToZero.Enabled {
+		t.Fatalf("expected ScaleToZero enabled, got %#v", got.ScaleToZero.ScaleToZero)
 	}
-	if !got.ScaleToZero().ColdStart {
-		t.Fatalf("expected ColdStart=true, got %#v", got.ScaleToZero())
+	if !got.ScaleToZero.ScaleToZero.ColdStart {
+		t.Fatalf("expected ColdStart=true, got %#v", got.ScaleToZero.ScaleToZero)
 	}
-	if !strings.Contains(got.Summary(), "cold start") {
-		t.Fatalf("expected cold start mention in summary, got %s", got.Summary())
+	if !strings.Contains(got.Decision.Summary, "cold start") {
+		t.Fatalf("expected cold start mention in summary, got %s", got.Decision.Summary)
 	}
 }
 
@@ -493,12 +493,12 @@ func TestAnalyzeStabilizationRemaining(t *testing.T) {
 	}
 
 	got := Analyze(hpa, true)
-	if got.StabilizationRemaining() == nil {
+	if got.Conditions.StabilizationRemaining == nil {
 		t.Fatalf("expected StabilizationRemaining to be set, got nil")
 	}
 	// The remaining time should be close to 300 (just scaled, so ~300s remaining)
-	if *got.StabilizationRemaining() > 300 || *got.StabilizationRemaining() < 290 {
-		t.Fatalf("expected StabilizationRemaining around 300, got %d", *got.StabilizationRemaining())
+	if *got.Conditions.StabilizationRemaining > 300 || *got.Conditions.StabilizationRemaining < 290 {
+		t.Fatalf("expected StabilizationRemaining around 300, got %d", *got.Conditions.StabilizationRemaining)
 	}
 }
 
@@ -509,20 +509,20 @@ func TestAnalyzeStaleStatusStructured(t *testing.T) {
 	hpa.Status.ObservedGeneration = &observed
 
 	got := Analyze(hpa, true)
-	if got.StaleStatus() == nil {
+	if got.Lifecycle.StaleStatus == nil {
 		t.Fatalf("expected StaleStatus to be set, got nil")
 	}
-	if got.StaleStatus().ObservedGeneration != 1 {
-		t.Fatalf("expected ObservedGeneration=1, got %d", got.StaleStatus().ObservedGeneration)
+	if got.Lifecycle.StaleStatus.ObservedGeneration != 1 {
+		t.Fatalf("expected ObservedGeneration=1, got %d", got.Lifecycle.StaleStatus.ObservedGeneration)
 	}
-	if got.StaleStatus().CurrentGeneration != 3 {
-		t.Fatalf("expected CurrentGeneration=3, got %d", got.StaleStatus().CurrentGeneration)
+	if got.Lifecycle.StaleStatus.CurrentGeneration != 3 {
+		t.Fatalf("expected CurrentGeneration=3, got %d", got.Lifecycle.StaleStatus.CurrentGeneration)
 	}
-	if got.StaleStatus().Diff != 2 {
-		t.Fatalf("expected Diff=2, got %d", got.StaleStatus().Diff)
+	if got.Lifecycle.StaleStatus.Diff != 2 {
+		t.Fatalf("expected Diff=2, got %d", got.Lifecycle.StaleStatus.Diff)
 	}
-	if !strings.HasPrefix(got.Summary(), "[STALE STATUS]") {
-		t.Fatalf("expected [STALE STATUS] prefix, got %s", got.Summary())
+	if !strings.HasPrefix(got.Decision.Summary, "[STALE STATUS]") {
+		t.Fatalf("expected [STALE STATUS] prefix, got %s", got.Decision.Summary)
 	}
 }
 
@@ -533,11 +533,11 @@ func TestAnalyzeMetricImpactGuessConfidence(t *testing.T) {
 	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{resourceMetricStatus(corev1.ResourceCPU, 88)}
 
 	got := Analyze(hpa, false)
-	if got.ImpactMetric() == nil {
+	if got.Decision.ImpactMetric == nil {
 		t.Fatalf("expected ImpactMetric, got nil")
 	}
-	if got.ImpactMetric().Confidence != "medium" {
-		t.Fatalf("expected confidence=medium, got %s", got.ImpactMetric().Confidence)
+	if got.Decision.ImpactMetric.Confidence != "medium" {
+		t.Fatalf("expected confidence=medium, got %s", got.Decision.ImpactMetric.Confidence)
 	}
 
 	// MaxReplicas case - confidence should be low
@@ -548,11 +548,11 @@ func TestAnalyzeMetricImpactGuessConfidence(t *testing.T) {
 	hpa2.Status.CurrentMetrics = []autoscalingv2.MetricStatus{resourceMetricStatus(corev1.ResourceCPU, 88)}
 
 	got2 := Analyze(hpa2, false)
-	if got2.ImpactMetric() == nil {
+	if got2.Decision.ImpactMetric == nil {
 		t.Fatalf("expected ImpactMetric, got nil")
 	}
-	if got2.ImpactMetric().Confidence != "low" {
-		t.Fatalf("expected confidence=low for maxReplicas case, got %s", got2.ImpactMetric().Confidence)
+	if got2.Decision.ImpactMetric.Confidence != "low" {
+		t.Fatalf("expected confidence=low for maxReplicas case, got %s", got2.Decision.ImpactMetric.Confidence)
 	}
 }
 
@@ -788,8 +788,8 @@ func TestValidateHPA(t *testing.T) {
 			if result == nil {
 				t.Fatal("expected non-nil error result")
 			}
-			if tc.wantError && result.Health() != "ERROR" {
-				t.Errorf("Health = %q, want ERROR", result.Health())
+			if tc.wantError && result.Decision.Health != "ERROR" {
+				t.Errorf("Health = %q, want ERROR", result.Decision.Health)
 			}
 		})
 	}

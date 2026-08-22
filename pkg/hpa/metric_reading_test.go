@@ -111,10 +111,9 @@ func TestSnapshotFromReportRecordsMetricValues(t *testing.T) {
 	value := 83.0
 	target := 60.0
 	report := StatusReport{
-		Analysis: *NewAnalysis(FlatAnalysis{
-			Namespace: "default",
-			Name:      "web",
-			Metrics: []Metric{
+		Analysis: Analysis{
+			Meta: MetaView{Namespace: "default", Name: "web"},
+			Metrics: MetricsView{Metrics: []Metric{
 				{
 					Type:          MetricTypeResource,
 					Name:          "cpu",
@@ -124,8 +123,8 @@ func TestSnapshotFromReportRecordsMetricValues(t *testing.T) {
 					Unit:          "%",
 				},
 				{Type: MetricTypeExternal, Name: "queue_depth", Text: "External queue_depth: details unavailable"},
-			},
-		}),
+			}},
+		},
 	}
 
 	snap := SnapshotFromReport(report)

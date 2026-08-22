@@ -26,32 +26,15 @@ import (
 // method on *Analysis. The views are snapshots: they copy scalar/struct values
 // and share pointer/slice backing arrays (read-only by convention). Callers
 // must not mutate the returned views' slice/map fields.
-//
-// The groups match the documented v2 schema. When the flat fields are
-// eventually removed, the migration is to make these views the primary storage
-// and delete the flat fields in one breaking change.
+
+// The groups match the documented v2 schema.
 
 // MetaView groups HPA identity fields: namespace, name, target, creation time.
 type MetaView struct {
 	Namespace         string `json:"namespace" yaml:"namespace"`
 	Name              string `json:"name" yaml:"name"`
 	Target            string `json:"target" yaml:"target"`
-	CreationTimestamp string `json:"creationTimestamp,omitempty" yaml:"creationTimestamp,omitempty"` // RFC3339 of a.CreationTimestamp
-}
-
-// Meta returns the identity group view. The stored creation timestamp is
-// rendered as second-precision RFC3339 for the v2 wire.
-func (a *Analysis) Meta() MetaView {
-	ts := ""
-	if !a.creationTimestamp.IsZero() {
-		ts = a.creationTimestamp.UTC().Format("2006-01-02T15:04:05Z07:00")
-	}
-	return MetaView{
-		Namespace:         a.meta.Namespace,
-		Name:              a.meta.Name,
-		Target:            a.meta.Target,
-		CreationTimestamp: ts,
-	}
+	CreationTimestamp string `json:"creationTimestamp,omitempty" yaml:"creationTimestamp,omitempty"` // RFC3339 of the HPA creation time
 }
 
 // ReplicasView groups the core scaling envelope.
@@ -62,9 +45,6 @@ type ReplicasView struct {
 	Max            int32              `json:"maxReplicas" yaml:"maxReplicas"`
 	TargetReplicas *TargetReplicaInfo `json:"targetReplicas,omitempty" yaml:"targetReplicas,omitempty"`
 }
-
-// Replicas returns the core scaling-envelope group view.
-func (a *Analysis) Replicas() ReplicasView { return a.replicas }
 
 // DecisionView groups the "why this replica count" signals.
 type DecisionView struct {
@@ -80,9 +60,6 @@ type DecisionView struct {
 	DecisionSignals         []DecisionSignal         `json:"decisionSignals,omitempty" yaml:"decisionSignals,omitempty"`
 }
 
-// Decision returns the decision/health group view.
-func (a *Analysis) Decision() DecisionView { return a.decision }
-
 // MetricsView groups the metric-pipeline health signals.
 type MetricsView struct {
 	Metrics            []Metric                    `json:"metrics,omitempty" yaml:"metrics,omitempty"`
@@ -93,10 +70,6 @@ type MetricsView struct {
 	AdapterDiagnostics *AdapterDiagnosticsReport   `json:"adapterDiagnostics,omitempty" yaml:"adapterDiagnostics,omitempty"`
 }
 
-// MetricsGroup returns the metric-pipeline group view. The method name avoids
-// a collision with the flat Metrics accessor.
-func (a *Analysis) MetricsGroup() MetricsView { return a.metrics }
-
 // ConditionsView groups HPA controller conditions and behavior configuration.
 type ConditionsView struct {
 	Conditions                 []Condition    `json:"conditions,omitempty" yaml:"conditions,omitempty"`
@@ -106,9 +79,6 @@ type ConditionsView struct {
 	StabilizationConfidence    string         `json:"stabilizationConfidence,omitempty" yaml:"stabilizationConfidence,omitempty"`
 	StabilizationRemaining     *int64         `json:"stabilizationRemaining,omitempty" yaml:"stabilizationRemaining,omitempty"`
 }
-
-// ConditionsGroup returns the conditions/behavior group view.
-func (a *Analysis) ConditionsGroup() ConditionsView { return a.conditions }
 
 // ActionsView groups the recommendation/explainability output.
 type ActionsView struct {
@@ -121,9 +91,6 @@ type ActionsView struct {
 	Warnings                 []string            `json:"warnings,omitempty" yaml:"warnings,omitempty"`
 }
 
-// ActionsGroup returns the recommendations/explainability group view.
-func (a *Analysis) ActionsGroup() ActionsView { return a.actions }
-
 // LifecycleView groups freshness/trend/telemetry signals.
 type LifecycleView struct {
 	StaleStatus      *StaleStatusInfo       `json:"staleStatus,omitempty" yaml:"staleStatus,omitempty"`
@@ -132,9 +99,6 @@ type LifecycleView struct {
 	HiddenFactors    []HiddenDecisionFactor `json:"hiddenFactors,omitempty" yaml:"hiddenFactors,omitempty"`
 	EnrichmentStatus *EnrichmentStatus      `json:"enrichmentStatus,omitempty" yaml:"enrichmentStatus,omitempty"`
 }
-
-// Lifecycle returns the freshness/trend group view.
-func (a *Analysis) Lifecycle() LifecycleView { return a.lifecycle }
 
 // CapacityView groups scheduling and cluster capacity signals.
 type CapacityView struct {
@@ -147,18 +111,11 @@ type CapacityView struct {
 	ReadinessImpact  *readiness.Impact    `json:"readinessImpact,omitempty" yaml:"readinessImpact,omitempty"`
 }
 
-// Capacity returns the scheduling/capacity group view.
-func (a *Analysis) Capacity() CapacityView { return a.capacity }
-
 // ScaleToZeroView groups scale-to-zero and cold-start/warmup signals.
 type ScaleToZeroView struct {
 	ScaleToZero    *ScaleToZeroInfo `json:"scaleToZero,omitempty" yaml:"scaleToZero,omitempty"`
 	WarmupAnalysis *warmup.Analysis `json:"warmupAnalysis,omitempty" yaml:"warmupAnalysis,omitempty"`
 }
-
-// ScaleToZeroGroup returns the scale-to-zero/warmup group view. The method
-// name avoids a collision with the flat ScaleToZero accessor.
-func (a *Analysis) ScaleToZeroGroup() ScaleToZeroView { return a.scaleToZero }
 
 // StabilityView groups flapping and churn diagnosis signals.
 type StabilityView struct {
@@ -168,9 +125,6 @@ type StabilityView struct {
 	ChurnAnalysis      *churn.ChurnAnalysis       `json:"churnAnalysis,omitempty" yaml:"churnAnalysis,omitempty"`
 }
 
-// Stability returns the flapping/churn group view.
-func (a *Analysis) Stability() StabilityView { return a.stability }
-
 // AdvisoryView groups VPA and container/behavior tuning advice.
 type AdvisoryView struct {
 	VPAConflict      *vpa.ConflictInfo        `json:"vpaConflict,omitempty" yaml:"vpaConflict,omitempty"`
@@ -179,9 +133,6 @@ type AdvisoryView struct {
 	BehaviorAdvisor  *behavioradvisor.Result  `json:"behaviorAdvisor,omitempty" yaml:"behaviorAdvisor,omitempty"`
 }
 
-// Advisory returns the VPA/container/behavior advisory group view.
-func (a *Analysis) Advisory() AdvisoryView { return a.advisory }
-
 // ControllersView groups external controller integrations.
 type ControllersView struct {
 	KEDAInfo          *keda.Analysis     `json:"keda,omitempty" yaml:"keda,omitempty"`
@@ -189,17 +140,11 @@ type ControllersView struct {
 	ControllerProfile *ControllerProfile `json:"controllerProfile,omitempty" yaml:"controllerProfile,omitempty"`
 }
 
-// Controllers returns the external-controller group view.
-func (a *Analysis) Controllers() ControllersView { return a.controllers }
-
 // BlockersView groups apply-time gating signals.
 type BlockersView struct {
 	BlockerReport  *blocker.Report  `json:"blockerReport,omitempty" yaml:"blockerReport,omitempty"`
 	GitOpsConflict *gitops.Conflict `json:"gitOpsConflict,omitempty" yaml:"gitOpsConflict,omitempty"`
 }
-
-// Blockers returns the apply-time gating group view.
-func (a *Analysis) Blockers() BlockersView { return a.blockers }
 
 // GroupedAnalysis is the nested representation used by the v2 output schema.
 // The existing flat Analysis remains the v1 wire contract; serializers can
@@ -228,18 +173,18 @@ func (a *Analysis) Grouped() GroupedAnalysis {
 		return GroupedAnalysis{}
 	}
 	return GroupedAnalysis{
-		Meta:        a.Meta(),
-		Replicas:    a.replicas,
-		Decision:    a.decision,
-		Metrics:     a.metrics,
-		Conditions:  a.conditions,
-		Capacity:    a.capacity,
-		ScaleToZero: a.scaleToZero,
-		Stability:   a.stability,
-		Advisory:    a.advisory,
-		Controllers: a.controllers,
-		Blockers:    a.blockers,
-		Actions:     a.actions,
-		Lifecycle:   a.lifecycle,
+		Meta:        a.Meta,
+		Replicas:    a.Replicas,
+		Decision:    a.Decision,
+		Metrics:     a.Metrics,
+		Conditions:  a.Conditions,
+		Capacity:    a.Capacity,
+		ScaleToZero: a.ScaleToZero,
+		Stability:   a.Stability,
+		Advisory:    a.Advisory,
+		Controllers: a.Controllers,
+		Blockers:    a.Blockers,
+		Actions:     a.Actions,
+		Lifecycle:   a.Lifecycle,
 	}
 }

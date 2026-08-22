@@ -5,6 +5,85 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [4.0.0] - 2026-08-22
+
+v4.0.0 is a contract-slimming release: one CLI surface with no deprecated
+aliases, one wire schema (v2), and one public Go model (the grouped views).
+Migration notes for every breaking change are below; the release follows the
+deprecation discipline announced on the v3 line (v3.1.0 carried the storage
+flip and its accessor transition surface).
+
+### Removed (breaking)
+
+- **Removed the seven deprecated top-level aliases** (`readiness`,
+  `rollout-context`, `node-context`, `trace`, `path`, `preflight`,
+  `container-advisor`) together with their stderr migration hints. The
+  grouped commands are the only spellings:
+
+  | Removed top-level alias | Use instead |
+  | --- | --- |
+  | `readiness` | `doctor readiness` |
+  | `rollout-context` | `doctor rollout` |
+  | `node-context` | `doctor capacity` |
+  | `trace` | `doctor trace` (equivalent to `status --decision-trace`) |
+  | `path` | `doctor path` (equivalent to `status --scale-path`) |
+  | `preflight` | `doctor preflight` |
+  | `container-advisor` | `advisor container` |
+
+- **Retired the flat v1 wire schema.** `--output-schema` accepts only `v2`
+  (or empty, which means v2); an explicit `v1` fails validation with a
+  pointer to v2. The flag itself remains until v5 for scripts that already
+  pin `--output-schema=v2`. JSON, YAML, JSONL, JSONPath, and Go template
+  output always emits the grouped v2 projection
+  (`apiVersion: "hpa-status/v2"`, schema in `docs/output-schema-v2.json`);
+  the flat `docs/output-schema.json` was deleted. Consumers of the flat
+  shape must move to v2 or stay on the v3 line. Core field mapping:
+
+  | v1 (removed) | v2 |
+  | --- | --- |
+  | `analysis.namespace` / `name` / `target` / `creationTimestamp` | `analysis.meta.*` |
+  | `analysis.currentReplicas` / `desiredReplicas` / `minReplicas` / `maxReplicas` | `analysis.replicas.*` |
+  | `analysis.health` / `healthScore` / `summary` | `analysis.decision.*` |
+  | `analysis.metrics` / `metricFreshness` / `metricsDiagnostics` | `analysis.metrics.*` |
+  | `analysis.capacityContext` / `capacityHeadroom` / `podAnalysis` | `analysis.capacity.*` |
+  | `analysis.recommendedActions` / `suggestions` / `interpretation` | `analysis.actions.*` |
+
+  JSONPath and Go template expressions now traverse the nested shape
+  (`{.analysis.meta.name}`, `{{ .Analysis.Meta.Name }}`).
+
+- **Removed the flat Go API of `pkg/hpa.Analysis`.** The 13 grouped views are
+  both the storage and the public surface: read and write the exported group
+  fields directly (`a.Replicas.Current`). The v3.1 accessor methods
+  (`a.Current()` / `a.SetCurrent(v)` / `NewAnalysis(FlatAnalysis{...})`) and
+  the `FlatAnalysis` type were removed. Analysis marshals as the grouped v2
+  shape. Go importers migrate field-by-field:
+
+  | v3.1 accessor / v1 field | v4 |
+  | --- | --- |
+  | `a.Namespace()`, `a.Name()`, `a.Target()`, `a.CreationTimestamp()` | `a.Meta.Namespace`, `a.Meta.Name`, `a.Meta.Target`, `a.Meta.CreationTimestamp` (RFC3339 string) |
+  | `a.Current()`, `a.Desired()`, `a.Min()`, `a.Max()`, `a.TargetReplicas()` | `a.Replicas.*` |
+  | `a.Health()`, `a.HealthScore()`, `a.Summary()`, `a.HealthResult()`, `a.ImpactMetric()`, traces, signals | `a.Decision.*` |
+  | `a.Metrics()`, `a.MetricsDiagnostics()`, `a.MetricFreshnessEntries()` | `a.Metrics.Metrics`, `a.Metrics.MetricsDiagnostics`, `a.Metrics.MetricFreshness` |
+  | `a.Conditions()`, `a.Behavior()`, stabilization fields | `a.Conditions.*` |
+  | `a.Actions()`, `a.Suggestions()`, `a.Interpretation()`, `a.Warnings()` | `a.Actions.*` |
+  | `a.StaleStatus()`, `a.HealthTrend()`, `a.HiddenFactors()` | `a.Lifecycle.*` |
+  | capacity/pod/scale-path/readiness fields | `a.Capacity.*` |
+  | `a.ScaleToZero()`, `a.WarmupAnalysis()` | `a.ScaleToZero.*` |
+  | simulation/prevention/diagnosis/churn | `a.Stability.*` |
+  | VPA/container/behavior advisors | `a.Advisory.*` |
+  | `a.KEDAInfo()`, `a.RolloutDiagnosis()`, `a.ControllerProfile()` | `a.Controllers.*` |
+  | `a.BlockerReport()`, `a.GitOpsConflict()` | `a.Blockers.*` |
+  | setters (`a.SetX(v)`) | assign the group field: `a.Replicas.Current = v` |
+  | `NewAnalysis(FlatAnalysis{...})` | `Analysis{Replicas: ReplicasView{...}, ...}` literal |
+
+### Changed (breaking)
+
+- **HPA-not-found now exits 3** (`ExitNotFound`) instead of 1, so scripts can
+  distinguish "the HPA does not exist" from generic API failures. The exit
+  code table is now 0 success, 1 error, 2 warning, 3 not-found.
+
 ## [3.1.0] - 2026-08-21
 
 ### Added

@@ -13,12 +13,11 @@ import (
 func sampleStatusReport() hpaanalysis.StatusReport {
 	return hpaanalysis.StatusReport{
 		APIVersion: "hpa-status/v1",
-		Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{
-			Namespace: "ns1", Name: "my-hpa",
-			Current: 3, Desired: 5, Min: 1, Max: 10,
-			Health:      "OK",
-			HealthScore: 90,
-		}),
+		Analysis: hpaanalysis.Analysis{
+			Meta:     hpaanalysis.MetaView{Namespace: "ns1", Name: "my-hpa"},
+			Replicas: hpaanalysis.ReplicasView{Current: 3, Desired: 5, Min: 1, Max: 10},
+			Decision: hpaanalysis.DecisionView{Health: "OK", HealthScore: 90},
+		},
 	}
 }
 
@@ -83,7 +82,7 @@ func TestFormat_JSON(t *testing.T) {
 	if err := Format(&buf, "json", "", sampleStatusReport(), func(_ io.Writer) error { return nil }); err != nil {
 		t.Fatalf("Format(json): %v", err)
 	}
-	if !strings.Contains(buf.String(), `"apiVersion": "hpa-status/v1"`) {
+	if !strings.Contains(buf.String(), `"apiVersion": "hpa-status/v2"`) {
 		t.Fatalf("json output missing apiVersion: %s", buf.String())
 	}
 }
@@ -167,7 +166,7 @@ func TestFormat_YAML(t *testing.T) {
 	if err := Format(&buf, "yaml", "", sampleStatusReport(), func(_ io.Writer) error { return nil }); err != nil {
 		t.Fatalf("Format(yaml): %v", err)
 	}
-	if !strings.Contains(buf.String(), "apiVersion: hpa-status/v1") {
+	if !strings.Contains(buf.String(), "apiVersion: hpa-status/v2") {
 		t.Fatalf("yaml output missing apiVersion: %s", buf.String())
 	}
 }
@@ -178,7 +177,7 @@ func TestFormat_JSONPath_Prefixed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Format(jsonpath=): %v", err)
 	}
-	if !strings.Contains(buf.String(), "hpa-status/v1") {
+	if !strings.Contains(buf.String(), "hpa-status/v2") {
 		t.Fatalf("jsonpath output unexpected: %s", buf.String())
 	}
 }
@@ -189,7 +188,7 @@ func TestFormat_Template_Prefixed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Format(template=): %v", err)
 	}
-	if strings.TrimSpace(buf.String()) != "hpa-status/v1" {
+	if strings.TrimSpace(buf.String()) != "hpa-status/v2" {
 		t.Fatalf("template output = %q", buf.String())
 	}
 }
@@ -334,8 +333,12 @@ func TestHTML_RejectsUnknownType(t *testing.T) {
 func TestHTML_MultipleReportsProduceSingleDocument(t *testing.T) {
 	t.Parallel()
 	reports := []hpaanalysis.StatusReport{
-		{Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{Name: "one", Namespace: "default"})},
-		{Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{Name: "two", Namespace: "default"})},
+		{Analysis: hpaanalysis.Analysis{
+			Meta: hpaanalysis.MetaView{Name: "one", Namespace: "default"},
+		}},
+		{Analysis: hpaanalysis.Analysis{
+			Meta: hpaanalysis.MetaView{Name: "two", Namespace: "default"},
+		}},
 	}
 	var buf bytes.Buffer
 	if err := HTML(&buf, reports); err != nil {
@@ -439,7 +442,7 @@ func TestFormat_PrefixedTemplate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Format(go-template=): %v", err)
 	}
-	if !strings.Contains(buf.String(), "hpa-status/v1") {
+	if !strings.Contains(buf.String(), "hpa-status/v2") {
 		t.Fatalf("prefixed template output missing value: %q", buf.String())
 	}
 }

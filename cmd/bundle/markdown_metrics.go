@@ -31,16 +31,16 @@ func writeBundleMetricsDiagnostics(b *Writer, data *Data) {
 	a := data.StatusReport.Analysis
 
 	hasContent := false
-	if a.MetricsDiagnostics() != nil {
-		writeBundleMetricsDiagnosticsSection(b, a.MetricsDiagnostics())
+	if a.Metrics.MetricsDiagnostics != nil {
+		writeBundleMetricsDiagnosticsSection(b, a.Metrics.MetricsDiagnostics)
 		hasContent = true
 	}
-	if len(a.MetricFreshnessEntries()) > 0 {
-		writeBundleMetricFreshness(b, a.MetricFreshnessEntries())
+	if len(a.Metrics.MetricFreshness) > 0 {
+		writeBundleMetricFreshness(b, a.Metrics.MetricFreshness)
 		hasContent = true
 	}
-	if a.MetricContract() != nil {
-		writeBundleMetricContract(b, a.MetricContract())
+	if a.Metrics.MetricContract != nil {
+		writeBundleMetricContract(b, a.Metrics.MetricContract)
 		hasContent = true
 	}
 

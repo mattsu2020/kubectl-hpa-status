@@ -724,9 +724,13 @@ func parseHealthScore(t *testing.T, raw string) int {
 	if !ok {
 		t.Fatal("JSON output missing top-level 'analysis' object")
 	}
-	score, ok := analysis["healthScore"].(float64)
+	decision, ok := analysis["decision"].(map[string]any)
 	if !ok {
-		t.Fatalf("JSON analysis 'healthScore' is not numeric, got: %T", analysis["healthScore"])
+		t.Fatal("JSON analysis missing 'decision' group (grouped v2 schema)")
+	}
+	score, ok := decision["healthScore"].(float64)
+	if !ok {
+		t.Fatalf("JSON analysis.decision 'healthScore' is not numeric, got: %T", decision["healthScore"])
 	}
 	return int(score)
 }

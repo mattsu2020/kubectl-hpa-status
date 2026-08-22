@@ -310,11 +310,11 @@ func TestOutputSelection_JsonpathPrefix(t *testing.T) {
 	format, tpl := outputSelection(outputConfig{
 		output: "jsonpath:summary",
 		outputTemplates: map[string]outputTemplateConfig{
-			"summary": {Template: "{.analysis.summary}"},
+			"summary": {Template: "{.analysis.decision.summary}"},
 		},
 	})
-	if format != "jsonpath" || tpl != "{.analysis.summary}" {
-		t.Fatalf("expected jsonpath/{.analysis.summary}, got %q/%q", format, tpl)
+	if format != "jsonpath" || tpl != "{.analysis.decision.summary}" {
+		t.Fatalf("expected jsonpath/{.analysis.decision.summary}, got %q/%q", format, tpl)
 	}
 }
 
@@ -372,7 +372,9 @@ func TestWriteOutput_JA(t *testing.T) {
 
 func TestWriteOutput_JSON(t *testing.T) {
 	report := hpaanalysis.StatusReport{
-		Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{Name: "web"}),
+		Analysis: hpaanalysis.Analysis{
+			Meta: hpaanalysis.MetaView{Name: "web"},
+		},
 	}
 	var out bytes.Buffer
 	err := render.Format(&out, "json", "", report, nil)
@@ -386,7 +388,9 @@ func TestWriteOutput_JSON(t *testing.T) {
 
 func TestWriteOutput_YAML(t *testing.T) {
 	report := hpaanalysis.StatusReport{
-		Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{Name: "web"}),
+		Analysis: hpaanalysis.Analysis{
+			Meta: hpaanalysis.MetaView{Name: "web"},
+		},
 	}
 	var out bytes.Buffer
 	err := render.Format(&out, "yaml", "", report, nil)
@@ -400,10 +404,13 @@ func TestWriteOutput_YAML(t *testing.T) {
 
 func TestWriteOutput_JsonpathPrefix(t *testing.T) {
 	report := hpaanalysis.StatusReport{
-		Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{Name: "web", Summary: "OK"}),
+		Analysis: hpaanalysis.Analysis{
+			Meta:     hpaanalysis.MetaView{Name: "web"},
+			Decision: hpaanalysis.DecisionView{Summary: "OK"},
+		},
 	}
 	var out bytes.Buffer
-	err := render.Format(&out, "jsonpath={.analysis.name}", "", report, nil)
+	err := render.Format(&out, "jsonpath={.analysis.meta.name}", "", report, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -414,10 +421,12 @@ func TestWriteOutput_JsonpathPrefix(t *testing.T) {
 
 func TestWriteOutput_TemplatePrefix(t *testing.T) {
 	report := hpaanalysis.StatusReport{
-		Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{Name: "web"}),
+		Analysis: hpaanalysis.Analysis{
+			Meta: hpaanalysis.MetaView{Name: "web"},
+		},
 	}
 	var out bytes.Buffer
-	err := render.Format(&out, "template={{ .Analysis.Name }}", "", report, nil)
+	err := render.Format(&out, "template={{ .Analysis.Meta.Name }}", "", report, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -439,10 +448,12 @@ func TestWriteOutput_Unsupported(t *testing.T) {
 
 func TestWriteOutput_GoTemplateEquals(t *testing.T) {
 	report := hpaanalysis.StatusReport{
-		Analysis: *hpaanalysis.NewAnalysis(hpaanalysis.FlatAnalysis{Name: "web"}),
+		Analysis: hpaanalysis.Analysis{
+			Meta: hpaanalysis.MetaView{Name: "web"},
+		},
 	}
 	var out bytes.Buffer
-	err := render.Format(&out, "go-template={{ .Analysis.Name }}", "", report, nil)
+	err := render.Format(&out, "go-template={{ .Analysis.Meta.Name }}", "", report, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

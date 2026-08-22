@@ -401,9 +401,9 @@ func buildStructuredActions(hpa *autoscalingv2.HorizontalPodAutoscaler, minRepli
 // DebugLines generates verbose debug information lines.
 func DebugLines(hpa *autoscalingv2.HorizontalPodAutoscaler, analysis Analysis) []string {
 	var lines []string
-	lines = append(lines, fmt.Sprintf("replicas: current=%d desired=%d min=%d max=%d diff=%+d", analysis.Current(), analysis.Desired(), analysis.Min(), analysis.Max(), analysis.Desired()-analysis.Current()))
-	lines = append(lines, fmt.Sprintf("health: state=%s score=%d", analysis.Health(), analysis.HealthScore()))
-	for _, metric := range analysis.Metrics() {
+	lines = append(lines, fmt.Sprintf("replicas: current=%d desired=%d min=%d max=%d diff=%+d", analysis.Replicas.Current, analysis.Replicas.Desired, analysis.Replicas.Min, analysis.Replicas.Max, analysis.Replicas.Desired-analysis.Replicas.Current))
+	lines = append(lines, fmt.Sprintf("health: state=%s score=%d", analysis.Decision.Health, analysis.Decision.HealthScore))
+	for _, metric := range analysis.Metrics.Metrics {
 		if metric.Ratio == nil {
 			lines = append(lines, fmt.Sprintf("metric %s/%s: current=%s target=%s ratio=<unknown> note=%q", metric.Type, metric.Name, metric.Current, metric.Target, metric.Note))
 			continue
@@ -413,8 +413,8 @@ func DebugLines(hpa *autoscalingv2.HorizontalPodAutoscaler, analysis Analysis) [
 	for _, condition := range hpa.Status.Conditions {
 		lines = append(lines, fmt.Sprintf("condition %s=%s reason=%s", condition.Type, condition.Status, condition.Reason))
 	}
-	if analysis.ImpactMetric() != nil {
-		lines = append(lines, fmt.Sprintf("impactEstimate: metric=%s ratio=%.3f confidence=medium", analysis.ImpactMetric().Name, analysis.ImpactMetric().Ratio))
+	if analysis.Decision.ImpactMetric != nil {
+		lines = append(lines, fmt.Sprintf("impactEstimate: metric=%s ratio=%.3f confidence=medium", analysis.Decision.ImpactMetric.Name, analysis.Decision.ImpactMetric.Ratio))
 	}
 	return lines
 }

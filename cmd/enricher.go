@@ -250,7 +250,7 @@ func enricherPhaseCapacity(opts *options) []enricherSpec {
 				return opts.ControllerProfile || opts.AssumeProfile != "" || opts.ControllerProfileFile != ""
 			},
 			run: func(ctx context.Context, p *PipelineContext, _ *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
-				report.Analysis.SetControllerProfile(buildControllerProfile(ctx, p.Client, opts.AssumeProfile, opts.ControllerProfileFile))
+				report.Analysis.Controllers.ControllerProfile = buildControllerProfile(ctx, p.Client, opts.AssumeProfile, opts.ControllerProfileFile)
 				return nil
 			},
 		},
@@ -349,7 +349,7 @@ func runEnrichers(ctx context.Context, enrichers []enricherSpec, p *PipelineCont
 		})
 	}
 	return enrichment.RunPipeline(ctx, tasks, func(name string, err error) {
-		report.Analysis.SetWarnings(append(report.Analysis.Warnings(),
-			fmt.Sprintf("enrichment %q failed: %v", name, err)))
+		report.Analysis.Actions.Warnings = append(report.Analysis.Actions.Warnings,
+			fmt.Sprintf("enrichment %q failed: %v", name, err))
 	})
 }

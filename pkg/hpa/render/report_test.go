@@ -12,31 +12,23 @@ import (
 func sampleStatusReport() hpa.StatusReport {
 	ratio := 0.975
 	return hpa.StatusReport{
-		Analysis: *hpa.NewAnalysis(hpa.FlatAnalysis{
-			Namespace:   "default",
-			Name:        "web-hpa",
-			Target:      "Deployment/web",
-			Current:     5,
-			Desired:     5,
-			Min:         2,
-			Max:         10,
-			Health:      "OK",
-			HealthScore: 95,
-			Summary:     "HPA is operating normally.",
-			Conditions: []hpa.Condition{
+		Analysis: hpa.Analysis{
+			Meta:     hpa.MetaView{Namespace: "default", Name: "web-hpa", Target: "Deployment/web"},
+			Replicas: hpa.ReplicasView{Current: 5, Desired: 5, Min: 2, Max: 10},
+			Decision: hpa.DecisionView{Health: "OK", HealthScore: 95, Summary: "HPA is operating normally."},
+			Metrics: hpa.MetricsView{Metrics: []hpa.Metric{
+				{Name: "cpu", Current: "78%", Target: "80%", Ratio: &ratio, Text: "cpu 78%/80%"},
+			}},
+			Conditions: hpa.ConditionsView{Conditions: []hpa.Condition{
 				{Type: "ScalingActive", Status: "True", Reason: "ValidMetricFound", Message: "the HPA was able to successfully calculate a replica count"},
 				{Type: "AbleToScale", Status: "True", Reason: "ReadyForNewScale", Message: "recommended size matches current size"},
-			},
-			Metrics: []hpa.Metric{
-				{Name: "cpu", Current: "78%", Target: "80%", Ratio: &ratio, Text: "cpu 78%/80%"},
-			},
-			Actions: []string{
+			}},
+			Actions: hpa.ActionsView{Actions: []string{
 				"No immediate action required.",
-			},
-			Suggestions: []hpa.Suggestion{
+			}, Suggestions: []hpa.Suggestion{
 				{Title: "Increase maxReplicas", Description: "Consider raising maxReplicas to allow more headroom.", Command: "kubectl patch hpa web-hpa -p '{\"spec\":{\"maxReplicas\":20}}'", Risk: "low"},
-			},
-		}),
+			}},
+		},
 		Events: []hpa.Event{
 			{Reason: "SuccessfulRescale", Message: "New size: 5; reason: cpu resource utilization"},
 		},
@@ -89,12 +81,10 @@ func TestWriteMarkdownReportMetricRatio(t *testing.T) {
 
 func TestWriteMarkdownReportEmptyFields(t *testing.T) {
 	report := hpa.StatusReport{
-		Analysis: *hpa.NewAnalysis(hpa.FlatAnalysis{
-			Namespace:   "default",
-			Name:        "empty-hpa",
-			Health:      "OK",
-			HealthScore: 0,
-		}),
+		Analysis: hpa.Analysis{
+			Meta:     hpa.MetaView{Namespace: "default", Name: "empty-hpa"},
+			Decision: hpa.DecisionView{Health: "OK", HealthScore: 0},
+		},
 	}
 	var buf bytes.Buffer
 	if err := WriteMarkdownReport(&buf, report); err != nil {
@@ -118,14 +108,12 @@ func TestWriteMarkdownReportEmptyFields(t *testing.T) {
 
 func TestWriteMarkdownReportEscapesPipes(t *testing.T) {
 	report := hpa.StatusReport{
-		Analysis: *hpa.NewAnalysis(hpa.FlatAnalysis{
-			Namespace: "default",
-			Name:      "pipe-test",
-			Target:    "Deployment/svc|web",
-			Conditions: []hpa.Condition{
+		Analysis: hpa.Analysis{
+			Meta: hpa.MetaView{Namespace: "default", Name: "pipe-test", Target: "Deployment/svc|web"},
+			Conditions: hpa.ConditionsView{Conditions: []hpa.Condition{
 				{Type: "ScalingActive", Status: "True", Reason: "OK", Message: "metric | pipe"},
-			},
-		}),
+			}},
+		},
 	}
 	var buf bytes.Buffer
 	if err := WriteMarkdownReport(&buf, report); err != nil {
@@ -216,11 +204,10 @@ func TestWriteHTMLReportHealthColorCoding(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.health, func(t *testing.T) {
 			report := hpa.StatusReport{
-				Analysis: *hpa.NewAnalysis(hpa.FlatAnalysis{
-					Name:        "test",
-					Health:      tc.health,
-					HealthScore: 50,
-				}),
+				Analysis: hpa.Analysis{
+					Meta:     hpa.MetaView{Name: "test"},
+					Decision: hpa.DecisionView{Health: tc.health, HealthScore: 50},
+				},
 			}
 			var buf bytes.Buffer
 			if err := WriteHTMLReport(&buf, report); err != nil {
@@ -235,10 +222,9 @@ func TestWriteHTMLReportHealthColorCoding(t *testing.T) {
 
 func TestWriteHTMLReportEmptyFields(t *testing.T) {
 	report := hpa.StatusReport{
-		Analysis: *hpa.NewAnalysis(hpa.FlatAnalysis{
-			Namespace: "default",
-			Name:      "empty-hpa",
-		}),
+		Analysis: hpa.Analysis{
+			Meta: hpa.MetaView{Namespace: "default", Name: "empty-hpa"},
+		},
 	}
 	var buf bytes.Buffer
 	if err := WriteHTMLReport(&buf, report); err != nil {

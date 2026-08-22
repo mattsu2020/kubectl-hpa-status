@@ -20,40 +20,32 @@ func Analyze(src *autoscalingv2.HorizontalPodAutoscaler, includeInterpretation b
 // Analysis if validation fails. Returns nil if the HPA is valid.
 func validateHPA(src *autoscalingv2.HorizontalPodAutoscaler) *Analysis {
 	if src == nil {
-		return NewAnalysis(FlatAnalysis{
-			Health:      string(HealthError),
-			HealthScore: 0,
-			Summary:     "HPA data is unavailable.",
-			Interpretation: []string{
+		return &Analysis{
+			Decision: DecisionView{Health: string(HealthError), HealthScore: 0, Summary: "HPA data is unavailable."},
+			Actions: ActionsView{Interpretation: []string{
 				confidence.BadgeObserved + " HPA input was nil; no Kubernetes status can be analyzed.",
-			},
-		})
+			}},
+		}
 	}
 
 	if src.Spec.ScaleTargetRef.Kind == "" || src.Spec.ScaleTargetRef.Name == "" {
-		return NewAnalysis(FlatAnalysis{
-			Namespace:   src.Namespace,
-			Name:        src.Name,
-			Health:      string(HealthError),
-			HealthScore: 0,
-			Summary:     "HPA spec.scaleTargetRef is empty or incomplete.",
-			Interpretation: []string{
+		return &Analysis{
+			Meta:     MetaView{Namespace: src.Namespace, Name: src.Name},
+			Decision: DecisionView{Health: string(HealthError), HealthScore: 0, Summary: "HPA spec.scaleTargetRef is empty or incomplete."},
+			Actions: ActionsView{Interpretation: []string{
 				confidence.BadgeObserved + " This HPA has no valid scaleTargetRef; it cannot function.",
-			},
-		})
+			}},
+		}
 	}
 
 	if src.Spec.MaxReplicas <= 0 {
-		return NewAnalysis(FlatAnalysis{
-			Namespace:   src.Namespace,
-			Name:        src.Name,
-			Health:      string(HealthError),
-			HealthScore: 0,
-			Summary:     "HPA spec.maxReplicas must be greater than zero.",
-			Interpretation: []string{
+		return &Analysis{
+			Meta:     MetaView{Namespace: src.Namespace, Name: src.Name},
+			Decision: DecisionView{Health: string(HealthError), HealthScore: 0, Summary: "HPA spec.maxReplicas must be greater than zero."},
+			Actions: ActionsView{Interpretation: []string{
 				confidence.BadgeObserved + " This HPA has spec.maxReplicas set to 0 or negative; it cannot scale.",
-			},
-		})
+			}},
+		}
 	}
 
 	minCheck := DefaultMinReplicas
@@ -61,16 +53,13 @@ func validateHPA(src *autoscalingv2.HorizontalPodAutoscaler) *Analysis {
 		minCheck = *src.Spec.MinReplicas
 	}
 	if minCheck > src.Spec.MaxReplicas {
-		return NewAnalysis(FlatAnalysis{
-			Namespace:   src.Namespace,
-			Name:        src.Name,
-			Health:      string(HealthError),
-			HealthScore: 0,
-			Summary:     fmt.Sprintf("HPA spec.minReplicas (%d) exceeds spec.maxReplicas (%d).", minCheck, src.Spec.MaxReplicas),
-			Interpretation: []string{
+		return &Analysis{
+			Meta:     MetaView{Namespace: src.Namespace, Name: src.Name},
+			Decision: DecisionView{Health: string(HealthError), HealthScore: 0, Summary: fmt.Sprintf("HPA spec.minReplicas (%d) exceeds spec.maxReplicas (%d).", minCheck, src.Spec.MaxReplicas)},
+			Actions: ActionsView{Interpretation: []string{
 				fmt.Sprintf(confidence.BadgeObserved+" spec.minReplicas (%d) is greater than spec.maxReplicas (%d); the HPA configuration is contradictory.", minCheck, src.Spec.MaxReplicas),
-			},
-		})
+			}},
+		}
 	}
 
 	return nil

@@ -12,170 +12,170 @@ import (
 // orchestrator stay a flat list of section calls without a gocyclo exemption.
 
 func appendHealthTrendSection(out *[]byte, a *Analysis) {
-	if a.HealthTrend() == nil || len(a.HealthTrend().Snapshots) == 0 {
+	if a.Lifecycle.HealthTrend == nil || len(a.Lifecycle.HealthTrend.Snapshots) == 0 {
 		return
 	}
 	*out = append(*out, '\n')
-	trendText := healthtrend.FormatTrendText(*a.HealthTrend())
+	trendText := healthtrend.FormatTrendText(*a.Lifecycle.HealthTrend)
 	*out = fmt.Appendf(*out, "%s\n", trendText)
 }
 
 func appendControllerProfileSection(out *[]byte, a *Analysis) {
-	if a.ControllerProfile() == nil {
+	if a.Controllers.ControllerProfile == nil {
 		return
 	}
 	*out = append(*out, '\n')
-	appendControllerProfileText(out, a.ControllerProfile())
+	appendControllerProfileText(out, a.Controllers.ControllerProfile)
 }
 
 func appendActionsSection(out *[]byte, a *Analysis, theme style.Theme, labels labels) {
-	if len(a.Actions()) == 0 {
+	if len(a.Actions.Actions) == 0 {
 		return
 	}
 	*out = append(*out, '\n')
 	*out = fmt.Appendf(*out, "%s:\n", labels.Actions)
-	for _, action := range a.Actions() {
+	for _, action := range a.Actions.Actions {
 		*out = fmt.Appendf(*out, "  - %s\n", theme.ActionLine(action))
 	}
 }
 
 func appendInterpretationSection(out *[]byte, a *Analysis, theme style.Theme, labels labels) {
-	if len(a.Interpretation()) == 0 {
+	if len(a.Actions.Interpretation) == 0 {
 		return
 	}
 	*out = append(*out, '\n')
 	*out = fmt.Appendf(*out, "%s:\n", labels.Interpretation)
-	for _, line := range a.Interpretation() {
+	for _, line := range a.Actions.Interpretation {
 		*out = fmt.Appendf(*out, "  - %s\n", theme.InterpretationLine(line))
 	}
 }
 
 func appendDebugSection(out *[]byte, a *Analysis, theme style.Theme, labels labels) {
-	if len(a.Debug()) == 0 {
+	if len(a.Lifecycle.Debug) == 0 {
 		return
 	}
 	*out = append(*out, '\n')
 	*out = fmt.Appendf(*out, "%s:\n", labels.Debug)
-	for _, line := range a.Debug() {
+	for _, line := range a.Lifecycle.Debug {
 		*out = fmt.Appendf(*out, "  - %s\n", theme.Dim.Render(line))
 	}
 }
 
 func appendDecisionSignalsSection(out *[]byte, a *Analysis) {
-	if len(a.DecisionSignals()) == 0 {
+	if len(a.Decision.DecisionSignals) == 0 {
 		return
 	}
 	*out = append(*out, '\n')
-	*out = fmt.Appendf(*out, "%s\n", FormatDecisionSignals(a.DecisionSignals()))
+	*out = fmt.Appendf(*out, "%s\n", FormatDecisionSignals(a.Decision.DecisionSignals))
 }
 
 func appendDecisionTraceSection(out *[]byte, a *Analysis) {
-	if a.DecisionTrace() == nil {
+	if a.Decision.DecisionTrace == nil {
 		return
 	}
 	*out = append(*out, '\n')
-	AppendDecisionTraceText(out, a.DecisionTrace())
+	AppendDecisionTraceText(out, a.Decision.DecisionTrace)
 }
 
 func appendStructuredDecisionTraceSection(out *[]byte, a *Analysis, opts StatusTextOptions) {
-	if a.StructuredDecisionTrace() == nil {
+	if a.Decision.StructuredDecisionTrace == nil {
 		return
 	}
 	*out = append(*out, '\n')
-	AppendStructuredDecisionTraceText(out, a.StructuredDecisionTrace(), opts.Labels)
+	AppendStructuredDecisionTraceText(out, a.Decision.StructuredDecisionTrace, opts.Labels)
 }
 
 func appendAdapterDiagnosticsSection(out *[]byte, a *Analysis) {
-	if a.AdapterDiagnostics() == nil {
+	if a.Metrics.AdapterDiagnostics == nil {
 		return
 	}
 	*out = append(*out, '\n')
-	AppendAdapterDiagnosticsText(out, a.AdapterDiagnostics())
+	AppendAdapterDiagnosticsText(out, a.Metrics.AdapterDiagnostics)
 }
 
 func appendCapacityHeadroomSection(out *[]byte, a *Analysis, theme style.Theme) {
-	if a.CapacityHeadroom() == nil {
+	if a.Capacity.CapacityHeadroom == nil {
 		return
 	}
 	*out = append(*out, '\n')
-	appendCapacityHeadroomText(out, a.CapacityHeadroom(), theme)
+	appendCapacityHeadroomText(out, a.Capacity.CapacityHeadroom, theme)
 }
 
 func appendReadinessImpactSection(out *[]byte, a *Analysis, theme style.Theme) {
-	if a.ReadinessImpact() == nil {
+	if a.Capacity.ReadinessImpact == nil {
 		return
 	}
 	*out = append(*out, '\n')
-	appendReadinessImpactText(out, a.ReadinessImpact(), theme)
+	appendReadinessImpactText(out, a.Capacity.ReadinessImpact, theme)
 }
 
 func appendScalePathSection(out *[]byte, a *Analysis, theme style.Theme) {
-	if a.ScalePath() == nil {
+	if a.Capacity.ScalePath == nil {
 		return
 	}
 	*out = append(*out, '\n')
-	appendScalePathText(out, a.ScalePath(), theme)
+	appendScalePathText(out, a.Capacity.ScalePath, theme)
 }
 
 func appendRolloutDiagnosisSection(out *[]byte, a *Analysis, theme style.Theme) {
-	if a.RolloutDiagnosis() == nil {
+	if a.Controllers.RolloutDiagnosis == nil {
 		return
 	}
 	*out = append(*out, '\n')
-	appendRolloutDiagnosisText(out, a.RolloutDiagnosis(), theme)
+	appendRolloutDiagnosisText(out, a.Controllers.RolloutDiagnosis, theme)
 }
 
 func appendBlockerReportSection(out *[]byte, a *Analysis, theme style.Theme, labels labels) {
-	if a.BlockerReport() == nil {
+	if a.Blockers.BlockerReport == nil {
 		return
 	}
-	AppendBlockerText(out, a.BlockerReport(), theme, labels)
-	appendScaleoutBlockersText(out, a.BlockerReport(), theme)
+	AppendBlockerText(out, a.Blockers.BlockerReport, theme, labels)
+	appendScaleoutBlockersText(out, a.Blockers.BlockerReport, theme)
 }
 
 func appendCapacityPlanSection(out *[]byte, a *Analysis, theme style.Theme, labels labels) {
-	if a.CapacityPlan() == nil {
+	if a.Capacity.CapacityPlan == nil {
 		return
 	}
-	AppendCapacityPlanText(out, a.CapacityPlan(), theme, labels)
+	AppendCapacityPlanText(out, a.Capacity.CapacityPlan, theme, labels)
 }
 
 func appendMetricContractSection(out *[]byte, a *Analysis, theme style.Theme) {
-	if a.MetricContract() == nil {
+	if a.Metrics.MetricContract == nil {
 		return
 	}
 	*out = append(*out, '\n')
-	appendMetricContractText(out, a.MetricContract(), theme)
+	appendMetricContractText(out, a.Metrics.MetricContract, theme)
 }
 
 func appendContainerAdvisorSection(out *[]byte, a *Analysis, labels labels) {
-	if a.ContainerAdvisor() == nil {
+	if a.Advisory.ContainerAdvisor == nil {
 		return
 	}
-	AppendContainerAdvisorText(out, a.ContainerAdvisor(), labels)
+	AppendContainerAdvisorText(out, a.Advisory.ContainerAdvisor, labels)
 }
 
 func appendBehaviorAdvisorSection(out *[]byte, a *Analysis, labels labels) {
-	if a.BehaviorAdvisor() == nil {
+	if a.Advisory.BehaviorAdvisor == nil {
 		return
 	}
-	AppendBehaviorAdvisorText(out, a.BehaviorAdvisor(), labels)
+	AppendBehaviorAdvisorText(out, a.Advisory.BehaviorAdvisor, labels)
 }
 
 func appendFlappingPreventionSection(out *[]byte, a *Analysis, labels labels) {
-	if a.FlappingPrevention() == nil {
+	if a.Stability.FlappingPrevention == nil {
 		return
 	}
-	AppendFlappingPreventionText(out, a.FlappingPrevention(), labels)
+	AppendFlappingPreventionText(out, a.Stability.FlappingPrevention, labels)
 }
 
 func appendMetricHintsSection(out *[]byte, a *Analysis) {
-	if a.MetricHints() == nil || len(a.MetricHints().TroubleshootingFlows) == 0 {
+	if a.Metrics.MetricHints == nil || len(a.Metrics.MetricHints.TroubleshootingFlows) == 0 {
 		return
 	}
 	*out = append(*out, '\n')
 	*out = append(*out, "Metric Troubleshooting:\n"...)
-	for _, flow := range a.MetricHints().TroubleshootingFlows {
+	for _, flow := range a.Metrics.MetricHints.TroubleshootingFlows {
 		*out = fmt.Appendf(*out, "  [%s] %s (%s/%s)\n", flow.Severity, flow.Title, flow.MetricType, flow.MetricName)
 		for _, step := range flow.Steps {
 			*out = fmt.Appendf(*out, "    %d. %s\n", step.StepNumber, step.Description)

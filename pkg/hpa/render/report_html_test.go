@@ -22,8 +22,14 @@ func TestWriteHTMLReports(t *testing.T) {
 	t.Run("multiple reports render as separate sections", func(t *testing.T) {
 		var buf bytes.Buffer
 		reports := []hpa.StatusReport{
-			{Analysis: *hpa.NewAnalysis(hpa.FlatAnalysis{Namespace: "default", Name: "web", Health: "OK"})},
-			{Analysis: *hpa.NewAnalysis(hpa.FlatAnalysis{Namespace: "default", Name: "api", Health: "ERROR"})},
+			{Analysis: hpa.Analysis{
+				Meta:     hpa.MetaView{Namespace: "default", Name: "web"},
+				Decision: hpa.DecisionView{Health: "OK"},
+			}},
+			{Analysis: hpa.Analysis{
+				Meta:     hpa.MetaView{Namespace: "default", Name: "api"},
+				Decision: hpa.DecisionView{Health: "ERROR"},
+			}},
 		}
 		if err := WriteHTMLReports(&buf, reports); err != nil {
 			t.Fatalf("unexpected error: %v", err)

@@ -15,16 +15,28 @@ import (
 // each nested slice so both the Markdown and HTML section writers walk their
 // row/table loops instead of only their "no data" early returns.
 func populatedAnalysis() hpa.Analysis {
-	return *hpa.NewAnalysis(hpa.FlatAnalysis{
-		Namespace: "default",
-		Name:      "web",
-		Health:    "OK",
-		PodAnalysis: &hpa.PodAnalysis{
+	return hpa.Analysis{
+		Meta: hpa.MetaView{Namespace: "default", Name: "web"},
+		Decision: hpa.DecisionView{Health: "OK", StructuredDecisionTrace: &hpa.StructuredDecisionTrace{
+			SchemaVersion:          "v1",
+			Namespace:              "default",
+			Name:                   "web",
+			CurrentReplicas:        8,
+			VisibleDesiredReplicas: 8,
+		}},
+		Metrics: hpa.MetricsView{MetricFreshness: []hpa.MetricFreshness{{
+			Name: "cpu", Type: "Resource", Status: "OK", Source: "metrics.k8s.io", Window: "30s",
+			Risk: "none", Evidence: []string{"last seen 5s ago"}, NextSteps: []string{"kubectl top pods"},
+		}}},
+		Capacity: hpa.CapacityView{PodAnalysis: &hpa.PodAnalysis{
 			Total: 5, Ready: 4, Unready: 1, Pending: 1, Terminating: 0,
 			ResourceIssues:  []hpa.PodResourceIssue{{Pod: "web-1", Container: "app", Resource: "cpu", Category: "missing-request"}},
 			ContainerChecks: []hpa.ContainerCheck{{Container: "app", Found: true}, {Container: "sidecar", Found: false, Message: "not found in pod spec"}},
-		},
-		FlappingSimulation: &simulate.SimulationResult{
+		}, CapacityContext: &hpa.CapacityContext{
+			PendingPods: []hpa.PendingPodInfo{{Name: "web-1", Unschedulable: true, Reasons: []string{"Insufficient cpu"}}},
+			NodeHints:   []string{"consider adding a node pool"},
+		}},
+		Stability: hpa.StabilityView{FlappingSimulation: &simulate.SimulationResult{
 			Parameter:      "maxReplicas",
 			OriginalValue:  "10",
 			SimulatedValue: "20",
@@ -32,23 +44,8 @@ func populatedAnalysis() hpa.Analysis {
 			After:          simulate.SimulationState{DesiredReplicas: 15, Health: "OK", HealthScore: 85},
 			RiskAssessment: "Raising maxReplicas increases capacity; verify node headroom.",
 			Interpretation: []string{"desiredReplicas would increase from 8 to 15"},
-		},
-		MetricFreshnessEntries: []hpa.MetricFreshness{{
-			Name: "cpu", Type: "Resource", Status: "OK", Source: "metrics.k8s.io", Window: "30s",
-			Risk: "none", Evidence: []string{"last seen 5s ago"}, NextSteps: []string{"kubectl top pods"},
 		}},
-		CapacityContext: &hpa.CapacityContext{
-			PendingPods: []hpa.PendingPodInfo{{Name: "web-1", Unschedulable: true, Reasons: []string{"Insufficient cpu"}}},
-			NodeHints:   []string{"consider adding a node pool"},
-		},
-		StructuredDecisionTrace: &hpa.StructuredDecisionTrace{
-			SchemaVersion:          "v1",
-			Namespace:              "default",
-			Name:                   "web",
-			CurrentReplicas:        8,
-			VisibleDesiredReplicas: 8,
-		},
-	})
+	}
 }
 
 func TestWriteMarkdownReport_PopulatedSections(t *testing.T) {

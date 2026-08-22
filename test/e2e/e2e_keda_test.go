@@ -129,7 +129,11 @@ func TestE2E_KEDAManagedHPA(t *testing.T) {
 	assertStatusReportShape(t, kedaRaw, "keda-hpa-test")
 	kedaResult := decodeStatusReportJSON(t, kedaRaw)
 	kedaAnalysis := analysisMap(t, kedaResult)
-	if _, ok := kedaAnalysis["structuredInterpretation"].([]any); !ok {
-		t.Error("expected analysis.structuredInterpretation array after --explain on KEDA HPA")
+	actions, ok := kedaAnalysis["actions"].(map[string]any)
+	if !ok {
+		t.Fatal("JSON analysis missing 'actions' group (grouped v2 schema)")
+	}
+	if _, ok := actions["structuredInterpretation"].([]any); !ok {
+		t.Error("expected analysis.actions.structuredInterpretation array after --explain on KEDA HPA")
 	}
 }

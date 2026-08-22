@@ -28,9 +28,9 @@ func writeGitOpsExport(out io.Writer, format string, report hpaanalysis.StatusRe
 	if err != nil {
 		return err
 	}
-	spec, err := collectSuggestionSpec(report.Analysis.Suggestions())
+	spec, err := collectSuggestionSpec(report.Analysis.Actions.Suggestions)
 	if err != nil {
-		return fmt.Errorf("build GitOps export for HPA %s/%s: %w", report.Analysis.Namespace(), report.Analysis.Name(), err)
+		return fmt.Errorf("build GitOps export for HPA %s/%s: %w", report.Analysis.Meta.Namespace, report.Analysis.Meta.Name, err)
 	}
 	if len(spec) == 0 {
 		_, err := fmt.Fprintln(out, "# no applicable HPA spec patch suggestions")
@@ -99,8 +99,8 @@ func writeYAMLExport(out io.Writer, report hpaanalysis.StatusReport, spec map[st
 		APIVersion: "autoscaling/v2",
 		Kind:       "HorizontalPodAutoscaler",
 		Metadata: exportMetadata{
-			Name:      report.Analysis.Name(),
-			Namespace: report.Analysis.Namespace(),
+			Name:      report.Analysis.Meta.Name,
+			Namespace: report.Analysis.Meta.Namespace,
 		},
 		Spec: spec,
 	}
@@ -126,7 +126,7 @@ func writeKustomizeExport(out io.Writer, report hpaanalysis.StatusReport, spec m
 func writeHelmValuesExport(out io.Writer, report hpaanalysis.StatusReport, spec map[string]any) error {
 	values := map[string]any{
 		"hpa": map[string]any{
-			"name": report.Analysis.Name(),
+			"name": report.Analysis.Meta.Name,
 			"spec": spec,
 		},
 	}

@@ -256,8 +256,8 @@ func recordOnce(ctx context.Context, opts *options, client *kube.Client, name st
 func traceFromReport(report hpaanalysis.StatusReport, interval time.Duration) hpaanalysis.TimelineTrace {
 	snapshot := hpaanalysis.SnapshotFromReport(report)
 	return hpaanalysis.TimelineTrace{
-		HPAName:   report.Analysis.Name(),
-		Namespace: report.Analysis.Namespace(),
+		HPAName:   report.Analysis.Meta.Name,
+		Namespace: report.Analysis.Meta.Namespace,
 		Start:     snapshot.Timestamp,
 		End:       snapshot.Timestamp,
 		Interval:  interval,

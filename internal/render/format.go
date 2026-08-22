@@ -27,11 +27,11 @@ var formatRenderers = map[string]func(out io.Writer, templateStr string, value a
 	"json": func(out io.Writer, _ string, value any) error {
 		encoder := json.NewEncoder(out)
 		encoder.SetIndent("", "  ")
-		return encoder.Encode(value)
+		return encoder.Encode(projectForReflection(value))
 	},
 	"jsonl": func(out io.Writer, _ string, value any) error { return JSONLines(out, value) },
 	"yaml": func(out io.Writer, _ string, value any) error {
-		data, err := yaml.Marshal(value)
+		data, err := yaml.Marshal(projectForReflection(value))
 		if err != nil {
 			return err
 		}
@@ -165,19 +165,20 @@ func JSONLines(out io.Writer, value any) error {
 	}
 }
 
-// projectForReflection converts Analysis-bearing report values to their flat
-// v1 projection before reflection-driven rendering (jsonpath, Go templates).
-// Both engines walk struct fields, not accessor methods, so post storage-flip
-// Analysis values must be projected to keep expressions like {.analysis.name}
-// and {{ .Analysis.Name }} working unchanged.
+// projectForReflection converts Analysis-bearing report values to their
+// grouped v2 projection before structured rendering (json, yaml, jsonl,
+// jsonpath, Go templates). Since v4 the grouped v2 schema is the only
+// structured contract, so every renderer that serializes or reflects over
+// report values hands them the projected shape; the flat v1 projection was
+// removed.
 func projectForReflection(value any) any {
 	switch v := value.(type) {
 	case hpaanalysis.StatusReport:
-		return hpaanalysis.ProjectStatusReportV1(v)
+		return hpaanalysis.ProjectStatusReportV2(v)
 	case []hpaanalysis.StatusReport:
-		return hpaanalysis.ProjectStatusReportsV1(v)
+		return hpaanalysis.ProjectStatusReportsV2(v)
 	case hpaanalysis.StatusBatch:
-		return hpaanalysis.ProjectStatusBatchV1(v)
+		return hpaanalysis.ProjectStatusBatchV2(v)
 	default:
 		return value
 	}
@@ -227,7 +228,7 @@ func Prometheus(w io.Writer, value any) error {
 		return nil
 	case hpaanalysis.StatusReport:
 		a := report.Analysis
-		return PrometheusMetrics(w, a.Namespace(), a.Name(), a.HealthScore(), a.Current(), a.Desired(), a.Min(), a.Max())
+		return PrometheusMetrics(w, a.Meta.Namespace, a.Meta.Name, a.Decision.HealthScore, a.Replicas.Current, a.Replicas.Desired, a.Replicas.Min, a.Replicas.Max)
 	default:
 		return fmt.Errorf("prometheus output requires a StatusReport or ListReport, got %T", value)
 	}
