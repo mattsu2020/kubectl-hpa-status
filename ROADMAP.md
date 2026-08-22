@@ -6,15 +6,13 @@ This roadmap tracks planned work that is visible to users and contributors. It i
 
 - **E2E scenario coverage:** Expand kind E2E coverage for multi-metric HPAs, KEDA-style external metrics, VPA conflict detection, and stabilization boundary cases. Behavior-policy visualization is covered by `TestE2E_BehaviorPolicies`.
 - **README sync quality gate:** Keep `README.md` and `README.ja.md` structurally aligned through `make docs-check` and CI.
-- **v4 preparation on the v3.x line:** the storage flip is **done**: the 13
-  grouped views are `Analysis`'s primary in-memory storage, the flat v1
-  fields are accessor methods (`a.Current()`/`a.SetCurrent`), the wire is
-  byte-identical through the `FlatAnalysis` projection, and the as-executed
-  record lives in `docs/analysis-storage-flip.md` (including the v4 removal
-  table). The additive record fields landed earlier: typed numeric metric
-  values on `TimelineSnapshot` (`metricValues`) feed metric-signal
-  seasonality detection with weekly-cycle labeling. v4.0.0 now only has to
-  delete — see "v4 Breaking Changes (Planned)" below.
+- **v5 planning:** The v5.0 theme and scope are drafted under
+  ["v5.0 (Planned)"](#v50-planned) below: Prometheus history import,
+  `alpha backtest`, the `--output-schema` flag removal announced in the v4
+  notes, and the informer-watch item promoted from Medium Term.
+- **v4 preparation:** **Done** — v4.0.0 shipped the deprecated-alias removal,
+  `ExitNotFound`, the v1 wire-schema retirement, and the flat-field removal;
+  see "v4 Breaking Changes (Executed)" below for the migration tables.
 
 ## Done through 3.0.0
 
@@ -60,7 +58,7 @@ This roadmap tracks planned work that is visible to users and contributors. It i
 
 ## Medium Term
 
-- **Informer-based watch:** Add an opt-in informer update path for large clusters alongside the current polling mode.
+- **Informer-based watch:** Add an opt-in informer update path for large clusters alongside the current polling mode. Promoted into the v5 plan — see "v5.0 (Planned)" below.
 - **KEP-6111 upstream adapter:** Replace the current visible-signal structured export with native upstream structured HPA decision fields when they become available.
 
 ## Structural Refactors (Internal)
@@ -319,6 +317,110 @@ registry still statically typed — not a backdoor plugin system.
 KEP-6111 structured decision fields stay a prepared boundary (see
 ARCHITECTURE.md). If upstream ships them before v4, the adapter lands as an
 additive input signal and does not block any v4 item.
+
+## v5.0 (Planned)
+
+v3 and v4 were both contract-slimming releases. v5.0 is planned as the first
+capability major since v2, funded by the one small breaking change it still
+owes: the `--output-schema` flag removal promised in the v4 migration notes.
+
+The theme is **history validation**. The durable recording family
+(`record` → `timeline --from-record` → `alpha analyze-record --detect
+seasonality|flapping`) is feature-complete, but it only helps operators who
+happened to run `record` before the incident, and its proposals — seasonality
+pre-scale schedules, `tune` behavior suggestions — are heuristics whose real
+effect is unknown until they are applied. v5 closes both gaps: import history
+from Prometheus so the detector pipeline works without prior recording, and
+replay candidate configurations against that history through the existing
+simulation engine so proposals are validated before they reach a cluster.
+
+### v5 `--output-schema` flag removal (announced in v4)
+
+The final item from the v4 migration table. The flag kept accepting only
+`v2` through the whole v4 line so scripts pinning `--output-schema=v2`
+would not break twice; v5 removes the flag outright. Structured output stays
+grouped-v2-only, which it already is, so this is a pure flag-surface cleanup
+carried in the release's migration table.
+
+### Prometheus history import (planned)
+
+`timeline` and `alpha analyze-record` gain an opt-in Prometheus source
+alongside `--from-record`: range queries against the Prometheus HTTP API
+synthesize `TimelineSnapshot` records — replica counts from kube-state-metrics
+series (`kube_horizontalpodautoscaler_*`), metric values reconstructed from
+scraped container/custom metrics where the installation retains them — and
+feed the unchanged detector pipeline behind those commands. This removes the
+biggest adoption barrier of the recording family: no continuous `record` run
+is required to get timeline, seasonality, or flapping answers after an
+incident.
+
+Constraints carried over from the project philosophy:
+
+- Read-only HTTP calls to the Prometheus API fit the "stable surfaces only"
+  boundary the same way Kubernetes reads do.
+- Series and label conventions differ per installation. Every synthesized
+  snapshot carries explicit provenance and confidence language, and queries
+  that cannot be resolved unambiguously fail closed instead of guessing.
+- The loader lands as a dedicated package beside `cmd/internal/recordio`;
+  `timeline` and `analyze-record` consume snapshots from either source with
+  no detector changes.
+
+### Backtest (`alpha backtest`, planned)
+
+Replay recorded or imported history through candidate HPA configurations —
+target utilization, min/max replicas, `spec.behavior` policies, seasonality
+pre-scale schedules — using the existing `pkg/hpa/simulate` projection
+engine, and rank candidates with the health-score and SLO machinery already
+behind `scan` and `slo`. Output is a ranked list with per-candidate scores,
+risks, and confidence labels; nothing is applied without the existing
+suggest → fix/apply flow and its policy guards.
+
+This turns "propose" into "validate": `tune` suggests behavior policies and
+seasonality proposes cron pre-scaling, but backtest scores both against the
+same observed demand curve before an operator commits one. Typed numeric
+`metricValues` on recorded snapshots (added on the v3.x line) are the input
+signal, and results are deterministic for a given record file plus candidate
+set, matching the clock-injected testing style used across the analysis
+packages.
+
+### Informer-based watch (promoted from Medium Term)
+
+Opt-in shared-informer update path alongside the current polling mode
+(`--watch-mode=informer|poll`) for large clusters, reducing API-server load
+and letting watch/TUI react to changes between poll intervals. This is the
+long-standing Medium Term item; it lands in the v5 cycle because the
+history-validation work touches the same snapshot pipeline and both benefit
+from the same recorder seams.
+
+### Secondary candidates (scoped during the v5 cycle)
+
+- **Grafana dashboard generation:** `alerts generate --dashboard grafana`
+  emits dashboard JSON next to alert rules, reusing the scan/report
+  renderers. Alert rules alone leave monitoring adoption half-done; this is
+  a low-cost companion that ships if the headline items leave room.
+- **MCP server mode:** expose `status`, `doctor`, `list`, and `timeline` as
+  read-only MCP tools so AI agents investigate HPAs through the same request
+  pipeline as human operators. Extends the local-AI-context-pack direction;
+  read-only by construction and adds no new Kubernetes permissions.
+
+### Explicit non-goals
+
+- **Plugin registry / extension envelope:** deferred past v5 again, now as an
+  explicit decision rather than an implicit one. The six preconditions in
+  `docs/analysis-plugin-registry.md` remain unmet, no v5 feature depends on
+  dynamic registration, and a kubectl plugin has no demonstrated need for a
+  third-party enrichment ecosystem yet. Revisit at v6 planning.
+- **KEP-6111 adapter:** unchanged — a prepared, additive input signal that
+  lands whenever upstream structured decision fields ship; it neither blocks
+  nor gates any v5 item.
+
+### Sequencing (planned)
+
+| When | Work |
+| --- | --- |
+| v4.x | Additive prep: Prometheus snapshot loader package with fixture-driven tests; no wire or CLI change yet |
+| v5.0 | `--output-schema` flag removal + Prometheus history source on `timeline`/`analyze-record` + `alpha backtest` |
+| v5.x | Informer watch mode; secondary candidates (Grafana dashboards, MCP server) as capacity allows |
 
 ## Recently Added
 
