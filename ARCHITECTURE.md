@@ -338,7 +338,12 @@ Refactoring notes:
   be introduced; labels and metric formatting are already available from
   `pkg/hpa/core` (the simulate package formats metrics directly through
   `core.FormatMetricTarget`/`core.FormatMetricValueStatus` rather than via
-  injection).
+  injection), and metric identity lives in `pkg/hpa/internal/metricidentity`
+  (`pkg/hpa/metric_identity.go` is a re-export), so simulate shares the pure
+  identity and tolerance code directly. Only the full analysis pipeline and
+  the per-type metric handler registry are still injected from the hpa root's
+  `init()` into simulate; unregistered use returns errors wrapping
+  `simulate.ErrDependencyMissing` instead of panicking.
   Additionally, `pkg/hpa/internal/suggestion` holds the shared `Suggestion`,
   `GuardResult`, `GuardBlocked`, and `GuardWarning` types used by policy and
   the suggestion pipeline.

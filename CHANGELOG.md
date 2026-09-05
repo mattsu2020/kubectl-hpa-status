@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Support bundles no longer leak IP addresses with ports or node names.**
+  `RedactStructuredBytes` (and the textual redactor behind it) now splits
+  `host:port` pairs so `http://10.0.0.1:8080/health` becomes
+  `http://[REDACTED-IP]:8080/health` (bracketed IPv6 handled too), and
+  replaces node identity per field: `spec.nodeName`, `hostname`, and
+  `Event.source.host` values become `[REDACTED-NODE]` even when the node name
+  has no recognizable cloud-hostname pattern (e.g. `worker-private-01`).
+  Unrelated DNS names keep their diagnostic value.
+- **Health history no longer merges same-named HPAs across clusters or
+  generations.** History streams are now keyed by cluster identity (the
+  `--cluster`/`--context` flag, else the kubeconfig current-context name),
+  namespace, name, and the HPA object UID. Switching kubeconfig contexts
+  between two clusters that use the same namespace/name pair no longer
+  concatenates their trends, and deleting/recreating an HPA starts a fresh
+  generation instead of mixing pre- and post-recreation samples. Existing
+  history files written by earlier versions are ignored (they cannot be
+  attributed to a cluster/UID); they remain on disk and can be deleted with
+  the store directory.
+- **The analysis assumptions list now reports the tolerances actually used.**
+  The single `tolerance` assumption (which always showed the 0.1 controller
+  default) is replaced by `toleranceScaleUp` and `toleranceScaleDown` entries
+  carrying each direction's effective value with source `hpa.spec`
+  (confidence high) when configured on the HPA, or
+  `assumed-controller-default` (confidence medium) when not.
+
+### Changed
+
+- **History locking now uses OS-level file locks** (`flock` on Unix,
+  `LockFileEx` on Windows) instead of an O_EXCL lock file with heartbeat and
+  stale-lock reclamation. Lock ownership is enforced by the kernel and
+  released automatically when a process exits, eliminating the race where a
+  live writer's lock could be judged stale from its mtime and stolen by a
+  concurrent process. Multi-process regression tests cover the former race
+  window.
+- **Recording a health snapshot no longer rewrites the whole history file.**
+  The transactional record path appends one line and defers the full rewrite
+  to a compaction pass that runs only once enough history has expired (at
+  least 64 expired lines, or half the file). Steady-state recording cost no
+  longer pays a full-file rewrite per observation; benchmarks cover both the
+  append-only steady state and the compaction path.
+- **`pkg/hpa/simulate` no longer panics when its dependencies are not
+  registered.** Nine of the eleven injected function pointers (metric
+  identity, current-value/target matching, and the tolerance family) were
+  replaced by direct calls into the new `pkg/hpa/internal/metricidentity`
+  package and the existing `pkg/hpa/internal/tolerance` package. The two
+  remaining injections (the full analysis pipeline and the metric impact
+  ratio) return errors wrapping the new `ErrDependencyMissing` sentinel
+  instead of panicking; importing `pkg/hpa` (blank import suffices) still
+  installs them automatically.
+
 ## [4.0.0] - 2026-08-22
 
 v4.0.0 is a contract-slimming release: one CLI surface with no deprecated
