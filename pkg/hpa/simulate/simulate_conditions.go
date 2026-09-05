@@ -7,6 +7,10 @@ import (
 	k8sconditions "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/conditions"
 )
 
+// ConditionScalingLimited is the HPA condition that reports whether
+// the HPA is unable to scale due to hitting maxReplicas.
+const ConditionScalingLimited = k8sconditions.ScalingLimited
+
 func simulatedConditionTrue(
 	hpa *autoscalingv2.HorizontalPodAutoscaler,
 	conditionType autoscalingv2.HorizontalPodAutoscalerConditionType,

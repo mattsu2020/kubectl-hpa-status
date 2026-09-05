@@ -119,3 +119,16 @@ func EstimatedDesiredForRatio(hpa *autoscalingv2.HorizontalPodAutoscaler, ratio 
 	}
 	return projected
 }
+
+// ToleranceDirection names the scaling direction a metric ratio implies:
+// ratios above one need scale-up, ratios below one need scale-down, and a
+// ratio of exactly one is already at target.
+func ToleranceDirection(ratio float64) string {
+	if ratio > 1 {
+		return "scaleUp"
+	}
+	if ratio < 1 {
+		return "scaleDown"
+	}
+	return "effective"
+}

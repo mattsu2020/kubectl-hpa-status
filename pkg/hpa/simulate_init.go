@@ -6,8 +6,15 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/simulate"
 )
 
-// init injects the hpa package functions into the simulate package to break import cycles.
-// This initialization must happen before any simulate package functions are called.
+// This init injects the two hpa-root dependencies the simulate package cannot
+// reach directly — the full analysis pipeline and the per-type metric handler
+// registry — to break the import cycle. All other shared computation (metric
+// identity, tolerance math) lives in pkg/hpa/internal/* and is called by
+// simulate directly, so it needs no registration and cannot panic.
+//
+// This initialization runs whenever pkg/hpa is linked into the binary; a
+// blank import is enough. If it has not run, simulate entry points return
+// errors wrapping simulate.ErrDependencyMissing instead of panicking.
 func init() {
 	// Inject core analysis function
 	simulate.SetAnalyzeFunc(func(hpa *autoscalingv2.HorizontalPodAutoscaler, _ bool, opts simulate.AnalysisOptions) simulate.Analysis {
@@ -33,39 +40,8 @@ func init() {
 		}
 	})
 
-	// Inject metric identity functions
-	simulate.SetMetricIDFromSpecFunc(func(spec autoscalingv2.MetricSpec) (simulate.MetricID, error) {
-		id, err := MetricIDFromSpec(spec)
-		return simulate.MetricID(id), err
-	})
-
-	simulate.SetMetricIDFromStatusFunc(func(status autoscalingv2.MetricStatus) (simulate.MetricID, error) {
-		id, err := MetricIDFromStatus(status)
-		return simulate.MetricID(id), err
-	})
-
-	// Inject metric handler functions
-	simulate.SetCurrentMetricValueStatusFunc(currentMetricValueStatus)
-
-	simulate.SetHasMetricValueForTargetFunc(hasMetricValueForTarget)
-
+	// Inject the metric impact-ratio helper backed by the handler registry.
 	simulate.SetMetricImpactRatioFunc(metricImpactRatio)
-
-	simulate.SetMatchingMetricTargetFunc(matchingMetricTarget)
-
-	// Inject tolerance functions
-	simulate.SetDirectionalToleranceFunc(directionalTolerance)
-
-	simulate.SetRatioWithinToleranceFunc(ratioWithinTolerance)
-
-	simulate.SetToleranceDirectionFunc(func(ratio float64, _, _ *float64) string {
-		return toleranceDirection(ratio)
-	})
-
-	simulate.SetEffectiveDirectionalTolerancesFunc(effectiveDirectionalTolerances)
-
-	// Inject formatting functions
-	simulate.SetEstimatedDesiredForRatioFunc(estimatedDesiredForRatio)
 }
 
 // convertSimulateHealthWeights converts simulate.HealthWeights to hpa.HealthWeights

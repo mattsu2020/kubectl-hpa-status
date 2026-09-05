@@ -8,6 +8,7 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/conditions"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/tolerance"
 )
 
 // parseNonNegativeInt32 parses value as int32 and requires v >= minVal, returning a descriptive error otherwise.
@@ -114,7 +115,7 @@ func originalDirectionalTolerance(hpa *autoscalingv2.HorizontalPodAutoscaler, sc
 	if scaleUp {
 		ratio = 2
 	}
-	value, configured := directionalToleranceInvoker(hpa, ratio)
+	value, configured := tolerance.DirectionalTolerance(hpa, ratio)
 	if !configured {
 		return fmt.Sprintf("%.3g (default)", value)
 	}

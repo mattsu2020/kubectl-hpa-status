@@ -2,6 +2,7 @@ package simulate
 
 import (
 	"errors"
+	"fmt"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
@@ -107,13 +108,33 @@ const (
 	HealthStabilized = "STABILIZED"
 )
 
+// ErrDependencyMissing is returned when a simulate entry point runs before
+// the hpa root package installed its dependencies. Importing
+// github.com/mattsu2020/kubectl-hpa-status/pkg/hpa (a blank import suffices)
+// installs them via that package's init; SetAnalyzeFunc and
+// SetMetricImpactRatioFunc allow explicit registration instead.
+var ErrDependencyMissing = errors.New("simulate: dependency not registered")
+
+// -------------------------------------------------------------------
+// Function pointer injections for hpa root package helpers that cannot move
+// to a lower package (the full analysis pipeline and the per-type metric
+// handler registry). Shared pure computation lives in pkg/hpa/internal/*
+// and is called directly; only these two dependencies are injected.
+// -------------------------------------------------------------------
+
 // analyzeFunc is a function pointer type for HPA analysis.
 // This allows injection of the hpa root package's AnalyzeWithOptions without import cycles.
 type analyzeFunc func(hpa *autoscalingv2.HorizontalPodAutoscaler, includeMetrics bool, opts AnalysisOptions) Analysis
 
-// analyzeFuncInstance holds the injected analysis function.
-// This should be called from the hpa root package during initialization.
-var analyzeFuncInstance analyzeFunc
+// metricImpactRatioFunc returns the display name and impact ratio of one
+// current metric.
+type metricImpactRatioFunc func(hpa *autoscalingv2.HorizontalPodAutoscaler, metric autoscalingv2.MetricStatus) (string, *float64)
+
+// Function pointer variables
+var (
+	analyzeFuncInstance       analyzeFunc
+	metricImpactRatioFuncImpl metricImpactRatioFunc
+)
 
 // SetAnalyzeFunc sets the analysis function for simulation.
 // This is called from the hpa root package to inject the AnalyzeWithOptions dependency.
@@ -121,193 +142,27 @@ func SetAnalyzeFunc(fn analyzeFunc) {
 	analyzeFuncInstance = fn
 }
 
-// AnalysisFuncInvoker wraps the injected analysis function for convenience.
-func AnalysisFuncInvoker(hpa *autoscalingv2.HorizontalPodAutoscaler, includeMetrics bool, opts AnalysisOptions) Analysis {
-	if analyzeFuncInstance == nil {
-		panic("simulate: analysis dependency not installed; importing github.com/mattsu2020/kubectl-hpa-status/pkg/hpa (blank import is enough) installs it via that package's init")
-	}
-	return analyzeFuncInstance(hpa, includeMetrics, opts)
-}
-
-// -------------------------------------------------------------------
-// Function pointer injections for HPA root package helpers
-// These allow simulate package to use hpa package functions without import cycles.
-// -------------------------------------------------------------------
-
-// MetricID is the canonical identity of one HPA metric.
-// This is a local copy to avoid import cycles with the hpa root package.
-type MetricID struct {
-	Type                autoscalingv2.MetricSourceType `json:"type" yaml:"type"`
-	Name                string                         `json:"name" yaml:"name"`
-	Container           string                         `json:"container,omitempty" yaml:"container,omitempty"`
-	Selector            string                         `json:"selector,omitempty" yaml:"selector,omitempty"`
-	DescribedObject     string                         `json:"describedObject,omitempty" yaml:"describedObject,omitempty"`
-	DescribedAPIVersion string                         `json:"describedApiVersion,omitempty" yaml:"describedApiVersion,omitempty"`
-}
-
-// ConditionScalingLimited is the HPA condition that reports whether
-// the HPA is unable to scale due to hitting maxReplicas.
-const ConditionScalingLimited = "ScalingLimited"
-
-// Function pointer types for hpa root package helpers
-type metricIDFromSpecFunc func(spec autoscalingv2.MetricSpec) (MetricID, error)
-type metricIDFromStatusFunc func(status autoscalingv2.MetricStatus) (MetricID, error)
-type currentMetricValueStatusFunc func(metric autoscalingv2.MetricStatus) (autoscalingv2.MetricValueStatus, bool)
-type hasMetricValueForTargetFunc func(v autoscalingv2.MetricValueStatus, targetType autoscalingv2.MetricTargetType) bool
-type metricImpactRatioFunc func(hpa *autoscalingv2.HorizontalPodAutoscaler, metric autoscalingv2.MetricStatus) (string, *float64)
-type estimatedDesiredForRatioFunc func(hpa *autoscalingv2.HorizontalPodAutoscaler, ratio float64) int32
-type matchingMetricTargetFunc func(hpa *autoscalingv2.HorizontalPodAutoscaler, current autoscalingv2.MetricStatus) (*autoscalingv2.MetricTarget, bool)
-type directionalToleranceFunc func(hpa *autoscalingv2.HorizontalPodAutoscaler, ratio float64) (float64, bool)
-type ratioWithinToleranceFunc func(hpa *autoscalingv2.HorizontalPodAutoscaler, ratio float64) (bool, float64)
-type toleranceDirectionFunc func(ratio float64, scaleUp, scaleDown *float64) string
-type effectiveDirectionalTolerancesFunc func(hpa *autoscalingv2.HorizontalPodAutoscaler) (scaleUp, scaleDown float64)
-
-// Function pointer variables
-var (
-	metricIDFromSpecFuncImpl               metricIDFromSpecFunc
-	metricIDFromStatusFuncImpl             metricIDFromStatusFunc
-	currentMetricValueStatusFuncImpl       currentMetricValueStatusFunc
-	hasMetricValueForTargetFuncImpl        hasMetricValueForTargetFunc
-	metricImpactRatioFuncImpl              metricImpactRatioFunc
-	estimatedDesiredForRatioFuncImpl       estimatedDesiredForRatioFunc
-	matchingMetricTargetFuncImpl           matchingMetricTargetFunc
-	directionalToleranceFuncImpl           directionalToleranceFunc
-	ratioWithinToleranceFuncImpl           ratioWithinToleranceFunc
-	toleranceDirectionFuncImpl             toleranceDirectionFunc
-	effectiveDirectionalTolerancesFuncImpl effectiveDirectionalTolerancesFunc
-)
-
-// SetMetricIDFromSpecFunc sets the MetricIDFromSpec function.
-func SetMetricIDFromSpecFunc(fn metricIDFromSpecFunc) {
-	metricIDFromSpecFuncImpl = fn
-}
-
-// SetMetricIDFromStatusFunc sets the MetricIDFromStatus function.
-func SetMetricIDFromStatusFunc(fn metricIDFromStatusFunc) {
-	metricIDFromStatusFuncImpl = fn
-}
-
-// SetCurrentMetricValueStatusFunc sets the currentMetricValueStatus function.
-func SetCurrentMetricValueStatusFunc(fn currentMetricValueStatusFunc) {
-	currentMetricValueStatusFuncImpl = fn
-}
-
-// SetHasMetricValueForTargetFunc sets the hasMetricValueForTarget function.
-func SetHasMetricValueForTargetFunc(fn hasMetricValueForTargetFunc) {
-	hasMetricValueForTargetFuncImpl = fn
-}
-
 // SetMetricImpactRatioFunc sets the metricImpactRatio function.
 func SetMetricImpactRatioFunc(fn metricImpactRatioFunc) {
 	metricImpactRatioFuncImpl = fn
 }
 
-// SetEstimatedDesiredForRatioFunc sets the estimatedDesiredForRatio function.
-func SetEstimatedDesiredForRatioFunc(fn estimatedDesiredForRatioFunc) {
-	estimatedDesiredForRatioFuncImpl = fn
-}
-
-// SetMatchingMetricTargetFunc sets the matchingMetricTarget function.
-func SetMatchingMetricTargetFunc(fn matchingMetricTargetFunc) {
-	matchingMetricTargetFuncImpl = fn
-}
-
-// SetDirectionalToleranceFunc sets the directionalTolerance function.
-func SetDirectionalToleranceFunc(fn directionalToleranceFunc) {
-	directionalToleranceFuncImpl = fn
-}
-
-// SetRatioWithinToleranceFunc sets the ratioWithinTolerance function.
-func SetRatioWithinToleranceFunc(fn ratioWithinToleranceFunc) {
-	ratioWithinToleranceFuncImpl = fn
-}
-
-// SetToleranceDirectionFunc sets the toleranceDirection function.
-func SetToleranceDirectionFunc(fn toleranceDirectionFunc) {
-	toleranceDirectionFuncImpl = fn
-}
-
-// SetEffectiveDirectionalTolerancesFunc sets the effectiveDirectionalTolerances function.
-func SetEffectiveDirectionalTolerancesFunc(fn effectiveDirectionalTolerancesFunc) {
-	effectiveDirectionalTolerancesFuncImpl = fn
-}
-
-// Invoker functions for convenience
-func metricIDFromSpecInvoker(spec autoscalingv2.MetricSpec) (MetricID, error) {
-	if metricIDFromSpecFuncImpl == nil {
-		panic("simulate: SetMetricIDFromSpecFunc must be called before using MetricIDFromSpec")
+// AnalysisFuncInvoker invokes the injected analysis function. It returns
+// ErrDependencyMissing instead of panicking when the hpa root package has not
+// been linked (and no SetAnalyzeFunc registration happened).
+func AnalysisFuncInvoker(hpa *autoscalingv2.HorizontalPodAutoscaler, includeMetrics bool, opts AnalysisOptions) (Analysis, error) {
+	if analyzeFuncInstance == nil {
+		return Analysis{}, fmt.Errorf("%w: analysis (import github.com/mattsu2020/kubectl-hpa-status/pkg/hpa or call SetAnalyzeFunc)", ErrDependencyMissing)
 	}
-	return metricIDFromSpecFuncImpl(spec)
+	return analyzeFuncInstance(hpa, includeMetrics, opts), nil
 }
 
-func metricIDFromStatusInvoker(status autoscalingv2.MetricStatus) (MetricID, error) {
-	if metricIDFromStatusFuncImpl == nil {
-		panic("simulate: SetMetricIDFromStatusFunc must be called before using MetricIDFromStatus")
-	}
-	return metricIDFromStatusFuncImpl(status)
-}
-
-func currentMetricValueStatusInvoker(metric autoscalingv2.MetricStatus) (autoscalingv2.MetricValueStatus, bool) {
-	if currentMetricValueStatusFuncImpl == nil {
-		panic("simulate: SetCurrentMetricValueStatusFunc must be called before using currentMetricValueStatus")
-	}
-	return currentMetricValueStatusFuncImpl(metric)
-}
-
-func hasMetricValueForTargetInvoker(v autoscalingv2.MetricValueStatus, targetType autoscalingv2.MetricTargetType) bool {
-	if hasMetricValueForTargetFuncImpl == nil {
-		panic("simulate: SetHasMetricValueForTargetFunc must be called before using hasMetricValueForTarget")
-	}
-	return hasMetricValueForTargetFuncImpl(v, targetType)
-}
-
-func metricImpactRatioInvoker(hpa *autoscalingv2.HorizontalPodAutoscaler, metric autoscalingv2.MetricStatus) (string, *float64) {
+func metricImpactRatioInvoker(hpa *autoscalingv2.HorizontalPodAutoscaler, metric autoscalingv2.MetricStatus) (string, *float64, error) {
 	if metricImpactRatioFuncImpl == nil {
-		panic("simulate: SetMetricImpactRatioFunc must be called before using metricImpactRatio")
+		return "", nil, fmt.Errorf("%w: metricImpactRatio (import github.com/mattsu2020/kubectl-hpa-status/pkg/hpa or call SetMetricImpactRatioFunc)", ErrDependencyMissing)
 	}
-	return metricImpactRatioFuncImpl(hpa, metric)
-}
-
-func estimatedDesiredForRatioInvoker(hpa *autoscalingv2.HorizontalPodAutoscaler, ratio float64) int32 {
-	if estimatedDesiredForRatioFuncImpl == nil {
-		panic("simulate: SetEstimatedDesiredForRatioFunc must be called before using estimatedDesiredForRatio")
-	}
-	return estimatedDesiredForRatioFuncImpl(hpa, ratio)
-}
-
-func matchingMetricTargetInvoker(hpa *autoscalingv2.HorizontalPodAutoscaler, current autoscalingv2.MetricStatus) (*autoscalingv2.MetricTarget, bool) {
-	if matchingMetricTargetFuncImpl == nil {
-		panic("simulate: SetMatchingMetricTargetFunc must be called before using matchingMetricTarget")
-	}
-	return matchingMetricTargetFuncImpl(hpa, current)
-}
-
-func directionalToleranceInvoker(hpa *autoscalingv2.HorizontalPodAutoscaler, ratio float64) (float64, bool) {
-	if directionalToleranceFuncImpl == nil {
-		panic("simulate: SetDirectionalToleranceFunc must be called before using directionalTolerance")
-	}
-	return directionalToleranceFuncImpl(hpa, ratio)
-}
-
-func ratioWithinToleranceInvoker(hpa *autoscalingv2.HorizontalPodAutoscaler, ratio float64) (bool, float64) {
-	if ratioWithinToleranceFuncImpl == nil {
-		panic("simulate: SetRatioWithinToleranceFunc must be called before using ratioWithinTolerance")
-	}
-	return ratioWithinToleranceFuncImpl(hpa, ratio)
-}
-
-func toleranceDirectionInvoker(ratio float64, scaleUp, scaleDown *float64) string {
-	if toleranceDirectionFuncImpl == nil {
-		panic("simulate: SetToleranceDirectionFunc must be called before using toleranceDirection")
-	}
-	return toleranceDirectionFuncImpl(ratio, scaleUp, scaleDown)
-}
-
-func effectiveDirectionalTolerancesInvoker(hpa *autoscalingv2.HorizontalPodAutoscaler) (scaleUp, scaleDown float64) {
-	if effectiveDirectionalTolerancesFuncImpl == nil {
-		panic("simulate: SetEffectiveDirectionalTolerancesFunc must be called before using effectiveDirectionalTolerances")
-	}
-	return effectiveDirectionalTolerancesFuncImpl(hpa)
+	name, ratio := metricImpactRatioFuncImpl(hpa, metric)
+	return name, ratio, nil
 }
 
 // SimulationResult holds the before/after comparison of an HPA simulation.

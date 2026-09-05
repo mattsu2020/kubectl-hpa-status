@@ -673,7 +673,9 @@ func TestRecomputeSimulatedDesiredRequiresOneToOneCanonicalMetricsForDownscale(t
 	if !hasOneToOneCanonicalMetricStatus(base) {
 		t.Fatal("selector-distinct complete metric set must be recognized as one-to-one")
 	}
-	recomputeSimulatedDesired(base)
+	if err := recomputeSimulatedDesired(base); err != nil {
+		t.Fatal(err)
+	}
 	if base.Status.DesiredReplicas != 5 {
 		t.Fatalf("complete metric set projected desiredReplicas = %d, want 5", base.Status.DesiredReplicas)
 	}
@@ -684,7 +686,9 @@ func TestRecomputeSimulatedDesiredRequiresOneToOneCanonicalMetricsForDownscale(t
 	if hasOneToOneCanonicalMetricStatus(duplicate) {
 		t.Fatal("duplicate status identity must not satisfy a selector-distinct spec metric")
 	}
-	recomputeSimulatedDesired(duplicate)
+	if err := recomputeSimulatedDesired(duplicate); err != nil {
+		t.Fatal(err)
+	}
 	if duplicate.Status.DesiredReplicas != duplicate.Status.CurrentReplicas {
 		t.Fatalf(
 			"duplicate/missing identity projected downscale to %d, want conservative hold at %d",
@@ -703,7 +707,9 @@ func TestRecomputeSimulatedDesiredRequiresOneToOneCanonicalMetricsForDownscale(t
 	if hasOneToOneCanonicalMetricStatus(malformed) {
 		t.Fatal("malformed current metric selector must fail the canonical completeness check")
 	}
-	recomputeSimulatedDesired(malformed)
+	if err := recomputeSimulatedDesired(malformed); err != nil {
+		t.Fatal(err)
+	}
 	if malformed.Status.DesiredReplicas != malformed.Status.CurrentReplicas {
 		t.Fatalf(
 			"malformed identity projected downscale to %d, want conservative hold at %d",
@@ -719,7 +725,9 @@ func TestRecomputeSimulatedDesiredRequiresOneToOneCanonicalMetricsForDownscale(t
 	if hasOneToOneCanonicalMetricStatus(wrongShape) {
 		t.Fatal("status value for a different target type must fail the completeness check")
 	}
-	recomputeSimulatedDesired(wrongShape)
+	if err := recomputeSimulatedDesired(wrongShape); err != nil {
+		t.Fatal(err)
+	}
 	if wrongShape.Status.DesiredReplicas != wrongShape.Status.CurrentReplicas {
 		t.Fatalf(
 			"wrong target shape projected downscale to %d, want conservative hold at %d",
@@ -744,7 +752,9 @@ func TestRecomputeSimulatedDesiredBlocksDownscaleWithoutMetricEvidence(t *testin
 	}}
 	hpa.Status.CurrentMetrics = nil
 
-	recomputeSimulatedDesired(hpa)
+	if err := recomputeSimulatedDesired(hpa); err != nil {
+		t.Fatal(err)
+	}
 
 	if hpa.Status.DesiredReplicas != hpa.Status.CurrentReplicas {
 		t.Fatalf(

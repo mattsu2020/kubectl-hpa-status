@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/metricidentity"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/simulate"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -307,16 +308,7 @@ func isMetricValueZero(spec autoscalingv2.MetricSpec, currentMetrics []autoscali
 }
 
 func hasMetricValueForTarget(v autoscalingv2.MetricValueStatus, targetType autoscalingv2.MetricTargetType) bool {
-	switch targetType {
-	case autoscalingv2.UtilizationMetricType:
-		return v.AverageUtilization != nil
-	case autoscalingv2.AverageValueMetricType:
-		return v.AverageValue != nil
-	case autoscalingv2.ValueMetricType:
-		return v.Value != nil
-	default:
-		return false
-	}
+	return metricidentity.HasValueForTarget(v, targetType)
 }
 
 func isMetricValueForTargetZero(v autoscalingv2.MetricValueStatus, targetType autoscalingv2.MetricTargetType) bool {

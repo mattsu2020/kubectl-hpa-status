@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/tolerance"
+
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
@@ -75,7 +77,7 @@ var simulationOverrideDefinitions = map[string]simulationOverrideDefinition{
 	"tolerance": {Name: "tolerance", Apply: func(hpa *autoscalingv2.HorizontalPodAutoscaler, value string) error {
 		return applyToleranceOverride(hpa, "both", value)
 	}, Original: func(hpa *autoscalingv2.HorizontalPodAutoscaler) string {
-		up, down := effectiveDirectionalTolerancesInvoker(hpa)
+		up, down := tolerance.EffectiveDirectionalTolerances(hpa)
 		return fmt.Sprintf("scaleUp=%.3g,scaleDown=%.3g", up, down)
 	}},
 	"scaleup.tolerance": {Name: "scaleUp.tolerance", Apply: func(hpa *autoscalingv2.HorizontalPodAutoscaler, value string) error {

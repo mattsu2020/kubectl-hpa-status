@@ -4,11 +4,14 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/metricidentity"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/tolerance"
+
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 )
 
-func recomputeSimulatedDesired(hpa *autoscalingv2.HorizontalPodAutoscaler) {
+func recomputeSimulatedDesired(hpa *autoscalingv2.HorizontalPodAutoscaler) error {
 	minReplicas := int32(1)
 	if hpa.Spec.MinReplicas != nil {
 		minReplicas = *hpa.Spec.MinReplicas
@@ -20,10 +23,13 @@ func recomputeSimulatedDesired(hpa *autoscalingv2.HorizontalPodAutoscaler) {
 		replaceSimulatedScalingActive(hpa, corev1.ConditionFalse, "ScalingDisabled",
 			"scaling is disabled because the target was manually scaled to zero")
 		replaceSimulatedControllerConditions(hpa, false, "DesiredWithinRange")
-		return
+		return nil
 	}
 
-	desired, found := simulatedDesiredFromMetrics(hpa)
+	desired, found, err := simulatedDesiredFromMetrics(hpa)
+	if err != nil {
+		return err
+	}
 	if !found {
 		desired = hpa.Status.DesiredReplicas
 	}
@@ -50,6 +56,7 @@ func recomputeSimulatedDesired(hpa *autoscalingv2.HorizontalPodAutoscaler) {
 			"the projected replica count was calculated from visible metric data")
 	}
 	replaceSimulatedControllerConditions(hpa, limited, limitedReason)
+	return nil
 }
 
 // hasOneToOneCanonicalMetricStatus reports whether every spec metric has
@@ -62,10 +69,10 @@ func hasOneToOneCanonicalMetricStatus(hpa *autoscalingv2.HorizontalPodAutoscaler
 		return false
 	}
 
-	specTargets := make(map[MetricID]autoscalingv2.MetricTargetType, len(hpa.Spec.Metrics))
+	specTargets := make(map[metricidentity.MetricID]autoscalingv2.MetricTargetType, len(hpa.Spec.Metrics))
 	for i := range hpa.Spec.Metrics {
 		spec := &hpa.Spec.Metrics[i]
-		id, err := metricIDFromSpecInvoker(*spec)
+		id, err := metricidentity.MetricIDFromSpec(*spec)
 		if err != nil {
 			return false
 		}
@@ -79,9 +86,9 @@ func hasOneToOneCanonicalMetricStatus(hpa *autoscalingv2.HorizontalPodAutoscaler
 		specTargets[id] = target.Type
 	}
 
-	statusIDs := make(map[MetricID]struct{}, len(hpa.Status.CurrentMetrics))
+	statusIDs := make(map[metricidentity.MetricID]struct{}, len(hpa.Status.CurrentMetrics))
 	for _, current := range hpa.Status.CurrentMetrics {
-		id, err := metricIDFromStatusInvoker(current)
+		id, err := metricidentity.MetricIDFromStatus(current)
 		if err != nil {
 			return false
 		}
@@ -92,8 +99,8 @@ func hasOneToOneCanonicalMetricStatus(hpa *autoscalingv2.HorizontalPodAutoscaler
 		if !specified {
 			return false
 		}
-		value, ok := currentMetricValueStatusInvoker(current)
-		if !ok || !hasMetricValueForTargetInvoker(value, targetType) {
+		value, ok := metricidentity.CurrentMetricValueStatus(current)
+		if !ok || !metricidentity.HasValueForTarget(value, targetType) {
 			return false
 		}
 		statusIDs[id] = struct{}{}
@@ -107,11 +114,14 @@ func hasOneToOneCanonicalMetricStatus(hpa *autoscalingv2.HorizontalPodAutoscaler
 	return true
 }
 
-func simulatedDesiredFromMetrics(hpa *autoscalingv2.HorizontalPodAutoscaler) (int32, bool) {
+func simulatedDesiredFromMetrics(hpa *autoscalingv2.HorizontalPodAutoscaler) (int32, bool, error) {
 	var desired int32
 	found := false
 	for _, metric := range hpa.Status.CurrentMetrics {
-		_, ratio := metricImpactRatioInvoker(hpa, metric)
+		_, ratio, err := metricImpactRatioInvoker(hpa, metric)
+		if err != nil {
+			return 0, false, err
+		}
 		if ratio == nil || math.IsNaN(*ratio) || math.IsInf(*ratio, 0) || *ratio < 0 {
 			continue
 		}
@@ -124,7 +134,7 @@ func simulatedDesiredFromMetrics(hpa *autoscalingv2.HorizontalPodAutoscaler) (in
 			found = true
 		}
 	}
-	return desired, found
+	return desired, found, nil
 }
 
 func estimatedSimulatedMetricDesired(
@@ -133,7 +143,7 @@ func estimatedSimulatedMetricDesired(
 	ratio float64,
 ) (int32, bool) {
 	if hpa.Status.CurrentReplicas != 0 {
-		return estimatedDesiredForRatioInvoker(hpa, ratio), true
+		return tolerance.EstimatedDesiredForRatio(hpa, ratio), true
 	}
 
 	// At zero replicas, the controller's Object/External Value algorithm uses
@@ -144,7 +154,7 @@ func estimatedSimulatedMetricDesired(
 		metric.Type != autoscalingv2.ExternalMetricSourceType {
 		return 0, false
 	}
-	target, ok := matchingMetricTargetInvoker(hpa, metric)
+	target, ok := metricidentity.MatchingTarget(hpa, metric)
 	if !ok || target.Type != autoscalingv2.ValueMetricType || target.Value == nil {
 		return 0, false
 	}
@@ -168,7 +178,10 @@ func validateSimulatedZeroProjection(hpa *autoscalingv2.HorizontalPodAutoscaler)
 		return nil
 	}
 	for _, metric := range hpa.Status.CurrentMetrics {
-		_, ratio := metricImpactRatioInvoker(hpa, metric)
+		_, ratio, err := metricImpactRatioInvoker(hpa, metric)
+		if err != nil {
+			return err
+		}
 		if ratio == nil || math.IsNaN(*ratio) || math.IsInf(*ratio, 0) || *ratio < 0 {
 			continue
 		}

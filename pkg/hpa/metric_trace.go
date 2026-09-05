@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
+
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/tolerance"
 )
 
 // BuildMetricDecisionTrace builds a comprehensive per-metric analysis trace
@@ -155,13 +157,7 @@ func winnerHiddenByControllerState(hpa *autoscalingv2.HorizontalPodAutoscaler) b
 }
 
 func toleranceDirection(ratio float64) string {
-	if ratio > 1 {
-		return "scaleUp"
-	}
-	if ratio < 1 {
-		return "scaleDown"
-	}
-	return "effective"
+	return tolerance.ToleranceDirection(ratio)
 }
 
 // buildStabilizationEffect checks whether scale-down stabilization is active
