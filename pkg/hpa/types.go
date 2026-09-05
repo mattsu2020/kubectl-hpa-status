@@ -164,6 +164,22 @@ type Analysis struct {
 	// losing score through zero-value clamping. It is excluded from the wire
 	// model.
 	dynamicHealthBaseline *dynamicHealthBaseline
+
+	// toleranceAssumptions records the effective per-direction tolerance values
+	// the decision calculations used, so the assumptions phase reports the
+	// configured values instead of assuming the controller default. It is
+	// captured during the analysis pipeline and excluded from the wire model.
+	toleranceAssumptions *directionalToleranceAssumptions
+}
+
+// directionalToleranceAssumptions pairs the effective tolerance value for each
+// scaling direction with whether that direction was explicitly configured on
+// the HPA spec.
+type directionalToleranceAssumptions struct {
+	scaleUpValue      float64
+	scaleDownValue    float64
+	scaleUpFromSpec   bool
+	scaleDownFromSpec bool
 }
 
 // HiddenDecisionFactor describes a partially visible HPA decision input such
