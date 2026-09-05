@@ -78,6 +78,12 @@ func redactStructuredValue(value any, parentKey string) {
 				typed[key] = redactStructuredFieldValue(child)
 				continue
 			}
+			if nodeRedactableField(normalized, parentKey) {
+				if text, ok := child.(string); ok && text != "" {
+					typed[key] = "[REDACTED-NODE]"
+					continue
+				}
+			}
 			if text, ok := child.(string); ok {
 				typed[key] = redactSensitiveString(text)
 				continue
@@ -193,6 +199,31 @@ var redactedKeyMarkers = []string{
 	"clientkey", "privatekey", "credential",
 }
 
+// nodeFieldKeys marks field names whose string value carries a node or host
+// identity. Unlike cloud hostnames ("ip-…", "gke-…"), self-managed node names
+// such as "worker-private-01" have no recognizable textual pattern, so they
+// must be redacted per field rather than per token.
+var nodeFieldKeys = map[string]bool{
+	"nodename": true,
+	"hostname": true,
+}
+
+// nodeFieldParentKeys restricts generic host-ish keys to the parents where the
+// value is known to be a node name (e.g. Event.source.host), so DNS names in
+// unrelated fields keep their diagnostic value.
+var nodeFieldParentKeys = map[string]bool{
+	"source": true,
+}
+
+// nodeRedactableField reports whether the field's value is a node identity
+// that must be replaced field-by-field.
+func nodeRedactableField(key, parentKey string) bool {
+	if nodeFieldKeys[key] {
+		return true
+	}
+	return key == "host" && nodeFieldParentKeys[parentKey]
+}
+
 func shouldRedactStructuredField(key, parentKey string) bool {
 	if redactedParentKeys[parentKey] || redactedFieldKeys[key] {
 		return true
@@ -233,9 +264,18 @@ func redactStructuredFieldValue(value any) any {
 // redactIPAddresses replaces complete IPv4 and IPv6 tokens. net.ParseIP is
 // deliberately used instead of a permissive regular expression: support
 // bundles often contain versions and quantities that look address-like.
+// Bracketed IPv6 literals ("[2001:db8::1]:443") are redacted including the
+// brackets so the trailing port stays attached to the placeholder.
 func redactIPAddresses(s string) string {
 	var result strings.Builder
 	for i := 0; i < len(s); {
+		if s[i] == '[' {
+			if end := strings.IndexByte(s[i+1:], ']'); end >= 0 && end <= 45 && net.ParseIP(s[i+1:i+1+end]) != nil {
+				result.WriteString("[REDACTED-IP]")
+				i += end + 2
+				continue
+			}
+		}
 		if !isIPTokenChar(s[i]) {
 			result.WriteByte(s[i])
 			i++
@@ -245,15 +285,52 @@ func redactIPAddresses(s string) string {
 		for j < len(s) && isIPTokenChar(s[j]) {
 			j++
 		}
-		candidate := s[i:j]
-		if net.ParseIP(candidate) != nil {
-			result.WriteString("[REDACTED-IP]")
-		} else {
-			result.WriteString(candidate)
-		}
+		result.WriteString(redactAddressToken(s[i:j]))
 		i = j
 	}
 	return result.String()
+}
+
+// redactAddressToken rewrites one address-shaped token. Bare IP addresses
+// become [REDACTED-IP]; "host:port" pairs keep the port so a redacted bundle
+// still shows the service shape, e.g. http://[REDACTED-IP]:8080/health.
+func redactAddressToken(token string) string {
+	if net.ParseIP(token) != nil {
+		return "[REDACTED-IP]"
+	}
+	if _, port, ok := splitIPTokenHostPort(token); ok {
+		return "[REDACTED-IP]" + port
+	}
+	return token
+}
+
+// splitIPTokenHostPort splits a trailing numeric :port suffix when the head
+// parses as an IP address. Tokens that fail the split (bare IPv6 literals,
+// timestamps such as 12:30:45, arbitrary hex words) are left untouched so the
+// caller keeps the ParseIP-driven behaviour.
+func splitIPTokenHostPort(token string) (host, port string, ok bool) {
+	idx := strings.LastIndexByte(token, ':')
+	if idx <= 0 || idx == len(token)-1 {
+		return "", "", false
+	}
+	host, port = token[:idx], token[idx:]
+	if net.ParseIP(host) == nil || !isDecimalPort(port[1:]) {
+		return "", "", false
+	}
+	return host, port, true
+}
+
+// isDecimalPort reports whether s looks like a TCP/UDP port number.
+func isDecimalPort(s string) bool {
+	if len(s) == 0 || len(s) > 5 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func isIPTokenChar(c byte) bool {
@@ -269,6 +346,9 @@ func redactNodeNames(s string) string {
 		"Node: ", "Node: [REDACTED-NODE]",
 		"node=", "node=[REDACTED-NODE]",
 		"NodeName: ", "NodeName: [REDACTED-NODE]",
+		"nodeName: ", "nodeName: [REDACTED-NODE]",
+		"nodename: ", "nodename: [REDACTED-NODE]",
+		"nodeName=", "nodeName=[REDACTED-NODE]",
 	}
 	for i := 0; i < len(replacements); i += 2 {
 		s = replaceAfterKeyword(s, replacements[i], replacements[i+1])
@@ -296,6 +376,13 @@ func replaceAfterKeyword(s, keyword, _ string) string {
 			// Empty value: retain the keyword and continue after it to avoid an
 			// infinite loop.
 			remaining = remaining[start:]
+			continue
+		}
+		if strings.HasPrefix(remaining[start:], "[REDACTED") {
+			// Already-redacted placeholder: keep it verbatim. Rewriting it would
+			// truncate at the placeholder's own ']' and double the bracket.
+			result.WriteString(remaining[start:end])
+			remaining = remaining[end:]
 			continue
 		}
 		result.WriteString("[REDACTED-NODE]")
