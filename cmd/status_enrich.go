@@ -334,6 +334,8 @@ func recordHealthSnapshotAndTrend(_ context.Context, opts *options, hpa *autosca
 	}
 	recorder := history.NewRecorder(store, nil)
 	result := recorder.RecordAndAnalyze(history.RecordInput{
+		Cluster:         kube.ClusterIdentity(opts.KubeOptions()),
+		UID:             string(hpa.UID),
 		Namespace:       hpa.Namespace,
 		Name:            hpa.Name,
 		HealthScore:     report.Analysis.Decision.HealthScore,

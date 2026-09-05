@@ -25,7 +25,7 @@ const (
 // This is a simplified linear projection — the actual HPA controller behavior
 // depends on many factors including metric freshness, evaluation intervals,
 // and stabilization windows.
-func ProjectReplicaTrajectory(original, modified *autoscalingv2.HorizontalPodAutoscaler, opts SimulationExtendedOptions) []ProjectedState {
+func ProjectReplicaTrajectory(original, modified *autoscalingv2.HorizontalPodAutoscaler, opts SimulationExtendedOptions) ([]ProjectedState, error) {
 	duration := opts.DurationSeconds
 	if duration <= 0 {
 		duration = defaultProjectionDurationSeconds
@@ -49,7 +49,10 @@ func ProjectReplicaTrajectory(original, modified *autoscalingv2.HorizontalPodAut
 
 	// Compute starting and ending replica estimates.
 	startReplicas := original.Status.DesiredReplicas
-	endReplicas := computeEndReplicas(original, modified)
+	endReplicas, err := computeEndReplicas(original, modified)
+	if err != nil {
+		return nil, err
+	}
 
 	// Compute effective stabilization delay.
 	stabilizationDelay := computeStabilizationDelay(modified)
@@ -77,14 +80,17 @@ func ProjectReplicaTrajectory(original, modified *autoscalingv2.HorizontalPodAut
 		})
 	}
 
-	return states
+	return states, nil
 }
 
 // computeEndReplicas estimates the final replica count after the modified HPA
 // parameters take effect.
-func computeEndReplicas(_, modified *autoscalingv2.HorizontalPodAutoscaler) int32 {
-	modifiedAnalysis := AnalysisFuncInvoker(modified, false, AnalysisOptions{})
-	return modifiedAnalysis.Desired
+func computeEndReplicas(_, modified *autoscalingv2.HorizontalPodAutoscaler) (int32, error) {
+	modifiedAnalysis, err := AnalysisFuncInvoker(modified, false, AnalysisOptions{})
+	if err != nil {
+		return 0, err
+	}
+	return modifiedAnalysis.Desired, nil
 }
 
 // computeStabilizationDelay returns the stabilization delay in seconds from

@@ -153,10 +153,13 @@ func TestProjectReplicaTrajectory(t *testing.T) {
 	original := buildTestHPAWithResourceMetric(5, 5, 1, 10, 50, 80)
 	modified := buildTestHPAWithResourceMetric(5, 5, 1, 20, 50, 80)
 
-	states := ProjectReplicaTrajectory(original, modified, SimulationExtendedOptions{
+	states, err := ProjectReplicaTrajectory(original, modified, SimulationExtendedOptions{
 		DurationSeconds: 300,
 		StepSeconds:     60,
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if len(states) < 5 {
 		t.Errorf("expected at least 5 states, got %d", len(states))

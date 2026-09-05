@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/tolerance"
+
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
 // buildMetricSimulation creates a MetricSimulation for a single override.
-func buildMetricSimulation(original, modified *autoscalingv2.HorizontalPodAutoscaler, name, value string, _, after SimulationState) MetricSimulation {
+func buildMetricSimulation(original, modified *autoscalingv2.HorizontalPodAutoscaler, name, value string, _, after SimulationState) (MetricSimulation, error) {
 	ms := MetricSimulation{
 		MetricName:        name,
 		SimulatedValue:    value,
@@ -21,25 +23,28 @@ func buildMetricSimulation(original, modified *autoscalingv2.HorizontalPodAutosc
 	if specErr != nil {
 		if errors.Is(specErr, ErrMetricAmbiguous) {
 			ms.OriginalValue = "<ambiguous metric name>"
-			return ms
+			return ms, nil
 		}
 		ms.OriginalValue = "<not found>"
-		return ms
+		return ms, nil
 	}
 
 	idx, currentErr := findCurrentMetricForSpec(original, spec)
 	if currentErr != nil || idx < 0 {
 		ms.OriginalValue = "<no current value>"
-		return ms
+		return ms, nil
 	}
 
 	ms.OriginalValue = formatMetricValue(original.Status.CurrentMetrics[idx], spec.Type)
 
 	modifiedIdx, modifiedErr := findCurrentMetricForSpec(modified, spec)
 	if modifiedErr != nil || modifiedIdx < 0 {
-		return ms
+		return ms, nil
 	}
-	_, ratio := metricImpactRatioInvoker(modified, modified.Status.CurrentMetrics[modifiedIdx])
+	_, ratio, ratioErr := metricImpactRatioInvoker(modified, modified.Status.CurrentMetrics[modifiedIdx])
+	if ratioErr != nil {
+		return ms, ratioErr
+	}
 	if ratio != nil {
 		ms.ProjectedRatio = ratio
 		projected, projectable := estimatedSimulatedMetricDesired(
@@ -48,7 +53,7 @@ func buildMetricSimulation(original, modified *autoscalingv2.HorizontalPodAutosc
 			*ratio,
 		)
 		if !projectable {
-			return ms
+			return ms, nil
 		}
 		minReplicas := int32(1)
 		if modified.Spec.MinReplicas != nil {
@@ -61,18 +66,18 @@ func buildMetricSimulation(original, modified *autoscalingv2.HorizontalPodAutosc
 			modified.Spec.MaxReplicas,
 		)
 		ms.ProjectedReplicas = projected
-		within, tolerance := ratioWithinToleranceInvoker(modified, *ratio)
+		within, toleranceValue := tolerance.RatioWithinTolerance(modified, *ratio)
 		if within {
-			ms.ToleranceImpact = fmt.Sprintf("%s tolerance %.3f suppresses scaling", toleranceDirectionInvoker(*ratio, nil, nil), tolerance)
+			ms.ToleranceImpact = fmt.Sprintf("%s tolerance %.3f suppresses scaling", tolerance.ToleranceDirection(*ratio), toleranceValue)
 		} else {
-			ms.ToleranceImpact = fmt.Sprintf("outside %s tolerance %.3f", toleranceDirectionInvoker(*ratio, nil, nil), tolerance)
+			ms.ToleranceImpact = fmt.Sprintf("outside %s tolerance %.3f", tolerance.ToleranceDirection(*ratio), toleranceValue)
 		}
 	}
 	if strings.HasPrefix(value, "+") || strings.HasPrefix(value, "-") {
 		ms.SimulatedValue = formatMetricValue(modified.Status.CurrentMetrics[modifiedIdx], spec.Type)
 	}
 
-	return ms
+	return ms, nil
 }
 
 // formatMetricValue returns a display string for a current metric value.

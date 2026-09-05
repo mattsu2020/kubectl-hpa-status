@@ -239,10 +239,14 @@ func buildListItems(ctx context.Context, opts *options, hpas []autoscalingv2.Hor
 	})
 
 	var items []hpaanalysis.ListItem
-	for _, result := range results {
+	// History streams are keyed per cluster + HPA UID so switching contexts or
+	// recreating an HPA never mixes generations (AnalyzeBatch results align
+	// index-for-index with hpas).
+	clusterIdentity := kube.ClusterIdentity(opts.KubeOptions())
+	for i, result := range results {
 		analysis := result.Analysis
 		if recorder != nil {
-			attachHealthTrend(recorder, &analysis, opts.TrendSince, opts.TrendRetain)
+			attachHealthTrend(recorder, &analysis, clusterIdentity, string(hpas[i].UID), opts.TrendSince, opts.TrendRetain)
 		}
 		item := hpaanalysis.NewListItem(analysis)
 		if matchesListFilter(item, filter) && matchesHealthScoreRange(item, opts.HealthScoreMin, effectiveHealthScoreMax(opts)) {
@@ -252,11 +256,13 @@ func buildListItems(ctx context.Context, opts *options, hpas []autoscalingv2.Hor
 	return items
 }
 
-func attachHealthTrend(recorder *history.Recorder, analysis *hpaanalysis.Analysis, since, retention time.Duration) {
+func attachHealthTrend(recorder *history.Recorder, analysis *hpaanalysis.Analysis, cluster, uid string, since, retention time.Duration) {
 	if recorder == nil || analysis == nil {
 		return
 	}
 	result := recorder.RecordAndAnalyze(history.RecordInput{
+		Cluster:         cluster,
+		UID:             uid,
 		Namespace:       analysis.Meta.Namespace,
 		Name:            analysis.Meta.Name,
 		HealthScore:     analysis.Decision.HealthScore,

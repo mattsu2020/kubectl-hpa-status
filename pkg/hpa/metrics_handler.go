@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/core"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/metricidentity"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -127,24 +128,11 @@ func metricDisplayName(metric autoscalingv2.MetricStatus) string {
 // status. Keeping this type switch next to the handler registry prevents
 // decision tracing and freshness analysis from maintaining their own copies.
 func currentMetricValueStatus(metric autoscalingv2.MetricStatus) (autoscalingv2.MetricValueStatus, bool) {
-	descriptor, err := MetricDescriptorFromStatus(metric)
-	if err == nil && descriptor.Current != nil {
-		return *descriptor.Current, true
-	}
-	return autoscalingv2.MetricValueStatus{}, false
+	return metricidentity.CurrentMetricValueStatus(metric)
 }
 
 func matchingMetricTarget(hpa *autoscalingv2.HorizontalPodAutoscaler, current autoscalingv2.MetricStatus) (*autoscalingv2.MetricTarget, bool) {
-	for i := range hpa.Spec.Metrics {
-		spec := &hpa.Spec.Metrics[i]
-		if metricIdentityMatches(*spec, current) {
-			descriptor, err := MetricDescriptorFromSpec(*spec)
-			if err == nil && descriptor.Target != nil {
-				return descriptor.Target, true
-			}
-		}
-	}
-	return nil, false
+	return metricidentity.MatchingTarget(hpa, current)
 }
 
 // specMetricSelector returns the formatted selector string for a spec metric,

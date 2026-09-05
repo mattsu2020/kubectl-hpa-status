@@ -6,7 +6,6 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/confidence"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/churn"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/tolerance"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
@@ -172,6 +171,22 @@ func correlateStabilizationChurn(a Analysis) Analysis {
 	return a
 }
 
+// captureDirectionalTolerances records the effective per-direction tolerance
+// values the decision calculations use, so the assumptions phase reports the
+// configured values (with their source) instead of always printing the
+// controller default.
+func captureDirectionalTolerances(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler) Analysis {
+	scaleUpConfigured, scaleDownConfigured := configuredDirectionalTolerances(src)
+	scaleUp, scaleDown := effectiveDirectionalTolerances(src)
+	a.toleranceAssumptions = &directionalToleranceAssumptions{
+		scaleUpValue:      scaleUp,
+		scaleDownValue:    scaleDown,
+		scaleUpFromSpec:   scaleUpConfigured != nil,
+		scaleDownFromSpec: scaleDownConfigured != nil,
+	}
+	return a
+}
+
 // FinalizeAnalysis applies post-enrichment derivations that depend on fields
 // populated after the initial AnalyzeWithOptions pass. ChurnAnalysis, for
 // example, is built from Events in the cmd layer, so the stabilization/churn
@@ -189,18 +204,16 @@ func FinalizeAnalysis(a Analysis) Analysis {
 func collectAssumptions(a Analysis) Analysis {
 	// Finalization may be invoked by more than one workflow layer. Rebuild the
 	// assumptions owned by this phase instead of appending duplicates.
-	assumptions := make([]Assumption, 0, len(a.Actions.Assumptions)+2)
+	assumptions := make([]Assumption, 0, len(a.Actions.Assumptions)+3)
 	for _, assumption := range a.Actions.Assumptions {
-		if assumption.Name != "tolerance" && assumption.Name != "stabilizationRemaining" {
+		if assumption.Name != "tolerance" &&
+			assumption.Name != assumptionToleranceScaleUp &&
+			assumption.Name != assumptionToleranceScaleDown &&
+			assumption.Name != "stabilizationRemaining" {
 			assumptions = append(assumptions, assumption)
 		}
 	}
-	assumptions = append(assumptions, Assumption{
-		Name:       "tolerance",
-		Value:      fmt.Sprintf("%g", tolerance.DefaultTolerance),
-		Source:     "assumed-controller-default",
-		Confidence: "medium",
-	})
+	assumptions = append(assumptions, toleranceAssumptionEntries(a)...)
 	if a.Conditions.StabilizationRemaining != nil && *a.Conditions.StabilizationRemaining > 0 {
 		assumptions = append(assumptions, Assumption{
 			Name:       "stabilizationRemaining",
@@ -211,6 +224,45 @@ func collectAssumptions(a Analysis) Analysis {
 	}
 	a.Actions.Assumptions = assumptions
 	return a
+}
+
+// Assumption names emitted for the per-direction tolerance.
+const (
+	assumptionToleranceScaleUp   = "toleranceScaleUp"
+	assumptionToleranceScaleDown = "toleranceScaleDown"
+)
+
+// toleranceAssumptionEntries emits one assumption per scaling direction. The
+// value is what the calculations actually use for that direction (see
+// captureDirectionalTolerances); a direction left unconfigured on the HPA
+// falls back to the controller default and is labeled as assumed.
+func toleranceAssumptionEntries(a Analysis) []Assumption {
+	captured := a.toleranceAssumptions
+	if captured == nil {
+		// Analysis built outside the pipeline: only the default is known.
+		return []Assumption{
+			assumptionEntry(assumptionToleranceScaleUp, defaultTolerance, false),
+			assumptionEntry(assumptionToleranceScaleDown, defaultTolerance, false),
+		}
+	}
+	return []Assumption{
+		assumptionEntry(assumptionToleranceScaleUp, captured.scaleUpValue, captured.scaleUpFromSpec),
+		assumptionEntry(assumptionToleranceScaleDown, captured.scaleDownValue, captured.scaleDownFromSpec),
+	}
+}
+
+func assumptionEntry(name string, value float64, fromSpec bool) Assumption {
+	entry := Assumption{
+		Name:       name,
+		Value:      fmt.Sprintf("%.3g", value),
+		Source:     "assumed-controller-default",
+		Confidence: "medium",
+	}
+	if fromSpec {
+		entry.Source = "hpa.spec"
+		entry.Confidence = "high"
+	}
+	return entry
 }
 
 // attachDebug adds verbose debug lines when enabled.

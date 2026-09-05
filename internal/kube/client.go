@@ -218,6 +218,25 @@ func resolveNamespaceAndRestConfig(opts Options) (string, *restclient.Config, er
 	return namespace, restConfig, nil
 }
 
+// ClusterIdentity returns a stable local identifier for the cluster the
+// Options point at: an explicit --cluster / --context flag when set, otherwise
+// the kubeconfig current-context name, otherwise "default". Local persistence
+// keyed by this identifier (e.g. health history) must include it so switching
+// kubeconfig contexts never merges two clusters' data; it identifies the
+// *local view* of the cluster, not the cluster itself.
+func ClusterIdentity(opts Options) string {
+	if opts.Cluster != "" {
+		return opts.Cluster
+	}
+	if opts.Context != "" {
+		return opts.Context
+	}
+	if raw, err := deferredClientConfig(opts).RawConfig(); err == nil && raw.CurrentContext != "" {
+		return raw.CurrentContext
+	}
+	return "default"
+}
+
 // CRDAvailability holds the results of a one-time CRD availability check.
 // KEDError / VPAError carry the discovery error (if any) for each source so
 // callers can distinguish "CRD is simply absent" (nil error) from "discovery

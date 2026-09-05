@@ -44,6 +44,31 @@ func TestRedactString(t *testing.T) {
 			want: "addr [REDACTED-IP] end",
 		},
 		{
+			name: "ipv4 with port in url",
+			in:   "endpoint http://10.0.0.1:8080/health monitored",
+			want: "endpoint http://[REDACTED-IP]:8080/health monitored",
+		},
+		{
+			name: "bare ipv4 with port",
+			in:   "server 10.0.0.1:8080 up",
+			want: "server [REDACTED-IP]:8080 up",
+		},
+		{
+			name: "bracketed ipv6 with port",
+			in:   "dial [2001:db8::1]:443 failed",
+			want: "dial [REDACTED-IP]:443 failed",
+		},
+		{
+			name: "clock-like colon groups untouched",
+			in:   "started at 12:30:45 exactly",
+			want: "started at 12:30:45 exactly",
+		},
+		{
+			name: "portless invalid address untouched",
+			in:   "word de:ad:beef:cafe stays",
+			want: "word de:ad:beef:cafe stays",
+		},
+		{
 			name: "node name after keyword",
 			in:   "node: worker-1\nrest",
 			want: "node: [REDACTED-NODE]\nrest",
@@ -92,14 +117,51 @@ func TestRedactString(t *testing.T) {
 
 func TestRedactString_RedactsEveryNodeOccurrence(t *testing.T) {
 	t.Parallel()
-	got := RedactString("node: worker-a, node: worker-b\nNodeName: worker-c")
-	for _, leaked := range []string{"worker-a", "worker-b", "worker-c"} {
+	got := RedactString("node: worker-a, node: worker-b\nNodeName: worker-c\nnodeName: worker-d")
+	for _, leaked := range []string{"worker-a", "worker-b", "worker-c", "worker-d"} {
 		if strings.Contains(got, leaked) {
 			t.Fatalf("node name %q leaked in %q", leaked, got)
 		}
 	}
-	if count := strings.Count(got, "[REDACTED-NODE]"); count != 3 {
-		t.Fatalf("redacted node count = %d, want 3: %q", count, got)
+	if count := strings.Count(got, "[REDACTED-NODE]"); count != 4 {
+		t.Fatalf("redacted node count = %d, want 4: %q", count, got)
+	}
+}
+
+// TestRedactStructuredBytes_RedactsNodeIdentity locks in field-level node
+// redaction: self-managed node names (e.g. "worker-private-01") carry no
+// recognizable textual pattern, so spec.nodeName and Event.source.host must be
+// replaced per field. DNS names in unrelated fields keep their diagnostic
+// value so the bundle stays useful for troubleshooting.
+func TestRedactStructuredBytes_RedactsNodeIdentity(t *testing.T) {
+	t.Parallel()
+	input := []byte(`spec:
+  nodeName: worker-private-01
+  livenessProbe:
+    httpGet:
+      url: http://10.0.0.1:8080/health
+source:
+  component: kubelet
+  host: worker-private-01
+  hostname: worker-private-01
+routing:
+  host: app.example.com
+`)
+	got := string(RedactStructuredBytes(input))
+	if strings.Contains(got, "worker-private-01") {
+		t.Errorf("node identity leaked in:\n%s", got)
+	}
+	if strings.Contains(got, "10.0.0.1") {
+		t.Errorf("probe IP leaked in:\n%s", got)
+	}
+	if !strings.Contains(got, "[REDACTED-IP]:8080") {
+		t.Errorf("expected port-preserving IP placeholder in:\n%s", got)
+	}
+	if strings.Count(got, "[REDACTED-NODE]") < 3 {
+		t.Errorf("expected field-level node placeholders in:\n%s", got)
+	}
+	if !strings.Contains(got, "app.example.com") {
+		t.Errorf("unrelated DNS name was over-redacted in:\n%s", got)
 	}
 }
 

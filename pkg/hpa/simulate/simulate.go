@@ -43,7 +43,10 @@ func Scenario(hpa *autoscalingv2.HorizontalPodAutoscaler, overrides, metricOverr
 		return nil, ErrNilHPA
 	}
 
-	beforeAnalysis := AnalysisFuncInvoker(hpa, true, AnalysisOptions{HealthWeights: weights})
+	beforeAnalysis, err := AnalysisFuncInvoker(hpa, true, AnalysisOptions{HealthWeights: weights})
+	if err != nil {
+		return nil, err
+	}
 	before := simulationStateFromAnalysis(&beforeAnalysis)
 
 	modified, err := BuildSimulatedHPA(hpa, overrides, metricOverrides)
@@ -51,7 +54,10 @@ func Scenario(hpa *autoscalingv2.HorizontalPodAutoscaler, overrides, metricOverr
 		return nil, err
 	}
 
-	afterAnalysis := AnalysisFuncInvoker(modified, true, AnalysisOptions{HealthWeights: weights})
+	afterAnalysis, err := AnalysisFuncInvoker(modified, true, AnalysisOptions{HealthWeights: weights})
+	if err != nil {
+		return nil, err
+	}
 	after := simulationStateFromAnalysis(&afterAnalysis)
 
 	result := &SimulationResult{
@@ -88,8 +94,11 @@ func Scenario(hpa *autoscalingv2.HorizontalPodAutoscaler, overrides, metricOverr
 	}
 
 	for _, name := range sortedMapKeys(metricOverrides) {
-		result.MetricSimulations = append(result.MetricSimulations,
-			buildMetricSimulation(hpa, modified, name, metricOverrides[name], before, after))
+		metricSimulation, err := buildMetricSimulation(hpa, modified, name, metricOverrides[name], before, after)
+		if err != nil {
+			return nil, err
+		}
+		result.MetricSimulations = append(result.MetricSimulations, metricSimulation)
 	}
 	if len(result.MetricSimulations) > 0 {
 		result.Interpretation = buildMetricSimulationInterpretation(&before, &after, result.MetricSimulations)
@@ -101,7 +110,11 @@ func Scenario(hpa *autoscalingv2.HorizontalPodAutoscaler, overrides, metricOverr
 	result.RiskAssessment = strings.Join(nonEmptyStrings(specRisk, metricRisk), "; ")
 	result.Confidence = "estimated"
 	if extOpts.DurationSeconds > 0 {
-		result.TimeSeriesProjection = ProjectReplicaTrajectory(hpa, modified, extOpts)
+		projection, err := ProjectReplicaTrajectory(hpa, modified, extOpts)
+		if err != nil {
+			return nil, err
+		}
+		result.TimeSeriesProjection = projection
 	}
 	result.RiskWarnings = assessExtendedRisk(modified, overrides, result)
 
@@ -135,7 +148,9 @@ func BuildSimulatedHPA(hpa *autoscalingv2.HorizontalPodAutoscaler, overrides, me
 		if err := validateSimulatedZeroProjection(modified); err != nil {
 			return nil, err
 		}
-		recomputeSimulatedDesired(modified)
+		if err := recomputeSimulatedDesired(modified); err != nil {
+			return nil, err
+		}
 	}
 	return modified, nil
 }

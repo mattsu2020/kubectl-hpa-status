@@ -2,36 +2,27 @@ package history
 
 import (
 	"crypto/sha256"
-	"fmt"
+	"encoding/hex"
 	"path/filepath"
 	"strings"
 )
 
-func (s *HealthStore) filePath(namespace, name string) string {
-	// Sanitize to prevent path traversal.
-	safeNS := sanitizeFilename(namespace)
-	safeName := sanitizeFilename(name)
-	filename := safeNS + "_" + safeName + ".jsonl"
-	// sanitizeFilename truncates individual components. Add an identity hash
-	// whenever that happens, even if the combined filename still fits, so two
-	// names with the same prefix never share a history stream.
-	truncated := len(namespace) > maxFilenameSegmentLength || len(name) > maxFilenameSegmentLength
-	if truncated || len(filename) > maxHistoryFilenameLength {
-		sum := sha256.Sum256([]byte(namespace + "\x00" + name))
-		suffix := fmt.Sprintf("_%x.jsonl", sum[:8])
-		prefixLength := maxHistoryFilenameLength - len(suffix)
-		prefix := safeNS + "_" + safeName
-		if len(prefix) > prefixLength {
-			prefix = prefix[:prefixLength]
-		}
-		filename = prefix + suffix
+// filePath maps a snapshot key onto its JSONL file. The readable prefix keeps
+// the stream identifiable during debugging; the trailing identity hash is
+// what actually separates streams, so any key difference — a long name that
+// truncates, a second cluster, or a recreated HPA (new UID) — lands in its
+// own file even when the sanitized prefixes collide.
+func (s *HealthStore) filePath(key SnapshotKey) string {
+	prefix := sanitizeFilename(key.Cluster) + "_" + sanitizeFilename(key.Namespace) + "_" + sanitizeFilename(key.Name)
+	sum := sha256.Sum256([]byte(key.Cluster + "\x00" + key.Namespace + "\x00" + key.Name + "\x00" + key.UID))
+	suffix := "_" + hex.EncodeToString(sum[:6]) + ".jsonl"
+	if len(prefix)+len(suffix) > maxHistoryFilenameLength {
+		prefix = prefix[:maxHistoryFilenameLength-len(suffix)]
 	}
-	return filepath.Join(s.dir, filename)
+	return filepath.Join(s.dir, prefix+suffix)
 }
 
-// Keep enough headroom below the common NAME_MAX=255 byte limit. A hash is
-// appended whenever truncation is required so two long HPA names cannot share
-// one history file.
+// Keep enough headroom below the common NAME_MAX=255 byte limit.
 const maxHistoryFilenameLength = 240
 
 // maxFilenameSegmentLength bounds a single sanitized path segment so a

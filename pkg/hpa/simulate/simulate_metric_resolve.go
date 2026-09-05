@@ -3,6 +3,8 @@ package simulate
 import (
 	"fmt"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/metricidentity"
+
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
@@ -48,13 +50,13 @@ func findCurrentMetricForSpec(hpa *autoscalingv2.HorizontalPodAutoscaler, spec a
 	if hpa == nil {
 		return -1, ErrNilHPA
 	}
-	specID, err := metricIDFromSpecInvoker(spec)
+	specID, err := metricidentity.MetricIDFromSpec(spec)
 	if err != nil {
 		return -1, err
 	}
 	match := -1
 	for i, current := range hpa.Status.CurrentMetrics {
-		currentID, currentErr := metricIDFromStatusInvoker(current)
+		currentID, currentErr := metricidentity.MetricIDFromStatus(current)
 		if currentErr != nil || currentID != specID {
 			continue
 		}
