@@ -19,19 +19,25 @@ func (sharedClock) Now() time.Time { return sharedclock.Now() }
 
 // SnapshotStore is the persistence surface required by Recorder.
 type SnapshotStore interface {
-	Append(namespace, name string, snapshot healthtrend.HealthSnapshot) error
-	LoadAt(namespace, name string, since time.Duration, now time.Time) ([]healthtrend.HealthSnapshot, error)
-	PruneAt(namespace, name string, retention time.Duration, now time.Time) error
+	Append(key SnapshotKey, snapshot healthtrend.HealthSnapshot) error
+	LoadAt(key SnapshotKey, since time.Duration, now time.Time) ([]healthtrend.HealthSnapshot, error)
+	PruneAt(key SnapshotKey, retention time.Duration, now time.Time) error
 }
 
 type transactionalSnapshotStore interface {
-	RecordAndLoad(namespace, name string, snapshot healthtrend.HealthSnapshot, retention, since time.Duration, now time.Time) ([]healthtrend.HealthSnapshot, error)
+	RecordAndLoad(key SnapshotKey, snapshot healthtrend.HealthSnapshot, retention, since time.Duration, now time.Time) ([]healthtrend.HealthSnapshot, error)
 }
 
 // RecordInput is independent of the large public Analysis DTO.
 type RecordInput struct {
-	Namespace       string
-	Name            string
+	// Cluster is the local cluster identity (kubeconfig context or cluster
+	// name). It keeps same-named HPAs of different clusters from merging.
+	Cluster string
+	// UID is the HPA object UID; a recreated HPA starts a new generation.
+	UID       string
+	Namespace string
+	Name      string
+
 	HealthScore     int
 	HealthState     string
 	DesiredReplicas int32
@@ -79,8 +85,9 @@ func (r *Recorder) RecordAndAnalyze(input RecordInput) RecordResult {
 	}
 
 	var result RecordResult
+	key := SnapshotKey{Cluster: input.Cluster, Namespace: input.Namespace, Name: input.Name, UID: input.UID}
 	if store, ok := r.store.(transactionalSnapshotStore); ok {
-		snapshots, err := store.RecordAndLoad(input.Namespace, input.Name, snapshot, input.Retention, input.Since, now)
+		snapshots, err := store.RecordAndLoad(key, snapshot, input.Retention, input.Since, now)
 		if err != nil {
 			result.Warnings = append(result.Warnings, fmt.Sprintf("health trend transaction warning: %v", err))
 		}
@@ -90,13 +97,13 @@ func (r *Recorder) RecordAndAnalyze(input RecordInput) RecordResult {
 		}
 		return result
 	}
-	if err := r.store.Append(input.Namespace, input.Name, snapshot); err != nil {
+	if err := r.store.Append(key, snapshot); err != nil {
 		result.Warnings = append(result.Warnings, fmt.Sprintf("health trend append failed: %v", err))
 	}
-	if err := r.store.PruneAt(input.Namespace, input.Name, input.Retention, now); err != nil {
+	if err := r.store.PruneAt(key, input.Retention, now); err != nil {
 		result.Warnings = append(result.Warnings, fmt.Sprintf("health trend prune failed: %v", err))
 	}
-	snapshots, err := r.store.LoadAt(input.Namespace, input.Name, input.Since, now)
+	snapshots, err := r.store.LoadAt(key, input.Since, now)
 	if err != nil {
 		result.Warnings = append(result.Warnings, fmt.Sprintf("health trend load warning: %v", err))
 	}
