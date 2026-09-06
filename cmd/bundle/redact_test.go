@@ -327,3 +327,51 @@ func TestRedactString_HostnameWithIP(t *testing.T) {
 		t.Errorf("expected hostname placeholder, got %q", got)
 	}
 }
+
+// TestRedactBytes_RedactsCredentialsInPlainText locks in that the text-level
+// pass applied to events, metrics output, and the assembled markdown report
+// also masks credentials — not just structured YAML/JSON fields. Kubernetes
+// event messages routinely quote failing request URLs and commands that carry
+// token/password credentials.
+func TestRedactBytes_RedactsCredentialsInPlainText(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		in   string
+		leak string
+	}{
+		{
+			name: "token assignment in event message",
+			in:   `[2026-09-05T10:00:00Z] FailedGet: Get "https://metrics.svc/metrics?token=super-secret-value": dial tcp refused`,
+			leak: "super-secret-value",
+		},
+		{
+			name: "api_key query parameter",
+			in:   `failed to scrape: https://exporter.svc/metrics?api_key=key-value-42&limit=10`,
+			leak: "key-value-42",
+		},
+		{
+			name: "authorization bearer header",
+			in:   `request failed: Authorization: Bearer bearer-value rejected`,
+			leak: "bearer-value",
+		},
+		{
+			name: "command line flag password",
+			in:   `container web started with --password=plain-password-value --port 8080`,
+			leak: "plain-password-value",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := string(RedactBytes([]byte(tt.in)))
+			if strings.Contains(got, tt.leak) {
+				t.Fatalf("credential %q leaked through RedactBytes: %q", tt.leak, got)
+			}
+			if !strings.Contains(got, "[REDACTED]") {
+				t.Fatalf("expected a [REDACTED] placeholder in: %q", got)
+			}
+		})
+	}
+}

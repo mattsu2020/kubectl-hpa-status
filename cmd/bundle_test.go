@@ -12,6 +12,9 @@ import (
 	"strings"
 	"testing"
 
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	corev1 "k8s.io/api/core/v1"
+
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 )
 
@@ -222,6 +225,103 @@ func TestBundleRedact(t *testing.T) {
 	// Verify sections are still present after redaction.
 	if !strings.Contains(string(content), "## HPA Status Summary") {
 		t.Error("expected sections to remain after redaction")
+	}
+}
+
+// bundleWithCredentialLeakingEvent builds a fake cluster whose HPA carries a
+// scraped-URL failure event embedding a credential, mirroring how kubelet and
+// metrics-server failures quote the request URL in the event message.
+func bundleWithCredentialLeakingEvent(t *testing.T) (*options, string) {
+	t.Helper()
+	hpa := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(3, 5),
+		testutil.WithResourceMetric("cpu", 80, 70),
+	)
+	event := testutil.BuildEvent("default", "web", "FailedGetScale",
+		`Get "https://metrics.svc/metrics?token=leaked-secret-token&limit=10": dial tcp 10.0.0.1:443 refused`)
+	fakeClient := testutil.NewFakeClientWithEvents([]*autoscalingv2.HorizontalPodAutoscaler{hpa}, []*corev1.Event{event})
+
+	opts := &options{
+		Common: commonOptions{
+			ConnectionOptions: ConnectionOptions{
+				ClientOverride: fakeClient,
+				Namespace:      "default",
+			},
+		},
+		Status: statusOptions{
+			Events: EventOption{Enabled: false},
+		},
+	}
+	return opts, "leaked-secret-token"
+}
+
+// TestBundleRedactMasksCredentialsThroughSharedFileSave is the shared-file
+// boundary test: an event-carried credential must not survive into the
+// markdown file written to disk when --redact is active.
+func TestBundleRedactMasksCredentialsThroughSharedFileSave(t *testing.T) {
+	opts, secret := bundleWithCredentialLeakingEvent(t)
+	tmpDir := t.TempDir()
+	outputPath := filepath.Join(tmpDir, "bundle-secret.md")
+
+	var buf bytes.Buffer
+	if err := runBundle(context.Background(), &buf, opts, "web", "markdown", outputPath, true); err != nil {
+		t.Fatalf("runBundle returned error: %v", err)
+	}
+
+	content, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("failed to read saved bundle: %v", err)
+	}
+	if strings.Contains(string(content), secret) {
+		t.Fatalf("credential %q leaked into the saved markdown bundle", secret)
+	}
+	if !strings.Contains(string(content), "## Events") {
+		t.Fatal("expected the events section to remain present")
+	}
+}
+
+// TestBundleRedactMasksCredentialsInZipArchive extends the shared-file check
+// to the zip format: every text entry (report.md, events.txt) and structured
+// entry must be masked before the archive is written to disk.
+func TestBundleRedactMasksCredentialsInZipArchive(t *testing.T) {
+	opts, secret := bundleWithCredentialLeakingEvent(t)
+	tmpDir := t.TempDir()
+	outputPath := filepath.Join(tmpDir, "bundle-secret.zip")
+
+	var buf bytes.Buffer
+	if err := runBundle(context.Background(), &buf, opts, "web", "zip", outputPath, true); err != nil {
+		t.Fatalf("runBundle zip returned error: %v", err)
+	}
+
+	f, err := os.Open(outputPath)
+	if err != nil {
+		t.Fatalf("failed to open saved zip: %v", err)
+	}
+	defer func() { _ = f.Close() }()
+	stat, err := f.Stat()
+	if err != nil {
+		t.Fatalf("failed to stat saved zip: %v", err)
+	}
+	reader, err := zip.NewReader(f, stat.Size())
+	if err != nil {
+		t.Fatalf("failed to read zip: %v", err)
+	}
+	if len(reader.File) == 0 {
+		t.Fatal("expected entries in the zip archive")
+	}
+	for _, entry := range reader.File {
+		rc, err := entry.Open()
+		if err != nil {
+			t.Fatalf("failed to open entry %s: %v", entry.Name, err)
+		}
+		data, err := io.ReadAll(rc)
+		_ = rc.Close()
+		if err != nil {
+			t.Fatalf("failed to read entry %s: %v", entry.Name, err)
+		}
+		if strings.Contains(string(data), secret) {
+			t.Fatalf("credential %q leaked into zip entry %s", secret, entry.Name)
+		}
 	}
 }
 

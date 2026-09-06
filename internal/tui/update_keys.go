@@ -240,17 +240,16 @@ func (m Model) handleDryRunKey() (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	filtered := m.filteredItems()
-	if m.cursor < 0 || m.cursor >= len(filtered) {
-		m.fixState.dryRunResult = "cannot resolve selected HPA"
+	if err := m.fixState.verifyAgainstCurrentData(m.reports, m.hpaUIDs); err != nil {
+		m.fixState.dryRunResult = err.Error()
 		return m, nil
 	}
-	item := filtered[m.cursor]
 	dryRunFn := m.opts.DryRunFn
 	m.fixState.dryRunResult = "validating with Kubernetes API..."
 	epoch := m.fixEpoch
+	ns, name := m.fixState.namespace, m.fixState.name
 	return m, func() tea.Msg {
-		err := dryRunFn(m.ctx, item.Namespace, item.Name, []hpaanalysis.Suggestion{suggestion})
+		err := dryRunFn(m.ctx, ns, name, []hpaanalysis.Suggestion{suggestion})
 		return dryRunResultMsg{epoch: epoch, title: suggestion.Title, err: err}
 	}
 }

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -141,7 +142,7 @@ func replicaOwnershipManagers(entries []metav1.ManagedFieldsEntry) []ownershipMa
 	var managers []ownershipManager
 	seen := map[string]bool{}
 	for _, entry := range entries {
-		if entry.FieldsV1 == nil || !strings.Contains(string(entry.FieldsV1.GetRawBytes()), "f:replicas") {
+		if entry.FieldsV1 == nil || !ownsSpecReplicas(entry.FieldsV1.GetRawBytes()) {
 			continue
 		}
 		key := entry.Manager + "\x00" + string(entry.Operation)
@@ -156,6 +157,29 @@ func replicaOwnershipManagers(entries []metav1.ManagedFieldsEntry) []ownershipMa
 		})
 	}
 	return managers
+}
+
+// ownsSpecReplicas reports whether a managed-fields entry's field set contains
+// spec.replicas specifically. The check walks the JSON field hierarchy
+// (f:spec -> f:replicas) instead of searching for the "f:replicas" substring:
+// status.replicas is updated by controllers (Deployment/ReplicaSet status
+// updaters) on every scale event, and a substring match would report those
+// controllers as spec.replicas owners — a false ownership conflict.
+func ownsSpecReplicas(raw []byte) bool {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return false
+	}
+	spec, ok := fields["f:spec"]
+	if !ok {
+		return false
+	}
+	var specFields map[string]json.RawMessage
+	if err := json.Unmarshal(spec, &specFields); err != nil {
+		return false
+	}
+	_, ok = specFields["f:replicas"]
+	return ok
 }
 
 func looksLikeHPAOwner(manager string) bool {

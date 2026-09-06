@@ -284,3 +284,118 @@ func buildTestHPAWithResourceMetric(current, desired, minReplicas, maxReplicas, 
 		testutil.WithResourceMetric("cpu", targetUtil, currentUtil),
 	)
 }
+
+// TestProjectReplicaTrajectoryScaleUpIgnoresScaleDownWindow pins the
+// per-direction stabilization fix: a 300s scale-down stabilization window
+// must not stall a projected increase. The controller applies scaleUp rules
+// to increases, and with no scaleUp stabilization configured the trajectory
+// reaches the projected replicas at the very first step. The modified HPA is
+// built through BuildSimulatedHPA so its status carries the recomputed
+// desired count, matching how ProjectReplicaTrajectory is invoked in
+// production.
+func TestProjectReplicaTrajectoryScaleUpIgnoresScaleDownWindow(t *testing.T) {
+	original := buildTestHPAWithResourceMetric(5, 5, 1, 10, 50, 80)
+	testutil.WithScaleDownStabilizationWindow(300)(original)
+
+	modified, err := BuildSimulatedHPA(original, map[string]string{"maxReplicas": "20"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if modified.Status.DesiredReplicas <= original.Status.DesiredReplicas {
+		t.Fatalf("fixture must project an increase; desired %d → %d", original.Status.DesiredReplicas, modified.Status.DesiredReplicas)
+	}
+
+	states, err := ProjectReplicaTrajectory(original, modified, SimulationExtendedOptions{
+		DurationSeconds: 300,
+		StepSeconds:     30,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(states) == 0 {
+		t.Fatal("expected projection states")
+	}
+	if states[0].ProjectedReplicas != modified.Status.DesiredReplicas {
+		t.Fatalf("scale-up must not wait for the scale-down stabilization window; first state = %d replicas, want %d", states[0].ProjectedReplicas, modified.Status.DesiredReplicas)
+	}
+}
+
+// TestComputeStabilizationDelayPerDirection checks the rule selection table.
+func TestComputeStabilizationDelayPerDirection(t *testing.T) {
+	scaleDownWindow := int32(300)
+	scaleUpWindow := int32(60)
+	hpa := &autoscalingv2.HorizontalPodAutoscaler{
+		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+			Behavior: &autoscalingv2.HorizontalPodAutoscalerBehavior{
+				ScaleUp: &autoscalingv2.HPAScalingRules{
+					StabilizationWindowSeconds: &scaleUpWindow,
+				},
+				ScaleDown: &autoscalingv2.HPAScalingRules{
+					StabilizationWindowSeconds: &scaleDownWindow,
+				},
+			},
+		},
+	}
+
+	if got := computeStabilizationDelay(hpa, 5, 10); got != 60 {
+		t.Errorf("scale-up delay = %d, want the scaleUp window 60", got)
+	}
+	if got := computeStabilizationDelay(hpa, 10, 5); got != 300 {
+		t.Errorf("scale-down delay = %d, want the scaleDown window 300", got)
+	}
+
+	// No behavior configured at all: no delay either direction.
+	plain := buildTestHPAWithResourceMetric(5, 5, 1, 10, 50, 80)
+	if got := computeStabilizationDelay(plain, 5, 10); got != 0 {
+		t.Errorf("delay without behavior = %d, want 0", got)
+	}
+
+	// Direction rules left nil fall back to zero for that direction.
+	onlyDown := &autoscalingv2.HorizontalPodAutoscaler{
+		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+			Behavior: &autoscalingv2.HorizontalPodAutoscalerBehavior{
+				ScaleDown: &autoscalingv2.HPAScalingRules{
+					StabilizationWindowSeconds: &scaleDownWindow,
+				},
+			},
+		},
+	}
+	if got := computeStabilizationDelay(onlyDown, 5, 10); got != 0 {
+		t.Errorf("scale-up delay with no scaleUp rules = %d, want 0", got)
+	}
+}
+
+// TestProjectReplicaTrajectoryScaleDownHonorsWindow checks the decrease
+// direction still holds the current replicas for the configured scale-down
+// stabilization window before the projection descends.
+func TestProjectReplicaTrajectoryScaleDownHonorsWindow(t *testing.T) {
+	original := buildTestHPAWithResourceMetric(10, 10, 1, 20, 50, 20)
+	testutil.WithScaleDownStabilizationWindow(300)(original)
+
+	// The maxReplicas value is unchanged, but a non-empty override set is what
+	// triggers BuildSimulatedHPA's desired-replica recompute, mirroring a real
+	// what-if run.
+	modified, err := BuildSimulatedHPA(original, map[string]string{"maxReplicas": "20"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if modified.Status.DesiredReplicas >= original.Status.DesiredReplicas {
+		t.Fatalf("fixture must project a decrease; desired %d → %d", original.Status.DesiredReplicas, modified.Status.DesiredReplicas)
+	}
+
+	states, err := ProjectReplicaTrajectory(original, modified, SimulationExtendedOptions{
+		DurationSeconds: 300,
+		StepSeconds:     30,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(states) == 0 {
+		t.Fatal("expected projection states")
+	}
+	for _, s := range states {
+		if s.TimeOffset < 300 && s.ProjectedReplicas != original.Status.DesiredReplicas {
+			t.Fatalf("scale-down must hold the current replicas during the stabilization window; state at %ds = %d replicas", s.TimeOffset, s.ProjectedReplicas)
+		}
+	}
+}

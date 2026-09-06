@@ -477,3 +477,82 @@ func TestMedian_DoesNotMutateInput(t *testing.T) {
 		}
 	}
 }
+
+// TestShiftCronDayOfWeek pins the day-of-week arithmetic used when a
+// pre-scale fire time wraps past midnight: each listed or ranged weekday must
+// move by the shift amount modulo 7, ranges that stay contiguous re-collapse,
+// and non-numeric fields pass through untouched.
+func TestShiftCronDayOfWeek(t *testing.T) {
+	tests := []struct {
+		name  string
+		field string
+		shift int
+		want  string
+	}{
+		{"zero shift is identity", "1-5", 0, "1-5"},
+		{"star stays star", "*", -1, "*"},
+		{"range moves back one day", "1-5", -1, "0-4"},
+		{"range moves forward", "1-5", 1, "2-6"},
+		{"single day wraps below zero", "1", -1, "0"},
+		{"sunday wraps to saturday", "0", -1, "6"},
+		{"saturday wraps to sunday", "6", 1, "0"},
+		{"pair stays enumerated", "0,6", -1, "5,6"},
+		{"full week collapses to star", "0-6", 1, "*"},
+		{"shift normalizes mod 7", "1", -8, "0"},
+		{"unparsable field returned as-is", "jan", -1, "jan"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := shiftCronDayOfWeek(tc.field, tc.shift); got != tc.want {
+				t.Fatalf("shiftCronDayOfWeek(%q, %d) = %q, want %q", tc.field, tc.shift, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestAnalyze_RecommendationShiftsWeekdaysAcrossMidnight pins the midnight
+// fix: a Mon–Fri 00:00 ramp with a 15-minute lead time must pre-scale at
+// 23:45 on the PREVIOUS weekdays (Sun–Thu). The unshifted "1-5" form would
+// miss the Monday ramp entirely and pre-scale for Saturday instead.
+func TestAnalyze_RecommendationShiftsWeekdaysAcrossMidnight(t *testing.T) {
+	got := Analyze(midnightWeekdayObservations(), Options{
+		LeadTime: 15 * time.Minute,
+		Location: time.UTC,
+	})
+	if !got.Detected || got.Recommendation == nil {
+		t.Fatalf("expected a detected midnight peak, got: %+v", got)
+	}
+	rec := got.Recommendation
+	if rec.CronExpression != "45 23 * * 0-4" {
+		t.Errorf("CronExpression = %q, want previous-day weekdays %q", rec.CronExpression, "45 23 * * 0-4")
+	}
+	if rec.ReleaseCronExpression != "0 2 * * 1-5" {
+		t.Errorf("ReleaseCronExpression = %q, want the window's own weekdays %q", rec.ReleaseCronExpression, "0 2 * * 1-5")
+	}
+	if !strings.Contains(rec.KEDATrigger, "start: 45 23 * * 0-4") {
+		t.Errorf("KEDA trigger start must use the shifted weekdays, got:\n%s", rec.KEDATrigger)
+	}
+}
+
+// midnightWeekdayObservations records three full weeks in which weekdays
+// ramp at exactly midnight (00:00→02:00) while weekends stay at the baseline
+// all day. The weekend days matter: the detector only narrows the schedule to
+// weekdays when every weekday has enough samples to judge, so the fixture must
+// cover them too.
+func midnightWeekdayObservations() []Observation {
+	var obs []Observation
+	// Three full weeks starting Monday 2026-08-03.
+	for day := 0; day < 21; day++ {
+		base := time.Date(2026, 8, 3, 0, 0, 0, 0, time.UTC).AddDate(0, 0, day)
+		weekdayRamp := base.Weekday() != time.Saturday && base.Weekday() != time.Sunday
+		for minute := 0; minute < minutesPerDay; minute += 15 {
+			ts := base.Add(time.Duration(minute) * time.Minute)
+			desired := int32(2)
+			if weekdayRamp && minute < 120 {
+				desired = 6
+			}
+			obs = append(obs, Observation{Timestamp: ts, Desired: desired})
+		}
+	}
+	return obs
+}

@@ -41,14 +41,28 @@ type simField struct {
 	Original string // original HPA value for reference
 }
 
-// fixState holds the fix wizard state for a problematic HPA.
+// fixState holds the fix wizard state for a problematic HPA. The wizard
+// targets a specific HPA identity (namespace/name plus the observed UID), not
+// whatever row the cursor happens to sit on later: an auto-refresh can
+// reorder the list between opening the wizard and pressing Enter, and a
+// name-based match alone cannot tell that an HPA was deleted and recreated
+// with fresh suggestions. Suggestions are regenerated from the latest report
+// on every successful refresh.
 type fixState struct {
+	namespace    string
+	name         string
+	uid          string
 	suggestions  []hpaanalysis.Suggestion
 	selected     int
 	applyConfirm bool
 	applied      bool
 	applyErr     error
 	dryRunResult string
+}
+
+// key returns the "namespace/name" identity key of the targeted HPA.
+func (s *fixState) key() string {
+	return s.namespace + "/" + s.name
 }
 
 // replayState holds the replay timeline viewer state.

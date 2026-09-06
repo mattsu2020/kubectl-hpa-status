@@ -833,3 +833,75 @@ func TestRunTimeline_Retrospective_NoEvents(t *testing.T) {
 		t.Errorf("expected 'No scaling events found' when no events exist, got:\n%s", output)
 	}
 }
+
+// TestReplayCommandFileWithSetFlagsWithoutHPAAppliesOverrides pins the
+// routing fix: `replay FILE --set-max-replicas 30` (no --hpa, no
+// --from-record) previously fell through to the plain timeline replay, which
+// silently ignored the requested change condition. The override must route
+// the command into the policy lab, which infers the HPA from the record.
+func TestReplayCommandFileWithSetFlagsWithoutHPAAppliesOverrides(t *testing.T) {
+	now := time.Now()
+	trace := hpaanalysis.TimelineTrace{
+		HPAName:   "web",
+		Namespace: "prod",
+		Start:     now,
+		Interval:  5 * time.Second,
+		Snapshots: []hpaanalysis.TimelineSnapshot{
+			{Timestamp: now, Desired: 4, Health: "OK"},
+			{Timestamp: now.Add(5 * time.Second), Desired: 12, Health: "LIMITED"},
+			{Timestamp: now.Add(10 * time.Second), Desired: 8, Health: "OK"},
+		},
+	}
+	recordFile, err := os.CreateTemp("", "hpa-record-*.jsonl")
+	if err != nil {
+		t.Fatalf("failed to create record file: %v", err)
+	}
+	defer func() { _ = os.Remove(recordFile.Name()) }()
+	if err := writeRecordLine(recordFile, trace); err != nil {
+		t.Fatalf("failed to write record line: %v", err)
+	}
+	if err := recordFile.Close(); err != nil {
+		t.Fatalf("failed to close record file: %v", err)
+	}
+
+	root := NewRootCommand()
+	var buf bytes.Buffer
+	root.SetOut(&buf)
+	root.SetErr(&buf)
+	root.SetArgs([]string{
+		"replay", recordFile.Name(),
+		"-n", "prod",
+		"--set-max-replicas", "30",
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("replay FILE --set-max-replicas returned error: %v\n%s", err, buf.String())
+	}
+	output := buf.String()
+	if !strings.Contains(output, "maxReplicas: 30") {
+		t.Fatalf("expected the override to reach the policy-lab comparison, got:\n%s", output)
+	}
+	if !strings.Contains(output, "prod/web") {
+		t.Fatalf("expected the HPA to be inferred from the record, got:\n%s", output)
+	}
+}
+
+// TestReplayOverridesRequestedFlags pins the detection helper so a new --set
+// family flag added later cannot silently fall through the routing again.
+func TestReplayOverridesRequestedFlags(t *testing.T) {
+	if replayOverridesRequested(ReplayRequest{}) {
+		t.Fatal("empty request must not request overrides")
+	}
+	cases := map[string]ReplayRequest{
+		"set overrides":     {SetOverrides: []string{"maxReplicas=30"}},
+		"set-max-replicas":  {MaxReplicas: 30},
+		"set-min-replicas":  {MinReplicas: 2},
+		"set-stabilization": {ScaleDownStabilization: 600},
+		"set-cpu-target":    {CPUTarget: 70},
+		"set-memory-target": {MemoryTarget: 80},
+	}
+	for name, request := range cases {
+		if !replayOverridesRequested(request) {
+			t.Errorf("%s: expected replayOverridesRequested=true", name)
+		}
+	}
+}

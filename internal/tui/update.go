@@ -81,11 +81,65 @@ func (m Model) updateFetchResult(msg fetchResultMsg) (tea.Model, tea.Cmd) {
 	}
 	m.items = msg.items
 	m.reports = msg.reports
+	m.hpaUIDs = msg.uids
 	m.err = nil
 
+	m.refreshFixStateAfterFetch()
 	m.updateReplicaHistory()
 	m.refocusAndClampCursorAfterFetch()
 	return m, nil
+}
+
+// refreshFixStateAfterFetch re-binds the open fix wizard to the freshly
+// fetched data. The wizard targets an HPA identity, not a cursor row, so a
+// refresh must not leave it showing suggestions captured from a superseded
+// report — nor let the displayed target and the suggestion source diverge.
+// The wizard closes when its HPA is gone or was replaced (UID change, which
+// catches a delete+recreate of the same name); otherwise the suggestions are
+// regenerated from the latest report.
+func (m *Model) refreshFixStateAfterFetch() {
+	if m.fixState == nil {
+		return
+	}
+	st := m.fixState
+	if st.namespace == "" && st.name == "" {
+		// Synthetic state without identity (only possible from tests): leave
+		// it untouched rather than guessing a target.
+		return
+	}
+
+	report, ok := m.reports[st.key()]
+	if !ok {
+		if m.viewMode == fixView {
+			m.viewMode = listView
+		}
+		m.fixState = nil
+		m.statusMessage = fmt.Sprintf("refresh closed the fix wizard: %s is gone", st.key())
+		return
+	}
+	if err := st.verifyAgainstCurrentData(m.reports, m.hpaUIDs); err != nil {
+		if m.viewMode == fixView {
+			m.viewMode = listView
+		}
+		m.fixState = nil
+		m.statusMessage = "refresh closed the fix wizard: " + err.Error()
+		return
+	}
+	if len(report.Analysis.Actions.Suggestions) == 0 {
+		if m.viewMode == fixView {
+			m.viewMode = listView
+		}
+		m.fixState = nil
+		m.statusMessage = fmt.Sprintf("refresh closed the fix wizard: no suggestions left for %s", st.key())
+		return
+	}
+
+	// Keep the wizard anchored to the same (still-live) HPA. If the wizard's
+	// UID was unknown when it opened, adopt the freshly observed one.
+	if st.uid == "" {
+		st.uid = m.hpaUIDs[st.key()]
+	}
+	st.regenerateFrom(report)
 }
 
 // updateReplicaHistory appends the current desired replica count per HPA, capping history length.

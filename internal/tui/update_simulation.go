@@ -37,6 +37,9 @@ func (m Model) handleFixKey() (tea.Model, tea.Cmd) {
 
 	m.fixEpoch++
 	m.fixState = &fixState{
+		namespace:   report.Analysis.Meta.Namespace,
+		name:        report.Analysis.Meta.Name,
+		uid:         m.hpaUIDs[report.Analysis.Meta.Namespace+"/"+report.Analysis.Meta.Name],
 		suggestions: report.Analysis.Actions.Suggestions,
 		selected:    0,
 	}
@@ -162,7 +165,10 @@ func (m Model) runMetricSimulation() tea.Cmd {
 	}
 }
 
-// applyFix applies the currently selected fix suggestion.
+// applyFix applies the currently selected fix suggestion. The apply always
+// targets the identity the wizard was opened for (fixState.namespace/name),
+// never the current cursor row: a background refresh may have reordered the
+// list between opening the wizard and confirming.
 func (m Model) applyFix() tea.Cmd {
 	if m.fixState == nil || len(m.fixState.suggestions) == 0 {
 		return nil
@@ -182,13 +188,13 @@ func (m Model) applyFix() tea.Cmd {
 		return nil
 	}
 
-	filtered := m.filteredItems()
-	if m.cursor < 0 || m.cursor >= len(filtered) {
+	if err := m.fixState.verifyAgainstCurrentData(m.reports, m.hpaUIDs); err != nil {
+		m.fixState.applyErr = err
 		return nil
 	}
 
-	namespace := filtered[m.cursor].Namespace
-	name := filtered[m.cursor].Name
+	namespace := m.fixState.namespace
+	name := m.fixState.name
 	applyFn := m.opts.ApplyFn
 	epoch := m.fixEpoch
 

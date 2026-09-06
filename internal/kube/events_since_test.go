@@ -2,6 +2,7 @@ package kube
 
 import (
 	"context"
+	"strconv"
 	"testing"
 	"time"
 
@@ -154,5 +155,50 @@ func TestFetchRecentHPAEventsSince_ZeroTimestamps(t *testing.T) {
 
 	if len(result) != 0 {
 		t.Errorf("expected 0 events (zero timestamps excluded), got %d", len(result))
+	}
+}
+
+// TestFetchRecentHPAEventsSince_NoSilentTruncation pins the fix for the
+// silent cap: with more in-window events than the fetch limit, every event in
+// the window must come back. The previous implementation truncated to the
+// fetch limit BEFORE the time filter, silently dropping the oldest in-window
+// events (501 in-window events returned 500 with no indication of loss).
+func TestFetchRecentHPAEventsSince_NoSilentTruncation(t *testing.T) {
+	now := time.Now()
+	namespace := "default"
+	hpaName := "web"
+
+	total := eventsSinceFetchLimit + 10
+	objects := make([]runtime.Object, 0, total)
+	for i := 0; i < total; i++ {
+		ts := now.Add(time.Duration(i-total) * time.Minute) // oldest first
+		objects = append(objects, &corev1.Event{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: namespace,
+				Name:      hpaName + ".SuccessfulRescale." + ts.Format("20060102150405"),
+			},
+			InvolvedObject: corev1.ObjectReference{Kind: "HorizontalPodAutoscaler", Namespace: namespace, Name: hpaName},
+			Reason:         "SuccessfulRescale",
+			Message:        "New size: " + strconv.Itoa(i),
+			LastTimestamp:  metav1.NewTime(ts),
+		})
+	}
+	client := testutil.NewFakeClientWithObjects(objects...)
+
+	// The window covers every event, including the oldest ones the old
+	// fetch-limit-first implementation would have dropped.
+	result, err := FetchRecentHPAEventsSince(context.Background(), client, namespace, hpaName, now.Add(-time.Duration(total)*time.Minute))
+	if err != nil {
+		t.Fatalf("FetchRecentHPAEventsSince returned error: %v", err)
+	}
+	if len(result) != total {
+		t.Fatalf("expected all %d in-window events, got %d", total, len(result))
+	}
+	first := coreEventTimestamp(result[0])
+	if !first.Before(coreEventTimestamp(result[len(result)-1])) {
+		t.Fatalf("expected ascending order, got oldest=%v newest=%v", first, coreEventTimestamp(result[len(result)-1]))
+	}
+	if result[0].Message != "New size: 0" {
+		t.Fatalf("expected the oldest event (New size: 0) first, got %q", result[0].Message)
 	}
 }

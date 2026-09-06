@@ -3,6 +3,8 @@ package tui
 import (
 	"fmt"
 	"strings"
+
+	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
 
 // renderFixView renders the fix wizard for a problematic HPA.
@@ -13,13 +15,14 @@ func (m Model) renderFixView() string {
 
 	var sb strings.Builder
 
-	// Header with health context.
-	filtered := m.filteredItems()
-	if m.cursor >= 0 && m.cursor < len(filtered) {
-		item := filtered[m.cursor]
-		healthLabel := healthStyle(item.Health).Render(item.Health)
-		sb.WriteString(headerStyle.Render(fmt.Sprintf("Fix Wizard: %s/%s", item.Namespace, item.Name)))
-		sb.WriteString(fmt.Sprintf("  Health: %s %d/100", healthLabel, item.HealthScore))
+	// Header with health context. The wizard is anchored to a specific HPA
+	// identity, so the header names that target instead of whatever row the
+	// cursor currently sits on (a refresh may have reordered the list).
+	target := m.itemForFixTarget()
+	if target != nil {
+		healthLabel := healthStyle(target.Health).Render(target.Health)
+		sb.WriteString(headerStyle.Render(fmt.Sprintf("Fix Wizard: %s/%s", target.Namespace, target.Name)))
+		sb.WriteString(fmt.Sprintf("  Health: %s %d/100", healthLabel, target.HealthScore))
 	}
 	sb.WriteString("\n\n")
 
@@ -48,6 +51,26 @@ func (m Model) renderFixView() string {
 	sb.WriteString(dimStyle.Render("Enter=confirm apply  d=server dry-run  ↑↓=select  Esc=cancel"))
 
 	return sb.String()
+}
+
+// itemForFixTarget returns the list item the fix wizard is anchored to, or
+// nil when the target is not in the current data or the state carries no
+// identity (synthetic states from tests).
+func (m Model) itemForFixTarget() *hpaanalysis.ListItem {
+	st := m.fixState
+	if st == nil || (st.namespace == "" && st.name == "") {
+		filtered := m.filteredItems()
+		if m.cursor >= 0 && m.cursor < len(filtered) {
+			return &filtered[m.cursor]
+		}
+		return nil
+	}
+	for i := range m.items {
+		if m.items[i].Namespace == st.namespace && m.items[i].Name == st.name {
+			return &m.items[i]
+		}
+	}
+	return nil
 }
 
 func appendFixSuggestionsList(sb *strings.Builder, st *fixState) {
