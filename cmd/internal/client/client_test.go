@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/mattsu2020/kubectl-hpa-status/cmd/internal/errs"
@@ -24,9 +26,8 @@ func TestWrapClientError(t *testing.T) {
 }
 
 func TestWrapHPALookupError(t *testing.T) {
-	cause := errors.New("not found")
-
 	t.Run("with namespace formats ns/name", func(t *testing.T) {
+		cause := apierrors.NewNotFound(autoscalingv2.Resource("horizontalpodautoscalers"), "web")
 		wrapped := WrapHPALookupError("production", "web", cause)
 		msg := wrapped.Error()
 		if !strings.Contains(msg, "failed to get HPA production/web") {
@@ -41,6 +42,7 @@ func TestWrapHPALookupError(t *testing.T) {
 	})
 
 	t.Run("empty namespace formats bare name", func(t *testing.T) {
+		cause := apierrors.NewNotFound(autoscalingv2.Resource("horizontalpodautoscalers"), "web")
 		wrapped := WrapHPALookupError("", "web", cause)
 		msg := wrapped.Error()
 		if !strings.Contains(msg, "failed to get HPA web") {
@@ -51,6 +53,22 @@ func TestWrapHPALookupError(t *testing.T) {
 		}
 		if !errors.Is(wrapped, errs.ErrHPANotFound) {
 			t.Fatal("expected ErrHPANotFound for empty-namespace case too")
+		}
+	})
+
+	t.Run("non-NotFound API failure does not carry the not-found sentinel", func(t *testing.T) {
+		// Permission denials and server errors must classify as generic
+		// failures (exit 1), not as "the HPA does not exist" (exit 3).
+		cause := apierrors.NewForbidden(autoscalingv2.Resource("horizontalpodautoscalers"), "web", errors.New("rbac"))
+		wrapped := WrapHPALookupError("production", "web", cause)
+		if !strings.Contains(wrapped.Error(), "failed to get HPA production/web") {
+			t.Fatalf("expected canonical prefix, got: %s", wrapped.Error())
+		}
+		if errors.Is(wrapped, errs.ErrHPANotFound) {
+			t.Fatal("ErrHPANotFound must only attach to genuine NotFound failures")
+		}
+		if !errors.Is(wrapped, cause) {
+			t.Fatal("expected underlying cause to be reachable via errors.Is")
 		}
 	})
 }

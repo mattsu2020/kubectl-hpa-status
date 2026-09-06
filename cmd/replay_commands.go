@@ -71,7 +71,11 @@ func newReplayCommand(opts *options) *cobra.Command {
 			if request.FromRecord != "" {
 				return runReplayWithFromRecord(cmd.OutOrStdout(), opts, request, args)
 			}
-			if len(request.Candidates) > 0 || request.Score != "" {
+			// Any candidate/score request or --set override routes FILE through
+			// the policy lab, which infers the HPA from the record. Falling
+			// through to the plain timeline replay here would silently ignore
+			// the requested change conditions.
+			if len(request.Candidates) > 0 || request.Score != "" || replayOverridesRequested(request) {
 				return runReplayWithCandidateOrScore(cmd.OutOrStdout(), opts, request, args)
 			}
 			if len(args) != 1 {
@@ -119,12 +123,25 @@ func runReplayWithFromRecord(out io.Writer, opts *options, request ReplayRequest
 	return dispatchReplayPolicyLab(out, opts, request, args[0], request.FromRecord)
 }
 
-// runReplayWithCandidateOrScore handles the `replay --candidate/--score FILE` form.
+// runReplayWithCandidateOrScore handles the `replay --candidate/--score/--set-* FILE`
+// form. The HPA name may be empty; the policy lab infers it from the record.
 func runReplayWithCandidateOrScore(out io.Writer, opts *options, request ReplayRequest, args []string) error {
 	if len(args) != 1 {
-		return fmt.Errorf("replay with --candidate or --score requires a record FILE argument")
+		return fmt.Errorf("replay with --candidate, --score, or --set overrides requires a record FILE argument")
 	}
 	return dispatchReplayPolicyLab(out, opts, request, request.HPA, args[0])
+}
+
+// replayOverridesRequested reports whether any --set-family shortcut override
+// was passed. These flags only make sense in comparison (policy-lab) mode, so
+// their presence must select that mode instead of being silently dropped.
+func replayOverridesRequested(request ReplayRequest) bool {
+	return len(request.SetOverrides) > 0 ||
+		request.MaxReplicas > 0 ||
+		request.MinReplicas > 0 ||
+		request.ScaleDownStabilization > 0 ||
+		request.CPUTarget > 0 ||
+		request.MemoryTarget > 0
 }
 
 // dispatchReplayPolicyLab resolves the (name, recordPath) pair for one replay

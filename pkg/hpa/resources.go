@@ -98,51 +98,61 @@ func checkResourceMetricAllContainers(resourceName string, target autoscalingv2.
 }
 
 // checkSingleContainer checks a single container for resource consistency.
+// Diagnostics that depend on pod resource requests (missing/zero/tiny
+// requests) apply only when the metric target is utilization-based: an
+// AverageValue target compares absolute metric values directly and the
+// Kubernetes reference implementation never divides by requests for it, so
+// flagging missing requests there would misdiagnose a valid configuration.
+// The missing-limits check is a workload-safety concern independent of how
+// the HPA computes its target and always applies.
 func checkSingleContainer(containerName, resourceName string, target autoscalingv2.MetricTarget, cr ContainerResources) []ResourceWarning {
 	var warnings []ResourceWarning
 
 	requestValue, hasRequest := cr.Requests[resourceName]
+	utilizationBased := target.AverageUtilization != nil
 
-	if !hasRequest {
-		warnings = append(warnings, ResourceWarning{
-			Container: containerName,
-			Resource:  resourceName,
-			Category:  "missing-requests",
-			Details:   fmt.Sprintf("container %q has no %s request; HPA cannot calculate utilization without resource requests", containerName, resourceName),
-			Severity:  "error",
-		})
-		return warnings
-	}
+	if utilizationBased {
+		if !hasRequest {
+			warnings = append(warnings, ResourceWarning{
+				Container: containerName,
+				Resource:  resourceName,
+				Category:  "missing-requests",
+				Details:   fmt.Sprintf("container %q has no %s request; HPA cannot calculate utilization without resource requests", containerName, resourceName),
+				Severity:  "error",
+			})
+			return warnings
+		}
 
-	if isZeroQuantity(requestValue) {
-		warnings = append(warnings, ResourceWarning{
-			Container: containerName,
-			Resource:  resourceName,
-			Category:  "zero-requests",
-			Details:   fmt.Sprintf("container %q has a zero %s request (%s); HPA utilization calculation will divide by zero", containerName, resourceName, requestValue),
-			Severity:  "error",
-		})
-		return warnings
-	}
+		if isZeroQuantity(requestValue) {
+			warnings = append(warnings, ResourceWarning{
+				Container: containerName,
+				Resource:  resourceName,
+				Category:  "zero-requests",
+				Details:   fmt.Sprintf("container %q has a zero %s request (%s); HPA utilization calculation will divide by zero", containerName, resourceName, requestValue),
+				Severity:  "error",
+			})
+			return warnings
+		}
 
-	if isTinyRequest(resourceName, requestValue) {
-		warnings = append(warnings, ResourceWarning{
-			Container: containerName,
-			Resource:  resourceName,
-			Category:  "tiny-request",
-			Details:   fmt.Sprintf("container %q has a very small %s request (%s); HPA utilization will be noisy because small absolute changes produce large percentage swings (threshold: %s)", containerName, resourceName, requestValue, tinyThreshold(resourceName)),
-			Severity:  "warning",
-		})
-	}
+		if isTinyRequest(resourceName, requestValue) {
+			warnings = append(warnings, ResourceWarning{
+				Container: containerName,
+				Resource:  resourceName,
+				Category:  "tiny-request",
+				Details:   fmt.Sprintf("container %q has a very small %s request (%s); HPA utilization will be noisy because small absolute changes produce large percentage swings (threshold: %s)", containerName, resourceName, requestValue, tinyThreshold(resourceName)),
+				Severity:  "warning",
+			})
+		}
 
-	if target.AverageUtilization != nil && *target.AverageUtilization > 90 {
-		warnings = append(warnings, ResourceWarning{
-			Container: containerName,
-			Resource:  resourceName,
-			Category:  "target-vs-request-mismatch",
-			Details:   fmt.Sprintf("container %q has %s target utilization %d%% which is very high; only %d%% headroom remains before hitting 100%%", containerName, resourceName, *target.AverageUtilization, 100-*target.AverageUtilization),
-			Severity:  "warning",
-		})
+		if *target.AverageUtilization > 90 {
+			warnings = append(warnings, ResourceWarning{
+				Container: containerName,
+				Resource:  resourceName,
+				Category:  "target-vs-request-mismatch",
+				Details:   fmt.Sprintf("container %q has %s target utilization %d%% which is very high; only %d%% headroom remains before hitting 100%%", containerName, resourceName, *target.AverageUtilization, 100-*target.AverageUtilization),
+				Severity:  "warning",
+			})
+		}
 	}
 
 	// Check for missing limits.

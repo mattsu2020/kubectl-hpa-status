@@ -54,8 +54,11 @@ func ProjectReplicaTrajectory(original, modified *autoscalingv2.HorizontalPodAut
 		return nil, err
 	}
 
-	// Compute effective stabilization delay.
-	stabilizationDelay := computeStabilizationDelay(modified)
+	// Compute effective stabilization delay. The delay is direction-specific:
+	// a projected scale-up honors spec.behavior.scaleUp, a scale-down honors
+	// spec.behavior.scaleDown, so a long scale-down window no longer stalls
+	// an increase.
+	stabilizationDelay := computeStabilizationDelay(modified, startReplicas, endReplicas)
 
 	var states []ProjectedState
 	for offset := int32(0); offset <= duration; offset += step {
@@ -94,13 +97,20 @@ func computeEndReplicas(_, modified *autoscalingv2.HorizontalPodAutoscaler) (int
 }
 
 // computeStabilizationDelay returns the stabilization delay in seconds from
-// the modified HPA configuration.
-func computeStabilizationDelay(modified *autoscalingv2.HorizontalPodAutoscaler) int32 {
+// the modified HPA configuration. The window is read from the scaling rules
+// for the projected direction: scaleUp when the replica count increases,
+// scaleDown when it decreases. The controller never applies the scale-down
+// window to an increase, so projecting it that way overstated ramp latency.
+func computeStabilizationDelay(modified *autoscalingv2.HorizontalPodAutoscaler, startReplicas, endReplicas int32) int32 {
 	if modified.Spec.Behavior == nil {
 		return 0
 	}
-	if modified.Spec.Behavior.ScaleDown != nil && modified.Spec.Behavior.ScaleDown.StabilizationWindowSeconds != nil {
-		return *modified.Spec.Behavior.ScaleDown.StabilizationWindowSeconds
+	rules := modified.Spec.Behavior.ScaleDown
+	if endReplicas > startReplicas {
+		rules = modified.Spec.Behavior.ScaleUp
+	}
+	if rules != nil && rules.StabilizationWindowSeconds != nil {
+		return *rules.StabilizationWindowSeconds
 	}
 	return 0
 }

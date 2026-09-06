@@ -3,6 +3,7 @@ package kube
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -176,9 +177,15 @@ func listCoreEventsBySelector(ctx context.Context, client kubernetes.Interface, 
 // FetchRecentHPAEventsSince fetches Kubernetes events for the specified HPA
 // that occurred at or after the given time, returned in ascending chronological
 // order (oldest first). The Events API does not support time-range field
-// selectors, so a generous batch is fetched and filtered client-side.
+// selectors, so every page of matching events is fetched and the time filter is
+// applied client-side BEFORE any cap. Limiting first would silently drop the
+// oldest in-window events once the fetch limit was exceeded; here the caller
+// gets every event in the requested window.
 func FetchRecentHPAEventsSince(ctx context.Context, client kubernetes.Interface, namespace, name string, since time.Time) ([]corev1.Event, error) {
-	events, err := FetchRecentHPAEvents(ctx, client, namespace, name, eventsSinceFetchLimit)
+	// The window is bounded by the caller-supplied since time, so fetching
+	// without the fetch-limit truncation is safe; the pagination helper still
+	// pages in eventsSinceFetchLimit-sized batches.
+	events, err := fetchRecentHPAEvents(ctx, client, namespace, name, "", math.MaxInt64)
 	if err != nil {
 		return nil, err
 	}

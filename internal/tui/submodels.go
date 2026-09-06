@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 
+	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/audit"
 )
 
@@ -26,6 +27,36 @@ func (s *fixState) clone() *fixState {
 	out := *s
 	out.suggestions = slices.Clone(s.suggestions)
 	return &out
+}
+
+// verifyAgainstCurrentData confirms the wizard's target still exists in the
+// latest fetched data and is the same object. Presence is checked against the
+// report map; when both the wizard and the fetch carry UIDs, a mismatch means
+// the HPA was deleted and recreated under the same name, and any patch about
+// to be sent must be refused. Missing UID bookkeeping (synthetic/test models)
+// degrades to the name check.
+func (s *fixState) verifyAgainstCurrentData(reports map[string]*hpaanalysis.StatusReport, uids map[string]string) error {
+	if _, ok := reports[s.key()]; !ok {
+		return fmt.Errorf("HPA %s is no longer present; re-open the fix wizard", s.key())
+	}
+	if uid := uids[s.key()]; uid != "" && s.uid != "" && uid != s.uid {
+		return fmt.Errorf("HPA %s was replaced since these suggestions were generated; re-open the fix wizard", s.key())
+	}
+	return nil
+}
+
+// regenerateFrom replaces the suggestion set with the latest report's, keeping
+// the wizard open and clamping the selection. Any pending confirm/dry-run
+// state is dropped because it belonged to the previous suggestion set.
+func (s *fixState) regenerateFrom(report *hpaanalysis.StatusReport) {
+	s.suggestions = append(s.suggestions[:0], report.Analysis.Actions.Suggestions...)
+	if s.selected >= len(s.suggestions) {
+		s.selected = 0
+	}
+	s.applyConfirm = false
+	s.applied = false
+	s.applyErr = nil
+	s.dryRunResult = ""
 }
 
 func (s *fixState) move(delta int) {

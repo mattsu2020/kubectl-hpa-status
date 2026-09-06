@@ -173,5 +173,8 @@ func hpaFetchError(err error, name, namespace string) error {
 			"Check with: kubectl api-resources | grep autoscaling. Original error: %w",
 			vers.StableSinceVersion, vers.MinAPIVersion, err)
 	}
-	return fmt.Errorf("failed to get HPA %s/%s from the Kubernetes API server: %w", namespace, name, errors.Join(ErrHPANotFound, err))
+	// No ErrHPANotFound sentinel here: permission denials, server errors, and
+	// other API failures must classify as ExitError (1). Only a genuine
+	// NotFound means "the HPA does not exist" (exit 3).
+	return fmt.Errorf("failed to get HPA %s/%s from the Kubernetes API server: %w", namespace, name, err)
 }

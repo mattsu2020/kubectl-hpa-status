@@ -9,14 +9,23 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-// RedactBytes applies redaction patterns to a byte slice. It replaces IP
-// addresses, node names, pod UIDs, and other identifying data with generic
-// placeholders. Lifted verbatim from cmd/snapshot.go.
+// RedactBytes applies redaction patterns to a byte slice. It redacts
+// credentials embedded in text (token=..., Authorization headers, URI
+// userinfo, ...) as well as IP addresses, node names, pod UIDs, and other
+// identifying data. This is the pass applied to plain-text content (events,
+// metrics-api output, assembled markdown) where no object structure exists to
+// key off, so credential patterns must be matched textually.
 func RedactBytes(data []byte) []byte {
 	if len(data) == 0 {
 		return data
 	}
 	s := string(data)
+
+	// Redact credentials embedded in otherwise non-sensitive text. Kubernetes
+	// event messages routinely quote failing request URLs and commands that
+	// carry "--token=..." or query-string credentials, and those must not
+	// survive into a shared markdown report or zip entry.
+	s = redactSensitiveString(s)
 
 	// Parse complete address-shaped tokens so IPv6 prefixes cannot leak and
 	// invalid dotted versions are not partially mistaken for IPv4 addresses.

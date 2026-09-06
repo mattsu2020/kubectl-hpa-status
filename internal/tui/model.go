@@ -41,8 +41,12 @@ type Model struct {
 	opts      Options
 	ctx       context.Context
 
-	items          []hpaanalysis.ListItem
-	reports        map[string]*hpaanalysis.StatusReport
+	items   []hpaanalysis.ListItem
+	reports map[string]*hpaanalysis.StatusReport
+	// hpaUIDs maps "namespace/name" to the observed HPA UID so interactive
+	// states (the fix wizard) can verify their target still is the same
+	// object after a refresh, instead of matching by name alone.
+	hpaUIDs        map[string]string
 	cursor         int
 	viewMode       viewMode
 	paused         bool
@@ -112,6 +116,11 @@ func (m Model) clone() Model {
 			history[key] = slices.Clone(values)
 		}
 		m.replicaHistory = history
+	}
+	if m.hpaUIDs != nil {
+		uids := make(map[string]string, len(m.hpaUIDs))
+		maps.Copy(uids, m.hpaUIDs)
+		m.hpaUIDs = uids
 	}
 	m.batchApplyPreview = slices.Clone(m.batchApplyPreview)
 	m.interactiveStates = m.interactiveStates.clone()
@@ -200,7 +209,9 @@ type fetchResultMsg struct {
 	requestID uint64
 	items     []hpaanalysis.ListItem
 	reports   map[string]*hpaanalysis.StatusReport
-	err       error
+	// uids maps "namespace/name" to the observed HPA UID for this fetch.
+	uids map[string]string
+	err  error
 }
 
 // NewModel creates a new TUI Model.

@@ -3,6 +3,8 @@ package hpa
 import (
 	"testing"
 
+	"k8s.io/apimachinery/pkg/api/resource"
+
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
@@ -771,4 +773,133 @@ func buildTestHPA(resourceName string, targetUtil int32) *autoscalingv2.Horizont
 		},
 	}
 	return hpa
+}
+
+// buildTestHPAAverageValue builds an HPA whose resource metric targets an
+// absolute average value instead of a utilization percentage. The Kubernetes
+// reference implementation computes AverageValue directly from the metrics
+// pipeline and never divides by pod requests, so requests-dependent
+// diagnostics must not fire for this target type.
+func buildTestHPAAverageValue(resourceName, targetValue string) *autoscalingv2.HorizontalPodAutoscaler {
+	hpa := testutil.BuildHPA("default", "web-hpa",
+		testutil.WithScaleTargetRef("Deployment", "web"),
+	)
+	target := resource.MustParse(targetValue)
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{
+		{
+			Type: autoscalingv2.ResourceMetricSourceType,
+			Resource: &autoscalingv2.ResourceMetricSource{
+				Name: corev1.ResourceName(resourceName),
+				Target: autoscalingv2.MetricTarget{
+					Type:         autoscalingv2.AverageValueMetricType,
+					AverageValue: &target,
+				},
+			},
+		},
+	}
+	return hpa
+}
+
+// TestCheckResourceConsistency_AverageValueWithoutRequestsIsNotAMisdiagnosis
+// guards the AverageValue fix: an HPA targeting an absolute value is valid
+// without pod requests, so "missing-requests"/"zero-requests" errors must not
+// appear. The workload-safety missing-limits warning still applies.
+func TestCheckResourceConsistency_AverageValueWithoutRequestsIsNotAMisdiagnosis(t *testing.T) {
+	hpa := buildTestHPAAverageValue("cpu", "500m")
+	resources := &ResourceRequests{
+		Containers: []ContainerResources{
+			{Name: "app", Requests: map[string]string{}},
+		},
+	}
+	result := CheckResourceConsistency(hpa, resources)
+	for _, w := range result.Warnings {
+		if w.Category == "missing-requests" || w.Category == "zero-requests" || w.Category == "tiny-request" {
+			t.Errorf("requests-dependent diagnostic %q fired for an AverageValue target: %+v", w.Category, w)
+		}
+	}
+	if result == nil {
+		t.Fatal("expected the missing-limits warning to still apply")
+	}
+	foundLimits := false
+	for _, w := range result.Warnings {
+		if w.Category == "missing-limits" {
+			foundLimits = true
+		}
+	}
+	if !foundLimits {
+		t.Fatalf("expected missing-limits warning to remain, got: %+v", result.Warnings)
+	}
+}
+
+// TestCheckResourceConsistency_AverageValueFullyConfiguredNoWarnings checks
+// that a valid AverageValue HPA with requests and limits set produces no
+// warnings at all.
+func TestCheckResourceConsistency_AverageValueFullyConfiguredNoWarnings(t *testing.T) {
+	hpa := buildTestHPAAverageValue("cpu", "500m")
+	resources := &ResourceRequests{
+		Containers: []ContainerResources{
+			{
+				Name:     "app",
+				Requests: map[string]string{"cpu": "100m"},
+				Limits:   map[string]string{"cpu": "1"},
+			},
+		},
+	}
+	if result := CheckResourceConsistency(hpa, resources); result != nil {
+		t.Fatalf("expected no warnings for a valid AverageValue HPA, got: %+v", result.Warnings)
+	}
+}
+
+// TestCheckResourceConsistency_ContainerResourceAverageValueSkipsRequestsCheck
+// mirrors the guard for ContainerResource metrics with an AverageValue target.
+func TestCheckResourceConsistency_ContainerResourceAverageValueSkipsRequestsCheck(t *testing.T) {
+	hpa := testutil.BuildHPA("default", "web-hpa",
+		testutil.WithScaleTargetRef("Deployment", "web"),
+	)
+	target := resource.MustParse("250m")
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{
+		{
+			Type: autoscalingv2.ContainerResourceMetricSourceType,
+			ContainerResource: &autoscalingv2.ContainerResourceMetricSource{
+				Name:      corev1.ResourceCPU,
+				Container: "app",
+				Target: autoscalingv2.MetricTarget{
+					Type:         autoscalingv2.AverageValueMetricType,
+					AverageValue: &target,
+				},
+			},
+		},
+	}
+	resources := &ResourceRequests{
+		Containers: []ContainerResources{
+			{Name: "app", Requests: map[string]string{}},
+		},
+	}
+	result := CheckResourceConsistency(hpa, resources)
+	if result == nil {
+		t.Fatal("expected the missing-limits warning to apply")
+	}
+	for _, w := range result.Warnings {
+		if w.Category == "missing-requests" {
+			t.Errorf("missing-requests fired for a ContainerResource AverageValue target: %+v", w)
+		}
+	}
+}
+
+// TestCheckResourceConsistency_UtilizationWithoutRequestsStillErrors checks
+// that the requests-dependent diagnostics remain for utilization targets.
+func TestCheckResourceConsistency_UtilizationWithoutRequestsStillErrors(t *testing.T) {
+	hpa := buildTestHPA("cpu", 80)
+	resources := &ResourceRequests{
+		Containers: []ContainerResources{
+			{Name: "app", Requests: map[string]string{}},
+		},
+	}
+	result := CheckResourceConsistency(hpa, resources)
+	if result == nil {
+		t.Fatal("expected missing-requests error for a utilization target without requests")
+	}
+	if result.Warnings[0].Category != "missing-requests" {
+		t.Fatalf("expected missing-requests, got %q", result.Warnings[0].Category)
+	}
 }

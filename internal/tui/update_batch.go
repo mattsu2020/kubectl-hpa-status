@@ -43,19 +43,17 @@ func (m Model) handleBatchAuditKey() (tea.Model, tea.Cmd) {
 		reports := make(map[string]*audit.Report)
 		var errs []error
 		for _, name := range selected {
-			// `name` is the selection key. It is either a bare HPA name (when a
-			// namespace filter is active) or "namespace/name" (all-namespaces
-			// mode). Keep it untouched as the reports map key so entries stay
-			// unique and consistent with the selection; derive the namespace
-			// and short name separately for the audit call.
+			// `name` is the selection key, which is always "namespace/name"
+			// (see handleToggleSelectKey/handleSelectAllKey). Split the key to
+			// derive the audit call's namespace and short name; when a key
+			// carries no namespace prefix, fall back to the model's namespace
+			// filter. Passing the composite key through as the HPA name would
+			// make every audit call fail with "not found".
 			ns := namespace
 			shortName := name
-			if ns == "" {
-				parts := splitNamespaceName(name)
-				if len(parts) == 2 {
-					ns = parts[0]
-					shortName = parts[1]
-				}
+			if parts := splitNamespaceName(name); len(parts) == 2 {
+				ns = parts[0]
+				shortName = parts[1]
 			}
 			report, err := auditFn(m.ctx, ns, shortName)
 			if err != nil {

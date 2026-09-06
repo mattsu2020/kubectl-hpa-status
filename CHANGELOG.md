@@ -9,6 +9,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`--redact` now masks credentials in every shared artifact, not just
+  structured YAML/JSON.** The textual redactor applied to events, metrics-api
+  output, the assembled markdown report, and the plain-text zip entries also
+  masks credentials embedded in text: `token=...`/`api_key=...` query
+  parameters, `Authorization`/`Cookie` headers, `--password=...` flags, and
+  URI userinfo. Previously an event message quoting a failing scrape URL
+  carried its credential verbatim into the markdown file and the zip's
+  `report.md`/`events.txt`.
+- **API failures no longer report exit code 3 ("HPA does not exist").**
+  `ErrHPANotFound` — the sentinel that drives the dedicated `ExitNotFound`
+  code — is attached only when the Kubernetes API classified the failure as
+  NotFound. Permission denials, timeouts, and server errors now exit 1
+  (generic API failure), so scripts treating 3 as "absent" no longer misread
+  a broken cluster as an empty one. The fix applies to the status path and to
+  the shared `WrapHPALookupError` used by every HPA-fetching command.
+- **AverageValue HPAs are no longer misdiagnosed as uncomputable.** The
+  resource-consistency check fired "missing-requests" for any container
+  without requests; requests-dependent diagnostics (missing/zero/tiny
+  requests, high-utilization headroom) now apply only to utilization-based
+  targets, matching the Kubernetes reference implementation where an
+  AverageValue target compares absolute metric values without dividing by
+  requests. The workload-safety `missing-limits` warning still applies to
+  every target type.
+- **Scale-up simulations no longer wait for the scale-down stabilization
+  window.** The projected replica trajectory applied
+  `spec.behavior.scaleDown.stabilizationWindowSeconds` regardless of
+  direction, so a 5→10 increase was projected to hold for 300s under a
+  scale-down-tuned HPA. The projection now reads the rules for the projected
+  direction (scaleUp for increases, scaleDown for decreases), matching the
+  controller.
+- **Pre-scale schedules now shift the weekday when they cross midnight.** A
+  Mon–Fri 00:00 ramp with a 15-minute lead time produced
+  `45 23 * * 1-5` — firing 23:45 on the wrong days and missing the Monday
+  ramp entirely. The cron (and the KEDA trigger's `start`) now moves the
+  day-of-week field back with the wrapped time: `45 23 * * 0-4`. The release
+  schedule keeps the window's own weekdays.
+- **History windows no longer silently drop in-window events.**
+  `FetchRecentHPAEventsSince` truncated to the fetch limit before applying
+  the time filter, so 501 in-window events returned 500 with the oldest
+  silently missing. The time filter now runs across every fetched page, and
+  the whole requested window is returned.
+- **`ownership` no longer flags status.replicas updaters as spec.replicas
+  owners.** The managed-fields check searched for the `f:replicas` substring,
+  which also matches `f:status.f:replicas` — a field the workload controller
+  rewrites on every scale event. The check now walks the field hierarchy and
+  requires `f:spec → f:replicas`.
+- **`replay FILE --set-max-replicas ...` no longer ignores the override.**
+  With no `--hpa`/`--from-record`, the `--set`/`--set-*` flags fell through
+  to the plain timeline replay and were silently dropped. Their presence now
+  routes the command into the policy lab, which infers the HPA from the
+  record and applies the requested change conditions.
+- **TUI batch audit works with a namespace filter active.** Selection keys
+  are always `namespace/name`; the batch auditor used to pass the composite
+  key through as the HPA name whenever the model carried a namespace, making
+  every audit call fail. The key is now always split.
+- **The TUI fix wizard keeps its target across refreshes.** The wizard used
+  to show suggestions captured at open time while applying to whatever row
+  the cursor happened to occupy after the next auto-refresh reordered the
+  list. It now holds the target's namespace/name and UID, regenerates the
+  suggestion set from the latest report on every successful refresh, closes
+  itself when the HPA disappears or is replaced (UID change), and refuses
+  apply/dry-run when current data no longer matches the wizard's target.
+- **The scheduled fuzz job can start.** `-fuzz=FuzzAnalyze` also matched
+  `FuzzAnalyzeNil`, so `go test` failed before fuzzing began; the pattern is
+  now anchored (`^FuzzAnalyze$`). The crash-corpus artifact path points at
+  the package's `pkg/hpa/testdata/fuzz/` directory where reproducers are
+  actually written.
+
 - **Support bundles no longer leak IP addresses with ports or node names.**
   `RedactStructuredBytes` (and the textual redactor behind it) now splits
   `host:port` pairs so `http://10.0.0.1:8080/health` becomes

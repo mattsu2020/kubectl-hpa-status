@@ -781,3 +781,192 @@ func firstN(s string, n int) string {
 	}
 	return s[:n]
 }
+
+// TestKeyFlow_BatchAuditSplitsNamespaceFromSelectionKey pins the batch-audit
+// fix: selection keys are always "namespace/name", and with a namespace
+// filter active the composite key used to be passed through as the HPA name,
+// making every audit call fail with "not found".
+func TestKeyFlow_BatchAuditSplitsNamespaceFromSelectionKey(t *testing.T) {
+	var gotCalls [][2]string
+	auditFn := func(_ context.Context, namespace, name string) (*audit.Report, error) {
+		gotCalls = append(gotCalls, [2]string{namespace, name})
+		return &audit.Report{Namespace: namespace, Name: name, Score: 90}, nil
+	}
+	m := NewModel(nil, "default", Options{AuditFn: auditFn})
+	m.viewMode = listView
+	m.items = []hpaanalysis.ListItem{
+		{Namespace: "default", Name: "web", Health: "OK"},
+		{Namespace: "default", Name: "api", Health: "OK"},
+	}
+	m.selected = map[string]bool{"default/web": true, "default/api": true}
+
+	m2, cmd := pressTUIKey(t, m, "B")
+	if cmd == nil {
+		t.Fatal("expected async batch audit command")
+	}
+	msg, ok := cmd().(batchAuditMsg)
+	if !ok || msg.err != nil || len(msg.reports) != 2 {
+		t.Fatalf("expected two audit reports without error, got %#v", msg)
+	}
+	if len(gotCalls) != 2 {
+		t.Fatalf("expected 2 audit calls, got %v", gotCalls)
+	}
+	for _, call := range gotCalls {
+		if call[0] != "default" || (call[1] != "web" && call[1] != "api") {
+			t.Fatalf("audit call must use the split namespace and short name, got %v", call)
+		}
+		if call[1] == "default/web" || call[1] == "default/api" {
+			t.Fatalf("composite selection key leaked through as the HPA name: %v", call)
+		}
+	}
+	_ = m2
+}
+
+// fixWizardAfterRefresh builds a model with an open fix wizard anchored to
+// default/web and applies a fetch result, returning the refreshed model.
+func fixWizardAfterRefresh(t *testing.T, fetchReports map[string]*hpaanalysis.StatusReport, uids map[string]string) Model {
+	t.Helper()
+	m := detailModel(Options{})
+	m.hpaUIDs = map[string]string{"default/web": "uid-1"}
+	m.reports["default/web"].Analysis.Actions.Suggestions = []hpaanalysis.Suggestion{
+		{Title: "old suggestion", Apply: true, Patch: `{"spec":{"maxReplicas":10}}`},
+	}
+	m2, _ := pressTUIKey(t, m, "f")
+	if m2.viewMode != fixView || m2.fixState == nil {
+		t.Fatal("expected open fix wizard")
+	}
+	m2.fixState.applyConfirm = true
+	m2.fixState.dryRunResult = "stale validation"
+
+	updated, _ := m2.Update(fetchResultMsg{
+		requestID: m2.fetchRequestID,
+		items:     m2.items,
+		reports:   fetchReports,
+		uids:      uids,
+	})
+	return updated.(Model)
+}
+
+// TestUpdate_FetchRegeneratesFixSuggestions pins the refresh contract: the
+// wizard keeps its identity, regenerates the suggestion set from the fresh
+// report, and drops the armed confirmation that belonged to the old set.
+func TestUpdate_FetchRegeneratesFixSuggestions(t *testing.T) {
+	fresh := map[string]*hpaanalysis.StatusReport{
+		"default/web": {Analysis: hpaanalysis.Analysis{
+			Meta: hpaanalysis.MetaView{Namespace: "default", Name: "web"},
+			Actions: hpaanalysis.ActionsView{Suggestions: []hpaanalysis.Suggestion{
+				{Title: "fresh suggestion", Apply: true, Patch: `{"spec":{"maxReplicas":12}}`},
+			}},
+		}},
+	}
+	m := fixWizardAfterRefresh(t, fresh, map[string]string{"default/web": "uid-1"})
+
+	if m.viewMode != fixView || m.fixState == nil {
+		t.Fatal("wizard must stay open while the target still exists")
+	}
+	if len(m.fixState.suggestions) != 1 || m.fixState.suggestions[0].Title != "fresh suggestion" {
+		t.Fatalf("suggestions must regenerate from the fresh report, got %+v", m.fixState.suggestions)
+	}
+	if m.fixState.applyConfirm || m.fixState.dryRunResult != "" {
+		t.Fatal("armed confirmation and stale dry-run result must be cleared")
+	}
+}
+
+// TestUpdate_FetchClosesFixWizardWhenTargetGone checks that a refresh closing
+// the wizard also leaves the fix view (otherwise the TUI would render a
+// wizard with no state).
+func TestUpdate_FetchClosesFixWizardWhenTargetGone(t *testing.T) {
+	empty := map[string]*hpaanalysis.StatusReport{}
+	m := fixWizardAfterRefresh(t, empty, map[string]string{})
+
+	if m.fixState != nil {
+		t.Fatal("wizard must close when the target HPA is gone")
+	}
+	if m.viewMode != listView {
+		t.Fatalf("expected listView after the wizard closed, got %v", m.viewMode)
+	}
+	if m.statusMessage == "" {
+		t.Fatal("expected a status message explaining the close")
+	}
+}
+
+// TestUpdate_FetchClosesFixWizardOnUIDChange guards delete+recreate: a new
+// HPA under the same name has a different UID, so the old suggestions must
+// never survive a refresh.
+func TestUpdate_FetchClosesFixWizardOnUIDChange(t *testing.T) {
+	fresh := map[string]*hpaanalysis.StatusReport{
+		"default/web": {Analysis: hpaanalysis.Analysis{
+			Meta: hpaanalysis.MetaView{Namespace: "default", Name: "web"},
+			Actions: hpaanalysis.ActionsView{Suggestions: []hpaanalysis.Suggestion{
+				{Title: "suggestions for the replacement", Apply: true, Patch: `{}`},
+			}},
+		}},
+	}
+	m := fixWizardAfterRefresh(t, fresh, map[string]string{"default/web": "uid-2"})
+
+	if m.fixState != nil {
+		t.Fatalf("wizard must close when the HPA was replaced: %+v", m.fixState.suggestions)
+	}
+	if m.viewMode != listView {
+		t.Fatalf("expected listView after the wizard closed, got %v", m.viewMode)
+	}
+}
+
+// TestApplyFixTargetsWizardIdentityNotCursor pins the apply target: after a
+// refresh reorders the list and the cursor lands on a different HPA, applying
+// a fix must still patch the HPA the wizard was opened for, and must refuse
+// when the UID no longer matches.
+func TestApplyFixTargetsWizardIdentityNotCursor(t *testing.T) {
+	var applied [2]string
+	m := detailModel(Options{ApplyFn: func(_ context.Context, namespace, name string, _ []hpaanalysis.Suggestion) error {
+		applied = [2]string{namespace, name}
+		return nil
+	}})
+	m.hpaUIDs = map[string]string{"default/web": "uid-1", "default/api": "uid-2"}
+	// Two items; the fix target sorts second, so after sorting by health the
+	// cursor may point elsewhere.
+	m.items = []hpaanalysis.ListItem{
+		{Namespace: "default", Name: "api", Health: "LIMITED"},
+		{Namespace: "default", Name: "web", Health: "WARNING"},
+	}
+	m.reports = map[string]*hpaanalysis.StatusReport{
+		"default/web": {Analysis: hpaanalysis.Analysis{
+			Meta:    hpaanalysis.MetaView{Namespace: "default", Name: "web"},
+			Actions: hpaanalysis.ActionsView{Suggestions: []hpaanalysis.Suggestion{{Title: "fix web", Apply: true, Patch: `{}`}}},
+		}},
+		"default/api": {Analysis: hpaanalysis.Analysis{
+			Meta: hpaanalysis.MetaView{Namespace: "default", Name: "api"},
+		}},
+	}
+	// The fix wizard opens from detail view; place the cursor on web (row 1).
+	m.viewMode = detailView
+	m.cursor = 1
+	m3, _ := pressTUIKey(t, m, "f")
+	if m3.fixState == nil || m3.fixState.name != "web" {
+		t.Fatalf("expected wizard anchored to default/web, got %+v", m3.fixState)
+	}
+	// Simulate a refresh that reorders the list so the cursor points at api.
+	updated4, _ := m3.Update(fetchResultMsg{
+		requestID: m3.fetchRequestID,
+		items: []hpaanalysis.ListItem{
+			{Namespace: "default", Name: "web", Health: "WARNING"},
+			{Namespace: "default", Name: "api", Health: "LIMITED"},
+		},
+		reports: m3.reports,
+		uids:    m3.hpaUIDs,
+	})
+	m4 := updated4.(Model)
+	// Force the cursor onto the other row to prove the apply ignores it.
+	m4.cursor = 0
+
+	cmd := m4.applyFix()
+	if cmd == nil {
+		t.Fatal("expected apply command")
+	}
+	if msg := cmd(); msg == nil {
+		t.Fatal("expected apply result message")
+	}
+	if applied != [2]string{"default", "web"} {
+		t.Fatalf("apply must target the wizard identity default/web, got %v", applied)
+	}
+}

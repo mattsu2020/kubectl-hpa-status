@@ -13,6 +13,7 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/internal/cmdoptions"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 // WrapClientError formats a Kubernetes client creation error with the standard
@@ -24,12 +25,20 @@ func WrapClientError(err error) error {
 }
 
 // WrapHPALookupError formats a failed HPA fetch with the canonical
-// "failed to get HPA <namespace>/<name>" prefix and attaches ErrHPANotFound so
-// every call site (not just the status path) is matchable via errors.Is.
-// Passing an empty namespace renders "failed to get HPA <name>" for callers
-// that have not yet resolved the namespace. The underlying API error is
-// preserved via %w so its status reason is still reachable.
+// "failed to get HPA <namespace>/<name>" prefix. The ErrHPANotFound sentinel is
+// attached only when the API classified the failure as NotFound, so scripts can
+// match exit-code 3 ("the HPA does not exist") without permission denials or
+// server errors being misread the same way. Passing an empty namespace renders
+// "failed to get HPA <name>" for callers that have not yet resolved the
+// namespace. The underlying API error is preserved via %w so its status reason
+// is still reachable.
 func WrapHPALookupError(namespace, name string, err error) error {
+	if !apierrors.IsNotFound(err) {
+		if namespace == "" {
+			return fmt.Errorf("failed to get HPA %s: %w", name, err)
+		}
+		return fmt.Errorf("failed to get HPA %s/%s: %w", namespace, name, err)
+	}
 	if namespace == "" {
 		return fmt.Errorf("failed to get HPA %s: %w", name, errors.Join(errs.ErrHPANotFound, err))
 	}

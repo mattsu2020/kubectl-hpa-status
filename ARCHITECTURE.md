@@ -188,9 +188,12 @@ Refactoring notes:
   English message. The current set: `ErrNilHPA`, `ErrNilReport`,
   `ErrMetricNotFound` (pkg/hpa); `ErrScaledObjectNotFound`,
   `ErrUnsupportedScaleTargetKind`, `ErrKEDACRDNotDetected`, `ErrVPACRDNotDetected`
-  (internal/kube); `ErrHPANotFound` (cmd, returned wrapped from the status
-  fetch path). Prefer adding a new sentinel over a new unmatchable error
-  string.
+  (internal/kube); `ErrHPANotFound` (cmd, returned wrapped from the HPA fetch
+  path only when the API classified the failure as NotFound — `cmd/internal/
+  client.WrapHPALookupError` and `hpaFetchError` are the two attachment points,
+  and the sentinel drives `ExitNotFound` (exit 3), so permission denials and
+  server errors must stay unattached and exit 1). Prefer adding a new sentinel
+  over a new unmatchable error string.
 - `Analysis.SummaryKey` carries the stable i18n key (e.g. `dir_scale_up`)
   produced by `pkg/hpa.SummarizeDirectionWithKey` alongside the English
   `Summary` text. Renderers receive both via
@@ -472,6 +475,15 @@ The `tui` subcommand is the interactive Bubble Tea path. It reuses the same
 `Analysis` and `ListItem` models, supports refresh/pause/filter/detail
 navigation, accepts the same refresh interval, and paginates Kubernetes list
 calls. Keep JSON/YAML output unchanged when expanding the TUI.
+
+Interactive state that acts on the cluster must be anchored to an HPA
+identity, not a cursor position: the fix wizard stores its target's
+namespace/name and UID, regenerates its suggestion set from the latest report
+on every successful fetch, closes when the HPA disappears or was replaced
+(UID change catches delete+recreate under the same name), and refuses
+apply/dry-run when current data no longer matches. `fetchResultMsg` carries
+the per-HPA UID map for this. Selection keys are always `namespace/name`, so
+handlers must split the key rather than forwarding it as a bare HPA name.
 
 ## KEDA And Adapter Context
 
