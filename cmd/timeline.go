@@ -125,10 +125,11 @@ func runTimeline(ctx context.Context, out io.Writer, opts *options, name string,
 		return err
 	}
 	if interval < time.Second {
-		if _, err := fmt.Fprintf(out, "Warning: interval %s is below 1s; clamping to 1s to reduce API server load.\n", interval); err != nil {
-			return err
+		var clampErr error
+		interval, clampErr = clampPollInterval(out, interval)
+		if clampErr != nil {
+			return clampErr
 		}
-		interval = time.Second
 	}
 
 	theme := themeFor(opts.Color, out)

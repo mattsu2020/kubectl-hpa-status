@@ -74,12 +74,9 @@ func formatCapacityNodeHints(observations []kube.NodeHintObservation) []string {
 	return hints
 }
 
-// capacitySelector resolves the label selector for the HPA scale target.
-func capacitySelector(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) string {
-	selector, _ := capacitySelectorWithError(ctx, client, hpa)
-	return selector
-}
-
+// capacitySelectorWithError resolves the label selector for the HPA scale
+// target, reporting resolution failures so callers can surface them instead of
+// silently collecting without pod-derived data.
 func capacitySelectorWithError(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) (string, error) {
 	selector, err := scaleTargetSelector(ctx, client, hpa.Namespace, hpa.Spec.ScaleTargetRef)
 	if err != nil || selector == nil {

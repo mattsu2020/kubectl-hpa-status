@@ -44,13 +44,17 @@ func runGitOpsReview(_ context.Context, out io.Writer, opts *options, filePath s
 		return nil
 	}
 
-	inputs := decodeGitOpsReviewInputs(files)
+	inputs, warnings := decodeGitOpsReviewInputs(files)
+	if len(inputs) == 0 && len(warnings) > 0 {
+		return fmt.Errorf("no readable HPA manifests under %s: %s", filePath, strings.Join(warnings, "; "))
+	}
 	if len(inputs) == 0 {
 		_, _ = fmt.Fprintln(out, "No HPA manifests found.")
 		return nil
 	}
 
 	review := gitops.AnalyzeReview(inputs)
+	review.Warnings = warnings
 
 	return renderWithOutput(out, opts, review, func(out io.Writer) error {
 		return gitops.WriteReviewText(out, review, themeFor(opts.Color, out))
@@ -75,17 +79,26 @@ func collectGitOpsReviewFiles(filePath string) ([]string, error) {
 	return collectManifestFiles(filePath)
 }
 
-func decodeGitOpsReviewInputs(files []string) []gitops.ReviewInput {
+// decodeGitOpsReviewInputs decodes HPA manifests from files. Files that
+// cannot be read or split into documents are reported as warnings so a
+// malformed stream no longer silently vanishes from the review.
+func decodeGitOpsReviewInputs(files []string) ([]gitops.ReviewInput, []string) {
 	decoder := serializer.NewCodecFactory(scheme.Scheme).UniversalDeserializer()
 	var inputs []gitops.ReviewInput
+	var warnings []string
 
 	for _, f := range files {
 		data, readErr := readFileBounded(f)
 		if readErr != nil {
+			warnings = append(warnings, fmt.Sprintf("could not read %s: %v", f, readErr))
 			continue
 		}
 
-		docs := splitYAMLDocuments(data)
+		docs, splitErr := splitYAMLDocuments(data)
+		if splitErr != nil {
+			warnings = append(warnings, fmt.Sprintf("could not parse %s: %v", f, splitErr))
+			continue
+		}
 		for _, doc := range docs {
 			doc = []byte(strings.TrimSpace(string(doc)))
 			if len(doc) == 0 {
@@ -109,5 +122,5 @@ func decodeGitOpsReviewInputs(files []string) []gitops.ReviewInput {
 		}
 	}
 
-	return inputs
+	return inputs, warnings
 }

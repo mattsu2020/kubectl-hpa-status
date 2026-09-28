@@ -147,7 +147,11 @@ func collectLintWorkloads(files []string, decoder runtimeDecoder) map[lintWorklo
 		if err != nil {
 			continue
 		}
-		for _, doc := range splitYAMLDocuments(data) {
+		docs, splitErr := splitYAMLDocuments(data)
+		if splitErr != nil {
+			continue
+		}
+		for _, doc := range docs {
 			doc = []byte(strings.TrimSpace(string(doc)))
 			if len(doc) == 0 {
 				continue

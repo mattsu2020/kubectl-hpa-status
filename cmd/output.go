@@ -111,6 +111,26 @@ func normalizeOutputFormat(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
 }
 
+// normalizeOutputFlag canonicalizes an -o value for storage on opts: the
+// format name is lowercased (including the "gotemplate" alias) while
+// jsonpath/template expressions after the separator keep their case.
+func normalizeOutputFlag(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return value
+	}
+	for _, prefix := range []string{"jsonpath=", "jsonpath:", "template=", "template:", "go-template=", "go-template:"} {
+		if expr, ok := strings.CutPrefix(value, prefix); ok {
+			return strings.ToLower(prefix) + expr
+		}
+	}
+	lowered := strings.ToLower(value)
+	if lowered == "gotemplate" {
+		return "go-template"
+	}
+	return lowered
+}
+
 // writeErrorIfStructured emits an error in the requested structured format
 // (json/yaml) and is a no-op for text output. It collapses the repeated
 // structured-error branch at command boundaries.

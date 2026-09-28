@@ -152,8 +152,13 @@ func collectBundleData(ctx context.Context, client *kube.Client, opts *options, 
 	}
 	data.StatusReport = statusReport
 
-	// 4. Resolve selector for additional data collection.
-	selector := capacitySelector(ctx, client, hpa)
+	// 4. Resolve selector for additional data collection. A failed read is
+	// surfaced as a warning so the bundle does not silently omit every
+	// pod-derived section.
+	selector, selectorErr := capacitySelectorWithError(ctx, client, hpa)
+	if selectorErr != nil {
+		data.Warnings = append(data.Warnings, fmt.Sprintf("scale target selector unavailable: %v", selectorErr))
+	}
 
 	// 5. ReplicaSets (reuse snapshot helper).
 	data.ReplicaSets = fetchSnapshotReplicaSets(ctx, client, hpa)
@@ -163,7 +168,7 @@ func collectBundleData(ctx context.Context, client *kube.Client, opts *options, 
 	collectBundlePodData(ctx, client, selector, data)
 
 	// 7. Events with wider scope (HPA + scale target + pods).
-	objectNames := bundleEventObjectNames(hpa, data.PodInfos)
+	objectNames := blockerEventObjectNames(hpa, data.PodInfos)
 	events, eventsErr := kube.FetchRecentEventsForObjects(ctx, client.Interface, hpa.Namespace, objectNames, bundleEventLimit)
 	data.Events = formatBundleEvents(events)
 	if eventsErr != nil {
@@ -174,7 +179,7 @@ func collectBundleData(ctx context.Context, client *kube.Client, opts *options, 
 		}
 	}
 
-	// 8. Metrics API status (reuse snapshot helper).
+	// 9. Metrics API status (reuse snapshot helper).
 	data.MetricsAPI = fetchSnapshotMetricsAPI(ctx, client)
 
 	// 10-13. Namespace capacity context: quotas, limit ranges, PDBs, nodes.
@@ -231,12 +236,6 @@ func collectBundleCapacityContext(ctx context.Context, client *kube.Client, hpa 
 		data.Warnings = append(data.Warnings, fmt.Sprintf("node capacity: %v", err))
 	}
 	data.NodeCapacity = nodeCap
-}
-
-// bundleEventObjectNames collects object names for event fetching:
-// HPA itself, the scale target, and all pods of the scale target.
-func bundleEventObjectNames(hpa *autoscalingv2.HorizontalPodAutoscaler, pods []kube.PodInfo) []string {
-	return blockerEventObjectNames(hpa, pods)
 }
 
 // formatBundleEvents formats events as a markdown-compatible text block.

@@ -49,6 +49,15 @@ func WriteReviewText(w io.Writer, review *Review, theme style.Theme) error {
 		buf.WriteString("\n")
 	}
 
+	// Warnings.
+	if len(review.Warnings) > 0 {
+		buf.WriteString("Warnings:\n")
+		for _, warn := range review.Warnings {
+			buf.WriteString(fmt.Sprintf("  %s\n", warn))
+		}
+		buf.WriteString("\n")
+	}
+
 	// Summary.
 	buf.WriteString(fmt.Sprintf("Summary: %s\n", review.Summary))
 	buf.WriteString(fmt.Sprintf("Risk level: %s\n", reviewRiskLabel(review.RiskLevel, theme)))

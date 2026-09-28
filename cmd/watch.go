@@ -31,8 +31,11 @@ func runWatch(ctx context.Context, out io.Writer, opts *options, name string, in
 		return runTUI(ctx, out, opts, name, true)
 	}
 
-	ctx, cancel, ticker := startWatchLoop(ctx, out, opts)
+	ctx, cancel, ticker, err := startWatchLoop(ctx, out, opts)
 	defer cancel()
+	if err != nil {
+		return err
+	}
 	defer ticker.Stop()
 
 	theme := themeFor(opts.Color, out)
@@ -73,15 +76,8 @@ func runWatchPolling(ctx context.Context, out io.Writer, opts *options, client *
 			_, err := fmt.Fprintf(watchDiagnosticWriter(opts, out), "\nStopped: condition %q is present.\n", opts.UntilCondition)
 			return err
 		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
-			if humanOutput {
-				if _, err := fmt.Fprintln(out); err != nil {
-					return err
-				}
-			}
+		if err := waitWatchTick(ctx, out, ticker, humanOutput); err != nil {
+			return err
 		}
 	}
 }
@@ -163,21 +159,34 @@ func writeStabilizationCountdown(out io.Writer, a *hpaanalysis.Analysis) {
 // minWatchInterval protects the API server from polling floods.
 const minWatchInterval = time.Second
 
+// clampPollInterval clamps a polling interval up to minWatchInterval, warning
+// through warn when a clamp happened. Watch, timeline, and record share it so
+// the message and threshold cannot drift between polling loops.
+func clampPollInterval(warn io.Writer, interval time.Duration) (time.Duration, error) {
+	if interval >= minWatchInterval {
+		return interval, nil
+	}
+	if _, err := fmt.Fprintf(warn, "Warning: interval %s is below 1s; clamping to 1s to reduce API server load.\n", interval); err != nil {
+		return minWatchInterval, err
+	}
+	return minWatchInterval, nil
+}
+
 // startWatchLoop applies the shared watch prologue: the optional timeout
 // context, the interval clamp warning, and the ticker. Callers must defer both
-// returned release functions.
-func startWatchLoop(ctx context.Context, out io.Writer, opts *options) (context.Context, context.CancelFunc, *time.Ticker) {
+// returned release functions. A nil ticker with an error means the clamp
+// warning could not be written.
+func startWatchLoop(ctx context.Context, out io.Writer, opts *options) (context.Context, context.CancelFunc, *time.Ticker, error) {
 	cancel := context.CancelFunc(func() {})
 	if opts.WatchTimeout > 0 {
 		ctx, cancel = context.WithTimeout(ctx, opts.WatchTimeout)
 	}
 
-	interval := opts.WatchInterval
-	if interval < minWatchInterval {
-		_, _ = fmt.Fprintf(watchDiagnosticWriter(opts, out), "Warning: interval %s is below 1s; clamping to 1s to reduce API server load.\n", interval)
-		interval = minWatchInterval
+	interval, err := clampPollInterval(watchDiagnosticWriter(opts, out), opts.WatchInterval)
+	if err != nil {
+		return ctx, cancel, nil, err
 	}
-	return ctx, cancel, time.NewTicker(interval)
+	return ctx, cancel, time.NewTicker(interval), nil
 }
 
 // waitWatchTick blocks until the next tick or cancellation, printing the
@@ -197,8 +206,11 @@ func waitWatchTick(ctx context.Context, out io.Writer, ticker *time.Ticker, huma
 }
 
 func runWatchList(ctx context.Context, out io.Writer, opts *options) error {
-	ctx, cancel, ticker := startWatchLoop(ctx, out, opts)
+	ctx, cancel, ticker, err := startWatchLoop(ctx, out, opts)
 	defer cancel()
+	if err != nil {
+		return err
+	}
 	defer ticker.Stop()
 
 	theme := themeFor(opts.Color, out)

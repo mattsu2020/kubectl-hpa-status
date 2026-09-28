@@ -12,6 +12,9 @@ type EventOption = cmdoptions.EventOption
 // presets and option types across all command files. Do not import
 // internal/cmdoptions symbols (Preset*, CommandPresetOptions, ...) directly
 // from individual command files; add or use the bridge entry here instead.
+// The extracted cmd/internal/{client,...} leaf helpers are exempt: they took
+// their dependency before the bridge existed and take a narrow Root value, not
+// the preset vocabulary the bridge exists to police.
 
 // Type aliases re-export the cmdoptions model under the names the cmd package
 // uses in command wiring and struct literals.
