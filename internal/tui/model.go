@@ -46,9 +46,13 @@ type Model struct {
 	// hpaUIDs maps "namespace/name" to the observed HPA UID so interactive
 	// states (the fix wizard) can verify their target still is the same
 	// object after a refresh, instead of matching by name alone.
-	hpaUIDs        map[string]string
-	cursor         int
-	viewMode       viewMode
+	hpaUIDs  map[string]string
+	cursor   int
+	viewMode viewMode
+	// helpReturnView is the view active before the help overlay was opened.
+	// Escaping or toggling help restores it so opening help from an anchored
+	// view (fix wizard, history, simulation) never silently abandons it.
+	helpReturnView viewMode
 	paused         bool
 	filter         string
 	filterInput    textinput.Model

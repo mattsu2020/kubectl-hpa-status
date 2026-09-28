@@ -4,6 +4,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	hpachurn "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/churn"
+	hpamodel "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/model"
 )
 
 // historyLoadedMsg carries the result of the background history load keyed to
@@ -52,6 +54,27 @@ func (m Model) updateHistoryLoaded(msg historyLoadedMsg) (tea.Model, tea.Cmd) {
 	m.historyState.loadErr = msg.err
 	if msg.err == nil {
 		m.historyState.snapshots = msg.snapshots
+		// Compute the churn analysis once per load; the shared pointer is
+		// safe because historyState treats it as read-only after this
+		// assignment. Without this the view recomputed it every frame.
+		m.historyState.churnAnalysis = churnFromSnapshots(msg.snapshots)
 	}
 	return m, nil
+}
+
+// churnFromSnapshots projects history snapshots into rescale data and runs the
+// canonical churn analyzer once, so the history view does not recompute it on
+// every render.
+func churnFromSnapshots(snapshots []hpaanalysis.TimelineSnapshot) *hpachurn.ChurnAnalysis {
+	if len(snapshots) == 0 {
+		return nil
+	}
+	rescales := make([]hpamodel.RescaleData, 0, len(snapshots))
+	for _, snap := range snapshots {
+		rescales = append(rescales, hpamodel.RescaleData{
+			Timestamp: snap.Timestamp,
+			NewSize:   snap.Desired,
+		})
+	}
+	return hpachurn.AnalyzeFromRescales(rescales, nil)
 }

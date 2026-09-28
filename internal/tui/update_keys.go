@@ -60,13 +60,34 @@ func (m Model) keyHandlers() []keyBindingHandler {
 			return m, nil
 		}},
 		{m.keys.Filter, func(m Model) (tea.Model, tea.Cmd) {
+			// The filter input drives filteredItems, which is list-view
+			// state. Views with their own anchored state (history, hints,
+			// fix, sim, ...) must not start filtering, because the cursor
+			// those views render from would desync from their anchor.
+			if m.viewMode != listView {
+				return m, nil
+			}
 			m.filtering = true
 			m.filterInput.Focus()
 			return m, nil
 		}},
 		{m.keys.Help, func(m Model) (tea.Model, tea.Cmd) { return m.toggleHelpView(), nil }},
-		{m.keys.Sort, func(m Model) (tea.Model, tea.Cmd) { return m.handleSortKey(), nil }},
-		{m.keys.JumpProblem, func(m Model) (tea.Model, tea.Cmd) { return m.handleJumpProblemKey(), nil }},
+		{m.keys.Sort, func(m Model) (tea.Model, tea.Cmd) {
+			// Sorting re-orders filteredItems and resets the cursor. It is
+			// a list-view action only: in anchored views the reset cursor
+			// would point the rendered header at a different HPA than the
+			// one the view's state was loaded for.
+			if m.viewMode != listView {
+				return m, nil
+			}
+			return m.handleSortKey(), nil
+		}},
+		{m.keys.JumpProblem, func(m Model) (tea.Model, tea.Cmd) {
+			if m.viewMode != listView {
+				return m, nil
+			}
+			return m.handleJumpProblemKey(), nil
+		}},
 		{m.keys.Metrics, func(m Model) (tea.Model, tea.Cmd) {
 			if m.viewMode == detailView || m.viewMode == listView {
 				m.viewMode = metricsView
@@ -105,11 +126,18 @@ func (m Model) keyHandlers() []keyBindingHandler {
 	}
 }
 
-// toggleHelpView flips between the help overlay and the previous list view.
+// toggleHelpView flips between the help overlay and the view it was opened
+// from. helpReturnView remembers that origin so opening help inside the fix
+// wizard, simulation, or history view returns there instead of silently
+// dropping the anchored view state.
 func (m Model) toggleHelpView() Model {
 	if m.viewMode == helpView {
-		m.viewMode = listView
+		m.viewMode = m.helpReturnView
+		if m.viewMode == helpView || m.viewMode < listView || m.viewMode >= viewModeCount {
+			m.viewMode = listView
+		}
 	} else {
+		m.helpReturnView = m.viewMode
 		m.viewMode = helpView
 	}
 	return m
