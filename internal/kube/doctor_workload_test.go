@@ -2,8 +2,10 @@ package kube
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,8 +14,10 @@ import (
 	authorizationv1 "k8s.io/api/authorization/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	restclient "k8s.io/client-go/rest"
 	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/utils/ptr"
@@ -87,6 +91,25 @@ func TestCheckMetricsServer(t *testing.T) {
 		}
 		if status.Message == "" {
 			t.Error("absent metrics-server should explain the impact on HPA")
+		}
+	})
+
+	t.Run("observation failure is not reported as absent", func(t *testing.T) {
+		client := testutil.NewFakeClientWithObjects()
+		client.PrependReactor("get", "deployments",
+			func(k8stesting.Action) (bool, runtime.Object, error) {
+				return true, nil, apierrors.NewForbidden(schema.GroupResource{Group: "apps", Resource: "deployments"}, "metrics-server", errors.New("denied"))
+			})
+		client.PrependReactor("list", "deployments",
+			func(k8stesting.Action) (bool, runtime.Object, error) {
+				return true, nil, apierrors.NewForbidden(schema.GroupResource{Group: "apps", Resource: "deployments"}, "", errors.New("denied"))
+			})
+		status := CheckMetricsServer(context.Background(), client)
+		if status.Available {
+			t.Fatalf("expected unavailable, got %+v", status)
+		}
+		if !strings.Contains(status.Message, "could not observe") {
+			t.Fatalf("expected an observation-failure message, got %q", status.Message)
 		}
 	})
 }

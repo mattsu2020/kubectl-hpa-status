@@ -22,14 +22,13 @@ import (
 // it would reintroduce a race: a waiter can hold a lock on the now-unlinked
 // inode while a third process creates and locks a fresh file, ending with two
 // "owners". An empty leftover dotfile in the cache directory is harmless.
-func acquireLock(path string) (func(), error) {
-	return acquireLockContext(context.Background(), path)
-}
-
 // acquireLockContext acquires the exclusive history lock, waiting up to
 // lockTimeout for a competing holder and honouring ctx cancellation while
-// waiting.
+// waiting. A nil ctx behaves like context.Background().
 func acquireLockContext(ctx context.Context, path string) (func(), error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	lockPath := path + ".lock"
 	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, storeFileMode)
 	if err != nil {

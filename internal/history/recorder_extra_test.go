@@ -9,8 +9,9 @@ import (
 // TestRecorderNilStoreExposesWarning covers the nil-store guard in
 // RecordAndAnalyze.
 func TestRecorderNilStoreExposesWarning(t *testing.T) {
+	ctx := t.Context()
 	r := NewRecorder(nil, nil)
-	result := r.RecordAndAnalyze(RecordInput{Namespace: "ns", Name: "app"})
+	result := r.RecordAndAnalyze(ctx, RecordInput{Namespace: "ns", Name: "app"})
 	if len(result.Warnings) != 1 {
 		t.Fatalf("expected 1 warning, got %d: %+v", len(result.Warnings), result.Warnings)
 	}
@@ -23,12 +24,13 @@ func TestRecorderNilStoreExposesWarning(t *testing.T) {
 // nil-clock default in NewRecorder. It uses a real in-memory-or-disk store so
 // the full RecordAndAnalyze pipeline runs against the real clock.
 func TestRecorderRealClockAndDefaultClock(t *testing.T) {
+	ctx := t.Context()
 	store, err := NewHealthStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatalf("NewHealthStoreWithDir() error: %v", err)
 	}
 	r := NewRecorder(store, nil) // nil clock -> process-wide shared clock
-	result := r.RecordAndAnalyze(RecordInput{
+	result := r.RecordAndAnalyze(ctx, RecordInput{
 		Namespace: "ns", Name: "app",
 		HealthScore: 90, HealthState: "OK", DesiredReplicas: 3, CurrentReplicas: 3,
 		Since: 1 * time.Hour, Retention: 24 * time.Hour,

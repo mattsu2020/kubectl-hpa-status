@@ -21,6 +21,7 @@ func testKey(cluster, namespace, name string) SnapshotKey {
 }
 
 func TestHealthStoreAppendAndLoad(t *testing.T) {
+	ctx := t.Context()
 	dir := t.TempDir()
 	store, err := NewHealthStoreWithDir(dir)
 	if err != nil {
@@ -37,13 +38,13 @@ func TestHealthStoreAppendAndLoad(t *testing.T) {
 
 	// Append all snapshots.
 	for _, snap := range snapshots {
-		if err := store.Append(key, snap); err != nil {
+		if err := store.Append(ctx, key, snap); err != nil {
 			t.Fatalf("Append() error: %v", err)
 		}
 	}
 
 	// Load with 3-hour window — should get all 3.
-	loaded, err := store.Load(key, 3*time.Hour)
+	loaded, err := store.Load(ctx, key, 3*time.Hour)
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -52,7 +53,7 @@ func TestHealthStoreAppendAndLoad(t *testing.T) {
 	}
 
 	// Load with 90-minute window — should get only 2.
-	loaded, err = store.Load(key, 90*time.Minute)
+	loaded, err = store.Load(ctx, key, 90*time.Minute)
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -65,6 +66,7 @@ func TestHealthStoreAppendAndLoad(t *testing.T) {
 // same namespace/name on a different cluster, and a recreated HPA (new UID),
 // must never read or overwrite another stream's history.
 func TestHealthStoreKeyIsolation(t *testing.T) {
+	ctx := t.Context()
 	store, err := NewHealthStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -75,12 +77,12 @@ func TestHealthStoreKeyIsolation(t *testing.T) {
 	recreated := prod
 	recreated.UID = "new-uid"
 
-	if err := store.Append(prod, healthtrend.HealthSnapshot{Timestamp: now, HealthScore: 90, HealthState: "OK"}); err != nil {
+	if err := store.Append(ctx, prod, healthtrend.HealthSnapshot{Timestamp: now, HealthScore: 90, HealthState: "OK"}); err != nil {
 		t.Fatal(err)
 	}
 
 	for _, other := range []SnapshotKey{dev, recreated} {
-		loaded, err := store.Load(other, time.Hour)
+		loaded, err := store.Load(ctx, other, time.Hour)
 		if err != nil {
 			t.Fatalf("Load(%s): %v", other, err)
 		}
@@ -90,10 +92,10 @@ func TestHealthStoreKeyIsolation(t *testing.T) {
 	}
 
 	// Appending to the second stream must not touch the first.
-	if err := store.Append(dev, healthtrend.HealthSnapshot{Timestamp: now, HealthScore: 40, HealthState: "ERROR"}); err != nil {
+	if err := store.Append(ctx, dev, healthtrend.HealthSnapshot{Timestamp: now, HealthScore: 40, HealthState: "ERROR"}); err != nil {
 		t.Fatal(err)
 	}
-	prodLoaded, err := store.Load(prod, time.Hour)
+	prodLoaded, err := store.Load(ctx, prod, time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,6 +136,7 @@ func countHistoryLines(t *testing.T, path string) int {
 // thresholds the record is a single append and expired lines linger until a
 // later compaction pass collects them.
 func TestRecordAndLoadAppendOnlyBetweenCompactions(t *testing.T) {
+	ctx := t.Context()
 	store, err := NewHealthStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -155,7 +158,7 @@ func TestRecordAndLoadAppendOnlyBetweenCompactions(t *testing.T) {
 		}
 	}
 
-	window, err := store.RecordAndLoad(key, healthtrend.HealthSnapshot{Timestamp: now, HealthScore: 90}, 24*time.Hour, 2*time.Hour, now)
+	window, err := store.RecordAndLoad(ctx, key, healthtrend.HealthSnapshot{Timestamp: now, HealthScore: 90}, 24*time.Hour, 2*time.Hour, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,13 +176,13 @@ func TestRecordAndLoadAppendOnlyBetweenCompactions(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := store.RecordAndLoad(key, healthtrend.HealthSnapshot{Timestamp: now, HealthScore: 95}, 24*time.Hour, time.Hour, now); err != nil {
+	if _, err := store.RecordAndLoad(ctx, key, healthtrend.HealthSnapshot{Timestamp: now, HealthScore: 95}, 24*time.Hour, time.Hour, now); err != nil {
 		t.Fatal(err)
 	}
 	if got := countHistoryLines(t, path); got > 100 {
 		t.Fatalf("file has %d lines after compaction-triggering record, want <= 100", got)
 	}
-	loaded, err := store.Load(key, 24*time.Hour)
+	loaded, err := store.Load(ctx, key, 24*time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +214,7 @@ func TestShouldCompactThresholds(t *testing.T) {
 
 func TestHistoryLockWaitHonorsContext(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "history.jsonl")
-	release, err := acquireLock(path)
+	release, err := acquireLockContext(t.Context(), path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +253,7 @@ func TestHistoryLockProcessLevelExclusion(t *testing.T) {
 	}
 	path := filepath.Join(t.TempDir(), "history.jsonl")
 
-	release, err := acquireLock(path)
+	release, err := acquireLockContext(t.Context(), path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -322,6 +325,7 @@ func runLockChildRole(t *testing.T, role string) {
 // from several OS processes to prove the lock + append design loses no
 // records — the failure mode the stale-reclamation race could cause.
 func TestHistoryMultiProcessRecordDoesNotLoseUpdates(t *testing.T) {
+	ctx := t.Context()
 	if role := os.Getenv(childEnvRole); role == roleRecordHammer {
 		runRecordHammerChild(t)
 		return
@@ -362,7 +366,7 @@ func TestHistoryMultiProcessRecordDoesNotLoseUpdates(t *testing.T) {
 		}
 	}
 
-	loaded, err := store.LoadAt(key, 24*time.Hour, now.Add(time.Hour))
+	loaded, err := store.LoadAt(ctx, key, 24*time.Hour, now.Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -372,6 +376,7 @@ func TestHistoryMultiProcessRecordDoesNotLoseUpdates(t *testing.T) {
 }
 
 func runRecordHammerChild(t *testing.T) {
+	ctx := t.Context()
 	dir := os.Getenv(roleRecordDirEnv)
 	if dir == "" {
 		os.Exit(4)
@@ -389,7 +394,7 @@ func runRecordHammerChild(t *testing.T) {
 			HealthScore: 80,
 			HealthState: "OK",
 		}
-		if _, err := store.RecordAndLoad(key, snapshot, 24*time.Hour, time.Hour, time.Now()); err != nil {
+		if _, err := store.RecordAndLoad(ctx, key, snapshot, 24*time.Hour, time.Hour, time.Now()); err != nil {
 			fmt.Printf("CHILD-ERROR: %v\n", err)
 			os.Exit(3)
 		}
@@ -414,6 +419,7 @@ func TestHealthStoreLongNamesAreBoundedAndCollisionSafe(t *testing.T) {
 }
 
 func TestHealthStorePermissionsSortingAndCorruption(t *testing.T) {
+	ctx := t.Context()
 	dir := filepath.Join(t.TempDir(), "history")
 	store, err := NewHealthStoreWithDir(dir)
 	if err != nil {
@@ -429,7 +435,7 @@ func TestHealthStorePermissionsSortingAndCorruption(t *testing.T) {
 		{Timestamp: now, HealthScore: 90},
 		{Timestamp: now.Add(-time.Hour), HealthScore: 80},
 	} {
-		if err := store.Append(key, snap); err != nil {
+		if err := store.Append(ctx, key, snap); err != nil {
 			t.Fatalf("Append: %v", err)
 		}
 	}
@@ -448,7 +454,7 @@ func TestHealthStorePermissionsSortingAndCorruption(t *testing.T) {
 		t.Fatalf("close corrupt fixture: %v", err)
 	}
 
-	loaded, loadErr := store.Load(key, 2*time.Hour)
+	loaded, loadErr := store.Load(ctx, key, 2*time.Hour)
 	var corrupt *CorruptLinesError
 	if !errors.As(loadErr, &corrupt) {
 		t.Fatalf("Load error = %v, want CorruptLinesError", loadErr)
@@ -459,6 +465,7 @@ func TestHealthStorePermissionsSortingAndCorruption(t *testing.T) {
 }
 
 func TestHealthStoreConcurrentAppend(t *testing.T) {
+	ctx := t.Context()
 	store, err := NewHealthStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatalf("NewHealthStoreWithDir: %v", err)
@@ -471,7 +478,7 @@ func TestHealthStoreConcurrentAppend(t *testing.T) {
 		wg.Add(1)
 		go func(score int) {
 			defer wg.Done()
-			errs <- store.Append(key, healthtrend.HealthSnapshot{
+			errs <- store.Append(ctx, key, healthtrend.HealthSnapshot{
 				Timestamp:   time.Now().Add(time.Duration(score) * time.Millisecond),
 				HealthScore: score,
 			})
@@ -484,7 +491,7 @@ func TestHealthStoreConcurrentAppend(t *testing.T) {
 			t.Fatalf("concurrent Append: %v", err)
 		}
 	}
-	loaded, err := store.Load(key, time.Hour)
+	loaded, err := store.Load(ctx, key, time.Hour)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -494,13 +501,14 @@ func TestHealthStoreConcurrentAppend(t *testing.T) {
 }
 
 func TestHealthStoreLoadNonExistent(t *testing.T) {
+	ctx := t.Context()
 	dir := t.TempDir()
 	store, err := NewHealthStoreWithDir(dir)
 	if err != nil {
 		t.Fatalf("NewHealthStoreWithDir() error: %v", err)
 	}
 
-	loaded, err := store.Load(SnapshotKey{Namespace: "default", Name: "nonexistent"}, 24*time.Hour)
+	loaded, err := store.Load(ctx, SnapshotKey{Namespace: "default", Name: "nonexistent"}, 24*time.Hour)
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -510,6 +518,7 @@ func TestHealthStoreLoadNonExistent(t *testing.T) {
 }
 
 func TestHealthStorePrune(t *testing.T) {
+	ctx := t.Context()
 	dir := t.TempDir()
 	store, err := NewHealthStoreWithDir(dir)
 	if err != nil {
@@ -521,19 +530,19 @@ func TestHealthStorePrune(t *testing.T) {
 	old := healthtrend.HealthSnapshot{Timestamp: now.Add(-48 * time.Hour), HealthScore: 50, HealthState: "ERROR"}
 	recent := healthtrend.HealthSnapshot{Timestamp: now.Add(-1 * time.Hour), HealthScore: 100, HealthState: "OK"}
 
-	if err := store.Append(key, old); err != nil {
+	if err := store.Append(ctx, key, old); err != nil {
 		t.Fatalf("Append() error: %v", err)
 	}
-	if err := store.Append(key, recent); err != nil {
+	if err := store.Append(ctx, key, recent); err != nil {
 		t.Fatalf("Append() error: %v", err)
 	}
 
 	// Prune entries older than 24 hours.
-	if err := store.Prune(key, 24*time.Hour); err != nil {
+	if err := store.Prune(ctx, key, 24*time.Hour); err != nil {
 		t.Fatalf("Prune() error: %v", err)
 	}
 
-	loaded, err := store.Load(key, 72*time.Hour)
+	loaded, err := store.Load(ctx, key, 72*time.Hour)
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -546,6 +555,7 @@ func TestHealthStorePrune(t *testing.T) {
 }
 
 func TestHealthStoreEmptyNamespaceRejected(t *testing.T) {
+	ctx := t.Context()
 	dir := t.TempDir()
 	store, err := NewHealthStoreWithDir(dir)
 	if err != nil {
@@ -553,15 +563,16 @@ func TestHealthStoreEmptyNamespaceRejected(t *testing.T) {
 	}
 
 	snap := healthtrend.HealthSnapshot{Timestamp: time.Now(), HealthScore: 100, HealthState: "OK"}
-	if err := store.Append(SnapshotKey{Namespace: "", Name: "my-app"}, snap); err == nil {
+	if err := store.Append(ctx, SnapshotKey{Namespace: "", Name: "my-app"}, snap); err == nil {
 		t.Error("expected error for empty namespace")
 	}
-	if err := store.Append(SnapshotKey{Namespace: "default", Name: ""}, snap); err == nil {
+	if err := store.Append(ctx, SnapshotKey{Namespace: "default", Name: ""}, snap); err == nil {
 		t.Error("expected error for empty name")
 	}
 }
 
 func TestHealthStoreLoadMultiple(t *testing.T) {
+	ctx := t.Context()
 	dir := t.TempDir()
 	store, err := NewHealthStoreWithDir(dir)
 	if err != nil {
@@ -571,8 +582,8 @@ func TestHealthStoreLoadMultiple(t *testing.T) {
 	now := time.Now()
 	appA := testKey("prod", "default", "app-a")
 	appB := testKey("prod", "default", "app-b")
-	_ = store.Append(appA, healthtrend.HealthSnapshot{Timestamp: now, HealthScore: 90, HealthState: "OK"})
-	_ = store.Append(appB, healthtrend.HealthSnapshot{Timestamp: now, HealthScore: 80, HealthState: "OK"})
+	_ = store.Append(ctx, appA, healthtrend.HealthSnapshot{Timestamp: now, HealthScore: 90, HealthState: "OK"})
+	_ = store.Append(ctx, appB, healthtrend.HealthSnapshot{Timestamp: now, HealthScore: 80, HealthState: "OK"})
 
 	keys := []SnapshotKey{
 		appA,
@@ -580,7 +591,7 @@ func TestHealthStoreLoadMultiple(t *testing.T) {
 		testKey("prod", "default", "app-c"), // nonexistent
 	}
 
-	result, err := store.LoadMultiple(keys, 1*time.Hour)
+	result, err := store.LoadMultiple(ctx, keys, 1*time.Hour)
 	if err != nil {
 		t.Fatalf("LoadMultiple() error: %v", err)
 	}
