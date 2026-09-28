@@ -156,9 +156,11 @@ Refactoring notes:
   enrichment penalties exactly once, finalizes derived output, and produces
   the report and list item from the same `Analysis`.
 - A single-HPA status request creates one `internal/observation.Snapshot`.
-  Scale-target and Pod reads are memoized with `sync.Once`, and every derived
-  view (pod info, pending details, container state) reuses those objects. The
-  typed state distinguishes a successful empty result from an unavailable API
+  Successful scale-target, Pod, and ReplicaSet reads are memoized under mutexes;
+  failed reads can be retried. Every derived view (pod info, pending details,
+  container state) reuses those objects. Snapshot archives share these
+  observations with their status report. The typed state distinguishes a
+  successful empty result from an unavailable API
   read and from a workload kind where the observation is not applicable.
 - Metric lookup and simulation use `MetricID`, whose identity includes source
   type, metric name, container, canonical selector, and described object

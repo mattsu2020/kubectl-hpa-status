@@ -10,18 +10,24 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func buildRolloutDiagnosisWithSnapshot(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, snapshot *observation.Snapshot) *hpaanalysis.RolloutDiagnosis {
 	if client == nil || hpa == nil {
 		return nil
 	}
+	if snapshot == nil {
+		snapshot = observation.New(client.Interface, hpa)
+	}
+	target := snapshot.ScaleTarget(ctx)
+	if !target.Known() {
+		return nil
+	}
 	ref := hpa.Spec.ScaleTargetRef
 	switch ref.Kind {
 	case "Deployment":
-		deploy, err := client.Interface.AppsV1().Deployments(hpa.Namespace).Get(ctx, ref.Name, metav1.GetOptions{})
-		if err != nil {
+		deploy, ok := target.Data.Object.(*appsv1.Deployment)
+		if !ok {
 			return nil
 		}
 		diag := &hpaanalysis.RolloutDiagnosis{
@@ -40,8 +46,8 @@ func buildRolloutDiagnosisWithSnapshot(ctx context.Context, client *kube.Client,
 		fillRolloutReasonAndPods(ctx, client, hpa, snapshot, diag)
 		return diag
 	case "StatefulSet":
-		sts, err := client.Interface.AppsV1().StatefulSets(hpa.Namespace).Get(ctx, ref.Name, metav1.GetOptions{})
-		if err != nil {
+		sts, ok := target.Data.Object.(*appsv1.StatefulSet)
+		if !ok {
 			return nil
 		}
 		diag := &hpaanalysis.RolloutDiagnosis{

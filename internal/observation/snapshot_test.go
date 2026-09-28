@@ -164,3 +164,59 @@ func TestSnapshotNotApplicableForUnsupportedKind(t *testing.T) {
 		t.Fatalf("Pods() for unsupported kind = %#v, want StateNotApplicable", pods)
 	}
 }
+
+func TestSnapshotReplicaSetTargetReusesObject(t *testing.T) {
+	replicas := int32(3)
+	client := fake.NewClientset(&appsv1.ReplicaSet{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "web"},
+		Spec:       appsv1.ReplicaSetSpec{Replicas: &replicas},
+		Status:     appsv1.ReplicaSetStatus{Replicas: 2, ReadyReplicas: 1},
+	})
+	hpa := testSnapshotHPA()
+	hpa.Spec.ScaleTargetRef.Kind = "ReplicaSet"
+	snapshot := New(client, &hpa)
+	target := snapshot.ScaleTarget(context.Background())
+	if !target.Known() {
+		t.Fatalf("target: %+v", target)
+	}
+	for i := 0; i < 2; i++ {
+		value := snapshot.ReplicaSets(context.Background())
+		if !value.Known() || len(value.Data) != 1 {
+			t.Fatalf("ReplicaSets: %+v", value)
+		}
+		if got := value.Data[0]; got.Name != "web" || got.DesiredReplicas != 3 || got.CurrentReplicas != 2 || got.ReadyReplicas != 1 {
+			t.Fatalf("wrong observation: %+v", got)
+		}
+	}
+	if len(client.Actions()) != 1 {
+		t.Fatalf("duplicate target reads: %v", client.Actions())
+	}
+}
+
+func TestSnapshotReplicaSetsRetryFailedRead(t *testing.T) {
+	client := fake.NewClientset(&appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "web"},
+		Spec:       appsv1.DeploymentSpec{Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "web"}}},
+	})
+	attempts := 0
+	client.PrependReactor("list", "replicasets", func(ktesting.Action) (bool, runtime.Object, error) {
+		attempts++
+		if attempts == 1 {
+			return true, nil, errors.New("temporary observation failure")
+		}
+		return true, &appsv1.ReplicaSetList{}, nil
+	})
+	hpa := testSnapshotHPA()
+	snapshot := New(client, &hpa)
+	if got := snapshot.ReplicaSets(context.Background()); got.State != StateUnavailable || got.Err == nil {
+		t.Fatalf("failed read: %+v", got)
+	}
+	for i := 0; i < 2; i++ {
+		if got := snapshot.ReplicaSets(context.Background()); !got.Known() || len(got.Data) != 0 {
+			t.Fatalf("successful empty read: %+v", got)
+		}
+	}
+	if attempts != 2 {
+		t.Fatalf("got %d requests, want one failed and one successful", attempts)
+	}
+}

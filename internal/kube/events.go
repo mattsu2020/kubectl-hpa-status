@@ -2,6 +2,7 @@ package kube
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -34,9 +35,11 @@ type EventInfo struct {
 // API server filters server-side without truncating a newer event that happens
 // to be on a later page. objectNames is small in practice (the HPA plus its
 // workload chain), so per-name queries stay cheaper than one namespace-wide list.
-func FetchRecentEventsForObjects(ctx context.Context, client kubernetes.Interface, namespace string, objectNames []string, limit int) []EventInfo {
+// Partial results are returned alongside errors; callers must surface incomplete
+// collection instead of interpreting a failed read as an absence of events.
+func FetchRecentEventsForObjects(ctx context.Context, client kubernetes.Interface, namespace string, objectNames []string, limit int) ([]EventInfo, error) {
 	if len(objectNames) == 0 || limit <= 0 {
-		return nil
+		return nil, nil
 	}
 	names := make([]string, 0, len(objectNames))
 	seen := make(map[string]struct{}, len(objectNames))
@@ -53,14 +56,12 @@ func FetchRecentEventsForObjects(ctx context.Context, client kubernetes.Interfac
 	sort.Strings(names)
 
 	var result []EventInfo
+	var failures []error
 	for _, name := range names {
 		events, err := listCoreEventsBySelector(ctx, client, namespace,
 			fields.OneTermEqualSelector("involvedObject.name", name).String())
 		if err != nil {
-			// Best-effort: an Events List failure (RBAC denial on events, API
-			// server hiccup) is indistinguishable from "no events" to the
-			// caller. The status report degrades to omitting the events
-			// section rather than failing the whole command.
+			failures = append(failures, fmt.Errorf("list events for %s/%s: %w", namespace, name, err))
 			continue
 		}
 		for _, event := range events {
@@ -82,7 +83,7 @@ func FetchRecentEventsForObjects(ctx context.Context, client kubernetes.Interfac
 	if len(result) > limit {
 		result = result[:limit]
 	}
-	return result
+	return result, errors.Join(failures...)
 }
 
 func coreEventTimestamp(event corev1.Event) time.Time {
@@ -182,10 +183,22 @@ func listCoreEventsBySelector(ctx context.Context, client kubernetes.Interface, 
 // oldest in-window events once the fetch limit was exceeded; here the caller
 // gets every event in the requested window.
 func FetchRecentHPAEventsSince(ctx context.Context, client kubernetes.Interface, namespace, name string, since time.Time) ([]corev1.Event, error) {
+	return fetchRecentHPAEventsSince(ctx, client, namespace, name, "", since)
+}
+
+// FetchRecentHPAEventsForObjectSince limits history to the current HPA identity.
+func FetchRecentHPAEventsForObjectSince(ctx context.Context, client kubernetes.Interface, hpa *autoscalingv2.HorizontalPodAutoscaler, since time.Time) ([]corev1.Event, error) {
+	if hpa == nil {
+		return nil, fmt.Errorf("fetch HPA events: HPA is nil")
+	}
+	return fetchRecentHPAEventsSince(ctx, client, hpa.Namespace, hpa.Name, hpa.UID, since)
+}
+
+func fetchRecentHPAEventsSince(ctx context.Context, client kubernetes.Interface, namespace, name string, uid types.UID, since time.Time) ([]corev1.Event, error) {
 	// The window is bounded by the caller-supplied since time, so fetching
 	// without the fetch-limit truncation is safe; the pagination helper still
 	// pages in eventsSinceFetchLimit-sized batches.
-	events, err := fetchRecentHPAEvents(ctx, client, namespace, name, "", math.MaxInt64)
+	events, err := fetchRecentHPAEvents(ctx, client, namespace, name, uid, math.MaxInt64)
 	if err != nil {
 		return nil, err
 	}

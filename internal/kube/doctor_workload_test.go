@@ -328,7 +328,10 @@ func TestFetchRecentEventsForObjects(t *testing.T) {
 	}
 	client := testutil.NewFakeClientWithObjects(events...)
 
-	got := FetchRecentEventsForObjects(context.Background(), client, "default", []string{"web", "", "web"}, 5)
+	got, err := FetchRecentEventsForObjects(context.Background(), client, "default", []string{"web", "", "web"}, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 2 {
 		t.Fatalf("expected 2 events for web, got %d: %+v", len(got), got)
 	}
@@ -339,13 +342,13 @@ func TestFetchRecentEventsForObjects(t *testing.T) {
 		t.Errorf("newlines should be flattened, got %q", got[0].Message)
 	}
 
-	if trimmed := FetchRecentEventsForObjects(context.Background(), client, "default", []string{"web"}, 1); len(trimmed) != 1 {
+	if trimmed, err := FetchRecentEventsForObjects(context.Background(), client, "default", []string{"web"}, 1); err != nil || len(trimmed) != 1 {
 		t.Errorf("limit should trim results, got %d", len(trimmed))
 	}
-	if none := FetchRecentEventsForObjects(context.Background(), client, "default", nil, 5); none != nil {
+	if none, err := FetchRecentEventsForObjects(context.Background(), client, "default", nil, 5); err != nil || none != nil {
 		t.Errorf("no object names should return nil, got %v", none)
 	}
-	if none := FetchRecentEventsForObjects(context.Background(), client, "default", []string{"web"}, 0); none != nil {
+	if none, err := FetchRecentEventsForObjects(context.Background(), client, "default", []string{"web"}, 0); err != nil || none != nil {
 		t.Errorf("limit 0 should return nil, got %v", none)
 	}
 }

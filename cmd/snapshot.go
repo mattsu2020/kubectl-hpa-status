@@ -11,12 +11,12 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/cmd/bundle"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/metricsapi"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/observation"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/audit"
 	hparender "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/render"
 	"github.com/spf13/cobra"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 )
 
@@ -96,16 +96,20 @@ func collectSnapshotData(ctx context.Context, client *kube.Client, opts *options
 	if err != nil {
 		return nil, wrapHPALookupError(client.Namespace, name, err)
 	}
-	data.HPA, _ = yaml.Marshal(hpa)
+	data.HPA, err = yaml.Marshal(hpa)
+	if err != nil {
+		return nil, fmt.Errorf("marshal HPA: %w", err)
+	}
+	observations := observation.New(client.Interface, hpa)
 
 	// 2. Fetch scale target (Deployment/StatefulSet)
-	data.Deployment = fetchSnapshotTarget(ctx, client, hpa)
+	data.Deployment = snapshotTargetYAML(ctx, observations)
 
 	// 3. Fetch ReplicaSets
-	data.ReplicaSets = fetchSnapshotReplicaSets(ctx, client, hpa)
+	data.ReplicaSets = snapshotObservationJSON("ReplicaSets", observations.ReplicaSets(ctx))
 
 	// 4. Fetch Pods
-	data.Pods = fetchSnapshotPods(ctx, client, hpa)
+	data.Pods = snapshotObservationJSON("pods", observations.PodInfos(ctx))
 
 	// 5. Fetch Events
 	data.Events = fetchSnapshotEvents(ctx, client, hpa)
@@ -117,7 +121,7 @@ func collectSnapshotData(ctx context.Context, client *kube.Client, opts *options
 	data.Analysis = buildSnapshotAnalysis(hpa)
 
 	// 8. Generate markdown report
-	data.Report = buildSnapshotReport(ctx, client, opts, hpa)
+	data.Report = buildSnapshotReport(ctx, client, opts, hpa, observations)
 
 	return data, nil
 }
@@ -141,72 +145,56 @@ func writeSnapshotZip(data *snapshotData, outputPath string) error {
 	return bundle.WriteEntries(outputPath, entries, false)
 }
 
+// These wrappers serve standalone collectors; snapshot passes one shared observation.
 func fetchSnapshotTarget(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) []byte {
-	info, err := kube.FetchScaleTargetInfo(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef)
-	if err != nil || info == nil {
-		return []byte(fmt.Sprintf("# Error fetching scale target: %v\n", err))
-	}
-
-	switch strings.ToLower(info.Kind) {
-	case "deployment":
-		deploy, getErr := client.Interface.AppsV1().Deployments(hpa.Namespace).Get(ctx, info.Name, metav1.GetOptions{})
-		if getErr != nil {
-			return []byte(fmt.Sprintf("# Error fetching Deployment %s: %v\n", info.Name, getErr))
-		}
-		content, _ := yaml.Marshal(deploy)
-		return content
-	case "statefulset":
-		sts, getErr := client.Interface.AppsV1().StatefulSets(hpa.Namespace).Get(ctx, info.Name, metav1.GetOptions{})
-		if getErr != nil {
-			return []byte(fmt.Sprintf("# Error fetching StatefulSet %s: %v\n", info.Name, getErr))
-		}
-		content, _ := yaml.Marshal(sts)
-		return content
-	default:
-		return []byte(fmt.Sprintf("# Unsupported kind: %s\n", info.Kind))
-	}
+	return snapshotTargetYAML(ctx, observation.New(client.Interface, hpa))
 }
 
-func fetchSnapshotReplicaSets(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) []byte {
-	info, err := kube.FetchScaleTargetInfo(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef)
-	if err != nil || info == nil {
-		return nil
+func snapshotTargetYAML(ctx context.Context, snapshot *observation.Snapshot) []byte {
+	target := snapshot.ScaleTarget(ctx)
+	if target.Err != nil {
+		return []byte(fmt.Sprintf("# Error fetching scale target: %v\n", target.Err))
 	}
-
-	replicaSets, err := kube.FetchReplicaSetsForScaleTarget(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef, info.SelectorStr)
+	if !target.Known() {
+		return []byte("# Scale target kind is not supported.\n")
+	}
+	content, err := yaml.Marshal(target.Data.Object)
 	if err != nil {
-		return []byte(fmt.Sprintf("# Error fetching ReplicaSets: %v\n", err))
+		return []byte(fmt.Sprintf("# Error serializing scale target: %v\n", err))
 	}
-
-	content, _ := json.MarshalIndent(replicaSets, "", "  ")
 	return content
 }
 
-func fetchSnapshotPods(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) []byte {
-	info, err := kube.FetchScaleTargetInfo(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef)
-	if err != nil || info == nil {
-		return nil
-	}
+func fetchSnapshotReplicaSets(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) []byte {
+	return snapshotObservationJSON("ReplicaSets", observation.New(client.Interface, hpa).ReplicaSets(ctx))
+}
 
-	pods, err := kube.FetchPodInfosForSelector(ctx, client.Interface, hpa.Namespace, info.SelectorStr)
+func snapshotObservationJSON[T any](name string, value observation.Value[T]) []byte {
+	if value.Err != nil {
+		return []byte(fmt.Sprintf("# Error fetching %s: %v\n", name, value.Err))
+	}
+	if !value.Known() {
+		return []byte(fmt.Sprintf("# %s observation is not applicable.\n", name))
+	}
+	content, err := json.MarshalIndent(value.Data, "", "  ")
 	if err != nil {
-		return []byte(fmt.Sprintf("# Error fetching pods: %v\n", err))
+		return []byte(fmt.Sprintf("# Error serializing %s: %v\n", name, err))
 	}
-
-	content, _ := json.MarshalIndent(pods, "", "  ")
 	return content
 }
 
 func fetchSnapshotEvents(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) []byte {
 	objectNames := []string{hpa.Name, hpa.Spec.ScaleTargetRef.Name}
-	events := kube.FetchRecentEventsForObjects(ctx, client.Interface, hpa.Namespace, objectNames, diagnosticEventLimit)
+	events, eventsErr := kube.FetchRecentEventsForObjects(ctx, client.Interface, hpa.Namespace, objectNames, diagnosticEventLimit)
 
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("# Recent Events for %s/%s\n\n", hpa.Namespace, hpa.Name))
 	for _, event := range events {
 		sb.WriteString(fmt.Sprintf("[%s] %s: %s\n", event.Timestamp.Format(time.RFC3339), event.Reason, event.Message))
 	}
-	if len(events) == 0 {
+	if eventsErr != nil {
+		sb.WriteString(fmt.Sprintf("Events collection incomplete: %v\n", eventsErr))
+	} else if len(events) == 0 {
 		sb.WriteString("No recent events found.\n")
 	}
 	return []byte(sb.String())
@@ -242,10 +230,10 @@ func buildSnapshotAnalysis(hpa *autoscalingv2.HorizontalPodAutoscaler) []byte {
 	return content
 }
 
-func buildSnapshotReport(ctx context.Context, client *kube.Client, opts *options, hpa *autoscalingv2.HorizontalPodAutoscaler) []byte {
+func buildSnapshotReport(ctx context.Context, client *kube.Client, opts *options, hpa *autoscalingv2.HorizontalPodAutoscaler, observations *observation.Snapshot) []byte {
 	includeInterpretation := true
 	ec := newEnrichmentContext(ctx, opts)
-	statusReport, err := buildStatusReportFromHPA(ctx, opts, client, hpa, includeInterpretation, ec)
+	statusReport, err := buildStatusReportFromObservation(ctx, opts, client, hpa, includeInterpretation, ec, observations)
 	if err != nil {
 		return []byte(fmt.Sprintf("# Error building status report: %v\n", err))
 	}

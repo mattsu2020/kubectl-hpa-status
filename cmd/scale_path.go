@@ -47,13 +47,18 @@ func buildScalePathWithSnapshot(ctx context.Context, client *kube.Client, hpa *a
 		case observation.StateUnavailable:
 			collectionWarnings = append(collectionWarnings, fmt.Sprintf("pods unavailable: %v", pods.Err))
 		}
-		if replicaSets, rsErr := kube.FetchReplicaSetsForScaleTarget(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef, info.SelectorStr); rsErr == nil {
-			input.ReplicaSets = convertScalePathReplicaSets(replicaSets)
-		} else {
-			collectionWarnings = append(collectionWarnings, fmt.Sprintf("replica sets unavailable: %v", rsErr))
+		replicaSets := snapshot.ReplicaSets(ctx)
+		if replicaSets.Known() {
+			input.ReplicaSets = convertScalePathReplicaSets(replicaSets.Data)
+		} else if replicaSets.Err != nil {
+			collectionWarnings = append(collectionWarnings, fmt.Sprintf("replica sets unavailable: %v", replicaSets.Err))
 		}
 		objectNames := scalePathEventObjectNames(hpa, input.Pods, input.ReplicaSets)
-		input.Events = convertScalePathEvents(kube.FetchRecentEventsForObjects(ctx, client.Interface, hpa.Namespace, objectNames, scalePathEventLimit))
+		events, eventsErr := kube.FetchRecentEventsForObjects(ctx, client.Interface, hpa.Namespace, objectNames, scalePathEventLimit)
+		input.Events = convertScalePathEvents(events)
+		if eventsErr != nil {
+			collectionWarnings = append(collectionWarnings, fmt.Sprintf("events incomplete: %v", eventsErr))
+		}
 	}
 	result := hpaanalysis.AnalyzeScalePath(hpa, input)
 	result.ProbeWarnings = append(result.ProbeWarnings, collectionWarnings...)

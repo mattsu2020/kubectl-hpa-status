@@ -7,11 +7,14 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
 )
 
 // ScaleTargetInfo holds the resolved information about an HPA's scale target.
 type ScaleTargetInfo struct {
+	// Object is the original workload used to derive this view. Treat it as immutable.
+	Object          runtime.Object `json:"-" yaml:"-"`
 	Kind            string
 	Name            string
 	Namespace       string
@@ -36,6 +39,7 @@ func FetchScaleTargetInfo(ctx context.Context, client kubernetes.Interface, name
 			return nil, fmt.Errorf("failed to get Deployment %s/%s: %w", namespace, ref.Name, err)
 		}
 		return &ScaleTargetInfo{
+			Object:          deploy,
 			Kind:            ref.Kind,
 			Name:            ref.Name,
 			Namespace:       namespace,
@@ -53,6 +57,7 @@ func FetchScaleTargetInfo(ctx context.Context, client kubernetes.Interface, name
 			return nil, fmt.Errorf("failed to get StatefulSet %s/%s: %w", namespace, ref.Name, err)
 		}
 		return &ScaleTargetInfo{
+			Object:          sts,
 			Kind:            ref.Kind,
 			Name:            ref.Name,
 			Namespace:       namespace,
@@ -70,6 +75,7 @@ func FetchScaleTargetInfo(ctx context.Context, client kubernetes.Interface, name
 			return nil, fmt.Errorf("failed to get ReplicaSet %s/%s: %w", namespace, ref.Name, err)
 		}
 		return &ScaleTargetInfo{
+			Object:          rs,
 			Kind:            ref.Kind,
 			Name:            ref.Name,
 			Namespace:       namespace,
