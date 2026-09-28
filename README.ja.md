@@ -135,6 +135,8 @@ brew install mattsu2020/kubectl-hpa-status/kubectl-hpa-status
 kubectl-hpa-status list -A --wide
 ```
 
+Homebrew 配布は cask 形式で、ビルド済みの macOS バイナリをインストールします。Linux では krew、リリースアーカイブ、または `go install` を利用してください。
+
 ### 手動インストール
 
 ```sh

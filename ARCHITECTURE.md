@@ -127,6 +127,20 @@ Refactoring notes:
   order, no partial output) that the sequential loops it replaced had; `status`
   uses `mapPerHPA` directly because it is the one command that renders partial
   results.
+- Watch mode for `list`/`scan` builds the Kubernetes client once per session
+  (`runWatchList`) and reuses it for every tick through `runListWithClient`;
+  `runList` remains the client-creating entry point for one-shot runs so the
+  structured JSON/YAML error contract (`reportListError`) is preserved.
+- Two legacy flag spellings are deprecated aliases that still bind to the
+  canonical flag: `history --prometheus` → `--prometheus-url` (matching
+  `metrics probe`; `export --prometheus` is a bool, so the URL form needed its
+  own name) and `simulate --duration` → `--duration-seconds` (a bare second
+  count, unlike the Go-duration `--duration` of `record`/`timeline`).
+- `cmd/docs_flags_test.go` fails when `docs/*.md` or either README documents
+  a `--flag` no command registers (an allowlist covers kubectl-ecosystem
+  flags and the removed-in-v2 names kept in the migration table). It exists
+  because `--raise-max` was documented for `doctor preflight` without ever
+  being implemented.
 - `pkg/hpa/render` extraction of the report renderers is complete: the
   Markdown/HTML/list/incident report files (`report_markdown.go`,
   `report_html.go`, `report_html_sections.go`, `report_list.go`,
@@ -156,11 +170,14 @@ Refactoring notes:
   enrichment penalties exactly once, finalizes derived output, and produces
   the report and list item from the same `Analysis`.
 - A single-HPA status request creates one `internal/observation.Snapshot`.
-  Successful scale-target, Pod, and ReplicaSet reads are memoized under mutexes;
-  failed reads can be retried. Every derived view (pod info, pending details,
-  container state) reuses those objects. Snapshot archives share these
-  observations with their status report. The typed state distinguishes a
-  successful empty result from an unavailable API
+  Every scale-target, Pod, and ReplicaSet read — success, not-applicable, or
+  failure — is memoized under mutexes for the snapshot's (request-scoped)
+  lifetime, so the derived views (pod info, pending details, container state)
+  never re-run a failing API chain within one report. Recovery happens on the
+  next request through a fresh snapshot; the Kubernetes reads underneath carry
+  their own transient-error retries (`kube.retryTransient`). Snapshot archives
+  share these observations with their status report. The typed state
+  distinguishes a successful empty result from an unavailable API
   read and from a workload kind where the observation is not applicable.
 - Metric lookup and simulation use `MetricID`, whose identity includes source
   type, metric name, container, canonical selector, and described object
@@ -171,10 +188,13 @@ Refactoring notes:
   values. Decision rules use those typed fields rather than localized display
   messages; legacy serialized records without IDs remain readable.
 - `internal/history.Recorder` owns append/prune/load/analyze behavior with an
-  injected clock. A nil clock delegates to the canonical `pkg/clock`
-  source; the interface exists only to keep one recorder operation pinned to a
-  consistent time in tests. Status and list use this service instead of
-  independently reimplementing retention and trend analysis.
+  injected clock. Every store operation carries a `context.Context` that
+  bounds the inter-process lock wait, so an exiting command (TUI close,
+  cancelled status) does not block on a contended history file. A nil clock
+  delegates to the canonical `pkg/clock` source; the interface exists only to
+  keep one recorder operation pinned to a consistent time in tests. Status and
+  list use this service instead of independently reimplementing retention and
+  trend analysis.
 - `internal/enrichment.RunPipeline` owns task ordering, enablement,
   best-effort warning callbacks, and fail-fast behavior. Per-source enrichers
   bind their typed inputs in task closures; the pipeline itself stays free of
@@ -365,10 +385,25 @@ Refactoring notes:
     math (`conditions.Find`, `conditions.ScaleDownStabilizationWindow`,
     `conditions.EstimateStabilizationRemaining`, condition constants).
     `pkg/hpa` re-exports as `FindCondition` etc.
+    `conditions.EffectiveScaleDownStabilizationWindow` is the single
+    nil-safe accessor for the effective window (churn, flapping, and
+    retrospective all delegate to it), and
+    `conditions.NextScaleDownStabilizationWindow` is the shared
+    double-and-cap ladder (floor: Kubernetes default, ceiling: 3600s) so the
+    churn recommendation and the flapping fixes can never propose different
+    next windows — or an API-invalid one above 3600s.
+  - `pkg/hpa/internal/event` also owns the canonical direction-flip
+    definition (`event.Direction`, `event.FlipPoints`,
+    `event.CountDirectionFlips`): churn, flapping (diagnosis and
+    prevention), and timeline anomaly detection all count reversals through
+    it instead of re-implementing the walk.
   - `pkg/hpa/internal/util` — small dependency-free helpers
     (`util.LooksLikeKEDAManaged`, `util.MarshalJSON`,
-    `util.KubectlPatchCommand`, `util.MissingPolicies`). `pkg/hpa` re-exports
+    `util.KubectlPatchCommand`, `util.MissingPolicies`,
+    `util.ScaleDownBehaviorPatch`). `pkg/hpa` re-exports
     via unexported wrappers (`looksLikeKEDAManaged`, `marshalJSON`, etc.).
+    `ScaleDownBehaviorPatch` builds the `spec.behavior.scaleDown` JSON merge
+    patch shared by the churn and flapping recommenders.
   - `pkg/hpa/internal/confidence` — shared evidence-tier enums
     (`confidence.Severity`, `confidence.Confidence`, `confidence.Classification`
     with their constants). `pkg/hpa` re-exports as `Severity` /
@@ -489,6 +524,10 @@ on every successful fetch, closes when the HPA disappears or was replaced
 apply/dry-run when current data no longer matches. `fetchResultMsg` carries
 the per-HPA UID map for this. Selection keys are always `namespace/name`, so
 handlers must split the key rather than forwarding it as a bare HPA name.
+List-scoped keys (`S` sort, `g` jump-to-problem, `/` filter) are guarded to
+the list view so they cannot move the cursor under an anchored view (history,
+hints, fix, simulation); the help overlay (`?`) remembers the view it was
+opened from and returns there instead of dropping back to the list.
 
 ## KEDA And Adapter Context
 

@@ -10,14 +10,14 @@ kubectl hpa status doctor <hpa-name> -n <namespace>
 kubectl hpa status timeline <hpa-name> --since=30m
 kubectl hpa status record -A --interval=15s --duration=1h -o hpa-history.jsonl
 kubectl hpa status timeline <hpa-name> --from-record hpa-history.jsonl
-kubectl hpa status doctor preflight <hpa-name> --raise-max 20
+kubectl hpa status doctor preflight <hpa-name>
 kubectl hpa status metrics probe <hpa-name>
 kubectl hpa status metrics probe <hpa-name> --prometheus-url http://prometheus:9090
 kubectl hpa status behavior <hpa-name>
 kubectl hpa status estimate <hpa-name> --max-replicas 30 --pod-cost 0.12 --carbon-kg-per-pod-hour 0.01
 kubectl hpa status explain <hpa-name>
 kubectl hpa status <hpa-name> --explain --format structured
-kubectl hpa status history <hpa-name> --since=6h --prometheus http://prometheus:9090
+kubectl hpa status history <hpa-name> --since=6h --prometheus-url http://prometheus:9090
 kubectl hpa status tune <hpa-name> --goal stable --suggest
 kubectl hpa status slo <hpa-name> --metric latency_p95 --target 300ms
 kubectl hpa status compare -A --from-context stg --to-context prod --only-drift
@@ -96,7 +96,6 @@ kubectl-hpa-status completion zsh
 | `--since=30m` | `timeline` | Reconstruct an HPA decision timeline from recent Kubernetes Events. Supports `30m`, `1h`, etc. |
 | `--from-record FILE` | `timeline` | Read durable JSONL/JSON snapshots written by `record` instead of relying on Kubernetes Events. |
 | `--output-file FILE` | `record` | Write durable HPA decision snapshots to JSONL. `record` also accepts `-o FILE` as a convenience. |
-| `--raise-max N` | `doctor preflight` | Validate quota and capacity before raising `maxReplicas` to `N`. |
 | `--hidden-factors` | `status`, `doctor` | Show partially visible controller factors such as missing metrics, tolerance, not-yet-ready pods, and stabilization. |
 | `--format structured` | `status`, `explain` | Emit the KEP-6111-oriented structured decision trace JSON. |
 | `--context-for-ai`, `--ask QUESTION` | `status`, `doctor` | Emit a compact local-AI context pack. No external LLM call is made. |

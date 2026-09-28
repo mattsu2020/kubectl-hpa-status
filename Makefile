@@ -1,6 +1,10 @@
 GO ?= go
 GORELEASER ?= goreleaser
 KUBECTL ?= kubectl
+# Pinned to the same version the CI workflows install so a contributor's
+# local lint findings match CI. Keep in sync with .github/workflows/ci.yml
+# and release.yml (Renovate keeps all three aligned).
+GOLANGCI_LINT_VERSION ?= v2.12.2
 
 BIN := kubectl-hpa-status
 COVERAGE_OUT := coverage.out
@@ -83,7 +87,16 @@ docs-check:
 
 .PHONY: lint
 lint:
-	golangci-lint run ./...
+	@if command -v golangci-lint >/dev/null 2>&1; then \
+		found=$$(golangci-lint version 2>/dev/null | head -1 | grep -o 'v[0-9]*\.[0-9]*\.[0-9]*' | head -1); \
+		if [ "$$found" != "$(GOLANGCI_LINT_VERSION)" ]; then \
+			echo "::warning::golangci-lint $$found found, CI pins $(GOLANGCI_LINT_VERSION); findings may differ from CI"; \
+		fi; \
+		golangci-lint run ./...; \
+	else \
+		echo "::error::golangci-lint not found. CI runs $(GOLANGCI_LINT_VERSION); install it (https://golangci-lint.run/welcome/install/) or use 'make ci' inside the dev container."; \
+		exit 1; \
+	fi
 
 .PHONY: vet
 vet:

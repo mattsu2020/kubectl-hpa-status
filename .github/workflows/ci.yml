@@ -42,29 +42,19 @@ jobs:
           go-version-file: go.mod
 
       - name: Check go.mod/go.sum tidy
-        # Fails if go.mod or go.sum are out of sync with the imports actually
-        # used, preventing an un-tidy module from merging. Mirrors the local
-        # `make tidy` gate so contributors hit this before pushing.
-        # Run on Linux only; module state is OS-independent and macOS minutes
-        # are billed at a higher rate on private repos.
+        # Delegates to the same `make tidy` gate contributors run locally, so
+        # CI and the Makefile cannot drift apart. Run on Linux only; module
+        # state is OS-independent and macOS minutes are billed at a higher
+        # rate on private repos.
         if: matrix.os == 'ubuntu-latest'
-        run: |
-          go mod tidy
-          git diff --exit-code go.mod go.sum
+        run: make tidy
 
-      - name: Check gofmt
-        # Reject un-gofmt'd Go so the lint job does not have to surface basic
-        # formatting errors. Mirrors the local `make fmt-check` target. Import
-        # grouping (goimports) is enforced separately by the golangci-lint job,
-        # which runs the goimports formatter from .golangci.yml.
+      - name: Check formatting
+        # `make fmt-check` verifies gofmt (and golangci-lint fmt for import
+        # grouping when available). The golangci-lint job enforces the full
+        # formatter set from .golangci.yml.
         if: matrix.os == 'ubuntu-latest'
-        run: |
-          out=$(gofmt -l .)
-          if [ -n "$out" ]; then
-            echo "::error::gofmt would modify the following files; run 'gofmt -w' and commit:"
-            echo "$out"
-            exit 1
-          fi
+        run: make fmt-check
 
       - name: Compile Windows release target
         # Windows-specific files cannot be exercised on the Unix test runners,
@@ -141,23 +131,9 @@ jobs:
           go-version-file: go.mod
           go-package: ./...
 
-      - name: gosec
-        if: matrix.os == 'ubuntu-latest'
-        uses: securego/gosec@9e6a9843d7a4a6e3e9a8539b02612c8a4aa3f889 # v2.27.1
-        with:
-          # -exclude disables rules that are intentional for this codebase:
-          #   G115 (int->int32 overflow) — every site assigns replica counts
-          #     into Kubernetes API *int32 fields (Spec.MaxReplicas etc.),
-          #     bounded to realistic ranges, never untrusted input.
-          #   G304 (file inclusion via variable) — this is a kubectl plugin;
-          #     every os.Open is on a user-supplied CLI path (--manifest,
-          #     --timeline-file, --config, history store paths) by design.
-          #   G602 (slice index out of range) — false positives on bounded
-          #     loops (e.g. i += 2 pairs).
-          # File-permission findings are reviewed at each call site: diagnostic
-          # bundles/history use 0600/0700, while explicitly shareable GitOps
-          # exports carry a narrow #nosec justification.
-          args: -exclude G115,G304,G602 ./...
+      # gosec runs once, in the code-scanning job below, with SARIF output for
+      # the Security tab; running it here as well only duplicated the same
+      # -exclude set (G115/G304/G602) per PR.
 
   golangci-lint:
     timeout-minutes: 15
@@ -178,10 +154,11 @@ jobs:
         with:
           version: v2.12.2
 
-  # Security scanning with SARIF upload to the GitHub Security tab.
-  # Runs gosec with SARIF output and uploads alongside CodeQL findings so all
-  # security alerts are visible in one place. Mirrors the gosec exclusions used
-  # in the build job (G115/G304/G602).
+  # Security scanning with SARIF upload to the GitHub Security tab. This is
+  # the single gosec run for the repository: it fails the workflow on findings
+  # (same -exclude set as before, G115/G304/G602 — see the rule-by-rule
+  # rationale in scripts or CHANGELOG history) and emits SARIF so the findings
+  # are also visible in the Security tab alongside CodeQL.
   code-scanning:
     timeout-minutes: 15
     runs-on: ubuntu-latest
@@ -202,7 +179,13 @@ jobs:
       - name: Run gosec (SARIF)
         uses: securego/gosec@9e6a9843d7a4a6e3e9a8539b02612c8a4aa3f889 # v2.27.1
         with:
-          # Same exclusions as the build-job gosec step; emit SARIF for upload.
+          # Exclusions (intentional for this codebase):
+          #   G115 (int->int32 overflow) — replica counts assigned into
+          #     Kubernetes API *int32 fields, bounded, never untrusted input.
+          #   G304 (file inclusion via variable) — kubectl plugin; every
+          #     os.Open takes a user-supplied CLI path by design.
+          #   G602 (slice index out of range) — false positives on bounded
+          #     loops (e.g. i += 2 pairs).
           args: -exclude G115,G304,G602 -fmt sarif -out gosec-results.sarif ./...
 
       - name: Upload gosec SARIF results

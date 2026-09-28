@@ -32,28 +32,20 @@ jobs:
           go-version-file: go.mod
 
       - name: Verify reproducible module inputs
-        run: |
-          go mod tidy
-          git diff --exit-code go.mod go.sum
+        run: make tidy
 
-      - name: Check gofmt
-        run: |
-          out=$(gofmt -l .)
-          if [ -n "$out" ]; then
-            echo "::error::gofmt would modify the following files:"
-            echo "$out"
-            exit 1
-          fi
+      - name: Check formatting
+        run: make fmt-check
 
       - name: Vet
-        run: go vet ./...
+        run: make vet
 
-      - name: Test with race detection
-        run: go test -race ./...
-
-      - name: Coverage gate
+      # One combined run: race detection and the coverage profile come from the
+      # same test pass (matching ci.yml), so the release gate does not execute
+      # the whole suite twice.
+      - name: Test with race detection and coverage gate
         run: |
-          go test -coverprofile=coverage.out ./...
+          go test -race -coverprofile=coverage.out -covermode=atomic ./...
           bash scripts/check-coverage.sh coverage.out
 
       - name: Lint
@@ -83,6 +75,22 @@ jobs:
         with:
           syft-version: v1.44.0
 
+      # The Homebrew tap lives in a separate repository, which the job's
+      # GITHUB_TOKEN cannot push to. Fail fast with an actionable message when
+      # the PAT is missing instead of failing mid-release after artifacts are
+      # published without the formula update.
+      - name: Verify Homebrew tap token
+        env:
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+        run: |
+          if [ -z "$HOMEBREW_TAP_GITHUB_TOKEN" ]; then
+            echo "::error::HOMEBREW_TAP_GITHUB_TOKEN is not configured. The cask" \
+              "publishes to a separate repository, so the default GITHUB_TOKEN" \
+              "cannot push the formula. Add the secret or disable homebrew_casks" \
+              "in .goreleaser.yml before tagging."
+            exit 1
+          fi
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7
         with:
@@ -90,7 +98,7 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
           COSIGN_EXPERIMENTAL: '1'
 
       # Generate SLSA Build Level 3 provenance attestation for the release

@@ -14,7 +14,8 @@
   ],
   "enabledManagers": [
     "gomod",
-    "github-actions"
+    "github-actions",
+    "regex"
   ],
   "vulnerabilityAlerts": {
     "enabled": true,
@@ -28,6 +29,65 @@
       "before 6am on Monday"
     ]
   },
+  "regexManagers": [
+    {
+      "description": "golangci-lint version pin shared by CI, release, and the Makefile lint guard. The github-actions manager only updates `uses:` refs, so the `with: version:` pins need this regex manager; the pattern anchors on the action name so the goreleaser pin is not misattributed.",
+      "fileMatch": [
+        "^\\.github/workflows/[^/]+\\.yml$",
+        "^Makefile$"
+      ],
+      "matchStrings": [
+        "golangci-lint-action@\\S+[^\\n]*\\n\\s*with:\\n\\s*version: (?<currentValue>v\\d+\\.\\d+\\.\\d+)",
+        "GOLANGCI_LINT_VERSION \\?= (?<currentValue>v\\d+\\.\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "golangci/golangci-lint",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "description": "GoReleaser version pin in the release workflow (`with: version:`), anchored on the action name.",
+      "fileMatch": [
+        "^\\.github/workflows/release\\.yml$"
+      ],
+      "matchStrings": [
+        "goreleaser-action@\\S+[^\\n]*\\n\\s*with:\\n\\s*version: (?<currentValue>v\\d+\\.\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "goreleaser/goreleaser",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "description": "cosign release pin in the release workflow.",
+      "fileMatch": [
+        "^\\.github/workflows/release\\.yml$"
+      ],
+      "matchStrings": [
+        "cosign-release: '(?<currentValue>v\\d+\\.\\d+\\.\\d+)'"
+      ],
+      "depNameTemplate": "sigstore/cosign",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "description": "Syft version pin in the release workflow.",
+      "fileMatch": [
+        "^\\.github/workflows/release\\.yml$"
+      ],
+      "matchStrings": [
+        "syft-version: (?<currentValue>v\\d+\\.\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "anchore/syft",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "description": "kind node images pinned in the e2e matrix. Patch bumps stay compatible with the documented Kubernetes support floor; review minors against kindest/node availability.",
+      "fileMatch": [
+        "^\\.github/workflows/ci\\.yml$"
+      ],
+      "matchStrings": [
+        "kind-node-image: kindest/node:(?<currentValue>v\\d+\\.\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "kindest/node",
+      "datasourceTemplate": "docker"
+    }
+  ],
   "packageRules": [
     {
       "description": "Group Kubernetes client libraries so they move together and stay API-compatible. Auto-merge patch/minor after CI; major versions require manual review because k8s.io libs can carry breaking API changes across minor bumps.",

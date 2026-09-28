@@ -113,9 +113,10 @@ done
 
 # Command examples are intentionally language-independent. Keep their exact
 # text and order synchronized so a flag or subcommand cannot drift in only one
-# README while the heading-count check still passes.
+# README while the heading-count check still passes. Leading indentation is
+# tolerated so indented list examples are also covered.
 extract_commands() {
-  awk '/^(kubectl( |-)hpa|kubectl-hpa-status|brew |go (test|install|build)|make( |$)|git clone|docker )/' "$1"
+  awk '$0 ~ /^[[:space:]]*(kubectl( |-)hpa|kubectl-hpa-status|brew |go (test|install|build)|make( |$)|git clone|docker )/ { sub(/^[[:space:]]+/, ""); print }' "$1"
 }
 
 en_commands="$(extract_commands "$en_file")"

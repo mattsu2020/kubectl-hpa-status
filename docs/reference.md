@@ -171,10 +171,10 @@ The JSON includes schema version, per-metric target/current values, estimated de
 `history` combines current HPA analysis, Events-derived churn detection, health trend storage, and optional Prometheus query links:
 
 ```sh
-kubectl hpa status history web -n production --since=6h --prometheus http://prometheus:9090
+kubectl hpa status history web -n production --since=6h --prometheus-url http://prometheus:9090
 ```
 
-The command does not require Prometheus to be reachable. When `--prometheus` is set, it emits query_range URLs that can be opened or reused by incident tooling.
+The command does not require Prometheus to be reachable. When `--prometheus-url` is set, it emits query_range URLs that can be opened or reused by incident tooling.
 
 ## HPA Tuning Advisor
 
@@ -353,10 +353,10 @@ Use this when you need a durable answer to "what changed around the time this HP
 Before applying a maxReplicas fix, validate whether the target workload can actually run the additional pods:
 
 ```sh
-kubectl hpa status doctor preflight web -n production --raise-max 20
+kubectl hpa status doctor preflight web -n production
 ```
 
-`doctor preflight` reuses the capacity plan engine and checks namespace ResourceQuota, LimitRange constraints, node allocatable summary, Pending pods, PDB signals, and Cluster Autoscaler detection. The older `capacity` command remains available for the same standalone capacity report.
+`doctor preflight` reuses the capacity plan engine and checks namespace ResourceQuota, LimitRange constraints, node allocatable summary, Pending pods, PDB signals, and Cluster Autoscaler detection. To project the capacity plan onto a specific proposed replica count, run the `capacity plan` subcommand. The older `capacity` command remains available for the same standalone capacity report.
 
 ## Metrics Adapter Probe
 

@@ -40,6 +40,13 @@ jobs:
           FUZZ_TIME: 2m
         run: go test -run='^$' -fuzz='^FuzzAnalyze$' -fuzztime=${FUZZ_TIME} ./pkg/hpa/
 
+      - name: Fuzz AnalyzeNil
+        # Second target: nil-edge-case corpus gets its own bounded budget so
+        # it is exercised by mutation too, not only by its committed seeds.
+        env:
+          FUZZ_TIME: 1m
+        run: go test -run='^$' -fuzz='^FuzzAnalyzeNil$' -fuzztime=${FUZZ_TIME} ./pkg/hpa/
+
       - name: Upload crash corpus
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
