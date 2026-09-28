@@ -145,15 +145,6 @@ func specMetricSelector(spec autoscalingv2.MetricSpec) string {
 	return FormatMetricSelector(descriptor.Selector)
 }
 
-// selectorsEqual compares two LabelSelectors for equality.
-// Both nil selectors are considered equal. Non-nil selectors are compared
-// by formatting them into stable string representations.
-func selectorsEqual(a, b *metav1.LabelSelector) bool {
-	left, leftErr := canonicalMetricSelector(a)
-	right, rightErr := canonicalMetricSelector(b)
-	return leftErr == nil && rightErr == nil && left == right
-}
-
 // appendRatioAndNote appends the standard " ratio=%.3f" and " note=%q" suffixes
 // to a metric text line when ratio and note carry data. All five FormatStatus
 // handlers render this identical tail, so centralising it keeps the output

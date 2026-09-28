@@ -13,14 +13,14 @@ import (
 // The injected globals are saved and restored because pkg/hpa's init installs
 // the production dependencies in this test binary.
 func TestDependencyMissingReturnsErrorNotPanic(t *testing.T) {
-	savedAnalyze := analyzeFuncInstance
-	savedRatio := metricImpactRatioFuncImpl
+	savedAnalyze := analyzeFuncInstance.Load()
+	savedRatio := metricImpactRatioFuncImpl.Load()
 	t.Cleanup(func() {
-		analyzeFuncInstance = savedAnalyze
-		metricImpactRatioFuncImpl = savedRatio
+		analyzeFuncInstance.Store(savedAnalyze)
+		metricImpactRatioFuncImpl.Store(savedRatio)
 	})
-	analyzeFuncInstance = nil
-	metricImpactRatioFuncImpl = nil
+	analyzeFuncInstance.Store(nil)
+	metricImpactRatioFuncImpl.Store(nil)
 
 	if _, err := AnalysisFuncInvoker(nil, false, AnalysisOptions{}); !errors.Is(err, ErrDependencyMissing) {
 		t.Fatalf("AnalysisFuncInvoker error = %v, want ErrDependencyMissing", err)

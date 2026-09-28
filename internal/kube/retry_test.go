@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	k8sapierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -92,5 +93,38 @@ func TestListHPAsEachPageRejectsRepeatedContinueToken(t *testing.T) {
 		func(*autoscalingv2.HorizontalPodAutoscalerList) error { return nil })
 	if err == nil {
 		t.Fatal("ListHPAsEachPage() with repeated continue token: want error, got nil")
+	}
+}
+
+// TestRetryWaitHonorsRetryAfter pins the 429 handling: a server-provided
+// Retry-After overrides the fixed backoff when longer, and is capped at
+// transientRetryMaxWait so one hint cannot stall a one-shot command.
+func TestRetryWaitHonorsRetryAfter(t *testing.T) {
+	retryAfter := func(secs int32) error {
+		return &k8sapierrors.StatusError{ErrStatus: metav1.Status{
+			Status:  metav1.StatusFailure,
+			Code:    429,
+			Reason:  metav1.StatusReasonTooManyRequests,
+			Message: "slow down",
+			Details: &metav1.StatusDetails{RetryAfterSeconds: secs},
+		}}
+	}
+
+	plain := retryWait(1, nil)
+	if plain < transientRetryBaseWait {
+		t.Fatalf("base wait below backoff floor: %v", plain)
+	}
+
+	if got := retryWait(1, retryAfter(2)); got != 2*time.Second {
+		t.Fatalf("Retry-After=2s not honored: %v", got)
+	}
+
+	if got := retryWait(1, retryAfter(600)); got != transientRetryMaxWait {
+		t.Fatalf("Retry-After=600s not capped: %v", got)
+	}
+
+	// An error without a Retry-After hint keeps the fixed backoff.
+	if got := retryWait(3, tooManyRequestsError()); got < transientRetryBaseWait*3 {
+		t.Fatalf("hint-less 429 must not shorten the backoff: %v", got)
 	}
 }

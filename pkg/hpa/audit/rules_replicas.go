@@ -11,14 +11,14 @@ import (
 func replicaRangeRule(hpa *autoscalingv2.HorizontalPodAutoscaler, minReplicas int32) []Finding {
 	var findings []Finding
 
-	if minReplicas > 0 && hpa.Spec.MaxReplicas/minReplicas > 10 {
+	if ratio, ok := rulefacts.ReplicaRangeRatio(minReplicas, hpa.Spec.MaxReplicas); ok && ratio > rulefacts.MaxRecommendedReplicaRatio {
 		findings = append(findings, Finding{
 			ID:          "replica-range",
 			Title:       "Wide replica range may indicate instability",
-			Description: fmt.Sprintf("maxReplicas/minReplicas ratio is %d (>10x). A wide range can cause large, abrupt scaling events. Consider narrowing the range or adding stepped scaling policies.", hpa.Spec.MaxReplicas/minReplicas),
+			Description: fmt.Sprintf("maxReplicas/minReplicas ratio is %d (>%dx). A wide range can cause large, abrupt scaling events. Consider narrowing the range or adding stepped scaling policies.", ratio, rulefacts.MaxRecommendedReplicaRatio),
 			Severity:    AuditWarning,
 			Category:    "replica-range",
-			Current:     fmt.Sprintf("min=%d max=%d (ratio=%d:1)", minReplicas, hpa.Spec.MaxReplicas, hpa.Spec.MaxReplicas/minReplicas),
+			Current:     fmt.Sprintf("min=%d max=%d (ratio=%d:1)", minReplicas, hpa.Spec.MaxReplicas, ratio),
 			Recommended: "Narrow the range to 10x or less, or add explicit scaling policies",
 		})
 	}

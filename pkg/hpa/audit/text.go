@@ -6,8 +6,8 @@ import (
 )
 
 // LabelProvider abstracts localized label lookup for audit rendering. It
-// mirrors the root hpaanalysis.LabelProvider contract (a single Get method),
-// so callers can pass any i18n provider without this package importing the
+// mirrors the root pkg/hpa LabelProvider contract (a single Get method), so
+// callers can pass any i18n provider without this package importing the
 // analysis root.
 type LabelProvider interface {
 	Get(key string) string

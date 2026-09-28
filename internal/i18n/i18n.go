@@ -21,15 +21,25 @@ var (
 )
 
 // Load returns the message bundle for the given language (e.g., "en", "ja").
-// Falls back to "en" if the language is not found.
+// Falls back to "en" if the language is not found. The returned map is a
+// shallow copy: mutating it cannot corrupt the process-wide bundle other
+// goroutines and the alt-screen TUI read from.
 func Load(lang string) map[string]string {
 	once.Do(func() {
 		bundles = loadAllBundles()
 	})
-	if b, ok := bundles[lang]; ok {
-		return b
+	b := bundles["en"]
+	if candidate, ok := bundles[lang]; ok {
+		b = candidate
 	}
-	return bundles["en"]
+	if b == nil {
+		return map[string]string{}
+	}
+	out := make(map[string]string, len(b))
+	for k, v := range b {
+		out[k] = v
+	}
+	return out
 }
 
 // Get returns a message for the given language and key.

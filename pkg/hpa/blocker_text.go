@@ -1,10 +1,10 @@
 package hpa
 
 import (
+	"charm.land/lipgloss/v2"
 	"fmt"
 	"io"
 
-	"charm.land/lipgloss/v2"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
@@ -89,7 +89,10 @@ func WriteBlockerText(w io.Writer, report *blocker.Report, theme style.Theme) er
 	return err
 }
 
-// severityBadge returns a styled severity label like [HIGH] or [INFO].
+// severityBadge returns a styled severity label like [HIGH] or [MEDIUM].
+// Unlike the shared rendutil.SeverityBadge ([MED] for the lowercase gitops
+// vocabulary), blocker severities render their full uppercase word, which is
+// the established text-output contract covered by tests.
 func severityBadge(severity blocker.Severity, theme style.Theme) string {
 	var style lipgloss.Style
 	switch severity {

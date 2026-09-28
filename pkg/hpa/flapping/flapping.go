@@ -2,7 +2,8 @@
 // oscillation) and recommends stabilization-window adjustments. It is a
 // self-contained leaf domain depending only on autoscaling/v2 types, the
 // shared event/confidence types, and the util helpers. The cmd/ layer
-// reaches it through the pkg/hpa re-export facade.
+// imports this package directly (flapping.DiagnoseFlapping,
+// flapping.AnalyzeFlappingPrevention).
 package flapping
 
 import (

@@ -31,7 +31,7 @@ func validateEffectiveOptions(cmd *cobra.Command, opts *options) error {
 	if opts == nil {
 		return fmt.Errorf("internal error: command options are nil")
 	}
-	normalizeEffectiveEnums(opts)
+	normalizeEffectiveEnums(cmd, opts)
 	if cmd != nil && flagChanged(cmd, "health-score") {
 		opts.HealthScoreMaxConfigured = true
 	}
@@ -270,7 +270,7 @@ func validateCommandOutputFormat(cmd *cobra.Command, format string) error {
 	return nil
 }
 
-func normalizeEffectiveEnums(opts *options) {
+func normalizeEffectiveEnums(cmd *cobra.Command, opts *options) {
 	opts.Color = strings.ToLower(strings.TrimSpace(opts.Color))
 	opts.Lang = strings.ToLower(strings.TrimSpace(opts.Lang))
 	opts.KEDA = normalizeEnrichmentMode(opts.KEDA)
@@ -281,8 +281,13 @@ func normalizeEffectiveEnums(opts *options) {
 	opts.Report = strings.ToLower(strings.TrimSpace(opts.Report))
 	opts.Export = strings.ToLower(strings.TrimSpace(opts.Export))
 	opts.OutputSchema = strings.ToLower(strings.TrimSpace(opts.OutputSchema))
-	if normalizeOutputFormat(opts.Output) == "gotemplate" {
-		opts.Output = "go-template"
+	// Normalize the output format name so validation, the batch envelope
+	// checks, and the render dispatcher all see the same value (--output=JSON
+	// used to pass validation but fail at render time). The record command's
+	// documented `-o FILE` fallback must keep file paths untouched, and
+	// jsonpath/template expressions stay case-sensitive.
+	if !(cmd != nil && cmd.Name() == "record" && !isKnownOutputFormat(opts.Output)) {
+		opts.Output = normalizeOutputFlag(opts.Output)
 	}
 }
 
@@ -359,11 +364,8 @@ func validateListOptions(opts *options) error {
 	if opts.HealthScoreMin >= 0 && maxScore >= 0 && opts.HealthScoreMin > maxScore {
 		return fmt.Errorf("--min-score cannot be greater than --health-score")
 	}
-	if err := validateMode("--filter", normalizeSelector(opts.Filter), "", "all", "ok", "error", "limited", "scalinglimited", "issue"); err != nil {
+	if err := validateMode("--filter", normalizeSelector(opts.Filter), validFilterValues()...); err != nil {
 		return err
 	}
-	if err := validateMode("--sort-by", normalizeSelector(opts.SortBy), "", "namespace", "name", "current", "currentreplicas", "desired", "desiredreplicas", "diff", "replicadiff", "difference", "age", "creationtimestamp", "health", "healthscore", "score", "problem", "issue", "min", "minreplicas", "max", "maxreplicas", "target"); err != nil {
-		return err
-	}
-	return nil
+	return validateMode("--sort-by", normalizeSelector(opts.SortBy), validSortByValues()...)
 }

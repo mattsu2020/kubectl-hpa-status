@@ -1,9 +1,8 @@
 // Package vpa analyzes coexistence conflicts between an HPA and a
 // VerticalPodAutoscaler targeting the same workload. It is a self-contained
 // leaf domain: it depends only on the autoscaling/v2 API types. The cmd/
-// layer reaches it through the pkg/hpa re-export facade
-// (hpaanalysis.VPAConflictInfo, hpaanalysis.AnalyzeVPA, etc.) so existing
-// import paths keep working.
+// and internal/ layers import this package directly (vpa.Analyze,
+// vpa.AnalyzeAdvisory).
 package vpa
 
 import (

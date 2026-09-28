@@ -20,9 +20,9 @@ import (
 )
 
 func runRecord(ctx context.Context, out io.Writer, opts *options, name string, interval time.Duration, outputPath string) error {
-	if interval < time.Second {
-		_, _ = fmt.Fprintf(out, "Warning: interval %s is below 1s; clamping to 1s to reduce API server load.\n", interval)
-		interval = time.Second
+	interval, err := clampPollInterval(out, interval)
+	if err != nil {
+		return err
 	}
 
 	client, err := newClientOrDefault(opts)

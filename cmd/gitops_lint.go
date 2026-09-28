@@ -12,8 +12,14 @@ func newGitOpsCommand(opts *options) *cobra.Command {
 		Short: "Lint GitOps manifests offline for HPA conflicts",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			path, _ := cmd.Flags().GetString("path")
-			outputFmt, _ := cmd.Flags().GetString("output")
+			path, pathErr := flagString(cmd, "path")
+			if pathErr != nil {
+				return pathErr
+			}
+			outputFmt, outputErr := flagString(cmd, "output")
+			if outputErr != nil {
+				return outputErr
+			}
 			if path == "" {
 				return fmt.Errorf("--path is required")
 			}

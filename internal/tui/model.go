@@ -153,6 +153,10 @@ func (s interactiveStates) clone() interactiveStates {
 }
 
 // Options holds configuration for the TUI dashboard.
+// HistoryLoader loads persisted history snapshots for one HPA, identified by
+// namespace, name, and the UID observed for that name.
+type HistoryLoader func(ctx context.Context, namespace, name, uid string) ([]hpaanalysis.TimelineSnapshot, error)
+
 type Options struct {
 	Namespace     string
 	AllNamespaces bool
@@ -192,6 +196,12 @@ type Options struct {
 	// AuditFn is an optional callback for running the best-practice auditor
 	// on an HPA. When nil, the batch auditor action is disabled.
 	AuditFn AuditFunc
+
+	// LoadHistoryFn is an optional callback that loads persisted history
+	// snapshots for one HPA (namespace, name, and the UID observed for that
+	// name). When nil, the history view stays empty; cmd wires it to the
+	// health history store so the view works without a recorded trace file.
+	LoadHistoryFn HistoryLoader
 }
 
 func (m Model) currentTime() time.Time {

@@ -23,28 +23,32 @@ type exportMetadata struct {
 	Namespace string `json:"namespace,omitempty" yaml:"namespace,omitempty"`
 }
 
-func writeGitOpsExport(out io.Writer, format string, report hpaanalysis.StatusReport) error {
+// writeGitOpsExport renders the GitOps patch document for the report's
+// applicable suggestions. It returns false when no applicable patch existed,
+// in which case only an explanatory comment is written; callers use the flag
+// instead of matching the rendered text.
+func writeGitOpsExport(out io.Writer, format string, report hpaanalysis.StatusReport) (bool, error) {
 	format, err := normalizeGitOpsExportFormat(format)
 	if err != nil {
-		return err
+		return false, err
 	}
 	spec, err := collectSuggestionSpec(report.Analysis.Actions.Suggestions)
 	if err != nil {
-		return fmt.Errorf("build GitOps export for HPA %s/%s: %w", report.Analysis.Meta.Namespace, report.Analysis.Meta.Name, err)
+		return false, fmt.Errorf("build GitOps export for HPA %s/%s: %w", report.Analysis.Meta.Namespace, report.Analysis.Meta.Name, err)
 	}
 	if len(spec) == 0 {
 		_, err := fmt.Fprintln(out, "# no applicable HPA spec patch suggestions")
-		return err
+		return false, err
 	}
 	switch format {
 	case "yaml":
-		return writeYAMLExport(out, report, spec)
+		return true, writeYAMLExport(out, report, spec)
 	case "kustomize":
-		return writeKustomizeExport(out, report, spec)
+		return true, writeKustomizeExport(out, report, spec)
 	case "helm-values":
-		return writeHelmValuesExport(out, report, spec)
+		return true, writeHelmValuesExport(out, report, spec)
 	default:
-		return fmt.Errorf("unsupported normalized GitOps export format %q", format)
+		return false, fmt.Errorf("unsupported normalized GitOps export format %q", format)
 	}
 }
 

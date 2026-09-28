@@ -49,13 +49,7 @@ func (externalHandler) SpecIdentity(spec autoscalingv2.MetricSpec) (string, stri
 }
 
 func (externalHandler) MatchesCurrent(spec autoscalingv2.MetricSpec, current autoscalingv2.MetricStatus) bool {
-	if spec.External == nil || current.External == nil {
-		return false
-	}
-	if spec.External.Metric.Name != current.External.Metric.Name {
-		return false
-	}
-	return selectorsEqual(spec.External.Metric.Selector, current.External.Metric.Selector)
+	return metricIdentityMatches(spec, current)
 }
 
 func (externalHandler) Remediation(spec autoscalingv2.MetricSpec) string {

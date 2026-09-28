@@ -1,8 +1,8 @@
 // Package lint runs static-analysis checks against an HPA manifest,
 // reporting findings (severity, rule, message, recommendation) as a
 // Result. It is a self-contained leaf domain depending only on
-// autoscaling/v2 types. The cmd/ layer reaches it through the pkg/hpa
-// re-export facade (hpaanalysis.Run, hpaanalysis.Result, etc.).
+// autoscaling/v2 types. The cmd/ layer imports this package directly
+// (lint.Run).
 package lint
 
 import (

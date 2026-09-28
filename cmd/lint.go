@@ -22,11 +22,26 @@ func newLintCommand(opts *options) *cobra.Command {
 		Short: "Lint HPA manifests offline for CI validation",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			filePath, _ := cmd.Flags().GetString("file")
-			outputFmt, _ := cmd.Flags().GetString("output")
-			sarif, _ := cmd.Flags().GetBool("sarif")
-			fix, _ := cmd.Flags().GetBool("fix")
-			failOn, _ := cmd.Flags().GetString("fail-on")
+			filePath, fileErr := flagString(cmd, "file")
+			if fileErr != nil {
+				return fileErr
+			}
+			outputFmt, outputErr := flagString(cmd, "output")
+			if outputErr != nil {
+				return outputErr
+			}
+			sarif, sarifErr := flagBool(cmd, "sarif")
+			if sarifErr != nil {
+				return sarifErr
+			}
+			fix, fixErr := flagBool(cmd, "fix")
+			if fixErr != nil {
+				return fixErr
+			}
+			failOn, failOnErr := flagString(cmd, "fail-on")
+			if failOnErr != nil {
+				return failOnErr
+			}
 			return runLint(cmd.Context(), cmd.OutOrStdout(), opts, filePath, outputFmt, sarif, fix, failOn)
 		},
 	}
@@ -147,7 +162,11 @@ func collectLintWorkloads(files []string, decoder runtimeDecoder) map[lintWorklo
 		if err != nil {
 			continue
 		}
-		for _, doc := range splitYAMLDocuments(data) {
+		docs, splitErr := splitYAMLDocuments(data)
+		if splitErr != nil {
+			continue
+		}
+		for _, doc := range docs {
 			doc = []byte(strings.TrimSpace(string(doc)))
 			if len(doc) == 0 {
 				continue

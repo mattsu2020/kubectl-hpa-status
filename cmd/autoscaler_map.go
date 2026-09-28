@@ -12,6 +12,7 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/internal/enrichment"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kubeconv"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/observation"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/autoscalermap"
 	hpavpa "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
@@ -56,13 +57,15 @@ func runAutoscalerMap(ctx context.Context, out io.Writer, opts *options, names [
 			return autoscalerMapOutput{}, err
 		}
 
-		input := assembleAutoscalerMapInput(ctx, client, opts, hpa)
+		input, warnings := assembleAutoscalerMapInput(ctx, client, opts, hpa)
+		report := autoscalermap.Analyze(input)
+		report.Warnings = append(report.Warnings, warnings...)
 
 		return autoscalerMapOutput{
 			Namespace: hpa.Namespace,
 			Name:      hpa.Name,
 			Target:    fmt.Sprintf("%s/%s", hpa.Spec.ScaleTargetRef.Kind, hpa.Spec.ScaleTargetRef.Name),
-			Map:       autoscalermap.Analyze(input),
+			Map:       report,
 		}, nil
 	})
 	if err != nil {
@@ -79,8 +82,11 @@ func runAutoscalerMap(ctx context.Context, out io.Writer, opts *options, names [
 
 }
 
-// assembleAutoscalerMapInput gathers all observable signals for autoscaler map.
-func assembleAutoscalerMapInput(ctx context.Context, client *kube.Client, opts *options, hpa *autoscalingv2.HorizontalPodAutoscaler) autoscalermap.Input {
+// assembleAutoscalerMapInput gathers all observable signals for autoscaler map
+// from one request-scoped observation snapshot, returning any collection
+// warnings alongside the input. Failed reads surface as warnings instead of
+// silently degrading to "no pods / no quotas near limit".
+func assembleAutoscalerMapInput(ctx context.Context, client *kube.Client, opts *options, hpa *autoscalingv2.HorizontalPodAutoscaler) (autoscalermap.Input, []string) {
 	input := autoscalermap.Input{
 		Namespace:       hpa.Namespace,
 		HPAName:         hpa.Name,
@@ -89,42 +95,61 @@ func assembleAutoscalerMapInput(ctx context.Context, client *kube.Client, opts *
 		MaxReplicas:     hpa.Spec.MaxReplicas,
 		ScalingActive:   hpaanalysis.IsScalingActive(hpa),
 	}
+	var warnings []string
 
 	ref := hpa.Spec.ScaleTargetRef
 	input.Target = fmt.Sprintf("%s/%s", ref.Kind, ref.Name)
 
-	// Fetch scale target info.
-	info, err := kube.FetchScaleTargetInfo(ctx, client.Interface, hpa.Namespace, ref)
-	if err == nil && info != nil {
+	// Observe the scale target, pods, and pending details through one
+	// memoized snapshot so derived views reuse the same API reads.
+	snapshot := observation.New(client.Interface, hpa)
+	target := snapshot.ScaleTarget(ctx)
+	switch target.State {
+	case observation.StateUnavailable:
+		warnings = append(warnings, fmt.Sprintf("scale target unavailable: %v", target.Err))
+	case observation.StateNotApplicable:
+		warnings = append(warnings, fmt.Sprintf(
+			"scale target readiness is not observable for %s/%s",
+			ref.Kind,
+			ref.Name,
+		))
+	}
+	if target.Known() {
+		info := target.Data
 		input.WorkloadReadyReplicas = info.ReadyReplicas
 		input.WorkloadDesiredReplicas = info.DesiredReplicas
 
-		selector := info.SelectorStr
-		if selector != "" {
-			// Fetch pod info.
-			podInfos, _ := kube.FetchPodInfosForSelector(ctx, client.Interface, hpa.Namespace, selector)
-			var running, pending, ready int32
-			for _, p := range podInfos {
-				switch p.Phase {
-				case "Pending":
-					pending++
-				case "Running":
-					running++
+		if info.SelectorStr != "" {
+			podInfos := snapshot.PodInfos(ctx)
+			if podInfos.Known() {
+				var running, pending, ready int32
+				for _, p := range podInfos.Data {
+					switch p.Phase {
+					case "Pending":
+						pending++
+					case "Running":
+						running++
+					}
+					if p.Ready {
+						ready++
+					}
 				}
-				if p.Ready {
-					ready++
+				input.PodSummary = autoscalermap.PodSummary{
+					Total:   int32(len(podInfos.Data)),
+					Running: running,
+					Pending: pending,
+					Ready:   ready,
 				}
-			}
-			input.PodSummary = autoscalermap.PodSummary{
-				Total:   int32(len(podInfos)),
-				Running: running,
-				Pending: pending,
-				Ready:   ready,
+			} else if podInfos.State == observation.StateUnavailable {
+				warnings = append(warnings, fmt.Sprintf("pods unavailable: %v", podInfos.Err))
 			}
 
-			// Fetch pending pod details.
-			pendingDetails, _ := kube.FetchPendingPodDetails(ctx, client.Interface, hpa.Namespace, selector)
-			input.PendingPods = kubeconv.PendingPodInfos(pendingDetails)
+			pendingDetails := snapshot.PendingPods(ctx)
+			if pendingDetails.Known() {
+				input.PendingPods = kubeconv.PendingPodInfos(pendingDetails.Data)
+			} else if pendingDetails.State == observation.StateUnavailable {
+				warnings = append(warnings, fmt.Sprintf("pending pod details unavailable: %v", pendingDetails.Err))
+			}
 		}
 	}
 
@@ -156,12 +181,20 @@ func assembleAutoscalerMapInput(ctx context.Context, client *kube.Client, opts *
 	input.VPAInfo = fetchAutoscalerMapVPA(ctx, opts, hpa)
 
 	// Fetch PodDisruptionBudgets.
-	input.PDBs = fetchAutoscalerMapPDBs(ctx, client, hpa.Namespace)
+	pdbs, pdbErr := fetchAutoscalerMapPDBs(ctx, client, hpa.Namespace)
+	if pdbErr != nil {
+		warnings = append(warnings, fmt.Sprintf("pod disruption budgets unavailable: %v", pdbErr))
+	}
+	input.PDBs = pdbs
 
 	// Fetch ResourceQuotas near limits.
-	input.Quotas = fetchAutoscalerMapQuotas(ctx, client, hpa.Namespace, hpa.Spec.MaxReplicas)
+	quotas, quotaErr := fetchAutoscalerMapQuotas(ctx, client, hpa.Namespace)
+	if quotaErr != nil {
+		warnings = append(warnings, fmt.Sprintf("resource quotas unavailable: %v", quotaErr))
+	}
+	input.Quotas = quotas
 
-	return input
+	return input, warnings
 }
 
 // detectKarpenter checks for Karpenter pods or CRDs.
@@ -253,10 +286,13 @@ func fetchAutoscalerMapVPA(ctx context.Context, opts *options, hpa *autoscalingv
 }
 
 // fetchAutoscalerMapPDBs fetches PodDisruptionBudgets in the namespace.
-func fetchAutoscalerMapPDBs(ctx context.Context, client *kube.Client, namespace string) []autoscalermap.PDB {
-	pdbs, _ := kube.FetchPodDisruptionBudgets(ctx, client.Interface, namespace)
+func fetchAutoscalerMapPDBs(ctx context.Context, client *kube.Client, namespace string) ([]autoscalermap.PDB, error) {
+	pdbs, err := kube.FetchPodDisruptionBudgets(ctx, client.Interface, namespace)
+	if err != nil {
+		return nil, err
+	}
 	if len(pdbs) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	result := make([]autoscalermap.PDB, 0, len(pdbs))
@@ -272,19 +308,29 @@ func fetchAutoscalerMapPDBs(ctx context.Context, client *kube.Client, namespace 
 		}
 		result = append(result, p)
 	}
-	return result
+	return result, nil
 }
 
-// fetchAutoscalerMapQuotas fetches ResourceQuotas near their limits (ratio >= 0.7).
-func fetchAutoscalerMapQuotas(ctx context.Context, client *kube.Client, namespace string, _ int32) []autoscalermap.Quota {
-	quotas, _ := kube.FetchAllResourceQuotas(ctx, client.Interface, namespace)
+// quotaNearLimitRatio is the usage ratio at which a ResourceQuota is flagged
+// in the autoscaler map's constraints layer. It is intentionally lower than
+// the blocker rule's 0.95 cutoff: this view surfaces approaching limits as
+// context, while blockers reserve its stricter threshold for hard blockers.
+const quotaNearLimitRatio = 0.7
+
+// fetchAutoscalerMapQuotas fetches ResourceQuotas near their limits
+// (ratio >= quotaNearLimitRatio).
+func fetchAutoscalerMapQuotas(ctx context.Context, client *kube.Client, namespace string) ([]autoscalermap.Quota, error) {
+	quotas, err := kube.FetchAllResourceQuotas(ctx, client.Interface, namespace)
+	if err != nil {
+		return nil, err
+	}
 	if len(quotas) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	result := make([]autoscalermap.Quota, 0, len(quotas))
 	for _, q := range quotas {
-		if q.Ratio < 0.7 {
+		if q.Ratio < quotaNearLimitRatio {
 			continue
 		}
 		result = append(result, autoscalermap.Quota{
@@ -295,5 +341,5 @@ func fetchAutoscalerMapQuotas(ctx context.Context, client *kube.Client, namespac
 			Ratio:    q.Ratio,
 		})
 	}
-	return result
+	return result, nil
 }

@@ -2,6 +2,7 @@ package gitops
 
 import (
 	"bytes"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 	"strings"
 	"testing"
 
@@ -82,8 +83,8 @@ func TestReviewSeverityBadge(t *testing.T) {
 	theme := style.Theme{}
 	tests := map[string]string{"high": "[HIGH]", "medium": "[MED]", "low": "[LOW]", "unknown": "[INFO]"}
 	for severity, want := range tests {
-		if got := reviewSeverityBadge(severity, theme); !strings.Contains(got, want) {
-			t.Errorf("reviewSeverityBadge(%q) = %q, want to contain %q", severity, got, want)
+		if got := rendutil.SeverityBadge(severity, theme); !strings.Contains(got, want) {
+			t.Errorf("SeverityBadge(%q) = %q, want to contain %q", severity, got, want)
 		}
 	}
 }

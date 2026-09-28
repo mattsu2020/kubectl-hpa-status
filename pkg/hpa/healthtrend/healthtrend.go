@@ -99,22 +99,32 @@ func DetectFlapping(snapshots []HealthSnapshot) (bool, string) {
 	}
 	seenStates[snapshots[0].HealthState]++
 
-	// Flapping detection: more than 3 state transitions in the series.
-	if transitions < 4 {
+	// Flapping detection: a series needs at least flappingMinTransitions
+	// state transitions before a flapping verdict is meaningful.
+	if transitions < flappingMinTransitions {
 		return false, ""
 	}
 
-	// Severity based on transition count.
+	// Severity from the share of snapshots that change state.
 	ratio := float64(transitions) / float64(len(snapshots)-1)
 	switch {
-	case ratio > 0.7:
+	case ratio > flappingCriticalTransitionRatio:
 		return true, "CRITICAL"
-	case ratio > 0.5:
+	case ratio > flappingHighTransitionRatio:
 		return true, "HIGH"
 	default:
 		return true, "MEDIUM"
 	}
 }
+
+// Flapping detection thresholds for DetectFlapping. A series must have at
+// least flappingMinTransitions state transitions, and severity escalates with
+// the fraction of snapshots that change state.
+const (
+	flappingMinTransitions          = 4
+	flappingCriticalTransitionRatio = 0.7
+	flappingHighTransitionRatio     = 0.5
+)
 
 // ComputeHealthVariance returns the population variance of health scores.
 func ComputeHealthVariance(scores []int) float64 {

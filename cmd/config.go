@@ -29,6 +29,19 @@ var (
 	outputFlagDisplayValues = render.FormatNames()
 )
 
+// validFilterValues is the single vocabulary for --filter / config `filter`;
+// both the flag and config validators compare against it so the two cannot
+// drift apart.
+func validFilterValues() []string {
+	return []string{"", "all", "ok", "error", "limited", "scalinglimited", "issue"}
+}
+
+// validSortByValues is the single vocabulary for --sort-by / config
+// `sortBy`, including the historical alias spellings.
+func validSortByValues() []string {
+	return []string{"", "namespace", "name", "current", "currentreplicas", "desired", "desiredreplicas", "diff", "replicadiff", "difference", "age", "creationtimestamp", "health", "healthscore", "score", "problem", "issue", "min", "minreplicas", "max", "maxreplicas", "target"}
+}
+
 func canonicalOutputValues() []string {
 	values := make([]string, 0, len(render.FormatNames())+5)
 	for _, name := range render.FormatNames() {
@@ -168,10 +181,10 @@ func validateConfigSelectors(cfg configFile) error {
 	if !isAcceptedNormalized(strings.ToLower(cfg.Lang), validLangValues) {
 		return fmt.Errorf("config lang must be one of %s; got %q", strings.Join(validLangValues, ", "), cfg.Lang)
 	}
-	if err := validateMode("config filter", normalizeSelector(cfg.Filter), "", "all", "ok", "error", "limited", "scalinglimited", "issue"); err != nil {
+	if err := validateMode("config filter", normalizeSelector(cfg.Filter), validFilterValues()...); err != nil {
 		return err
 	}
-	return validateMode("config sortBy", normalizeSelector(cfg.SortBy), "", "namespace", "name", "current", "currentreplicas", "desired", "desiredreplicas", "diff", "replicadiff", "difference", "age", "creationtimestamp", "health", "healthscore", "score", "problem", "issue", "min", "minreplicas", "max", "maxreplicas", "target")
+	return validateMode("config sortBy", normalizeSelector(cfg.SortBy), validSortByValues()...)
 }
 
 func validateConfigEnrichment(cfg configFile) error {

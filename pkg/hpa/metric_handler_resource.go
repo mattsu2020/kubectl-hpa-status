@@ -47,7 +47,7 @@ func (resourceHandler) SpecIdentity(spec autoscalingv2.MetricSpec) (string, stri
 }
 
 func (resourceHandler) MatchesCurrent(spec autoscalingv2.MetricSpec, current autoscalingv2.MetricStatus) bool {
-	return spec.Resource != nil && current.Resource != nil && spec.Resource.Name == current.Resource.Name
+	return metricIdentityMatches(spec, current)
 }
 
 func (resourceHandler) Remediation(spec autoscalingv2.MetricSpec) string {

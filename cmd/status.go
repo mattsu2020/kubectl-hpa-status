@@ -120,8 +120,9 @@ func runStatusSingle(ctx context.Context, out io.Writer, opts *options, name str
 		report.Analysis.Actions.Actions = append(report.Analysis.Actions.Actions, applied...)
 	}
 	if opts.Export != "" {
+		_, exportErr := writeGitOpsExport(out, opts.Export, report)
 		return joinOutputAndExit(
-			writeGitOpsExport(out, opts.Export, report),
+			exportErr,
 			warningExitCode(report.Analysis.Decision.Health, report.Analysis.Meta.Name, report.Analysis.Meta.Namespace, watchMode),
 		)
 	}

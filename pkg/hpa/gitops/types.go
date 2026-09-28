@@ -19,6 +19,9 @@ type Review struct {
 	Findings []ReviewFinding `json:"findings,omitempty" yaml:"findings,omitempty"`
 	// Recommendation is the overall recommendation text.
 	Recommendation string `json:"recommendation,omitempty" yaml:"recommendation,omitempty"`
+	// Warnings records files that could not be read or parsed during the
+	// review, so malformed manifests are visible instead of silently absent.
+	Warnings []string `json:"warnings,omitempty" yaml:"warnings,omitempty"`
 }
 
 // ReviewFile holds review results for a single file.

@@ -3,7 +3,9 @@ package simulate
 import (
 	"errors"
 	"fmt"
+	"sync/atomic"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/errs"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
@@ -88,16 +90,21 @@ type AnalysisOptions struct {
 	ForTesting bool
 }
 
-// ErrNilHPA is the sentinel error for nil HPA inputs.
-var ErrNilHPA = errors.New("HPA must not be nil")
+// Sentinel errors. These alias the shared pkg/hpa/internal/errs values so
+// errors.Is matches the hpa root package's identically named sentinels; the
+// two packages used to declare separate values with identical messages.
+var (
+	// ErrNilHPA is the sentinel error for nil HPA inputs.
+	ErrNilHPA = errs.ErrNilHPA
 
-// ErrMetricNotFound is returned when a simulation override references a
-// metric that does not exist in the HPA spec.
-var ErrMetricNotFound = errors.New("metric not found in HPA spec")
+	// ErrMetricNotFound is returned when a simulation override references a
+	// metric that does not exist in the HPA spec.
+	ErrMetricNotFound = errs.ErrMetricNotFound
 
-// ErrMetricAmbiguous is returned when a name-only metric reference matches
-// multiple metrics and the identity cannot be uniquely determined.
-var ErrMetricAmbiguous = errors.New("metric name is ambiguous")
+	// ErrMetricAmbiguous is returned when a name-only metric reference matches
+	// multiple metrics and the identity cannot be uniquely determined.
+	ErrMetricAmbiguous = errs.ErrMetricAmbiguous
+)
 
 // Health state constants for testing
 const (
@@ -130,38 +137,55 @@ type analyzeFunc func(hpa *autoscalingv2.HorizontalPodAutoscaler, includeMetrics
 // current metric.
 type metricImpactRatioFunc func(hpa *autoscalingv2.HorizontalPodAutoscaler, metric autoscalingv2.MetricStatus) (string, *float64)
 
-// Function pointer variables
+// Injected function pointers. They are stored atomically: registration
+// normally happens once from the hpa root package's init(), but the setters
+// are exported for embedders and tests, so a concurrent registration must not
+// race with simulation entry points reading the current value.
 var (
-	analyzeFuncInstance       analyzeFunc
-	metricImpactRatioFuncImpl metricImpactRatioFunc
+	analyzeFuncInstance       atomic.Pointer[analyzeFunc]
+	metricImpactRatioFuncImpl atomic.Pointer[metricImpactRatioFunc]
 )
 
 // SetAnalyzeFunc sets the analysis function for simulation.
 // This is called from the hpa root package to inject the AnalyzeWithOptions dependency.
 func SetAnalyzeFunc(fn analyzeFunc) {
-	analyzeFuncInstance = fn
+	analyzeFuncInstance.Store(&fn)
+}
+
+// AnalyzeFunc returns the currently registered analysis function, or nil when
+// the hpa root package has not been linked in.
+func AnalyzeFunc() analyzeFunc {
+	if p := analyzeFuncInstance.Load(); p != nil {
+		return *p
+	}
+	return nil
 }
 
 // SetMetricImpactRatioFunc sets the metricImpactRatio function.
 func SetMetricImpactRatioFunc(fn metricImpactRatioFunc) {
-	metricImpactRatioFuncImpl = fn
+	metricImpactRatioFuncImpl.Store(&fn)
 }
 
 // AnalysisFuncInvoker invokes the injected analysis function. It returns
 // ErrDependencyMissing instead of panicking when the hpa root package has not
 // been linked (and no SetAnalyzeFunc registration happened).
 func AnalysisFuncInvoker(hpa *autoscalingv2.HorizontalPodAutoscaler, includeMetrics bool, opts AnalysisOptions) (Analysis, error) {
-	if analyzeFuncInstance == nil {
+	analyze := AnalyzeFunc()
+	if analyze == nil {
 		return Analysis{}, fmt.Errorf("%w: analysis (import github.com/mattsu2020/kubectl-hpa-status/pkg/hpa or call SetAnalyzeFunc)", ErrDependencyMissing)
 	}
-	return analyzeFuncInstance(hpa, includeMetrics, opts), nil
+	return analyze(hpa, includeMetrics, opts), nil
 }
 
 func metricImpactRatioInvoker(hpa *autoscalingv2.HorizontalPodAutoscaler, metric autoscalingv2.MetricStatus) (string, *float64, error) {
-	if metricImpactRatioFuncImpl == nil {
+	var ratioFn metricImpactRatioFunc
+	if p := metricImpactRatioFuncImpl.Load(); p != nil {
+		ratioFn = *p
+	}
+	if ratioFn == nil {
 		return "", nil, fmt.Errorf("%w: metricImpactRatio (import github.com/mattsu2020/kubectl-hpa-status/pkg/hpa or call SetMetricImpactRatioFunc)", ErrDependencyMissing)
 	}
-	name, ratio := metricImpactRatioFuncImpl(hpa, metric)
+	name, ratio := ratioFn(hpa, metric)
 	return name, ratio, nil
 }
 

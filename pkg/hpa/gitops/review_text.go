@@ -38,13 +38,22 @@ func WriteReviewText(w io.Writer, review *Review, theme style.Theme) error {
 		buf.WriteString(fmt.Sprintf("  %s:\n", header))
 
 		for _, f := range file.Findings {
-			badge := reviewSeverityBadge(f.Severity, theme)
+			badge := rendutil.SeverityBadge(f.Severity, theme)
 			buf.WriteString(fmt.Sprintf("    %s [%s] %s\n", badge, f.Category, f.Message))
 			if f.Detail != "" {
 				for _, line := range rendutil.WrapLines(f.Detail, 72) {
 					buf.WriteString(fmt.Sprintf("      %s\n", line))
 				}
 			}
+		}
+		buf.WriteString("\n")
+	}
+
+	// Warnings.
+	if len(review.Warnings) > 0 {
+		buf.WriteString("Warnings:\n")
+		for _, warn := range review.Warnings {
+			buf.WriteString(fmt.Sprintf("  %s\n", warn))
 		}
 		buf.WriteString("\n")
 	}
@@ -63,20 +72,6 @@ func WriteReviewText(w io.Writer, review *Review, theme style.Theme) error {
 
 	_, err := w.Write([]byte(buf.String()))
 	return err
-}
-
-// reviewSeverityBadge returns a styled severity badge.
-func reviewSeverityBadge(severity string, theme style.Theme) string {
-	switch severity {
-	case "high":
-		return theme.Error.Render("[HIGH]")
-	case "medium":
-		return theme.Warning.Render("[MED]")
-	case "low":
-		return theme.Dim.Render("[LOW]")
-	default:
-		return "[INFO]"
-	}
 }
 
 // reviewRiskLabel returns a styled risk level label.

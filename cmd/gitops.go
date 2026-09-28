@@ -44,41 +44,24 @@ func buildGitOpsConflict(ctx context.Context, client *kube.Client, hpa *autoscal
 	var liveReplicas int32
 	var liveFetchWarnings []string
 
-	switch targetKind {
-	case "Deployment":
-		deploy, err := client.Interface.AppsV1().Deployments(hpa.Namespace).Get(ctx, targetName, metav1.GetOptions{})
-		if err == nil {
-			// Spec.Replicas is a *int32 and may be nil when the workload omits
-			// an explicit replica count; fall back to the Kubernetes default (1)
-			// rather than dereferencing a nil pointer.
-			liveReplicas = replicasOrDefault(deploy.Spec.Replicas)
-			extractGitOpsAnnotations(deploy.Annotations, argoCDAnnotations, fluxAnnotations)
-			if deploy.Labels != nil {
-				if deploy.Labels["app.kubernetes.io/managed-by"] == "keda-operator" ||
-					deploy.Labels["keda.sh/scaledObjectName"] != "" {
-					kedaManaged = true
-				}
+	workload, err := fetchLiveWorkload(ctx, client, hpa.Namespace, targetKind, targetName)
+	if err == nil {
+		// Spec.Replicas is a *int32 and may be nil when the workload omits
+		// an explicit replica count; fall back to the Kubernetes default (1)
+		// rather than dereferencing a nil pointer.
+		liveReplicas = replicasOrDefault(workload.replicas)
+		extractGitOpsAnnotations(workload.meta.GetAnnotations(), argoCDAnnotations, fluxAnnotations)
+		if labels := workload.meta.GetLabels(); labels != nil {
+			if labels["app.kubernetes.io/managed-by"] == "keda-operator" ||
+				labels["keda.sh/scaledObjectName"] != "" {
+				kedaManaged = true
 			}
-		} else {
-			// Surface the fetch failure instead of silently leaving liveReplicas=0,
-			// which would otherwise produce a misleading drift analysis.
-			liveFetchWarnings = append(liveFetchWarnings, fmt.Sprintf("could not read live Deployment %s/%s replicas: %v", hpa.Namespace, targetName, err))
 		}
-	case "StatefulSet":
-		sts, err := client.Interface.AppsV1().StatefulSets(hpa.Namespace).Get(ctx, targetName, metav1.GetOptions{})
-		if err == nil {
-			// Spec.Replicas is a *int32 and may be nil (see Deployment branch).
-			liveReplicas = replicasOrDefault(sts.Spec.Replicas)
-			extractGitOpsAnnotations(sts.Annotations, argoCDAnnotations, fluxAnnotations)
-			if sts.Labels != nil {
-				if sts.Labels["app.kubernetes.io/managed-by"] == "keda-operator" ||
-					sts.Labels["keda.sh/scaledObjectName"] != "" {
-					kedaManaged = true
-				}
-			}
-		} else {
-			liveFetchWarnings = append(liveFetchWarnings, fmt.Sprintf("could not read live StatefulSet %s/%s replicas: %v", hpa.Namespace, targetName, err))
-		}
+	} else {
+		// Surface the fetch failure instead of silently leaving liveReplicas=0,
+		// which would otherwise produce a misleading drift analysis. This also
+		// covers scale target kinds outside Deployment/StatefulSet.
+		liveFetchWarnings = append(liveFetchWarnings, fmt.Sprintf("could not read live %s %s/%s replicas: %v", targetKind, hpa.Namespace, targetName, err))
 	}
 
 	// Assemble input for pkg/hpa analysis
@@ -98,6 +81,37 @@ func buildGitOpsConflict(ctx context.Context, client *kube.Client, hpa *autoscal
 	conflict := gitops.AnalyzeConflict(input)
 	conflict.Warnings = append(conflict.Warnings, liveFetchWarnings...)
 	return conflict, warnings
+}
+
+// liveWorkload is the subset of a live scale target the GitOps conflict
+// analysis reads: the replica pointer and the object metadata carrying
+// GitOps annotations and KEDA labels.
+type liveWorkload struct {
+	replicas *int32
+	meta     metav1.Object
+}
+
+// fetchLiveWorkload reads the live scale target for the kinds whose replica
+// counts participate in GitOps drift analysis. Other kinds return an error so
+// the caller can surface "live replicas unavailable" instead of silently
+// treating them as zero.
+func fetchLiveWorkload(ctx context.Context, client *kube.Client, namespace, kind, name string) (*liveWorkload, error) {
+	switch kind {
+	case "Deployment":
+		deploy, err := client.Interface.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+		if err != nil {
+			return nil, err
+		}
+		return &liveWorkload{replicas: deploy.Spec.Replicas, meta: deploy}, nil
+	case "StatefulSet":
+		sts, err := client.Interface.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
+		if err != nil {
+			return nil, err
+		}
+		return &liveWorkload{replicas: sts.Spec.Replicas, meta: sts}, nil
+	default:
+		return nil, fmt.Errorf("unsupported scale target kind %q for live replica read", kind)
+	}
 }
 
 // parseManifestReplicas reads YAML/JSON manifest files and extracts spec.replicas

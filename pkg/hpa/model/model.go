@@ -24,6 +24,12 @@ type Classification = confidence.Classification
 // Severity represents the user-facing severity of a finding.
 type Severity = confidence.Severity
 
+// DefaultMinReplicas is the minimum replica count Kubernetes applies when
+// spec.minReplicas is nil (an omitted minReplicas defaults to 1). Shared by
+// the root analysis, lint, keda, simulate, and compare domains so the value
+// and its meaning are defined once.
+const DefaultMinReplicas int32 = 1
+
 const (
 	// ConfidenceHigh indicates strong supporting evidence.
 	ConfidenceHigh = confidence.High

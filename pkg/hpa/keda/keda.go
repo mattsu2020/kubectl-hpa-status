@@ -1,9 +1,8 @@
 // Package keda analyzes the relationship between an HPA and the KEDA
 // ScaledObject that owns it. It is a self-contained leaf domain: it depends
 // only on the autoscaling/v2 API types and produces interpretation lines plus
-// a typed Analysis summary. The cmd/ layer reaches it through the pkg/hpa
-// re-export facade (hpaanalysis.KEDAAnalysis, hpaanalysis.AnalyzeKEDA) so
-// existing import paths keep working.
+// a typed Analysis summary. The cmd/ and internal/ layers import this
+// package directly (keda.Analyze).
 package keda
 
 import (
@@ -11,20 +10,18 @@ import (
 	"strings"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/confidence"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/model"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
-// DefaultMinReplicas mirrors pkg/hpa.DefaultMinReplicas. It is duplicated here
-// rather than imported because keda is a leaf sub-package that must not reach
-// back into the analysis core (which would create an import cycle). Keep the
-// two values in sync.
-const DefaultMinReplicas int32 = 1
+// DefaultMinReplicas is the canonical shared default from pkg/hpa/model.
+const DefaultMinReplicas = model.DefaultMinReplicas
 
 // Analysis holds KEDA-specific information attached to an HPA Analysis.
 // Populated only when --keda is enabled and the HPA is KEDA-managed.
-// This is the canonical definition; pkg/hpa re-exports it as
-// hpaanalysis.KEDAAnalysis via a type alias.
+// This is the canonical definition; the historical pkg/hpa
+// hpaanalysis.KEDAAnalysis alias was removed in v3.0.0.
 type Analysis struct {
 	ScaledObjectName string           `json:"scaledObjectName" yaml:"scaledObjectName"`
 	Triggers         []TriggerSummary `json:"triggers,omitempty" yaml:"triggers,omitempty"`

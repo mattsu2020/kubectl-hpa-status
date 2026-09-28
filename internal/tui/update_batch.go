@@ -43,6 +43,12 @@ func (m Model) handleBatchAuditKey() (tea.Model, tea.Cmd) {
 		reports := make(map[string]*audit.Report)
 		var errs []error
 		for _, name := range selected {
+			// Honor cancellation between HPAs: after the user quits, stop
+			// issuing API calls and return the partial result.
+			if err := m.ctx.Err(); err != nil {
+				errs = append(errs, fmt.Errorf("audit cancelled: %w", err))
+				break
+			}
 			// `name` is the selection key, which is always "namespace/name"
 			// (see handleToggleSelectKey/handleSelectAllKey). Split the key to
 			// derive the audit call's namespace and short name; when a key

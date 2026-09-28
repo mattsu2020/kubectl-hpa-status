@@ -12,7 +12,12 @@ import (
 )
 
 // historyState holds the history/sparkline view state for a single HPA.
+// key anchors the loaded snapshots to one "namespace/name" identity so a
+// stale load cannot attach another HPA's history after the cursor moved.
 type historyState struct {
+	key           string
+	loading       bool
+	loadErr       error
 	snapshots     []hpaanalysis.TimelineSnapshot
 	churnAnalysis *hpachurn.ChurnAnalysis
 	scrollPos     int
@@ -232,7 +237,7 @@ func (m Model) renderHistoryView() string {
 	}
 
 	if len(snapshots) == 0 {
-		return renderHistoryEmpty(item)
+		return renderHistoryEmpty(item, m.historyState)
 	}
 
 	// Derive churn analysis from snapshots if not already computed. The
@@ -267,11 +272,22 @@ func (m Model) renderHistoryView() string {
 	return sb.String()
 }
 
-func renderHistoryEmpty(item hpaanalysis.ListItem) string {
+func renderHistoryEmpty(item hpaanalysis.ListItem, state *historyState) string {
 	var sb strings.Builder
 	sb.WriteString(headerStyle.Render(fmt.Sprintf("HPA History: %s/%s", item.Namespace, item.Name)))
 	sb.WriteString("\n\n")
-	sb.WriteString(dimStyle.Render("No timeline data available. Use 'timeline record' to capture data."))
+	switch {
+	case state != nil && state.loading:
+		sb.WriteString(dimStyle.Render("Loading history from the health store..."))
+	case state != nil && state.loadErr != nil:
+		sb.WriteString(errorStyle.Render(fmt.Sprintf("History unavailable: %v", state.loadErr)))
+		sb.WriteString("\n")
+		sb.WriteString(dimStyle.Render("Snapshots are recorded by status/list --trend; check store permissions under ~/.kube/hpa-status-history."))
+	default:
+		sb.WriteString(dimStyle.Render("No history recorded for this HPA yet."))
+		sb.WriteString("\n")
+		sb.WriteString(dimStyle.Render("Run 'kubectl hpa-status status NAME --trend' (or list --trend) periodically to record snapshots; 'timeline record' captures richer traces."))
+	}
 	sb.WriteString("\n")
 	return sb.String()
 }

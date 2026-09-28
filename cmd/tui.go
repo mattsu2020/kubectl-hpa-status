@@ -8,6 +8,8 @@ import (
 	"time"
 
 	analysisservice "github.com/mattsu2020/kubectl-hpa-status/internal/analysis"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/history"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpakeda "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/keda"
 	hpavpa "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
 
@@ -99,6 +101,9 @@ func runTUI(ctx context.Context, out io.Writer, opts *options, initialName strin
 			}
 			return audit.Run(hpa, minReplicas), nil
 		},
+		LoadHistoryFn: func(_ context.Context, namespace, name, uid string) ([]hpaanalysis.TimelineSnapshot, error) {
+			return loadTUIHistory(opts, namespace, name, uid)
+		},
 	})
 	model = model.WithContext(ctx)
 
@@ -133,4 +138,35 @@ func newTUIApplyFunc(opts *options, dryRun bool) tui.ApplyFunc {
 func isInteractiveTerminal(out io.Writer) bool {
 	file, ok := out.(*os.File)
 	return ok && term.IsTerminal(int(file.Fd()))
+}
+
+// loadTUIHistory loads health-store snapshots for the TUI history view and
+// projects them into the TimelineSnapshot shape the view renders. The lookback
+// follows --trend-since so the TUI and the history report agree on the window.
+func loadTUIHistory(opts *options, namespace, name, uid string) ([]hpaanalysis.TimelineSnapshot, error) {
+	store, err := history.NewHealthStore()
+	if err != nil {
+		return nil, fmt.Errorf("health history store unavailable: %w", err)
+	}
+	healthSnapshots, err := store.Load(history.SnapshotKey{
+		Cluster:   kube.ClusterIdentity(opts.KubeOptions()),
+		Namespace: namespace,
+		Name:      name,
+		UID:       uid,
+	}, opts.TrendSince)
+	if err != nil {
+		return nil, fmt.Errorf("load health history: %w", err)
+	}
+	snapshots := make([]hpaanalysis.TimelineSnapshot, 0, len(healthSnapshots))
+	for i := range healthSnapshots {
+		h := &healthSnapshots[i]
+		snapshots = append(snapshots, hpaanalysis.TimelineSnapshot{
+			Timestamp:   h.Timestamp,
+			Current:     h.CurrentReplicas,
+			Desired:     h.DesiredReplicas,
+			Health:      h.HealthState,
+			HealthScore: h.HealthScore,
+		})
+	}
+	return snapshots, nil
 }

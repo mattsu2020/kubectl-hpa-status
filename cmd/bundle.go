@@ -26,7 +26,10 @@ func newBundleCommand(opts *options) *cobra.Command {
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: hpaNameCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			format, output, redact := readBundleFlags(cmd)
+			format, output, redact, readErr := readBundleFlags(cmd)
+			if readErr != nil {
+				return readErr
+			}
 			return runBundle(cmd.Context(), cmd.OutOrStdout(), opts, args[0], format, output, redact)
 		},
 	}
@@ -51,11 +54,17 @@ func addBundleFlags(cmd *cobra.Command, defaultOutputPattern, defaultFormat stri
 // readBundleFlags reads the three bundle flags registered by addBundleFlags.
 // Centralising the reads keeps the two command RunE bodies identical and free
 // of copy-paste drift.
-func readBundleFlags(cmd *cobra.Command) (format, output string, redact bool) {
-	format, _ = cmd.Flags().GetString("format")
-	output, _ = cmd.Flags().GetString("output")
-	redact, _ = cmd.Flags().GetBool("redact")
-	return format, output, redact
+func readBundleFlags(cmd *cobra.Command) (format, output string, redact bool, readErr error) {
+	format, readErr = flagString(cmd, "format")
+	if readErr != nil {
+		return
+	}
+	output, readErr = flagString(cmd, "output")
+	if readErr != nil {
+		return
+	}
+	redact, readErr = flagBool(cmd, "redact")
+	return format, output, redact, readErr
 }
 
 // defaultBundleOutputPath resolves the bundle output path. When the caller did
@@ -152,8 +161,13 @@ func collectBundleData(ctx context.Context, client *kube.Client, opts *options, 
 	}
 	data.StatusReport = statusReport
 
-	// 4. Resolve selector for additional data collection.
-	selector := capacitySelector(ctx, client, hpa)
+	// 4. Resolve selector for additional data collection. A failed read is
+	// surfaced as a warning so the bundle does not silently omit every
+	// pod-derived section.
+	selector, selectorErr := capacitySelectorWithError(ctx, client, hpa)
+	if selectorErr != nil {
+		data.Warnings = append(data.Warnings, fmt.Sprintf("scale target selector unavailable: %v", selectorErr))
+	}
 
 	// 5. ReplicaSets (reuse snapshot helper).
 	data.ReplicaSets = fetchSnapshotReplicaSets(ctx, client, hpa)
@@ -163,7 +177,7 @@ func collectBundleData(ctx context.Context, client *kube.Client, opts *options, 
 	collectBundlePodData(ctx, client, selector, data)
 
 	// 7. Events with wider scope (HPA + scale target + pods).
-	objectNames := bundleEventObjectNames(hpa, data.PodInfos)
+	objectNames := blockerEventObjectNames(hpa, data.PodInfos)
 	events, eventsErr := kube.FetchRecentEventsForObjects(ctx, client.Interface, hpa.Namespace, objectNames, bundleEventLimit)
 	data.Events = formatBundleEvents(events)
 	if eventsErr != nil {
@@ -174,7 +188,7 @@ func collectBundleData(ctx context.Context, client *kube.Client, opts *options, 
 		}
 	}
 
-	// 8. Metrics API status (reuse snapshot helper).
+	// 9. Metrics API status (reuse snapshot helper).
 	data.MetricsAPI = fetchSnapshotMetricsAPI(ctx, client)
 
 	// 10-13. Namespace capacity context: quotas, limit ranges, PDBs, nodes.
@@ -231,12 +245,6 @@ func collectBundleCapacityContext(ctx context.Context, client *kube.Client, hpa 
 		data.Warnings = append(data.Warnings, fmt.Sprintf("node capacity: %v", err))
 	}
 	data.NodeCapacity = nodeCap
-}
-
-// bundleEventObjectNames collects object names for event fetching:
-// HPA itself, the scale target, and all pods of the scale target.
-func bundleEventObjectNames(hpa *autoscalingv2.HorizontalPodAutoscaler, pods []kube.PodInfo) []string {
-	return blockerEventObjectNames(hpa, pods)
 }
 
 // formatBundleEvents formats events as a markdown-compatible text block.

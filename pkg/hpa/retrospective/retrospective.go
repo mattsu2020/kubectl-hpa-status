@@ -56,7 +56,7 @@ func BuildTimeline(events []eventutil.Event, hpa *autoscalingv2.HorizontalPodAut
 			continue
 		}
 		entries = append(entries, *entry)
-		if event.Reason == "SuccessfulRescale" {
+		if event.Reason == eventutil.ReasonSuccessfulRescale {
 			newSize, ok := parseNewSize(event.Message)
 			if ok {
 				prevDesired = int32Pointer(newSize)
@@ -72,7 +72,7 @@ func BuildTimeline(events []eventutil.Event, hpa *autoscalingv2.HorizontalPodAut
 // reason and message content.
 func classifyEvent(event eventutil.Event, prevDesired *int32, hpa *autoscalingv2.HorizontalPodAutoscaler) *Entry {
 	switch event.Reason {
-	case "SuccessfulRescale":
+	case eventutil.ReasonSuccessfulRescale:
 		newSize, ok := parseNewSize(event.Message)
 		if !ok {
 			// Fallback: cannot parse, emit raw message.
@@ -120,7 +120,7 @@ func classifyEvent(event eventutil.Event, prevDesired *int32, hpa *autoscalingv2
 			MetricContext: metricCtx,
 		}
 
-	case "FailedRescale":
+	case eventutil.ReasonFailedRescale:
 		return &Entry{
 			Timestamp:  event.Timestamp,
 			Category:   "rescale",

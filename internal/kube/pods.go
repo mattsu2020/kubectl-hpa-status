@@ -20,35 +20,6 @@ type PodInfo struct {
 	NodeName      string
 }
 
-// FetchPodsForScaleTarget resolves the scale target's label selector and lists
-// all pods matching it. Returns the pod list or an error if the scale target
-// kind is unsupported or the selector cannot be resolved.
-func FetchPodsForScaleTarget(ctx context.Context, client kubernetes.Interface, namespace string, hpa *autoscalingv2.HorizontalPodAutoscaler) ([]string, error) {
-	ref := hpa.Spec.ScaleTargetRef
-	if ref.Kind != "Deployment" && ref.Kind != "StatefulSet" && ref.Kind != "ReplicaSet" {
-		return nil, fmt.Errorf("kind %q: %w", ref.Kind, ErrUnsupportedScaleTargetKind)
-	}
-
-	selector, err := resolveLabelSelector(ctx, client, namespace, ref)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve label selector for %s/%s: %w", ref.Kind, ref.Name, err)
-	}
-	if selector == "" {
-		return nil, nil
-	}
-
-	pods, err := listPods(ctx, client, namespace, metav1.ListOptions{LabelSelector: selector})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list pods: %w", err)
-	}
-
-	names := make([]string, 0, len(pods))
-	for _, pod := range pods {
-		names = append(names, pod.Name)
-	}
-	return names, nil
-}
-
 // FetchPodInfosForSelector lists pods matching selector and returns readiness
 // and scheduling state used by scale path analysis.
 func FetchPodInfosForSelector(ctx context.Context, client kubernetes.Interface, namespace, selector string) ([]PodInfo, error) {

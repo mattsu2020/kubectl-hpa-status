@@ -154,10 +154,10 @@ func lintOneFile(file string, decoder runtimeDecoder, workloads map[lintWorkload
 
 // splitYAMLDocuments uses Kubernetes' stream reader, which accepts standard
 // separator variants (including comments and CRLF) instead of matching only
-// one literal newline sequence.
-func splitYAMLDocuments(data []byte) [][]byte {
-	docs, _ := readYAMLDocuments(data)
-	return docs
+// one literal newline sequence. A stream-level failure is returned instead of
+// being flattened into "zero documents".
+func splitYAMLDocuments(data []byte) ([][]byte, error) {
+	return readYAMLDocuments(data)
 }
 
 func readYAMLDocuments(data []byte) ([][]byte, error) {
@@ -230,12 +230,17 @@ func emitLintOutput(out io.Writer, allResults []lintFileResult, filePath, output
 		return nil
 	}
 
-	for _, r := range allResults {
-		if err := writeLintTextResult(out, r, fix); err != nil {
-			return err
+	// Route the text branch through render.Format's text path so the
+	// error-tracking wrapper reports broken pipes and short writers instead
+	// of a successful exit.
+	return render.Format(out, "", "", nil, func(out io.Writer) error {
+		for _, r := range allResults {
+			if err := writeLintTextResult(out, r, fix); err != nil {
+				return err
+			}
 		}
-	}
-	return nil
+		return nil
+	})
 }
 
 // writeLintTextResult writes a single lint result in human-readable text form,

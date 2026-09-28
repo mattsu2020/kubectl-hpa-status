@@ -191,7 +191,7 @@ func TestFetchPodInfosForSelector(t *testing.T) {
 	}
 }
 
-func TestFetchPodsForScaleTargetSelectors(t *testing.T) {
+func TestScaleTargetPodSelectors(t *testing.T) {
 	selector := &metav1.LabelSelector{MatchLabels: map[string]string{"app": "web"}}
 	deploy := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "default"},
@@ -212,27 +212,25 @@ func TestFetchPodsForScaleTargetSelectors(t *testing.T) {
 
 	for _, kind := range []string{"Deployment", "StatefulSet", "ReplicaSet"} {
 		name := map[string]string{"Deployment": "web", "StatefulSet": "db", "ReplicaSet": "web-rs"}[kind]
-		hpa := &autoscalingv2.HorizontalPodAutoscaler{
-			Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-				ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{Kind: kind, Name: name},
-			},
-		}
-		names, err := FetchPodsForScaleTarget(context.Background(), client, "default", hpa)
+		ref := autoscalingv2.CrossVersionObjectReference{Kind: kind, Name: name}
+		info, err := FetchScaleTargetInfo(context.Background(), client, "default", ref)
 		if err != nil {
-			t.Fatalf("%s: FetchPodsForScaleTarget: %v", kind, err)
+			t.Fatalf("%s: FetchScaleTargetInfo: %v", kind, err)
 		}
-		if len(names) != 1 || names[0] != "web-1" {
-			t.Errorf("%s: expected [web-1], got %v", kind, names)
+		pods, err := FetchPodInfosForSelector(context.Background(), client, "default", info.SelectorStr)
+		if err != nil {
+			t.Fatalf("%s: FetchPodInfosForSelector: %v", kind, err)
+		}
+		if len(pods) != 1 || pods[0].Name != "web-1" {
+			t.Errorf("%s: expected [web-1], got %v", kind, pods)
 		}
 	}
 
-	unsupported := &autoscalingv2.HorizontalPodAutoscaler{
-		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{Kind: "CronJob", Name: "job"},
-		},
-	}
-	if _, err := FetchPodsForScaleTarget(context.Background(), client, "default", unsupported); err == nil {
-		t.Fatal("expected unsupported-kind error for CronJob scale target")
+	// Unsupported scale target kinds are "not applicable", not an error:
+	// FetchScaleTargetInfo returns (nil, nil) and callers degrade to the
+	// not-applicable observation state.
+	if info, err := FetchScaleTargetInfo(context.Background(), client, "default", autoscalingv2.CrossVersionObjectReference{Kind: "CronJob", Name: "job"}); err != nil || info != nil {
+		t.Fatalf("expected (nil, nil) for unsupported kind, got (%v, %v)", info, err)
 	}
 }
 

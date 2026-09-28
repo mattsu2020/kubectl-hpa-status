@@ -63,7 +63,7 @@ func TestWriteGitOpsExportRejectsInvalidApplicablePatch(t *testing.T) {
 		Patch: `{"spec":`,
 	})
 	var out bytes.Buffer
-	err := writeGitOpsExport(&out, "yaml", report)
+	_, err := writeGitOpsExport(&out, "yaml", report)
 	if err == nil {
 		t.Fatal("writeGitOpsExport returned nil for malformed JSON patch")
 	}
@@ -82,7 +82,7 @@ func TestWriteGitOpsExportRejectsNonObjectSpec(t *testing.T) {
 		Patch: `{"spec":null}`,
 	})
 	var out bytes.Buffer
-	err := writeGitOpsExport(&out, "yaml", report)
+	_, err := writeGitOpsExport(&out, "yaml", report)
 	if err == nil || !strings.Contains(err.Error(), "spec must be an object") {
 		t.Fatalf("error = %v, want invalid spec error", err)
 	}
