@@ -89,6 +89,12 @@ func metricIdentity(metric Metric) string {
 	return metric.Type + "\x00" + metric.Name + "\x00" + metric.Selector + "\x00" + metric.Object
 }
 
+// ratioEpsilon bounds the absolute difference tolerated between two metric
+// ratios. The diff compares live values against recorded snapshots that went
+// through a JSON round-trip, where identical logical values can differ in the
+// last floating-point bits; an exact == would flag those as changes.
+const ratioEpsilon = 1e-9
+
 func metricEqual(a, b Metric) bool {
 	if a.Type != b.Type || a.Name != b.Name || a.Selector != b.Selector || a.Object != b.Object ||
 		a.Current != b.Current || a.Target != b.Target || a.Note != b.Note {
@@ -97,5 +103,9 @@ func metricEqual(a, b Metric) bool {
 	if a.Ratio == nil || b.Ratio == nil {
 		return a.Ratio == nil && b.Ratio == nil
 	}
-	return *a.Ratio == *b.Ratio
+	delta := *a.Ratio - *b.Ratio
+	if delta < 0 {
+		delta = -delta
+	}
+	return delta <= ratioEpsilon
 }

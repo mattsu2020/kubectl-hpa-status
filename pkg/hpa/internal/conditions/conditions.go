@@ -71,6 +71,44 @@ func ScaleDownStabilizationWindow(hpa *autoscalingv2.HorizontalPodAutoscaler) *i
 	return hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds
 }
 
+// EffectiveScaleDownStabilizationWindow returns the effective scale-down
+// stabilization window: the configured value, or the Kubernetes default when
+// the behavior, the scaleDown rules, or the window itself is unset. A nil HPA
+// also yields the default, because snapshot-based callers (churn from
+// recorded traces) have no live HPA object. It is the single accessor every
+// domain must use; hand-rolled nil-walks drift into literal 300s.
+func EffectiveScaleDownStabilizationWindow(hpa *autoscalingv2.HorizontalPodAutoscaler) int32 {
+	if hpa == nil {
+		return DefaultScaleDownStabilizationWindowSeconds
+	}
+	if window := ScaleDownStabilizationWindow(hpa); window != nil {
+		return *window
+	}
+	return DefaultScaleDownStabilizationWindowSeconds
+}
+
+// NextScaleDownStabilizationWindow returns the next value on the shared
+// stabilization-window ladder: an unset or disabled window starts at the
+// Kubernetes default, a configured window doubles, and the result is capped
+// at the API maximum of one hour. ok is false when current is already at or
+// above the maximum. Both the churn recommendation and the flapping fixes
+// walk this ladder so the two recommenders can never advise different next
+// windows for the same HPA.
+func NextScaleDownStabilizationWindow(current int32) (int32, bool) {
+	const maximumWindow int32 = 3600
+	if current >= maximumWindow {
+		return 0, false
+	}
+	if current <= 0 {
+		return DefaultScaleDownStabilizationWindowSeconds, true
+	}
+	next := current * 2
+	if next > maximumWindow || next <= current {
+		next = maximumWindow
+	}
+	return next, true
+}
+
 // EstimateStabilizationRemaining estimates how many seconds remain before the
 // scale-down stabilization window expires. Returns nil if the HPA is not in a
 // ScaleDownStabilized state or required data is unavailable.

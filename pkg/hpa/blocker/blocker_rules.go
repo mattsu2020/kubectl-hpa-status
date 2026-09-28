@@ -149,10 +149,19 @@ func containerFailureRule(input Input) []Finding {
 // approaching limits as context rather than blocking findings.
 const quotaBlockerHighRatio = 0.95
 
+// quotaNearLimitRatio is the usage ratio at which a quota starts producing
+// findings. The filter lives inside the rule (not only in the caller that
+// fetches quotas) so the package honors its documented "at or above 80%"
+// contract even when handed unfiltered QuotaInfo.
+const quotaNearLimitRatio = 0.80
+
 // quotaNearLimitRule detects ResourceQuotas where usage is at or above 80%.
 func quotaNearLimitRule(input Input) []Finding {
 	var findings []Finding
 	for _, q := range input.Quotas {
+		if q.Ratio < quotaNearLimitRatio {
+			continue
+		}
 		severity := BlockerMedium
 		if q.Ratio >= quotaBlockerHighRatio {
 			severity = BlockerHigh

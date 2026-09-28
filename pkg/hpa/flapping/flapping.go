@@ -187,33 +187,19 @@ type directionFlip struct {
 }
 
 // detectDirectionFlips identifies points where the scaling direction changes
-// between consecutive rescale events.
+// between consecutive rescale events. The flip definition itself lives in
+// event.FlipPoints so churn, prevention, and timeline agree on it.
 func detectDirectionFlips(rescales []event.RescaleData) []directionFlip {
 	var flips []directionFlip
-	prevDirection := 0
-
-	for i := 1; i < len(rescales); i++ {
+	for _, i := range event.FlipPoints(event.RescaleSizes(rescales)) {
 		delta := rescales[i].NewSize - rescales[i-1].NewSize
-		if delta == 0 {
-			continue
-		}
-
-		dir := 1
-		if delta < 0 {
-			dir = -1
-		}
-
-		if prevDirection != 0 && dir != prevDirection {
-			flips = append(flips, directionFlip{
-				timestamp: rescales[i].Timestamp,
-				from:      rescales[i-1].NewSize,
-				to:        rescales[i].NewSize,
-				direction: dir,
-			})
-		}
-		prevDirection = dir
+		flips = append(flips, directionFlip{
+			timestamp: rescales[i].Timestamp,
+			from:      rescales[i-1].NewSize,
+			to:        rescales[i].NewSize,
+			direction: event.Direction(delta),
+		})
 	}
-
 	return flips
 }
 

@@ -11,6 +11,7 @@ import (
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/conditions"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/event"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/model"
@@ -136,12 +137,8 @@ func buildChurnAnalysis(rescales []event.RescaleData, hpa *autoscalingv2.Horizon
 
 	scaleUpCount := 0
 	scaleDownCount := 0
-	directionFlips := 0
 	var totalDelta float64
 	var maxDelta int32
-
-	// Track the previous direction: 1 = scale-up, -1 = scale-down, 0 = initial.
-	prevDirection := 0
 
 	for i := 1; i < len(rescales); i++ {
 		delta := rescales[i].NewSize - rescales[i-1].NewSize
@@ -155,24 +152,14 @@ func buildChurnAnalysis(rescales []event.RescaleData, hpa *autoscalingv2.Horizon
 			maxDelta = absDelta
 		}
 
-		var direction int
-		switch {
-		case delta > 0:
-			direction = 1
+		switch event.Direction(delta) {
+		case 1:
 			scaleUpCount++
-		case delta < 0:
-			direction = -1
+		case -1:
 			scaleDownCount++
-		default:
-			// No change in replica count; skip direction tracking.
-			continue
 		}
-
-		if prevDirection != 0 && direction != prevDirection {
-			directionFlips++
-		}
-		prevDirection = direction
 	}
+	directionFlips := event.CountDirectionFlips(event.RescaleSizes(rescales))
 
 	totalEvents := scaleUpCount + scaleDownCount
 	if totalEvents == 0 {
@@ -288,23 +275,19 @@ func generateChurnRecommendations(level ChurnLevel, hpa *autoscalingv2.Horizonta
 
 // stabilizationWindowRecommendation recommends increasing the current
 // scale-down stabilization window without exceeding the Kubernetes API limit.
-// An explicitly disabled window starts at 300 seconds. No recommendation is
-// returned when the window is already at or above the maximum.
+// An explicitly disabled window starts at the shared default. No
+// recommendation is returned when the window is already at or above the
+// maximum. The next value comes from the shared ladder in conditions, so the
+// churn and flapping recommenders always propose the same next window.
 func stabilizationWindowRecommendation(hpa *autoscalingv2.HorizontalPodAutoscaler) (ChurnRecommendation, bool) {
-	currentWindow := currentStabilizationWindowSeconds(hpa)
-	recommendedWindow, ok := nextStabilizationWindowSeconds(currentWindow)
+	currentWindow := conditions.EffectiveScaleDownStabilizationWindow(hpa)
+	recommendedWindow, ok := conditions.NextScaleDownStabilizationWindow(currentWindow)
 	if !ok {
 		return ChurnRecommendation{}, false
 	}
 
-	patch := util.MustMarshalJSON(map[string]any{
-		"spec": map[string]any{
-			"behavior": map[string]any{
-				"scaleDown": map[string]any{
-					"stabilizationWindowSeconds": recommendedWindow,
-				},
-			},
-		},
+	patch := util.ScaleDownBehaviorPatch(map[string]any{
+		"stabilizationWindowSeconds": recommendedWindow,
 	})
 
 	return ChurnRecommendation{
@@ -315,27 +298,6 @@ func stabilizationWindowRecommendation(hpa *autoscalingv2.HorizontalPodAutoscale
 		Patch:            patch,
 		Confidence:       "medium",
 	}, true
-}
-
-func nextStabilizationWindowSeconds(current int32) (int32, bool) {
-	const (
-		initialWindow = int64(300)
-		maximumWindow = int64(3600)
-	)
-	if int64(current) >= maximumWindow {
-		return 0, false
-	}
-	if current <= 0 {
-		return int32(initialWindow), true
-	}
-	next := int64(current) * 2
-	if next > maximumWindow {
-		next = maximumWindow
-	}
-	if next <= int64(current) {
-		return 0, false
-	}
-	return int32(next), true
 }
 
 // behaviorPolicyRecommendation recommends an explicit scale-down policy only
@@ -416,18 +378,4 @@ func formatScaleDownPolicies(rules *autoscalingv2.HPAScalingRules) string {
 	}
 	sort.Strings(policies)
 	return fmt.Sprintf("%s selectPolicy: %s", selectPolicy, strings.Join(policies, ", "))
-}
-
-// currentStabilizationWindowSeconds returns the configured scale-down
-// stabilization window, defaulting to 300 seconds when not explicitly set.
-// A nil HPA is valid: snapshot-based callers (AnalyzeFromSnapshots) analyze
-// recorded traces without access to the live HPA object.
-func currentStabilizationWindowSeconds(hpa *autoscalingv2.HorizontalPodAutoscaler) int32 {
-	if hpa == nil || hpa.Spec.Behavior == nil || hpa.Spec.Behavior.ScaleDown == nil {
-		return 300
-	}
-	if hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds == nil {
-		return 300
-	}
-	return *hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds
 }

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/event"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
@@ -285,29 +286,22 @@ func DetectTimelineAnomalies(trace TimelineTrace) []string {
 	if len(trace.Snapshots) < 3 {
 		return nil
 	}
+	desired := make([]int32, len(trace.Snapshots))
+	for i, snap := range trace.Snapshots {
+		desired[i] = snap.Desired
+	}
 	var anomalies []string
-	directionFlips := 0
-	lastDirection := int32(0)
+	directionFlips := event.CountDirectionFlips(desired)
 	largeJumps := 0
 	errorSnapshots := 0
 	for i := 1; i < len(trace.Snapshots); i++ {
 		prev := trace.Snapshots[i-1]
 		curr := trace.Snapshots[i]
 		delta := curr.Desired - prev.Desired
-		direction := int32(0)
-		if delta > 0 {
-			direction = 1
-		}
-		if delta < 0 {
-			direction = -1
-		}
-		if direction != 0 && lastDirection != 0 && direction != lastDirection {
-			directionFlips++
-		}
-		if direction != 0 {
-			lastDirection = direction
-		}
-		if absInt32(delta) >= maxInt32(3, prev.Desired/2) {
+		// Round the half-of-previous threshold up ((n+1)/2) so the jump
+		// sensitivity does not stall at the same value for two consecutive
+		// replica counts (prev.Desired/2 truncated 6 and 7 to the same 3).
+		if absInt32(delta) >= maxInt32(3, (prev.Desired+1)/2) {
 			largeJumps++
 		}
 		if curr.Health == string(HealthError) {

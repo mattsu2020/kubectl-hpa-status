@@ -212,25 +212,11 @@ func formatMetricContext(message string) string {
 }
 
 func formatScaleDownStabilizedTimelineMessage(hpa *autoscalingv2.HorizontalPodAutoscaler) string {
-	currentWindow := scaleDownStabilizationWindowSeconds(hpa)
+	currentWindow := conditions.EffectiveScaleDownStabilizationWindow(hpa)
 	return fmt.Sprintf(
 		"ScaleDownStabilized      suppression recorded; current effective window=%ds; historical duration unavailable",
 		currentWindow,
 	)
-}
-
-// scaleDownStabilizationWindowSeconds returns the current effective
-// scale-down stabilization window. Kubernetes defaults an unspecified value
-// to conditions.DefaultScaleDownStabilizationWindowSeconds. This current
-// setting must not be used to reconstruct a past event's remaining duration.
-func scaleDownStabilizationWindowSeconds(hpa *autoscalingv2.HorizontalPodAutoscaler) int32 {
-	if hpa == nil || hpa.Spec.Behavior == nil || hpa.Spec.Behavior.ScaleDown == nil {
-		return conditions.DefaultScaleDownStabilizationWindowSeconds
-	}
-	if hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds == nil {
-		return conditions.DefaultScaleDownStabilizationWindowSeconds
-	}
-	return *hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds
 }
 
 func entryReplicaRange(entry Entry) (int32, int32, bool) {

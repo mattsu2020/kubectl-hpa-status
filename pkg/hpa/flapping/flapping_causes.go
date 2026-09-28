@@ -88,15 +88,15 @@ func generateFlappingFixes(hpa *autoscalingv2.HorizontalPodAutoscaler, causes []
 
 		case "short-stabilization-window":
 			currentWindow := currentStabilizationWindowSeconds(hpa)
-			recommendedWindow := max(currentWindow*2, conditions.DefaultScaleDownStabilizationWindowSeconds)
-			patch := util.MustMarshalJSON(map[string]any{
-				"spec": map[string]any{
-					"behavior": map[string]any{
-						"scaleDown": map[string]any{
-							"stabilizationWindowSeconds": recommendedWindow,
-						},
-					},
-				},
+			// The shared ladder floors at the Kubernetes default and caps at
+			// the API maximum (3600s); the previous max(current*2, default)
+			// could exceed the cap and produce a patch the API server rejects.
+			recommendedWindow, ok := conditions.NextScaleDownStabilizationWindow(currentWindow)
+			if !ok {
+				continue
+			}
+			patch := util.ScaleDownBehaviorPatch(map[string]any{
+				"stabilizationWindowSeconds": recommendedWindow,
 			})
 			fixes = append(fixes, Fix{
 				Action:    fmt.Sprintf("Increase scaleDown stabilizationWindowSeconds from %ds to %ds", currentWindow, recommendedWindow),
@@ -106,17 +106,11 @@ func generateFlappingFixes(hpa *autoscalingv2.HorizontalPodAutoscaler, causes []
 
 		case "missing-scaledown-policy":
 			window := currentStabilizationWindowSeconds(hpa)
-			patch := util.MustMarshalJSON(map[string]any{
-				"spec": map[string]any{
-					"behavior": map[string]any{
-						"scaleDown": map[string]any{
-							"stabilizationWindowSeconds": window,
-							"selectPolicy":               "Max",
-							"policies": []map[string]any{
-								{"type": "Percent", "value": 50, "periodSeconds": 60},
-							},
-						},
-					},
+			patch := util.ScaleDownBehaviorPatch(map[string]any{
+				"stabilizationWindowSeconds": window,
+				"selectPolicy":               "Max",
+				"policies": []map[string]any{
+					{"type": "Percent", "value": 50, "periodSeconds": 60},
 				},
 			})
 			fixes = append(fixes, Fix{
