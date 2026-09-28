@@ -185,8 +185,8 @@ func (s *HealthStore) PruneAt(key SnapshotKey, retention time.Duration, now time
 // RecordAndLoad atomically appends a snapshot and returns the requested
 // analysis window while holding one inter-process lock. The append is a
 // single O(1) write; the whole-file rewrite is deferred to a compaction pass
-// that only runs once enough history has expired (see shouldCompact), so the
-// cost of a record no longer grows with the size of the retained history.
+// that only runs once enough history has expired (see shouldCompact). Reading
+// the retained analysis window still requires an O(n) scan of the file.
 func (s *HealthStore) RecordAndLoad(key SnapshotKey, snapshot healthtrend.HealthSnapshot, retention, since time.Duration, now time.Time) ([]healthtrend.HealthSnapshot, error) {
 	if err := key.validate(); err != nil {
 		return nil, err
@@ -202,8 +202,13 @@ func (s *HealthStore) RecordAndLoad(key SnapshotKey, snapshot healthtrend.Health
 	if err != nil {
 		return nil, err
 	}
-	retained := append(scan.retained, snapshot)
-	sort.SliceStable(retained, func(i, j int) bool { return retained[i].Timestamp.Before(retained[j].Timestamp) })
+	// The scan is already sorted. Insert after equal timestamps to preserve
+	// stable ordering even when the clock moves backwards.
+	index := sort.Search(len(scan.retained), func(i int) bool { return scan.retained[i].Timestamp.After(snapshot.Timestamp) })
+	retained := scan.retained
+	retained = append(retained, snapshot)
+	copy(retained[index+1:], retained[index:len(retained)-1])
+	retained[index] = snapshot
 
 	if shouldCompact(scan.total, scan.expired) {
 		if err := s.replaceSnapshots(path, retained); err != nil {
@@ -243,7 +248,7 @@ type historyScan struct {
 	// expired counts lines at or beyond the retention cutoff. Their payloads
 	// are dropped at scan time; only the count is kept.
 	expired int
-	// retained holds the still-fresh snapshots in file order.
+	// retained holds the still-fresh snapshots in timestamp order.
 	retained []healthtrend.HealthSnapshot
 	// corruptLines records the line numbers of undecodable lines.
 	corruptLines []int
@@ -293,7 +298,10 @@ func scanHistoryFile(path string, retention time.Duration, now time.Time) (histo
 	if err := scanner.Err(); err != nil {
 		return scan, fmt.Errorf("reading health store file at line %d: %w", lineNum, err)
 	}
-	sort.SliceStable(scan.retained, func(i, j int) bool { return scan.retained[i].Timestamp.Before(scan.retained[j].Timestamp) })
+	less := func(i, j int) bool { return scan.retained[i].Timestamp.Before(scan.retained[j].Timestamp) }
+	if !sort.SliceIsSorted(scan.retained, less) {
+		sort.SliceStable(scan.retained, less)
+	}
 	return scan, nil
 }
 

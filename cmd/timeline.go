@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"sigs.k8s.io/yaml"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
@@ -56,6 +55,9 @@ func newTimelineCommand(opts *options) *cobra.Command {
 }
 
 func runRetrospectiveTimeline(ctx context.Context, out io.Writer, opts *options, name string, since time.Duration, replay bool) error {
+	if err := validateTimelineOutput(opts, false); err != nil {
+		return err
+	}
 	client, hpa, err := lookupHPA(ctx, opts, name)
 	if err != nil {
 		return err
@@ -63,7 +65,7 @@ func runRetrospectiveTimeline(ctx context.Context, out io.Writer, opts *options,
 
 	// 2. Fetch events since the cutoff time.
 	sinceTime := opts.CurrentTime().Add(-since)
-	coreEvents, err := kube.FetchRecentHPAEventsSince(ctx, client.Interface, hpa.Namespace, hpa.Name, sinceTime)
+	coreEvents, err := kube.FetchRecentHPAEventsForObjectSince(ctx, client.Interface, hpa, sinceTime)
 	if err != nil {
 		return fmt.Errorf("failed to fetch events: %w", err)
 	}
@@ -92,53 +94,40 @@ func runRetrospectiveTimeline(ctx context.Context, out io.Writer, opts *options,
 
 func renderRetrospectiveReplay(out io.Writer, replayAnalysis *retrospective.ReplayAnalysis, tl retrospective.Timeline, format string, opts *options) error {
 	switch format {
-	case "json":
-		encoder := json.NewEncoder(out)
-		encoder.SetIndent("", "  ")
-		return encoder.Encode(replayAnalysis)
-	case "yaml":
-		data, marshalErr := yaml.Marshal(replayAnalysis)
-		if marshalErr != nil {
-			return marshalErr
-		}
-		_, err := out.Write(data)
-		return err
 	case "markdown", "md":
 		return retrospective.WriteReplayMarkdown(out, replayAnalysis, tl)
 	case "html":
 		return retrospective.WriteReplayHTML(out, replayAnalysis, tl)
 	default:
-		theme := themeFor(opts.Color, out)
-		return retrospective.WriteReplayText(out, replayAnalysis, tl, theme)
+		_, templateStr := selectOutputFromOptions(opts)
+		return render.Format(out, format, templateStr, replayAnalysis, func(out io.Writer) error {
+			return retrospective.WriteReplayText(out, replayAnalysis, tl, themeFor(opts.Color, out))
+		})
 	}
 }
 
 func renderRetrospective(out io.Writer, tl retrospective.Timeline, format string, opts *options) error {
 	switch format {
-	case "json":
-		encoder := json.NewEncoder(out)
-		encoder.SetIndent("", "  ")
-		return encoder.Encode(tl)
-	case "yaml":
-		data, marshalErr := yaml.Marshal(tl)
-		if marshalErr != nil {
-			return marshalErr
-		}
-		_, err := out.Write(data)
-		return err
 	case "markdown", "md":
 		return retrospective.WriteMarkdown(out, tl)
 	case "html":
 		return retrospective.WriteHTML(out, tl)
 	default:
-		theme := themeFor(opts.Color, out)
-		return retrospective.WriteTimeline(out, tl, theme)
+		_, templateStr := selectOutputFromOptions(opts)
+		return render.Format(out, format, templateStr, tl, func(out io.Writer) error {
+			return retrospective.WriteTimeline(out, tl, themeFor(opts.Color, out))
+		})
 	}
 }
 
 func runTimeline(ctx context.Context, out io.Writer, opts *options, name string, interval time.Duration) error {
+	if err := validateTimelineOutput(opts, true); err != nil {
+		return err
+	}
 	if interval < time.Second {
-		_, _ = fmt.Fprintf(out, "Warning: interval %s is below 1s; clamping to 1s to reduce API server load.\n", interval)
+		if _, err := fmt.Fprintf(out, "Warning: interval %s is below 1s; clamping to 1s to reduce API server load.\n", interval); err != nil {
+			return err
+		}
 		interval = time.Second
 	}
 
@@ -174,7 +163,7 @@ func runTimeline(ctx context.Context, out io.Writer, opts *options, name string,
 
 		trace := hpaanalysis.TimelineTrace{
 			HPAName:   name,
-			Namespace: opts.Namespace,
+			Namespace: report.Analysis.Meta.Namespace,
 			Start:     snapshots[0].Timestamp,
 			Interval:  interval,
 			Snapshots: snapshots,
@@ -192,18 +181,21 @@ func runTimeline(ctx context.Context, out io.Writer, opts *options, name string,
 }
 
 func runTimelineFromRecord(out io.Writer, opts *options, name, path string) error {
+	if err := validateTimelineOutput(opts, false); err != nil {
+		return err
+	}
 	trace, err := loadRecordedTrace(path, opts.Namespace, name)
 	if err != nil {
 		return err
 	}
-	format, _ := selectOutputFromOptions(opts)
+	format, templateStr := selectOutputFromOptions(opts)
 	switch format {
 	case "markdown", "md":
 		return hpaanalysis.WriteTimelineMarkdown(out, *trace)
 	case "html":
 		return hpaanalysis.WriteTimelineHTML(out, *trace)
 	}
-	return render.Format(out, format, "", trace, func(out io.Writer) error {
+	return render.Format(out, format, templateStr, trace, func(out io.Writer) error {
 		theme := themeFor(opts.Color, out)
 		return hpaanalysis.WriteTimelineTable(out, *trace, theme)
 	})
@@ -229,15 +221,36 @@ func runReplay(out io.Writer, opts *options, filePath string) error {
 		return fmt.Errorf("failed to parse trace file: %w", err)
 	}
 
-	format, _ := selectOutputFromOptions(opts)
+	format, templateStr := selectOutputFromOptions(opts)
 	switch format {
 	case "markdown", "md":
 		return hpaanalysis.WriteTimelineMarkdown(out, trace)
 	case "html":
 		return hpaanalysis.WriteTimelineHTML(out, trace)
 	}
-	return render.Format(out, format, "", trace, func(out io.Writer) error {
+	return render.Format(out, format, templateStr, trace, func(out io.Writer) error {
 		theme := themeFor(opts.Color, out)
 		return hpaanalysis.WriteTimelineTable(out, trace, theme)
 	})
+}
+
+// validateTimelineOutput rejects unsupported modes before Kubernetes or file I/O.
+// Live output redraws a table; use record for a durable structured stream.
+func validateTimelineOutput(opts *options, live bool) error {
+	format, _ := selectOutputFromOptions(opts)
+	switch format {
+	case "", "table", "wide", "ja":
+		return nil
+	}
+	if live {
+		return fmt.Errorf("live timeline does not support --output=%s; use --since or --from-record for structured reports, or record for live recording", format)
+	}
+	switch format {
+	case "json", "jsonl", "yaml", "jsonpath", "go-template", "template", "markdown", "md", "html":
+		return nil
+	}
+	if _, _, ok := render.ParsePrefixedFormat(format); ok {
+		return nil
+	}
+	return fmt.Errorf("timeline does not support --output=%s", format)
 }

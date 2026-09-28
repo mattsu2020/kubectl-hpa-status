@@ -296,6 +296,23 @@ Show estimated past scaling decisions using the HPA decision timeline:
 kubectl hpa status timeline web -n production --since=30m
 ```
 
+Live `timeline` output supports table formats only. Use `--since` or
+`--from-record` for JSON, JSONL, YAML, JSONPath, Go templates, Markdown, or HTML;
+unsupported formats are rejected before reading cluster data. JSONL emits one
+complete timeline (or replay analysis) per line. Use `record` for live JSONL
+recording. For example:
+
+```bash
+kubectl hpa status timeline web -n production --since=30m -o jsonl
+kubectl hpa status timeline web -n production --since=30m -o jsonpath='{.hpaName}'
+```
+
+Event-based `timeline` and `flap` reports use the current HPA UID, excluding
+events from a deleted HPA with the same name. Diagnostic bundles and workload
+reports surface event collection failures as incomplete observations rather
+than reporting that no events exist.
+
+
 Output:
 
 ```text

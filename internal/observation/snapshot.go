@@ -50,6 +50,10 @@ type Snapshot struct {
 	podsMu sync.Mutex
 	podsOK bool
 	pods   Value[[]corev1.Pod]
+
+	replicaSetsMu sync.Mutex
+	replicaSetsOK bool
+	replicaSets   Value[[]kube.ReplicaSetInfo]
 }
 
 // New creates a request-scoped workload observation snapshot.
@@ -139,4 +143,34 @@ func mapValue[A, B any](source Value[A], convert func(A) B) Value[B] {
 		return Value[B]{State: source.State, Err: source.Err}
 	}
 	return Value[B]{Data: convert(source.Data), State: StateKnown}
+}
+
+// ReplicaSets returns the memoized scale-path replica status.
+func (s *Snapshot) ReplicaSets(ctx context.Context) Value[[]kube.ReplicaSetInfo] {
+	if s == nil {
+		return Value[[]kube.ReplicaSetInfo]{State: StateUnavailable, Err: fmt.Errorf("observation snapshot is unavailable")}
+	}
+	s.replicaSetsMu.Lock()
+	defer s.replicaSetsMu.Unlock()
+	if s.replicaSetsOK {
+		return s.replicaSets
+	}
+	target := s.ScaleTarget(ctx)
+	if !target.Known() {
+		return Value[[]kube.ReplicaSetInfo]{State: target.State, Err: target.Err}
+	}
+	var items []kube.ReplicaSetInfo
+	if target.Data.Kind == "ReplicaSet" {
+		info := target.Data
+		items = []kube.ReplicaSetInfo{{Name: info.Name, DesiredReplicas: info.DesiredReplicas, CurrentReplicas: info.Replicas, ReadyReplicas: info.ReadyReplicas}}
+	} else {
+		var err error
+		items, err = kube.FetchReplicaSetsForScaleTarget(ctx, s.client, s.hpa.Namespace, s.hpa.Spec.ScaleTargetRef, target.Data.SelectorStr)
+		if err != nil {
+			return Value[[]kube.ReplicaSetInfo]{State: StateUnavailable, Err: err}
+		}
+	}
+	s.replicaSets = Value[[]kube.ReplicaSetInfo]{Data: items, State: StateKnown}
+	s.replicaSetsOK = true
+	return s.replicaSets
 }

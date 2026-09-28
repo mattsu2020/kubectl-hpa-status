@@ -164,8 +164,15 @@ func collectBundleData(ctx context.Context, client *kube.Client, opts *options, 
 
 	// 7. Events with wider scope (HPA + scale target + pods).
 	objectNames := bundleEventObjectNames(hpa, data.PodInfos)
-	events := kube.FetchRecentEventsForObjects(ctx, client.Interface, hpa.Namespace, objectNames, bundleEventLimit)
+	events, eventsErr := kube.FetchRecentEventsForObjects(ctx, client.Interface, hpa.Namespace, objectNames, bundleEventLimit)
 	data.Events = formatBundleEvents(events)
+	if eventsErr != nil {
+		data.Warnings = append(data.Warnings, fmt.Sprintf("events incomplete: %v", eventsErr))
+		data.Events = []byte(fmt.Sprintf("Events collection incomplete: %v\n", eventsErr))
+		if len(events) > 0 {
+			data.Events = append(data.Events, formatBundleEvents(events)...)
+		}
+	}
 
 	// 8. Metrics API status (reuse snapshot helper).
 	data.MetricsAPI = fetchSnapshotMetricsAPI(ctx, client)

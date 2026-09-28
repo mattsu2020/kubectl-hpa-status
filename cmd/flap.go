@@ -57,7 +57,7 @@ func runFlapLive(ctx context.Context, out io.Writer, opts *options, name string,
 	if since <= 0 {
 		since = 6 * time.Hour
 	}
-	coreEvents, err := kube.FetchRecentHPAEventsSince(ctx, client.Interface, hpa.Namespace, hpa.Name, opts.CurrentTime().Add(-since))
+	coreEvents, err := kube.FetchRecentHPAEventsForObjectSince(ctx, client.Interface, hpa, opts.CurrentTime().Add(-since))
 	if err != nil {
 		return fmt.Errorf("failed to fetch events: %w", err)
 	}

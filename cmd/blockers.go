@@ -140,8 +140,11 @@ func assembleBlockerInputWithSnapshot(ctx context.Context, client *kube.Client, 
 
 			// Fetch events for the scale target and pods.
 			objectNames := blockerEventObjectNames(hpa, podInfos.Data)
-			events := kube.FetchRecentEventsForObjects(ctx, client.Interface, hpa.Namespace, objectNames, diagnosticEventLimit)
+			events, eventsErr := kube.FetchRecentEventsForObjects(ctx, client.Interface, hpa.Namespace, objectNames, diagnosticEventLimit)
 			input.FailedSchedulingEvents = extractFailedSchedulingMessages(events)
+			if eventsErr != nil {
+				warnings = append(warnings, fmt.Sprintf("events incomplete: %v", eventsErr))
+			}
 		} else {
 			input.PodObservation = blocker.ObservationNotApplicable
 			warnings = append(warnings, "scale target Pod selector is unavailable")

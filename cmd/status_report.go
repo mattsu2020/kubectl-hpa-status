@@ -113,6 +113,11 @@ func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, 
 // workflows such as snapshot and rollout use this entry point to keep one
 // request-scoped view of cluster state and avoid duplicate API reads.
 func buildStatusReportFromHPA(ctx context.Context, opts *options, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, includeInterpretation bool, ec *enrichmentContext) (hpaanalysis.StatusReport, error) {
+	return buildStatusReportFromObservation(ctx, opts, client, hpa, includeInterpretation, ec, observation.New(client.Interface, hpa))
+}
+
+// buildStatusReportFromObservation shares workload reads with compound collectors.
+func buildStatusReportFromObservation(ctx context.Context, opts *options, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, includeInterpretation bool, ec *enrichmentContext, snapshot *observation.Snapshot) (hpaanalysis.StatusReport, error) {
 	report := hpaanalysis.StatusReport{
 		APIVersion: hpaanalysis.SchemaVersion,
 		Analysis:   hpaanalysis.AnalyzeWithOptions(hpa, includeInterpretation, analysisOptions(opts.HealthWeights, opts.Debug)),
@@ -131,7 +136,7 @@ func buildStatusReportFromHPA(ctx context.Context, opts *options, client *kube.C
 	pipeline := &PipelineContext{
 		Client:       client,
 		EC:           ec,
-		Observations: observation.New(client.Interface, hpa),
+		Observations: snapshot,
 	}
 	if !opts.NoEnrich {
 		if err := runEnrichers(ctx, buildStatusEnrichers(opts), pipeline, hpa, &report); err != nil {
