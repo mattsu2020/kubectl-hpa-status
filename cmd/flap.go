@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	hpaflapping "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/flapping"
@@ -11,6 +12,7 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 	"github.com/spf13/cobra"
 )
 
@@ -45,7 +47,7 @@ func newFlapCommand(opts *options) *cobra.Command {
 		},
 	}
 	cmd.Flags().DurationVar(&since, "since", 6*time.Hour, "look back over recent HPA events")
-	cmd.Flags().StringVar(&fromRecord, "from-record", "", "read durable JSONL/JSON trace written by record")
+	cmd.Flags().StringVar(&fromRecord, "from-record", "", fromRecordFlagDescription)
 	return cmd
 }
 
@@ -110,31 +112,37 @@ func writeFlapReport(out io.Writer, opts *options, report flapReport) error {
 	format, _ := selectOutputFromOptions(opts)
 	return render.Format(out, format, "", report, func(out io.Writer) error {
 		theme := themeFor(opts.Color, out)
-		_, _ = fmt.Fprintf(out, "Flapping Analysis: %s/%s\n", report.Namespace, report.Name)
-		_, _ = fmt.Fprintf(out, "  source: %s\n", report.Source)
-		if report.Snapshots > 0 {
-			_, _ = fmt.Fprintf(out, "  snapshots: %d\n", report.Snapshots)
-		}
-		_, _ = fmt.Fprintf(out, "  scale events: %d\n", report.ScaleEvents)
-		_, _ = fmt.Fprintf(out, "  direction changes: %d\n", report.DirectionFlips)
-		if report.ReplicaMin > 0 || report.ReplicaMax > 0 {
-			_, _ = fmt.Fprintf(out, "  replica range: %d -> %d\n", report.ReplicaMin, report.ReplicaMax)
-		}
-		_, _ = fmt.Fprintf(out, "  level: %s\n", theme.SummaryColor(report.Level))
-		if report.Diagnosis != nil && report.Diagnosis.Detected {
-			writeFlapDiagnosisText(out, report.Diagnosis)
-		}
-		if report.Prevention != nil {
-			writeFlapPreventionText(out, report.Prevention)
-		}
-		if len(report.Recommendations) > 0 {
-			_, _ = fmt.Fprintln(out, "\nRecommendations:")
-			for _, rec := range report.Recommendations {
-				_, _ = fmt.Fprintf(out, "  - %s\n", rec)
-			}
-		}
-		return nil
+		var buffer strings.Builder
+		writeFlapReportText(&buffer, report, theme)
+		_, err := io.WriteString(out, buffer.String())
+		return err
 	})
+}
+
+func writeFlapReportText(out io.Writer, report flapReport, theme style.Theme) {
+	_, _ = fmt.Fprintf(out, "Flapping Analysis: %s/%s\n", report.Namespace, report.Name)
+	_, _ = fmt.Fprintf(out, "  source: %s\n", report.Source)
+	if report.Snapshots > 0 {
+		_, _ = fmt.Fprintf(out, "  snapshots: %d\n", report.Snapshots)
+	}
+	_, _ = fmt.Fprintf(out, "  scale events: %d\n", report.ScaleEvents)
+	_, _ = fmt.Fprintf(out, "  direction changes: %d\n", report.DirectionFlips)
+	if report.ReplicaMin > 0 || report.ReplicaMax > 0 {
+		_, _ = fmt.Fprintf(out, "  replica range: %d -> %d\n", report.ReplicaMin, report.ReplicaMax)
+	}
+	_, _ = fmt.Fprintf(out, "  level: %s\n", theme.SummaryColor(report.Level))
+	if report.Diagnosis != nil && report.Diagnosis.Detected {
+		writeFlapDiagnosisText(out, report.Diagnosis)
+	}
+	if report.Prevention != nil {
+		writeFlapPreventionText(out, report.Prevention)
+	}
+	if len(report.Recommendations) > 0 {
+		_, _ = fmt.Fprintln(out, "\nRecommendations:")
+		for _, rec := range report.Recommendations {
+			_, _ = fmt.Fprintf(out, "  - %s\n", rec)
+		}
+	}
 }
 
 func writeFlapDiagnosisText(out io.Writer, d *hpaflapping.Diagnosis) {

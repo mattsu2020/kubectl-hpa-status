@@ -64,10 +64,7 @@ func runReplayPolicyLab(out io.Writer, opts *options, name, recordPath string, c
 		if loadErr != nil {
 			return loadErr
 		}
-		candidateTrace := applyReplayCandidate(*trace, candidate)
-		candidateSummary := summarizeReplayTraceWithDemand(candidateTrace, candidate.MaxReplicas, trace)
-		candidateSummary.AdditionalWorstCasePods = candidate.MaxReplicas - report.Current.PeakReplicas
-		candidateSummary.ExtraPodHours = candidateSummary.PodHours - report.Current.PodHours
+		candidateSummary := summarizeReplayCandidate(*trace, candidate, report.Current)
 		result := replaylab.CandidateResult{
 			Name:           replayCandidateName(candidatePath, i),
 			Candidate:      candidatePath,
@@ -90,16 +87,33 @@ func runReplayPolicyLab(out io.Writer, opts *options, name, recordPath string, c
 		if loadErr != nil {
 			return loadErr
 		}
-		candidateTrace := applyReplayCandidate(*trace, candidate)
-		candidateSummary := summarizeReplayTraceWithDemand(candidateTrace, candidate.MaxReplicas, trace)
-		candidateSummary.AdditionalWorstCasePods = candidate.MaxReplicas - report.Current.PeakReplicas
-		candidateSummary.ExtraPodHours = candidateSummary.PodHours - report.Current.PodHours
+		candidateSummary := summarizeReplayCandidate(*trace, candidate, report.Current)
 		report.ProposedConfig = candidate.Proposed
 		report.CandidateResult = &candidateSummary
 		report.Recommendation = replayLabRecommendation(report.Current, candidateSummary)
 	}
 	format, _ := selectOutputFromOptions(opts)
+	switch format {
+	case "", "text", "table", "wide", "json", "yaml", "markdown", "md":
+	default:
+		// replaylab.WriteReport renders text/json/yaml/markdown only; failing
+		// fast beats silently falling back to text and ignoring the format
+		// (e.g. -o go-template=...).
+		return fmt.Errorf("replay lab does not support --output=%s; supported formats: text, json, yaml, markdown", format)
+	}
 	return replaylab.WriteReport(out, format, report)
+}
+
+// summarizeReplayCandidate replays one candidate against the recorded trace
+// and derives the per-candidate summary shared by the manifest-driven and
+// overrides-only paths: peak/delta fields are computed against the current
+// baseline so both paths report identical metrics.
+func summarizeReplayCandidate(trace hpaanalysis.TimelineTrace, candidate replayCandidateConfig, current replaylab.Summary) replaylab.Summary {
+	candidateTrace := applyReplayCandidate(trace, candidate)
+	summary := summarizeReplayTraceWithDemand(candidateTrace, candidate.MaxReplicas, &trace)
+	summary.AdditionalWorstCasePods = candidate.MaxReplicas - current.PeakReplicas
+	summary.ExtraPodHours = summary.PodHours - current.PodHours
+	return summary
 }
 
 func inferRecordedTraceName(path, namespace string) (string, error) {

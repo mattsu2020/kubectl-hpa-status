@@ -45,7 +45,12 @@ func newHistoryCommand(opts *options) *cobra.Command {
 		},
 	}
 	cmd.Flags().DurationVar(&since, "since", 6*time.Hour, "lookback window")
-	cmd.Flags().StringVar(&prometheusURL, "prometheus", "", "Prometheus base URL used to generate query_range links")
+	cmd.Flags().StringVar(&prometheusURL, "prometheus-url", "", "Prometheus base URL used to generate query_range links")
+	// Legacy spelling kept for compatibility: `export --prometheus` is a bool
+	// while this command needs a URL, so the canonical name is --prometheus-url
+	// (matching `metrics probe`). The old flag still binds to the same value.
+	cmd.Flags().StringVar(&prometheusURL, "prometheus", "", "alias of --prometheus-url")
+	_ = cmd.Flags().MarkDeprecated("prometheus", "use --prometheus-url instead")
 	return cmd
 }
 

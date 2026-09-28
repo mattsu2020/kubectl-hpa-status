@@ -50,6 +50,11 @@ type (
 // bridge the single vocabulary for cmdoptions symbols inside cmd/.
 type preset = cmdoptions.CommandPreset
 
+// defaultPollInterval aliases the canonical cmdoptions default so every
+// polling `--interval` registration in cmd/ shares one value with the
+// options model instead of copying it.
+const defaultPollInterval = cmdoptions.DefaultWatchInterval
+
 // Preset consts cover every CommandPreset defined in internal/cmdoptions. New
 // presets must be added here so command files stay free of direct cmdoptions
 // references.

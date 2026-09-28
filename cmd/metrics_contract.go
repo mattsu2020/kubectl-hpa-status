@@ -49,48 +49,42 @@ func runMetricsContract(ctx context.Context, out io.Writer, opts *options, name 
 	input := buildMetricContractInput(ctx, client, hpa)
 	report := hpaanalysis.AnalyzeMetricContract(input)
 
-	switch generate {
-	case "yaml":
-		data, err := hpaanalysis.GenerateContractYAML(report)
+	if generator, ok := contractGenerators[generate]; ok {
+		data, err := generator(report)
 		if err != nil {
-			return fmt.Errorf("failed to generate YAML: %w", err)
+			return fmt.Errorf("failed to generate %s: %w", generate, err)
 		}
 		_, err = out.Write(data)
 		return err
-	case "markdown":
-		data, err := hpaanalysis.GenerateContractMarkdown(report)
-		if err != nil {
-			return fmt.Errorf("failed to generate Markdown: %w", err)
-		}
-		_, err = out.Write(data)
-		return err
-	case "junit":
-		data, err := hpaanalysis.GenerateContractJUnit(report)
-		if err != nil {
-			return fmt.Errorf("failed to generate JUnit XML: %w", err)
-		}
-		_, err = out.Write(data)
-		return err
-	case "commands":
+	}
+	if generate == "commands" {
 		commands := hpaanalysis.GenerateContractCommands(report)
 		for _, cmd := range commands {
-			_, _ = fmt.Fprintln(out, cmd)
+			if _, err := fmt.Fprintln(out, cmd); err != nil {
+				return err
+			}
 		}
 		return nil
-	default:
-		// Standard output (text, JSON, YAML via --output flag)
-		output := metricsContractOutput{
-			Namespace: report.Namespace,
-			Name:      report.Name,
-			Target:    report.Target,
-			Contract:  report,
-		}
-
-		return renderWithOutput(out, opts, output, func(out io.Writer) error {
-			return hpaanalysis.WriteMetricContractText(out, report)
-		})
-
 	}
+	// Standard output (text, JSON, YAML via --output flag)
+	output := metricsContractOutput{
+		Namespace: report.Namespace,
+		Name:      report.Name,
+		Target:    report.Target,
+		Contract:  report,
+	}
+
+	return renderWithOutput(out, opts, output, func(out io.Writer) error {
+		return hpaanalysis.WriteMetricContractText(out, report)
+	})
+}
+
+// contractGenerators maps each --generate format to its report serializer so
+// the output path stays one shared branch.
+var contractGenerators = map[string]func(*hpaanalysis.MetricContractReport) ([]byte, error){
+	"yaml":     hpaanalysis.GenerateContractYAML,
+	"markdown": hpaanalysis.GenerateContractMarkdown,
+	"junit":    hpaanalysis.GenerateContractJUnit,
 }
 
 // metricsContractOutput wraps the contract report for structured output.

@@ -84,7 +84,7 @@ func newReplayCommand(opts *options) *cobra.Command {
 			return runReplay(cmd.OutOrStdout(), opts, args[0])
 		},
 	}
-	cmd.Flags().StringVar(&request.FromRecord, "from-record", "", "read durable JSONL/JSON trace written by record")
+	cmd.Flags().StringVar(&request.FromRecord, "from-record", "", fromRecordFlagDescription)
 	cmd.Flags().StringArrayVar(&request.Candidates, "candidate", nil, "candidate HPA YAML to compare against recorded behavior; repeatable")
 	cmd.Flags().StringVar(&request.Propose, "propose", "", "proposed behavior YAML file (alias for --candidate)")
 	cmd.Flags().StringVar(&request.Compare, "compare", "current,candidate", "comparison mode for --from-record: current,candidate")
