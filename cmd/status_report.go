@@ -36,7 +36,7 @@ func writeReportsGitOpsExport(out io.Writer, exportFormat string, reports []hpaa
 	rendered := make([][]byte, len(reports))
 	for i, report := range reports {
 		var buffer bytes.Buffer
-		if err := writeGitOpsExport(&buffer, format, report); err != nil {
+		if _, err := writeGitOpsExport(&buffer, format, report); err != nil {
 			return err
 		}
 		rendered[i] = buffer.Bytes()

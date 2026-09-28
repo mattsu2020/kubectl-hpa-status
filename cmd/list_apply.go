@@ -88,10 +88,11 @@ func exportListPatchesDirectory(out io.Writer, opts *options, hpas []autoscaling
 		analysis := hpaanalysis.AnalyzeWithOptions(hpa, true, analysisOptions(opts.HealthWeights, opts.Debug))
 		report := hpaanalysis.StatusReport{APIVersion: hpaanalysis.SchemaVersion, Analysis: analysis}
 		var buf strings.Builder
-		if err := writeGitOpsExport(&buf, "yaml", report); err != nil {
+		exported, err := writeGitOpsExport(&buf, "yaml", report)
+		if err != nil {
 			return fmt.Errorf("render patch for %s/%s: %w", hpa.Namespace, hpa.Name, err)
 		}
-		if strings.Contains(buf.String(), "no applicable") {
+		if !exported {
 			continue
 		}
 		path, err := patchFileName(dir, hpa.Namespace, hpa.Name)

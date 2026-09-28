@@ -27,6 +27,9 @@ var formatRenderers = map[string]func(out io.Writer, templateStr string, value a
 	"json": func(out io.Writer, _ string, value any) error {
 		encoder := json.NewEncoder(out)
 		encoder.SetIndent("", "  ")
+		// Match the JSONL renderer so the same value produces the same bytes
+		// in both formats; event messages routinely contain <, >, and &.
+		encoder.SetEscapeHTML(false)
 		return encoder.Encode(projectForReflection(value))
 	},
 	"jsonl": func(out io.Writer, _ string, value any) error { return JSONLines(out, value) },

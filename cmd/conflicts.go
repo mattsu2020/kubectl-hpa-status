@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"sort"
@@ -15,7 +14,6 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/yaml"
 )
 
 type conflictScanReport struct {
@@ -148,46 +146,32 @@ func conflictScanNeedsVPA(hpas []autoscalingv2.HorizontalPodAutoscaler) bool {
 
 func writeConflictScanReport(out io.Writer, opts *options, report conflictScanReport) error {
 	format, _ := selectOutputFromOptions(opts)
-	switch format {
-	case "json":
-		encoder := json.NewEncoder(out)
-		encoder.SetIndent("", "  ")
-		return encoder.Encode(report)
-	case "yaml":
-		data, err := yaml.Marshal(report)
-		if err != nil {
-			return err
-		}
-		_, err = out.Write(data)
-		return err
-	default:
-		return render.Format(out, "", "", report, func(out io.Writer) error {
-			if len(report.Items) == 0 {
-				if _, err := fmt.Fprintln(out, "No HPA controller conflicts detected."); err != nil {
-					return err
+	return render.Format(out, format, "", report, func(out io.Writer) error {
+		if len(report.Items) == 0 {
+			if _, err := fmt.Fprintln(out, "No HPA controller conflicts detected."); err != nil {
+				return err
+			}
+		} else {
+			_, _ = fmt.Fprintln(out, "Conflicts:")
+			for _, item := range report.Items {
+				_, _ = fmt.Fprintf(out, "  %s/%s\n", item.Namespace, targetNameOnly(item.Target))
+				_, _ = fmt.Fprintf(out, "    target: %s\n", item.Target)
+				if len(item.HPAs) > 0 {
+					_, _ = fmt.Fprintln(out, "    HPAs:")
+					for _, hpa := range item.HPAs {
+						_, _ = fmt.Fprintf(out, "      - %s\n", hpa)
+					}
 				}
-			} else {
-				_, _ = fmt.Fprintln(out, "Conflicts:")
-				for _, item := range report.Items {
-					_, _ = fmt.Fprintf(out, "  %s/%s\n", item.Namespace, targetNameOnly(item.Target))
-					_, _ = fmt.Fprintf(out, "    target: %s\n", item.Target)
-					if len(item.HPAs) > 0 {
-						_, _ = fmt.Fprintln(out, "    HPAs:")
-						for _, hpa := range item.HPAs {
-							_, _ = fmt.Fprintf(out, "      - %s\n", hpa)
-						}
-					}
-					for _, risk := range item.Risks {
-						_, _ = fmt.Fprintf(out, "    Risk: %s\n", risk)
-					}
-					for _, evidence := range item.Evidence {
-						_, _ = fmt.Fprintf(out, "    Evidence: %s\n", evidence)
-					}
+				for _, risk := range item.Risks {
+					_, _ = fmt.Fprintf(out, "    Risk: %s\n", risk)
+				}
+				for _, evidence := range item.Evidence {
+					_, _ = fmt.Fprintf(out, "    Evidence: %s\n", evidence)
 				}
 			}
-			return writeConflictScanWarnings(out, report.Warnings)
-		})
-	}
+		}
+		return writeConflictScanWarnings(out, report.Warnings)
+	})
 }
 
 func writeConflictScanWarnings(out io.Writer, warnings map[string][]string) error {
