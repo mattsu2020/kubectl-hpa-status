@@ -24,6 +24,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateFetchResult(msg)
 	case batchApplyResultMsg:
 		return m.updateBatchApplyResult(msg)
+	case historyLoadedMsg:
+		return m.updateHistoryLoaded(msg)
 	}
 	if updated, cmd, handled := dispatchViewMessage(m, msg); handled {
 		return updated, cmd
@@ -143,16 +145,38 @@ func (m *Model) refreshFixStateAfterFetch() {
 }
 
 // updateReplicaHistory appends the current desired replica count per HPA, capping history length.
+// Entries for HPAs that disappeared from the latest fetch are dropped so a
+// long-running watch session does not accumulate state for deleted objects,
+// and a recreated same-name HPA does not inherit the old series.
 func (m *Model) updateReplicaHistory() {
 	const maxReplicaHistoryPoints = 15
+	current := make(map[string]struct{}, len(m.items))
 	for _, item := range m.items {
 		key := item.Namespace + "/" + item.Name
+		current[key] = struct{}{}
 		history := m.replicaHistory[key]
 		history = append(history, float64(item.Desired))
 		if len(history) > maxReplicaHistoryPoints {
 			history = history[len(history)-maxReplicaHistoryPoints:]
 		}
 		m.replicaHistory[key] = history
+	}
+	for key := range m.replicaHistory {
+		if _, ok := current[key]; !ok {
+			delete(m.replicaHistory, key)
+		}
+	}
+	m.pruneStaleSelections(current)
+}
+
+// pruneStaleSelections drops selected keys that no longer correspond to a
+// fetched HPA. Selection is name-keyed, so without pruning a deleted HPA's
+// selection would silently re-attach to a same-named replacement.
+func (m *Model) pruneStaleSelections(current map[string]struct{}) {
+	for key := range m.selected {
+		if _, ok := current[key]; !ok {
+			delete(m.selected, key)
+		}
 	}
 }
 

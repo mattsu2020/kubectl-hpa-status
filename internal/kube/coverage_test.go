@@ -273,24 +273,6 @@ func TestExtractInt32Ptr_Float64Overflow(t *testing.T) {
 	}
 }
 
-// --- FetchPodsForScaleTarget tests ---
-
-func TestFetchPodsForScaleTarget_UnsupportedKind(t *testing.T) {
-	hpa := &autoscalingv2.HorizontalPodAutoscaler{
-		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
-				Kind: "CronJob",
-				Name: "my-job",
-			},
-		},
-	}
-	fakeClient := testutil.NewFakeClient()
-	_, err := FetchPodsForScaleTarget(context.Background(), fakeClient, "default", hpa)
-	if err == nil {
-		t.Fatal("expected error for unsupported kind")
-	}
-}
-
 // --- FetchPodDisruptionBudgets tests ---
 
 func TestFetchPodDisruptionBudgets_Empty(t *testing.T) {

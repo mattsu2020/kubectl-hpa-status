@@ -7,6 +7,7 @@ import (
 	"sort"
 
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -88,13 +89,19 @@ func PendingPodDetailsFromPods(pods []corev1.Pod) []PendingPodDetail {
 // quotas where resource usage is at or above 80% of the hard limit. A nil slice
 // with a nil error means no near-limit quotas were found.
 func FetchResourceQuotas(ctx context.Context, client kubernetes.Interface, namespace string) ([]QuotaInfo, error) {
-	quotas, err := client.CoreV1().ResourceQuotas(namespace).List(ctx, metav1.ListOptions{})
+	quotaItems, err := collectListPages(ctx, metav1.ListOptions{}, func(ctx context.Context, page metav1.ListOptions) ([]corev1.ResourceQuota, string, error) {
+		list, err := client.CoreV1().ResourceQuotas(namespace).List(ctx, page)
+		if err != nil {
+			return nil, "", err
+		}
+		return list.Items, list.GetContinue(), nil
+	})
 	if err != nil {
 		return nil, fmt.Errorf("list resource quotas: %w", err)
 	}
 
 	var constraints []QuotaInfo
-	for _, quota := range quotas.Items {
+	for _, quota := range quotaItems {
 		for resourceName, hard := range quota.Status.Hard {
 			used, usageKnown := quota.Status.Used[resourceName]
 			if !usageKnown {
@@ -129,13 +136,19 @@ func FetchResourceQuotas(ctx context.Context, client kubernetes.Interface, names
 // available in the current context. Consumers that need per-workload
 // attribution must match the scale target's pod labels themselves.
 func FetchPodDisruptionBudgets(ctx context.Context, client kubernetes.Interface, namespace string) ([]PDBInfo, error) {
-	pdbs, err := client.PolicyV1().PodDisruptionBudgets(namespace).List(ctx, metav1.ListOptions{})
+	pdbItems, err := collectListPages(ctx, metav1.ListOptions{}, func(ctx context.Context, page metav1.ListOptions) ([]policyv1.PodDisruptionBudget, string, error) {
+		list, err := client.PolicyV1().PodDisruptionBudgets(namespace).List(ctx, page)
+		if err != nil {
+			return nil, "", err
+		}
+		return list.Items, list.GetContinue(), nil
+	})
 	if err != nil {
 		return nil, fmt.Errorf("list pod disruption budgets: %w", err)
 	}
 
 	var matches []PDBInfo
-	for _, pdb := range pdbs.Items {
+	for _, pdb := range pdbItems {
 		info := PDBInfo{
 			Name: pdb.Name,
 		}
@@ -165,13 +178,19 @@ type LimitRangeInfo struct {
 // FetchLimitRanges lists LimitRange objects in the namespace and returns
 // all resource constraints for Container and Pod types.
 func FetchLimitRanges(ctx context.Context, client kubernetes.Interface, namespace string) ([]LimitRangeInfo, error) {
-	ranges, err := client.CoreV1().LimitRanges(namespace).List(ctx, metav1.ListOptions{})
+	limitItems, err := collectListPages(ctx, metav1.ListOptions{}, func(ctx context.Context, page metav1.ListOptions) ([]corev1.LimitRange, string, error) {
+		list, err := client.CoreV1().LimitRanges(namespace).List(ctx, page)
+		if err != nil {
+			return nil, "", err
+		}
+		return list.Items, list.GetContinue(), nil
+	})
 	if err != nil {
 		return nil, fmt.Errorf("list limit ranges: %w", err)
 	}
 
 	var constraints []LimitRangeInfo
-	for _, lr := range ranges.Items {
+	for _, lr := range limitItems {
 		for _, item := range lr.Spec.Limits {
 			lrType := string(item.Type)
 			if lrType != "Container" && lrType != "Pod" {
@@ -228,13 +247,19 @@ func quantityString(resources corev1.ResourceList, name corev1.ResourceName) str
 // of usage ratio. Unlike FetchResourceQuotas (which filters to >= 80%), this
 // returns all quotas so the caller can compute remaining headroom.
 func FetchAllResourceQuotas(ctx context.Context, client kubernetes.Interface, namespace string) ([]QuotaInfo, error) {
-	quotas, err := client.CoreV1().ResourceQuotas(namespace).List(ctx, metav1.ListOptions{})
+	quotaItems, err := collectListPages(ctx, metav1.ListOptions{}, func(ctx context.Context, page metav1.ListOptions) ([]corev1.ResourceQuota, string, error) {
+		list, err := client.CoreV1().ResourceQuotas(namespace).List(ctx, page)
+		if err != nil {
+			return nil, "", err
+		}
+		return list.Items, list.GetContinue(), nil
+	})
 	if err != nil {
 		return nil, fmt.Errorf("list all resource quotas: %w", err)
 	}
 
 	var all []QuotaInfo
-	for _, quota := range quotas.Items {
+	for _, quota := range quotaItems {
 		resourceNames := quotaResourceNames(quota)
 		for _, resourceName := range resourceNames {
 			hard, hardKnown := quota.Status.Hard[resourceName]

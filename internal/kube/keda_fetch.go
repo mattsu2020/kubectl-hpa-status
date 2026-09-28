@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/dynamic"
@@ -32,8 +33,23 @@ func NewDynamicClient(opts Options) (dynamic.Interface, string, error) {
 }
 
 // FindScaledObjectForHPA attempts to locate the ScaledObject that owns the given HPA.
-// It tries the label-based name first, then falls back to listing ScaledObjects in the namespace.
+// When the ScaledObject name is derivable (the scaledobject.keda.sh/name
+// label/annotation or the keda-hpa-<name> convention), it first Gets that
+// exact object — a single cheap read instead of a namespace-wide paginated
+// list per HPA. A NotFound (or no derivable name) falls back to listing the
+// namespace and applying the canonical matching rule, because the derived
+// name is a convention, not a guarantee.
 func FindScaledObjectForHPA(ctx context.Context, dynClient dynamic.Interface, hpa *autoscalingv2.HorizontalPodAutoscaler) (*unstructured.Unstructured, error) {
+	if name := extractScaledObjectName(hpa); name != "" {
+		obj, err := FetchScaledObject(ctx, dynClient, hpa.Namespace, name)
+		if err == nil {
+			return obj, nil
+		}
+		if !apierrors.IsNotFound(err) {
+			return nil, err
+		}
+	}
+
 	items, err := FetchScaledObjects(ctx, dynClient, hpa.Namespace)
 	if err != nil {
 		return nil, err

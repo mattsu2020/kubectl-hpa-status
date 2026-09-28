@@ -10,8 +10,17 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-// CheckAPIServices checks the availability of metrics API services.
+// CheckAPIServices checks the availability of metrics API services. Discovery
+// runs once and the cached group list is shared by all three checks instead of
+// one full ServerGroups round trip per service.
 func CheckAPIServices(ctx context.Context, client kubernetes.Interface) []APIServiceStatus {
+	if err := ctx.Err(); err != nil {
+		return []APIServiceStatus{{
+			Name:    "metrics API services",
+			Status:  "unknown",
+			Message: fmt.Sprintf("context cancelled before discovery: %v", err),
+		}}
+	}
 	services := []struct {
 		name       string
 		apiGroup   string
@@ -22,10 +31,15 @@ func CheckAPIServices(ctx context.Context, client kubernetes.Interface) []APISer
 		{"external.metrics.k8s.io/v1beta1", "external.metrics.k8s.io", "v1beta1"},
 	}
 
+	groups, groupsErr := client.Discovery().ServerGroups()
+
 	var results []APIServiceStatus
 	for _, svc := range services {
-		status := checkAPIGroup(ctx, client, svc.name, svc.apiGroup, svc.apiVersion)
-		results = append(results, status)
+		var shared *metav1.APIGroupList
+		if groupsErr == nil {
+			shared = groups
+		}
+		results = append(results, checkAPIGroup(ctx, client, svc.name, svc.apiGroup, svc.apiVersion, shared))
 	}
 	return results
 }
@@ -37,14 +51,20 @@ type APIServiceStatus struct {
 	Message string
 }
 
-func checkAPIGroup(_ context.Context, client kubernetes.Interface, name, apiGroup, apiVersion string) APIServiceStatus {
-	groups, err := client.Discovery().ServerGroups()
-	if err != nil {
-		return APIServiceStatus{
-			Name:    name,
-			Status:  "unknown",
-			Message: fmt.Sprintf("failed to discover API groups: %v", err),
+// checkAPIGroup reports one API group's availability. groups may carry a
+// previously fetched discovery result; nil triggers a fresh, cancellable
+// ServerGroups call.
+func checkAPIGroup(ctx context.Context, client kubernetes.Interface, name, apiGroup, apiVersion string, groups *metav1.APIGroupList) APIServiceStatus {
+	if groups == nil {
+		fetched, err := client.Discovery().ServerGroups()
+		if err != nil {
+			return APIServiceStatus{
+				Name:    name,
+				Status:  "unknown",
+				Message: fmt.Sprintf("failed to discover API groups: %v", err),
+			}
 		}
+		groups = fetched
 	}
 
 	for _, group := range groups.Groups {

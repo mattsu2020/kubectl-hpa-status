@@ -1,10 +1,7 @@
 package kube
 
 import (
-	"context"
-
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/client-go/kubernetes"
 )
 
 // ContainerStatusDetail holds container-level status information for blocker
@@ -15,20 +12,6 @@ type ContainerStatusDetail struct {
 	Waiting       bool
 	WaitingReason string
 	RestartCount  int32
-}
-
-// FetchContainerStatuses lists pods matching the selector and extracts
-// container-level status information used for blocker detection.
-func FetchContainerStatuses(ctx context.Context, client kubernetes.Interface, namespace, selector string) ([]ContainerStatusDetail, error) {
-	if selector == "" {
-		return nil, nil
-	}
-
-	pods, err := FetchPodObjectsForSelector(ctx, client, namespace, selector)
-	if err != nil {
-		return nil, err
-	}
-	return ContainerStatusesFromPods(pods), nil
 }
 
 // ContainerStatusesFromPods extracts container state from an already-fetched

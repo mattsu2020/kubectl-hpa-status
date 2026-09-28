@@ -1,7 +1,6 @@
 package kube
 
 import (
-	"context"
 	"testing"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
@@ -11,15 +10,11 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 )
 
-func TestFetchContainerStatuses(t *testing.T) {
+func TestContainerStatusesFromPods(t *testing.T) {
 	t.Run("empty selector", func(t *testing.T) {
-		client := testutil.NewFakeClientWithObjects()
-		result, err := FetchContainerStatuses(context.Background(), client, "default", "")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		result := ContainerStatusesFromPods(nil)
 		if result != nil {
-			t.Errorf("expected nil for empty selector, got %v", result)
+			t.Errorf("expected nil for empty pod set, got %v", result)
 		}
 	})
 
@@ -42,11 +37,7 @@ func TestFetchContainerStatuses(t *testing.T) {
 				},
 			},
 		}
-		client := fakeClientWithPods(pod)
-		result, err := FetchContainerStatuses(context.Background(), client, "default", "app=web")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		result := ContainerStatusesFromPods([]corev1.Pod{*pod})
 		if len(result) != 1 {
 			t.Fatalf("expected 1 container status, got %d", len(result))
 		}
@@ -76,11 +67,7 @@ func TestFetchContainerStatuses(t *testing.T) {
 				},
 			},
 		}
-		client := fakeClientWithPods(pod)
-		result, err := FetchContainerStatuses(context.Background(), client, "default", "app=web")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		result := ContainerStatusesFromPods([]corev1.Pod{*pod})
 		if len(result) != 1 {
 			t.Fatalf("expected 1 container status, got %d", len(result))
 		}
@@ -114,11 +101,7 @@ func TestFetchContainerStatuses(t *testing.T) {
 				},
 			},
 		}
-		client := fakeClientWithPods(pod)
-		result, err := FetchContainerStatuses(context.Background(), client, "default", "app=web")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		result := ContainerStatusesFromPods([]corev1.Pod{*pod})
 		if len(result) != 1 {
 			t.Fatalf("expected 1 container status, got %d", len(result))
 		}

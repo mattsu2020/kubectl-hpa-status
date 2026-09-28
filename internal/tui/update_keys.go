@@ -80,6 +80,11 @@ func (m Model) keyHandlers() []keyBindingHandler {
 			if m.viewMode == detailView {
 				m.viewMode = historyView
 				m.historyState = &historyState{}
+				if m.opts.LoadHistoryFn == nil {
+					return m, nil
+				}
+				m.historyState.loading = true
+				return m, m.loadHistorySnapshots()
 			}
 			return m, nil
 		}},
