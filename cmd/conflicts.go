@@ -147,31 +147,43 @@ func conflictScanNeedsVPA(hpas []autoscalingv2.HorizontalPodAutoscaler) bool {
 func writeConflictScanReport(out io.Writer, opts *options, report conflictScanReport) error {
 	format, _ := selectOutputFromOptions(opts)
 	return render.Format(out, format, "", report, func(out io.Writer) error {
-		if len(report.Items) == 0 {
-			if _, err := fmt.Fprintln(out, "No HPA controller conflicts detected."); err != nil {
-				return err
+		var buffer strings.Builder
+		if err := writeConflictScanText(&buffer, report); err != nil {
+			return err
+		}
+		_, err := io.WriteString(out, buffer.String())
+		return err
+	})
+}
+
+// writeConflictScanText renders the conflict scan report. Writes go to a
+// caller-owned buffer (a strings.Builder in production), so the error returns
+// exist for direct callers that pass a real writer.
+func writeConflictScanText(out io.Writer, report conflictScanReport) error {
+	if len(report.Items) == 0 {
+		if _, err := fmt.Fprintln(out, "No HPA controller conflicts detected."); err != nil {
+			return err
+		}
+	} else {
+		_, _ = fmt.Fprintln(out, "Conflicts:")
+		for _, item := range report.Items {
+			_, _ = fmt.Fprintf(out, "  %s/%s\n", item.Namespace, targetNameOnly(item.Target))
+			_, _ = fmt.Fprintf(out, "    target: %s\n", item.Target)
+			if len(item.HPAs) > 0 {
+				_, _ = fmt.Fprintln(out, "    HPAs:")
+				for _, hpa := range item.HPAs {
+					_, _ = fmt.Fprintf(out, "      - %s\n", hpa)
+				}
 			}
-		} else {
-			_, _ = fmt.Fprintln(out, "Conflicts:")
-			for _, item := range report.Items {
-				_, _ = fmt.Fprintf(out, "  %s/%s\n", item.Namespace, targetNameOnly(item.Target))
-				_, _ = fmt.Fprintf(out, "    target: %s\n", item.Target)
-				if len(item.HPAs) > 0 {
-					_, _ = fmt.Fprintln(out, "    HPAs:")
-					for _, hpa := range item.HPAs {
-						_, _ = fmt.Fprintf(out, "      - %s\n", hpa)
-					}
-				}
-				for _, risk := range item.Risks {
-					_, _ = fmt.Fprintf(out, "    Risk: %s\n", risk)
-				}
-				for _, evidence := range item.Evidence {
-					_, _ = fmt.Fprintf(out, "    Evidence: %s\n", evidence)
-				}
+			for _, risk := range item.Risks {
+				_, _ = fmt.Fprintf(out, "    Risk: %s\n", risk)
+			}
+			for _, evidence := range item.Evidence {
+				_, _ = fmt.Fprintf(out, "    Evidence: %s\n", evidence)
 			}
 		}
-		return writeConflictScanWarnings(out, report.Warnings)
-	})
+	}
+	return writeConflictScanWarnings(out, report.Warnings)
 }
 
 func writeConflictScanWarnings(out io.Writer, warnings map[string][]string) error {

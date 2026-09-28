@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -91,25 +92,37 @@ func runAnalyzeRecordFlapping(out io.Writer, opts *options, path string) error {
 		return result.Items[i].DesiredChanges > result.Items[j].DesiredChanges
 	})
 
+	return writeRecordAnalysis(out, opts, result)
+}
+
+func writeRecordAnalysis(out io.Writer, opts *options, result recordAnalysis) error {
 	return renderWithOutput(out, opts, result, func(out io.Writer) error {
-		if len(result.Items) == 0 {
-			_, err := fmt.Fprintln(out, "No HPA flapping detected.")
+		var buffer strings.Builder
+		if err := writeAnalyzeRecordFlappingText(&buffer, result); err != nil {
 			return err
 		}
-		_, _ = fmt.Fprintln(out, "Detected HPA flapping:")
-		for _, item := range result.Items {
-			_, _ = fmt.Fprintf(out, "- %s/%s changed desiredReplicas %d times across %d snapshots\n", item.Namespace, item.Name, item.DesiredChanges, item.Snapshots)
-			if item.DirectionFlips > 0 {
-				_, _ = fmt.Fprintf(out, "  scale direction alternated %d times\n", item.DirectionFlips)
-			}
-			_, _ = fmt.Fprintf(out, "  level: %s\n", item.Level)
-			for _, suggestion := range item.Suggestions {
-				_, _ = fmt.Fprintf(out, "  suggestion: %s\n", suggestion)
-			}
-		}
-		return nil
+		_, err := io.WriteString(out, buffer.String())
+		return err
 	})
+}
 
+func writeAnalyzeRecordFlappingText(out io.Writer, result recordAnalysis) error {
+	if len(result.Items) == 0 {
+		_, err := fmt.Fprintln(out, "No HPA flapping detected.")
+		return err
+	}
+	_, _ = fmt.Fprintln(out, "Detected HPA flapping:")
+	for _, item := range result.Items {
+		_, _ = fmt.Fprintf(out, "- %s/%s changed desiredReplicas %d times across %d snapshots\n", item.Namespace, item.Name, item.DesiredChanges, item.Snapshots)
+		if item.DirectionFlips > 0 {
+			_, _ = fmt.Fprintf(out, "  scale direction alternated %d times\n", item.DirectionFlips)
+		}
+		_, _ = fmt.Fprintf(out, "  level: %s\n", item.Level)
+		for _, suggestion := range item.Suggestions {
+			_, _ = fmt.Fprintf(out, "  suggestion: %s\n", suggestion)
+		}
+	}
+	return nil
 }
 
 func loadAllRecordedTraces(path string) (map[string]hpaanalysis.TimelineTrace, error) {

@@ -28,6 +28,7 @@ func BenchmarkRecordAndLoadCompaction(b *testing.B) {
 }
 
 func benchmarkRecordAndLoad(b *testing.B, count int, expired bool) {
+	ctx := b.Context()
 	store, err := NewHealthStoreWithDir(b.TempDir())
 	if err != nil {
 		b.Fatal(err)
@@ -54,7 +55,7 @@ func benchmarkRecordAndLoad(b *testing.B, count int, expired bool) {
 			b.Fatal(err)
 		}
 		b.StartTimer()
-		window, err := store.RecordAndLoad(key, snapshot, 24*time.Hour, 24*time.Hour, now)
+		window, err := store.RecordAndLoad(ctx, key, snapshot, 24*time.Hour, 24*time.Hour, now)
 		b.StopTimer()
 		if err != nil {
 			b.Fatal(err)

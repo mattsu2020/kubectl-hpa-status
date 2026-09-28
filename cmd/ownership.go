@@ -64,6 +64,12 @@ func runOwnership(ctx context.Context, out io.Writer, opts *options, names []str
 		return err
 	}
 
+	return writeOwnershipReport(out, opts, reports)
+}
+
+// writeOwnershipReport routes an already-collected ownership report through
+// the standard output formats with one-vs-many envelope selection.
+func writeOwnershipReport(out io.Writer, opts *options, reports []ownershipReport) error {
 	var value any
 	if len(reports) == 1 {
 		value = reports[0]
@@ -71,10 +77,11 @@ func runOwnership(ctx context.Context, out io.Writer, opts *options, names []str
 		value = ownershipListReport{Items: reports}
 	}
 	return render.Format(out, opts.Output, opts.Template, value, func(out io.Writer) error {
-		writeOwnershipText(out, reports)
-		return nil
+		var buffer strings.Builder
+		writeOwnershipText(&buffer, reports)
+		_, err := io.WriteString(out, buffer.String())
+		return err
 	})
-
 }
 
 func buildOwnershipReport(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) (ownershipReport, error) {

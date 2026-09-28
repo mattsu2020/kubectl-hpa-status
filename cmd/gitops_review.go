@@ -43,7 +43,9 @@ func runGitOpsReview(_ context.Context, out io.Writer, opts *options, filePath s
 	}
 
 	if len(files) == 0 {
-		_, _ = fmt.Fprintln(out, "No YAML/JSON files found.")
+		if _, err := fmt.Fprintln(out, "No YAML/JSON files found."); err != nil {
+			return err
+		}
 		return nil
 	}
 
@@ -52,7 +54,9 @@ func runGitOpsReview(_ context.Context, out io.Writer, opts *options, filePath s
 		return fmt.Errorf("no readable HPA manifests under %s: %s", filePath, strings.Join(warnings, "; "))
 	}
 	if len(inputs) == 0 {
-		_, _ = fmt.Fprintln(out, "No HPA manifests found.")
+		if _, err := fmt.Fprintln(out, "No HPA manifests found."); err != nil {
+			return err
+		}
 		return nil
 	}
 

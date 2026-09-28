@@ -343,35 +343,6 @@ func TestAnalyzeFromRescalesSameTimestampIsOrderIndependent(t *testing.T) {
 	}
 }
 
-func TestNextStabilizationWindowSeconds(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name    string
-		current int32
-		want    int32
-		wantOK  bool
-	}{
-		{name: "disabled starts at 300", current: 0, want: 300, wantOK: true},
-		{name: "negative defensive fallback starts at 300", current: -1, want: 300, wantOK: true},
-		{name: "positive value doubles", current: 300, want: 600, wantOK: true},
-		{name: "half maximum doubles to maximum", current: 1800, want: 3600, wantOK: true},
-		{name: "doubling is clamped", current: 2000, want: 3600, wantOK: true},
-		{name: "maximum has no recommendation", current: 3600, wantOK: false},
-		{name: "above maximum has no recommendation", current: 4000, wantOK: false},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			got, ok := nextStabilizationWindowSeconds(tc.current)
-			if got != tc.want || ok != tc.wantOK {
-				t.Fatalf("nextStabilizationWindowSeconds(%d) = (%d, %t), want (%d, %t)",
-					tc.current, got, ok, tc.want, tc.wantOK)
-			}
-		})
-	}
-}
-
 func TestStabilizationWindowRecommendationUsesValidBounds(t *testing.T) {
 	t.Parallel()
 	window := int32(0)

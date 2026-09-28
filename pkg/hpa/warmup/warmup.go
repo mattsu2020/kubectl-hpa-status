@@ -90,6 +90,10 @@ type PodDetail struct {
 // analysis in pkg/hpa free of Kubernetes API dependencies.
 type Input struct {
 	// Namespace is the Kubernetes namespace.
+	//
+	// Deprecated: the analyzer no longer reads this field; per-namespace
+	// context comes from the report envelope. It will be removed in the next
+	// major release.
 	Namespace string
 	// DesiredReplicas is the HPA desired replica count.
 	DesiredReplicas int32
@@ -98,16 +102,27 @@ type Input struct {
 	// MinReplicas is the HPA minimum replica count.
 	MinReplicas int32
 	// MaxReplicas is the HPA maximum replica count.
+	//
+	// Deprecated: the analyzer no longer reads this field; replica pressure
+	// is derived from Desired/CurrentReplicas. It will be removed in the
+	// next major release.
 	MaxReplicas int32
 	// ScalingActive indicates whether the HPA ScalingActive condition is True.
 	ScalingActive bool
 	// ScalingLimited indicates whether the HPA is capped by min/max.
 	ScalingLimited bool
 	// TargetReadyReplicas is the ready replica count from the scale target.
+	//
+	// Deprecated: the analyzer no longer reads this field; readiness comes
+	// from ReadyPods and PodDetails. It will be removed in the next major
+	// release.
 	TargetReadyReplicas int32
 	// TargetAvailableReplicas is the available replica count from the scale target.
 	TargetAvailableReplicas int32
 	// TargetDesiredReplicas is the desired replica count from the scale target.
+	//
+	// Deprecated: the analyzer no longer reads this field; use DesiredReplicas.
+	// It will be removed in the next major release.
 	TargetDesiredReplicas int32
 	// TotalPods is the total number of pods for the scale target.
 	TotalPods int32
@@ -125,7 +140,11 @@ type Input struct {
 	ReadinessProbeMaxDelaySeconds int32
 	// StartupProbeMaxDelaySeconds is the maximum startup probe delay.
 	StartupProbeMaxDelaySeconds int32
-	// Now is the current time, used for age calculations.
+	// Now is the current time.
+	//
+	// Deprecated: the analyzer no longer reads this field; pod ages arrive
+	// precomputed as PodDetail.AgeSeconds. It will be removed in the next
+	// major release.
 	Now metav1.Time
 }
 

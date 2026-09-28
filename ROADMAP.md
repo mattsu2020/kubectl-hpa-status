@@ -60,6 +60,30 @@ This roadmap tracks planned work that is visible to users and contributors. It i
 
 - **Informer-based watch:** Add an opt-in informer update path for large clusters alongside the current polling mode. Promoted into the v5 plan — see "v5.0 (Planned)" below.
 - **KEP-6111 upstream adapter:** Replace the current visible-signal structured export with native upstream structured HPA decision fields when they become available.
+- **Severity enum unification (major-release item):** the `pkg/hpa` leaf
+  domains still carry six-plus severity vocabularies (`HIGH/MEDIUM/INFO`,
+  `critical/warning/info`, `error/warning`, `high/medium/low`, ...). Map
+  them onto `internal/confidence.Severity` (or a shared severity type) so
+  aggregating consumers (fleet, autoscaler-map) stop hand-mapping. Public
+  API change — schedule for the next major release alongside the v3-style
+  facade policy.
+- **Domain input-shape normalization (major-release item):** leaf domains
+  take inputs as `Input` structs (warmup/blocker), positional arguments
+  (churn/flapping), or option pairs (seasonality/vpa). Pick one convention
+  (input struct) and migrate; also unify the "insufficient data"
+  representation (nil return vs flag vs Warnings).
+- **`AnomalyDetection` type relocation:** the health-score anomaly types
+  live in `pkg/hpa/flapping` but are health-domain data; move them to
+  `healthtrend` (or `model`) in the next major release and stop healthtrend
+  importing flapping for its own data type.
+- **TUI memory model for very large clusters:** the dashboard retains full
+  `StatusReport`s per HPA and deep-clones items on every Update. For
+  thousands of HPAs, move to copy-on-write items and lazy report hydration
+  (detail view fetch). Design needed before v5 informer watch lands.
+- **Client/transport consolidation:** one command run builds typed,
+  discovery, and dynamic clients with separate connection pools. Share one
+  `rest.Config`-derived transport and collapse discovery to a single
+  round trip.
 
 ## Structural Refactors (Internal)
 

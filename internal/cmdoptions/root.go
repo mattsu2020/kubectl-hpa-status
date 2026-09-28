@@ -6,6 +6,12 @@ package cmdoptions
 
 import "time"
 
+// DefaultWatchInterval is the canonical default for every polling `--interval`
+// flag (watch set, timeline, record, replay). Command registrations in cmd/
+// reference this constant through the options bridge instead of copying the
+// value, so the default cannot drift between the options model and the flags.
+const DefaultWatchInterval = 5 * time.Second
+
 // Root composes all CLI option groups. Commands access fields through
 // embedded struct promotion (e.g. opts.Namespace, opts.Explain).
 type Root struct {
@@ -46,7 +52,7 @@ func DefaultRoot() Root {
 			HealthScoreMax: -1,
 		},
 		Watch: Watch{
-			WatchInterval: 5 * time.Second,
+			WatchInterval: DefaultWatchInterval,
 		},
 	}
 }

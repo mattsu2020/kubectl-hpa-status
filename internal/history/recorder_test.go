@@ -1,6 +1,7 @@
 package history
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -20,26 +21,27 @@ type fakeSnapshotStore struct {
 	loadErr    error
 }
 
-func (s *fakeSnapshotStore) Append(key SnapshotKey, snapshot healthtrend.HealthSnapshot) error {
+func (s *fakeSnapshotStore) Append(_ context.Context, key SnapshotKey, snapshot healthtrend.HealthSnapshot) error {
 	s.appendedTo = key
 	s.appended = snapshot
 	return nil
 }
 
-func (s *fakeSnapshotStore) LoadAt(_ SnapshotKey, _ time.Duration, now time.Time) ([]healthtrend.HealthSnapshot, error) {
+func (s *fakeSnapshotStore) LoadAt(_ context.Context, _ SnapshotKey, _ time.Duration, now time.Time) ([]healthtrend.HealthSnapshot, error) {
 	s.loadNow = now
 	return []healthtrend.HealthSnapshot{s.appended}, s.loadErr
 }
 
-func (s *fakeSnapshotStore) PruneAt(_ SnapshotKey, _ time.Duration, now time.Time) error {
+func (s *fakeSnapshotStore) PruneAt(_ context.Context, _ SnapshotKey, _ time.Duration, now time.Time) error {
 	s.pruneNow = now
 	return nil
 }
 
 func TestRecorderUsesOneClockAndReturnsTrend(t *testing.T) {
+	ctx := t.Context()
 	now := time.Date(2026, 7, 31, 12, 0, 0, 0, time.UTC)
 	store := &fakeSnapshotStore{}
-	result := NewRecorder(store, fixedClock{now: now}).RecordAndAnalyze(RecordInput{
+	result := NewRecorder(store, fixedClock{now: now}).RecordAndAnalyze(ctx, RecordInput{
 		Cluster:         "prod",
 		UID:             "uid-1",
 		Namespace:       "default",
@@ -64,8 +66,9 @@ func TestRecorderUsesOneClockAndReturnsTrend(t *testing.T) {
 }
 
 func TestRecorderSurfacesLoadWarningWithoutDroppingValidSnapshots(t *testing.T) {
+	ctx := t.Context()
 	store := &fakeSnapshotStore{loadErr: errors.New("corrupt line")}
-	result := NewRecorder(store, fixedClock{now: time.Now()}).RecordAndAnalyze(RecordInput{
+	result := NewRecorder(store, fixedClock{now: time.Now()}).RecordAndAnalyze(ctx, RecordInput{
 		Namespace: "default",
 		Name:      "web",
 		Since:     time.Hour,
@@ -80,12 +83,13 @@ func TestRecorderSurfacesLoadWarningWithoutDroppingValidSnapshots(t *testing.T) 
 }
 
 func TestRecorderUsesHealthStoreTransaction(t *testing.T) {
+	ctx := t.Context()
 	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
 	store, err := NewHealthStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := NewRecorder(store, fixedClock{now: now}).RecordAndAnalyze(RecordInput{
+	result := NewRecorder(store, fixedClock{now: now}).RecordAndAnalyze(ctx, RecordInput{
 		Cluster: "prod", UID: "uid-1",
 		Namespace: "default", Name: "web", HealthScore: 90, HealthState: "OK",
 		Since: time.Hour, Retention: 24 * time.Hour,
@@ -96,7 +100,7 @@ func TestRecorderUsesHealthStoreTransaction(t *testing.T) {
 	if len(result.Warnings) != 0 {
 		t.Fatalf("warnings = %v", result.Warnings)
 	}
-	snapshots, err := store.LoadAt(SnapshotKey{Cluster: "prod", Namespace: "default", Name: "web", UID: "uid-1"}, time.Hour, now)
+	snapshots, err := store.LoadAt(ctx, SnapshotKey{Cluster: "prod", Namespace: "default", Name: "web", UID: "uid-1"}, time.Hour, now)
 	if err != nil || len(snapshots) != 1 {
 		t.Fatalf("stored snapshots=%d err=%v", len(snapshots), err)
 	}

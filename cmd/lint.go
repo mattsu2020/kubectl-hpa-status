@@ -94,7 +94,10 @@ func runLint(ctx context.Context, out io.Writer, _ *options, filePath, outputFmt
 		return err
 	}
 	if shouldFailOn(failOn, allResults) {
-		return &exitCodeError{code: 1}
+		return &ExitCodeError{
+			Code: ExitError,
+			Err:  fmt.Errorf("lint found issues at or above %s severity", failOn),
+		}
 	}
 	return nil
 }
@@ -220,15 +223,6 @@ type lintFileResult struct {
 	Document int          `json:"document,omitempty" yaml:"document,omitempty"`
 	HPA      string       `json:"hpa,omitempty" yaml:"hpa,omitempty"`
 	Result   *lint.Result `json:"result" yaml:"result"`
-}
-
-// exitCodeError is returned when lint finds errors.
-type exitCodeError struct {
-	code int
-}
-
-func (e *exitCodeError) Error() string {
-	return fmt.Sprintf("lint found issues (exit code %d)", e.code)
 }
 
 // combineLintResults combines multiple lint results into one for SARIF output.

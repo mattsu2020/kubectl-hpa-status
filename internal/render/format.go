@@ -356,8 +356,9 @@ func Incident(out io.Writer, value any) error {
 	}
 }
 
-// Error writes an error in the requested format to out. Write failures are
-// intentionally ignored: we are already on the error-reporting path.
+// Error writes an error in the requested format to out. Write errors are
+// propagated so a broken output pipe fails loudly even on the error path;
+// callers decide whether to surface or log the secondary write failure.
 func Error(out io.Writer, format string, err error) error {
 	switch format {
 	case "json":

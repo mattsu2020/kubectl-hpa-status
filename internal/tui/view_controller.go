@@ -89,7 +89,7 @@ var viewControllerRegistry = [viewModeCount]viewController{
 	},
 	helpView: viewControllerFuncs{
 		render:       Model.renderHelpView,
-		handleEscape: escapeToListView,
+		handleEscape: escapeHelpView,
 	},
 	metricsView: viewControllerFuncs{
 		render:       Model.renderMetricsView,
@@ -316,6 +316,15 @@ func enterFixView(m Model) (Model, tea.Cmd) {
 	}
 	m.fixState.applyConfirm = false
 	return m, m.applyFix()
+}
+
+// escapeHelpView restores the view the help overlay was opened from and
+// clears pending batch-apply state, mirroring the other escape transitions.
+func escapeHelpView(m Model) (Model, tea.Cmd) {
+	m = m.toggleHelpView()
+	m.batchApplyConfirm = false
+	m.batchApplyPreview = nil
+	return m, nil
 }
 
 func escapeListView(m Model) (Model, tea.Cmd) {

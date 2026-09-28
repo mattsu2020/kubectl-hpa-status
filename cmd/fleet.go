@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -52,22 +53,28 @@ func runFleet(ctx context.Context, out io.Writer, opts *options, risk string) er
 func writeFleetReport(out io.Writer, opts *options, report fleet.Report) error {
 	format, _ := selectOutputFromOptions(opts)
 	return render.Format(out, format, "", report, func(out io.Writer) error {
-		_, _ = fmt.Fprintln(out, "Fleet HPA Risk Summary")
-		_, _ = fmt.Fprintf(out, "  risk model: %s\n", report.Risk)
-		_, _ = fmt.Fprintf(out, "  HPAs: %d\n", report.HPAs)
-		_, _ = fmt.Fprintf(out, "  current pods: %d\n", report.CurrentPods)
-		_, _ = fmt.Fprintf(out, "  worst-case pods at maxReplicas: %d\n", report.WorstCasePods)
-		_, _ = fmt.Fprintf(out, "  additional pods: +%d\n", report.AdditionalPods)
-		_, _ = fmt.Fprintf(out, "  HPAs already at maxReplicas: %d\n", report.AtMaxReplicas)
-		if report.WithoutConfiguredMetric > 0 {
-			_, _ = fmt.Fprintf(out, "  HPAs without configured metrics: %d\n", report.WithoutConfiguredMetric)
-		}
-		if len(report.TopRisks) > 0 {
-			_, _ = fmt.Fprintln(out, "\nTop risks:")
-			for i, item := range report.TopRisks {
-				_, _ = fmt.Fprintf(out, "  %d. %s/%s: %s\n", i+1, item.Namespace, item.Name, item.Risk)
-			}
-		}
-		return nil
+		var buffer strings.Builder
+		writeFleetReportText(&buffer, report)
+		_, err := io.WriteString(out, buffer.String())
+		return err
 	})
+}
+
+func writeFleetReportText(out io.Writer, report fleet.Report) {
+	_, _ = fmt.Fprintln(out, "Fleet HPA Risk Summary")
+	_, _ = fmt.Fprintf(out, "  risk model: %s\n", report.Risk)
+	_, _ = fmt.Fprintf(out, "  HPAs: %d\n", report.HPAs)
+	_, _ = fmt.Fprintf(out, "  current pods: %d\n", report.CurrentPods)
+	_, _ = fmt.Fprintf(out, "  worst-case pods at maxReplicas: %d\n", report.WorstCasePods)
+	_, _ = fmt.Fprintf(out, "  additional pods: +%d\n", report.AdditionalPods)
+	_, _ = fmt.Fprintf(out, "  HPAs already at maxReplicas: %d\n", report.AtMaxReplicas)
+	if report.WithoutConfiguredMetric > 0 {
+		_, _ = fmt.Fprintf(out, "  HPAs without configured metrics: %d\n", report.WithoutConfiguredMetric)
+	}
+	if len(report.TopRisks) > 0 {
+		_, _ = fmt.Fprintln(out, "\nTop risks:")
+		for i, item := range report.TopRisks {
+			_, _ = fmt.Fprintf(out, "  %d. %s/%s: %s\n", i+1, item.Namespace, item.Name, item.Risk)
+		}
+	}
 }

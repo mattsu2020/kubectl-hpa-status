@@ -135,6 +135,8 @@ brew install mattsu2020/kubectl-hpa-status/kubectl-hpa-status
 kubectl-hpa-status list -A --wide
 ```
 
+The Homebrew distribution is a cask that installs the prebuilt macOS binary. On Linux, use krew, the release archive, or `go install` instead.
+
 ### Manual install
 
 ```sh

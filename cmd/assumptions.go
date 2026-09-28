@@ -63,9 +63,11 @@ type assumptionsOutput struct {
 }
 
 func runAssumptions(ctx context.Context, out io.Writer, opts *options, names []string, flags assumptionsFlagOverrides) error {
+	// newClientOrDefault already wraps failures with the standard
+	// "failed to create Kubernetes client" prefix; do not wrap again.
 	client, err := newClientOrDefault(opts)
 	if err != nil {
-		return fmt.Errorf("creating client: %w", err)
+		return err
 	}
 
 	// Build overrides from non-empty flag values.

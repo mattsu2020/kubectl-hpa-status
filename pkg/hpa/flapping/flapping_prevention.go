@@ -86,25 +86,7 @@ func extractRescaleEvents(events []event.Event) []event.RescaleData {
 // between consecutive rescale events. A direction flip occurs when a
 // scale-up is followed by a scale-down or vice versa.
 func countDirectionFlips(rescales []event.RescaleData) int {
-	prevDirection := 0
-	flips := 0
-	for i := 1; i < len(rescales); i++ {
-		delta := rescales[i].NewSize - rescales[i-1].NewSize
-		var direction int
-		switch {
-		case delta > 0:
-			direction = 1
-		case delta < 0:
-			direction = -1
-		default:
-			continue
-		}
-		if prevDirection != 0 && direction != prevDirection {
-			flips++
-		}
-		prevDirection = direction
-	}
-	return flips
+	return event.CountDirectionFlips(event.RescaleSizes(rescales))
 }
 
 // buildCandidateWindows generates the set of candidate stabilization window
@@ -153,14 +135,8 @@ func simulateCandidates(rescales []event.RescaleData, currentFlips int, candidat
 		}
 
 		confidence := flappingConfidence(reduction)
-		patch := util.MustMarshalJSON(map[string]any{
-			"spec": map[string]any{
-				"behavior": map[string]any{
-					"scaleDown": map[string]any{
-						"stabilizationWindowSeconds": windowSec,
-					},
-				},
-			},
+		patch := util.ScaleDownBehaviorPatch(map[string]any{
+			"stabilizationWindowSeconds": windowSec,
 		})
 
 		recommendations = append(recommendations, Simulation{
@@ -276,8 +252,5 @@ func buildFlappingSummary(directionFlips int, currentWindow int32, recommendatio
 // currentStabilizationWindowSeconds returns the HPA scale-down stabilization
 // window, defaulting to the Kubernetes default when unset.
 func currentStabilizationWindowSeconds(hpa *autoscalingv2.HorizontalPodAutoscaler) int32 {
-	if window := conditions.ScaleDownStabilizationWindow(hpa); window != nil {
-		return *window
-	}
-	return conditions.DefaultScaleDownStabilizationWindowSeconds
+	return conditions.EffectiveScaleDownStabilizationWindow(hpa)
 }

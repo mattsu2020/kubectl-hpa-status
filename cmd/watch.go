@@ -215,6 +215,13 @@ func runWatchList(ctx context.Context, out io.Writer, opts *options) error {
 
 	theme := themeFor(opts.Color, out)
 	humanOutput := watchUsesHumanOutput(opts)
+	// Build the list client once for the whole watch session; runList would
+	// otherwise re-read and re-parse the kubeconfig on every poll tick. The
+	// raw error keeps the structured JSON/YAML list error contract.
+	client, err := opts.NewClient()
+	if err != nil {
+		return reportListError(out, opts.Output, err)
+	}
 	for {
 		if humanOutput {
 			if err := clearWatchScreen(out, theme, opts.CurrentTime()); err != nil {
@@ -224,7 +231,7 @@ func runWatchList(ctx context.Context, out io.Writer, opts *options) error {
 			return err
 		}
 
-		if err := runList(ctx, out, opts); err != nil {
+		if err := runListWithClient(ctx, out, opts, client); err != nil {
 			return err
 		}
 

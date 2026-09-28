@@ -8,6 +8,7 @@ import (
 )
 
 func TestRecordAndLoadStableInsertion(t *testing.T) {
+	ctx := t.Context()
 	for _, offset := range []time.Duration{-3 * time.Minute, -time.Minute, 0, time.Minute} {
 		t.Run(offset.String(), func(t *testing.T) {
 			store, err := NewHealthStoreWithDir(t.TempDir())
@@ -19,11 +20,11 @@ func TestRecordAndLoadStableInsertion(t *testing.T) {
 			// Deliberately unsorted file with equal timestamps exercises legacy files
 			// and wall-clock regressions as well as ordinary chronological appends.
 			for i, age := range []time.Duration{0, -2 * time.Minute, -time.Minute, -time.Minute} {
-				if err := store.Append(key, healthtrend.HealthSnapshot{Timestamp: now.Add(age), HealthScore: i}); err != nil {
+				if err := store.Append(ctx, key, healthtrend.HealthSnapshot{Timestamp: now.Add(age), HealthScore: i}); err != nil {
 					t.Fatal(err)
 				}
 			}
-			result, err := store.RecordAndLoad(key, healthtrend.HealthSnapshot{Timestamp: now.Add(offset), HealthScore: 99}, time.Hour, time.Hour, now)
+			result, err := store.RecordAndLoad(ctx, key, healthtrend.HealthSnapshot{Timestamp: now.Add(offset), HealthScore: 99}, time.Hour, time.Hour, now)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -38,7 +39,7 @@ func TestRecordAndLoadStableInsertion(t *testing.T) {
 					t.Fatal("equal timestamp order changed")
 				}
 			}
-			loaded, err := store.LoadAt(key, time.Hour, now)
+			loaded, err := store.LoadAt(ctx, key, time.Hour, now)
 			if err != nil {
 				t.Fatal(err)
 			}

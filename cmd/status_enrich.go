@@ -320,7 +320,7 @@ func enrichAdvisors(ctx context.Context, client *kube.Client, hpa *autoscalingv2
 	}
 }
 
-func recordHealthSnapshotAndTrend(_ context.Context, opts *options, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
+func recordHealthSnapshotAndTrend(ctx context.Context, opts *options, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
 	// History recording is an explicit opt-in side effect: without --trend we
 	// do not touch the local health store, so plain `status` runs (and CI) stay
 	// free of unexpected local file writes.
@@ -333,7 +333,7 @@ func recordHealthSnapshotAndTrend(_ context.Context, opts *options, hpa *autosca
 		return
 	}
 	recorder := history.NewRecorder(store, nil)
-	result := recorder.RecordAndAnalyze(history.RecordInput{
+	result := recorder.RecordAndAnalyze(ctx, history.RecordInput{
 		Cluster:         kube.ClusterIdentity(opts.KubeOptions()),
 		UID:             string(hpa.UID),
 		Namespace:       hpa.Namespace,

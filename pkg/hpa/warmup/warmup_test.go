@@ -2,8 +2,6 @@ package warmup
 
 import (
 	"testing"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestAnalyzeWarmup(t *testing.T) {
@@ -57,7 +55,6 @@ func TestAnalyzeWarmup(t *testing.T) {
 				ReadyPods:               4,
 				TotalPods:               10,
 				ScalingActive:           true,
-				TargetReadyReplicas:     4,
 				TargetAvailableReplicas: 3,
 				ReadinessProbePresent:   true,
 				PodDetails: []PodDetail{
@@ -72,7 +69,6 @@ func TestAnalyzeWarmup(t *testing.T) {
 					{Name: "pod-9", AgeSeconds: 60, Ready: false, ContainerState: "running"},
 					{Name: "pod-10", AgeSeconds: 60, Ready: false, ContainerState: "running"},
 				},
-				Now: metav1.Now(),
 			},
 			wantSummary:     "capacity_warming_up",
 			wantBottlenecks: 1,
@@ -97,7 +93,6 @@ func TestAnalyzeWarmup(t *testing.T) {
 					{Name: "pod-4", Ready: false, ContainerState: "waiting", WaitingReason: "ImagePullBackOff"},
 					{Name: "pod-5", Ready: false, ContainerState: "waiting", WaitingReason: "ErrImagePull"},
 				},
-				Now: metav1.Now(),
 			},
 			wantSummary:     "capacity_warming_up",
 			wantBottlenecks: 1,
@@ -120,7 +115,6 @@ func TestAnalyzeWarmup(t *testing.T) {
 					{Name: "pod-4", Ready: false, ContainerState: ""},
 					{Name: "pod-5", Ready: false, ContainerState: ""},
 				},
-				Now: metav1.Now(),
 			},
 			wantSummary:     "capacity_warming_up",
 			wantBottlenecks: 1,
@@ -143,7 +137,6 @@ func TestAnalyzeWarmup(t *testing.T) {
 					{Name: "pod-4", Ready: false, ContainerState: "waiting", WaitingReason: "CrashLoopBackOff"},
 					{Name: "pod-5", Ready: false, ContainerState: "terminated", RestartCount: 5},
 				},
-				Now: metav1.Now(),
 			},
 			wantSummary:     "capacity_warming_up",
 			wantBottlenecks: 1,
@@ -173,7 +166,6 @@ func TestAnalyzeWarmup(t *testing.T) {
 					{Name: "pod-9", Ready: false, ContainerState: "waiting", WaitingReason: "CrashLoopBackOff"},
 					{Name: "pod-10", Ready: false, ContainerState: "running"},
 				},
-				Now: metav1.Now(),
 			},
 			wantSummary:     "capacity_warming_up",
 			wantBottlenecks: 4, // readiness_probe + image_pull + scheduling + container_crash
@@ -197,7 +189,6 @@ func TestAnalyzeWarmup(t *testing.T) {
 					{Name: "pod-4", AgeSeconds: 30, Ready: false, ContainerState: "running"},
 					{Name: "pod-5", AgeSeconds: 30, Ready: false, ContainerState: "running"},
 				},
-				Now: metav1.Now(),
 			},
 			wantSummary:     "capacity_warming_up",
 			wantBottlenecks: 1,
@@ -222,7 +213,6 @@ func TestAnalyzeWarmup(t *testing.T) {
 					{Name: "pod-4", Ready: false, ContainerState: "running"},
 					{Name: "pod-5", Ready: false, ContainerState: "running"},
 				},
-				Now: metav1.Now(),
 			},
 			wantSummary:     "capacity_warming_up",
 			wantBottlenecks: 2, // metrics_inactive + unknown (running not ready, no probe)
@@ -248,7 +238,6 @@ func TestAnalyzeWarmup(t *testing.T) {
 					{Name: "pod-4", AgeSeconds: 60, Ready: false, ContainerState: "running"},
 					{Name: "pod-5", AgeSeconds: 60, Ready: false, ContainerState: "running"},
 				},
-				Now: metav1.Now(),
 			},
 			wantSummary:     "capacity_warming_up",
 			wantBottlenecks: 2, // readiness_probe + startup_probe
@@ -261,7 +250,6 @@ func TestAnalyzeWarmup(t *testing.T) {
 				DesiredReplicas: 5,
 				CurrentReplicas: 5,
 				MinReplicas:     1,
-				MaxReplicas:     5,
 				ReadyPods:       3,
 				TotalPods:       5,
 				ScalingActive:   true,
@@ -273,7 +261,6 @@ func TestAnalyzeWarmup(t *testing.T) {
 					{Name: "pod-4", Ready: false, ContainerState: "running"},
 					{Name: "pod-5", Ready: false, ContainerState: "running"},
 				},
-				Now: metav1.Now(),
 			},
 			wantSummary:     "capacity_warming_up",
 			wantBottlenecks: 1, // unknown (running not ready, no probe)

@@ -78,7 +78,13 @@ func runList(ctx context.Context, out io.Writer, opts *options) error {
 	if err != nil {
 		return reportListError(out, opts.Output, err)
 	}
+	return runListWithClient(ctx, out, opts, client)
+}
 
+// runListWithClient runs the list pipeline against an already-constructed
+// client. Watch mode (runWatchList) creates the client once and reuses it for
+// every tick instead of re-reading and re-parsing the kubeconfig each poll.
+func runListWithClient(ctx context.Context, out io.Writer, opts *options, client *kube.Client) error {
 	namespace := client.Namespace
 	if opts.AllNamespaces {
 		namespace = metav1.NamespaceAll
@@ -246,7 +252,7 @@ func buildListItems(ctx context.Context, opts *options, hpas []autoscalingv2.Hor
 	for i, result := range results {
 		analysis := result.Analysis
 		if recorder != nil {
-			attachHealthTrend(recorder, &analysis, clusterIdentity, string(hpas[i].UID), opts.TrendSince, opts.TrendRetain)
+			attachHealthTrend(ctx, recorder, &analysis, clusterIdentity, string(hpas[i].UID), opts.TrendSince, opts.TrendRetain)
 		}
 		item := hpaanalysis.NewListItem(analysis)
 		if matchesListFilter(item, filter) && matchesHealthScoreRange(item, opts.HealthScoreMin, effectiveHealthScoreMax(opts)) {
@@ -256,11 +262,11 @@ func buildListItems(ctx context.Context, opts *options, hpas []autoscalingv2.Hor
 	return items
 }
 
-func attachHealthTrend(recorder *history.Recorder, analysis *hpaanalysis.Analysis, cluster, uid string, since, retention time.Duration) {
+func attachHealthTrend(ctx context.Context, recorder *history.Recorder, analysis *hpaanalysis.Analysis, cluster, uid string, since, retention time.Duration) {
 	if recorder == nil || analysis == nil {
 		return
 	}
-	result := recorder.RecordAndAnalyze(history.RecordInput{
+	result := recorder.RecordAndAnalyze(ctx, history.RecordInput{
 		Cluster:         cluster,
 		UID:             uid,
 		Namespace:       analysis.Meta.Namespace,

@@ -36,9 +36,13 @@ func (v Value[T]) Known() bool { return v.State == StateKnown }
 // Snapshot memoizes workload reads for one HPA report. Returned data is
 // immutable by contract; consumers that need to mutate a slice must copy it.
 //
-// Only successful observations (known or not-applicable) are memoized: a
-// failed read — typically a cancelled or timed-out context — is retried on
-// the next call so a transient failure does not poison the snapshot forever.
+// Every observation — success, not-applicable, or failure — is memoized for
+// the snapshot's lifetime. A snapshot is request-scoped (one report or one
+// watch/TUI fetch), so a later fetch already retries through a fresh
+// snapshot, while the Kubernetes reads underneath carry their own
+// transient-error retries (see kube.retryTransient). Memoizing failures keeps
+// the derived views (pod info, pending details, container state) from
+// re-running the same failing API chain several times per report.
 type Snapshot struct {
 	client kubernetes.Interface
 	hpa    autoscalingv2.HorizontalPodAutoscaler
@@ -75,12 +79,14 @@ func (s *Snapshot) ScaleTarget(ctx context.Context) Value[*kube.ScaleTargetInfo]
 		return s.target
 	}
 	info, err := kube.FetchScaleTargetInfo(ctx, s.client, s.hpa.Namespace, s.hpa.Spec.ScaleTargetRef)
-	switch {
-	case err != nil:
-		return Value[*kube.ScaleTargetInfo]{State: StateUnavailable, Err: err}
-	case info == nil:
+	if err != nil {
+		s.target = Value[*kube.ScaleTargetInfo]{State: StateUnavailable, Err: err}
+		s.targetOK = true
+		return s.target
+	}
+	if info == nil {
 		s.target = Value[*kube.ScaleTargetInfo]{State: StateNotApplicable}
-	default:
+	} else {
 		s.target = Value[*kube.ScaleTargetInfo]{Data: info, State: StateKnown}
 	}
 	s.targetOK = true
@@ -113,7 +119,9 @@ func (s *Snapshot) Pods(ctx context.Context) Value[[]corev1.Pod] {
 	}
 	pods, err := kube.FetchPodObjectsForSelector(ctx, s.client, s.hpa.Namespace, target.Data.SelectorStr)
 	if err != nil {
-		return Value[[]corev1.Pod]{State: StateUnavailable, Err: err}
+		s.pods = Value[[]corev1.Pod]{State: StateUnavailable, Err: err}
+		s.podsOK = true
+		return s.pods
 	}
 	s.pods = Value[[]corev1.Pod]{Data: pods, State: StateKnown}
 	s.podsOK = true
@@ -167,7 +175,9 @@ func (s *Snapshot) ReplicaSets(ctx context.Context) Value[[]kube.ReplicaSetInfo]
 		var err error
 		items, err = kube.FetchReplicaSetsForScaleTarget(ctx, s.client, s.hpa.Namespace, s.hpa.Spec.ScaleTargetRef, target.Data.SelectorStr)
 		if err != nil {
-			return Value[[]kube.ReplicaSetInfo]{State: StateUnavailable, Err: err}
+			s.replicaSets = Value[[]kube.ReplicaSetInfo]{State: StateUnavailable, Err: err}
+			s.replicaSetsOK = true
+			return s.replicaSets
 		}
 	}
 	s.replicaSets = Value[[]kube.ReplicaSetInfo]{Data: items, State: StateKnown}

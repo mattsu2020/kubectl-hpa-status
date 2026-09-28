@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -85,8 +86,12 @@ func TestLintFailOnAppliesToEveryOutputMode(t *testing.T) {
 			if err == nil {
 				t.Fatalf("format %s: expected warning threshold failure", format)
 			}
-			if _, ok := err.(*exitCodeError); !ok {
+			var exitErr *ExitCodeError
+			if !errors.As(err, &exitErr) {
 				t.Fatalf("format %s: unexpected error %T: %v", format, err, err)
+			}
+			if exitErr.Code != ExitError || exitCodeForError(err) != ExitError {
+				t.Fatalf("format %s: exit code %d must classify as ExitError", format, exitErr.Code)
 			}
 			if out.Len() == 0 {
 				t.Fatalf("format %s: expected output before threshold error", format)

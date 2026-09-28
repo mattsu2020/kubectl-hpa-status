@@ -53,8 +53,14 @@ func newSimulateCommand(opts *options) *cobra.Command {
 		"override HPA tolerance (e.g. 0.1)")
 	cmd.Flags().BoolVar(&suggest, "suggest", false,
 		"show suggestions for the simulated state")
-	cmd.Flags().Int32Var(&duration, "duration", 0,
+	cmd.Flags().Int32Var(&duration, "duration-seconds", 0,
 		"time-series projection duration in seconds (0 = single-point)")
+	// Legacy spelling: `record`/`timeline --duration` accept a Go duration
+	// (e.g. 1h); this flag is a bare second count, so the canonical name
+	// spells the unit out. The old name still binds to the same value.
+	cmd.Flags().Int32Var(&duration, "duration", 0,
+		"alias of --duration-seconds")
+	_ = cmd.Flags().MarkDeprecated("duration", "use --duration-seconds instead")
 	return cmd
 }
 

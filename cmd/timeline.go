@@ -50,7 +50,7 @@ func newTimelineCommand(opts *options) *cobra.Command {
 	cmd.Flags().DurationVar(&interval, "interval", defaultPollInterval, "polling interval")
 	cmd.Flags().DurationVar(&since, "since", 0, "show retrospective timeline for the given duration (e.g. 30m, 1h); 0 means live mode")
 	cmd.Flags().BoolVar(&replay, "replay", false, "enhanced retrospective replay with bottleneck markers and control cycle analysis")
-	cmd.Flags().StringVar(&fromRecord, "from-record", "", "read durable JSONL/JSON trace written by record instead of Kubernetes events")
+	cmd.Flags().StringVar(&fromRecord, "from-record", "", fromRecordFlagDescription+" instead of Kubernetes events")
 	return cmd
 }
 

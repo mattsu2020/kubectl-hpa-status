@@ -67,7 +67,7 @@ func writeReportsStatusText(out io.Writer, opts *options, results []reportResult
 			}
 		}
 		if !r.hasReport {
-			if _, err := fmt.Fprintf(out, "HPA %s/%s\nError: %v\n", r.namespace, r.name, r.err); err != nil {
+			if _, err := fmt.Fprintf(out, "HPA %s\nError: %v\n", perHPAFailureKey(r.namespace, r.name), r.err); err != nil {
 				return err
 			}
 			continue

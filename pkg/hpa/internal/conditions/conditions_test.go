@@ -192,3 +192,64 @@ func TestEstimateStabilizationRemaining(t *testing.T) {
 		}
 	})
 }
+
+func TestEffectiveScaleDownStabilizationWindow(t *testing.T) {
+	window := int32(900)
+	cases := []struct {
+		name string
+		hpa  *autoscalingv2.HorizontalPodAutoscaler
+		want int32
+	}{
+		{"nil HPA yields default", nil, DefaultScaleDownStabilizationWindowSeconds},
+		{"no behavior yields default", &autoscalingv2.HorizontalPodAutoscaler{}, DefaultScaleDownStabilizationWindowSeconds},
+		{
+			"scaleDown without window yields default",
+			&autoscalingv2.HorizontalPodAutoscaler{Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+				Behavior: &autoscalingv2.HorizontalPodAutoscalerBehavior{ScaleDown: &autoscalingv2.HPAScalingRules{}},
+			}},
+			DefaultScaleDownStabilizationWindowSeconds,
+		},
+		{
+			"configured window is returned",
+			&autoscalingv2.HorizontalPodAutoscaler{Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+				Behavior: &autoscalingv2.HorizontalPodAutoscalerBehavior{
+					ScaleDown: &autoscalingv2.HPAScalingRules{StabilizationWindowSeconds: &window},
+				},
+			}},
+			900,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := EffectiveScaleDownStabilizationWindow(tc.hpa); got != tc.want {
+				t.Fatalf("EffectiveScaleDownStabilizationWindow = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestNextScaleDownStabilizationWindow(t *testing.T) {
+	tests := []struct {
+		name    string
+		current int32
+		want    int32
+		wantOK  bool
+	}{
+		{name: "disabled starts at default", current: 0, want: 300, wantOK: true},
+		{name: "negative defensive fallback starts at default", current: -1, want: 300, wantOK: true},
+		{name: "positive value doubles", current: 300, want: 600, wantOK: true},
+		{name: "half maximum doubles to maximum", current: 1800, want: 3600, wantOK: true},
+		{name: "doubling is clamped", current: 2000, want: 3600, wantOK: true},
+		{name: "maximum has no recommendation", current: 3600, wantOK: false},
+		{name: "above maximum has no recommendation", current: 4000, wantOK: false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := NextScaleDownStabilizationWindow(tc.current)
+			if got != tc.want || ok != tc.wantOK {
+				t.Fatalf("NextScaleDownStabilizationWindow(%d) = (%d, %t), want (%d, %t)",
+					tc.current, got, ok, tc.want, tc.wantOK)
+			}
+		})
+	}
+}

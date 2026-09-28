@@ -138,6 +138,13 @@ func errorWriter(opts *options, fallback io.Writer) io.Writer {
 	return fallback
 }
 
+// perHPAFailureKey renders the canonical "namespace/name" identity used to
+// report a failed HPA across output modes (stderr diagnostic lines and inline
+// text output), so scripts and log parsing see one shape.
+func perHPAFailureKey(namespace, name string) string {
+	return namespace + "/" + name
+}
+
 // emitPerItemErrors writes one render.Error-shaped line per failed item to
 // the diagnostic stream.
 // It is used only by output modes that cannot carry per-item errors in their
@@ -147,7 +154,7 @@ func emitPerItemErrors(out io.Writer, results []reportResult) {
 		if results[i].hasReport {
 			continue
 		}
-		_, _ = fmt.Fprintf(out, "HPA %q in namespace %q: %v\n", results[i].name, results[i].namespace, results[i].err)
+		_, _ = fmt.Fprintf(out, "HPA %s: %v\n", perHPAFailureKey(results[i].namespace, results[i].name), results[i].err)
 	}
 }
 

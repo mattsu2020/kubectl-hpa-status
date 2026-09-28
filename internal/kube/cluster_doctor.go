@@ -6,6 +6,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	authorizationv1 "k8s.io/api/authorization/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
@@ -89,14 +90,21 @@ func checkAPIGroup(ctx context.Context, client kubernetes.Interface, name, apiGr
 
 // CheckMetricsServer checks whether the metrics-server Deployment is running
 // and healthy in common namespaces (kube-system, openshift-monitoring).
+// A missing deployment and a failed lookup are reported differently: an
+// RBAC denial or network error must not be diagnosed as "not installed",
+// mirroring the DetectCRDs absent-vs-unavailable policy.
 func CheckMetricsServer(ctx context.Context, client kubernetes.Interface) *MetricsServerStatus {
 	namespaces := []string{"kube-system", "openshift-monitoring"}
 	names := []string{"metrics-server", "openshift-state-metrics"}
 
+	var observeErr error
 	for _, ns := range namespaces {
 		for _, name := range names {
 			deploy, err := client.AppsV1().Deployments(ns).Get(ctx, name, metav1.GetOptions{})
 			if err != nil {
+				if !apierrors.IsNotFound(err) && observeErr == nil {
+					observeErr = err
+				}
 				continue
 			}
 			return buildMetricsServerStatus(deploy, ns)
@@ -110,7 +118,16 @@ func CheckMetricsServer(ctx context.Context, client kubernetes.Interface) *Metri
 	if err == nil && len(deploys.Items) > 0 {
 		return buildMetricsServerStatus(&deploys.Items[0], "kube-system")
 	}
+	if err != nil && !apierrors.IsNotFound(err) && observeErr == nil {
+		observeErr = err
+	}
 
+	if observeErr != nil {
+		return &MetricsServerStatus{
+			Available: false,
+			Message:   fmt.Sprintf("could not observe the metrics-server deployment: %v", observeErr),
+		}
+	}
 	return &MetricsServerStatus{
 		Available: false,
 		Message:   "metrics-server deployment not found in kube-system or openshift-monitoring; HPA resource metrics will not work without it",

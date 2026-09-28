@@ -7,6 +7,7 @@ package history
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -74,14 +75,15 @@ func newHealthStoreAt(dir string) (*HealthStore, error) {
 	return &HealthStore{dir: dir}, nil
 }
 
-// Append records a health snapshot for the given HPA.
-func (s *HealthStore) Append(key SnapshotKey, snapshot healthtrend.HealthSnapshot) error {
+// Append records a health snapshot for the given HPA. ctx bounds the
+// inter-process lock wait; a cancelled context aborts before touching disk.
+func (s *HealthStore) Append(ctx context.Context, key SnapshotKey, snapshot healthtrend.HealthSnapshot) error {
 	if err := key.validate(); err != nil {
 		return err
 	}
 
 	path := s.filePath(key)
-	release, err := acquireLock(path)
+	release, err := acquireLockContext(ctx, path)
 	if err != nil {
 		return err
 	}
@@ -122,15 +124,15 @@ func appendSnapshotLine(path string, snapshot healthtrend.HealthSnapshot) error 
 
 // Load reads health snapshots for the given HPA within the specified time window.
 // Returns snapshots sorted by timestamp (oldest first).
-func (s *HealthStore) Load(key SnapshotKey, since time.Duration) ([]healthtrend.HealthSnapshot, error) {
-	return s.LoadAt(key, since, time.Now())
+func (s *HealthStore) Load(ctx context.Context, key SnapshotKey, since time.Duration) ([]healthtrend.HealthSnapshot, error) {
+	return s.LoadAt(ctx, key, since, time.Now())
 }
 
 // LoadAt reads health snapshots relative to the supplied time. Application
 // services use this form so one command run has a consistent, testable clock.
-func (s *HealthStore) LoadAt(key SnapshotKey, since time.Duration, now time.Time) ([]healthtrend.HealthSnapshot, error) {
+func (s *HealthStore) LoadAt(ctx context.Context, key SnapshotKey, since time.Duration, now time.Time) ([]healthtrend.HealthSnapshot, error) {
 	path := s.filePath(key)
-	release, err := acquireLock(path)
+	release, err := acquireLockContext(ctx, path)
 	if err != nil {
 		return nil, err
 	}
@@ -140,10 +142,10 @@ func (s *HealthStore) LoadAt(key SnapshotKey, since time.Duration, now time.Time
 
 // LoadMultiple loads health snapshots for multiple HPAs in batch.
 // Returns a map keyed by SnapshotKey.String().
-func (s *HealthStore) LoadMultiple(keys []SnapshotKey, since time.Duration) (map[string][]healthtrend.HealthSnapshot, error) {
+func (s *HealthStore) LoadMultiple(ctx context.Context, keys []SnapshotKey, since time.Duration) (map[string][]healthtrend.HealthSnapshot, error) {
 	result := make(map[string][]healthtrend.HealthSnapshot)
 	for _, key := range keys {
-		snapshots, err := s.Load(key, since)
+		snapshots, err := s.Load(ctx, key, since)
 		if err != nil {
 			return nil, fmt.Errorf("loading history for %s: %w", key, err)
 		}
@@ -155,14 +157,14 @@ func (s *HealthStore) LoadMultiple(keys []SnapshotKey, since time.Duration) (map
 }
 
 // Prune removes entries older than the retention period from the HPA's file.
-func (s *HealthStore) Prune(key SnapshotKey, retention time.Duration) error {
-	return s.PruneAt(key, retention, time.Now())
+func (s *HealthStore) Prune(ctx context.Context, key SnapshotKey, retention time.Duration) error {
+	return s.PruneAt(ctx, key, retention, time.Now())
 }
 
 // PruneAt removes entries older than retention relative to the supplied time.
-func (s *HealthStore) PruneAt(key SnapshotKey, retention time.Duration, now time.Time) error {
+func (s *HealthStore) PruneAt(ctx context.Context, key SnapshotKey, retention time.Duration, now time.Time) error {
 	path := s.filePath(key)
-	release, err := acquireLock(path)
+	release, err := acquireLockContext(ctx, path)
 	if err != nil {
 		return err
 	}
@@ -187,12 +189,12 @@ func (s *HealthStore) PruneAt(key SnapshotKey, retention time.Duration, now time
 // single O(1) write; the whole-file rewrite is deferred to a compaction pass
 // that only runs once enough history has expired (see shouldCompact). Reading
 // the retained analysis window still requires an O(n) scan of the file.
-func (s *HealthStore) RecordAndLoad(key SnapshotKey, snapshot healthtrend.HealthSnapshot, retention, since time.Duration, now time.Time) ([]healthtrend.HealthSnapshot, error) {
+func (s *HealthStore) RecordAndLoad(ctx context.Context, key SnapshotKey, snapshot healthtrend.HealthSnapshot, retention, since time.Duration, now time.Time) ([]healthtrend.HealthSnapshot, error) {
 	if err := key.validate(); err != nil {
 		return nil, err
 	}
 	path := s.filePath(key)
-	release, err := acquireLock(path)
+	release, err := acquireLockContext(ctx, path)
 	if err != nil {
 		return nil, err
 	}

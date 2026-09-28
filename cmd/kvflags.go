@@ -5,6 +5,12 @@ import (
 	"strings"
 )
 
+// fromRecordFlagDescription is the shared help text for the --from-record
+// flag, registered by timeline, replay, and flap. Keep it in one place so the
+// three commands cannot drift apart wording-wise; commands with extra context
+// append it after the base sentence.
+const fromRecordFlagDescription = "read durable JSONL/JSON trace written by record"
+
 // parseKeyValuePairs parses name=value pairs for the flag identified by
 // flagLabel, without normalizing case or surrounding whitespace; values may
 // be empty. Commands whose keys are case-insensitive or whose values must be

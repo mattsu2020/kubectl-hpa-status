@@ -80,6 +80,11 @@ func AnalyzeHealthTrend(snapshots []HealthSnapshot) Result {
 // DetectFlapping identifies rapid oscillation in health states. It looks for
 // repeated transitions between distinct health states (e.g., OK -> LIMITED -> OK)
 // within a short time window.
+//
+// This is a health-state signal, not the replica-count flapping diagnosed by
+// the pkg/hpa/flapping package: same word, different evidence. Renderers that
+// show both must label which detector produced each verdict so reports cannot
+// conflate "health score oscillates" with "replicas scale up/down in cycles".
 func DetectFlapping(snapshots []HealthSnapshot) (bool, string) {
 	if len(snapshots) < 3 {
 		return false, ""
@@ -127,6 +132,9 @@ const (
 )
 
 // ComputeHealthVariance returns the population variance of health scores.
+//
+// Deprecated: no production caller reads this value; it survives only for
+// external importers and will be removed in the next major release.
 func ComputeHealthVariance(scores []int) float64 {
 	if len(scores) == 0 {
 		return 0

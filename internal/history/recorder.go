@@ -1,6 +1,7 @@
 package history
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -17,15 +18,17 @@ type sharedClock struct{}
 
 func (sharedClock) Now() time.Time { return sharedclock.Now() }
 
-// SnapshotStore is the persistence surface required by Recorder.
+// SnapshotStore is the persistence surface required by Recorder. Every
+// operation carries a context so lock waits and file I/O are cancellable when
+// the owning command exits.
 type SnapshotStore interface {
-	Append(key SnapshotKey, snapshot healthtrend.HealthSnapshot) error
-	LoadAt(key SnapshotKey, since time.Duration, now time.Time) ([]healthtrend.HealthSnapshot, error)
-	PruneAt(key SnapshotKey, retention time.Duration, now time.Time) error
+	Append(ctx context.Context, key SnapshotKey, snapshot healthtrend.HealthSnapshot) error
+	LoadAt(ctx context.Context, key SnapshotKey, since time.Duration, now time.Time) ([]healthtrend.HealthSnapshot, error)
+	PruneAt(ctx context.Context, key SnapshotKey, retention time.Duration, now time.Time) error
 }
 
 type transactionalSnapshotStore interface {
-	RecordAndLoad(key SnapshotKey, snapshot healthtrend.HealthSnapshot, retention, since time.Duration, now time.Time) ([]healthtrend.HealthSnapshot, error)
+	RecordAndLoad(ctx context.Context, key SnapshotKey, snapshot healthtrend.HealthSnapshot, retention, since time.Duration, now time.Time) ([]healthtrend.HealthSnapshot, error)
 }
 
 // RecordInput is independent of the large public Analysis DTO.
@@ -69,8 +72,13 @@ func NewRecorder(store SnapshotStore, clock Clock) *Recorder {
 	return &Recorder{store: store, clock: clock}
 }
 
-// RecordAndAnalyze persists one snapshot and analyzes retained history.
-func (r *Recorder) RecordAndAnalyze(input RecordInput) RecordResult {
+// RecordAndAnalyze persists one snapshot and analyzes retained history. The
+// context bounds the underlying lock wait and file I/O; cancellation surfaces
+// as the usual persistence warnings instead of blocking past command exit.
+func (r *Recorder) RecordAndAnalyze(ctx context.Context, input RecordInput) RecordResult {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if r == nil || r.store == nil {
 		return RecordResult{Warnings: []string{"health trend store unavailable"}}
 	}
@@ -87,7 +95,7 @@ func (r *Recorder) RecordAndAnalyze(input RecordInput) RecordResult {
 	var result RecordResult
 	key := SnapshotKey{Cluster: input.Cluster, Namespace: input.Namespace, Name: input.Name, UID: input.UID}
 	if store, ok := r.store.(transactionalSnapshotStore); ok {
-		snapshots, err := store.RecordAndLoad(key, snapshot, input.Retention, input.Since, now)
+		snapshots, err := store.RecordAndLoad(ctx, key, snapshot, input.Retention, input.Since, now)
 		if err != nil {
 			result.Warnings = append(result.Warnings, fmt.Sprintf("health trend transaction warning: %v", err))
 		}
@@ -97,13 +105,13 @@ func (r *Recorder) RecordAndAnalyze(input RecordInput) RecordResult {
 		}
 		return result
 	}
-	if err := r.store.Append(key, snapshot); err != nil {
+	if err := r.store.Append(ctx, key, snapshot); err != nil {
 		result.Warnings = append(result.Warnings, fmt.Sprintf("health trend append failed: %v", err))
 	}
-	if err := r.store.PruneAt(key, input.Retention, now); err != nil {
+	if err := r.store.PruneAt(ctx, key, input.Retention, now); err != nil {
 		result.Warnings = append(result.Warnings, fmt.Sprintf("health trend prune failed: %v", err))
 	}
-	snapshots, err := r.store.LoadAt(key, input.Since, now)
+	snapshots, err := r.store.LoadAt(ctx, key, input.Since, now)
 	if err != nil {
 		result.Warnings = append(result.Warnings, fmt.Sprintf("health trend load warning: %v", err))
 	}

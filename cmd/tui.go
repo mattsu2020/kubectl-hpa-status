@@ -101,8 +101,8 @@ func runTUI(ctx context.Context, out io.Writer, opts *options, initialName strin
 			}
 			return audit.Run(hpa, minReplicas), nil
 		},
-		LoadHistoryFn: func(_ context.Context, namespace, name, uid string) ([]hpaanalysis.TimelineSnapshot, error) {
-			return loadTUIHistory(opts, namespace, name, uid)
+		LoadHistoryFn: func(ctx context.Context, namespace, name, uid string) ([]hpaanalysis.TimelineSnapshot, error) {
+			return loadTUIHistory(ctx, opts, namespace, name, uid)
 		},
 	})
 	model = model.WithContext(ctx)
@@ -143,12 +143,12 @@ func isInteractiveTerminal(out io.Writer) bool {
 // loadTUIHistory loads health-store snapshots for the TUI history view and
 // projects them into the TimelineSnapshot shape the view renders. The lookback
 // follows --trend-since so the TUI and the history report agree on the window.
-func loadTUIHistory(opts *options, namespace, name, uid string) ([]hpaanalysis.TimelineSnapshot, error) {
+func loadTUIHistory(ctx context.Context, opts *options, namespace, name, uid string) ([]hpaanalysis.TimelineSnapshot, error) {
 	store, err := history.NewHealthStore()
 	if err != nil {
 		return nil, fmt.Errorf("health history store unavailable: %w", err)
 	}
-	healthSnapshots, err := store.Load(history.SnapshotKey{
+	healthSnapshots, err := store.Load(ctx, history.SnapshotKey{
 		Cluster:   kube.ClusterIdentity(opts.KubeOptions()),
 		Namespace: namespace,
 		Name:      name,

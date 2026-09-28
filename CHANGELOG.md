@@ -9,6 +9,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **TUI list-scoped keys no longer leak into anchored views.** `S` (sort),
+  `g` (jump to problem), and `/` (filter) are now inert outside the list
+  view; previously pressing them in the history/hints view moved the cursor
+  so the rendered header described a different HPA than the loaded data.
+  The help overlay (`?`) now returns to the view it was opened from instead
+  of silently abandoning the fix wizard, simulation, or history view.
+- **TUI history view computes its churn analysis once per load.** The
+  analysis was recomputed on every render frame (every keypress and resize);
+  it is now stored in the history state when the load lands.
+- **`docs/usage.md` and `docs/reference.md` no longer advertise the
+  nonexistent `--raise-max` flag.** The documented `doctor preflight
+  --raise-max` invocation failed with "unknown flag"; the docs now describe
+  the real command, and a new `cmd/docs_flags_test.go` fails whenever a
+  documented `--flag` is not registered by any command.
+- **`lint` exit codes flow through the central classifier.** The command
+  returned a private error type that `classifyError` could not match, so any
+  future non-1 exit code would have been silently flattened to 1; it now
+  returns the shared `*ExitCodeError`.
+- **Text renderers propagate write errors.** `flap`, `fleet`, `conflicts`,
+  `ownership`, `analyze-record`, `gitops-review` (empty-input notices), and
+  `metrics contract --generate=commands` no longer exit 0 when the output
+  pipe is broken; they buffer and report the write failure like the other
+  renderers.
+- **Flapping fixes can no longer propose an API-invalid stabilization
+  window.** The short-window fix doubled the current window without the
+  3600s ceiling; it now walks the shared double-and-cap ladder used by the
+  churn recommendation, so both recommenders propose the same next window
+  and patches always validate server-side.
+- **`simulate --duration` above 1800s produced invalid patch advice;
+  both stabilization recommenders are now ladder-aligned.** (Same fix as
+  above from the churn side: one shared
+  `conditions.NextScaleDownStabilizationWindow`.)
+- **`quota-near-limit` blocker honors its documented 80% threshold.** The
+  rule itself now filters quotas below 80% usage, so handing it unfiltered
+  `QuotaInfo` no longer reports every quota in the namespace.
+- **Timeline "abrupt scaling" sensitivity no longer stalls between replica
+  counts.** The half-of-previous threshold rounds up (`(n+1)/2`) instead of
+  truncating, so desired=6 and desired=7 no longer share the same threshold.
+- **Status diffs tolerate floating-point noise in metric ratios.** Ratio
+  comparison uses an epsilon instead of `==`, so a recorded snapshot that
+  round-tripped through JSON no longer shows as a change.
+- **`doctor` distinguishes a missing metrics-server from an unreadable
+  one.** RBAC denials and network failures during the deployment lookup are
+  reported as observation failures instead of "metrics-server not found".
+- **Observation snapshots memoize failed reads within one request.** A
+  failing scale-target read previously re-ran its (retried) API chain once
+  per derived view; the failed value is now cached for the request-scoped
+  snapshot and retried on the next fetch.
+- **`history` commands stop on cancellation.** The health-store API takes a
+  `context.Context`, so a closed TUI or cancelled command no longer waits
+  out the inter-process history lock.
+- **Watch mode for `list`/`scan` reuses one Kubernetes client.** The client
+  (and its kubeconfig parse) was rebuilt on every poll tick; it is now
+  created once per session.
+- **`assumptions` no longer double-wraps client-creation errors** ("creating
+  client: failed to create Kubernetes client: ...").
+- **`replay lab` rejects unsupported output formats instead of silently
+  printing text.** `-o go-template=...` previously fell back to the text
+  renderer.
+- **Per-HPA failure lines share one identity format (`HPA ns/name`)** across
+  stderr diagnostics and inline text output.
+
 - **`--output-schema` help no longer advertises the removed `v1` value.**
   Validation has accepted only `v2` since v4; the flag help now says so,
   so following `--help` no longer errors.
@@ -47,6 +109,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   writer instead of exiting successfully on write failures.
 
 ### Changed
+
+- **`history --prometheus URL` is deprecated in favor of
+  `--prometheus-url`** (matching `metrics probe`; `export --prometheus` is a
+  boolean, so the two meanings collided). The old spelling still works and
+  prints a deprecation notice.
+- **`simulate --duration N` is deprecated in favor of
+  `--duration-seconds N`** (a bare second count, unlike the Go-duration
+  `--duration` of `record`/`timeline`). The old spelling still works and
+  prints a deprecation notice.
+- **Direction-flip counting, effective stabilization windows, and the
+  scaleDown patch shape each have one canonical implementation**
+  (`event.FlipPoints`, `conditions.EffectiveScaleDownStabilizationWindow`,
+  `util.ScaleDownBehaviorPatch`) shared by churn, flapping, retrospective,
+  and timeline instead of four/three/two parallel copies.
+- **`warmup.Input` unused fields are deprecated** (`Now`, `Namespace`,
+  `MaxReplicas`, `TargetReadyReplicas`, `TargetDesiredReplicas`) — the
+  analyzer never read them; `healthtrend.ComputeHealthVariance` is similarly
+  deprecated. Both are slated for removal in the next major release.
+- **Release CI runs the test suite once** (combined `-race` + coverage pass,
+  matching `ci.yml`), gosec runs once (SARIF job), and the release fails
+  fast with an actionable message when `HOMEBREW_TAP_GITHUB_TOKEN` is
+  missing instead of dying mid-release. CI tidy/format steps call the
+  Makefile targets, and the Makefile `lint` target pins/warns on the
+  golangci-lint version CI uses.
+- **Renovate now manages the pinned tool versions** (golangci-lint,
+  GoReleaser, cosign, Syft, kindest/node) through regex managers, and the
+  scheduled fuzz job exercises both fuzz targets.
+- **Homebrew install docs note the cask is macOS-only**; Linux users are
+  pointed at krew / release archives / `go install`.
 
 - Metric matching is unified: all five metric handlers delegate
   `MatchesCurrent` to the canonical `metricIdentityMatches`, removing the

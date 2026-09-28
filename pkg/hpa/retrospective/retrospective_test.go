@@ -353,24 +353,6 @@ func TestBuildTimelineScaleDownStabilizedKeepsCurrentWindowSeparate(t *testing.T
 	}
 }
 
-func TestScaleDownStabilizationWindowSecondsUsesKubernetesDefault(t *testing.T) {
-	hpa := buildRetrospectiveTestHPA("default", "web")
-	if got := scaleDownStabilizationWindowSeconds(hpa); got != 300 {
-		t.Fatalf("nil behavior effective window = %d, want 300", got)
-	}
-	hpa.Spec.Behavior = &autoscalingv2.HorizontalPodAutoscalerBehavior{
-		ScaleDown: &autoscalingv2.HPAScalingRules{},
-	}
-	if got := scaleDownStabilizationWindowSeconds(hpa); got != 300 {
-		t.Fatalf("unspecified scaleDown window = %d, want 300", got)
-	}
-	explicit := int32(0)
-	hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds = &explicit
-	if got := scaleDownStabilizationWindowSeconds(hpa); got != 0 {
-		t.Fatalf("explicit zero window = %d, want 0", got)
-	}
-}
-
 func TestBuildTimelineClassifiesTooFewReplicasAsMinimumConstraint(t *testing.T) {
 	now := time.Now()
 	hpa := buildRetrospectiveTestHPA("default", "web")

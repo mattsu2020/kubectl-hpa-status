@@ -219,6 +219,23 @@ func TestQuotaNearLimitRule(t *testing.T) {
 		}
 	})
 
+	t.Run("quota below the 80 percent threshold is filtered by the rule itself", func(t *testing.T) {
+		input := Input{
+			Quotas: []QuotaInfo{
+				{Name: "compute", Resource: "requests.cpu", Used: "10", Hard: "48", Ratio: 0.21},
+				{Name: "mem", Resource: "requests.memory", Used: "20", Hard: "48", Ratio: 0.79},
+				{Name: "pods", Resource: "pods", Used: "39", Hard: "48", Ratio: 0.81},
+			},
+		}
+		findings := quotaNearLimitRule(input)
+		if len(findings) != 1 {
+			t.Fatalf("expected only the >=80%% quota to produce a finding, got %d", len(findings))
+		}
+		if !strings.Contains(findings[0].Message, `"pods"`) {
+			t.Fatalf("expected the pods quota finding, got %s", findings[0].Message)
+		}
+	})
+
 	t.Run("no quota constraints", func(t *testing.T) {
 		input := Input{}
 		findings := quotaNearLimitRule(input)

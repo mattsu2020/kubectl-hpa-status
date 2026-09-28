@@ -70,6 +70,9 @@ release:
     brew install mattsu2020/kubectl-hpa-status/kubectl-hpa-status
     ```
 
+    Note: the Homebrew distribution is a macOS cask. On Linux, install via
+    krew or the release archive for your platform below.
+
     Krew users should verify the kubectl plugin invocation with:
 
     ```sh

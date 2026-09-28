@@ -91,11 +91,12 @@ func testSnapshotHPA() autoscalingv2.HorizontalPodAutoscaler {
 	}
 }
 
-// TestSnapshotRetriesTransientFailure covers the memoization policy: a failed
-// read (e.g. a cancelled context) must not be cached, so a later call with a
-// healthy context recovers, while a successful read is still served from the
-// cache without a second API call.
-func TestSnapshotRetriesTransientFailure(t *testing.T) {
+// TestSnapshotMemoizesFailureWithinOneRequest covers the memoization policy:
+// a failed read is memoized for the snapshot's lifetime so the derived views
+// (pod info, pending details, container state) do not re-run the same failing
+// API chain several times per report. Recovery happens on the next request,
+// which builds a fresh snapshot.
+func TestSnapshotMemoizesFailureWithinOneRequest(t *testing.T) {
 	replicas := int32(1)
 	selector := &metav1.LabelSelector{MatchLabels: map[string]string{"app": "web"}}
 	client := fake.NewClientset(
@@ -107,10 +108,11 @@ func TestSnapshotRetriesTransientFailure(t *testing.T) {
 			},
 		},
 	)
-	failures := 1
+	calls := 0
+	fail := true
 	client.PrependReactor("get", "deployments", func(ktesting.Action) (bool, runtime.Object, error) {
-		if failures > 0 {
-			failures--
+		calls++
+		if fail {
 			return true, nil, errors.New("context deadline exceeded")
 		}
 		return false, nil, nil
@@ -122,9 +124,20 @@ func TestSnapshotRetriesTransientFailure(t *testing.T) {
 	if first.State != StateUnavailable || first.Err == nil {
 		t.Fatalf("first ScaleTarget() = %#v, want unavailable", first)
 	}
-	second := snapshot.ScaleTarget(context.Background())
-	if second.State != StateKnown {
-		t.Fatalf("second ScaleTarget() = %#v, want known (failure must not be memoized)", second)
+	// The derived views and repeated reads must not trigger more API calls.
+	_ = snapshot.ScaleTarget(context.Background())
+	_ = snapshot.PodInfos(context.Background())
+	_ = snapshot.PendingPods(context.Background())
+	_ = snapshot.ContainerStatuses(context.Background())
+	if calls != 1 {
+		t.Fatalf("deployment get called %d times, want 1 (failure must be memoized per request)", calls)
+	}
+
+	// A fresh snapshot (the next request/fetch) retries.
+	fail = false
+	recovered := New(client, &hpa)
+	if got := recovered.ScaleTarget(context.Background()); got.State != StateKnown {
+		t.Fatalf("fresh snapshot ScaleTarget() = %#v, want known", got)
 	}
 }
 
@@ -193,15 +206,17 @@ func TestSnapshotReplicaSetTargetReusesObject(t *testing.T) {
 	}
 }
 
-func TestSnapshotReplicaSetsRetryFailedRead(t *testing.T) {
+// TestSnapshotReplicaSetsMemoizeFailedRead pins the per-request memoization
+// policy on the ReplicaSets path: a failed list is served from the snapshot
+// cache afterwards, and recovery comes from the next request's fresh snapshot.
+func TestSnapshotReplicaSetsMemoizeFailedRead(t *testing.T) {
 	client := fake.NewClientset(&appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "web"},
 		Spec:       appsv1.DeploymentSpec{Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "web"}}},
 	})
-	attempts := 0
+	fail := true
 	client.PrependReactor("list", "replicasets", func(ktesting.Action) (bool, runtime.Object, error) {
-		attempts++
-		if attempts == 1 {
+		if fail {
 			return true, nil, errors.New("temporary observation failure")
 		}
 		return true, &appsv1.ReplicaSetList{}, nil
@@ -212,11 +227,14 @@ func TestSnapshotReplicaSetsRetryFailedRead(t *testing.T) {
 		t.Fatalf("failed read: %+v", got)
 	}
 	for i := 0; i < 2; i++ {
-		if got := snapshot.ReplicaSets(context.Background()); !got.Known() || len(got.Data) != 0 {
-			t.Fatalf("successful empty read: %+v", got)
+		if got := snapshot.ReplicaSets(context.Background()); got.State != StateUnavailable || got.Err == nil {
+			t.Fatalf("memoized failure: %+v", got)
 		}
 	}
-	if attempts != 2 {
-		t.Fatalf("got %d requests, want one failed and one successful", attempts)
+
+	fail = false
+	recovered := New(client, &hpa)
+	if got := recovered.ReplicaSets(context.Background()); !got.Known() || len(got.Data) != 0 {
+		t.Fatalf("fresh snapshot after recovery: %+v", got)
 	}
 }
