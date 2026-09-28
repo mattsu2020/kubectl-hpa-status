@@ -18,6 +18,12 @@ func WriteStatusDiff(w io.Writer, state WatchState, theme style.Theme) error {
 // with full rendering options, localising the Summary line via
 // opts.SummaryTranslator when configured.
 func WriteStatusDiffWithOptions(w io.Writer, state WatchState, opts StatusTextOptions) error {
+	// A missing current report has nothing to diff or render; report it
+	// instead of dereferencing a nil Analysis like every sibling renderer
+	// guards with ErrNilReport.
+	if state.Current == nil {
+		return fmt.Errorf("%w: watch diff requires a current analysis", ErrNilReport)
+	}
 	theme := opts.Theme
 	// When there is no previous state, fall back to full status display.
 	if state.Previous == nil {

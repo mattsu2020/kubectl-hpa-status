@@ -18,8 +18,14 @@ func newRecommendCommand(opts *options) *cobra.Command {
 		Args:              cobra.MinimumNArgs(1),
 		ValidArgsFunction: hpaNameCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			profile, _ := cmd.Flags().GetString("profile")
-			policyFile, _ := cmd.Flags().GetString("policy")
+			profile, profileErr := flagString(cmd, "profile")
+			if profileErr != nil {
+				return profileErr
+			}
+			policyFile, policyErr := flagString(cmd, "policy")
+			if policyErr != nil {
+				return policyErr
+			}
 			if policyFile != "" {
 				return runPolicy(cmd.Context(), cmd.OutOrStdout(), opts, &policyCommandOptions{file: policyFile}, args[0])
 			}

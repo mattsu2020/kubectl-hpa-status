@@ -2,9 +2,11 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/mattsu2020/kubectl-hpa-status/cmd/internal/client"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/spf13/cobra"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
@@ -50,4 +52,25 @@ func newClientOrDefault(opts *options) (*kube.Client, error) {
 // directly and this facade can shrink.
 func lookupHPA(ctx context.Context, opts *options, name string) (*kube.Client, *autoscalingv2.HorizontalPodAutoscaler, error) {
 	return client.LookupHPA(ctx, opts, name)
+}
+
+// flagString reads a string flag registered on cmd. Reads only fail when the
+// flag is missing or holds another type — a programming error any command
+// test catches — but routing every read through here turns a silent zero
+// value into a reported error instead.
+func flagString(cmd *cobra.Command, name string) (string, error) {
+	value, err := cmd.Flags().GetString(name)
+	if err != nil {
+		return "", fmt.Errorf("read --%s flag: %w", name, err)
+	}
+	return value, nil
+}
+
+// flagBool reads a bool flag registered on cmd; see flagString.
+func flagBool(cmd *cobra.Command, name string) (bool, error) {
+	value, err := cmd.Flags().GetBool(name)
+	if err != nil {
+		return false, fmt.Errorf("read --%s flag: %w", name, err)
+	}
+	return value, nil
 }

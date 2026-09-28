@@ -27,8 +27,14 @@ func newSnapshotCommand(opts *options) *cobra.Command {
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: hpaNameCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			output, _ := cmd.Flags().GetString("output")
-			redact, _ := cmd.Flags().GetBool("redact")
+			output, outputErr := flagString(cmd, "output")
+			if outputErr != nil {
+				return outputErr
+			}
+			redact, redactErr := flagBool(cmd, "redact")
+			if redactErr != nil {
+				return redactErr
+			}
 			return runSnapshot(cmd.Context(), cmd.OutOrStdout(), opts, args[0], output, redact)
 		},
 	}

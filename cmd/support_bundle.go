@@ -16,7 +16,10 @@ func newSupportBundleCommand(opts *options) *cobra.Command {
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: hpaNameCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			format, output, redact := readBundleFlags(cmd)
+			format, output, redact, readErr := readBundleFlags(cmd)
+			if readErr != nil {
+				return readErr
+			}
 			return runSupportBundle(cmd.Context(), cmd.OutOrStdout(), opts, args[0], format, output, redact)
 		},
 	}

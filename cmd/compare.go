@@ -22,9 +22,18 @@ func newCompareCommand(opts *options) *cobra.Command {
 		Short: "Compare HPA configuration and visible status across contexts or namespaces",
 		Args:  cobra.RangeArgs(0, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fromContext, _ := cmd.Flags().GetString("from-context")
-			toContext, _ := cmd.Flags().GetString("to-context")
-			onlyDrift, _ := cmd.Flags().GetBool("only-drift")
+			fromContext, fromErr := flagString(cmd, "from-context")
+			if fromErr != nil {
+				return fromErr
+			}
+			toContext, toErr := flagString(cmd, "to-context")
+			if toErr != nil {
+				return toErr
+			}
+			onlyDrift, driftErr := flagBool(cmd, "only-drift")
+			if driftErr != nil {
+				return driftErr
+			}
 			if opts.AllNamespaces && len(args) == 0 {
 				return runCompareAll(cmd.Context(), cmd.OutOrStdout(), opts, fromContext, toContext, onlyDrift)
 			}

@@ -21,7 +21,10 @@ func newAlertsCommand() *cobra.Command {
 		Short: "Generate Prometheus or Datadog alert rules",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			format, _ := cmd.Flags().GetString("format")
+			format, err := flagString(cmd, "format")
+			if err != nil {
+				return err
+			}
 			rules, err := alerts.Rules(format)
 			if err != nil {
 				return err

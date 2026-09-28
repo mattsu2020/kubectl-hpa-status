@@ -21,7 +21,10 @@ func newGitOpsReviewCommand(opts *options) *cobra.Command {
 		Short: "Review HPA manifest changes for risky modifications in PR diffs",
 		Long:  "Compares HPA manifests against best practices and detects risky changes like maxReplicas decreases, removed stabilization, aggressive targets, and metric removals.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			path, _ := cmd.Flags().GetString("path")
+			path, pathErr := flagString(cmd, "path")
+			if pathErr != nil {
+				return pathErr
+			}
 			if path == "" {
 				return fmt.Errorf("--path is required")
 			}
