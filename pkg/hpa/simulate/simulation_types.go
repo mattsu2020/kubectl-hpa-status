@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/errs"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
@@ -88,16 +89,21 @@ type AnalysisOptions struct {
 	ForTesting bool
 }
 
-// ErrNilHPA is the sentinel error for nil HPA inputs.
-var ErrNilHPA = errors.New("HPA must not be nil")
+// Sentinel errors. These alias the shared pkg/hpa/internal/errs values so
+// errors.Is matches the hpa root package's identically named sentinels; the
+// two packages used to declare separate values with identical messages.
+var (
+	// ErrNilHPA is the sentinel error for nil HPA inputs.
+	ErrNilHPA = errs.ErrNilHPA
 
-// ErrMetricNotFound is returned when a simulation override references a
-// metric that does not exist in the HPA spec.
-var ErrMetricNotFound = errors.New("metric not found in HPA spec")
+	// ErrMetricNotFound is returned when a simulation override references a
+	// metric that does not exist in the HPA spec.
+	ErrMetricNotFound = errs.ErrMetricNotFound
 
-// ErrMetricAmbiguous is returned when a name-only metric reference matches
-// multiple metrics and the identity cannot be uniquely determined.
-var ErrMetricAmbiguous = errors.New("metric name is ambiguous")
+	// ErrMetricAmbiguous is returned when a name-only metric reference matches
+	// multiple metrics and the identity cannot be uniquely determined.
+	ErrMetricAmbiguous = errs.ErrMetricAmbiguous
+)
 
 // Health state constants for testing
 const (

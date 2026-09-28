@@ -57,6 +57,15 @@ func FromCoreSlice(coreEvents []corev1.Event) []Event {
 	return events
 }
 
+// ReasonSuccessfulRescale is the HPA controller event reason emitted on every
+// completed rescale. Detection domains must match on this constant instead of
+// re-typing the literal, so a typo cannot silently disable one domain.
+const ReasonSuccessfulRescale = "SuccessfulRescale"
+
+// ReasonFailedRescale is the HPA controller event reason emitted when a
+// rescale attempt fails.
+const ReasonFailedRescale = "FailedRescale"
+
 // RescaleData captures one HPA rescale event extracted from a
 // SuccessfulRescale event message. Shared by the flapping and churn domains.
 type RescaleData struct {

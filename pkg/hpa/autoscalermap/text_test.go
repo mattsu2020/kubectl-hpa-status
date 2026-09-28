@@ -2,6 +2,7 @@ package autoscalermap
 
 import (
 	"bytes"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 	"strings"
 	"testing"
 
@@ -71,10 +72,10 @@ func TestAutoscalerBadges(t *testing.T) {
 	if got := autoscalerRiskBadge("none", theme); got != "none" {
 		t.Errorf("risk badge fallback = %q", got)
 	}
-	if got := autoscalerBlockerBadge("medium", theme); got != "[MED]" {
+	if got := rendutil.SeverityBadge("medium", theme); got != "[MED]" {
 		t.Errorf("blocker badge medium = %q", got)
 	}
-	if got := autoscalerBlockerBadge("unknown", theme); got != "[INFO]" {
+	if got := rendutil.SeverityBadge("unknown", theme); got != "[INFO]" {
 		t.Errorf("blocker badge fallback = %q", got)
 	}
 }

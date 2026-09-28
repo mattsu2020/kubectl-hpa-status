@@ -10,10 +10,16 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
-// AnalyzeMetricFreshness analyzes each HPA spec metric for data freshness,
-// identifying whether the metric is OK, Stale, Missing, or Unknown. It returns
-// per-metric freshness entries with source API, evidence from conditions and
-// events, and remediation next steps.
+// AnalyzeMetricFreshness analyzes each HPA spec metric for data freshness
+// from HPA-visible signals, classifying each metric as OK or Missing. It
+// returns per-metric freshness entries with source API, evidence from
+// conditions and events, and remediation next steps.
+//
+// The Stale and Unknown states exist in the MetricFreshnessState vocabulary
+// but are only produced by callers that observe metric timestamps (the
+// metrics-probe command sets LastSeen/Age and may report Stale). This
+// function alone cannot distinguish stale data because the autoscaling API
+// does not expose sample timestamps.
 func AnalyzeMetricFreshness(hpa *autoscalingv2.HorizontalPodAutoscaler, events []Event) []MetricFreshness {
 	if hpa == nil {
 		return nil
@@ -257,13 +263,13 @@ func buildStaleNextSteps(spec autoscalingv2.MetricSpec) []string {
 	}
 }
 
-// hasMetricCurrentValue reports whether a matching current metric has the
-// value field required by its configured target type. A populated zero is
-// valid metric data.
-func hasMetricCurrentValue(spec autoscalingv2.MetricSpec, currentMetrics []autoscalingv2.MetricStatus) bool {
+// matchingValueForTarget scans currentMetrics for the status entry matching
+// spec (by canonical identity) and returns its value when it is populated for
+// the configured target type. A populated zero is valid metric data.
+func matchingValueForTarget(spec autoscalingv2.MetricSpec, currentMetrics []autoscalingv2.MetricStatus) (autoscalingv2.MetricValueStatus, bool) {
 	target := simulate.MetricTargetPointer(&spec)
 	if target == nil {
-		return false
+		return autoscalingv2.MetricValueStatus{}, false
 	}
 	for _, current := range currentMetrics {
 		if spec.Type != current.Type {
@@ -274,14 +280,21 @@ func hasMetricCurrentValue(spec autoscalingv2.MetricSpec, currentMetrics []autos
 		}
 		value, ok := currentMetricValueStatus(current)
 		if ok && hasMetricValueForTarget(value, target.Type) {
-			return true
+			return value, true
 		}
 	}
-	return false
+	return autoscalingv2.MetricValueStatus{}, false
 }
 
-// isMetricValueZero checks whether a matching current metric has a populated
-// value whose numeric value is zero.
+// hasMetricCurrentValue reports whether a matching current metric has the
+// value field required by its configured target type.
+func hasMetricCurrentValue(spec autoscalingv2.MetricSpec, currentMetrics []autoscalingv2.MetricStatus) bool {
+	_, ok := matchingValueForTarget(spec, currentMetrics)
+	return ok
+}
+
+// isMetricValueZero checks whether every matching current metric with a
+// populated value reports zero.
 func isMetricValueZero(spec autoscalingv2.MetricSpec, currentMetrics []autoscalingv2.MetricStatus) bool {
 	target := simulate.MetricTargetPointer(&spec)
 	if target == nil {

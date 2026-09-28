@@ -49,13 +49,7 @@ func (podsHandler) SpecIdentity(spec autoscalingv2.MetricSpec) (string, string) 
 }
 
 func (podsHandler) MatchesCurrent(spec autoscalingv2.MetricSpec, current autoscalingv2.MetricStatus) bool {
-	if spec.Pods == nil || current.Pods == nil {
-		return false
-	}
-	if spec.Pods.Metric.Name != current.Pods.Metric.Name {
-		return false
-	}
-	return selectorsEqual(spec.Pods.Metric.Selector, current.Pods.Metric.Selector)
+	return metricIdentityMatches(spec, current)
 }
 
 func (podsHandler) Remediation(spec autoscalingv2.MetricSpec) string {

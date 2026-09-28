@@ -2,6 +2,7 @@ package lint
 
 import (
 	"fmt"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/model"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rulefacts"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -22,7 +23,7 @@ func defaultWindowDisplay() string {
 func lintReplicaRange(hpa *autoscalingv2.HorizontalPodAutoscaler) []Finding {
 	var findings []Finding
 
-	var minReplicas int32 = 1
+	var minReplicas = model.DefaultMinReplicas
 	if hpa.Spec.MinReplicas != nil {
 		minReplicas = *hpa.Spec.MinReplicas
 	}
@@ -35,12 +36,12 @@ func lintReplicaRange(hpa *autoscalingv2.HorizontalPodAutoscaler) []Finding {
 		})
 	}
 
-	if minReplicas > 0 && hpa.Spec.MaxReplicas/minReplicas > 10 {
+	if ratio, ok := rulefacts.ReplicaRangeRatio(minReplicas, hpa.Spec.MaxReplicas); ok && ratio > rulefacts.MaxRecommendedReplicaRatio {
 		findings = append(findings, Finding{
 			Severity: Warning,
 			Rule:     "replica-range",
 			Message: fmt.Sprintf("Wide replica range: min=%d max=%d (ratio=%d:1). Consider narrowing the range.",
-				minReplicas, hpa.Spec.MaxReplicas, hpa.Spec.MaxReplicas/minReplicas),
+				minReplicas, hpa.Spec.MaxReplicas, ratio),
 		})
 	}
 
@@ -63,7 +64,7 @@ func lintMinGreaterThanMax(hpa *autoscalingv2.HorizontalPodAutoscaler) []Finding
 // lintMinEqualsMax detects when minReplicas equals maxReplicas, making the
 // HPA unable to scale.
 func lintMinEqualsMax(hpa *autoscalingv2.HorizontalPodAutoscaler) []Finding {
-	var minReplicas int32 = 1
+	var minReplicas = model.DefaultMinReplicas
 	if hpa.Spec.MinReplicas != nil {
 		minReplicas = *hpa.Spec.MinReplicas
 	}

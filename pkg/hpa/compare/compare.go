@@ -2,9 +2,12 @@
 // their spec fields, metric definitions, behavior settings, and health scores.
 //
 // It is a self-contained domain that depends only on the autoscaling/v2 API
-// types and the shared analysis helpers from pkg/hpa. The package is pure:
-// every exported function operates on the HPAs passed in and does not touch
-// the network or the local filesystem.
+// types plus the shared pkg/hpa/core formatting helpers and pkg/hpa/model
+// constants. The package is pure: every exported function operates on the
+// HPAs passed in and does not touch the network or the local filesystem.
+// Health scores are computed by a caller-supplied HealthScorer (see
+// BuildReportWithScorer), which keeps this package independent of the
+// analysis root that itself embeds compare-adjacent report types.
 //
 // The primary entry point is BuildReport, which produces a Report listing the
 // differences between a FROM and a TO HPA along with any risks the drift
@@ -16,11 +19,12 @@ package compare
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/core"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/model"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
-
-	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
 
 // Report describes the differences observed between two HPAs.
@@ -44,37 +48,44 @@ type Diff struct {
 	To    string `json:"to" yaml:"to"`
 }
 
+// HealthScorer computes the health score (0-100) of an HPA for the
+// healthScore diff line. Callers that have the full analysis pipeline
+// available (such as cmd) pass a closure over it; the compare package stays
+// free of the analysis-root dependency that would invite an import cycle.
+type HealthScorer func(hpa *autoscalingv2.HorizontalPodAutoscaler) int
+
 // BuildReport compares two HPAs and returns a Report describing their
 // differences. fromLabel and toLabel identify the two sides (typically
 // namespace/name pairs); from and to are the HPA objects being compared.
 //
-// The function compares minReplicas, maxReplicas, metric definitions, behavior
-// settings, and health scores. It also flags risks such as a lower maxReplicas
-// in the target environment.
+// The function compares minReplicas, maxReplicas, metric definitions, and
+// behavior settings. The healthScore line is omitted; use
+// BuildReportWithScorer to include it.
 func BuildReport(fromLabel, toLabel string, from, to *autoscalingv2.HorizontalPodAutoscaler) Report {
+	return BuildReportWithScorer(fromLabel, toLabel, from, to, nil)
+}
+
+// BuildReportWithScorer behaves like BuildReport and additionally compares
+// health scores through the supplied scorer. A nil scorer skips the
+// healthScore diff instead of guessing a score.
+func BuildReportWithScorer(fromLabel, toLabel string, from, to *autoscalingv2.HorizontalPodAutoscaler, scorer HealthScorer) Report {
 	report := Report{From: fromLabel, To: toLabel}
 	addDiff := func(field, left, right string) {
 		if left != right {
 			report.Differences = append(report.Differences, Diff{Field: field, From: left, To: right})
 		}
 	}
-	addDiff("minReplicas", fmt.Sprintf("%d", replicasOrDefault(from.Spec.MinReplicas)), fmt.Sprintf("%d", replicasOrDefault(to.Spec.MinReplicas)))
-	addDiff("maxReplicas", fmt.Sprintf("%d", from.Spec.MaxReplicas), fmt.Sprintf("%d", to.Spec.MaxReplicas))
+	addDiff("minReplicas", strconv.FormatInt(int64(replicasOrDefault(from.Spec.MinReplicas)), 10), strconv.FormatInt(int64(replicasOrDefault(to.Spec.MinReplicas)), 10))
+	addDiff("maxReplicas", strconv.FormatInt(int64(from.Spec.MaxReplicas), 10), strconv.FormatInt(int64(to.Spec.MaxReplicas), 10))
 	addDiff("metrics", MetricSummary(from), MetricSummary(to))
 	addDiff("behavior.scaleDown.stabilizationWindowSeconds", StabilizationWindow(from), StabilizationWindow(to))
-	addDiff("healthScore", healthScore(from), healthScore(to))
+	if scorer != nil {
+		addDiff("healthScore", strconv.Itoa(scorer(from)), strconv.Itoa(scorer(to)))
+	}
 	if to.Spec.MaxReplicas < from.Spec.MaxReplicas {
 		report.Risks = append(report.Risks, "target environment has lower maxReplicas and is more likely to hit a replica cap under the same load")
 	}
 	return report
-}
-
-// healthScore is the narrow adapter between configuration comparison and the
-// full HPA analyzer. Keeping the dependency here makes the rest of report
-// construction independent of Analysis and its derived output model.
-func healthScore(hpa *autoscalingv2.HorizontalPodAutoscaler) string {
-	analysis := hpaanalysis.Analyze(hpa, false)
-	return fmt.Sprintf("%d", analysis.Decision.HealthScore)
 }
 
 // MetricSummary returns a compact string representation of an HPA's metric
@@ -85,15 +96,15 @@ func MetricSummary(hpa *autoscalingv2.HorizontalPodAutoscaler) string {
 	for _, metric := range hpa.Spec.Metrics {
 		switch {
 		case metric.Resource != nil:
-			parts = append(parts, fmt.Sprintf("Resource/%s=%s", metric.Resource.Name, hpaanalysis.FormatMetricTarget(metric.Resource.Target)))
+			parts = append(parts, fmt.Sprintf("Resource/%s=%s", metric.Resource.Name, core.FormatMetricTarget(metric.Resource.Target)))
 		case metric.ContainerResource != nil:
-			parts = append(parts, fmt.Sprintf("ContainerResource/%s/%s=%s", metric.ContainerResource.Container, metric.ContainerResource.Name, hpaanalysis.FormatMetricTarget(metric.ContainerResource.Target)))
+			parts = append(parts, fmt.Sprintf("ContainerResource/%s/%s=%s", metric.ContainerResource.Container, metric.ContainerResource.Name, core.FormatMetricTarget(metric.ContainerResource.Target)))
 		case metric.External != nil:
-			parts = append(parts, fmt.Sprintf("External/%s=%s", metric.External.Metric.Name, hpaanalysis.FormatMetricTarget(metric.External.Target)))
+			parts = append(parts, fmt.Sprintf("External/%s=%s", metric.External.Metric.Name, core.FormatMetricTarget(metric.External.Target)))
 		case metric.Pods != nil:
-			parts = append(parts, fmt.Sprintf("Pods/%s=%s", metric.Pods.Metric.Name, hpaanalysis.FormatMetricTarget(metric.Pods.Target)))
+			parts = append(parts, fmt.Sprintf("Pods/%s=%s", metric.Pods.Metric.Name, core.FormatMetricTarget(metric.Pods.Target)))
 		case metric.Object != nil:
-			parts = append(parts, fmt.Sprintf("Object/%s=%s", metric.Object.Metric.Name, hpaanalysis.FormatMetricTarget(metric.Object.Target)))
+			parts = append(parts, fmt.Sprintf("Object/%s=%s", metric.Object.Metric.Name, core.FormatMetricTarget(metric.Object.Target)))
 		}
 	}
 	return strings.Join(parts, ",")
@@ -105,13 +116,13 @@ func StabilizationWindow(hpa *autoscalingv2.HorizontalPodAutoscaler) string {
 	if hpa.Spec.Behavior == nil || hpa.Spec.Behavior.ScaleDown == nil || hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds == nil {
 		return "<default>"
 	}
-	return fmt.Sprintf("%d", *hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds)
+	return strconv.FormatInt(int64(*hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds), 10)
 }
 
 // replicasOrDefault returns the value or the default minimum replica count if nil.
 func replicasOrDefault(replicas *int32) int32 {
 	if replicas == nil {
-		return hpaanalysis.DefaultMinReplicas
+		return model.DefaultMinReplicas
 	}
 	return *replicas
 }

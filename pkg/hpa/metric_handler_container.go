@@ -55,9 +55,7 @@ func (containerResourceHandler) SpecIdentity(spec autoscalingv2.MetricSpec) (str
 }
 
 func (containerResourceHandler) MatchesCurrent(spec autoscalingv2.MetricSpec, current autoscalingv2.MetricStatus) bool {
-	return spec.ContainerResource != nil && current.ContainerResource != nil &&
-		spec.ContainerResource.Name == current.ContainerResource.Name &&
-		spec.ContainerResource.Container == current.ContainerResource.Container
+	return metricIdentityMatches(spec, current)
 }
 
 func (containerResourceHandler) Remediation(spec autoscalingv2.MetricSpec) string {

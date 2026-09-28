@@ -1,10 +1,9 @@
 // Package blocker detects scale-out blockers (pending pods, unschedulable
 // pods, quota limits, readiness stalls, node capacity) that prevent an HPA
 // from achieving its desired replica count. It is a self-contained leaf
-// domain depending only on standard library types. The cmd/ layer reaches
-// it through the pkg/hpa re-export facade (hpaanalysis.AnalyzeBlockers,
-// hpaanalysis.Report, etc.). The blocker_text.go renderer stays in
-// pkg/hpa because it shares the labels machinery.
+// domain depending only on standard library types. The cmd/ layer imports
+// this package directly (blocker.AnalyzeBlockers). The blocker_text.go
+// renderer stays in pkg/hpa because it renders the root Analysis model.
 package blocker
 
 import (

@@ -1,6 +1,8 @@
 package autoscalermap
 
 import (
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
+
 	"fmt"
 	"io"
 	"strings"
@@ -63,7 +65,7 @@ func writeAutoscalerMapBlockers(buf *strings.Builder, am *Map, theme style.Theme
 	}
 	buf.WriteString("\nBlockers:\n")
 	for _, b := range am.Blockers {
-		badge := autoscalerBlockerBadge(b.Severity, theme)
+		badge := rendutil.SeverityBadge(b.Severity, theme)
 		buf.WriteString(fmt.Sprintf("  %s [%s] %s\n", badge, b.Layer, b.Message))
 		if b.Detail != "" {
 			for _, line := range wrapAutoscalerMapLines(b.Detail, 72) {
@@ -114,20 +116,6 @@ func autoscalerRiskBadge(risk string, theme style.Theme) string {
 		return theme.Dim.Render("low")
 	default:
 		return risk
-	}
-}
-
-// autoscalerBlockerBadge returns a styled severity badge.
-func autoscalerBlockerBadge(severity string, theme style.Theme) string {
-	switch severity {
-	case "high":
-		return theme.Error.Render("[HIGH]")
-	case "medium":
-		return theme.Warning.Render("[MED]")
-	case "low":
-		return theme.Dim.Render("[LOW]")
-	default:
-		return "[INFO]"
 	}
 }
 

@@ -2,6 +2,7 @@ package hpa
 
 import (
 	"fmt"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/model"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/confidence"
 
@@ -9,7 +10,7 @@ import (
 )
 
 // DefaultMinReplicas is the default minimum replica count when spec.minReplicas is nil.
-const DefaultMinReplicas int32 = 1
+const DefaultMinReplicas = model.DefaultMinReplicas
 
 // Analyze produces an Analysis for the given HPA using default options.
 func Analyze(src *autoscalingv2.HorizontalPodAutoscaler, includeInterpretation bool) Analysis {

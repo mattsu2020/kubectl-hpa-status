@@ -12,6 +12,7 @@ import (
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
+	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/compare"
 )
 
@@ -56,7 +57,7 @@ func runCompare(ctx context.Context, out io.Writer, opts *options, fromRef, toRe
 	if err != nil {
 		return fmt.Errorf("fetching TO HPA %s: %w", toRef, err)
 	}
-	report := compare.BuildReport(fromLabel, toLabel, fromHPA, toHPA)
+	report := compare.BuildReportWithScorer(fromLabel, toLabel, fromHPA, toHPA, compareHealthScorer)
 	return render.Format(out, opts.Output, opts.Template, report, func(out io.Writer) error {
 		return writeCompareText(out, report)
 	})
@@ -125,7 +126,7 @@ func runCompareAll(ctx context.Context, out io.Writer, opts *options, fromContex
 			reports = append(reports, compare.Report{From: key, To: "<missing>", Differences: []compare.Diff{{Field: "exists", From: "true", To: "false"}}, Risks: []string{"target environment is missing this HPA"}})
 			continue
 		}
-		report := compare.BuildReport(key, key, from, to)
+		report := compare.BuildReportWithScorer(key, key, from, to, compareHealthScorer)
 		if !onlyDrift || len(report.Differences) > 0 {
 			reports = append(reports, report)
 		}
@@ -187,4 +188,12 @@ func splitNamespacedRef(ref, defaultNamespace string) (string, string) {
 		return ns, name
 	}
 	return defaultNamespace, ref
+}
+
+// compareHealthScorer adapts the full analysis pipeline into the narrow
+// health-score dependency the compare package accepts, keeping compare free
+// of the pkg/hpa root import.
+func compareHealthScorer(hpa *autoscalingv2.HorizontalPodAutoscaler) int {
+	analysis := hpaanalysis.Analyze(hpa, false)
+	return analysis.Decision.HealthScore
 }

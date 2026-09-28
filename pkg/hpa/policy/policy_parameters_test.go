@@ -93,7 +93,7 @@ func TestValidateRuleParameterMatrix(t *testing.T) {
 		{"utilization range valid", Rule{ID: "target-utilization-range", Parameters: Params{"min": 40, "max": 80}}, ""},
 		{"utilization range inverted", Rule{ID: "target-utilization-range", Parameters: Params{"min": 95, "max": 50}}, "must not exceed"},
 		{"replica ratio valid", Rule{ID: "replica-range", Parameters: Params{"maxRatio": 3}}, ""},
-		{"unknown parameter rejected", Rule{ID: "replica-range", Parameters: Params{"maxRATIO": 3}}, `unknown parameter`},
+		{"unknown parameter rejected", Rule{ID: "replica-range", Parameters: Params{"maxRATIO": 3}}, `unknown policy parameter`},
 		{"unknown rule passes through", Rule{ID: "future-rule", Parameters: Params{"anything": 1}}, ""},
 	}
 	for _, tt := range tests {

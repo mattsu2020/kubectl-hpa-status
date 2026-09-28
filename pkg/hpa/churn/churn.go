@@ -94,7 +94,7 @@ type ChurnRecommendation struct {
 func AnalyzeChurnFromEvents(events []model.Event, hpa *autoscalingv2.HorizontalPodAutoscaler) *ChurnAnalysis {
 	var rescales []event.RescaleData
 	for _, ev := range events {
-		if ev.Reason != "SuccessfulRescale" {
+		if ev.Reason != event.ReasonSuccessfulRescale {
 			continue
 		}
 		size, ok := event.ParseNewSize(ev.Message)
@@ -112,9 +112,9 @@ func AnalyzeChurnFromEvents(events []model.Event, hpa *autoscalingv2.HorizontalP
 
 // AnalyzeFromRescales runs the churn analysis on a pre-extracted slice of
 // rescale data. This is the canonical entry point for callers that already
-// have rescale data (e.g. converted from TimelineSnapshots in the pkg/hpa
-// facade). It normalizes a copy into deterministic timestamp order before
-// analysis and leaves the caller's slice unchanged.
+// have rescale data (e.g. converted from TimelineSnapshots in pkg/hpa). It
+// normalizes a copy into deterministic timestamp order before analysis and
+// leaves the caller's slice unchanged.
 func AnalyzeFromRescales(rescales []event.RescaleData, hpa *autoscalingv2.HorizontalPodAutoscaler) *ChurnAnalysis {
 	return buildChurnAnalysis(rescales, hpa)
 }

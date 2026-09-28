@@ -143,12 +143,18 @@ func containerFailureRule(input Input) []Finding {
 	return findings
 }
 
+// quotaBlockerHighRatio is the usage ratio at which a near-limit quota is
+// escalated from a medium finding to a hard scale-out blocker. It is stricter
+// than the autoscaler-map view's near-limit threshold, which surfaces
+// approaching limits as context rather than blocking findings.
+const quotaBlockerHighRatio = 0.95
+
 // quotaNearLimitRule detects ResourceQuotas where usage is at or above 80%.
 func quotaNearLimitRule(input Input) []Finding {
 	var findings []Finding
 	for _, q := range input.Quotas {
 		severity := BlockerMedium
-		if q.Ratio >= 0.95 {
+		if q.Ratio >= quotaBlockerHighRatio {
 			severity = BlockerHigh
 		}
 		findings = append(findings, Finding{

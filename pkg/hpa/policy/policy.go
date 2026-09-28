@@ -2,11 +2,12 @@
 // configuration. It loads YAML policy files, evaluates built-in and custom
 // rules against an HPA, and reports violations with suggested fixes. It is
 // a self-contained domain depending only on standard library and
-// autoscaling/v2 types. The cmd/ layer reaches it through the pkg/hpa
-// re-export facade.
+// autoscaling/v2 types. The cmd/ layer imports this package directly
+// (policy.EvaluatePolicies, policy.LoadPolicyFile).
 package policy
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -108,23 +109,39 @@ type Set struct {
 	Rules    []Rule            `json:"rules" yaml:"rules"`
 }
 
+// Sentinel errors for policy validation failures. Wrap them with
+// fmt.Errorf("...: %w", ...) so callers can match the failure class with
+// errors.Is instead of substring-matching the English message.
+var (
+	// ErrInvalidPolicy marks structurally invalid policy definitions.
+	ErrInvalidPolicy = errors.New("invalid policy definition")
+
+	// ErrUnsupportedPolicyAPIVersion marks a policy file whose apiVersion is
+	// not hpa-status/v1.
+	ErrUnsupportedPolicyAPIVersion = errors.New("unsupported policy apiVersion")
+
+	// ErrUnknownPolicyParameter marks a rule parameter outside the rule's
+	// allowed set.
+	ErrUnknownPolicyParameter = errors.New("unknown policy parameter")
+)
+
 // Validate checks the policy file for structural errors.
 func (f File) Validate() error {
 	if f.APIVersion != "" && f.APIVersion != "hpa-status/v1" {
-		return fmt.Errorf("unsupported apiVersion %q; supported: hpa-status/v1", f.APIVersion)
+		return fmt.Errorf("%w %q; supported: hpa-status/v1", ErrUnsupportedPolicyAPIVersion, f.APIVersion)
 	}
 	for _, rule := range f.allRules() {
 		rule = normalizePolicyRule(rule)
 		if rule.ID == "" {
-			return fmt.Errorf("policy rule missing id")
+			return fmt.Errorf("%w: missing id", ErrInvalidPolicy)
 		}
 		if rule.Name == "" {
-			return fmt.Errorf("policy rule %q missing name", rule.ID)
+			return fmt.Errorf("%w %q: missing name", ErrInvalidPolicy, rule.ID)
 		}
 		switch rule.Severity {
 		case "critical", "warning", "info", "":
 		default:
-			return fmt.Errorf("policy rule %q has invalid severity %q; use critical, warning, or info", rule.ID, rule.Severity)
+			return fmt.Errorf("%w %q: invalid severity %q; use critical, warning, or info", ErrInvalidPolicy, rule.ID, rule.Severity)
 		}
 		if err := validateRuleParameters(rule); err != nil {
 			return fmt.Errorf("policy rule %q: %w", rule.ID, err)
@@ -149,7 +166,7 @@ func validateRuleParameters(rule Rule) error {
 	}
 	for key := range rule.Parameters {
 		if _, ok := keys[key]; !ok {
-			return fmt.Errorf("unknown parameter %q", key)
+			return fmt.Errorf("%w %q for rule %q", ErrUnknownPolicyParameter, key, rule.ID)
 		}
 	}
 

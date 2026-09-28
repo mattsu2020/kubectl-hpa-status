@@ -2,8 +2,8 @@
 // probes, scheduling, container crashes) that delay an HPA scale-up from
 // reaching its desired replica count. It is a self-contained leaf domain
 // depending only on standard library, metav1 types, and the shared
-// confidence enums. The cmd/ layer reaches it through the pkg/hpa
-// re-export facade.
+// confidence enums. The cmd/ layer imports this package directly
+// (warmup.AnalyzeWarmup).
 package warmup
 
 import (

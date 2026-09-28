@@ -3,6 +3,7 @@ package simulate
 import (
 	"errors"
 	"fmt"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/model"
 	"strings"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/tolerance"
@@ -55,7 +56,7 @@ func buildMetricSimulation(original, modified *autoscalingv2.HorizontalPodAutosc
 		if !projectable {
 			return ms, nil
 		}
-		minReplicas := int32(1)
+		minReplicas := model.DefaultMinReplicas
 		if modified.Spec.MinReplicas != nil {
 			minReplicas = *modified.Spec.MinReplicas
 		}
@@ -159,7 +160,7 @@ func assessMetricSimulationRisk(original, _ *autoscalingv2.HorizontalPodAutoscal
 			if ratio >= 2.0 {
 				risks = append(risks, fmt.Sprintf("%s at %.1fx target is very high; verify the workload can tolerate this pressure and that node capacity is available", ms.MetricName, ratio))
 			}
-			minReplicas := int32(1)
+			minReplicas := model.DefaultMinReplicas
 			if original.Spec.MinReplicas != nil {
 				minReplicas = *original.Spec.MinReplicas
 			}

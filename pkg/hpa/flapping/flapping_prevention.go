@@ -67,7 +67,7 @@ func AnalyzeFlappingPrevention(events []event.Event, hpa *autoscalingv2.Horizont
 func extractRescaleEvents(events []event.Event) []event.RescaleData {
 	var rescales []event.RescaleData
 	for _, ev := range events {
-		if ev.Reason != "SuccessfulRescale" {
+		if ev.Reason != event.ReasonSuccessfulRescale {
 			continue
 		}
 		size, ok := event.ParseNewSize(ev.Message)

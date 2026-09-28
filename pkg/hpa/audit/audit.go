@@ -1,9 +1,9 @@
 // Package audit runs best-practice configuration audits against an HPA,
 // producing a scored Report with actionable findings. It is a self-contained
 // domain depending only on autoscaling/v2 types plus the shared
-// pkg/hpa/internal/{util,conditions} helpers. The cmd/ layer reaches it
-// through the pkg/hpa re-export facade (hpaanalysis.AuditHPA, etc.). The
-// *_text.go renderer stays in pkg/hpa because it shares the labels machinery.
+// pkg/hpa/internal/{util,conditions} helpers. The cmd/ layer imports this
+// package directly (audit.Run / audit.RunWithProfile). The *_text.go
+// renderer stays in pkg/hpa because it renders the root Analysis model.
 package audit
 
 import (
