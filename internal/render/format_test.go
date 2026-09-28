@@ -471,3 +471,34 @@ func (w *shortWriter) Write(p []byte) (int, error) {
 	}
 	return len(p), nil
 }
+
+// TestFormatJSONAndJSONLAgreeOnEscaping pins the byte-level agreement between
+// the json and jsonl renderers: event messages containing <, >, and & must
+// serialize the same way in both formats (no HTML escaping), so consumers
+// parsing both see identical strings for the same field.
+func TestFormatJSONAndJSONLAgreeOnEscaping(t *testing.T) {
+	type payload struct {
+		Message string `json:"message"`
+	}
+	value := payload{Message: "backoff <cpu> & memory"}
+
+	var jsonOut, jsonlOut bytes.Buffer
+	if err := Format(&jsonOut, "json", "", value, nil); err != nil {
+		t.Fatalf("json render: %v", err)
+	}
+	if err := JSONLines(&jsonlOut, value); err != nil {
+		t.Fatalf("jsonl render: %v", err)
+	}
+
+	jsonLine := strings.TrimSpace(jsonOut.String())
+	jsonlLine := strings.TrimSpace(jsonlOut.String())
+	if !strings.Contains(jsonLine, `"message": "backoff <cpu> & memory"`) {
+		t.Fatalf("json renderer HTML-escaped the message: %q", jsonLine)
+	}
+	if !strings.Contains(jsonlLine, `"message":"backoff <cpu> & memory"`) {
+		t.Fatalf("jsonl renderer changed the message: %q", jsonlLine)
+	}
+	if strings.Contains(jsonLine, `\u003c`) || strings.Contains(jsonlLine, `\u003c`) {
+		t.Fatal("HTML escape sequences must not appear in either format")
+	}
+}

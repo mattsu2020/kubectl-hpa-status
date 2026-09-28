@@ -119,9 +119,15 @@ func normalizeOutputFlag(value string) string {
 	if value == "" {
 		return value
 	}
-	for _, prefix := range []string{"jsonpath=", "jsonpath:", "template=", "template:", "go-template=", "go-template:"} {
-		if expr, ok := strings.CutPrefix(value, prefix); ok {
-			return strings.ToLower(prefix) + expr
+	for _, prefix := range []string{"jsonpath", "template", "go-template"} {
+		for _, sep := range []string{"=", ":"} {
+			if expr, ok := strings.CutPrefix(value, prefix+sep); ok {
+				return prefix + sep + expr
+			}
+			// The format name itself may be typed with any casing.
+			if expr, ok := strings.CutPrefix(value, strings.ToUpper(prefix[:1])+prefix[1:]+sep); ok {
+				return prefix + sep + expr
+			}
 		}
 	}
 	lowered := strings.ToLower(value)

@@ -9,6 +9,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`--output-schema` help no longer advertises the removed `v1` value.**
+  Validation has accepted only `v2` since v4; the flag help now says so,
+  so following `--help` no longer errors.
+- **Uppercase `--output` values (`JSON`, `YAML`) now work end to end.**
+  They passed validation (which normalized for the check) but failed at
+  render time after all API work was done. The format name is now
+  canonicalized once, up front, while jsonpath/template expressions keep
+  their case and `record -o FILE` paths stay untouched.
+- **`--conflicts` output honors `jsonpath`/`template`/`prometheus`.** The
+  conflicts scan hand-rolled its json/yaml switch and silently printed text
+  for every other format that validation accepted; it now routes through
+  `internal/render` like the rest of the CLI.
+- **`--output json` and `jsonl` serialize the same bytes.** The json
+  renderer no longer HTML-escapes `<`, `>`, `&` (matching jsonl), so
+  consumers parsing both formats see identical strings for the same field.
+- **TUI history view (`H`) now loads data.** Pressing `H` previously showed
+  a permanent empty state; it now loads snapshots from the health history
+  store in the background (anchored to the selected HPA identity + UID)
+  with explicit loading/error/empty states.
+- **`autoscaler-map` surfaces fetch failures instead of guessing.** Failed
+  scale-target/pod/pending/PDB/quota reads are collected through one
+  observation snapshot and reported as warnings instead of silently
+  rendering "no pods / no quotas near limit" for an RBAC-denied namespace.
+- **`gitops` no longer analyzes drift against `liveReplicas=0` for
+  unsupported scale target kinds.** Kinds outside Deployment/StatefulSet
+  now produce a warning, and the duplicated per-kind fetch branches are
+  collapsed into one helper.
+- **Patch directory export stops matching rendered English text.**
+  `writeGitOpsExport` reports whether a patch document was written; the
+  "no applicable" substring match could silently miscount on any wording
+  change.
+- **`gitops review` reports unreadable manifest files** as `Review.Warnings`
+  instead of silently omitting them, and fails loudly when no manifest
+  could be read at all.
+- **Lint text output reports broken pipes** via the shared error-tracking
+  writer instead of exiting successfully on write failures.
+
+### Changed
+
+- Metric matching is unified: all five metric handlers delegate
+  `MatchesCurrent` to the canonical `metricIdentityMatches`, removing the
+  parallel per-handler semantics that could classify the same spec/status
+  pair differently in freshness vs diagnostics.
+- `pkg/hpa` and `pkg/hpa/simulate` sentinel errors with identical names are
+  now aliases of one shared value (`pkg/hpa/internal/errs`), so `errors.Is`
+  matches uniformly.
+- `pkg/hpa/compare` no longer imports the `pkg/hpa` root: metric formatting
+  comes from `pkg/hpa/core`, the default replica constant from
+  `pkg/hpa/model`, and the health-score diff is injected by the caller via
+  `compare.BuildReportWithScorer` (`BuildReport` omits that line).
+- Cluster doctor performs one API discovery round trip instead of three;
+  KEDA single-HPA lookups `Get` the derived ScaledObject name before
+  falling back to a namespace list; quota/PDB/limitrange listings route
+  through the shared pagination+retry layer and honor `Retry-After`.
+- Default minimum replicas (`1`), the replica-range audit/lint threshold,
+  and the SuccessfulRescale/FailedRescale event reasons are each defined
+  once and shared instead of being re-typed per package.
+- The TUI prunes `selected`/`replicaHistory` entries for deleted HPAs on
+  refresh and stops issuing batch-audit API calls after cancellation.
+
 - **`--redact` now masks credentials in every shared artifact, not just
   structured YAML/JSON.** The textual redactor applied to events, metrics-api
   output, the assembled markdown report, and the plain-text zip entries also

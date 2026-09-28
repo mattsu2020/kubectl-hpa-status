@@ -38,7 +38,7 @@ Inference should be labeled with confidence language and covered by tests.
 | `internal/cmdoptions/` | Structured CLI option model, immutable per-command request snapshots, presets, and normalization, decoupled from cobra |
 | `internal/render/` | Output-format routing and serialization (json/yaml/jsonl/jsonpath/template/prometheus/markdown/html/incident), including write-error propagation |
 | `internal/patch/` | RFC 7396 JSON merge patch helpers for suggestions |
-| `internal/tui/` | Bubble Tea dashboard: a top-level orchestration model plus six clone-safe interactive submodels (simulation, fix, replay, batch audit, history, hints) and per-view controllers that own local keys/messages |
+| `internal/tui/` | Bubble Tea dashboard: a top-level orchestration model plus six clone-safe interactive submodels (simulation, fix, replay, batch audit, history, hints) and per-view controllers that own local keys/messages; the history view loads snapshots in the background through the injected `Options.LoadHistoryFn` (cmd wires it to `internal/history`'s health store) |
 | `internal/history/` | Clock-injected recorder/store shared by status/list history collection and trend replay |
 | `pkg/clock/` | Canonical process-wide time source. Domain packages and the default history recorder delegate here; history retains operation-scoped clock injection for deterministic service tests |
 | `internal/i18n/` | Embedded locale bundles (en/ja), dynamically loaded from `locales/` |
@@ -195,7 +195,10 @@ Refactoring notes:
   client.WrapHPALookupError` and `hpaFetchError` are the two attachment points,
   and the sentinel drives `ExitNotFound` (exit 3), so permission denials and
   server errors must stay unattached and exit 1). Prefer adding a new sentinel
-  over a new unmatchable error string.
+  over a new unmatchable error string. The `pkg/hpa` and `pkg/hpa/simulate`
+  sentinels with identical names (`ErrNilHPA`, `ErrMetricNotFound`,
+  `ErrMetricAmbiguous`) are aliases of one shared value in
+  `pkg/hpa/internal/errs`, so `errors.Is` matches across both packages.
 - `Analysis.SummaryKey` carries the stable i18n key (e.g. `dir_scale_up`)
   produced by `pkg/hpa.SummarizeDirectionWithKey` alongside the English
   `Summary` text. Renderers receive both via
