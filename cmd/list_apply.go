@@ -304,15 +304,17 @@ func validatePatchExportDirectory(dir string) error {
 
 // patchFileName builds the export file name for one HPA, rejecting identities
 // that could escape the export directory. The Kubernetes API validates names
-// to DNS-label rules, so this is defense-in-depth for cached, proxied, or
+// to DNS-name rules, so this is defense-in-depth for cached, proxied, or
 // otherwise non-standard sources.
 func patchFileName(dir, namespace, name string) (string, error) {
 	for _, part := range []string{namespace, name} {
-		if part == "" || part == "." || part == ".." || strings.ContainsAny(part, `/\`) {
+		if part == "" || part == "." || part == ".." || strings.ContainsAny(part, `/\_`) {
 			return "", fmt.Errorf("cannot export patch: unsafe HPA identity %q/%q", namespace, name)
 		}
 	}
-	path := filepath.Join(dir, namespace+"-"+name+"-hpa-patch.yaml")
+	// Kubernetes names cannot contain underscores, making the identity boundary
+	// unambiguous even when both components contain hyphens.
+	path := filepath.Join(dir, namespace+"_"+name+"-hpa-patch.yaml")
 	if filepath.Dir(path) != filepath.Clean(dir) {
 		return "", fmt.Errorf("cannot export patch: resolved path escapes %s", dir)
 	}

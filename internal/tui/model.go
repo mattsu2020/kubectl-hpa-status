@@ -156,11 +156,11 @@ func (s interactiveStates) clone() interactiveStates {
 	return out
 }
 
-// Options holds configuration for the TUI dashboard.
 // HistoryLoader loads persisted history snapshots for one HPA, identified by
 // namespace, name, and the UID observed for that name.
 type HistoryLoader func(ctx context.Context, namespace, name, uid string) ([]hpaanalysis.TimelineSnapshot, error)
 
+// Options holds configuration for the TUI dashboard.
 type Options struct {
 	Namespace     string
 	AllNamespaces bool

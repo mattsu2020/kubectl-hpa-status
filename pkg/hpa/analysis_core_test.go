@@ -456,24 +456,31 @@ func TestAnalyzeScaleToZeroMinReplicasZero(t *testing.T) {
 }
 
 func TestAnalyzeScaleToZeroColdStart(t *testing.T) {
-	minReplicas := int32(0)
-	hpa := baseHPA()
-	hpa.Spec.MinReplicas = &minReplicas
-	hpa.Status.CurrentReplicas = 3
-	hpa.Status.DesiredReplicas = 0
-	hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
-		{Type: "ScalingActive", Status: corev1.ConditionTrue, Reason: "ValidMetricFound"},
-	}
-
-	got := Analyze(hpa, true)
-	if got.ScaleToZero.ScaleToZero == nil || !got.ScaleToZero.ScaleToZero.Enabled {
-		t.Fatalf("expected ScaleToZero enabled, got %#v", got.ScaleToZero.ScaleToZero)
-	}
-	if !got.ScaleToZero.ScaleToZero.ColdStart {
-		t.Fatalf("expected ColdStart=true, got %#v", got.ScaleToZero.ScaleToZero)
-	}
-	if !strings.Contains(got.Decision.Summary, "cold start") {
-		t.Fatalf("expected cold start mention in summary, got %s", got.Decision.Summary)
+	for _, tc := range []struct {
+		name             string
+		current, desired int32
+		coldStart        bool
+		note             string
+	}{
+		{"scaling down to zero", 3, 0, false, "scaling down to zero"},
+		{"idle at zero", 0, 0, false, "at zero replicas"},
+		{"starting from zero", 0, 3, true, "scaling up from zero"},
+		{"ordinary scale up", 2, 3, false, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			hpa := baseHPA()
+			minReplicas := int32(0)
+			hpa.Spec.MinReplicas = &minReplicas
+			hpa.Status.CurrentReplicas = tc.current
+			hpa.Status.DesiredReplicas = tc.desired
+			got := Analyze(hpa, true).ScaleToZero.ScaleToZero
+			if got == nil || !got.Enabled {
+				t.Fatalf("expected scale-to-zero enabled, got %#v", got)
+			}
+			if got.ColdStart != tc.coldStart || !strings.Contains(got.Note, tc.note) {
+				t.Fatalf("current=%d desired=%d: got %#v; want coldStart=%v, note containing %q", tc.current, tc.desired, got, tc.coldStart, tc.note)
+			}
+		})
 	}
 }
 

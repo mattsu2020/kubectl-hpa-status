@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -114,16 +113,4 @@ func podSchedulingReasons(pod corev1.Pod) []string {
 		}
 	}
 	return reasons
-}
-
-// resolveLabelSelector returns the label selector string for the given scale target reference.
-func resolveLabelSelector(ctx context.Context, client kubernetes.Interface, namespace string, ref autoscalingv2.CrossVersionObjectReference) (string, error) {
-	info, err := FetchScaleTargetInfo(ctx, client, namespace, ref)
-	if err != nil {
-		return "", err
-	}
-	if info == nil {
-		return "", fmt.Errorf("kind %q: %w", ref.Kind, ErrUnsupportedScaleTargetKind)
-	}
-	return info.SelectorStr, nil
 }

@@ -2,6 +2,7 @@ package lint
 
 import (
 	"fmt"
+
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/model"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rulefacts"

@@ -51,16 +51,14 @@ func runRecord(ctx context.Context, out io.Writer, opts *options, name string, i
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	counts := map[string]int{}
-	previous := map[string]hpaanalysis.TimelineSnapshot{}
-	interestingChanges := map[string][]string{}
-	trackRecordedSnapshots(initialRecords, counts, previous, interestingChanges)
+	summary := newRecordSummary()
+	summary.track(initialRecords)
 	_, _ = fmt.Fprintf(out, "Recorded %d snapshot(s) at %s\n", len(initialRecords), opts.CurrentTime().Format(time.RFC3339))
 
 	for {
 		select {
 		case <-ctx.Done():
-			return syncAndWriteRecordSummary(file, out, outputPath, counts, interestingChanges, opts.CurrentTime().Sub(start))
+			return syncAndWriteRecordSummary(file, out, outputPath, summary, opts.CurrentTime().Sub(start))
 		case <-ticker.C:
 		}
 
@@ -79,7 +77,7 @@ func runRecord(ctx context.Context, out io.Writer, opts *options, name string, i
 		if err := file.Sync(); err != nil {
 			return fmt.Errorf("failed to sync record file: %w", err)
 		}
-		trackRecordedSnapshots(records, counts, previous, interestingChanges)
+		summary.track(records)
 		_, _ = fmt.Fprintf(out, "Recorded %d snapshot(s) at %s\n", len(records), opts.CurrentTime().Format(time.RFC3339))
 	}
 }
@@ -88,14 +86,13 @@ func syncAndWriteRecordSummary(
 	file *os.File,
 	out io.Writer,
 	outputPath string,
-	counts map[string]int,
-	interestingChanges map[string][]string,
+	summary *recordSummary,
 	elapsed time.Duration,
 ) error {
 	if err := file.Sync(); err != nil {
 		return fmt.Errorf("failed to sync record file: %w", err)
 	}
-	return writeRecordSummary(out, outputPath, counts, interestingChanges, elapsed)
+	return summary.write(out, outputPath, elapsed)
 }
 
 // initializeRecordFile publishes the first successfully fetched batch
@@ -202,24 +199,6 @@ func ensurePublishedRecordFile(file *os.File, path string) error {
 	return nil
 }
 
-func trackRecordedSnapshots(records []hpaanalysis.TimelineTrace, counts map[string]int, previous map[string]hpaanalysis.TimelineSnapshot, interestingChanges map[string][]string) {
-	for _, record := range records {
-		key := record.Namespace + "/" + record.HPAName
-		counts[key]++
-		if len(record.Snapshots) == 0 {
-			continue
-		}
-		snapshot := record.Snapshots[0]
-		if prev, ok := previous[key]; ok {
-			for _, change := range hpaanalysis.DiffSnapshots(prev, snapshot) {
-				interestingChanges[key] = append(interestingChanges[key],
-					fmt.Sprintf("%s %s", snapshot.Timestamp.Format("15:04"), change))
-			}
-		}
-		previous[key] = snapshot
-	}
-}
-
 func recordOnce(ctx context.Context, opts *options, client *kube.Client, name string, interval time.Duration, ec *enrichmentContext) ([]hpaanalysis.TimelineTrace, error) {
 	if name != "" {
 		report, err := buildStatusReport(ctx, opts, client, name, true, ec)
@@ -272,37 +251,6 @@ func writeRecordLine(w io.Writer, trace hpaanalysis.TimelineTrace) error {
 	}
 	if _, err := w.Write(append(data, '\n')); err != nil {
 		return fmt.Errorf("failed to write record line: %w", err)
-	}
-	return nil
-}
-
-func writeRecordSummary(out io.Writer, path string, counts map[string]int, changes map[string][]string, elapsed time.Duration) error {
-	total := 0
-	for _, count := range counts {
-		total += count
-	}
-	if _, err := fmt.Fprintf(out, "Recorded %d snapshots for %d HPAs to %s in %s\n", total, len(counts), path, elapsed.Round(time.Second)); err != nil {
-		return err
-	}
-	if len(changes) == 0 {
-		_, err := fmt.Fprintln(out, "\nInteresting changes: none")
-		return err
-	}
-	if _, err := fmt.Fprintln(out, "\nInteresting changes:"); err != nil {
-		return err
-	}
-	for key, entries := range changes {
-		if len(entries) == 0 {
-			continue
-		}
-		if _, err := fmt.Fprintf(out, "- %s\n", key); err != nil {
-			return err
-		}
-		for _, entry := range entries {
-			if _, err := fmt.Fprintf(out, "  %s\n", entry); err != nil {
-				return err
-			}
-		}
 	}
 	return nil
 }

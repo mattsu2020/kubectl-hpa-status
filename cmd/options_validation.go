@@ -286,7 +286,7 @@ func normalizeEffectiveEnums(cmd *cobra.Command, opts *options) {
 	// used to pass validation but fail at render time). The record command's
 	// documented `-o FILE` fallback must keep file paths untouched, and
 	// jsonpath/template expressions stay case-sensitive.
-	if !(cmd != nil && cmd.Name() == "record" && !isKnownOutputFormat(opts.Output)) {
+	if cmd == nil || cmd.Name() != "record" || isKnownOutputFormat(opts.Output) {
 		opts.Output = normalizeOutputFlag(opts.Output)
 	}
 }

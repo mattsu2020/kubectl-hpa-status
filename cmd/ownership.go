@@ -99,11 +99,8 @@ func buildOwnershipReport(ctx context.Context, client *kube.Client, hpa *autosca
 	report.TargetSpecReplicas = replicas
 	report.Managers = replicaOwnershipManagers(fields)
 
-	if replicas != nil {
-		report.Risks = append(report.Risks, "scale target spec.replicas is present; GitOps or kubectl apply may reset HPA-managed replicas")
-		if hpa.Status.DesiredReplicas > 0 && *replicas != hpa.Status.DesiredReplicas {
-			report.Risks = append(report.Risks, fmt.Sprintf("spec.replicas=%d differs from HPA desiredReplicas=%d", *replicas, hpa.Status.DesiredReplicas))
-		}
+	if replicas != nil && hpa.Status.DesiredReplicas > 0 && *replicas != hpa.Status.DesiredReplicas {
+		report.Risks = append(report.Risks, fmt.Sprintf("spec.replicas=%d differs from HPA desiredReplicas=%d", *replicas, hpa.Status.DesiredReplicas))
 	}
 	for _, manager := range report.Managers {
 		if !looksLikeHPAOwner(manager.Manager) {

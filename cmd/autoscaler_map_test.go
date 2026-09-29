@@ -91,7 +91,9 @@ func TestRunAutoscalerMapSurfacesFetchWarnings(t *testing.T) {
 		testutil.WithScaleTargetRef("Deployment", "web"),
 	)
 	fakeClient := testutil.NewFakeClient(hpa)
-	fakeClient.Tracker().Add(deploy)
+	if err := fakeClient.Tracker().Add(deploy); err != nil {
+		t.Fatal(err)
+	}
 	fakeClient.PrependReactor("list", "pods", func(_ ktesting.Action) (bool, runtime.Object, error) {
 		return true, nil, errors.New("pods is forbidden")
 	})

@@ -40,7 +40,7 @@ func CheckAPIServices(ctx context.Context, client kubernetes.Interface) []APISer
 		if groupsErr == nil {
 			shared = groups
 		}
-		results = append(results, checkAPIGroup(ctx, client, svc.name, svc.apiGroup, svc.apiVersion, shared))
+		results = append(results, checkAPIGroup(client, svc.name, svc.apiGroup, svc.apiVersion, shared))
 	}
 	return results
 }
@@ -53,9 +53,8 @@ type APIServiceStatus struct {
 }
 
 // checkAPIGroup reports one API group's availability. groups may carry a
-// previously fetched discovery result; nil triggers a fresh, cancellable
-// ServerGroups call.
-func checkAPIGroup(ctx context.Context, client kubernetes.Interface, name, apiGroup, apiVersion string, groups *metav1.APIGroupList) APIServiceStatus {
+// previously fetched discovery result; nil triggers a fresh ServerGroups call.
+func checkAPIGroup(client kubernetes.Interface, name, apiGroup, apiVersion string, groups *metav1.APIGroupList) APIServiceStatus {
 	if groups == nil {
 		fetched, err := client.Discovery().ServerGroups()
 		if err != nil {

@@ -65,6 +65,38 @@ func Scenario(hpa *autoscalingv2.HorizontalPodAutoscaler, overrides, metricOverr
 		After:  after,
 	}
 
+	populateSimulationParameters(result, hpa, overrides, metricOverrides)
+
+	for _, name := range sortedMapKeys(metricOverrides) {
+		metricSimulation, err := buildMetricSimulation(hpa, modified, name, metricOverrides[name], before, after)
+		if err != nil {
+			return nil, err
+		}
+		result.MetricSimulations = append(result.MetricSimulations, metricSimulation)
+	}
+	if len(result.MetricSimulations) > 0 {
+		result.Interpretation = buildMetricSimulationInterpretation(&before, &after, result.MetricSimulations)
+	} else {
+		result.Interpretation = buildSimulationInterpretation(&before, &after, modified)
+	}
+	specRisk := assessSimulationRisk(hpa, modified, &before, &after)
+	metricRisk := assessMetricSimulationRisk(hpa, modified, result.MetricSimulations)
+	result.RiskAssessment = strings.Join(nonEmptyStrings(specRisk, metricRisk), "; ")
+	result.Confidence = "estimated"
+	if extOpts.DurationSeconds > 0 {
+		projection, err := ProjectReplicaTrajectory(hpa, modified, extOpts)
+		if err != nil {
+			return nil, err
+		}
+		result.TimeSeriesProjection = projection
+	}
+	result.RiskWarnings = assessExtendedRisk(modified, overrides, result)
+
+	return result, nil
+}
+
+// populateSimulationParameters describes the requested override inputs.
+func populateSimulationParameters(result *SimulationResult, hpa *autoscalingv2.HorizontalPodAutoscaler, overrides, metricOverrides map[string]string) {
 	parameterCount := len(overrides) + len(metricOverrides)
 	switch {
 	case parameterCount == 1 && len(overrides) == 1:
@@ -93,32 +125,6 @@ func Scenario(hpa *autoscalingv2.HorizontalPodAutoscaler, overrides, metricOverr
 		result.Parameter = strings.Join(parts, ", ")
 	}
 
-	for _, name := range sortedMapKeys(metricOverrides) {
-		metricSimulation, err := buildMetricSimulation(hpa, modified, name, metricOverrides[name], before, after)
-		if err != nil {
-			return nil, err
-		}
-		result.MetricSimulations = append(result.MetricSimulations, metricSimulation)
-	}
-	if len(result.MetricSimulations) > 0 {
-		result.Interpretation = buildMetricSimulationInterpretation(&before, &after, result.MetricSimulations)
-	} else {
-		result.Interpretation = buildSimulationInterpretation(&before, &after, modified)
-	}
-	specRisk := assessSimulationRisk(hpa, modified, &before, &after)
-	metricRisk := assessMetricSimulationRisk(hpa, modified, result.MetricSimulations)
-	result.RiskAssessment = strings.Join(nonEmptyStrings(specRisk, metricRisk), "; ")
-	result.Confidence = "estimated"
-	if extOpts.DurationSeconds > 0 {
-		projection, err := ProjectReplicaTrajectory(hpa, modified, extOpts)
-		if err != nil {
-			return nil, err
-		}
-		result.TimeSeriesProjection = projection
-	}
-	result.RiskWarnings = assessExtendedRisk(modified, overrides, result)
-
-	return result, nil
 }
 
 // BuildSimulatedHPA returns a deep-copied HPA with all overrides applied and

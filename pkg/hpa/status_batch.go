@@ -24,7 +24,7 @@ const (
 // Shape (JSON):
 //
 //	{
-//	  "apiVersion": "hpa-status/v1",
+//	  "apiVersion": "hpa-status/v2",
 //	  "items": [
 //	    {"namespace": "...", "name": "...", "status": "ok", "report": {...}},
 //	    {"namespace": "...", "name": "...", "status": "error", "error": "..."}

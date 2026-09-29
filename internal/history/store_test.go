@@ -248,8 +248,7 @@ const (
 // O_EXCL+mtime design), and it must become acasurable right after release.
 func TestHistoryLockProcessLevelExclusion(t *testing.T) {
 	if role := os.Getenv(childEnvRole); role != "" {
-		runLockChildRole(t, role)
-		return
+		os.Exit(runLockChildRole(role))
 	}
 	path := filepath.Join(t.TempDir(), "history.jsonl")
 
@@ -292,10 +291,10 @@ func runLockChild(t *testing.T, path, role string) int {
 	return 0
 }
 
-func runLockChildRole(t *testing.T, role string) {
+func runLockChildRole(role string) int {
 	target := os.Getenv(roleLockTargetEnv)
 	if target == "" {
-		os.Exit(4)
+		return 4
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), hammerChildWaitSpan)
 	defer cancel()
@@ -305,20 +304,20 @@ func runLockChildRole(t *testing.T, role string) {
 		if err == nil {
 			release()
 			fmt.Println("CHILD-ERROR: acquired lock that must be held")
-			os.Exit(3)
+			return 3
 		}
 		fmt.Println("CHILD-OK: lock held by live process was not stolen")
 	case roleLockMayAcquire:
 		if err != nil {
 			fmt.Printf("CHILD-ERROR: released lock not acquirable: %v\n", err)
-			os.Exit(3)
+			return 3
 		}
 		release()
 		fmt.Println("CHILD-OK: acquired released lock")
 	default:
-		os.Exit(4)
+		return 4
 	}
-	os.Exit(0)
+	return 0
 }
 
 // TestHistoryMultiProcessRecordDoesNotLoseUpdates hammers one history file

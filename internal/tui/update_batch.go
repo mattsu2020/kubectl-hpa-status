@@ -115,10 +115,9 @@ func (m Model) handleBatchApplyKey() (tea.Model, tea.Cmd) {
 
 // batchApplyPatchEntry pairs an HPA location with a single applicable patch.
 type batchApplyPatchEntry struct {
-	namespace string
-	name      string
-	patch     string
-	title     string
+	namespace  string
+	name       string
+	suggestion hpaanalysis.Suggestion
 }
 
 // collectBatchApplyPatches gathers all auto-applicable patches across the selected HPAs' reports.
@@ -132,10 +131,9 @@ func collectBatchApplyPatches(selected []string, reports map[string]*hpaanalysis
 		for _, s := range report.Analysis.Actions.Suggestions {
 			if s.Apply && s.Patch != "" {
 				patches = append(patches, batchApplyPatchEntry{
-					namespace: report.Analysis.Meta.Namespace,
-					name:      report.Analysis.Meta.Name,
-					patch:     s.Patch,
-					title:     s.Title,
+					namespace:  report.Analysis.Meta.Namespace,
+					name:       report.Analysis.Meta.Name,
+					suggestion: s,
 				})
 			}
 		}
@@ -146,7 +144,7 @@ func collectBatchApplyPatches(selected []string, reports map[string]*hpaanalysis
 func batchApplyPreviewLines(patches []batchApplyPatchEntry) []string {
 	preview := make([]string, 0, len(patches))
 	for _, p := range patches {
-		preview = append(preview, fmt.Sprintf("%s/%s: %s", p.namespace, p.name, p.title))
+		preview = append(preview, fmt.Sprintf("%s/%s: %s", p.namespace, p.name, p.suggestion.Title))
 	}
 	return preview
 }
@@ -173,11 +171,7 @@ func executeBatchApply(ctx context.Context, applyFn ApplyFunc, patches []batchAp
 			groupIndex[key] = index
 			groups = append(groups, hpaPatchGroup{namespace: p.namespace, name: p.name})
 		}
-		groups[index].suggestions = append(groups[index].suggestions, hpaanalysis.Suggestion{
-			Title: p.title,
-			Patch: p.patch,
-			Apply: true,
-		})
+		groups[index].suggestions = append(groups[index].suggestions, p.suggestion)
 	}
 
 	var errs []error

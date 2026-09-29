@@ -344,7 +344,7 @@ kubectl hpa status record -A --interval=15s --duration=1h -o hpa-history.jsonl
 kubectl hpa status timeline web -n production --from-record hpa-history.jsonl
 ```
 
-The record file stores one compact trace per HPA per polling cycle. At shutdown, the command prints how many snapshots were captured and highlights interesting changes such as desired replica changes, health transitions, score changes, and condition changes.
+The record file stores one compact trace per HPA per polling cycle. At shutdown, the command prints how many snapshots were captured and highlights interesting changes such as desired replica changes, health transitions, score changes, and condition changes. The terminal summary retains only the latest 100 changes per HPA and reports how many earlier changes were omitted. Every snapshot remains in the JSONL file.
 
 Use this when you need a durable answer to "what changed around the time this HPA did not scale?" The data is still based on visible HPA status, conditions, metrics, and events; it does not expose private controller internals.
 
@@ -414,7 +414,7 @@ kubectl hpa status web -n prod --suggest --export kustomize
 kubectl hpa status scan -A --problem --export directory
 ```
 
-The single-HPA formats print a minimal `autoscaling/v2` HPA patch document or Kustomize/Helm-friendly snippet. The `directory` mode writes one YAML patch per HPA under `hpa-patches/` for PR workflows.
+The single-HPA formats print a minimal `autoscaling/v2` HPA patch document or Kustomize/Helm-friendly snippet. The `directory` mode writes one YAML patch per HPA under `hpa-patches/` for PR workflows. Filenames use `<namespace>_<name>-hpa-patch.yaml`; the underscore separates identities unambiguously, including names containing hyphens.
 
 ## Hidden Decision Factors
 

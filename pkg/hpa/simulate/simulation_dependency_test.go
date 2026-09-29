@@ -25,7 +25,7 @@ func TestDependencyMissingReturnsErrorNotPanic(t *testing.T) {
 	if _, err := AnalysisFuncInvoker(nil, false, AnalysisOptions{}); !errors.Is(err, ErrDependencyMissing) {
 		t.Fatalf("AnalysisFuncInvoker error = %v, want ErrDependencyMissing", err)
 	}
-	if _, _, err := metricImpactRatioInvoker(nil, autoscalingv2.MetricStatus{}); !errors.Is(err, ErrDependencyMissing) {
+	if _, err := metricImpactRatioInvoker(nil, autoscalingv2.MetricStatus{}); !errors.Is(err, ErrDependencyMissing) {
 		t.Fatalf("metricImpactRatioInvoker error = %v, want ErrDependencyMissing", err)
 	}
 }

@@ -122,24 +122,7 @@ func assembleAutoscalerMapInput(ctx context.Context, client *kube.Client, opts *
 		if info.SelectorStr != "" {
 			podInfos := snapshot.PodInfos(ctx)
 			if podInfos.Known() {
-				var running, pending, ready int32
-				for _, p := range podInfos.Data {
-					switch p.Phase {
-					case "Pending":
-						pending++
-					case "Running":
-						running++
-					}
-					if p.Ready {
-						ready++
-					}
-				}
-				input.PodSummary = autoscalermap.PodSummary{
-					Total:   int32(len(podInfos.Data)),
-					Running: running,
-					Pending: pending,
-					Ready:   ready,
-				}
+				input.PodSummary = summarizeAutoscalerPods(podInfos.Data)
 			} else if podInfos.State == observation.StateUnavailable {
 				warnings = append(warnings, fmt.Sprintf("pods unavailable: %v", podInfos.Err))
 			}
@@ -342,4 +325,20 @@ func fetchAutoscalerMapQuotas(ctx context.Context, client *kube.Client, namespac
 		})
 	}
 	return result, nil
+}
+
+func summarizeAutoscalerPods(pods []kube.PodInfo) autoscalermap.PodSummary {
+	summary := autoscalermap.PodSummary{Total: int32(len(pods))}
+	for _, pod := range pods {
+		switch pod.Phase {
+		case "Pending":
+			summary.Pending++
+		case "Running":
+			summary.Running++
+		}
+		if pod.Ready {
+			summary.Ready++
+		}
+	}
+	return summary
 }

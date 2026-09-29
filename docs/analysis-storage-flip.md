@@ -4,8 +4,9 @@ Status: **executed** (Stages A–D landed on the v3.x line). This document
 records the design and the as-executed outcome of the "v3 `Analysis` storage
 flip" tracked in `ROADMAP.md` ("Slim the `Analysis` god-struct" / "v4
 Breaking Changes (Planned)"): the 13 grouped views are the primary in-memory
-storage, the flat v1 fields became accessor methods, and v4.0.0 only has to
-delete. No wire bytes, text output, or exit codes changed.
+storage, and the flat v1 fields became accessor methods. No wire bytes,
+text output, or exit codes changed on the v3 line. The final section records
+the completed v4 removal and the current migration API.
 
 ## Why a written design
 
@@ -22,7 +23,7 @@ suite. The two hazards the design anticipated and the sweep handled:
   silently. The sweep therefore rewrote every Analysis-typed selector via
   `go/types` receiver resolution rather than waiting for compile errors.
 - **Reflection renderers**: jsonpath/Go templates walk struct fields, not
-  methods; `internal/render` now projects Analysis-bearing report values to
+  methods; `internal/render` on the v3 line projected Analysis-bearing report values to
   the flat v1 shape (`projectForReflection`) before executing expressions.
 
 ## Measured migration surface (2026-08, main @ e0bf05b)
@@ -98,31 +99,28 @@ pairs, `FlatAnalysis`, the V1 envelopes, and `MarshalJSON`/`UnmarshalJSON`
 were all removed, and Analysis marshals natively as the grouped v2 shape
 (the structured renderers project report values through
 `ProjectStatusReportV2` for the `apiVersion` envelope). A third mechanical
-sweep (~1,450 edits) migrated in-tree call sites and literals. The original
-removal table follows for migration reference.
+sweep (~1,450 edits) migrated in-tree call sites and literals. The current
+migration table follows.
 
-With no in-tree flat readers left, v4.0.0 deletes the accessor methods (or
-the whole flat surface) and ships the migration table mapping each retired
-field to its grouped view (same table shape the 3.0.0 facade removal used):
+The retired flat fields and v3 accessor methods map to exported groups:
 
 | Retired Go API | v4 replacement |
 | --- | --- |
-| `a.Current`, `a.Desired`, `a.Min`, `a.Max`, `a.TargetReplicas` | `a.Replicas().Current`, ... (or the `ReplicasView` group) |
-| `a.Health`, `a.HealthScore`, `a.Summary`, `a.SummaryKey`, `a.ImpactMetric`, traces, signals | `a.Decision()` group |
-| `a.Namespace`, `a.Name`, `a.Target`, `a.CreationTimestamp` | `a.Meta()` group |
-| `a.Metrics`, diagnostics/freshness/contract/hints/adapter | `a.MetricsGroup()` group |
-| `a.Conditions`, `a.Behavior`, stabilization fields | `a.ConditionsGroup()` group |
-| `a.Actions`, `a.Suggestions`, structured/interpretation/assumptions/warnings | `a.ActionsGroup()` group |
-| `a.StaleStatus`, `a.HealthTrend`, `a.Debug`, `a.HiddenFactors`, `a.EnrichmentStatus` | `a.Lifecycle()` group |
-| capacity/pod/scale-path/readiness fields | `a.Capacity()` group |
-| `a.ScaleToZero`, `a.WarmupAnalysis` | `a.ScaleToZeroGroup()` group |
-| simulation/prevention/diagnosis/churn | `a.Stability()` group |
-| VPA/container/behavior advisors | `a.Advisory()` group |
-| `a.KEDAInfo`, `a.RolloutDiagnosis`, `a.ControllerProfile` | `a.Controllers()` group |
-| `a.BlockerReport`, `a.GitOpsConflict` | `a.Blockers()` group |
-| setters (`a.SetX(...)`) | write the group: `a.Replicas().Current` is a copy — use `NewAnalysis(FlatAnalysis{...})` or targeted setters retained at v4's discretion |
-| `&Analysis{field: v}` literals | `NewAnalysis(FlatAnalysis{field: v})` (available now) |
+| `a.Current`, `a.Desired`, `a.Min`, `a.Max`, `a.TargetReplicas` | `a.Replicas.Current`, ... (or the `ReplicasView` group) |
+| `a.Health`, `a.HealthScore`, `a.Summary`, `a.SummaryKey`, `a.ImpactMetric`, traces, signals | `a.Decision` group |
+| `a.Namespace`, `a.Name`, `a.Target`, `a.CreationTimestamp` | `a.Meta` group |
+| `a.Metrics`, diagnostics/freshness/contract/hints/adapter | `a.Metrics` group |
+| `a.Conditions`, `a.Behavior`, stabilization fields | `a.Conditions` group |
+| `a.Actions`, `a.Suggestions`, structured/interpretation/assumptions/warnings | `a.Actions` group |
+| `a.StaleStatus`, `a.HealthTrend`, `a.Debug`, `a.HiddenFactors`, `a.EnrichmentStatus` | `a.Lifecycle` group |
+| capacity/pod/scale-path/readiness fields | `a.Capacity` group |
+| `a.ScaleToZero`, `a.WarmupAnalysis` | `a.ScaleToZero` group |
+| simulation/prevention/diagnosis/churn | `a.Stability` group |
+| VPA/container/behavior advisors | `a.Advisory` group |
+| `a.KEDAInfo`, `a.RolloutDiagnosis`, `a.ControllerProfile` | `a.Controllers` group |
+| `a.BlockerReport`, `a.GitOpsConflict` | `a.Blockers` group |
+| setters (`a.SetX(...)`) | assign the exported group field, e.g. `a.Replicas.Current = v` |
+| `&Analysis{field: v}` literals | `&Analysis{Replicas: ReplicasView{Current: v}}` (choose the corresponding group) |
 
-The v1 wire retirement (also v4) then removes `--output-schema=v1`,
-`FlatAnalysis`, the V1 projections, and `MarshalJSON`/`UnmarshalJSON` in one
-commit — the schema contract test pins move to the v2 schema only.
+The v1 wire retirement in v4 also removed `--output-schema=v1`,
+`FlatAnalysis`, the V1 projections, and `MarshalJSON`/`UnmarshalJSON` — the schema contract tests now pin the v2 schema only.

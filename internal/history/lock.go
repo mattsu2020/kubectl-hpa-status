@@ -29,6 +29,9 @@ func acquireLockContext(ctx context.Context, path string) (func(), error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("acquiring history lock: %w", err)
+	}
 	lockPath := path + ".lock"
 	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, storeFileMode)
 	if err != nil {
@@ -36,12 +39,21 @@ func acquireLockContext(ctx context.Context, path string) (func(), error) {
 	}
 	deadline := time.Now().Add(lockTimeout)
 	for {
+		if err := ctx.Err(); err != nil {
+			_ = f.Close()
+			return nil, fmt.Errorf("acquiring history lock %s: %w", lockPath, err)
+		}
 		err := tryLockFile(f)
 		if err == nil {
-			return func() {
+			release := func() {
 				_ = unlockFile(f)
 				_ = f.Close()
-			}, nil
+			}
+			if err := ctx.Err(); err != nil {
+				release()
+				return nil, fmt.Errorf("acquiring history lock %s: %w", lockPath, err)
+			}
+			return release, nil
 		}
 		if time.Now().After(deadline) {
 			_ = f.Close()

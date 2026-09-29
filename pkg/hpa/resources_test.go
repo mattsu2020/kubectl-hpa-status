@@ -812,14 +812,15 @@ func TestCheckResourceConsistency_AverageValueWithoutRequestsIsNotAMisdiagnosis(
 		},
 	}
 	result := CheckResourceConsistency(hpa, resources)
+	if result == nil {
+		t.Fatal("expected the missing-limits warning to still apply")
+	}
 	for _, w := range result.Warnings {
 		if w.Category == "missing-requests" || w.Category == "zero-requests" || w.Category == "tiny-request" {
 			t.Errorf("requests-dependent diagnostic %q fired for an AverageValue target: %+v", w.Category, w)
 		}
 	}
-	if result == nil {
-		t.Fatal("expected the missing-limits warning to still apply")
-	}
+
 	foundLimits := false
 	for _, w := range result.Warnings {
 		if w.Category == "missing-limits" {

@@ -3,11 +3,8 @@ package kube
 import (
 	"testing"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/kubernetes/fake"
 )
 
 func TestContainerStatusesFromPods(t *testing.T) {
@@ -109,12 +106,4 @@ func TestContainerStatusesFromPods(t *testing.T) {
 			t.Errorf("expected RestartCount=5, got %d", result[0].RestartCount)
 		}
 	})
-}
-
-func fakeClientWithPods(pods ...*corev1.Pod) *fake.Clientset {
-	objects := make([]runtime.Object, 0, len(pods))
-	for _, pod := range pods {
-		objects = append(objects, pod)
-	}
-	return testutil.NewFakeClientWithObjects(objects...)
 }

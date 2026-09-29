@@ -88,10 +88,13 @@ func detectScaleToZero(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler, m
 		return a
 	}
 	info := &ScaleToZeroInfo{Enabled: true}
-	if src.Status.DesiredReplicas == 0 && src.Status.CurrentReplicas > 0 {
+	switch {
+	case src.Status.CurrentReplicas == 0 && src.Status.DesiredReplicas > 0:
 		info.ColdStart = true
-		info.Note = "Cold start: scaling from 0 to 1 may experience additional delay; the first metric evaluation must complete before replicas are provisioned."
-	} else if src.Status.DesiredReplicas == 0 && src.Status.CurrentReplicas == 0 {
+		info.Note = "Cold start: scaling up from zero replicas may experience additional provisioning and startup delay."
+	case src.Status.DesiredReplicas == 0 && src.Status.CurrentReplicas > 0:
+		info.Note = "HPA is scaling down to zero replicas. The next scale-up requires a cold start."
+	case src.Status.DesiredReplicas == 0 && src.Status.CurrentReplicas == 0:
 		info.Note = "HPA is at zero replicas (scaled to zero). The next scale-up requires a cold start."
 	}
 	a.ScaleToZero.ScaleToZero = info

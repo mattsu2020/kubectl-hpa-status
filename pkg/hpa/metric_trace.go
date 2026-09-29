@@ -157,7 +157,7 @@ func winnerHiddenByControllerState(hpa *autoscalingv2.HorizontalPodAutoscaler) b
 }
 
 func toleranceDirection(ratio float64) string {
-	return tolerance.ToleranceDirection(ratio)
+	return tolerance.Direction(ratio)
 }
 
 // buildStabilizationEffect checks whether scale-down stabilization is active
@@ -216,10 +216,10 @@ func buildToleranceEffect(hpa *autoscalingv2.HorizontalPodAutoscaler, entries []
 	}
 
 	if len(suppressed) == len(entries) {
-		effect.Note = fmt.Sprintf("all metrics within directional tolerance bands (scaleUp=%.3f, scaleDown=%.3f), no scaling decision triggered",
+		effect.Note = fmt.Sprintf("all metrics within directional tolerance bands (scaleUp=%.3f, scaleDown=%.3f), scaling is estimated to be suppressed",
 			effect.ScaleUpTolerance, effect.ScaleDownTolerance)
 	} else {
-		effect.Note = fmt.Sprintf("tolerance suppressed scaling for: %s", strings.Join(suppressed, ", "))
+		effect.Note = fmt.Sprintf("tolerance is estimated to suppress scaling for: %s", strings.Join(suppressed, ", "))
 	}
 
 	return effect
