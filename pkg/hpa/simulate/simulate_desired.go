@@ -118,7 +118,7 @@ func simulatedDesiredFromMetrics(hpa *autoscalingv2.HorizontalPodAutoscaler) (in
 	var desired int32
 	found := false
 	for _, metric := range hpa.Status.CurrentMetrics {
-		_, ratio, err := metricImpactRatioInvoker(hpa, metric)
+		ratio, err := metricImpactRatioInvoker(hpa, metric)
 		if err != nil {
 			return 0, false, err
 		}
@@ -178,7 +178,7 @@ func validateSimulatedZeroProjection(hpa *autoscalingv2.HorizontalPodAutoscaler)
 		return nil
 	}
 	for _, metric := range hpa.Status.CurrentMetrics {
-		_, ratio, err := metricImpactRatioInvoker(hpa, metric)
+		ratio, err := metricImpactRatioInvoker(hpa, metric)
 		if err != nil {
 			return err
 		}

@@ -36,28 +36,23 @@ func EstimateDecisionSignals(hpa *autoscalingv2.HorizontalPodAutoscaler) []Decis
 	conditionSigs := buildConditionDecisionSignals(hpa)
 	signals = append(signals, conditionSigs...)
 
-	// Set adapter version and derive the user-facing Classification from each
-	// signal's Confidence so tooling can render a consistent [observed]/
-	// [estimated]/[assumed] evidence label without re-deriving the mapping.
+	// Evidence describes the source, independently of confidence: even a
+	// high-confidence calculation is estimated rather than controller-observed.
 	for i := range signals {
 		signals[i].AdapterVersion = adapterVersionEstimation
-		signals[i].Classification = classifyConfidence(signals[i].Confidence)
+		signals[i].Classification = classifyDecisionSignal(signals[i])
 	}
 
 	return signals
 }
 
-// classifyConfidence maps a DecisionSignal's string Confidence (high/medium/low)
-// to its user-facing Classification. High → observed (read directly from HPA
-// status), medium → estimated (inferred from visible signals), anything else
-// (low, empty) → unknown (the HPA controller does not expose it). This mirrors
-// confidence.Confidence.Classify but operates on the string form stored in
-// DecisionSignal so callers do not need to re-parse the enum.
-func classifyConfidence(confidence string) string {
-	switch Confidence(confidence) {
-	case ConfidenceHigh:
+// classifyDecisionSignal distinguishes API conditions from derived signals.
+func classifyDecisionSignal(signal DecisionSignal) string {
+	if signal.Source == "HPAController" {
 		return string(ClassificationObserved)
-	case ConfidenceMedium:
+	}
+	switch Confidence(signal.Confidence) {
+	case ConfidenceHigh, ConfidenceMedium:
 		return string(ClassificationEstimated)
 	default:
 		return string(ClassificationUnknown)
@@ -150,7 +145,7 @@ func buildMetricDecisionSignals(hpa *autoscalingv2.HorizontalPodAutoscaler) []De
 			Reason:     "ToleranceEffect",
 			Message:    trace.ToleranceEffect.Note,
 			Source:     "Tolerance",
-			Confidence: string(ConfidenceHigh),
+			Confidence: string(ConfidenceMedium),
 		}
 		signals = append(signals, sig)
 	}

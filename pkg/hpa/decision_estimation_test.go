@@ -247,12 +247,8 @@ func TestBuildConditionDecisionSignals(t *testing.T) {
 	})
 }
 
-// TestEstimateDecisionSignalsSetsClassification verifies every signal
-// produced by EstimateDecisionSignals carries a Classification derived from
-// its Confidence, so structured output can render a consistent [observed]/
-// [estimated]/[unknown] evidence label. This is the C-9 guarantee: a user can
-// tell at a glance whether a decision signal is read from the API, inferred,
-// or assumed.
+// TestEstimateDecisionSignalsSetsClassification distinguishes controller evidence
+// from calculations, regardless of their confidence.
 func TestEstimateDecisionSignalsSetsClassification(t *testing.T) {
 	// Use an AbleToScale/DesiredWithinTolerance condition so the tolerance
 	// signal is produced (ConfidenceHigh -> Classification observed).
@@ -280,36 +276,27 @@ func TestEstimateDecisionSignalsSetsClassification(t *testing.T) {
 	if len(signals) == 0 {
 		t.Fatal("expected at least one decision signal")
 	}
-	// classifyConfidence maps high→observed, medium→estimated, else→unknown.
-	// Every signal must have a non-empty Classification consistent with the
-	// confidence→classification map.
 	for _, sig := range signals {
-		if sig.Classification == "" {
-			t.Errorf("signal %q has empty Classification; it should be derived from Confidence %q", sig.Reason, sig.Confidence)
-		}
-		want := classifyConfidence(sig.Confidence)
-		if sig.Classification != want {
-			t.Errorf("signal %q Classification = %q, want %q (from Confidence %q)", sig.Reason, sig.Classification, want, sig.Confidence)
+		if sig.Classification != string(ClassificationObserved) {
+			t.Errorf("controller signal %q classified as %q", sig.Reason, sig.Classification)
 		}
 	}
 }
 
-// TestClassifyConfidence verifies the confidence→classification mapping that
-// DecisionSignal.Classification is derived from.
-func TestClassifyConfidence(t *testing.T) {
-	cases := []struct {
-		confidence string
-		want       string
+func TestClassifyDecisionSignal(t *testing.T) {
+	for _, tc := range []struct {
+		source, confidence, want string
 	}{
-		{string(ConfidenceHigh), string(ClassificationObserved)},
-		{string(ConfidenceMedium), string(ClassificationEstimated)},
-		{string(ConfidenceLow), string(ClassificationUnknown)},
-		{"", string(ClassificationUnknown)},
-		{"garbage", string(ClassificationUnknown)},
-	}
-	for _, c := range cases {
-		if got := classifyConfidence(c.confidence); got != c.want {
-			t.Errorf("classifyConfidence(%q) = %q, want %q", c.confidence, got, c.want)
+		{"HPAController", "high", "observed"},
+		{"MetricDecisionTrace", "high", "estimated"},
+		{"Tolerance", "medium", "estimated"},
+		{"MetricDecisionTrace", "low", "unknown"},
+		{"", "", "unknown"},
+		{"MetricRatio", "garbage", "unknown"},
+	} {
+		got := classifyDecisionSignal(DecisionSignal{Source: tc.source, Confidence: tc.confidence})
+		if got != tc.want {
+			t.Errorf("source=%q confidence=%q: classification=%q, want %q", tc.source, tc.confidence, got, tc.want)
 		}
 	}
 }

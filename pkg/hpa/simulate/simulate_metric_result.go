@@ -3,8 +3,9 @@ package simulate
 import (
 	"errors"
 	"fmt"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/model"
 	"strings"
+
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/model"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/tolerance"
 
@@ -42,7 +43,7 @@ func buildMetricSimulation(original, modified *autoscalingv2.HorizontalPodAutosc
 	if modifiedErr != nil || modifiedIdx < 0 {
 		return ms, nil
 	}
-	_, ratio, ratioErr := metricImpactRatioInvoker(modified, modified.Status.CurrentMetrics[modifiedIdx])
+	ratio, ratioErr := metricImpactRatioInvoker(modified, modified.Status.CurrentMetrics[modifiedIdx])
 	if ratioErr != nil {
 		return ms, ratioErr
 	}
@@ -69,9 +70,9 @@ func buildMetricSimulation(original, modified *autoscalingv2.HorizontalPodAutosc
 		ms.ProjectedReplicas = projected
 		within, toleranceValue := tolerance.RatioWithinTolerance(modified, *ratio)
 		if within {
-			ms.ToleranceImpact = fmt.Sprintf("%s tolerance %.3f suppresses scaling", tolerance.ToleranceDirection(*ratio), toleranceValue)
+			ms.ToleranceImpact = fmt.Sprintf("%s tolerance %.3f suppresses scaling", tolerance.Direction(*ratio), toleranceValue)
 		} else {
-			ms.ToleranceImpact = fmt.Sprintf("outside %s tolerance %.3f", tolerance.ToleranceDirection(*ratio), toleranceValue)
+			ms.ToleranceImpact = fmt.Sprintf("outside %s tolerance %.3f", tolerance.Direction(*ratio), toleranceValue)
 		}
 	}
 	if strings.HasPrefix(value, "+") || strings.HasPrefix(value, "-") {

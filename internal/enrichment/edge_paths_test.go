@@ -43,7 +43,7 @@ func TestRunPipelineDisabledAndNilRunnerPolicies(t *testing.T) {
 		err := RunPipeline(context.Background(), []PipelineTask{
 			{Name: "broken", Enabled: true, AbortOnError: false, Run: nil},
 			{Name: "after", Enabled: true, Run: func(context.Context) error { ran = true; return nil }},
-		}, func(name string, err error) { failures = append(failures, name) })
+		}, func(name string, _ error) { failures = append(failures, name) })
 		if err != nil {
 			t.Fatalf("best-effort nil runner must not fail the pipeline: %v", err)
 		}

@@ -2,9 +2,10 @@ package gitops
 
 import (
 	"bytes"
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 	"strings"
 	"testing"
+
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )

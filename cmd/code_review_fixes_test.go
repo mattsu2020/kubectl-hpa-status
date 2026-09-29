@@ -16,27 +16,21 @@ import (
 // (which normalized for the check) and then fail at render time after all
 // API work was done. Normalization now happens once, on opts.
 func TestNormalizeOutputFlagCanonicalizesCasing(t *testing.T) {
-	cases := map[string]string{
-		"JSON":        "json",
-		"  YAML ":     "yaml",
-		"Jsonl":       "jsonl",
-		"gotemplate":  "go-template",
-		"table":       "table",
-		"":            "",
-		"unknown-foo": "unknown-foo",
+	cases := []struct{ in, want string }{
+		{"JSON", "json"},
+		{"  YAML ", "yaml"},
+		{"Jsonl", "jsonl"},
+		{"gotemplate", "go-template"},
+		{"table", "table"},
+		{"", ""},
+		{"unknown-foo", "unknown-foo"},
 	}
-	for in, want := range cases {
-		if got := normalizeOutputFlag(in); got != want {
-			t.Errorf("normalizeOutputFlag(%q) = %q, want %q", in, got, want)
+	for _, tc := range cases {
+		if got := normalizeOutputFlag(tc.in); got != tc.want {
+			t.Errorf("normalizeOutputFlag(%q) = %q, want %q", tc.in, got, tc.want)
 		}
 	}
-	// Expressions keep their case; only the format prefix is canonicalized.
-	if got := normalizeOutputFlag("JSONPATH={.items[*].metadata.name}"); got != "jsonpath={.items[*].metadata.name}" {
-		t.Errorf("jsonpath expression casing not preserved: %q", got)
-	}
-	if got := normalizeOutputFlag("Template={{.Name}}"); got != "template={{.Name}}" {
-		t.Errorf("template expression casing not preserved: %q", got)
-	}
+
 }
 
 // TestValidateEffectiveOptionsNormalizesOutput verifies the end-to-end

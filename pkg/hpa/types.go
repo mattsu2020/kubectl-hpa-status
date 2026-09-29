@@ -261,7 +261,8 @@ type StaleStatusInfo struct {
 
 // ScaleToZeroInfo holds scale-to-zero related information.
 type ScaleToZeroInfo struct {
-	Enabled   bool   `json:"enabled" yaml:"enabled"`
+	Enabled bool `json:"enabled" yaml:"enabled"`
+	// ColdStart is true while scaling up from currentReplicas=0.
 	ColdStart bool   `json:"coldStart,omitempty" yaml:"coldStart,omitempty"`
 	Note      string `json:"note,omitempty" yaml:"note,omitempty"`
 }

@@ -138,8 +138,8 @@ func ParsePrefixedFormat(format string) (expr string, kind string, ok bool) {
 // JSONLines writes value as newline-delimited JSON (JSON Lines / jsonl). For a
 // ListReport each item is emitted on its own line, and []StatusRecordV2 emits
 // one canonical v2 record per line. Other types produce one line for the whole
-// value; notably, the historical v1 []StatusReport shape remains one JSON array
-// on one line.
+// value; unprojected []StatusReport values produce one grouped JSON array on
+// one line. Callers needing record envelopes must project them first.
 // JSONL is the streaming-friendly counterpart of "json": a large list can be
 // produced and consumed one record at a time without buffering the whole array.
 func JSONLines(out io.Writer, value any) error {

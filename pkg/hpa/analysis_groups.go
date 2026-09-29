@@ -15,19 +15,10 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/warmup"
 )
 
-// This file provides additive, read-only "group views" over the flat Analysis
-// struct. The flat fields and their JSON tags remain the default v1 contract;
-// ProjectStatusReportV2 uses these views for the opt-in nested v2 contract.
-// Keeping projection separate from storage lets both schemas share one
-// analysis implementation until the v1 wire shape can be retired in a future
-// major version.
-//
-// Each view is a plain value struct (no methods, no mutation) returned by a
-// method on *Analysis. The views are snapshots: they copy scalar/struct values
-// and share pointer/slice backing arrays (read-only by convention). Callers
-// must not mutate the returned views' slice/map fields.
-
-// The groups match the documented v2 schema.
+// These group types are the primary storage and public Go API of Analysis.
+// Their JSON/YAML fields define the grouped v2 schema. Grouped copies scalar
+// values while sharing pointer, slice, and map data; treat copied groups as
+// read-only unless the caller owns that data.
 
 // MetaView groups HPA identity fields: namespace, name, target, creation time.
 type MetaView struct {
@@ -147,8 +138,7 @@ type BlockersView struct {
 }
 
 // GroupedAnalysis is the nested representation used by the v2 output schema.
-// The existing flat Analysis remains the v1 wire contract; serializers can
-// consume this value without learning the flat field layout.
+// It shares the same group types as Analysis.
 type GroupedAnalysis struct {
 	Meta        MetaView        `json:"meta" yaml:"meta"`
 	Replicas    ReplicasView    `json:"replicas" yaml:"replicas"`
@@ -166,8 +156,7 @@ type GroupedAnalysis struct {
 }
 
 // Grouped returns all v2 groups in one stable value. The grouped views are
-// the primary storage, so this is a plain copy-out; the v1 flat shape is the
-// inverse projection (Analysis.Flat).
+// the primary storage, so this is a plain copy-out with shared reference data.
 func (a *Analysis) Grouped() GroupedAnalysis {
 	if a == nil {
 		return GroupedAnalysis{}

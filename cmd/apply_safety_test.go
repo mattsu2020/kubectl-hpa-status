@@ -14,6 +14,7 @@ import (
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ktesting "k8s.io/client-go/testing"
 )
 
@@ -279,5 +280,30 @@ func TestApplyRejectsSuggestionFromStaleAnalysis(t *testing.T) {
 	}}, true)
 	if err == nil || !strings.Contains(err.Error(), "changed after it was analyzed") {
 		t.Fatalf("expected stale-analysis rejection, got %v", err)
+	}
+}
+
+func TestTUIApplyRejectsChangedSuggestionSource(t *testing.T) {
+	for _, tc := range []struct{ name, uid, version string }{
+		{"updated HPA", "uid-1", "2"},
+		{"recreated HPA", "uid-2", "1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			hpa := testutil.BuildHPA("default", "web", testutil.WithMinMax(1, 10))
+			hpa.UID = types.UID(tc.uid)
+			hpa.ResourceVersion = tc.version
+			client := testutil.NewFakeClient(hpa)
+			opts := &options{Common: commonOptions{ConnectionOptions: ConnectionOptions{ClientOverride: client}}}
+			apply := newTUIApplyFunc(opts, false)
+			err := apply(context.Background(), "default", "web", []hpaanalysis.Suggestion{{Title: "raise max", Apply: true, Patch: `{"spec":{"maxReplicas":20}}`, SourceUID: "uid-1", SourceResourceVersion: "1"}})
+			if err == nil {
+				t.Fatal("accepted suggestion from changed HPA")
+			}
+			for _, action := range client.Actions() {
+				if action.GetVerb() == "patch" {
+					t.Fatalf("patched changed HPA: %#v", action)
+				}
+			}
+		})
 	}
 }

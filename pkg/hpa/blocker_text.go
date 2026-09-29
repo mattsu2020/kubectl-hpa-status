@@ -1,9 +1,10 @@
 package hpa
 
 import (
-	"charm.land/lipgloss/v2"
 	"fmt"
 	"io"
+
+	"charm.land/lipgloss/v2"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"

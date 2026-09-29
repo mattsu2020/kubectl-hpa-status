@@ -129,9 +129,9 @@ var ErrDependencyMissing = errors.New("simulate: dependency not registered")
 // and is called directly; only these two dependencies are injected.
 // -------------------------------------------------------------------
 
-// analyzeFunc is a function pointer type for HPA analysis.
+// AnalysisFunc is a function pointer type for HPA analysis.
 // This allows injection of the hpa root package's AnalyzeWithOptions without import cycles.
-type analyzeFunc func(hpa *autoscalingv2.HorizontalPodAutoscaler, includeMetrics bool, opts AnalysisOptions) Analysis
+type AnalysisFunc func(hpa *autoscalingv2.HorizontalPodAutoscaler, includeMetrics bool, opts AnalysisOptions) Analysis
 
 // metricImpactRatioFunc returns the display name and impact ratio of one
 // current metric.
@@ -142,19 +142,19 @@ type metricImpactRatioFunc func(hpa *autoscalingv2.HorizontalPodAutoscaler, metr
 // are exported for embedders and tests, so a concurrent registration must not
 // race with simulation entry points reading the current value.
 var (
-	analyzeFuncInstance       atomic.Pointer[analyzeFunc]
+	analyzeFuncInstance       atomic.Pointer[AnalysisFunc]
 	metricImpactRatioFuncImpl atomic.Pointer[metricImpactRatioFunc]
 )
 
 // SetAnalyzeFunc sets the analysis function for simulation.
 // This is called from the hpa root package to inject the AnalyzeWithOptions dependency.
-func SetAnalyzeFunc(fn analyzeFunc) {
+func SetAnalyzeFunc(fn AnalysisFunc) {
 	analyzeFuncInstance.Store(&fn)
 }
 
 // AnalyzeFunc returns the currently registered analysis function, or nil when
 // the hpa root package has not been linked in.
-func AnalyzeFunc() analyzeFunc {
+func AnalyzeFunc() AnalysisFunc {
 	if p := analyzeFuncInstance.Load(); p != nil {
 		return *p
 	}
@@ -177,16 +177,16 @@ func AnalysisFuncInvoker(hpa *autoscalingv2.HorizontalPodAutoscaler, includeMetr
 	return analyze(hpa, includeMetrics, opts), nil
 }
 
-func metricImpactRatioInvoker(hpa *autoscalingv2.HorizontalPodAutoscaler, metric autoscalingv2.MetricStatus) (string, *float64, error) {
+func metricImpactRatioInvoker(hpa *autoscalingv2.HorizontalPodAutoscaler, metric autoscalingv2.MetricStatus) (*float64, error) {
 	var ratioFn metricImpactRatioFunc
 	if p := metricImpactRatioFuncImpl.Load(); p != nil {
 		ratioFn = *p
 	}
 	if ratioFn == nil {
-		return "", nil, fmt.Errorf("%w: metricImpactRatio (import github.com/mattsu2020/kubectl-hpa-status/pkg/hpa or call SetMetricImpactRatioFunc)", ErrDependencyMissing)
+		return nil, fmt.Errorf("%w: metricImpactRatio (import github.com/mattsu2020/kubectl-hpa-status/pkg/hpa or call SetMetricImpactRatioFunc)", ErrDependencyMissing)
 	}
-	name, ratio := ratioFn(hpa, metric)
-	return name, ratio, nil
+	_, ratio := ratioFn(hpa, metric)
+	return ratio, nil
 }
 
 // SimulationResult holds the before/after comparison of an HPA simulation.

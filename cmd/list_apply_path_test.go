@@ -12,7 +12,7 @@ func TestPatchFileName_BuildsExpectedPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	want := filepath.Join("hpa-patches", "default-web-hpa-patch.yaml")
+	want := filepath.Join("hpa-patches", "default_web-hpa-patch.yaml")
 	if got != want {
 		t.Fatalf("patchFileName = %q, want %q", got, want)
 	}
@@ -23,6 +23,8 @@ func TestPatchFileName_RejectsUnsafeIdentities(t *testing.T) {
 		namespace string
 		name      string
 	}{
+		{"a_b", "c"},
+		{"a", "b_c"},
 		{"../etc", "web"},
 		{"default", "../passwd"},
 		{"a/b", "web"},

@@ -10,7 +10,6 @@ type ResourceUtilizationTarget struct {
 	Percent  int32
 }
 
-// ResourceUtilizationTargets extracts all percentage-based resource targets.
 // MaxRecommendedReplicaRatio is the maxReplicas/minReplicas ratio beyond which
 // both the audit and lint replica-range rules flag a wide range: beyond ~10x a
 // single scale event can grow the workload by an order of magnitude.
@@ -25,6 +24,7 @@ func ReplicaRangeRatio(minReplicas, maxReplicas int32) (ratio int32, ok bool) {
 	return maxReplicas / minReplicas, true
 }
 
+// ResourceUtilizationTargets extracts all percentage-based resource targets.
 func ResourceUtilizationTargets(hpa *autoscalingv2.HorizontalPodAutoscaler) []ResourceUtilizationTarget {
 	if hpa == nil {
 		return nil

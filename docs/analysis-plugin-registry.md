@@ -17,7 +17,7 @@ An analysis domain currently crosses several boundaries that intentionally
 provide compile-time checks:
 
 - `pkg/hpa.Analysis` and grouped reports are public Go types.
-- JSON schema v1 and v2 describe their serialized representation.
+- The grouped v2 JSON schema describes their serialized representation.
 - Enrichment phases have different Kubernetes clients, inputs, and ordering
   requirements.
 - Text rendering consumes typed results, labels, themes, and health-impacting

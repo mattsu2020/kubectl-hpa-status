@@ -1,8 +1,7 @@
 package hpa
 
-// SchemaVersionV2 identifies the additive nested output projection. The
-// in-memory Analysis type remains the v1 compatibility model; V2 projection
-// keeps breaking JSON changes out of domain calculations.
+// SchemaVersionV2 identifies the canonical grouped output schema.
+// Analysis stores these groups directly; report projections add the envelope.
 const SchemaVersionV2 = "hpa-status/v2"
 
 // StatusRecordStatusV2 is the stable outcome enum used by v2 JSONL records.
@@ -20,7 +19,7 @@ const (
 	StatusRecordErrorV2 StatusRecordStatusV2 = "error"
 )
 
-// StatusReportV2 is the nested status output selected explicitly by clients.
+// StatusReportV2 is the canonical grouped status output with a schema-version envelope.
 type StatusReportV2 struct {
 	APIVersion string          `json:"apiVersion" yaml:"apiVersion"`
 	Analysis   GroupedAnalysis `json:"analysis" yaml:"analysis"`
@@ -55,8 +54,8 @@ type StatusRecordV2 struct {
 	Report     *StatusReportV2      `json:"report,omitempty" yaml:"report,omitempty"`
 }
 
-// ProjectStatusReportV2 projects a v1 compatibility report into nested v2
-// output without mutating the source.
+// ProjectStatusReportV2 wraps a grouped analysis report in the v2
+// envelope without mutating the source.
 func ProjectStatusReportV2(report StatusReport) StatusReportV2 {
 	return StatusReportV2{
 		APIVersion: SchemaVersionV2,
@@ -77,7 +76,7 @@ func ProjectStatusReportsV2(reports []StatusReport) []StatusReportV2 {
 	return projected
 }
 
-// ProjectStatusRecordV2 wraps one successful v1 report in the stable v2 JSONL
+// ProjectStatusRecordV2 wraps one successful report in the stable v2 JSONL
 // record envelope.
 func ProjectStatusRecordV2(report StatusReport) StatusRecordV2 {
 	projected := ProjectStatusReportV2(report)
@@ -90,7 +89,7 @@ func ProjectStatusRecordV2(report StatusReport) StatusRecordV2 {
 	}
 }
 
-// ProjectStatusRecordsV2 projects a v1 batch into canonical JSONL records,
+// ProjectStatusRecordsV2 projects a status batch into canonical JSONL records,
 // preserving item order and partial failures.
 func ProjectStatusRecordsV2(batch StatusBatch) []StatusRecordV2 {
 	if len(batch.Items) == 0 {
