@@ -45,7 +45,7 @@ func buildCapacityHeadroomWithSnapshot(ctx context.Context, client *kube.Client,
 		ClusterSchedulableHeadroom: "unknown",
 		Risk:                       "cluster schedulable headroom could not be confirmed from visible API data",
 	}
-	clusterHeadroom, headroomErr := kube.FetchClusterResourceHeadroom(ctx, client.Interface)
+	clusterHeadroom, headroomErr := snapshot.ClusterHeadroom(ctx, nil)
 	if headroomErr != nil {
 		headroom.Evidence = append(headroom.Evidence, fmt.Sprintf("cluster request headroom unavailable: %v", headroomErr))
 	}

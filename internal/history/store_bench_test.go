@@ -15,7 +15,7 @@ import (
 // read cost. Fixture restoration is excluded from both time and allocations.
 func BenchmarkRecordAndLoad(b *testing.B) {
 	for _, count := range []int{100, 1000, 10000} {
-		b.Run(fmt.Sprintf("retained_%d", count), func(b *testing.B) { benchmarkRecordAndLoad(b, count, false) })
+		b.Run(fmt.Sprintf("retained_%d", count), func(b *testing.B) { benchmarkRecordAndLoad(b, count, false, false) })
 	}
 }
 
@@ -23,11 +23,11 @@ func BenchmarkRecordAndLoad(b *testing.B) {
 // iteration, so every measured operation performs compaction.
 func BenchmarkRecordAndLoadCompaction(b *testing.B) {
 	for _, count := range []int{100, 1000, 10000} {
-		b.Run(fmt.Sprintf("expired_%d", count), func(b *testing.B) { benchmarkRecordAndLoad(b, count, true) })
+		b.Run(fmt.Sprintf("expired_%d", count), func(b *testing.B) { benchmarkRecordAndLoad(b, count, true, false) })
 	}
 }
 
-func benchmarkRecordAndLoad(b *testing.B, count int, expired bool) {
+func benchmarkRecordAndLoad(b *testing.B, count int, expired, warm bool) {
 	ctx := b.Context()
 	store, err := NewHealthStoreWithDir(b.TempDir())
 	if err != nil {
@@ -54,6 +54,11 @@ func benchmarkRecordAndLoad(b *testing.B, count int, expired bool) {
 		if err := os.WriteFile(store.filePath(key), fixture.Bytes(), storeFileMode); err != nil {
 			b.Fatal(err)
 		}
+		if warm {
+			if _, err := store.LoadAt(ctx, key, 24*time.Hour, now); err != nil {
+				b.Fatal(err)
+			}
+		}
 		b.StartTimer()
 		window, err := store.RecordAndLoad(ctx, key, snapshot, 24*time.Hour, 24*time.Hour, now)
 		b.StopTimer()
@@ -76,5 +81,13 @@ func benchmarkRecordAndLoad(b *testing.B, count int, expired bool) {
 				b.Fatal("expired records were not compacted")
 			}
 		}
+	}
+}
+
+// BenchmarkRecordAndLoadWarm measures a polling observation whose decoded
+// history is already cached. Fixture restoration/priming is not measured.
+func BenchmarkRecordAndLoadWarm(b *testing.B) {
+	for _, count := range []int{100, 1000, 10000} {
+		b.Run(fmt.Sprintf("retained_%d", count), func(b *testing.B) { benchmarkRecordAndLoad(b, count, false, true) })
 	}
 }

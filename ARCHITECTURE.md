@@ -26,12 +26,13 @@ Inference should be labeled with confidence language and covered by tests.
 | `cmd/` | Cobra commands, flags, request construction, and Kubernetes client orchestration (one feature/subcommand per file) |
 | `cmd/internal/recordio/` | Streaming JSONL decoding for record, replay, and offline record analysis; callers own filtering, merging, limits, and legacy JSON fallback |
 | `pkg/hpa/` | Importable analysis model: HPA signal extraction, health scoring, suggestions, diagnostics, and text/Markdown/HTML/SARIF rendering |
+| `pkg/hpa/scaling/` | Shared bounded policy math for simulation and behavior trajectories, including projected changes inside rolling policy periods |
 | `pkg/hpa/core/` | Dependency-light public contracts for localized labels and metric status formatting; `pkg/hpa` re-exports these types/functions for API compatibility |
 | `pkg/hpa/render/` | Shared report renderers (Markdown/HTML/list/incident) extracted from the root `pkg/hpa` `*_text.go` files |
 | `pkg/hpa/rendutil/` | Shared escape, display-width, and list-projection helpers sitting below both `pkg/hpa` and `pkg/hpa/render` to break the import cycle between them; also imported by `internal/tui` and `cmd/replaylab` for terminal-width truncation, which is why it stays public instead of moving under `pkg/hpa/internal/` |
 | `pkg/style/` | Terminal color and semantic styling (shared by cmd and pkg/hpa renderers) |
 | `internal/analysis/` | Deterministic application service shared by list and TUI; turns HPAs plus observed enrichment into finalized reports/list items |
-| `internal/observation/` | Request-scoped, memoized workload snapshot with explicit known/unavailable/not-applicable states |
+| `internal/observation/` | Request-scoped, memoized workload snapshot with explicit known/unavailable/not-applicable states; a shared cluster snapshot reads Nodes and aggregates scheduled Pod requests once per multi-HPA run |
 | `internal/kube/` | kubeconfig resolution, client construction, KEDA/VPA/node/quota reads, scale-target and pod info |
 | `internal/kubeconv/` | DTO translation `internal/kube` → `pkg/hpa` analysis types; the boundary layer that keeps `internal/kube` free of `pkg/hpa` imports |
 | `internal/enrichment/` | Ordered enrichment pipeline plus batched KEDA/VPA collection; status types alias the canonical public analysis model |
@@ -39,7 +40,7 @@ Inference should be labeled with confidence language and covered by tests.
 | `internal/render/` | Output-format routing and serialization (json/yaml/jsonl/jsonpath/template/prometheus/markdown/html/incident), including write-error propagation |
 | `internal/patch/` | RFC 7396 JSON merge patch helpers for suggestions |
 | `internal/tui/` | Bubble Tea dashboard: a top-level orchestration model plus six clone-safe interactive submodels (simulation, fix, replay, batch audit, history, hints) and per-view controllers that own local keys/messages; the history view loads snapshots in the background through the injected `Options.LoadHistoryFn` (cmd wires it to `internal/history`'s health store) |
-| `internal/history/` | Clock-injected recorder/store shared by status/list history collection and trend replay |
+| `internal/history/` | Clock-injected recorder/store shared by status/list history collection and trend replay; a bounded process cache reuses decoded records only while file identity, size, modification time, and window remain compatible |
 | `pkg/clock/` | Canonical process-wide time source. Domain packages and the default history recorder delegate here; history retains operation-scoped clock injection for deterministic service tests |
 | `internal/i18n/` | Embedded locale bundles (en/ja), dynamically loaded from `locales/` |
 | `internal/testutil/` | Shared fake-client/HPA/workload builders used by `cmd/`, `internal/`, and `pkg/hpa` tests |
@@ -638,3 +639,27 @@ Concrete integration plan:
   fields such as `summary`, `conditions`, `metrics`, or `suggestions`.
 - Add fixture tests that compare the same HPA with and without structured
   decision data so behavior remains compatible across Kubernetes versions.
+
+### Shared estimates and bounded observations
+
+`model.HealthWeights` is the canonical pointer-based penalty configuration:
+`nil` selects the default and a pointer to zero disables the penalty. The root
+package re-exports it. Simulation retains its legacy scalar API but CLI and
+TUI callers use `HealthWeightsWithOverrides` to carry all canonical weights.
+
+Behavior paths apply shared `scaling` math to each policy's rolling period,
+including already projected changes. Actual controller event history remains
+unavailable, so these paths are estimates starting from a fresh period budget.
+Simulation trajectories accept at most 10,000 points, including the endpoint,
+and accumulate offsets in `int64` before converting to bounded `int32` values.
+
+Multi-HPA capacity/status runs and each record tick create a fresh
+`observation.ClusterSnapshot`. Target placement is evaluated independently from
+its immutable Node data and aggregated Pod requests; autoscaler detection
+reuses those Nodes. Snapshot failures are shared only within that run.
+
+History cache entries are protected by a mutex and used under the existing
+cross-process file lock. The cache holds at most 128 streams and 100,000 decoded
+records, evicting the least recently used stream as needed. External changes,
+file replacement, an expanded lookback, or a backwards cutoff invalidate it.
+Disk compaction and durability rules are unchanged; returned records are copies.

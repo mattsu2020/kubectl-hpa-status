@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/errs"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/model"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
@@ -26,28 +27,37 @@ type Metric struct {
 // HealthWeights configures health score calculation penalties.
 // This is a local copy to avoid import cycles with the hpa root package.
 type HealthWeights struct {
-	// Limited is the penalty for HPA being at maxReplicas (default: 40).
+	// Overrides preserves all canonical penalties, including explicitly configured zero.
+	// When present, it takes precedence over the legacy scalar fields below.
+	Overrides *model.HealthWeights `json:"overrides,omitempty" yaml:"overrides,omitempty"`
+
+	// Limited is the penalty for HPA being at maxReplicas (default: 25).
 	Limited int `json:"limited,omitempty" yaml:"limited,omitempty"`
-	// NotReady is the penalty for pods not being ready (default: 10).
+	// NotReady is the legacy penalty for AbleToScale != True (default: 35).
 	NotReady int `json:"notReady,omitempty" yaml:"notReady,omitempty"`
-	// Falling is the penalty for trending down (default: 5).
+	// Falling is the legacy penalty for scale-down stabilization (default: 10).
 	Falling int `json:"falling,omitempty" yaml:"falling,omitempty"`
-	// MetricUnavailable is the penalty for metric fetch failures (default: 20).
+	// MetricUnavailable is the penalty for metric fetch failures (default: 45).
 	MetricUnavailable int `json:"metricUnavailable,omitempty" yaml:"metricUnavailable,omitempty"`
 }
 
-// HealthWeightsFrom converts the hpa root package's pointer-based penalty
-// weights into this package's flat form. A nil pointer selects the default
-// penalty. Note the flat form cannot represent "explicitly disable" (*int 0)
-// — that distinction only exists on the AnalyzeWithOptions path.
+// HealthWeightsFrom preserves the three historically supported pointer penalties.
 func HealthWeightsFrom(limited, notReady, falling *int) HealthWeights {
-	deref := func(p *int) int {
+	return HealthWeightsWithOverrides(model.HealthWeights{
+		ScalingLimited: limited, UnableToScale: notReady, ScaleDownStabilized: falling,
+	})
+}
+
+// HealthWeightsWithOverrides copies all configured penalties without losing nil/zero semantics.
+func HealthWeightsWithOverrides(weights model.HealthWeights) HealthWeights {
+	cloned := weights.Clone()
+	legacy := func(p *int) int {
 		if p == nil {
 			return 0
 		}
 		return *p
 	}
-	return HealthWeights{Limited: deref(limited), NotReady: deref(notReady), Falling: deref(falling)}
+	return HealthWeights{Overrides: &cloned, Limited: legacy(cloned.ScalingLimited), NotReady: legacy(cloned.UnableToScale), Falling: legacy(cloned.ScaleDownStabilized), MetricUnavailable: legacy(cloned.ScalingInactive)}
 }
 
 // Analysis holds the full HPA analysis result.

@@ -66,6 +66,15 @@ func NewHealthStoreWithDir(dir string) (*HealthStore, error) {
 }
 
 func newHealthStoreAt(dir string) (*HealthStore, error) {
+	if dir == "" {
+		return nil, fmt.Errorf("health store directory must not be empty")
+	}
+	absolute, err := filepath.Abs(dir)
+	if err != nil {
+		return nil, fmt.Errorf("resolving health store path: %w", err)
+	}
+	dir = absolute
+
 	if err := os.MkdirAll(dir, storeDirMode); err != nil {
 		return nil, fmt.Errorf("creating health store directory: %w", err)
 	}
@@ -93,6 +102,7 @@ func (s *HealthStore) Append(ctx context.Context, key SnapshotKey, snapshot heal
 }
 
 func appendSnapshotLine(path string, snapshot healthtrend.HealthSnapshot) error {
+	sharedScanCache.remove(path)
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, storeFileMode)
 	if err != nil {
 		return fmt.Errorf("opening health store file: %w", err)
@@ -170,7 +180,7 @@ func (s *HealthStore) PruneAt(ctx context.Context, key SnapshotKey, retention ti
 	}
 	defer release()
 
-	scan, loadErr := scanHistoryFile(path, retention, now)
+	scan, loadErr := cachedHistoryScan(path, retention, now)
 	if loadErr != nil {
 		return loadErr
 	}
@@ -187,8 +197,9 @@ func (s *HealthStore) PruneAt(ctx context.Context, key SnapshotKey, retention ti
 // RecordAndLoad atomically appends a snapshot and returns the requested
 // analysis window while holding one inter-process lock. The append is a
 // single O(1) write; the whole-file rewrite is deferred to a compaction pass
-// that only runs once enough history has expired (see shouldCompact). Reading
-// the retained analysis window still requires an O(n) scan of the file.
+// that only runs once enough history has expired (see shouldCompact). Repeated
+// observations reuse a bounded decoded cache when the file is unchanged;
+// only external changes, wider windows, or cache eviction require a new scan.
 func (s *HealthStore) RecordAndLoad(ctx context.Context, key SnapshotKey, snapshot healthtrend.HealthSnapshot, retention, since time.Duration, now time.Time) ([]healthtrend.HealthSnapshot, error) {
 	if err := key.validate(); err != nil {
 		return nil, err
@@ -199,8 +210,9 @@ func (s *HealthStore) RecordAndLoad(ctx context.Context, key SnapshotKey, snapsh
 		return nil, err
 	}
 	defer release()
-
-	scan, err := scanHistoryFile(path, retention, now)
+	// JSON persistence carries wall time only. Keep the decoded cache identical.
+	snapshot.Timestamp = snapshot.Timestamp.Round(0)
+	scan, err := cachedHistoryScan(path, retention, now)
 	if err != nil {
 		return nil, err
 	}
@@ -221,6 +233,16 @@ func (s *HealthStore) RecordAndLoad(ctx context.Context, key SnapshotKey, snapsh
 			return nil, err
 		}
 	}
+
+	// Cache the exact written state. A compaction also removes corrupt lines;
+	// report the previous warning once, but do not keep it after repair.
+	written := historyScan{total: scan.total + 1, expired: scan.expired, retained: retained, corruptLines: scan.corruptLines}
+	if shouldCompact(scan.total, scan.expired) {
+		written.total = len(retained)
+		written.expired = 0
+		written.corruptLines = nil
+	}
+	sharedScanCache.save(path, now.Add(-retention), written)
 
 	cutoff := now.Add(-since)
 	start := sort.Search(len(retained), func(i int) bool { return !retained[i].Timestamp.Before(cutoff) })
@@ -308,6 +330,7 @@ func scanHistoryFile(path string, retention time.Duration, now time.Time) (histo
 }
 
 func (s *HealthStore) replaceSnapshots(path string, snapshots []healthtrend.HealthSnapshot) error {
+	sharedScanCache.remove(path)
 	tmp, err := os.CreateTemp(s.dir, ".history-*.jsonl")
 	if err != nil {
 		return fmt.Errorf("creating temporary health store file: %w", err)
@@ -371,7 +394,7 @@ func resolveStoreDir() (string, error) {
 // timestamp (oldest first). Undecodable lines are reported through
 // CorruptLinesError while the valid prefix is still returned.
 func loadHistoryFileAt(path string, since time.Duration, now time.Time) ([]healthtrend.HealthSnapshot, error) {
-	scan, err := scanHistoryFile(path, since, now)
+	scan, err := cachedHistoryScan(path, since, now)
 	if err != nil {
 		return scan.retained, err
 	}

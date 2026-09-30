@@ -10,6 +10,7 @@ import (
 	"io"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/observation"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
 
@@ -181,8 +182,9 @@ func joinOutputAndExit(outputErr, exitErr error) error {
 // multiple names up front (cmd/status.go), so this path is never reached with
 // opts.Apply set.
 func buildReportsConcurrently(ctx context.Context, opts *options, client *kube.Client, names []string, includeInterpretation bool, ec *enrichmentContext) []reportResult {
+	cluster := &observation.ClusterSnapshot{}
 	built := mapPerHPA(ctx, perHPAConcurrency(opts), names, func(ctx context.Context, name string) (hpaanalysis.StatusReport, error) {
-		return buildStatusReport(ctx, opts, client, name, includeInterpretation, ec)
+		return buildStatusReport(ctx, opts, client, name, includeInterpretation, ec, cluster)
 	})
 
 	results := make([]reportResult, len(built))

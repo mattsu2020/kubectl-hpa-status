@@ -325,6 +325,15 @@ func DetectClusterAutoscaler(ctx context.Context, client kubernetes.Interface) b
 func DetectClusterAutoscalerWithError(ctx context.Context, client kubernetes.Interface) (bool, error) {
 	// Check nodes for CA annotation.
 	nodes, nodeErr := listNodes(ctx, client, metav1.ListOptions{})
+	return detectClusterAutoscalerWithNodes(ctx, client, nodes, nodeErr)
+}
+
+// DetectClusterAutoscaler reuses the observed Nodes even if Pod collection failed.
+func (s *ClusterResourceSnapshot) DetectClusterAutoscaler(ctx context.Context, client kubernetes.Interface) (bool, error) {
+	return detectClusterAutoscalerWithNodes(ctx, client, s.nodes, s.nodeErr)
+}
+
+func detectClusterAutoscalerWithNodes(ctx context.Context, client kubernetes.Interface, nodes []corev1.Node, nodeErr error) (bool, error) {
 	if nodeErr == nil {
 		for _, node := range nodes {
 			if _, ok := node.Annotations["cluster-autoscaler.kubernetes.io/safe-to-evict"]; ok {

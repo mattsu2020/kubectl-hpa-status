@@ -46,71 +46,6 @@ func TestMinPositivePeriod(t *testing.T) {
 	})
 }
 
-func TestBehaviorStepDelta(t *testing.T) {
-	t.Run("no policies returns max int32", func(t *testing.T) {
-		// When no scaling policies are configured, the controller allows the
-		// maximum step in a single move; encode that as the sentinel so the
-		// path short-circuits to the desired replica count.
-		rules := behaviorDirection{SelectPolicy: "", Policies: nil}
-		got := behaviorStepDelta(10, rules, 1)
-		if got != int32(1<<31-1) {
-			t.Fatalf("behaviorStepDelta with no policies = %d, want %d", got, int32(1<<31-1))
-		}
-	})
-
-	t.Run("absolute policy default max select", func(t *testing.T) {
-		rules := behaviorDirection{
-			SelectPolicy: "",
-			Policies: []behaviorPolicyOutput{
-				{Type: string(autoscalingv2.PodsScalingPolicy), Value: 4},
-				{Type: string(autoscalingv2.PodsScalingPolicy), Value: 2},
-			},
-		}
-		// Default selectPolicy is Max, so the larger delta (4) wins.
-		if got := behaviorStepDelta(10, rules, 1); got != 4 {
-			t.Fatalf("behaviorStepDelta = %d, want 4", got)
-		}
-	})
-
-	t.Run("absolute policy min select", func(t *testing.T) {
-		rules := behaviorDirection{
-			SelectPolicy: string(autoscalingv2.MinChangePolicySelect),
-			Policies: []behaviorPolicyOutput{
-				{Type: string(autoscalingv2.PodsScalingPolicy), Value: 4},
-				{Type: string(autoscalingv2.PodsScalingPolicy), Value: 2},
-			},
-		}
-		if got := behaviorStepDelta(10, rules, 1); got != 2 {
-			t.Fatalf("behaviorStepDelta with Min = %d, want 2", got)
-		}
-	})
-
-	t.Run("percent policy rounds up", func(t *testing.T) {
-		rules := behaviorDirection{
-			SelectPolicy: "",
-			Policies: []behaviorPolicyOutput{
-				{Type: string(autoscalingv2.PercentScalingPolicy), Value: 33},
-			},
-		}
-		// ceil(10 * 33 / 100) = ceil(3.3) = 4
-		if got := behaviorStepDelta(10, rules, 1); got != 4 {
-			t.Fatalf("behaviorStepDelta percent = %d, want 4", got)
-		}
-	})
-
-	t.Run("zero deltas return zero", func(t *testing.T) {
-		rules := behaviorDirection{
-			SelectPolicy: "",
-			Policies: []behaviorPolicyOutput{
-				{Type: string(autoscalingv2.PodsScalingPolicy), Value: 0},
-			},
-		}
-		if got := behaviorStepDelta(10, rules, 1); got != 0 {
-			t.Fatalf("behaviorStepDelta = %d, want 0", got)
-		}
-	})
-}
-
 func TestEstimateBehaviorPath(t *testing.T) {
 	t.Run("returns nil for non-positive replicas", func(t *testing.T) {
 		scaleUp := behaviorDirection{Policies: []behaviorPolicyOutput{{Value: 1, PeriodSeconds: 60}}}
@@ -191,4 +126,46 @@ func TestEstimateBehaviorPath(t *testing.T) {
 			t.Fatalf("single-point AfterSeconds = %d, want 0", path[0].AfterSeconds)
 		}
 	})
+}
+
+func TestBehaviorDisabledAndRollingPeriods(t *testing.T) {
+	for _, replicas := range [][2]int32{{2, 10}, {10, 2}} {
+		disabled := behaviorDirection{SelectPolicy: "Disabled", Policies: []behaviorPolicyOutput{{Type: "Pods", Value: 4, PeriodSeconds: 15}}}
+		path := estimateBehaviorPath(replicas[0], replicas[1], disabled, disabled)
+		if len(path) != 1 || path[0].Replicas != replicas[0] {
+			t.Fatalf("disabled scaling changed replicas: %+v", path)
+		}
+	}
+	for _, selection := range []string{"Max", "Min"} {
+		rules := behaviorDirection{SelectPolicy: selection, Policies: []behaviorPolicyOutput{{Type: "Pods", Value: 1, PeriodSeconds: 15}, {Type: "Pods", Value: 10, PeriodSeconds: 60}}}
+		path := estimateBehaviorPath(2, 50, rules, behaviorDirection{})
+		for _, point := range path {
+			if selection == "Max" && point.AfterSeconds < 75 && point.Replicas > 11+point.AfterSeconds/15 {
+				t.Fatalf("reused the 60s allowance too early: %+v", path)
+			}
+			if selection == "Min" && point.Replicas > 2+point.AfterSeconds/15 {
+				t.Fatalf("exceeded the 15s allowance: %+v", path)
+			}
+		}
+		if len(path) == 0 {
+			t.Fatal("missing estimated path")
+		}
+	}
+	rules := behaviorDirection{SelectPolicy: "Max", Policies: []behaviorPolicyOutput{{Type: "Pods", Value: 1, PeriodSeconds: 15}, {Type: "Pods", Value: 10, PeriodSeconds: 20}}}
+	path := estimateBehaviorPath(2, 30, rules, behaviorDirection{})
+	if len(path) < 3 || path[2].AfterSeconds != 35 {
+		t.Fatalf("period expiry must occur at 35s: %+v", path)
+	}
+}
+
+func TestBehaviorPercentDecreaseAndOverflow(t *testing.T) {
+	down := behaviorDirection{Policies: []behaviorPolicyOutput{{Type: "Percent", Value: 33, PeriodSeconds: 15}}}
+	if path := estimateBehaviorPath(10, 7, behaviorDirection{}, down); len(path) != 1 || path[0].Replicas != 7 {
+		t.Fatalf("33%% decrease must leave 7 replicas: %+v", path)
+	}
+	up := behaviorDirection{Policies: []behaviorPolicyOutput{{Type: "Percent", Value: 100, PeriodSeconds: 15}}}
+	path := estimateBehaviorPath(1<<30, 1<<31-1, up, behaviorDirection{})
+	if len(path) != 1 || path[0].Replicas != 1<<31-1 {
+		t.Fatalf("overflowed replica estimate: %+v", path)
+	}
 }

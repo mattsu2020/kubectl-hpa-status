@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"math"
 	"strings"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/scaling"
 	"github.com/spf13/cobra"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
@@ -125,31 +125,55 @@ func estimateBehaviorPath(current, desired int32, scaleUp, scaleDown behaviorDir
 		rules = scaleDown
 		direction = -1
 	}
+	if strings.EqualFold(rules.SelectPolicy, string(autoscalingv2.DisabledPolicySelect)) {
+		return []behaviorPathPoint{{AfterSeconds: 0, Replicas: current}}
+	}
 	stepSeconds := minPositivePeriod(rules.Policies)
 	if stepSeconds == 0 {
 		return []behaviorPathPoint{{AfterSeconds: 0, Replicas: desired}}
 	}
+	// Evaluate at the greatest common divisor so different periods expire at
+	// their own boundaries rather than inheriting the shortest policy's cadence.
+	tick := stepSeconds
+	policies := make([]autoscalingv2.HPAScalingPolicy, 0, len(rules.Policies))
+	for _, policy := range rules.Policies {
+		if policy.PeriodSeconds <= 0 {
+			continue
+		}
+		tick = behaviorPeriodGCD(tick, policy.PeriodSeconds)
+		policies = append(policies, autoscalingv2.HPAScalingPolicy{Type: autoscalingv2.HPAScalingPolicyType(policy.Type), Value: policy.Value, PeriodSeconds: policy.PeriodSeconds})
+	}
 	replicas := current
 	var path []behaviorPathPoint
-	for elapsed := stepSeconds; elapsed <= stepSeconds*20 && replicas != desired; elapsed += stepSeconds {
-		delta := behaviorStepDelta(replicas, rules, direction)
-		if delta <= 0 {
+	var history []scaling.Event
+	delay := int64(max(int32(0), rules.StabilizationWindowSeconds))
+	for elapsed := delay + int64(stepSeconds); elapsed <= delay+int64(stepSeconds)*20 && replicas != desired; elapsed += int64(tick) {
+		limit, ok := scaling.Limit(replicas, direction > 0, autoscalingv2.ScalingPolicySelect(rules.SelectPolicy), policies, elapsed, history)
+		if !ok {
 			break
 		}
+		next := max(desired, limit)
 		if direction > 0 {
-			replicas += delta
-			if replicas > desired {
-				replicas = desired
-			}
-		} else {
-			replicas -= delta
-			if replicas < desired {
-				replicas = desired
-			}
+			next = min(desired, limit)
 		}
-		path = append(path, behaviorPathPoint{AfterSeconds: elapsed, Replicas: replicas})
+		if next == replicas {
+			continue
+		}
+		history = append(history, scaling.Event{TimeSeconds: elapsed, Change: next - replicas})
+		replicas = next
+		if elapsed > int64(1<<31-1) {
+			break
+		}
+		path = append(path, behaviorPathPoint{AfterSeconds: int32(elapsed), Replicas: replicas}) // #nosec G115 -- bounded above.
 	}
 	return path
+}
+
+func behaviorPeriodGCD(a, b int32) int32 {
+	for b != 0 {
+		a, b = b, a%b
+	}
+	return a
 }
 
 func minPositivePeriod(policies []behaviorPolicyOutput) int32 {
@@ -163,39 +187,6 @@ func minPositivePeriod(policies []behaviorPolicyOutput) int32 {
 		}
 	}
 	return minPeriod
-}
-
-func behaviorStepDelta(replicas int32, rules behaviorDirection, direction int32) int32 {
-	if len(rules.Policies) == 0 {
-		return int32(1<<31 - 1)
-	}
-	var deltas []int32
-	for _, policy := range rules.Policies {
-		delta := policy.Value
-		if strings.EqualFold(policy.Type, string(autoscalingv2.PercentScalingPolicy)) {
-			delta = int32(math.Ceil(float64(replicas) * float64(policy.Value) / 100.0))
-		}
-		if delta > 0 {
-			deltas = append(deltas, delta)
-		}
-	}
-	if len(deltas) == 0 {
-		return 0
-	}
-	selected := deltas[0]
-	for _, delta := range deltas[1:] {
-		if strings.EqualFold(rules.SelectPolicy, string(autoscalingv2.MinChangePolicySelect)) {
-			if delta < selected {
-				selected = delta
-			}
-		} else if delta > selected {
-			selected = delta
-		}
-	}
-	if direction < 0 && selected > replicas {
-		return replicas
-	}
-	return selected
 }
 
 func writeBehaviorText(out io.Writer, result behaviorOutput) error {
