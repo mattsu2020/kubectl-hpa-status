@@ -328,5 +328,5 @@ func trimSpaces(s string) string {
 // simulateWeights adapts the configured penalty weights to the simulate
 // package's representation.
 func simulateWeights(w hpaanalysis.HealthWeights) simulate.HealthWeights {
-	return simulate.HealthWeightsFrom(w.ScalingLimited, w.UnableToScale, w.ScaleDownStabilized)
+	return simulate.HealthWeightsWithOverrides(w)
 }

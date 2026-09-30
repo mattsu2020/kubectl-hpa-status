@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Behavior trajectories honor disabled scaling and rolling policy periods.**
+  Policies with different periods no longer all replenish at the shortest
+  period. Replica-policy math is shared with simulation and uses bounded
+  arithmetic, including percent scale-down rounding.
+- **Simulation preserves every configured health penalty in CLI and TUI.**
+  Explicit zero values now disable penalties consistently with status; custom
+  weights such as `scalingInactive` are no longer dropped by the adapter.
+- **Time-series projections reject more than 10,000 points and avoid offset
+  overflow.** Large durations with coarse steps still cover the endpoint.
+- **Capacity observations are shared across multi-HPA reports.** Node lists,
+  scheduled Pod request aggregation, and autoscaler detection are collected
+  once per run, while placement remains specific to each target Pod.
+- **Repeated history recording reuses a bounded decoded cache.** Existing
+  JSONL files and inter-process locks are retained; external file updates,
+  replacements, wider windows, and clock regressions trigger a fresh read.
 - **TUI list-scoped keys no longer leak into anchored views.** `S` (sort),
   `g` (jump to problem), and `/` (filter) are now inert outside the list
   view; previously pressing them in the history/hints view moved the cursor

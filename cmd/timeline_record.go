@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/observation"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -212,13 +213,14 @@ func recordOnce(ctx context.Context, opts *options, client *kube.Client, name st
 	if opts.AllNamespaces {
 		namespace = metav1.NamespaceAll
 	}
+	cluster := &observation.ClusterSnapshot{}
 	var records []hpaanalysis.TimelineTrace
 	err := kube.ListHPAsEachPage(ctx, client.Interface, namespace, metav1.ListOptions{LabelSelector: opts.Selector}, opts.ChunkSize, func(page *autoscalingv2.HorizontalPodAutoscalerList) error {
 		for i := range page.Items {
 			local := copyOptions(opts)
 			local.Namespace = page.Items[i].Namespace
 			pageClient := &kube.Client{Interface: client.Interface, Namespace: page.Items[i].Namespace}
-			report, err := buildStatusReport(ctx, &local, pageClient, page.Items[i].Name, true, ec)
+			report, err := buildStatusReport(ctx, &local, pageClient, page.Items[i].Name, true, ec, cluster)
 			if err != nil {
 				return err
 			}

@@ -291,3 +291,31 @@ func TestAssembleCapacityPlanInput_RecordsFetchErrorsAsUnknown(t *testing.T) {
 		t.Fatalf("expected ResourceQuota fetch failure as unknown, got %+v", plan.Checks)
 	}
 }
+
+func TestCapacityBatchSharesClusterLists(t *testing.T) {
+	client := testutil.NewFakeClient(testutil.BuildHPA("default", "web"), testutil.BuildHPA("default", "worker"))
+	opts := &options{Common: commonOptions{ConnectionOptions: ConnectionOptions{ClientOverride: client}, OutputOptions: OutputOptions{Output: "json"}}}
+	for run := 0; run < 2; run++ {
+		client.ClearActions()
+		var out bytes.Buffer
+		if err := runCapacityPlan(t.Context(), &out, opts, []string{"web", "worker"}); err != nil {
+			t.Fatal(err)
+		}
+		var results []capacityPlanOutput
+		if err := json.Unmarshal(out.Bytes(), &results); err != nil || len(results) != 2 {
+			t.Fatalf("batch result: %s %v", out.String(), err)
+		}
+		nodes, pods := 0, 0
+		for _, action := range client.Actions() {
+			if action.Matches("list", "nodes") {
+				nodes++
+			}
+			if action.Matches("list", "pods") && action.GetNamespace() == "" {
+				pods++
+			}
+		}
+		if nodes != 1 || pods != 1 {
+			t.Fatalf("run %d cluster list counts: nodes=%d pods=%d", run, nodes, pods)
+		}
+	}
+}

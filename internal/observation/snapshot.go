@@ -44,8 +44,9 @@ func (v Value[T]) Known() bool { return v.State == StateKnown }
 // the derived views (pod info, pending details, container state) from
 // re-running the same failing API chain several times per report.
 type Snapshot struct {
-	client kubernetes.Interface
-	hpa    autoscalingv2.HorizontalPodAutoscaler
+	client  kubernetes.Interface
+	cluster *ClusterSnapshot
+	hpa     autoscalingv2.HorizontalPodAutoscaler
 
 	targetMu sync.Mutex
 	targetOK bool
@@ -61,11 +62,16 @@ type Snapshot struct {
 }
 
 // New creates a request-scoped workload observation snapshot.
-func New(client kubernetes.Interface, hpa *autoscalingv2.HorizontalPodAutoscaler) *Snapshot {
-	if hpa == nil {
-		return &Snapshot{client: client}
+func New(client kubernetes.Interface, hpa *autoscalingv2.HorizontalPodAutoscaler, clusters ...*ClusterSnapshot) *Snapshot {
+	cluster := &ClusterSnapshot{}
+	if len(clusters) > 0 && clusters[0] != nil {
+		cluster = clusters[0]
 	}
-	return &Snapshot{client: client, hpa: *hpa.DeepCopy()}
+
+	if hpa == nil {
+		return &Snapshot{client: client, cluster: cluster}
+	}
+	return &Snapshot{client: client, cluster: cluster, hpa: *hpa.DeepCopy()}
 }
 
 // ScaleTarget returns the memoized target observation.
@@ -183,4 +189,40 @@ func (s *Snapshot) ReplicaSets(ctx context.Context) Value[[]kube.ReplicaSetInfo]
 	s.replicaSets = Value[[]kube.ReplicaSetInfo]{Data: items, State: StateKnown}
 	s.replicaSetsOK = true
 	return s.replicaSets
+}
+
+// ClusterSnapshot shares immutable cluster observations across HPAs in one run.
+// All consumers must use the same cluster client. A new polling tick needs a new
+// snapshot so neither successful observations nor failures become stale.
+type ClusterSnapshot struct {
+	once           sync.Once
+	data           *kube.ClusterResourceSnapshot
+	err            error
+	autoscalerOnce sync.Once
+	autoscaler     bool
+	autoscalerErr  error
+}
+
+// ClusterHeadroom projects target placement without repeating the cluster lists.
+func (s *Snapshot) ClusterHeadroom(ctx context.Context, podSpec *corev1.PodSpec) (*kube.ClusterResourceHeadroom, error) {
+	if s == nil || s.client == nil || s.cluster == nil {
+		return nil, fmt.Errorf("cluster observation is unavailable")
+	}
+	s.cluster.once.Do(func() { s.cluster.data, s.cluster.err = kube.FetchClusterResourceSnapshot(ctx, s.client) })
+	if s.cluster.err != nil {
+		return nil, s.cluster.err
+	}
+	return s.cluster.data.HeadroomForPod(podSpec), nil
+}
+
+// ClusterAutoscaler shares detection across the same request and reuses Nodes.
+func (s *Snapshot) ClusterAutoscaler(ctx context.Context) (bool, error) {
+	if s == nil || s.client == nil || s.cluster == nil {
+		return false, fmt.Errorf("cluster observation is unavailable")
+	}
+	s.cluster.once.Do(func() { s.cluster.data, s.cluster.err = kube.FetchClusterResourceSnapshot(ctx, s.client) })
+	s.cluster.autoscalerOnce.Do(func() {
+		s.cluster.autoscaler, s.cluster.autoscalerErr = s.cluster.data.DetectClusterAutoscaler(ctx, s.client)
+	})
+	return s.cluster.autoscaler, s.cluster.autoscalerErr
 }

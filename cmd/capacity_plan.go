@@ -40,6 +40,7 @@ func runCapacityPlan(ctx context.Context, out io.Writer, opts *options, names []
 	// No preset: the dedicated capacity path gathers only capacity observations
 	// and must not run the full status pipeline (or record a health-history
 	// sample) before fetching the same HPA and workload a second time.
+	cluster := &observation.ClusterSnapshot{}
 	return runPerHPACommand(ctx, out, opts, names, "",
 		func(ctx context.Context, local *options, client *kube.Client, name string) (capacityPlanOutput, error) {
 			hpa, err := fetchHPA(ctx, client, name)
@@ -53,7 +54,7 @@ func runCapacityPlan(ctx context.Context, out io.Writer, opts *options, names []
 				hpa,
 				analysis,
 				local.TargetMax,
-				observation.New(client.Interface, hpa),
+				observation.New(client.Interface, hpa, cluster),
 			)
 
 			return capacityPlanOutput{
@@ -88,6 +89,9 @@ func assembleCapacityPlanInput(ctx context.Context, client *kube.Client, hpa *au
 }
 
 func assembleCapacityPlanInputWithSnapshot(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, analysis hpaanalysis.Analysis, targetMax int32, snapshot *observation.Snapshot) hpaanalysis.CapacityPlanInput {
+	if snapshot == nil {
+		snapshot = observation.New(client.Interface, hpa)
+	}
 	input := hpaanalysis.CapacityPlanInput{
 		Namespace:         hpa.Namespace,
 		HPAName:           hpa.Name,
@@ -99,9 +103,9 @@ func assembleCapacityPlanInputWithSnapshot(ctx context.Context, client *kube.Cli
 	podSpec := collectScaleTargetCapacity(ctx, client, hpa, snapshot, &input)
 	collectCapacityQuotas(ctx, client, hpa.Namespace, &input)
 	collectCapacityLimitRanges(ctx, client, hpa.Namespace, &input)
-	collectCapacityClusterHeadroom(ctx, client, podSpec, &input)
+	collectCapacityClusterHeadroom(ctx, podSpec, &input, snapshot)
 	collectCapacityPDBs(ctx, client, hpa, &input)
-	collectCapacityAutoscaler(ctx, client, &input)
+	collectCapacityAutoscaler(ctx, snapshot, &input)
 	return input
 }
 
@@ -209,7 +213,7 @@ func collectCapacityLimitRanges(ctx context.Context, client *kube.Client, namesp
 	}
 }
 
-func collectCapacityClusterHeadroom(ctx context.Context, client *kube.Client, podSpec *corev1.PodSpec, input *hpaanalysis.CapacityPlanInput) {
+func collectCapacityClusterHeadroom(ctx context.Context, podSpec *corev1.PodSpec, input *hpaanalysis.CapacityPlanInput, snapshot *observation.Snapshot) {
 	if constraints := kube.UnmodeledPodSchedulingConstraints(podSpec); len(constraints) > 0 {
 		addCapacityObservationError(
 			input,
@@ -218,7 +222,7 @@ func collectCapacityClusterHeadroom(ctx context.Context, client *kube.Client, po
 			fmt.Errorf("current capacity model cannot evaluate %s", strings.Join(constraints, ", ")),
 		)
 	}
-	clusterHeadroom, headroomErr := kube.FetchClusterResourceHeadroomForPod(ctx, client.Interface, podSpec)
+	clusterHeadroom, headroomErr := snapshot.ClusterHeadroom(ctx, podSpec)
 	if headroomErr != nil {
 		addCapacityObservationError(input, hpaanalysis.CapacityObservationNodeCapacity, "cluster request headroom", headroomErr)
 	} else if clusterHeadroom != nil && clusterHeadroom.NodeCapacity != nil {
@@ -260,8 +264,8 @@ func collectCapacityPDBs(ctx context.Context, client *kube.Client, hpa *autoscal
 	}
 }
 
-func collectCapacityAutoscaler(ctx context.Context, client *kube.Client, input *hpaanalysis.CapacityPlanInput) {
-	clusterAutoscaler, autoscalerErr := kube.DetectClusterAutoscalerWithError(ctx, client.Interface)
+func collectCapacityAutoscaler(ctx context.Context, snapshot *observation.Snapshot, input *hpaanalysis.CapacityPlanInput) {
+	clusterAutoscaler, autoscalerErr := snapshot.ClusterAutoscaler(ctx)
 	if autoscalerErr != nil {
 		addCapacityObservationError(input, hpaanalysis.CapacityObservationClusterAutoscaler, "Cluster Autoscaler detection", autoscalerErr)
 	} else {

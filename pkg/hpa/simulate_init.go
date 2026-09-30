@@ -46,7 +46,11 @@ func init() {
 
 // convertSimulateHealthWeights converts simulate.HealthWeights to hpa.HealthWeights
 func convertSimulateHealthWeights(w simulate.HealthWeights) HealthWeights {
+	if w.Overrides != nil {
+		return w.Overrides.Clone()
+	}
 	return HealthWeights{
+		ScalingInactive:     intPtr(w.MetricUnavailable),
 		ScalingLimited:      intPtr(w.Limited),
 		UnableToScale:       intPtr(w.NotReady),
 		ScaleDownStabilized: intPtr(w.Falling),

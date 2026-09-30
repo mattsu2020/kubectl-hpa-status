@@ -15,6 +15,8 @@ const (
 	// defaultProjectionStepSeconds is the trajectory granularity when the
 	// caller does not specify one.
 	defaultProjectionStepSeconds int32 = 30
+	// maxProjectionPoints bounds memory regardless of requested duration/step.
+	maxProjectionPoints int64 = 10000
 )
 
 // ProjectReplicaTrajectory generates a time-series projection showing how
@@ -26,6 +28,9 @@ const (
 // depends on many factors including metric freshness, evaluation intervals,
 // and stabilization windows.
 func ProjectReplicaTrajectory(original, modified *autoscalingv2.HorizontalPodAutoscaler, opts SimulationExtendedOptions) ([]ProjectedState, error) {
+	if original == nil || modified == nil {
+		return nil, ErrNilHPA
+	}
 	duration := opts.DurationSeconds
 	if duration <= 0 {
 		duration = defaultProjectionDurationSeconds
@@ -39,6 +44,11 @@ func ProjectReplicaTrajectory(original, modified *autoscalingv2.HorizontalPodAut
 	// Ensure step is reasonable.
 	if step > duration {
 		step = duration
+	}
+
+	pointCount := (int64(duration)+int64(step)-1)/int64(step) + 1
+	if pointCount > maxProjectionPoints {
+		return nil, fmt.Errorf("%w: projection would generate %d points (limit %d); reduce duration or increase step", ErrInvalidSimulationValue, pointCount, maxProjectionPoints)
 	}
 
 	minReplicas := int32(1)
@@ -60,8 +70,9 @@ func ProjectReplicaTrajectory(original, modified *autoscalingv2.HorizontalPodAut
 	// an increase.
 	stabilizationDelay := computeStabilizationDelay(modified, startReplicas, endReplicas)
 
-	var states []ProjectedState
-	for offset := int32(0); offset <= duration; offset += step {
+	states := make([]ProjectedState, 0, int(pointCount))
+	for elapsed := int64(0); elapsed <= int64(duration); elapsed += int64(step) {
+		offset := int32(elapsed) // #nosec G115 -- elapsed is bounded by positive int32 duration.
 		replicas := interpolateReplicas(startReplicas, endReplicas, offset, stabilizationDelay, duration)
 		ratio := computeMetricRatio(startReplicas, replicas, minReplicas, maxReplicas)
 

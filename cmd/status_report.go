@@ -101,12 +101,12 @@ func buildStatusReportWithClient(ctx context.Context, opts *options, name string
 	return buildStatusReport(ctx, opts, client, name, includeInterpretation, ec)
 }
 
-func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, name string, includeInterpretation bool, ec *enrichmentContext) (hpaanalysis.StatusReport, error) {
+func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, name string, includeInterpretation bool, ec *enrichmentContext, clusters ...*observation.ClusterSnapshot) (hpaanalysis.StatusReport, error) {
 	hpa, err := fetchHPA(ctx, client, name)
 	if err != nil {
 		return hpaanalysis.StatusReport{}, err
 	}
-	return buildStatusReportFromHPA(ctx, opts, client, hpa, includeInterpretation, ec)
+	return buildStatusReportFromObservation(ctx, opts, client, hpa, includeInterpretation, ec, observation.New(client.Interface, hpa, clusters...))
 }
 
 // buildStatusReportFromHPA reuses an HPA already read by the caller. Compound

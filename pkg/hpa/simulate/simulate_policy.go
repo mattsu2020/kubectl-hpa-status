@@ -3,6 +3,8 @@ package simulate
 import (
 	"math"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/scaling"
+
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
@@ -113,92 +115,13 @@ func simulatedPolicyReplicaLimit(current int32, scaleUp bool, rules *autoscaling
 }
 
 func defaultSimulatedScalingPolicies(scaleUp bool) []autoscalingv2.HPAScalingPolicy {
-	if !scaleUp {
-		return []autoscalingv2.HPAScalingPolicy{{
-			Type:          autoscalingv2.PercentScalingPolicy,
-			Value:         100,
-			PeriodSeconds: 15,
-		}}
-	}
-	return []autoscalingv2.HPAScalingPolicy{
-		{
-			Type:          autoscalingv2.PodsScalingPolicy,
-			Value:         4,
-			PeriodSeconds: 15,
-		},
-		{
-			Type:          autoscalingv2.PercentScalingPolicy,
-			Value:         100,
-			PeriodSeconds: 15,
-		},
-	}
+	return scaling.DefaultPolicies(scaleUp)
 }
 
 func selectedPolicyReplicaLimit(current int32, scaleUp bool, selectPolicy autoscalingv2.ScalingPolicySelect, policies []autoscalingv2.HPAScalingPolicy) (int32, bool) {
-	var selected int32
-	found := false
-	for _, policy := range policies {
-		candidate, ok := policyReplicaLimit(current, scaleUp, policy)
-		if !ok {
-			continue
-		}
-		if !found {
-			selected = candidate
-			found = true
-			continue
-		}
-		if scaleUp {
-			if selectPolicy == autoscalingv2.MinChangePolicySelect {
-				selected = min(selected, candidate)
-			} else {
-				selected = max(selected, candidate)
-			}
-			continue
-		}
-		if selectPolicy == autoscalingv2.MinChangePolicySelect {
-			selected = max(selected, candidate)
-		} else {
-			selected = min(selected, candidate)
-		}
-	}
-	return selected, found
+	return scaling.Limit(current, scaleUp, selectPolicy, policies, 0, nil)
 }
 
 func policyReplicaLimit(current int32, scaleUp bool, policy autoscalingv2.HPAScalingPolicy) (int32, bool) {
-	if policy.Value <= 0 {
-		return 0, false
-	}
-
-	current64 := int64(current)
-	var candidate int64
-	switch policy.Type {
-	case autoscalingv2.PodsScalingPolicy:
-		if scaleUp {
-			candidate = current64 + int64(policy.Value)
-		} else {
-			candidate = current64 - int64(policy.Value)
-		}
-	case autoscalingv2.PercentScalingPolicy:
-		// Round fractionally-generated replica counts up in both directions so
-		// the projection is symmetric and never underestimates how many pods
-		// remain after a scale-down band. (This is a projection, deliberately
-		// not a byte-for-byte reimplementation of the controller's separate
-		// truncate-the-change approach.)
-		multiplier := 1 + float64(policy.Value)/100
-		if !scaleUp {
-			multiplier = 1 - float64(policy.Value)/100
-		}
-		candidate = int64(math.Ceil(float64(current) * multiplier))
-	default:
-		return 0, false
-	}
-
-	const maxInt32Value = int64(1<<31 - 1)
-	if candidate > maxInt32Value {
-		candidate = maxInt32Value
-	}
-	if candidate < 0 {
-		candidate = 0
-	}
-	return int32(candidate), true
+	return scaling.ReplicaLimit(current, scaleUp, policy)
 }

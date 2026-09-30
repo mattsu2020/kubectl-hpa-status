@@ -234,5 +234,5 @@ func writeSimulateSupplementalSections(out io.Writer, report simulateReport) {
 // weightsForSimulate adapts the configured penalty weights to the simulate
 // package's representation so simulation health scores match status scoring.
 func weightsForSimulate(w hpaanalysis.HealthWeights) simulate.HealthWeights {
-	return simulate.HealthWeightsFrom(w.ScalingLimited, w.UnableToScale, w.ScaleDownStabilized)
+	return simulate.HealthWeightsWithOverrides(w)
 }
