@@ -43,6 +43,7 @@ type Model struct {
 
 	items   []hpaanalysis.ListItem
 	reports map[string]*hpaanalysis.StatusReport
+	hpas    map[string]*autoscalingv2.HorizontalPodAutoscaler
 	// hpaUIDs maps "namespace/name" to the observed HPA UID so interactive
 	// states (the fix wizard) can verify their target still is the same
 	// object after a refresh, instead of matching by name alone.
@@ -121,11 +122,7 @@ func (m Model) clone() Model {
 		}
 		m.replicaHistory = history
 	}
-	if m.hpaUIDs != nil {
-		uids := make(map[string]string, len(m.hpaUIDs))
-		maps.Copy(uids, m.hpaUIDs)
-		m.hpaUIDs = uids
-	}
+
 	m.batchApplyPreview = slices.Clone(m.batchApplyPreview)
 	m.interactiveStates = m.interactiveStates.clone()
 	return m
@@ -223,6 +220,7 @@ type fetchResultMsg struct {
 	requestID uint64
 	items     []hpaanalysis.ListItem
 	reports   map[string]*hpaanalysis.StatusReport
+	hpas      map[string]*autoscalingv2.HorizontalPodAutoscaler
 	// uids maps "namespace/name" to the observed HPA UID for this fetch.
 	uids map[string]string
 	err  error

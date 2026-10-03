@@ -501,3 +501,34 @@ func TestFindConflictingVPA(t *testing.T) {
 	}
 }
 */
+
+func TestRBACChecksListIndependentlyOfGet(t *testing.T) {
+	for _, verb := range []string{"get", "list"} {
+		t.Run(verb, func(t *testing.T) {
+			client := testutil.NewFakeClientWithObjects()
+			client.PrependReactor("create", "selfsubjectaccessreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
+				sar := action.(k8stesting.CreateAction).GetObject().(*authorizationv1.SelfSubjectAccessReview)
+				if sar.Spec.ResourceAttributes.Namespace != "staging" {
+					t.Fatal("wrong scope")
+				}
+				sar.Status.Allowed = sar.Spec.ResourceAttributes.Verb == verb
+				return true, sar, nil
+			})
+			status := CheckRBAC(context.Background(), client, "staging")
+			if status.CanListPods != (verb == "list") || status.CanListEvents != (verb == "list") || status.CanGetPods != (verb == "get") {
+				t.Fatalf("permissions conflated: %+v", status)
+			}
+		})
+	}
+}
+
+func TestRBACObservationFailureIsPreserved(t *testing.T) {
+	client := testutil.NewFakeClientWithObjects()
+	client.PrependReactor("create", "selfsubjectaccessreviews", func(k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, errors.New("review unavailable")
+	})
+	status := CheckRBAC(context.Background(), client, "default")
+	if len(status.Errors) != 6 || status.CanListPods {
+		t.Fatalf("review errors: %+v", status)
+	}
+}

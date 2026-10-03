@@ -6,7 +6,6 @@ import (
 	"io"
 	"strings"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/simulate"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
@@ -122,9 +121,8 @@ func runSimulate(ctx context.Context, out io.Writer, opts *options, name string,
 	}
 
 	// Render output.
-	format, _ := selectOutputFromOptions(opts)
 
-	return render.Format(out, format, "", report, func(out io.Writer) error {
+	return renderWithOutput(out, opts, report, func(out io.Writer) error {
 		theme := themeFor(opts.Color, out)
 		return writeSimulateText(out, report, theme)
 	})

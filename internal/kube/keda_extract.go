@@ -37,6 +37,14 @@ func ExtractKEDAInfo(u *unstructured.Unstructured) KEDAInfo {
 		info.Conditions = extractKEDAConditions(status)
 		// Merge trigger health status into triggers extracted from spec.
 		extractTriggerStatus(u, info.Triggers)
+		if health, ok := nestedMap(status, "health"); ok {
+			info.Health = make(map[string]KEDAMetricHealth, len(health))
+			for name, raw := range health {
+				if entry, ok := mapAt(raw); ok {
+					info.Health[name] = KEDAMetricHealth{Status: stringValue(entry, "status"), NumberOfFailures: extractInt32Ptr(entry, "numberOfFailures")}
+				}
+			}
+		}
 	}
 
 	return info
@@ -69,9 +77,9 @@ func extractTriggers(spec map[string]any) []KEDATrigger {
 				trigger.Threshold = fmt.Sprintf("%v", v)
 			}
 		}
-		// Extract metricType to determine the produced metric name.
+		// The target metric type is independent of the generated metric name.
 		if ms, ok := nestedString(tm, "metricType"); ok && ms != "" {
-			trigger.MetricName = ms
+			trigger.MetricType = ms
 		}
 		// Extract authenticationRef.name from the trigger spec.
 		if authRef, ok := nestedMap(tm, "authenticationRef"); ok {
@@ -82,57 +90,66 @@ func extractTriggers(spec map[string]any) []KEDATrigger {
 	return triggers
 }
 
-// extractTriggerStatus reads status.health from the ScaledObject and merges
-// per-trigger health status (Active/Inactive/Unknown) into the triggers slice.
+// extractTriggerStatus separates metric health from named trigger activity.
 func extractTriggerStatus(u *unstructured.Unstructured, triggers []KEDATrigger) {
 	status, ok := nestedMap(u.Object, "status")
 	if !ok {
 		return
 	}
-	health, ok := nestedMap(status, "health")
-	if !ok {
-		// No per-trigger health; try conditions for overall status.
-		return
-	}
-
-	// KEDA v2: status.health is a map keyed by trigger name or index.
+	health, _ := nestedMap(status, "health")
+	activity, _ := nestedMap(status, "triggersActivity")
+	metrics, _ := nestedSlice(status, "externalMetricNames")
 	for i := range triggers {
 		t := &triggers[i]
-		var entry map[string]any
-		if t.Name != "" {
-			entry, _ = health[t.Name].(map[string]any)
-		}
-		if entry == nil {
-			entry, _ = health[t.Type].(map[string]any)
-		}
-		if entry == nil {
-			continue
-		}
-		t.Status = mapHealthStatus(stringValue(entry, "status"))
-		t.Message = stringValue(entry, "message")
-		// Extract current metric value from health entry.
-		if cv, ok := entry["currentValue"]; ok {
-			t.CurrentValue = fmt.Sprintf("%v", cv)
-		}
-		// Override threshold from health entry if available (more accurate than spec metadata).
-		if th, ok := entry["threshold"]; ok {
-			t.Threshold = fmt.Sprintf("%v", th)
+		t.Status = triggerActivity(activity, t.Name)
+		t.MetricName = uniqueTriggerMetric(i, metrics, health)
+		if entry, ok := mapAt(health[t.MetricName]); ok {
+			t.HealthStatus = stringValue(entry, "status")
+			t.NumberOfFailures = extractInt32Ptr(entry, "numberOfFailures")
 		}
 	}
 }
 
-// mapHealthStatus converts KEDA health status strings to a normalized form.
-func mapHealthStatus(s string) string {
-	switch strings.ToLower(s) {
-	case "active", "happy", "true":
-		return "Active"
-	case "inactive", "false":
-		return "Inactive"
-	case "unknown", "":
-		return "Unknown"
-	default:
-		return s
+func triggerActivity(activity map[string]any, name string) string {
+	if name == "" {
+		return ""
 	}
+	entry, ok := mapAt(activity[name])
+	if !ok {
+		return ""
+	}
+	active, ok := entry["isActive"].(bool)
+	if !ok {
+		return ""
+	}
+	if active {
+		return "Active"
+	}
+	return "Inactive"
+}
+
+// KEDA-generated external metrics carry the spec trigger index as sN-.
+// Multiple metrics for one trigger remain in KEDAInfo.Health, without guessing
+// which one belongs in the single-metric display summary.
+func uniqueTriggerMetric(index int, metrics []any, health map[string]any) string {
+	prefix := fmt.Sprintf("s%d-", index)
+	names := make(map[string]bool)
+	for _, raw := range metrics {
+		if name, ok := raw.(string); ok && strings.HasPrefix(name, prefix) {
+			names[name] = true
+		}
+	}
+	for name := range health {
+		if strings.HasPrefix(name, prefix) {
+			names[name] = true
+		}
+	}
+	if len(names) == 1 {
+		for name := range names {
+			return name
+		}
+	}
+	return ""
 }
 
 // extractFallback reads spec.fallback from the ScaledObject.

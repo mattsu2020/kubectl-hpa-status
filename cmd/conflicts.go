@@ -11,7 +11,6 @@ import (
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/enrichment"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
-	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -145,8 +144,7 @@ func conflictScanNeedsVPA(hpas []autoscalingv2.HorizontalPodAutoscaler) bool {
 }
 
 func writeConflictScanReport(out io.Writer, opts *options, report conflictScanReport) error {
-	format, _ := selectOutputFromOptions(opts)
-	return render.Format(out, format, "", report, func(out io.Writer) error {
+	return renderWithOutput(out, opts, report, func(out io.Writer) error {
 		var buffer strings.Builder
 		if err := writeConflictScanText(&buffer, report); err != nil {
 			return err

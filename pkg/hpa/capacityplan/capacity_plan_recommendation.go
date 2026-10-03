@@ -22,7 +22,7 @@ func buildRecommendation(plan *CapacityPlan, input Input) (bool, string, []strin
 
 	if unknownChecks > 0 {
 		return false, fmt.Sprintf("Cannot confirm that raising maxReplicas to %d is safe because %d capacity observation(s) are unknown.", plan.TargetMaxReplicas, unknownChecks), []string{
-			"Restore Kubernetes API access and rerun the capacity plan",
+			"Collect the missing capacity observations (use --capacity-deep for node capacity) and rerun the plan",
 		}
 	}
 

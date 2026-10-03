@@ -126,7 +126,6 @@ func TestViewControllerCursorRules(t *testing.T) {
 		helpView,
 		metricsView,
 		simView,
-		batchAuditView,
 		overviewView,
 	}
 	for _, mode := range noCursorModes {

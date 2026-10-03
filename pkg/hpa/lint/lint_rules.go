@@ -153,7 +153,7 @@ func lintHighUtilizationTarget(hpa *autoscalingv2.HorizontalPodAutoscaler) []Fin
 				Rule:           "target-utilization",
 				Message:        fmt.Sprintf("%s target utilization is %d%%, which leaves little headroom for traffic bursts.", name, util),
 				Recommendation: "Lower the target utilization to 70-80% to provide headroom for traffic bursts and avoid saturating pods before scaling catches up.",
-				AutoFix:        generateAutoFix("target-utilization", hpa),
+				AutoFix:        fixUtilizationTargetAt(hpa, target.MetricIndex),
 			})
 		}
 		if util < 20 {
@@ -235,7 +235,7 @@ func lintTolerance(hpa *autoscalingv2.HorizontalPodAutoscaler) []Finding {
 				Rule:           "tolerance",
 				Message:        fmt.Sprintf("%s tolerance is %.2f%%, which is very tight. This may cause frequent scaling oscillations.", name, val*100),
 				Recommendation: "Increase tolerance to 0.1 (10%) to reduce scaling noise. A tight tolerance causes the HPA to react to minor metric fluctuations.",
-				AutoFix:        generateAutoFix("tolerance", hpa),
+				AutoFix:        fixToleranceDirection(hpa, name),
 			})
 		}
 	}
@@ -297,69 +297,61 @@ func fixMissingScaleDownBehavior(hpa *autoscalingv2.HorizontalPodAutoscaler) *Au
 
 // fixHighUtilizationTarget generates a patch lowering the utilization target to 80%.
 func fixHighUtilizationTarget(hpa *autoscalingv2.HorizontalPodAutoscaler) *AutoFix {
-	var currentUtil int32
-	for _, spec := range hpa.Spec.Metrics {
-		if spec.Type == autoscalingv2.ResourceMetricSourceType && spec.Resource != nil {
-			if spec.Resource.Target.Type == autoscalingv2.UtilizationMetricType && spec.Resource.Target.AverageUtilization != nil {
-				currentUtil = *spec.Resource.Target.AverageUtilization
-				break
-			}
+	for _, target := range rulefacts.ResourceUtilizationTargets(hpa) {
+		if target.Percent > 90 {
+			return fixUtilizationTargetAt(hpa, target.MetricIndex)
 		}
 	}
-	if currentUtil == 0 {
-		return nil
-	}
-
-	patch := map[string]any{
-		"spec": map[string]any{
-			"metrics": []map[string]any{
-				{
-					"type": "Resource",
-					"resource": map[string]any{
-						"name": "cpu",
-						"target": map[string]any{
-							"type":               "Utilization",
-							"averageUtilization": 80,
-						},
-					},
-				},
-			},
-		},
-	}
-
-	return buildAutoFix(hpa, patch, fmt.Sprintf("%d%%", currentUtil), "80%", "Medium — changes scaling trigger point")
+	return nil
 }
 
-// fixTightTolerance generates a patch setting tolerance to 0.1 (10%).
-func fixTightTolerance(hpa *autoscalingv2.HorizontalPodAutoscaler) *AutoFix {
-	var currentVal string
-	var direction string
-	patch := map[string]any{
-		"spec": map[string]any{
-			"behavior": map[string]any{},
-		},
-	}
-
-	behavior := patch["spec"].(map[string]any)["behavior"].(map[string]any)
-
-	switch {
-	case hpa.Spec.Behavior != nil && hpa.Spec.Behavior.ScaleUp != nil && hpa.Spec.Behavior.ScaleUp.Tolerance != nil:
-		currentVal = fmt.Sprintf("%.2f%%", hpa.Spec.Behavior.ScaleUp.Tolerance.AsApproximateFloat64()*100)
-		direction = "scaleUp"
-		behavior["scaleUp"] = map[string]any{
-			"tolerance": fmt.Sprintf("%g", tolerance.DefaultTolerance),
-		}
-	case hpa.Spec.Behavior != nil && hpa.Spec.Behavior.ScaleDown != nil && hpa.Spec.Behavior.ScaleDown.Tolerance != nil:
-		currentVal = fmt.Sprintf("%.2f%%", hpa.Spec.Behavior.ScaleDown.Tolerance.AsApproximateFloat64()*100)
-		direction = "scaleDown"
-		behavior["scaleDown"] = map[string]any{
-			"tolerance": fmt.Sprintf("%g", tolerance.DefaultTolerance),
-		}
-	default:
+func fixUtilizationTargetAt(hpa *autoscalingv2.HorizontalPodAutoscaler, index int) *AutoFix {
+	if index < 0 || index >= len(hpa.Spec.Metrics) {
 		return nil
 	}
+	metrics := hpa.DeepCopy().Spec.Metrics
+	metric := &metrics[index]
+	if metric.Resource == nil || metric.Resource.Target.AverageUtilization == nil {
+		return nil
+	}
+	before := *metric.Resource.Target.AverageUtilization
+	value := int32(80)
+	metric.Resource.Target.AverageUtilization = &value
+	patch := map[string]any{"spec": map[string]any{"metrics": metrics}}
+	return buildAutoFix(hpa, patch, fmt.Sprintf("%d%%", before), "80%", "Medium — changes scaling trigger point")
+}
 
-	return buildAutoFix(hpa, patch, fmt.Sprintf("%s tolerance: %s", direction, currentVal), fmt.Sprintf("%s tolerance: %g (10%%)", direction, tolerance.DefaultTolerance), "Medium — widens the no-scale band")
+func fixTightTolerance(hpa *autoscalingv2.HorizontalPodAutoscaler) *AutoFix {
+	if hpa.Spec.Behavior == nil {
+		return nil
+	}
+	for _, direction := range []string{"scaleUp", "scaleDown"} {
+		rules := hpa.Spec.Behavior.ScaleUp
+		if direction == "scaleDown" {
+			rules = hpa.Spec.Behavior.ScaleDown
+		}
+		if rules != nil && rules.Tolerance != nil && rules.Tolerance.AsApproximateFloat64() < 0.01 {
+			return fixToleranceDirection(hpa, direction)
+		}
+	}
+	return nil
+}
+
+func fixToleranceDirection(hpa *autoscalingv2.HorizontalPodAutoscaler, direction string) *AutoFix {
+	if hpa.Spec.Behavior == nil {
+		return nil
+	}
+	rules := hpa.Spec.Behavior.ScaleUp
+	if direction == "scaleDown" {
+		rules = hpa.Spec.Behavior.ScaleDown
+	} else if direction != "scaleUp" {
+		return nil
+	}
+	if rules == nil || rules.Tolerance == nil {
+		return nil
+	}
+	patch := map[string]any{"spec": map[string]any{"behavior": map[string]any{direction: map[string]any{"tolerance": fmt.Sprintf("%g", tolerance.DefaultTolerance)}}}}
+	return buildAutoFix(hpa, patch, fmt.Sprintf("%s tolerance: %.2f%%", direction, rules.Tolerance.AsApproximateFloat64()*100), fmt.Sprintf("%s tolerance: %g (10%%)", direction, tolerance.DefaultTolerance), "Medium — widens the no-scale band")
 }
 
 // fixLongStabilizationWindow generates a patch reducing the window to the

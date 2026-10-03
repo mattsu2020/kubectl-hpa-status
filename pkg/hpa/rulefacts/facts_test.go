@@ -44,7 +44,7 @@ func TestResourceUtilizationTargets(t *testing.T) {
 			),
 			want: []ResourceUtilizationTarget{
 				{Resource: "cpu", Percent: 80},
-				{Resource: "memory", Percent: 50},
+				{MetricIndex: 1, Resource: "memory", Percent: 50},
 			},
 		},
 		{
@@ -76,7 +76,7 @@ func TestResourceUtilizationTargets(t *testing.T) {
 				*resUsage(corev1.ResourceCPU, int32ptr(70)),
 				*resUsage(corev1.ResourceMemory, nil),
 			),
-			want: []ResourceUtilizationTarget{{Resource: "cpu", Percent: 70}},
+			want: []ResourceUtilizationTarget{{MetricIndex: 1, Resource: "cpu", Percent: 70}},
 		},
 		{
 			name: "nil Resource field skipped",

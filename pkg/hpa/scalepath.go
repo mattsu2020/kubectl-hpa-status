@@ -189,10 +189,14 @@ func analyzeProbeConfiguration(path *ScalePath, input ScalePathInput, counts sca
 	}
 
 	if tpl.ReadinessProbe != nil {
-		totalDelay := tpl.ReadinessProbe.InitialDelaySeconds + tpl.ReadinessProbe.PeriodSeconds*tpl.ReadinessProbe.FailureThreshold
+		period := tpl.ReadinessProbe.PeriodSeconds
+		if period <= 0 {
+			period = 10
+		}
+		totalDelay := tpl.ReadinessProbe.InitialDelaySeconds + period*max(int32(0), tpl.ReadinessProbe.SuccessThreshold-1)
 		if totalDelay > 120 {
 			path.ProbeWarnings = append(path.ProbeWarnings,
-				fmt.Sprintf("readinessProbe may delay pod ready state by up to %ds (initialDelay=%d + period×failures=%d). This can slow scale-up.", totalDelay, tpl.ReadinessProbe.InitialDelaySeconds, tpl.ReadinessProbe.PeriodSeconds*tpl.ReadinessProbe.FailureThreshold))
+				fmt.Sprintf("readinessProbe requires an initial delay and consecutive successes spanning %ds (initialDelay=%d + success intervals=%d). Actual readiness also depends on probe results.", totalDelay, tpl.ReadinessProbe.InitialDelaySeconds, period*max(int32(0), tpl.ReadinessProbe.SuccessThreshold-1)))
 		}
 	}
 

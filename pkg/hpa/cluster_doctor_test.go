@@ -9,7 +9,7 @@ func TestBuildClusterDiagnosticsSummary_Healthy(t *testing.T) {
 	d := &ClusterDiagnostics{
 		APIServices:   []APIServiceCheck{{Name: "metrics.k8s.io/v1beta1", Status: "available"}},
 		MetricsServer: &MetricsServerCheck{Available: true, Ready: true},
-		RBAC:          &RBACCheckResult{CanGetHPA: true, CanListHPA: true, CanGetPods: true},
+		RBAC:          &RBACCheckResult{CanGetHPA: true, CanListHPA: true, CanGetPods: true, CanListPods: true, CanListEvents: true},
 	}
 	BuildClusterDiagnosticsSummary(d)
 	if d.OverallStatus != "healthy" {
@@ -27,7 +27,7 @@ func TestBuildClusterDiagnosticsSummary_UnhealthyCombination(t *testing.T) {
 			{Name: "custom.metrics.k8s.io/v1beta1", Status: "unavailable"},
 		},
 		MetricsServer: &MetricsServerCheck{Available: false},
-		RBAC:          &RBACCheckResult{CanGetHPA: true, CanListHPA: false, CanGetPods: true},
+		RBAC:          &RBACCheckResult{CanGetHPA: true, CanListHPA: false, CanGetPods: true, CanListPods: true, CanListEvents: true},
 	}
 	BuildClusterDiagnosticsSummary(d)
 	if d.OverallStatus != "unhealthy" {
@@ -61,5 +61,25 @@ func TestJoinWithComma(t *testing.T) {
 		if got := joinWithComma(tc.parts); got != tc.want {
 			t.Errorf("joinWithComma(%v) = %q, want %q", tc.parts, got, tc.want)
 		}
+	}
+}
+
+func TestRBACSummaryUsesListAndPreservesUnknown(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		rbac RBACCheckResult
+		want string
+	}{
+		{"list allowed without pod get", RBACCheckResult{CanGetHPA: true, CanListHPA: true, CanListPods: true, CanListEvents: true}, "healthy"},
+		{"get does not grant list", RBACCheckResult{CanGetHPA: true, CanListHPA: true, CanGetPods: true, CanGetEvents: true}, "unhealthy"},
+		{"review unavailable", RBACCheckResult{CanGetHPA: true, CanListHPA: true, CanListEvents: true, Errors: map[string]string{"list/pods": "unavailable"}}, "degraded"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d := &ClusterDiagnostics{RBAC: &tc.rbac}
+			BuildClusterDiagnosticsSummary(d)
+			if d.OverallStatus != tc.want {
+				t.Fatalf("status=%s summary=%s", d.OverallStatus, d.Summary)
+			}
+		})
 	}
 }

@@ -141,7 +141,7 @@ func inferRecordedTraceName(path, namespace string) (string, error) {
 	if len(names) == 0 {
 		return inferRecordedJSONTraceName(path, namespace)
 	}
-	return "", fmt.Errorf("record file contains multiple HPAs; pass --hpa to select one")
+	return "", fmt.Errorf("record file contains multiple HPAs; pass --hpa and --namespace (-n) to select one")
 }
 
 func inferRecordedJSONTraceName(path, namespace string) (string, error) {

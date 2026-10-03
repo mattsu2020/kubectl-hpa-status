@@ -28,9 +28,9 @@ func checkNodeCapacity(
 	hasCA bool,
 ) []CapacityCheckResult {
 	if nc == nil {
-		return []CapacityCheckResult{
-			newCapacityCheckResult(CapacityCheckNodeCapacity, CapacityCheckPass, "node capacity not checked (use --capacity-deep for full analysis)"),
-		}
+		result := newCapacityCheckResult(CapacityCheckNodeCapacity, CapacityCheckUnknown, "node capacity not checked (use --capacity-deep for full analysis)")
+		result.ObservationDomain = CapacityObservationNodeCapacity
+		return []CapacityCheckResult{result}
 	}
 
 	if noSchedulableNodes(nc) {

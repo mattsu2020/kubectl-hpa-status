@@ -160,56 +160,36 @@ func TestExtractKEDAInfo_Nil(t *testing.T) {
 }
 
 func TestExtractKEDAInfo_TriggerStatus(t *testing.T) {
-	u := &unstructured.Unstructured{
-		Object: map[string]any{
-			"metadata": map[string]any{
-				"name":      "worker-so",
-				"namespace": "default",
+	u := &unstructured.Unstructured{Object: map[string]any{
+		"spec": map[string]any{"triggers": []any{
+			map[string]any{"type": "kafka", "name": "my-topic", "metricType": "AverageValue"},
+			map[string]any{"type": "prometheus", "name": "http-rate"},
+		}},
+		"status": map[string]any{
+			"externalMetricNames": []any{"s0-kafka-topic", "s1-prometheus"},
+			"health": map[string]any{
+				"s0-kafka-topic": map[string]any{"status": "Happy", "numberOfFailures": int64(0)},
+				"s1-prometheus":  map[string]any{"status": "Failing", "numberOfFailures": int64(3)},
 			},
-			"spec": map[string]any{
-				"triggers": []any{
-					map[string]any{
-						"type": "kafka",
-						"name": "my-topic",
-					},
-					map[string]any{
-						"type": "prometheus",
-						"name": "http-rate",
-					},
-				},
-			},
-			"status": map[string]any{
-				"health": map[string]any{
-					"my-topic": map[string]any{
-						"status":  "Active",
-						"message": " scaler is active",
-					},
-					"http-rate": map[string]any{
-						"status":  "Inactive",
-						"message": "no metrics available",
-					},
-				},
+			"triggersActivity": map[string]any{
+				"my-topic":  map[string]any{"isActive": false},
+				"http-rate": map[string]any{"isActive": true},
 			},
 		},
-	}
-
+	}}
 	info := ExtractKEDAInfo(u)
-
 	if len(info.Triggers) != 2 {
-		t.Fatalf("expected 2 triggers, got %d", len(info.Triggers))
+		t.Fatalf("triggers: %+v", info.Triggers)
 	}
-
-	if info.Triggers[0].Status != "Active" {
-		t.Fatalf("expected trigger 0 status 'Active', got %q", info.Triggers[0].Status)
+	first, second := info.Triggers[0], info.Triggers[1]
+	if first.MetricType != "AverageValue" || first.MetricName != "s0-kafka-topic" || first.Status != "Inactive" || first.HealthStatus != "Happy" {
+		t.Fatalf("idle healthy trigger: %+v", first)
 	}
-	if info.Triggers[0].Message != " scaler is active" {
-		t.Fatalf("expected trigger 0 message, got %q", info.Triggers[0].Message)
+	if second.Status != "Active" || second.HealthStatus != "Failing" || second.NumberOfFailures == nil || *second.NumberOfFailures != 3 {
+		t.Fatalf("active failing trigger: %+v", second)
 	}
-	if info.Triggers[1].Status != "Inactive" {
-		t.Fatalf("expected trigger 1 status 'Inactive', got %q", info.Triggers[1].Status)
-	}
-	if info.Triggers[1].Message != "no metrics available" {
-		t.Fatalf("expected trigger 1 message, got %q", info.Triggers[1].Message)
+	if len(info.Health) != 2 {
+		t.Fatalf("metric health: %+v", info.Health)
 	}
 }
 
@@ -345,28 +325,5 @@ func TestExtractKEDAInfo_AuthenticationRef(t *testing.T) {
 	}
 	if info.Triggers[0].AuthenticationRef != "kafka-trigger-auth" {
 		t.Fatalf("expected authenticationRef 'kafka-trigger-auth', got %q", info.Triggers[0].AuthenticationRef)
-	}
-}
-
-func TestMapHealthStatus(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected string
-	}{
-		{"active", "Active"},
-		{"Active", "Active"},
-		{"happy", "Active"},
-		{"true", "Active"},
-		{"inactive", "Inactive"},
-		{"false", "Inactive"},
-		{"unknown", "Unknown"},
-		{"", "Unknown"},
-		{"SomethingElse", "SomethingElse"},
-	}
-	for _, tt := range tests {
-		result := mapHealthStatus(tt.input)
-		if result != tt.expected {
-			t.Errorf("mapHealthStatus(%q) = %q, want %q", tt.input, result, tt.expected)
-		}
 	}
 }

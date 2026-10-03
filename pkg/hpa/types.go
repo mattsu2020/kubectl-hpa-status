@@ -51,8 +51,7 @@ const (
 	healthPenaltyAtMinimumReplicas = 5
 
 	// healthPenaltyKEDAInactiveTrigger is applied when a KEDA trigger reports
-	// Inactive status, meaning the external event source is not producing
-	// events. The HPA may not scale up even if demand increases.
+	// Failing metric health. An idle trigger alone does not indicate failure.
 	healthPenaltyKEDAInactiveTrigger = 15
 
 	// healthPenaltyVPAConflict is applied when both VPA and HPA target the

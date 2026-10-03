@@ -7,6 +7,7 @@ package keda
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/confidence"
@@ -23,12 +24,13 @@ const DefaultMinReplicas = model.DefaultMinReplicas
 // This is the canonical definition; the historical pkg/hpa
 // hpaanalysis.KEDAAnalysis alias was removed in v3.0.0.
 type Analysis struct {
-	ScaledObjectName string           `json:"scaledObjectName" yaml:"scaledObjectName"`
-	Triggers         []TriggerSummary `json:"triggers,omitempty" yaml:"triggers,omitempty"`
-	PollingInterval  *int32           `json:"pollingInterval,omitempty" yaml:"pollingInterval,omitempty"`
-	CooldownPeriod   *int32           `json:"cooldownPeriod,omitempty" yaml:"cooldownPeriod,omitempty"`
-	MinReplicaCount  *int32           `json:"minReplicaCount,omitempty" yaml:"minReplicaCount,omitempty"`
-	MaxReplicaCount  *int32           `json:"maxReplicaCount,omitempty" yaml:"maxReplicaCount,omitempty"`
+	Health           map[string]MetricHealth `json:"health,omitempty" yaml:"health,omitempty"`
+	ScaledObjectName string                  `json:"scaledObjectName" yaml:"scaledObjectName"`
+	Triggers         []TriggerSummary        `json:"triggers,omitempty" yaml:"triggers,omitempty"`
+	PollingInterval  *int32                  `json:"pollingInterval,omitempty" yaml:"pollingInterval,omitempty"`
+	CooldownPeriod   *int32                  `json:"cooldownPeriod,omitempty" yaml:"cooldownPeriod,omitempty"`
+	MinReplicaCount  *int32                  `json:"minReplicaCount,omitempty" yaml:"minReplicaCount,omitempty"`
+	MaxReplicaCount  *int32                  `json:"maxReplicaCount,omitempty" yaml:"maxReplicaCount,omitempty"`
 	// IdleReplicaCount is the replica count KEDA scales the workload down to
 	// when the triggers are idle (scale-to-zero fallback). Populated from
 	// spec.idleReplicaCount; nil when unset.
@@ -37,16 +39,25 @@ type Analysis struct {
 	Fallback         *FallbackInfo `json:"fallback,omitempty" yaml:"fallback,omitempty"`
 }
 
+// MetricHealth separates collection health from trigger activity.
+type MetricHealth struct {
+	Status           string `json:"status,omitempty" yaml:"status,omitempty"`
+	NumberOfFailures *int32 `json:"numberOfFailures,omitempty" yaml:"numberOfFailures,omitempty"`
+}
+
 // TriggerSummary is a display-oriented summary of a KEDA trigger.
 type TriggerSummary struct {
-	Type         string `json:"type" yaml:"type"`
-	Name         string `json:"name,omitempty" yaml:"name,omitempty"`
-	Status       string `json:"status,omitempty" yaml:"status,omitempty"`
-	Message      string `json:"message,omitempty" yaml:"message,omitempty"`
-	MetricName   string `json:"metricName,omitempty" yaml:"metricName,omitempty"`
-	Threshold    string `json:"threshold,omitempty" yaml:"threshold,omitempty"`
-	CurrentValue string `json:"currentValue,omitempty" yaml:"currentValue,omitempty"`
-	AuthRef      string `json:"authRef,omitempty" yaml:"authRef,omitempty"`
+	MetricType       string `json:"metricType,omitempty" yaml:"metricType,omitempty"`
+	HealthStatus     string `json:"healthStatus,omitempty" yaml:"healthStatus,omitempty"`
+	NumberOfFailures *int32 `json:"numberOfFailures,omitempty" yaml:"numberOfFailures,omitempty"`
+	Type             string `json:"type" yaml:"type"`
+	Name             string `json:"name,omitempty" yaml:"name,omitempty"`
+	Status           string `json:"status,omitempty" yaml:"status,omitempty"`
+	Message          string `json:"message,omitempty" yaml:"message,omitempty"`
+	MetricName       string `json:"metricName,omitempty" yaml:"metricName,omitempty"`
+	Threshold        string `json:"threshold,omitempty" yaml:"threshold,omitempty"`
+	CurrentValue     string `json:"currentValue,omitempty" yaml:"currentValue,omitempty"`
+	AuthRef          string `json:"authRef,omitempty" yaml:"authRef,omitempty"`
 }
 
 // FallbackInfo holds fallback information for display.
@@ -75,7 +86,7 @@ func Analyze(hpa *autoscalingv2.HorizontalPodAutoscaler, k *Analysis) []string {
 	// KEDA min/max vs HPA min/max.
 	lines = append(lines, analyzeReplicaBounds(hpa, k)...)
 
-	// Trigger status analysis (inactive triggers, fallback).
+	// Metric health and fallback configuration.
 	lines = append(lines, analyzeTriggerStatus(k)...)
 
 	// ScaledObject conditions from pre-populated lines.
@@ -88,39 +99,80 @@ func analyzeTriggers(hpa *autoscalingv2.HorizontalPodAutoscaler, k *Analysis) []
 	if len(k.Triggers) == 0 {
 		return []string{confidence.BadgeEstimated + " ScaledObject has no triggers defined; verify the ScaledObject spec."}
 	}
-
 	var lines []string
 	names := make([]string, 0, len(k.Triggers))
-
 	for _, spec := range hpa.Spec.Metrics {
-		if spec.Type == autoscalingv2.ExternalMetricSourceType && spec.External != nil {
-			matched := false
-			for _, t := range k.Triggers {
-				if strings.Contains(spec.External.Metric.Name, t.Name) || strings.Contains(spec.External.Metric.Name, strings.ToLower(t.Type)) {
-					matched = true
-					triggerDesc := fmt.Sprintf("KEDA trigger %q (type %s)", t.Name, t.Type)
-					if t.Threshold != "" {
-						triggerDesc += fmt.Sprintf(" threshold=%s", t.Threshold)
-					}
-					if t.CurrentValue != "" {
-						triggerDesc += fmt.Sprintf(" current=%s", t.CurrentValue)
-					}
-					lines = append(lines, fmt.Sprintf(confidence.BadgeObserved+" %s produces external metric %q which matches HPA spec.metrics entry.", triggerDesc, spec.External.Metric.Name))
-					break
-				}
-			}
-			if !matched {
-				lines = append(lines, fmt.Sprintf(confidence.BadgeEstimated+" HPA external metric %q has no matching KEDA trigger; the metric name may not align with the scaler output.", spec.External.Metric.Name))
-			}
+		if spec.Type != autoscalingv2.ExternalMetricSourceType || spec.External == nil {
+			continue
 		}
+		metricName := spec.External.Metric.Name
+		index, observed := matchTriggerMetric(metricName, k.Triggers)
+		if index < 0 {
+			lines = append(lines, fmt.Sprintf(confidence.BadgeEstimated+" HPA external metric %q has no matching KEDA trigger; the metric name may not align with the scaler output.", metricName))
+			continue
+		}
+		lines = append(lines, triggerMetricLine(k.Triggers[index], index, metricName, observed))
 	}
-
-	for _, t := range k.Triggers {
-		names = append(names, t.Name)
+	for i, t := range k.Triggers {
+		names = append(names, triggerName(t, i))
 	}
 	lines = append(lines, fmt.Sprintf(confidence.BadgeObserved+" ScaledObject defines %d trigger(s): %s.", len(k.Triggers), strings.Join(names, ", ")))
-
 	return lines
+}
+
+func triggerName(t TriggerSummary, index int) string {
+	if t.Name != "" {
+		return t.Name
+	}
+	return fmt.Sprintf("#%d (%s)", index, t.Type)
+}
+
+func matchTriggerMetric(metric string, triggers []TriggerSummary) (int, bool) {
+	index := -1
+	for i, t := range triggers {
+		if t.MetricName != "" && t.MetricName == metric {
+			if index >= 0 {
+				return -1, false
+			}
+			index = i
+		}
+	}
+	if index >= 0 {
+		return index, true
+	}
+	for i, t := range triggers {
+		if t.MetricName != "" {
+			continue
+		}
+		nameMatches := t.Name != "" && strings.Contains(metric, t.Name)
+		typeMatches := t.Type != "" && strings.Contains(metric, strings.ToLower(t.Type))
+		if nameMatches || typeMatches {
+			if index >= 0 {
+				return -1, false
+			}
+			index = i
+		}
+	}
+	return index, false
+}
+
+func triggerMetricLine(t TriggerSummary, index int, metric string, observed bool) string {
+	label := t.Name
+	if label == "" {
+		label = fmt.Sprintf("#%d", index)
+	}
+	desc := fmt.Sprintf("KEDA trigger %q (type %s)", label, t.Type)
+	if t.Threshold != "" {
+		desc += fmt.Sprintf(" threshold=%s", t.Threshold)
+	}
+	if t.CurrentValue != "" {
+		desc += fmt.Sprintf(" current=%s", t.CurrentValue)
+	}
+	badge := confidence.BadgeEstimated
+	if observed {
+		badge = confidence.BadgeObserved
+	}
+	return fmt.Sprintf(badge+" %s produces external metric %q which matches HPA spec.metrics entry.", desc, metric)
 }
 
 func analyzePolling(hpa *autoscalingv2.HorizontalPodAutoscaler, k *Analysis) []string {
@@ -149,7 +201,11 @@ func analyzeReplicaBounds(hpa *autoscalingv2.HorizontalPodAutoscaler, k *Analysi
 		minReplicas = *hpa.Spec.MinReplicas
 	}
 
-	if k.MinReplicaCount != nil && *k.MinReplicaCount != minReplicas {
+	effectiveMin := DefaultMinReplicas
+	if k.MinReplicaCount != nil && *k.MinReplicaCount > 0 {
+		effectiveMin = *k.MinReplicaCount
+	}
+	if k.MinReplicaCount != nil && effectiveMin != minReplicas {
 		lines = append(lines, fmt.Sprintf(confidence.BadgeObserved+" KEDA minReplicaCount=%d differs from HPA minReplicas=%d; KEDA reconciliation may override manual HPA changes.", *k.MinReplicaCount, minReplicas))
 	}
 	if k.MaxReplicaCount != nil && *k.MaxReplicaCount != hpa.Spec.MaxReplicas {
@@ -162,17 +218,24 @@ func analyzeReplicaBounds(hpa *autoscalingv2.HorizontalPodAutoscaler, k *Analysi
 	return lines
 }
 
-// analyzeTriggerStatus checks for inactive triggers and notes fallback configuration.
+// analyzeTriggerStatus checks scaler health and notes fallback configuration.
 func analyzeTriggerStatus(k *Analysis) []string {
 	if k == nil {
 		return nil
 	}
 	var lines []string
 
-	// Check for inactive triggers.
+	// Activity can be idle while metric collection is healthy.
 	for _, t := range k.Triggers {
-		if t.Status == "Inactive" {
-			lines = append(lines, fmt.Sprintf(confidence.BadgeObserved+" KEDA trigger %q (type %s) is Inactive; the scaler may not be receiving events or the external source may be unavailable.", t.Name, t.Type))
+		if strings.EqualFold(t.HealthStatus, "Failing") {
+			lines = append(lines, fmt.Sprintf(confidence.BadgeObserved+" KEDA trigger %q (type %s) has Failing metric health; the external source may be unavailable.", t.Name, t.Type))
+		}
+	}
+
+	for _, name := range sortedHealthNames(k.Health) {
+		metric := k.Health[name]
+		if strings.EqualFold(metric.Status, "Failing") {
+			lines = append(lines, fmt.Sprintf(confidence.BadgeObserved+" KEDA metric %q has Failing health.", name))
 		}
 	}
 
@@ -182,4 +245,13 @@ func analyzeTriggerStatus(k *Analysis) []string {
 	}
 
 	return lines
+}
+
+func sortedHealthNames(health map[string]MetricHealth) []string {
+	names := make([]string, 0, len(health))
+	for name := range health {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }

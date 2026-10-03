@@ -8,7 +8,6 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/fleet"
 	"github.com/spf13/cobra"
 )
@@ -51,8 +50,7 @@ func runFleet(ctx context.Context, out io.Writer, opts *options, risk string) er
 }
 
 func writeFleetReport(out io.Writer, opts *options, report fleet.Report) error {
-	format, _ := selectOutputFromOptions(opts)
-	return render.Format(out, format, "", report, func(out io.Writer) error {
+	return renderWithOutput(out, opts, report, func(out io.Writer) error {
 		var buffer strings.Builder
 		writeFleetReportText(&buffer, report)
 		_, err := io.WriteString(out, buffer.String())

@@ -82,12 +82,25 @@ func churnColor(level string) lipgloss.Style {
 
 // renderHistoryView renders the history/sparkline view for the selected HPA.
 func (m Model) renderHistoryView() string {
-	items := m.filteredItems()
-	if m.cursor >= len(items) {
-		return "No HPA selected"
+	var item hpaanalysis.ListItem
+	if m.historyState != nil && m.historyState.key != "" {
+		found := false
+		for _, candidate := range m.items {
+			if candidate.Namespace+"/"+candidate.Name == m.historyState.key {
+				item, found = candidate, true
+				break
+			}
+		}
+		if !found {
+			return "HPA History: " + m.historyState.key + "\nTarget HPA is no longer available.\nEsc: back"
+		}
+	} else {
+		items := m.filteredItems()
+		if m.cursor < 0 || m.cursor >= len(items) {
+			return "No HPA selected"
+		}
+		item = items[m.cursor]
 	}
-
-	item := items[m.cursor]
 
 	// Determine available snapshots from history state.
 	var snapshots []hpaanalysis.TimelineSnapshot

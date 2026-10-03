@@ -103,7 +103,7 @@ func triggerStatusBadge(status string, theme style.Theme) string {
 	case "Active":
 		return theme.OK.Render("Active ✓")
 	case "Inactive":
-		return theme.Error.Render("Inactive ✗")
+		return theme.Dim.Render("Inactive (idle)")
 	default:
 		return theme.Dim.Render("Unknown ?")
 	}

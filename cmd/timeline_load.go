@@ -15,6 +15,8 @@ import (
 
 func loadRecordedTrace(path, namespace, name string) (*hpaanalysis.TimelineTrace, error) {
 	var combined hpaanalysis.TimelineTrace
+	var selectedNamespace string
+	var selected bool
 	lineCount, err := recordio.ScanTraces(path, func(trace hpaanalysis.TimelineTrace) error {
 		if trace.HPAName != name {
 			return nil
@@ -22,6 +24,10 @@ func loadRecordedTrace(path, namespace, name string) (*hpaanalysis.TimelineTrace
 		if namespace != "" && trace.Namespace != namespace {
 			return nil
 		}
+		if selected && namespace == "" && selectedNamespace != trace.Namespace {
+			return fmt.Errorf("HPA %q appears in multiple namespaces; specify --namespace (-n)", name)
+		}
+		selected, selectedNamespace = true, trace.Namespace
 		mergeRecordedTrace(&combined, trace)
 		if len(combined.Snapshots) > maxSnapshotsPerTrace {
 			return snapshotLimitError(path)

@@ -19,14 +19,17 @@ func buildKEDAAnalysis(info kube.KEDAInfo, hpa *autoscalingv2.HorizontalPodAutos
 	triggers := make([]hpakeda.TriggerSummary, 0, len(info.Triggers))
 	for _, t := range info.Triggers {
 		triggers = append(triggers, hpakeda.TriggerSummary{
-			Type:         t.Type,
-			Name:         t.Name,
-			Status:       t.Status,
-			Message:      t.Message,
-			MetricName:   t.MetricName,
-			Threshold:    t.Threshold,
-			CurrentValue: t.CurrentValue,
-			AuthRef:      t.AuthenticationRef,
+			Type:             t.Type,
+			MetricType:       t.MetricType,
+			HealthStatus:     t.HealthStatus,
+			NumberOfFailures: t.NumberOfFailures,
+			Name:             t.Name,
+			Status:           t.Status,
+			Message:          t.Message,
+			MetricName:       t.MetricName,
+			Threshold:        t.Threshold,
+			CurrentValue:     t.CurrentValue,
+			AuthRef:          t.AuthenticationRef,
 		})
 	}
 
@@ -49,7 +52,12 @@ func buildKEDAAnalysis(info kube.KEDAInfo, hpa *autoscalingv2.HorizontalPodAutos
 		}
 	}
 
+	health := make(map[string]hpakeda.MetricHealth, len(info.Health))
+	for name, metric := range info.Health {
+		health[name] = hpakeda.MetricHealth{Status: metric.Status, NumberOfFailures: metric.NumberOfFailures}
+	}
 	kedaAnalysis := &hpakeda.Analysis{
+		Health:           health,
 		ScaledObjectName: info.ScaledObjectName,
 		Triggers:         triggers,
 		PollingInterval:  info.PollingInterval,
@@ -61,7 +69,7 @@ func buildKEDAAnalysis(info kube.KEDAInfo, hpa *autoscalingv2.HorizontalPodAutos
 		Fallback:         fallback,
 	}
 
-	kedaAnalysis.Lines = append(kedaAnalysis.Lines, hpakeda.Analyze(hpa, kedaAnalysis)...)
+	kedaAnalysis.Lines = hpakeda.Analyze(hpa, kedaAnalysis)
 
 	return kedaAnalysis
 }

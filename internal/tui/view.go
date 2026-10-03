@@ -126,7 +126,7 @@ func tuiTriggerStatusBadge(status string) string {
 	case "Active":
 		return okStyle.Render("Active ✓")
 	case "Inactive":
-		return errorStyle.Render("Inactive ✗")
+		return dimStyle.Render("Inactive (idle)")
 	default:
 		return dimStyle.Render("Unknown ?")
 	}

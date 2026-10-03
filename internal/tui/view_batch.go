@@ -87,7 +87,7 @@ func (m Model) renderBatchAuditView() string {
 	}
 
 	sb.WriteString("\n")
-	sb.WriteString(dimStyle.Render("Press esc to go back"))
+	sb.WriteString(dimStyle.Render("↑/k: scroll up | ↓/j: scroll down | esc: back"))
 
 	return sb.String()
 }
