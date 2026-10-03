@@ -97,6 +97,7 @@ func TestAnalyzeCapacityPlan_AllChecksPass(t *testing.T) {
 		ReadyPods: 10,
 	}
 
+	input.NodeCapacity = validCapacityQuantityInput().NodeCapacity
 	plan := AnalyzeCapacityPlan(input)
 
 	if plan.Namespace != "production" {
@@ -191,6 +192,7 @@ func TestAnalyzeCapacityPlan_QuotaShortfall(t *testing.T) {
 		},
 	}
 
+	input.NodeCapacity = validCapacityQuantityInput().NodeCapacity
 	plan := AnalyzeCapacityPlan(input)
 
 	if plan.Safe {
@@ -422,6 +424,7 @@ func TestAnalyzeCapacityPlan_PDBInformational(t *testing.T) {
 		},
 	}
 
+	input.NodeCapacity = validCapacityQuantityInput().NodeCapacity
 	plan := AnalyzeCapacityPlan(input)
 
 	// PDB is informational, should not block.
@@ -1171,5 +1174,17 @@ func assertCapacityCheckIDsAbsent(t *testing.T, checks []CapacityCheckResult, id
 				t.Fatalf("check %q should have been skipped, got %+v", id, checks)
 			}
 		}
+	}
+}
+
+func TestCapacityWithoutNodeObservationIsUnknown(t *testing.T) {
+	input := validCapacityQuantityInput()
+	input.NodeCapacity = nil
+	plan := AnalyzeCapacityPlan(input)
+	if plan.Safe || !hasCheckStatus(plan.Checks, CapacityCheckNodeCapacity, CapacityCheckUnknown) || !hasObservationDomainFromChecks(plan.Checks, CapacityObservationNodeCapacity) {
+		t.Fatalf("unobserved capacity claimed safe: %+v", plan)
+	}
+	if !strings.Contains(strings.Join(plan.NextActions, " "), "--capacity-deep") {
+		t.Fatalf("missing actionable recovery: %v", plan.NextActions)
 	}
 }

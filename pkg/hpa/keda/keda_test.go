@@ -190,7 +190,7 @@ func TestAnalyzeTriggerStatus(t *testing.T) {
 	t.Run("inactive trigger surfaces warning", func(t *testing.T) {
 		k := &Analysis{
 			Triggers: []TriggerSummary{
-				{Name: "queue", Type: "aws-sqs-queue", Status: "Inactive"},
+				{Name: "queue", Type: "aws-sqs-queue", HealthStatus: "Failing"},
 				{Name: "cpu", Type: "cpu", Status: "Active"},
 			},
 		}
@@ -198,7 +198,7 @@ func TestAnalyzeTriggerStatus(t *testing.T) {
 		if len(lines) != 1 {
 			t.Fatalf("expected 1 inactive line, got %d: %v", len(lines), lines)
 		}
-		if !strings.Contains(lines[0], `trigger "queue"`) || !strings.Contains(lines[0], "Inactive") {
+		if !strings.Contains(lines[0], `trigger "queue"`) || !strings.Contains(lines[0], "Failing") {
 			t.Errorf("unexpected inactive warning: %q", lines[0])
 		}
 	})
@@ -211,4 +211,39 @@ func TestAnalyzeTriggerStatus(t *testing.T) {
 			t.Fatalf("expected no warnings for active triggers, got %v", got)
 		}
 	})
+}
+
+func TestKEDATriggerMatchingAvoidsEmptyAndAmbiguousNames(t *testing.T) {
+	hpa := &autoscalingv2.HorizontalPodAutoscaler{Spec: autoscalingv2.HorizontalPodAutoscalerSpec{Metrics: []autoscalingv2.MetricSpec{{Type: autoscalingv2.ExternalMetricSourceType, External: &autoscalingv2.ExternalMetricSource{Metric: autoscalingv2.MetricIdentifier{Name: "s1-prometheus"}}}}}}
+	for _, tc := range []struct {
+		name     string
+		triggers []TriggerSummary
+		want     string
+		avoid    string
+	}{
+		{"unnamed different types", []TriggerSummary{{Type: "redis"}, {Type: "prometheus"}}, `[estimated] KEDA trigger "#1"`, `type redis) produces`},
+		{"same type ambiguous", []TriggerSummary{{Type: "prometheus"}, {Type: "prometheus"}}, "no matching KEDA trigger", "produces external metric"},
+		{"exact observed name", []TriggerSummary{{Type: "prometheus", MetricName: "s0-prometheus"}, {Type: "prometheus", MetricName: "s1-prometheus"}}, `[observed] KEDA trigger "#1"`, `trigger "#0"`},
+		{"empty trigger", []TriggerSummary{{}}, "no matching KEDA trigger", "produces external metric"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := strings.Join(analyzeTriggers(hpa, &Analysis{Triggers: tc.triggers}), "\n")
+			if !strings.Contains(got, tc.want) || strings.Contains(got, tc.avoid) {
+				t.Fatalf("unsafe metric association: %s", got)
+			}
+		})
+	}
+}
+
+func TestKEDAZeroScaleUsesEffectiveHPAMinimum(t *testing.T) {
+	zero, one, two := int32(0), int32(1), int32(2)
+	hpa := &autoscalingv2.HorizontalPodAutoscaler{Spec: autoscalingv2.HorizontalPodAutoscalerSpec{MinReplicas: &one}}
+	k := &Analysis{MinReplicaCount: &zero}
+	if got := analyzeReplicaBounds(hpa, k); len(got) != 0 {
+		t.Fatalf("normal zero scaling flagged: %v", got)
+	}
+	hpa.Spec.MinReplicas = &two
+	if got := analyzeReplicaBounds(hpa, k); len(got) != 1 {
+		t.Fatalf("actual drift missed: %v", got)
+	}
 }

@@ -10,7 +10,6 @@ import (
 	hpaflapping "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/flapping"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
-	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 	"github.com/spf13/cobra"
@@ -109,8 +108,7 @@ func runFlapFromRecord(out io.Writer, opts *options, name, path string) error {
 }
 
 func writeFlapReport(out io.Writer, opts *options, report flapReport) error {
-	format, _ := selectOutputFromOptions(opts)
-	return render.Format(out, format, "", report, func(out io.Writer) error {
+	return renderWithOutput(out, opts, report, func(out io.Writer) error {
 		theme := themeFor(opts.Color, out)
 		var buffer strings.Builder
 		writeFlapReportText(&buffer, report, theme)

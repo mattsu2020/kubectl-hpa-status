@@ -7,6 +7,9 @@ import (
 	"testing"
 	"time"
 
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	tea "charm.land/bubbletea/v2"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/audit"
@@ -45,6 +48,10 @@ func detailModel(opts Options) Model {
 			Meta: hpaanalysis.MetaView{Name: "web", Namespace: "default"},
 		}},
 	}
+	m.hpas = map[string]*autoscalingv2.HorizontalPodAutoscaler{"default/web": {
+		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "default"},
+		Spec:       autoscalingv2.HorizontalPodAutoscalerSpec{MaxReplicas: 5, MinReplicas: int32Ptr(1)},
+	}}
 	m.viewMode = detailView
 	m.width = 120
 	m.height = 40
@@ -549,17 +556,6 @@ func TestParseMetricInput(t *testing.T) {
 	}
 	if _, err := parseMetricInput("novalue"); err == nil {
 		t.Error("expected error for input without pairs")
-	}
-}
-
-func TestBuildHPAFromAnalysis(t *testing.T) {
-	t.Parallel()
-	a := hpaanalysis.Analysis{
-		Meta: hpaanalysis.MetaView{Name: "web", Namespace: "default"},
-	}
-	hpa := buildHPAFromAnalysis(a)
-	if hpa == nil || hpa.Name != "web" || hpa.Namespace != "default" {
-		t.Fatalf("buildHPAFromAnalysis = %+v", hpa)
 	}
 }
 

@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	enrichmentPenaltyKEDAInactive = "KEDA trigger inactive"
+	enrichmentPenaltyKEDAInactive = "KEDA metric health failing"
 	enrichmentPenaltyVPAConflict  = "VPA conflict detected"
 	enrichmentPenaltyChurn        = "High replica churn (thrashing) detected"
 )
@@ -264,12 +264,17 @@ func healthStateFromSignals(signals []HealthSignal) HealthState {
 	return state
 }
 
-func hasInactiveKEDATrigger(a *Analysis) bool {
+func hasFailingKEDAMetric(a *Analysis) bool {
 	if a.Controllers.KEDAInfo == nil {
 		return false
 	}
+	for _, metric := range a.Controllers.KEDAInfo.Health {
+		if strings.EqualFold(metric.Status, "Failing") {
+			return true
+		}
+	}
 	for _, trigger := range a.Controllers.KEDAInfo.Triggers {
-		if strings.EqualFold(trigger.Status, "Inactive") || strings.EqualFold(trigger.Status, "False") {
+		if strings.EqualFold(trigger.HealthStatus, "Failing") {
 			return true
 		}
 	}
@@ -291,7 +296,7 @@ func reconcileDynamicHealthPenalties(a *Analysis, weights HealthWeights) {
 	acc.result.Signals = append(acc.result.Signals, baseline.signals...)
 
 	hasDynamicPenalty := false
-	if hasInactiveKEDATrigger(a) {
+	if hasFailingKEDAMetric(a) {
 		acc.AddPenalty(enrichmentPenaltyKEDAInactive, resolved.kedaInactiveTrigger, HealthLimited)
 		hasDynamicPenalty = true
 	}

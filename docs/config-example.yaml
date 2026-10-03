@@ -99,5 +99,5 @@ healthWeights:
   implicitMaxReplicas: 20 # Deducted when current == desired == maxReplicas. Default: 20
   scaleDownStabilized: 10 # Deducted during scale-down stabilization window. Default: 10
   atMinimumReplicas: 5    # Deducted when desired == minReplicas. Default: 5
-  # kedaInactiveTrigger: 15 # Deducted when a KEDA ScaledObject trigger is paused/inactive. Default: 15
+  # kedaInactiveTrigger: 15 # Deducted when a KEDA metric reports Failing health (idle triggers are healthy). Default: 15
   # vpaConflict: 20         # Deducted when VPA and HPA both manage CPU/memory. Default: 20

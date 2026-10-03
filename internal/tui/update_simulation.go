@@ -7,8 +7,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/simulate"
-	autoscalingv2 "k8s.io/api/autoscaling/v2"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // This file holds the simulation/replay/fix handlers and their helpers,
@@ -78,8 +76,12 @@ func (m Model) initSimState() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Get the original HPA from the report's analysis.
-	hpa := buildHPAFromAnalysis(report.Analysis)
+	hpa := m.hpas[report.Analysis.Meta.Namespace+"/"+report.Analysis.Meta.Name]
+	if hpa == nil {
+		m.err = fmt.Errorf("original HPA is unavailable; refresh before simulation")
+		return m, nil
+	}
+	hpa = hpa.DeepCopy()
 
 	fields := []simField{
 		{Label: "maxReplicas", Path: "maxReplicas", Value: "", Original: fmt.Sprintf("%d", hpa.Spec.MaxReplicas)},
@@ -242,27 +244,6 @@ func (m Model) currentReport() *hpaanalysis.StatusReport {
 	item := filtered[m.cursor]
 	k := item.Namespace + "/" + item.Name
 	return m.reports[k]
-}
-
-// buildHPAFromAnalysis creates a minimal HPA object from analysis data
-// for use in simulation. The HPA will have correct spec fields but
-// simplified status.
-func buildHPAFromAnalysis(a hpaanalysis.Analysis) *autoscalingv2.HorizontalPodAutoscaler {
-	hpa := &autoscalingv2.HorizontalPodAutoscaler{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: a.Meta.Namespace,
-			Name:      a.Meta.Name,
-		},
-		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-			MaxReplicas: a.Replicas.Max,
-			MinReplicas: int32Ptr(a.Replicas.Min),
-		},
-		Status: autoscalingv2.HorizontalPodAutoscalerStatus{
-			CurrentReplicas: a.Replicas.Current,
-			DesiredReplicas: a.Replicas.Desired,
-		},
-	}
-	return hpa
 }
 
 func int32Ptr(v int32) *int32 {

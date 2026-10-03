@@ -117,6 +117,12 @@ var viewControllerRegistry = [viewModeCount]viewController{
 		handleEscape:  escapeInteractiveView,
 	},
 	batchAuditView: viewControllerFuncs{
+		moveCursor: func(m Model, delta int) Model {
+			if m.batchAuditState != nil {
+				m.batchAuditState.scrollPos = clampCursor(m.batchAuditState.scrollPos+delta, len(m.batchAuditState.results)-1)
+			}
+			return m
+		},
 		render:        Model.renderBatchAuditView,
 		handleMessage: handleBatchAuditViewMessage,
 		handleEscape:  escapeBatchAuditView,

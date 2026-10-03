@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/colorprofile"
 )
 
 // Theme holds all styled renderers used by the CLI output layer.
@@ -35,13 +34,6 @@ func NewTheme(colorEnabled bool) Theme {
 	if !colorEnabled {
 		return Theme{enabled: false}
 	}
-
-	// lipgloss v2 downsamples colors at write time via the global
-	// lipgloss.Writer (a colorprofile.Writer). Pin its Profile to TrueColor so
-	// styles emit full-fidelity ANSI codes even when stdout is not a terminal
-	// (important for tests and piped output with --color=always). This replaces
-	// the v1 pattern of constructing a renderer with an explicit profile.
-	lipgloss.Writer.Profile = colorprofile.TrueColor
 
 	return Theme{
 		enabled: true,

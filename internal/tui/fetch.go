@@ -10,6 +10,7 @@ import (
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	hpakeda "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/keda"
 	hpavpa "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/vpa"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
@@ -71,14 +72,16 @@ func fetchHPAs(m Model) tea.Cmd {
 		items := make([]hpaanalysis.ListItem, 0, len(analyzed))
 		reports := make(map[string]*hpaanalysis.StatusReport, len(analyzed))
 		uids := make(map[string]string, len(analyzed))
+		hpaSnapshots := make(map[string]*autoscalingv2.HorizontalPodAutoscaler, len(analyzed))
 		for i := range analyzed {
 			items = append(items, analyzed[i].ListItem)
 			report := analyzed[i].Report
 			reports[analyzed[i].Key] = &report
 			uids[analyzed[i].Key] = string(hpas.Items[i].UID)
+			hpaSnapshots[analyzed[i].Key] = hpas.Items[i].DeepCopy()
 		}
 
-		return fetchResultMsg{requestID: cfg.requestID, items: items, reports: reports, uids: uids}
+		return fetchResultMsg{requestID: cfg.requestID, items: items, reports: reports, uids: uids, hpas: hpaSnapshots}
 	}
 }
 

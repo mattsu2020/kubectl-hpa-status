@@ -265,6 +265,15 @@ func renderDetailKEDATrigger(sb *strings.Builder, t hpakeda.TriggerSummary) {
 		label = fmt.Sprintf("%s: %s", label, badge)
 	}
 	sb.WriteString(fmt.Sprintf("    - %s\n", label))
+	if t.HealthStatus != "" {
+		sb.WriteString(fmt.Sprintf("      health=%s\n", hpaanalysis.SanitizeTerminalText(t.HealthStatus)))
+	}
+	if t.NumberOfFailures != nil {
+		sb.WriteString(fmt.Sprintf("      failures=%d\n", *t.NumberOfFailures))
+	}
+	if t.MetricType != "" {
+		sb.WriteString(fmt.Sprintf("      metricType=%s\n", hpaanalysis.SanitizeTerminalText(t.MetricType)))
+	}
 	if t.MetricName != "" || t.Threshold != "" || t.CurrentValue != "" {
 		var detailParts []string
 		if t.MetricName != "" {

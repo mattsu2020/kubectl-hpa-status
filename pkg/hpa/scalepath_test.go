@@ -128,7 +128,7 @@ func TestAnalyzeScalePathWithProbeWarnings(t *testing.T) {
 		},
 		PodTemplate: &ScalePathPodTemplate{
 			ReadinessProbe: &ProbeInfo{
-				InitialDelaySeconds: 60,
+				InitialDelaySeconds: 150,
 				PeriodSeconds:       10,
 				FailureThreshold:    10,
 			},
@@ -326,5 +326,24 @@ func TestWriteScalePathTextWithNewSections(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Fatalf("expected output to contain %q, got:\n%s", want, out)
 		}
+	}
+}
+
+func TestReadinessFailuresDoNotDefineReadyDelay(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		probe ProbeInfo
+		warn  bool
+	}{
+		{"first success can ready", ProbeInfo{PeriodSeconds: 30, FailureThreshold: 10, SuccessThreshold: 1}, false},
+		{"consecutive successes take time", ProbeInfo{InitialDelaySeconds: 10, PeriodSeconds: 30, FailureThreshold: 1, SuccessThreshold: 5}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := &ScalePath{}
+			analyzeProbeConfiguration(path, ScalePathInput{PodTemplate: &ScalePathPodTemplate{ReadinessProbe: &tc.probe}}, scalePathPodCounts{total: 1}, 2)
+			if (len(path.ProbeWarnings) > 0) != tc.warn {
+				t.Fatalf("warnings: %v", path.ProbeWarnings)
+			}
+		})
 	}
 }

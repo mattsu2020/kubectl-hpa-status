@@ -17,7 +17,7 @@ func TestApplyEnrichmentPenalties(t *testing.T) {
 	// triggers the KEDA penalty.
 	inactiveKEDA := func() *keda.Analysis {
 		return &keda.Analysis{
-			Triggers: []keda.TriggerSummary{{Type: "prometheus", Status: "Inactive"}},
+			Triggers: []keda.TriggerSummary{{Type: "prometheus", HealthStatus: "Failing"}},
 		}
 	}
 	// activeKEDA returns a keda.Analysis whose trigger is Active (no penalty).
@@ -88,7 +88,7 @@ func TestApplyEnrichmentPenaltiesIsIdempotentAcrossFinalize(t *testing.T) {
 		Conditions: ConditionsView{StabilizationRemaining: &remaining},
 		Advisory:   AdvisoryView{VPAConflict: &vpa.ConflictInfo{VPAName: "my-vpa", UpdateMode: "Auto"}},
 		Controllers: ControllersView{KEDAInfo: &keda.Analysis{
-			Triggers: []keda.TriggerSummary{{Type: "prometheus", Status: "Inactive"}},
+			Triggers: []keda.TriggerSummary{{Type: "prometheus", HealthStatus: "Failing"}},
 		}},
 	}
 
@@ -152,7 +152,7 @@ func TestDynamicHealthPenaltiesRecomputeFromUnclampedBaseline(t *testing.T) {
 	a := Analysis{
 		Decision: DecisionView{Health: string(HealthOK), HealthScore: 10},
 		Controllers: ControllersView{KEDAInfo: &keda.Analysis{
-			Triggers: []keda.TriggerSummary{{Status: "Inactive"}},
+			Triggers: []keda.TriggerSummary{{HealthStatus: "Failing"}},
 		}},
 	}
 	ApplyEnrichmentPenalties(&a, HealthWeights{KEDAInactiveTrigger: IntWeight(15)})
@@ -173,7 +173,7 @@ func TestDynamicHealthPenaltiesRemoveInactiveSignals(t *testing.T) {
 		}},
 		Advisory: AdvisoryView{VPAConflict: &vpa.ConflictInfo{VPAName: "web-vpa"}},
 		Controllers: ControllersView{KEDAInfo: &keda.Analysis{
-			Triggers: []keda.TriggerSummary{{Status: "Inactive"}},
+			Triggers: []keda.TriggerSummary{{HealthStatus: "Failing"}},
 		}},
 	}
 	ApplyChurnPenalty(&a, HealthWeights{})
@@ -181,7 +181,7 @@ func TestDynamicHealthPenaltiesRemoveInactiveSignals(t *testing.T) {
 		t.Fatalf("dynamic health = %+v", a.Decision.HealthResult)
 	}
 
-	a.Controllers.KEDAInfo.Triggers[0].Status = "Active"
+	a.Controllers.KEDAInfo.Triggers[0].HealthStatus = "Happy"
 	a.Advisory.VPAConflict = nil
 	a.Stability.ChurnAnalysis.Level = churn.ChurnLow
 	ApplyEnrichmentPenalties(&a, HealthWeights{})

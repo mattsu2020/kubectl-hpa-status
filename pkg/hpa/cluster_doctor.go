@@ -48,6 +48,8 @@ type MetricsServerCheck struct {
 
 // RBACCheckResult holds the result of SelfSubjectAccessReview checks.
 type RBACCheckResult struct {
+	// Errors maps permission names to access-review observation failures.
+	Errors map[string]string `json:"errors,omitempty" yaml:"errors,omitempty"`
 	// CanGetHPA indicates whether the user can get HPAs.
 	CanGetHPA bool `json:"canGetHpa" yaml:"canGetHpa"`
 	// CanListHPA indicates whether the user can list HPAs.
@@ -56,6 +58,9 @@ type RBACCheckResult struct {
 	CanGetPods bool `json:"canGetPods" yaml:"canGetPods"`
 	// CanGetEvents indicates whether the user can get events.
 	CanGetEvents bool `json:"canGetEvents" yaml:"canGetEvents"`
+	// CanListPods and CanListEvents reflect the collection APIs.
+	CanListPods   bool `json:"canListPods" yaml:"canListPods"`
+	CanListEvents bool `json:"canListEvents" yaml:"canListEvents"`
 	// Message provides additional context.
 	Message string `json:"message,omitempty" yaml:"message,omitempty"`
 }
@@ -70,10 +75,7 @@ func BuildClusterDiagnosticsSummary(d *ClusterDiagnostics) {
 		}
 	}
 
-	rbacIssues := false
-	if d.RBAC != nil {
-		rbacIssues = !d.RBAC.CanGetHPA || !d.RBAC.CanListHPA || !d.RBAC.CanGetPods
-	}
+	rbacIssues := hasDeniedRBAC(d.RBAC)
 
 	metricsServerIssue := d.MetricsServer != nil && !d.MetricsServer.Available
 
@@ -91,6 +93,9 @@ func BuildClusterDiagnosticsSummary(d *ClusterDiagnostics) {
 			parts = append(parts, "insufficient RBAC permissions")
 		}
 		d.Summary = "Cluster prerequisites are NOT met: " + joinWithComma(parts) + ". HPA diagnostics may be incomplete."
+	case d.RBAC != nil && len(d.RBAC.Errors) > 0:
+		d.OverallStatus = "degraded"
+		d.Summary = "RBAC permissions could not be fully observed; access review failed. HPA diagnostics may be incomplete."
 	default:
 		d.OverallStatus = "healthy"
 		d.Summary = "All cluster prerequisites are met. HPA diagnostics should work correctly."
@@ -103,4 +108,23 @@ func joinWithComma(parts []string) string {
 		result += ", " + parts[i]
 	}
 	return result
+}
+
+// hasDeniedRBAC distinguishes unavailable reviews from denied permissions.
+func hasDeniedRBAC(rbac *RBACCheckResult) bool {
+	if rbac == nil {
+		return false
+	}
+	permissions := map[string]bool{
+		"get/horizontalpodautoscalers":  rbac.CanGetHPA,
+		"list/horizontalpodautoscalers": rbac.CanListHPA,
+		"list/pods":                     rbac.CanListPods,
+		"list/events":                   rbac.CanListEvents,
+	}
+	for permission, allowed := range permissions {
+		if !allowed && rbac.Errors[permission] == "" {
+			return true
+		}
+	}
+	return false
 }

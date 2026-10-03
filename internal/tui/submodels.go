@@ -107,10 +107,7 @@ func (s *batchAuditState) clone() *batchAuditState {
 
 func (s *batchAuditState) update(msg batchAuditMsg) {
 	s.loading = false
-	if msg.err != nil {
-		s.err = msg.err
-		return
-	}
+	s.err = msg.err
 	s.reports = msg.reports
 	s.results = buildBatchAuditEntries(msg.reports)
 }

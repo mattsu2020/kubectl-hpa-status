@@ -178,23 +178,35 @@ func CheckRBAC(ctx context.Context, client kubernetes.Interface, namespace strin
 		namespace = "default"
 	}
 
-	return &RBACStatus{
-		CanGetHPA:    checkAccess(ctx, client, namespace, "get", "horizontalpodautoscalers", "autoscaling"),
-		CanListHPA:   checkAccess(ctx, client, namespace, "list", "horizontalpodautoscalers", "autoscaling"),
-		CanGetPods:   checkAccess(ctx, client, namespace, "get", "pods", ""),
-		CanGetEvents: checkAccess(ctx, client, namespace, "get", "events", ""),
+	result := &RBACStatus{Errors: map[string]string{}}
+	check := func(verb, resource, group string) bool {
+		allowed, err := checkAccess(ctx, client, namespace, verb, resource, group)
+		if err != nil {
+			result.Errors[verb+"/"+resource] = err.Error()
+		}
+		return allowed
 	}
+	result.CanGetHPA = check("get", "horizontalpodautoscalers", "autoscaling")
+	result.CanListHPA = check("list", "horizontalpodautoscalers", "autoscaling")
+	result.CanGetPods = check("get", "pods", "")
+	result.CanGetEvents = check("get", "events", "")
+	result.CanListPods = check("list", "pods", "")
+	result.CanListEvents = check("list", "events", "")
+	return result
 }
 
 // RBACStatus holds the result of RBAC permission checks.
 type RBACStatus struct {
-	CanGetHPA    bool
-	CanListHPA   bool
-	CanGetPods   bool
-	CanGetEvents bool
+	Errors        map[string]string
+	CanGetHPA     bool
+	CanListHPA    bool
+	CanGetPods    bool
+	CanGetEvents  bool
+	CanListPods   bool
+	CanListEvents bool
 }
 
-func checkAccess(ctx context.Context, client kubernetes.Interface, namespace, verb, resource, group string) bool {
+func checkAccess(ctx context.Context, client kubernetes.Interface, namespace, verb, resource, group string) (bool, error) {
 	sar := &authorizationv1.SelfSubjectAccessReview{
 		Spec: authorizationv1.SelfSubjectAccessReviewSpec{
 			ResourceAttributes: &authorizationv1.ResourceAttributes{
@@ -208,7 +220,10 @@ func checkAccess(ctx context.Context, client kubernetes.Interface, namespace, ve
 
 	result, err := client.AuthorizationV1().SelfSubjectAccessReviews().Create(ctx, sar, metav1.CreateOptions{})
 	if err != nil {
-		return false
+		return false, err
 	}
-	return result.Status.Allowed
+	if result.Status.EvaluationError != "" {
+		return false, fmt.Errorf("access review evaluation failed: %s", result.Status.EvaluationError)
+	}
+	return result.Status.Allowed, nil
 }

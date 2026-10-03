@@ -21,21 +21,31 @@ func ScaledObjectGVR() schema.GroupVersionResource {
 
 // KEDAInfo holds extracted information about a KEDA ScaledObject.
 type KEDAInfo struct {
-	ScaledObjectName string              `json:"scaledObjectName" yaml:"scaledObjectName"`
-	Triggers         []KEDATrigger       `json:"triggers,omitempty" yaml:"triggers,omitempty"`
-	PollingInterval  *int32              `json:"pollingInterval,omitempty" yaml:"pollingInterval,omitempty"`
-	CooldownPeriod   *int32              `json:"cooldownPeriod,omitempty" yaml:"cooldownPeriod,omitempty"`
-	MinReplicaCount  *int32              `json:"minReplicaCount,omitempty" yaml:"minReplicaCount,omitempty"`
-	MaxReplicaCount  *int32              `json:"maxReplicaCount,omitempty" yaml:"maxReplicaCount,omitempty"`
-	IdleReplicaCount *int32              `json:"idleReplicaCount,omitempty" yaml:"idleReplicaCount,omitempty"`
-	Conditions       []KEDACondition     `json:"conditions,omitempty" yaml:"conditions,omitempty"`
-	Advanced         map[string]string   `json:"advanced,omitempty" yaml:"advanced,omitempty"`
-	Fallback         *KEDAFallback       `json:"fallback,omitempty" yaml:"fallback,omitempty"`
-	ScalingPolicies  []KEDAScalingPolicy `json:"scalingPolicies,omitempty" yaml:"scalingPolicies,omitempty"`
+	Health           map[string]KEDAMetricHealth `json:"health,omitempty" yaml:"health,omitempty"`
+	ScaledObjectName string                      `json:"scaledObjectName" yaml:"scaledObjectName"`
+	Triggers         []KEDATrigger               `json:"triggers,omitempty" yaml:"triggers,omitempty"`
+	PollingInterval  *int32                      `json:"pollingInterval,omitempty" yaml:"pollingInterval,omitempty"`
+	CooldownPeriod   *int32                      `json:"cooldownPeriod,omitempty" yaml:"cooldownPeriod,omitempty"`
+	MinReplicaCount  *int32                      `json:"minReplicaCount,omitempty" yaml:"minReplicaCount,omitempty"`
+	MaxReplicaCount  *int32                      `json:"maxReplicaCount,omitempty" yaml:"maxReplicaCount,omitempty"`
+	IdleReplicaCount *int32                      `json:"idleReplicaCount,omitempty" yaml:"idleReplicaCount,omitempty"`
+	Conditions       []KEDACondition             `json:"conditions,omitempty" yaml:"conditions,omitempty"`
+	Advanced         map[string]string           `json:"advanced,omitempty" yaml:"advanced,omitempty"`
+	Fallback         *KEDAFallback               `json:"fallback,omitempty" yaml:"fallback,omitempty"`
+	ScalingPolicies  []KEDAScalingPolicy         `json:"scalingPolicies,omitempty" yaml:"scalingPolicies,omitempty"`
+}
+
+// KEDAMetricHealth describes collection health for a generated external metric.
+type KEDAMetricHealth struct {
+	Status           string `json:"status,omitempty" yaml:"status,omitempty"`
+	NumberOfFailures *int32 `json:"numberOfFailures,omitempty" yaml:"numberOfFailures,omitempty"`
 }
 
 // KEDATrigger represents a single KEDA scaler trigger.
 type KEDATrigger struct {
+	MetricType        string            `json:"metricType,omitempty" yaml:"metricType,omitempty"`
+	HealthStatus      string            `json:"healthStatus,omitempty" yaml:"healthStatus,omitempty"`
+	NumberOfFailures  *int32            `json:"numberOfFailures,omitempty" yaml:"numberOfFailures,omitempty"`
 	Type              string            `json:"type" yaml:"type"`
 	Name              string            `json:"name,omitempty" yaml:"name,omitempty"`
 	Metadata          map[string]string `json:"metadata,omitempty" yaml:"metadata,omitempty"`

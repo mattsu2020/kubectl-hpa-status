@@ -101,6 +101,9 @@ func (m Model) keyHandlers() []keyBindingHandler {
 			if m.viewMode == detailView {
 				m.viewMode = historyView
 				m.historyState = &historyState{}
+				if report := m.currentReport(); report != nil {
+					m.historyState.key = report.Analysis.Meta.Namespace + "/" + report.Analysis.Meta.Name
+				}
 				if m.opts.LoadHistoryFn == nil {
 					return m, nil
 				}

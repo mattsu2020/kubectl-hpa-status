@@ -3,6 +3,8 @@ package tui
 import (
 	"fmt"
 
+	"charm.land/bubbles/v2/key"
+
 	tea "charm.land/bubbletea/v2"
 )
 
@@ -12,7 +14,7 @@ import (
 // rather than mutating the existing one. All methods on Model (Update, View,
 // Init, filteredItems) use value receivers for consistency with this pattern.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	m = m.clone()
+	m = m.cloneForMessage(msg)
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		return m.updateWindowSize(msg)
@@ -84,6 +86,7 @@ func (m Model) updateFetchResult(msg fetchResultMsg) (tea.Model, tea.Cmd) {
 	m.items = msg.items
 	m.reports = msg.reports
 	m.hpaUIDs = msg.uids
+	m.hpas = msg.hpas
 	m.err = nil
 
 	m.refreshFixStateAfterFetch()
@@ -242,5 +245,50 @@ func (m Model) updateBatchAudit(msg batchAuditMsg) Model {
 		return m
 	}
 	m.batchAuditState.update(msg)
+	return m
+}
+
+// cloneForMessage shares immutable fetched data for operations that cannot change it.
+func (m Model) cloneForMessage(msg tea.Msg) Model {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg, tickMsg:
+		return m
+	case tea.KeyMsg:
+		if !m.filtering && (key.Matches(msg, m.keys.Up) || key.Matches(msg, m.keys.Down)) {
+			return m.cloneActiveView()
+		}
+	}
+	return m.clone()
+}
+
+// cloneActiveView copies only state modified by cursor movement.
+func (m Model) cloneActiveView() Model {
+	switch m.viewMode {
+	case simView:
+		if m.simState != nil {
+			m.simState = m.simState.clone()
+		}
+	case fixView:
+		if m.fixState != nil {
+			m.fixState = m.fixState.clone()
+		}
+	case replayView:
+		if m.replayState != nil {
+			m.replayState = m.replayState.clone()
+		}
+	case historyView:
+		if m.historyState != nil {
+			m.historyState = m.historyState.clone()
+		}
+	case hintsView:
+		if m.hintsState != nil {
+			m.hintsState = m.hintsState.clone()
+		}
+	case batchAuditView:
+		if m.batchAuditState != nil {
+			state := *m.batchAuditState
+			m.batchAuditState = &state
+		}
+	}
 	return m
 }

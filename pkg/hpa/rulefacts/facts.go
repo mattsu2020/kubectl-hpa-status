@@ -6,8 +6,9 @@ import autoscalingv2 "k8s.io/api/autoscaling/v2"
 
 // ResourceUtilizationTarget is a normalized resource utilization target.
 type ResourceUtilizationTarget struct {
-	Resource string
-	Percent  int32
+	MetricIndex int
+	Resource    string
+	Percent     int32
 }
 
 // MaxRecommendedReplicaRatio is the maxReplicas/minReplicas ratio beyond which
@@ -30,14 +31,15 @@ func ResourceUtilizationTargets(hpa *autoscalingv2.HorizontalPodAutoscaler) []Re
 		return nil
 	}
 	var targets []ResourceUtilizationTarget
-	for _, metric := range hpa.Spec.Metrics {
+	for index, metric := range hpa.Spec.Metrics {
 		if metric.Type != autoscalingv2.ResourceMetricSourceType || metric.Resource == nil ||
 			metric.Resource.Target.Type != autoscalingv2.UtilizationMetricType || metric.Resource.Target.AverageUtilization == nil {
 			continue
 		}
 		targets = append(targets, ResourceUtilizationTarget{
-			Resource: string(metric.Resource.Name),
-			Percent:  *metric.Resource.Target.AverageUtilization,
+			MetricIndex: index,
+			Resource:    string(metric.Resource.Name),
+			Percent:     *metric.Resource.Target.AverageUtilization,
 		})
 	}
 	return targets

@@ -187,10 +187,19 @@ func kedaTriggerLabel(t keda.TriggerSummary, theme style.Theme) string {
 // kedaTriggerDetail renders the optional metric/threshold/current detail line
 // for a trigger, or "" when none of those fields are set.
 func kedaTriggerDetail(t keda.TriggerSummary) string {
-	if t.MetricName == "" && t.Threshold == "" && t.CurrentValue == "" {
+	if t.MetricName == "" && t.Threshold == "" && t.CurrentValue == "" && t.MetricType == "" && t.HealthStatus == "" && t.NumberOfFailures == nil {
 		return ""
 	}
-	parts := make([]string, 0, 3)
+	parts := make([]string, 0, 6)
+	if t.HealthStatus != "" {
+		parts = append(parts, "health="+t.HealthStatus)
+	}
+	if t.NumberOfFailures != nil {
+		parts = append(parts, fmt.Sprintf("failures=%d", *t.NumberOfFailures))
+	}
+	if t.MetricType != "" {
+		parts = append(parts, "metricType="+t.MetricType)
+	}
 	if t.MetricName != "" {
 		parts = append(parts, "metric="+t.MetricName)
 	}

@@ -231,3 +231,19 @@ func TestActionLine_EnabledReturnsWarningStyled(t *testing.T) {
 		t.Fatalf("ActionLine enabled expected ANSI, got %q", got)
 	}
 }
+
+func TestThemeConcurrentCreationAndRendering(t *testing.T) {
+	for range 8 {
+		t.Run("renderer", func(t *testing.T) {
+			t.Parallel()
+			for range 100 {
+				if got := NewTheme(true).Error.Render("error"); !strings.Contains(got, "\x1b[") {
+					t.Fatalf("missing color: %q", got)
+				}
+				if got := NewTheme(false).Error.Render("error"); got != "error" {
+					t.Fatalf("plain output: %q", got)
+				}
+			}
+		})
+	}
+}
