@@ -29,14 +29,18 @@ func buildRecommendation(peak *peakInternals, schedule []time.Weekday, narrowed 
 	// it: pre-scaling "Mon-Fri 00:00" ramps means firing "Sun-Thu 23:45", not
 	// "Mon-Fri 23:45" which would miss the Monday ramp by a full day.
 	prescaleDOW := shiftCronDayOfWeek(dow, floorDiv(prescaleMinute, minutesPerDay))
+	endDOW := dow
+	if peak.CrossesMidnight {
+		endDOW = shiftCronDayOfWeek(dow, 1)
+	}
 
 	return &Recommendation{
 		MinReplicas:           peak.OnsetDesired,
 		LeadTime:              o.LeadTime.String(),
 		PrescaleAt:            formatMinute(prescaleMinute),
 		CronExpression:        cronAt(prescaleMinute, prescaleDOW),
-		ReleaseCronExpression: cronAt(peak.EndMinute, dow),
-		KEDATrigger:           kedaCronTrigger(peak, prescaleMinute, prescaleDOW, dow, o),
+		ReleaseCronExpression: cronAt(peak.EndMinute, endDOW),
+		KEDATrigger:           kedaCronTrigger(peak, prescaleMinute, prescaleDOW, endDOW, o),
 		Patch: util.MustMarshalJSON(map[string]any{
 			"spec": map[string]any{"minReplicas": peak.OnsetDesired},
 		}),
@@ -148,7 +152,7 @@ func floorDiv(a, b int) int {
 // minReplicas bump because it releases the floor automatically after the
 // window, so the pre-scaling costs nothing off-peak. The start schedule uses
 // prescaleDayOfWeek because a lead time before midnight fires on the previous
-// weekday; the end schedule stays on the window's own weekdays.
+// weekday; the end schedule uses the weekday on which the window ends.
 func kedaCronTrigger(peak *peakInternals, prescaleMinute int, prescaleDayOfWeek, endDayOfWeek string, o Options) string {
 	var b strings.Builder
 	b.WriteString("triggers:\n")

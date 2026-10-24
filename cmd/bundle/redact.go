@@ -50,8 +50,8 @@ func RedactString(s string) string {
 }
 
 // RedactStructuredBytes removes values commonly carrying credentials or
-// environment-specific identifiers from YAML/JSON Kubernetes objects, then
-// applies the textual address/hostname redactor. It intentionally preserves
+// environment-specific identifiers from YAML/JSON Kubernetes objects. Textual
+// redaction runs on scalar values before serialization. It preserves
 // keys and object shape so a support bundle remains useful for diagnosis.
 func RedactStructuredBytes(data []byte) []byte {
 	if len(data) == 0 {
@@ -61,7 +61,7 @@ func RedactStructuredBytes(data []byte) []byte {
 	if err := yaml.Unmarshal(data, &value); err != nil {
 		return RedactBytes(data)
 	}
-	redactStructuredValue(value, "")
+	value = redactStructuredValue(value, "")
 
 	var (
 		out []byte
@@ -75,10 +75,10 @@ func RedactStructuredBytes(data []byte) []byte {
 	if err != nil {
 		return RedactBytes(data)
 	}
-	return RedactBytes(out)
+	return out
 }
 
-func redactStructuredValue(value any, parentKey string) {
+func redactStructuredValue(value any, parentKey string) any {
 	switch typed := value.(type) {
 	case map[string]any:
 		for key, child := range typed {
@@ -93,11 +93,7 @@ func redactStructuredValue(value any, parentKey string) {
 					continue
 				}
 			}
-			if text, ok := child.(string); ok {
-				typed[key] = redactSensitiveString(text)
-				continue
-			}
-			redactStructuredValue(child, normalized)
+			typed[key] = redactStructuredValue(child, normalized)
 		}
 	case []any:
 		redactNext := false
@@ -108,16 +104,19 @@ func redactStructuredValue(value any, parentKey string) {
 					redactNext = false
 					continue
 				}
-				typed[i] = redactSensitiveString(text)
+				typed[i] = RedactString(text)
 				if (parentKey == "args" || parentKey == "command") && isStandaloneSensitiveFlag(text) {
 					redactNext = true
 				}
 				continue
 			}
 			redactNext = false
-			redactStructuredValue(child, parentKey)
+			typed[i] = redactStructuredValue(child, parentKey)
 		}
+	case string:
+		return RedactString(typed)
 	}
+	return value
 }
 
 const sensitiveNameCorePattern = `(?:access[-_]?token|auth[-_]?token|token|password|passwd|credential(?:s)?|api[-_]?key|apikey|client[-_]?secret|secret|access[-_]?key(?:[-_]?id)?|secret[-_]?access[-_]?key|authorization|proxy[-_]?authorization|cookie)`

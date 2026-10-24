@@ -124,14 +124,23 @@ func enrichResourceMetricSamples(ctx context.Context, client *kube.Client, hpa *
 		return
 	}
 	selector, err := resolveScaleTargetSelector(ctx, client, hpa.Namespace, hpa.Spec.ScaleTargetRef)
-	if err != nil || selector == "" {
+	if err != nil {
+		recordResourceFreshnessWarning(report, fmt.Sprintf("cannot resolve scale target selector: %v", err))
+		return
+	}
+	if selector == "" {
+		recordResourceFreshnessWarning(report, "scale target has no supported Pod selector")
 		return
 	}
 	samples, err := fetchPodMetricSamples(ctx, client, hpa.Namespace, selector)
-	if err != nil || len(samples) == 0 {
+	if err != nil {
+		recordResourceFreshnessWarning(report, fmt.Sprintf("cannot read PodMetrics: %v", err))
 		return
 	}
+	applyResourceMetricSamples(hpa, report, samples, now)
+}
 
+func applyResourceMetricSamples(hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, samples []podMetricSample, now time.Time) {
 	for i := range report.Analysis.Metrics.MetricFreshness {
 		entry := &report.Analysis.Metrics.MetricFreshness[i]
 		resourceName, containerName, ok := resourceIdentityForFreshnessEntry(hpa, i, *entry)
@@ -140,6 +149,9 @@ func enrichResourceMetricSamples(ctx context.Context, client *kube.Client, hpa *
 		}
 		sample, ok := latestPodMetricSample(samples, resourceName, containerName)
 		if !ok {
+			reason := fmt.Sprintf("no timestamped PodMetrics sample for %s metric %q", entry.Type, entry.Name)
+			markMetricFreshnessUnknown(entry, reason)
+			report.Analysis.Actions.Warnings = append(report.Analysis.Actions.Warnings, reason)
 			continue
 		}
 		entry.LastSeen = &metav1.Time{Time: sample.Timestamp}
@@ -147,10 +159,29 @@ func enrichResourceMetricSamples(ctx context.Context, client *kube.Client, hpa *
 		if sample.Window != "" {
 			entry.Window = sample.Window
 		}
-		if sample.Window != "" && entry.Age > staleWindowThreshold(sample.Window) {
+		if entry.Age > staleWindowThreshold(sample.Window) {
 			entry.Status = string(hpaanalysis.FreshnessStale)
 			entry.Risk = "metrics-server returned an old PodMetrics sample"
 			appendUniqueEvidence(entry, fmt.Sprintf("PodMetrics timestamp is %s old", formatAgeForEvidence(entry.Age)))
+		}
+	}
+}
+
+func markMetricFreshnessUnknown(entry *hpaanalysis.MetricFreshness, reason string) {
+	// Preserve stronger evidence already observed in HPA status or discovery.
+	if entry.Status == string(hpaanalysis.FreshnessOK) || entry.Status == "" {
+		entry.Status = string(hpaanalysis.FreshnessUnknown)
+		entry.Risk = "metric sample freshness could not be verified"
+	}
+	appendUniqueEvidence(entry, reason)
+}
+
+func recordResourceFreshnessWarning(report *hpaanalysis.StatusReport, reason string) {
+	report.Analysis.Actions.Warnings = append(report.Analysis.Actions.Warnings, "resource metric freshness: "+reason)
+	for i := range report.Analysis.Metrics.MetricFreshness {
+		entry := &report.Analysis.Metrics.MetricFreshness[i]
+		if entry.Type == "Resource" || entry.Type == "ContainerResource" {
+			markMetricFreshnessUnknown(entry, reason)
 		}
 	}
 }

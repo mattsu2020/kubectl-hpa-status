@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/conditions"
@@ -238,6 +239,7 @@ func extractCPUTargetUtilization(hpa *autoscalingv2.HorizontalPodAutoscaler) (in
 	for _, metric := range hpa.Spec.Metrics {
 		if metric.Type == autoscalingv2.ResourceMetricSourceType &&
 			metric.Resource != nil &&
+			metric.Resource.Name == corev1.ResourceCPU &&
 			metric.Resource.Target.AverageUtilization != nil {
 			return *metric.Resource.Target.AverageUtilization, true
 		}

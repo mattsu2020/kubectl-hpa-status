@@ -12,8 +12,9 @@ import (
 
 // dayProfile holds the per-bucket peak readings for one local day.
 type dayProfile struct {
-	date    string
-	weekday time.Weekday
+	date     string
+	nextDate string
+	weekday  time.Weekday
 	// signal[b] is the highest profiled signal value observed in bucket b
 	// (desiredReplicas, or the typed metric reading), or -1 when the bucket
 	// holds no observation (partial first/last day, gaps in the recording).
@@ -81,7 +82,13 @@ func Analyze(obs []Observation, opts Options) *Analysis {
 	signalProfile, signalCovered := averageBuckets(days, buckets, func(d dayProfile) []float64 { return d.signal })
 	desiredProfile, desiredCovered := averageBuckets(days, buckets, func(d dayProfile) []int32 { return d.desired })
 	result.Baseline = median(coveredValues(signalProfile, signalCovered))
-	result.Threshold = math.Max(result.Baseline*o.PeakRatio, result.Baseline+1)
+	// Metric quantities may be fractional (for example CPU cores), so a
+	// whole-unit floor would change detection when the signal is rescaled.
+	minimumPeak := math.Nextafter(result.Baseline, math.Inf(1))
+	if !useMetric {
+		minimumPeak = result.Baseline + 1
+	}
+	result.Threshold = math.Max(result.Baseline*o.PeakRatio, minimumPeak)
 	replicaBaseline := median(coveredValues(desiredProfile, desiredCovered))
 
 	start, length, ok := findPeakRun(signalProfile, signalCovered, result.Threshold)
@@ -204,10 +211,11 @@ func buildDayProfiles(obs []Observation, o Options, buckets int, metricName stri
 		day, exists := byDate[date]
 		if !exists {
 			day = &dayProfile{
-				date:    date,
-				weekday: local.Weekday(),
-				signal:  newEmptySignalBuckets(buckets),
-				desired: newEmptyDesiredBuckets(buckets),
+				date:     date,
+				nextDate: local.AddDate(0, 0, 1).Format("2006-01-02"),
+				weekday:  local.Weekday(),
+				signal:   newEmptySignalBuckets(buckets),
+				desired:  newEmptyDesiredBuckets(buckets),
 			}
 			byDate[date] = day
 		}
@@ -364,36 +372,25 @@ func buildPeakWindow(days []dayProfile, start, length, buckets int, o Options, t
 	window := &PeakWindow{
 		StartMinute:     start * o.BucketMinutes,
 		EndMinute:       ((start + length) % buckets) * o.BucketMinutes,
-		CrossesMidnight: start+length > buckets,
+		CrossesMidnight: start+length >= buckets,
 	}
 	window.Start = formatMinute(window.StartMinute)
 	window.End = formatMinute(window.EndMinute)
 
 	matched := make([]bool, len(days))
 	coveredDay := make([]bool, len(days))
+	byDate := make(map[string]dayProfile, len(days))
+	for _, day := range days {
+		byDate[day.date] = day
+	}
 	// Peak and onset levels are taken across the days that actually exhibited
 	// the pattern. Averaging over every recorded day would dilute them with
 	// the quiet days (a weekday-only ramp would report a peak no day ever
 	// reached), which would understate the replicas the workload needs.
 	var onsets, peaks, signalPeaks []float64
 	for di, day := range days {
-		var dayMax int32 = -1
-		var signalMax float64 = -1
-		for i := range length {
-			bucket := (start + i) % buckets
-			if v := day.desired[bucket]; v >= 0 {
-				coveredDay[di] = true
-				if v > dayMax {
-					dayMax = v
-				}
-			}
-			if s := day.signal[bucket]; s >= 0 {
-				coveredDay[di] = true
-				if s > signalMax {
-					signalMax = s
-				}
-			}
-		}
+		dayMax, signalMax := peakDayMaxima(day, byDate, start, length, buckets)
+		coveredDay[di] = dayMax >= 0 || signalMax >= 0
 		if signalMax >= 0 && signalMax >= threshold {
 			matched[di] = true
 			if dayMax >= 0 {
@@ -418,6 +415,27 @@ func buildPeakWindow(days []dayProfile, start, length, buckets int, o Options, t
 	window.Weekdays = weekdayNames(matchedWeekdays(days, matched))
 
 	return &peakInternals{PeakWindow: window, matched: matched, coveredDay: coveredDay}
+}
+
+// peakDayMaxima follows one window from its start day into the next calendar
+// day. Missing days remain unobserved rather than borrowing unrelated samples.
+func peakDayMaxima(day dayProfile, byDate map[string]dayProfile, start, length, buckets int) (int32, float64) {
+	var desiredMax int32 = -1
+	var signalMax float64 = -1
+	for i := range length {
+		bucket := (start + i) % buckets
+		profile := day
+		if start+i >= buckets {
+			var ok bool
+			profile, ok = byDate[day.nextDate]
+			if !ok {
+				continue
+			}
+		}
+		desiredMax = max(desiredMax, profile.desired[bucket])
+		signalMax = max(signalMax, profile.signal[bucket])
+	}
+	return desiredMax, signalMax
 }
 
 // scheduleWeekdays decides which weekdays the recommended schedule should

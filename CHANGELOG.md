@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Structured bundle redaction preserves valid JSON and YAML.** Credentials,
+  addresses, and node identities are redacted in scalar values before
+  serialization, so command arguments and quoted placeholders retain their
+  original structure.
+- **Overnight pre-scaling schedules release on the correct weekday.**
+  After-midnight samples belong to the preceding window's start day, and
+  release schedules (including midnight endpoints) advance to the next day.
+- **GitOps review identifies CPU targets by resource name.** Memory metrics
+  appearing before CPU no longer cause false CPU-target change warnings.
+- **Seasonality detection supports fractional metric quantities.** The
+  whole-replica peak floor no longer hides recurring sub-core CPU ramps.
+- **Multi-HPA status supports Prometheus and report overrides consistently.**
+  Prometheus metadata is emitted once, and `--report` selects both rendering
+  and the data projection even when `--output` selects a structured format.
+  Partial failures remain visible in the diagnostic stream.
+- **Resource metric freshness exposes unavailable observations.** Selector
+  and PodMetrics read failures, empty results, and missing timestamped samples
+  produce warnings and an `Unknown` freshness state instead of retaining `OK`.
+  Existing `Missing`/`Stale` evidence is preserved; samples without a window
+  use the default staleness threshold.
 - **Behavior trajectories honor disabled scaling and rolling policy periods.**
   Policies with different periods no longer all replenish at the shortest
   period. Replica-policy math is shared with simulation and uses bounded

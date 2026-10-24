@@ -50,7 +50,8 @@ func batchOutputCarriesErrors(opts *options) bool {
 	if opts.ContextForAI || opts.Ask != "" {
 		return true // AI context renders an "Error:" block per failed item.
 	}
-	switch opts.Output {
+	format, _ := selectOutputFromOptions(opts)
+	switch format {
 	case "json", "yaml":
 		return true // StatusBatch envelope carries per-item errors.
 	case "jsonl":
@@ -71,7 +72,8 @@ func batchOutputCarriesErrors(opts *options) bool {
 // was removed). Other formats render only successful reports and keep
 // receiving StatusReport values because their renderers type-assert them.
 func batchValue(opts *options, results []reportResult, reports []hpaanalysis.StatusReport) any {
-	switch opts.Output {
+	format, _ := selectOutputFromOptions(opts)
+	switch format {
 	case "json", "yaml":
 		return hpaanalysis.ProjectStatusBatchV2(buildStatusBatch(results))
 	case "jsonl":
@@ -86,7 +88,8 @@ func batchValue(opts *options, results []reportResult, reports []hpaanalysis.Sta
 // report for renderer formats that type-assert StatusReport.
 func statusOutputValue(opts *options, report hpaanalysis.StatusReport) any {
 	if structuredStatusOutput(opts) {
-		if opts.Output == "jsonl" {
+		format, _ := selectOutputFromOptions(opts)
+		if format == "jsonl" {
 			return hpaanalysis.ProjectStatusRecordV2(report)
 		}
 		return hpaanalysis.ProjectStatusReportV2(report)

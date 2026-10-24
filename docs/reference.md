@@ -49,7 +49,14 @@ kubectl hpa status doctor <hpa-name> -n <namespace>
 
 `doctor` bundles `--explain`, `--diagnose-metrics`, `--metrics-freshness`, `--check-resources`, `--explain-pods`, `--capacity-context`, recent Events, and KEDA enrichment.
 
-Metrics freshness output highlights missing or stale adapter data:
+Metrics freshness output highlights missing, stale, or unverified adapter data.
+
+For resource metrics, `Unknown` means PodMetrics sample freshness could not be
+verified (for example because the workload selector or metrics read failed,
+or no timestamped sample was returned). The report includes the reason in its
+evidence and warnings. This does not replace an already observed `Missing` or
+`Stale` result. Samples without a collection window use a two-minute staleness
+threshold.
 
 ```text
 Metrics Freshness:

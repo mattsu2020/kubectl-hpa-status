@@ -219,6 +219,17 @@ func Template(out io.Writer, expression string, value any) error {
 // Prometheus renders the value in Prometheus exposition format.
 func Prometheus(w io.Writer, value any) error {
 	switch report := value.(type) {
+	case []hpaanalysis.StatusReport:
+		if err := writePrometheusMetadata(w); err != nil {
+			return err
+		}
+		for _, report := range report {
+			a := report.Analysis
+			if err := writePrometheusSamples(w, a.Meta.Namespace, a.Meta.Name, a.Decision.HealthScore, a.Replicas.Current, a.Replicas.Desired, a.Replicas.Min, a.Replicas.Max); err != nil {
+				return err
+			}
+		}
+		return nil
 	case hpaanalysis.ListReport:
 		if err := writePrometheusMetadata(w); err != nil {
 			return err
