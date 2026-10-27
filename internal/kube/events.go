@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"sort"
 	"strings"
 	"time"
@@ -29,59 +28,67 @@ type EventInfo struct {
 	Timestamp time.Time
 }
 
-// FetchRecentEventsForObjects fetches recent namespace events whose involved
-// object name is in objectNames. Each name is queried with an
-// involvedObject.name field selector and paginates the filtered result so the
-// API server filters server-side without truncating a newer event that happens
-// to be on a later page. objectNames is small in practice (the HPA plus its
-// workload chain), so per-name queries stay cheaper than one namespace-wide list.
-// Partial results are returned alongside errors; callers must surface incomplete
-// collection instead of interpreting a failed read as an absence of events.
-func FetchRecentEventsForObjects(ctx context.Context, client kubernetes.Interface, namespace string, objectNames []string, limit int) ([]EventInfo, error) {
-	if len(objectNames) == 0 || limit <= 0 {
+// EventObject identifies an observed object. UID prevents mixing events from
+// earlier incarnations; an empty UID permits kind-and-name matching only.
+type EventObject struct {
+	Name string
+	Kind string
+	UID  types.UID
+}
+
+// FetchRecentEventsForObjects is the legacy name-only collector.
+func FetchRecentEventsForObjects(ctx context.Context, client kubernetes.Interface, namespace string, names []string, limit int) ([]EventInfo, error) {
+	refs := make([]EventObject, 0, len(names))
+	for _, name := range names {
+		refs = append(refs, EventObject{Name: name})
+	}
+	return FetchRecentEventsForIdentities(ctx, client, namespace, refs, limit)
+}
+
+// FetchRecentEventsForIdentities returns recent events for observed identities.
+// It retains at most limit matching events while paging through the API.
+func FetchRecentEventsForIdentities(ctx context.Context, client kubernetes.Interface, namespace string, refs []EventObject, limit int) ([]EventInfo, error) {
+	if limit <= 0 {
 		return nil, nil
 	}
-	names := make([]string, 0, len(objectNames))
-	seen := make(map[string]struct{}, len(objectNames))
-	for _, name := range objectNames {
-		if name == "" {
-			continue
-		}
-		if _, ok := seen[name]; ok {
-			continue
-		}
-		seen[name] = struct{}{}
-		names = append(names, name)
-	}
-	sort.Strings(names)
-
+	seen := make(map[EventObject]bool)
 	var result []EventInfo
 	var failures []error
-	for _, name := range names {
-		events, err := listCoreEventsBySelector(ctx, client, namespace,
-			fields.OneTermEqualSelector("involvedObject.name", name).String())
-		if err != nil {
-			failures = append(failures, fmt.Errorf("list events for %s/%s: %w", namespace, name, err))
+	for _, ref := range refs {
+		if ref.Name == "" || seen[ref] {
 			continue
 		}
-		for _, event := range events {
-			// Re-check the name client-side: the fake clientset used in tests
-			// ignores field selectors and returns every event in the namespace.
-			if event.InvolvedObject.Name != name {
-				continue
-			}
-			result = append(result, EventInfo{
-				Reason:    event.Reason,
-				Message:   strings.ReplaceAll(event.Message, "\n", " "),
-				Timestamp: coreEventTimestamp(event),
-			})
+		seen[ref] = true
+		selectors := []fields.Selector{fields.OneTermEqualSelector("involvedObject.name", ref.Name)}
+		if ref.Kind != "" {
+			selectors = append(selectors, fields.OneTermEqualSelector("involvedObject.kind", ref.Kind))
 		}
-	}
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].Timestamp.After(result[j].Timestamp)
-	})
-	if len(result) > limit {
-		result = result[:limit]
+		if ref.UID != "" {
+			selectors = append(selectors, fields.OneTermEqualSelector("involvedObject.uid", string(ref.UID)))
+		}
+		err := visitCoreEvents(ctx, client, namespace, fields.AndSelectors(selectors...).String(), func(events []corev1.Event) error {
+			for _, event := range events {
+				obj := event.InvolvedObject
+				if obj.Name != ref.Name || (ref.Kind != "" && obj.Kind != ref.Kind) || (ref.UID != "" && obj.UID != ref.UID) {
+					continue
+				}
+				item := EventInfo{Reason: event.Reason, Message: strings.ReplaceAll(event.Message, "\n", " "), Timestamp: coreEventTimestamp(event)}
+				pos := sort.Search(len(result), func(i int) bool { return item.Timestamp.After(result[i].Timestamp) })
+				if pos >= limit {
+					continue
+				}
+				result = append(result, EventInfo{})
+				copy(result[pos+1:], result[pos:])
+				result[pos] = item
+				if len(result) > limit {
+					result = result[:limit]
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			failures = append(failures, fmt.Errorf("list events for %s/%s: %w", namespace, ref.Name, err))
+		}
 	}
 	return result, errors.Join(failures...)
 }
@@ -135,44 +142,39 @@ func fetchRecentHPAEvents(ctx context.Context, client kubernetes.Interface, name
 		selectors = append(selectors, fields.OneTermEqualSelector("involvedObject.uid", string(uid)))
 	}
 	selector := fields.AndSelectors(selectors...)
-	events, err := listCoreEventsBySelector(ctx, client, namespace, selector.String())
+	var filtered []corev1.Event
+	err := visitCoreEvents(ctx, client, namespace, selector.String(), func(events []corev1.Event) error {
+		for _, event := range events {
+			if event.InvolvedObject.Name != name || !strings.EqualFold(event.InvolvedObject.Kind, "HorizontalPodAutoscaler") || (uid != "" && event.InvolvedObject.UID != uid) {
+				continue
+			}
+			pos := sort.Search(len(filtered), func(i int) bool { return coreEventTimestamp(event).After(coreEventTimestamp(filtered[i])) })
+			if int64(pos) >= limit {
+				continue
+			}
+			filtered = append(filtered, corev1.Event{})
+			copy(filtered[pos+1:], filtered[pos:])
+			filtered[pos] = event
+			if int64(len(filtered)) > limit {
+				filtered = filtered[:len(filtered)-1]
+			}
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, fmt.Errorf("list HPA events: %w", err)
 	}
-
-	filtered := events[:0]
-	for i := range events {
-		event := events[i]
-		if event.InvolvedObject.Name != name || !strings.EqualFold(event.InvolvedObject.Kind, "HorizontalPodAutoscaler") {
-			continue
-		}
-		if uid != "" && event.InvolvedObject.UID != uid {
-			continue
-		}
-		filtered = append(filtered, event)
-	}
-	sort.SliceStable(filtered, func(i, j int) bool {
-		return coreEventTimestamp(filtered[i]).After(coreEventTimestamp(filtered[j]))
-	})
-
-	outLimit := len(filtered)
-	if int64(outLimit) > limit {
-		outLimit = int(limit)
-	}
-	return filtered[:outLimit], nil
+	return filtered, nil
 }
 
-func listCoreEventsBySelector(ctx context.Context, client kubernetes.Interface, namespace, selector string) ([]corev1.Event, error) {
-	return collectListPages(ctx, metav1.ListOptions{
-		FieldSelector: selector,
-		Limit:         eventsSinceFetchLimit,
-	}, func(ctx context.Context, page metav1.ListOptions) ([]corev1.Event, string, error) {
+func visitCoreEvents(ctx context.Context, client kubernetes.Interface, namespace, selector string, visit func([]corev1.Event) error) error {
+	return visitListPages(ctx, metav1.ListOptions{FieldSelector: selector, Limit: eventsSinceFetchLimit}, func(ctx context.Context, page metav1.ListOptions) ([]corev1.Event, string, error) {
 		list, err := client.CoreV1().Events(namespace).List(ctx, page)
 		if err != nil {
 			return nil, "", err
 		}
 		return list.Items, list.Continue, nil
-	})
+	}, visit)
 }
 
 // FetchRecentHPAEventsSince fetches Kubernetes events for the specified HPA
@@ -195,22 +197,24 @@ func FetchRecentHPAEventsForObjectSince(ctx context.Context, client kubernetes.I
 }
 
 func fetchRecentHPAEventsSince(ctx context.Context, client kubernetes.Interface, namespace, name string, uid types.UID, since time.Time) ([]corev1.Event, error) {
-	// The window is bounded by the caller-supplied since time, so fetching
-	// without the fetch-limit truncation is safe; the pagination helper still
-	// pages in eventsSinceFetchLimit-sized batches.
-	events, err := fetchRecentHPAEvents(ctx, client, namespace, name, uid, math.MaxInt64)
-	if err != nil {
-		return nil, err
+	selectors := []fields.Selector{fields.OneTermEqualSelector("involvedObject.name", name), fields.OneTermEqualSelector("involvedObject.kind", "HorizontalPodAutoscaler")}
+	if uid != "" {
+		selectors = append(selectors, fields.OneTermEqualSelector("involvedObject.uid", string(uid)))
 	}
-	filtered := make([]corev1.Event, 0, len(events))
-	for _, e := range events {
-		ts := coreEventTimestamp(e)
-		if !ts.IsZero() && !ts.Before(since) {
-			filtered = append(filtered, e)
+	var filtered []corev1.Event
+	err := visitCoreEvents(ctx, client, namespace, fields.AndSelectors(selectors...).String(), func(events []corev1.Event) error {
+		for _, event := range events {
+			obj := event.InvolvedObject
+			ts := coreEventTimestamp(event)
+			if obj.Name == name && strings.EqualFold(obj.Kind, "HorizontalPodAutoscaler") && (uid == "" || obj.UID == uid) && !ts.IsZero() && !ts.Before(since) {
+				filtered = append(filtered, event)
+			}
 		}
-	}
-	sort.Slice(filtered, func(i, j int) bool {
-		return coreEventTimestamp(filtered[i]).Before(coreEventTimestamp(filtered[j]))
+		return nil
 	})
+	if err != nil {
+		return nil, fmt.Errorf("list HPA events: %w", err)
+	}
+	sort.SliceStable(filtered, func(i, j int) bool { return coreEventTimestamp(filtered[i]).Before(coreEventTimestamp(filtered[j])) })
 	return filtered, nil
 }

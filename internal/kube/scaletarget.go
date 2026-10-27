@@ -8,6 +8,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -33,6 +34,13 @@ type ScaleTargetInfo struct {
 //
 //nolint:nilnil // nil result with no error is intentional for unsupported kinds
 func FetchScaleTargetInfo(ctx context.Context, client kubernetes.Interface, namespace string, ref autoscalingv2.CrossVersionObjectReference) (*ScaleTargetInfo, error) {
+	// An omitted API version is accepted for legacy callers that provide only a kind.
+	if ref.APIVersion != "" {
+		gv, err := schema.ParseGroupVersion(ref.APIVersion)
+		if err != nil || gv.Group != "apps" {
+			return nil, nil
+		}
+	}
 	getDeployment := func() (*ScaleTargetInfo, error) {
 		deploy, err := client.AppsV1().Deployments(namespace).Get(ctx, ref.Name, metav1.GetOptions{})
 		if err != nil {

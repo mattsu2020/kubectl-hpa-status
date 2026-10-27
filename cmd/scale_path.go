@@ -53,8 +53,8 @@ func buildScalePathWithSnapshot(ctx context.Context, client *kube.Client, hpa *a
 		} else if replicaSets.Err != nil {
 			collectionWarnings = append(collectionWarnings, fmt.Sprintf("replica sets unavailable: %v", replicaSets.Err))
 		}
-		objectNames := scalePathEventObjectNames(hpa, input.Pods, input.ReplicaSets)
-		events, eventsErr := kube.FetchRecentEventsForObjects(ctx, client.Interface, hpa.Namespace, objectNames, scalePathEventLimit)
+		objects := eventObjectIdentities(hpa, info, pods.Data, replicaSets.Data)
+		events, eventsErr := kube.FetchRecentEventsForIdentities(ctx, client.Interface, hpa.Namespace, objects, scalePathEventLimit)
 		input.Events = convertScalePathEvents(events)
 		if eventsErr != nil {
 			collectionWarnings = append(collectionWarnings, fmt.Sprintf("events incomplete: %v", eventsErr))
@@ -113,17 +113,6 @@ func convertScalePathEvents(events []kube.EventInfo) []hpaanalysis.Event {
 	return result
 }
 
-func scalePathEventObjectNames(hpa *autoscalingv2.HorizontalPodAutoscaler, pods []hpaanalysis.ScalePathPod, replicaSets []hpaanalysis.ScalePathReplicaSet) []string {
-	names := []string{hpa.Name, hpa.Spec.ScaleTargetRef.Name}
-	for _, pod := range pods {
-		names = append(names, pod.Name)
-	}
-	for _, rs := range replicaSets {
-		names = append(names, rs.Name)
-	}
-	return names
-}
-
 func fetchTargetReplicaInfoFromSnapshot(ctx context.Context, snapshot *observation.Snapshot, _ *autoscalingv2.HorizontalPodAutoscaler) (*hpaanalysis.TargetReplicaInfo, string) {
 	if snapshot == nil {
 		return nil, "target replica observation unavailable: observation snapshot is not configured"
@@ -178,7 +167,7 @@ func podUnschedulable(pod corev1.Pod) bool {
 
 // buildContainerAdvisor builds the ContainerResource advisor result.
 func buildContainerAdvisor(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) *containeradvisor.Result {
-	resources, err := kube.FetchScaleTargetResources(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef.Kind, hpa.Spec.ScaleTargetRef.Name)
+	resources, err := kube.FetchScaleTargetResourcesForRef(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef)
 	if err != nil || resources == nil {
 		return nil
 	}

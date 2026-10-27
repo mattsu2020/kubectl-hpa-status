@@ -20,6 +20,9 @@ type PipelineTask struct {
 // best-effort tasks allow the remaining pipeline to continue.
 func RunPipeline(ctx context.Context, tasks []PipelineTask, onError func(name string, err error)) error {
 	for _, task := range tasks {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if !task.Enabled {
 			continue
 		}
@@ -42,5 +45,5 @@ func RunPipeline(ctx context.Context, tasks []PipelineTask, onError func(name st
 			}
 		}
 	}
-	return nil
+	return ctx.Err()
 }

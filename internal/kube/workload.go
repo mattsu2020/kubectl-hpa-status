@@ -7,12 +7,14 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 )
 
 // ReplicaSetInfo is the observable replica status for a ReplicaSet in the
 // HPA scale path.
 type ReplicaSetInfo struct {
+	UID             types.UID
 	Name            string
 	DesiredReplicas int32
 	CurrentReplicas int32
@@ -61,6 +63,7 @@ func FetchReplicaSetsForScaleTarget(ctx context.Context, client kubernetes.Inter
 func replicaSetInfo(rs appsv1.ReplicaSet) ReplicaSetInfo {
 	return ReplicaSetInfo{
 		Name:            rs.Name,
+		UID:             rs.UID,
 		DesiredReplicas: replicasValue(rs.Spec.Replicas),
 		CurrentReplicas: rs.Status.Replicas,
 		ReadyReplicas:   rs.Status.ReadyReplicas,
