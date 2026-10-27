@@ -14,6 +14,8 @@ import (
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 )
@@ -515,5 +517,54 @@ func TestRootHelpIncludesBundleCommand(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), "bundle") {
 		t.Fatalf("expected root help to include bundle command, got:\n%s", buf.String())
+	}
+}
+
+func TestBundleRedactsSelectorsInAllOutputs(t *testing.T) {
+	hpa := testutil.BuildHPA("default", "web", testutil.WithReplicas(3, 3))
+	selector := &metav1.LabelSelector{MatchLabels: map[string]string{"queue": "payments-private"}, MatchExpressions: []metav1.LabelSelectorRequirement{{Key: "team", Operator: metav1.LabelSelectorOpIn, Values: []string{"team-private"}}}}
+	target, current := resource.MustParse("10"), resource.MustParse("5")
+	hpa.Spec.Metrics = []autoscalingv2.MetricSpec{{Type: autoscalingv2.ExternalMetricSourceType, External: &autoscalingv2.ExternalMetricSource{Metric: autoscalingv2.MetricIdentifier{Name: "queue", Selector: selector}, Target: autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType, Value: &target}}}}
+	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{{Type: autoscalingv2.ExternalMetricSourceType, External: &autoscalingv2.ExternalMetricStatus{Metric: autoscalingv2.MetricIdentifier{Name: "queue", Selector: selector}, Current: autoscalingv2.MetricValueStatus{Value: &current}}}}
+	opts := &options{Common: commonOptions{ConnectionOptions: ConnectionOptions{ClientOverride: testutil.NewFakeClient(hpa), Namespace: "default"}}}
+	for _, format := range []string{"markdown", "zip"} {
+		t.Run(format, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "bundle")
+			if err := runBundle(context.Background(), &bytes.Buffer{}, opts, "web", format, path, true); err != nil {
+				t.Fatal(err)
+			}
+			check := func(name string, content []byte) {
+				for _, value := range []string{"payments-private", "team-private"} {
+					if bytes.Contains(content, []byte(value)) {
+						t.Errorf("%s leaked %s", name, value)
+					}
+				}
+			}
+			if format == "markdown" {
+				content, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				check(path, content)
+				return
+			}
+			archive, err := zip.OpenReader(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer archive.Close()
+			for _, entry := range archive.File {
+				r, err := entry.Open()
+				if err != nil {
+					t.Fatal(err)
+				}
+				content, err := io.ReadAll(r)
+				_ = r.Close()
+				if err != nil {
+					t.Fatal(err)
+				}
+				check(entry.Name, content)
+			}
+		})
 	}
 }

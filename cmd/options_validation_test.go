@@ -2,10 +2,12 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestRootRejectsInvalidEffectiveOptionsBeforeRun(t *testing.T) {
@@ -278,5 +280,17 @@ func TestWorkflowFlagsAreScopedToAnalysisCommands(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestTrendWindowCannotExceedRetention(t *testing.T) {
+	opts := defaultRootOptions()
+	opts.TrendSince, opts.TrendRetain = 168*time.Hour, 72*time.Hour
+	if err := validateAnalysisRanges(&opts); err == nil {
+		t.Fatal("expected invalid trend window")
+	}
+	opts.TrendSince = 24 * time.Hour
+	if err := runHistory(context.Background(), &bytes.Buffer{}, &opts, "test", 168*time.Hour, ""); err == nil || !strings.Contains(err.Error(), "--since") {
+		t.Fatalf("history error: %v", err)
 	}
 }

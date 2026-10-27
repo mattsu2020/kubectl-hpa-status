@@ -25,9 +25,9 @@ type ListItem struct {
 	Behavior          string      `json:"behavior,omitempty" yaml:"behavior,omitempty"`
 	Conditions        string      `json:"conditions,omitempty" yaml:"conditions,omitempty"`
 	CreationTimestamp metav1.Time `json:"creationTimestamp,omitempty" yaml:"creationTimestamp,omitempty"`
-	// Stabilizing is true when StabilizationRemaining > 0.
+	// Stabilizing is true when the controller reports scale-down stabilization.
 	Stabilizing bool `json:"stabilizing,omitempty" yaml:"stabilizing,omitempty"`
-	// StabilizationLabel is a human-readable countdown like "4m12s".
+	// StabilizationLabel describes the remaining time when known.
 	StabilizationLabel string `json:"stabilizationLabel,omitempty" yaml:"stabilizationLabel,omitempty"`
 	// ChurnLevel is the churn severity (LOW/MEDIUM/HIGH/CRITICAL) if churn was detected.
 	ChurnLevel string `json:"churnLevel,omitempty" yaml:"churnLevel,omitempty"`

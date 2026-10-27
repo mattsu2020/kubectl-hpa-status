@@ -61,7 +61,9 @@ func appendMetricsSection(out *[]byte, a *Analysis, theme style.Theme, labels la
 
 // appendStabilizationAndBehavior renders the stabilization window and behavior sections.
 func appendStabilizationAndBehavior(out *[]byte, a *Analysis, theme style.Theme, labels labels) {
-	if a.Conditions.StabilizationRemaining != nil && *a.Conditions.StabilizationRemaining > 0 {
+	if a.Conditions.StabilizationActive {
+		*out = fmt.Appendf(*out, "\nStabilization: scale-down stabilization observed; remaining time unknown\n")
+	} else if a.Conditions.StabilizationRemaining != nil && *a.Conditions.StabilizationRemaining > 0 {
 		*out = append(*out, '\n')
 		if a.Conditions.StabilizationConfidence != "" {
 			explain := FormatStabilizationExplain(*a)

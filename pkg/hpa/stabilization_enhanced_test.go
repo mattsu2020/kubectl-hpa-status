@@ -181,7 +181,7 @@ func TestFormatStabilizationExplain(t *testing.T) {
 				"38%",
 				"scaleDown behavior",
 				stabilizationConfidenceLabel,
-				"Scale down will be enabled",
+				"actual remaining time is unknown",
 			},
 		},
 		{
@@ -206,7 +206,7 @@ func TestFormatStabilizationExplain(t *testing.T) {
 			wantContains: []string{
 				"ScalingDownStabilized: True",
 				"scaleUp behavior",
-				"Scale down will be enabled",
+				"actual remaining time is unknown",
 			},
 		},
 	}

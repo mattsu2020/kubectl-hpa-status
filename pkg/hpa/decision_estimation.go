@@ -62,16 +62,13 @@ func classifyDecisionSignal(signal DecisionSignal) string {
 // buildStabilizationDecisionSignal creates a signal when the scale-down
 // stabilization window is active.
 func buildStabilizationDecisionSignal(hpa *autoscalingv2.HorizontalPodAutoscaler) *DecisionSignal {
-	remaining := estimateStabilizationRemaining(hpa)
-	if remaining == nil || *remaining <= 0 {
+	condition := FindCondition(hpa, ConditionAbleToScale)
+	if condition == nil || condition.Reason != ReasonScaleDownStabilized {
 		return nil
 	}
-
-	window := scaleDownStabilizationWindow(hpa)
-	message := "Scale-down is within the stabilization cooldown window"
-	if window != nil {
-		message = fmt.Sprintf("Scale-down suppressed: %s remaining in %ds stabilization window",
-			FormatDuration(*remaining), *window)
+	message := "Scale-down stabilization observed; remaining time unknown"
+	if window := scaleDownStabilizationWindow(hpa); window != nil {
+		message = fmt.Sprintf("Scale-down stabilization observed; configured window %ds, remaining time unknown", *window)
 	}
 
 	return &DecisionSignal{

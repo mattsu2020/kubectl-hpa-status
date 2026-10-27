@@ -21,6 +21,11 @@ func NewListItem(src Analysis) ListItem {
 	metrics := compactMetrics(src.Metrics.Metrics)
 	behavior := compactBehavior(src.Conditions.Behavior)
 
+	stabilizationLabel := FormatCountdownBadge(src.Conditions.StabilizationRemaining)
+	if src.Conditions.StabilizationActive {
+		stabilizationLabel = "unknown"
+	}
+
 	return ListItem{
 		Namespace:          src.Meta.Namespace,
 		Name:               src.Meta.Name,
@@ -38,8 +43,8 @@ func NewListItem(src Analysis) ListItem {
 		Behavior:           behavior,
 		Conditions:         conditions,
 		CreationTimestamp:  parseMetaTimestamp(src.Meta.CreationTimestamp),
-		Stabilizing:        src.Conditions.StabilizationRemaining != nil && *src.Conditions.StabilizationRemaining > 0,
-		StabilizationLabel: FormatCountdownBadge(src.Conditions.StabilizationRemaining),
+		Stabilizing:        src.Conditions.StabilizationActive,
+		StabilizationLabel: stabilizationLabel,
 		ChurnLevel:         churnLevelFromAnalysis(src.Stability.ChurnAnalysis),
 		ChurnScore:         churnScoreFromAnalysis(src.Stability.ChurnAnalysis),
 		TrendSparkline:     trendSparklineFromAnalysis(src.Lifecycle.HealthTrend),

@@ -7,8 +7,6 @@ package conditions
 
 import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
-
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/clock"
 )
 
 // DefaultScaleDownStabilizationWindowSeconds is the Kubernetes default
@@ -109,29 +107,8 @@ func NextScaleDownStabilizationWindow(current int32) (int32, bool) {
 	return next, true
 }
 
-// EstimateStabilizationRemaining estimates how many seconds remain before the
-// scale-down stabilization window expires. Returns nil if the HPA is not in a
-// ScaleDownStabilized state or required data is unavailable.
-//
-// Caveat: Kubernetes downscale stabilization uses the max recommendation
-// within the window, not simply LastScaleTime. This estimate is approximate
-// and based on LastScaleTime as the best available signal.
-func EstimateStabilizationRemaining(hpa *autoscalingv2.HorizontalPodAutoscaler) *int64 {
-	condition := Find(hpa, AbleToScale)
-	if condition == nil || condition.Reason != ReasonScaleDownStabilized {
-		return nil
-	}
-	window := ScaleDownStabilizationWindow(hpa)
-	if window == nil {
-		return nil
-	}
-	if hpa.Status.LastScaleTime == nil {
-		return nil
-	}
-	elapsed := clock.Now().Sub(hpa.Status.LastScaleTime.Time).Seconds()
-	remaining := int64(float64(*window) - elapsed)
-	if remaining < 0 {
-		remaining = 0
-	}
-	return &remaining
+// EstimateStabilizationRemaining returns nil because HPA status does not expose
+// the controller's recommendation history needed to determine the expiry time.
+func EstimateStabilizationRemaining(_ *autoscalingv2.HorizontalPodAutoscaler) *int64 {
+	return nil
 }

@@ -216,8 +216,8 @@ func buildStructuredToleranceTrace(hpa *autoscalingv2.HorizontalPodAutoscaler, m
 // buildStructuredStabilizationTrace builds the stabilization trace section
 // from existing analysis data and HPA signals.
 func buildStructuredStabilizationTrace(hpa *autoscalingv2.HorizontalPodAutoscaler, a Analysis) *StabilizationTrace {
-	remaining := estimateStabilizationRemaining(hpa)
-	if remaining == nil || *remaining <= 0 {
+	condition := FindCondition(hpa, ConditionAbleToScale)
+	if condition == nil || condition.Reason != ReasonScaleDownStabilized {
 		return nil
 	}
 
@@ -235,9 +235,9 @@ func buildStructuredStabilizationTrace(hpa *autoscalingv2.HorizontalPodAutoscale
 	trace := &StabilizationTrace{
 		WindowSeconds:       windowSeconds,
 		Direction:           direction,
-		RemainingSeconds:    remaining,
+		RemainingSeconds:    nil,
 		SuppressedDirection: "scaleDown",
-		Note:                fmt.Sprintf("stabilization window active, ~%ds remaining", *remaining),
+		Note:                "stabilization observed; remaining time unknown",
 	}
 
 	return trace

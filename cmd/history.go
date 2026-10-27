@@ -58,6 +58,9 @@ func runHistory(ctx context.Context, out io.Writer, opts *options, name string, 
 	local := applyCommandPreset(opts, presetHistory)
 	local.Events = EventOption{Enabled: true, Limit: historyEventLimit}
 	local.TrendSince = since
+	if since < 0 || since > local.TrendRetain {
+		return fmt.Errorf("--since (%s) must be non-negative and not exceed --trend-retain (%s)", since, local.TrendRetain)
+	}
 	report, err := buildStatusReportWithClient(ctx, &local, name, true, nil)
 	if err != nil {
 		return err
@@ -104,7 +107,7 @@ func historyAnomalies(a hpaanalysis.Analysis) []string {
 	if a.Stability.ChurnAnalysis != nil && (a.Stability.ChurnAnalysis.Level == hpachurn.ChurnHigh || a.Stability.ChurnAnalysis.Level == hpachurn.ChurnCritical) {
 		anomalies = append(anomalies, "replica churn suggests oscillation; review stabilization windows and tolerance")
 	}
-	if a.Conditions.StabilizationRemaining != nil && *a.Conditions.StabilizationRemaining > 0 {
+	if a.Conditions.StabilizationActive {
 		anomalies = append(anomalies, "scale-down appears to be held by stabilization")
 	}
 	return anomalies

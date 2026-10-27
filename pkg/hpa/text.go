@@ -107,9 +107,8 @@ func WriteStatusDashboardWithOptions(w io.Writer, report StatusReport, opts Stat
 	out = fmt.Appendf(out, "Target   %s\n", a.Meta.Target)
 	out = fmt.Appendf(out, "Health   %s %d/100\n", theme.HealthLabel(a.Decision.Health, a.Decision.HealthScore), a.Decision.HealthScore)
 	out = fmt.Appendf(out, "Replicas current=%d desired=%d diff=%+d min=%d max=%d\n", a.Replicas.Current, a.Replicas.Desired, diff, a.Replicas.Min, a.Replicas.Max)
-	if a.Conditions.StabilizationRemaining != nil && *a.Conditions.StabilizationRemaining > 0 {
-		progress := FormatStabilizationWithSource(a.Conditions.StabilizationRemaining, a.Conditions.StabilizationWindowSeconds, a.Conditions.StabilizationSource)
-		out = fmt.Appendf(out, "Stabilizing %s\n", progress)
+	if a.Conditions.StabilizationActive {
+		out = fmt.Appendf(out, "Stabilizing observed; remaining time unknown\n")
 	}
 	out = fmt.Appendf(out, "Summary  %s\n", theme.SummaryColorForKey(opts.translateSummary(a.Decision.Summary, a.Decision.SummaryKey), a.Decision.SummaryKey))
 

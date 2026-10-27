@@ -121,8 +121,8 @@ func TestAnalyzeReportsMaxReplicasWhileCurrentReplicasConverge(t *testing.T) {
 	hpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{resourceMetricStatus(corev1.ResourceCPU, 60)}
 
 	got := Analyze(hpa, false)
-	if got.Decision.Summary != "HPA is at maxReplicas." {
-		t.Fatalf("summary = %q, want maxReplicas summary", got.Decision.Summary)
+	if got.Decision.Summary != "HPA currently wants to scale up." {
+		t.Fatalf("summary = %q, want scale-up summary", got.Decision.Summary)
 	}
 	if got.Decision.Health != string(HealthLimited) {
 		t.Fatalf("health = %q, want %q", got.Decision.Health, HealthLimited)
@@ -500,12 +500,8 @@ func TestAnalyzeStabilizationRemaining(t *testing.T) {
 	}
 
 	got := Analyze(hpa, true)
-	if got.Conditions.StabilizationRemaining == nil {
-		t.Fatalf("expected StabilizationRemaining to be set, got nil")
-	}
-	// The remaining time should be close to 300 (just scaled, so ~300s remaining)
-	if *got.Conditions.StabilizationRemaining > 300 || *got.Conditions.StabilizationRemaining < 290 {
-		t.Fatalf("expected StabilizationRemaining around 300, got %d", *got.Conditions.StabilizationRemaining)
+	if got.Conditions.StabilizationRemaining != nil || !got.Conditions.StabilizationActive {
+		t.Fatalf("expected observed stabilization with unknown remaining time, got %#v", got.Conditions)
 	}
 }
 

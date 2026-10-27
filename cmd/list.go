@@ -275,7 +275,7 @@ func attachHealthTrend(ctx context.Context, recorder *history.Recorder, analysis
 		HealthState:     analysis.Decision.Health,
 		DesiredReplicas: analysis.Replicas.Desired,
 		CurrentReplicas: analysis.Replicas.Current,
-		Stabilizing:     analysis.Conditions.StabilizationRemaining != nil && *analysis.Conditions.StabilizationRemaining > 0,
+		Stabilizing:     analysis.Conditions.StabilizationActive,
 		Since:           since,
 		Retention:       retention,
 	})

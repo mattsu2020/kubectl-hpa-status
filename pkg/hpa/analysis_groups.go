@@ -63,6 +63,7 @@ type MetricsView struct {
 
 // ConditionsView groups HPA controller conditions and behavior configuration.
 type ConditionsView struct {
+	StabilizationActive        bool           `json:"stabilizationActive,omitempty" yaml:"stabilizationActive,omitempty"`
 	Conditions                 []Condition    `json:"conditions,omitempty" yaml:"conditions,omitempty"`
 	Behavior                   []BehaviorRule `json:"behavior,omitempty" yaml:"behavior,omitempty"`
 	StabilizationWindowSeconds *int32         `json:"stabilizationWindowSeconds,omitempty" yaml:"stabilizationWindowSeconds,omitempty"`

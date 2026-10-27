@@ -375,3 +375,18 @@ func TestRedactBytes_RedactsCredentialsInPlainText(t *testing.T) {
 		})
 	}
 }
+
+func TestRedactSelectorValues(t *testing.T) {
+	input := []byte(`{"selector":{"matchLabels":{"queue":"payments"},"matchExpressions":[{"key":"team","operator":"In","values":["private-team"]}]},"text":"External selector=\"queue=payments\"","other":{"selector":"queue=payments"}}`)
+	got := string(RedactStructuredBytes(input))
+	for _, secret := range []string{"payments", "private-team"} {
+		if strings.Contains(got, secret) {
+			t.Fatalf("selector value %q leaked: %s", secret, got)
+		}
+	}
+	for _, input := range []string{`selector="queue=payments"`, `"selector": "queue=payments"`, `"text":"selector=\"queue=payments\""`} {
+		if got := string(RedactBytes([]byte(input))); strings.Contains(got, "payments") {
+			t.Fatalf("selector leaked: %s", got)
+		}
+	}
+}

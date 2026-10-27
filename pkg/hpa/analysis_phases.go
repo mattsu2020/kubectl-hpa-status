@@ -110,9 +110,10 @@ func detectStabilization(a Analysis, src *autoscalingv2.HorizontalPodAutoscaler)
 	if window := scaleDownStabilizationWindow(src); window != nil {
 		a.Conditions.StabilizationWindowSeconds = window
 	}
-	if a.Conditions.StabilizationRemaining != nil && *a.Conditions.StabilizationRemaining > 0 {
+	if condition := FindCondition(src, ConditionAbleToScale); condition != nil && condition.Reason == ReasonScaleDownStabilized {
+		a.Conditions.StabilizationActive = true
 		a.Conditions.StabilizationSource = detectStabilizationSource(src)
-		a.Conditions.StabilizationConfidence = stabilizationConfidenceLabel
+		a.Conditions.StabilizationConfidence = "observed"
 	}
 	return a
 }
@@ -155,7 +156,7 @@ func detectMetricDecisionTrace(a Analysis, src *autoscalingv2.HorizontalPodAutos
 // stabilization is active AND churn is detected, warning that the
 // stabilization window may be too short.
 func correlateStabilizationChurn(a Analysis) Analysis {
-	if a.Conditions.StabilizationRemaining == nil || *a.Conditions.StabilizationRemaining <= 0 {
+	if !a.Conditions.StabilizationActive {
 		return a
 	}
 	if a.Stability.ChurnAnalysis == nil {

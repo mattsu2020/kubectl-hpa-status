@@ -363,8 +363,8 @@ func TestExportStructuredDecisionTrace_Stabilization(t *testing.T) {
 		t.Errorf("expected window 300, got %d", result.StabilizationEffect.WindowSeconds)
 	}
 
-	if result.StabilizationEffect.RemainingSeconds == nil || *result.StabilizationEffect.RemainingSeconds <= 0 {
-		t.Error("expected positive remaining seconds")
+	if result.StabilizationEffect.RemainingSeconds != nil {
+		t.Error("expected remaining time to be unknown")
 	}
 
 	// Check decision path includes stabilization step.

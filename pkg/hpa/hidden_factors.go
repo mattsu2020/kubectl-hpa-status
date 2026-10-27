@@ -40,11 +40,11 @@ func attachHiddenDecisionFactors(a Analysis, hpa *autoscalingv2.HorizontalPodAut
 		}
 	}
 
-	if a.Conditions.StabilizationRemaining != nil && *a.Conditions.StabilizationRemaining > 0 {
+	if a.Conditions.StabilizationActive {
 		factors = append(factors, HiddenDecisionFactor{
 			Name:       "Stabilization window",
 			Status:     "active",
-			Evidence:   []string{fmt.Sprintf("estimated remaining stabilization time is %ds", *a.Conditions.StabilizationRemaining)},
+			Evidence:   []string{"HPA reports ScaleDownStabilized; remaining time is unknown"},
 			Impact:     "The controller may suppress a scale recommendation until the stabilization window expires.",
 			Confidence: "medium",
 		})

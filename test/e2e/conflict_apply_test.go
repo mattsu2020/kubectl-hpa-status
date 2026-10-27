@@ -6,12 +6,14 @@ package e2e
 import (
 	"bytes"
 	"context"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -57,14 +59,32 @@ func crdInstalled(t *testing.T, kubeconfig, groupVersion string) bool {
 	t.Helper()
 	restConfig, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
-		return false
+		t.Fatalf("invalid kubeconfig: %v", err)
 	}
 	disco, err := discovery.NewDiscoveryClientForConfig(restConfig)
 	if err != nil {
+		t.Fatalf("create discovery client: %v", err)
+	}
+	resources, err := disco.ServerResourcesForGroupVersion(groupVersion)
+	if err != nil && (!apierrors.IsNotFound(err) || os.Getenv("REQUIRE_OPTIONAL_CRDS") == "true") {
+		t.Fatalf("discover required API %s: %v", groupVersion, err)
+	}
+	if err != nil {
 		return false
 	}
-	_, err = disco.ServerResourcesForGroupVersion(groupVersion)
-	return err == nil
+	resourceName := "verticalpodautoscalers"
+	if groupVersion == "keda.sh/v1alpha1" {
+		resourceName = "scaledobjects"
+	}
+	for _, resource := range resources.APIResources {
+		if resource.Name == resourceName {
+			return true
+		}
+	}
+	if os.Getenv("REQUIRE_OPTIONAL_CRDS") == "true" {
+		t.Fatalf("required resource %s missing from %s", resourceName, groupVersion)
+	}
+	return false
 }
 
 // vpaGVR is the GroupVersionResource for VerticalPodAutoscalers.

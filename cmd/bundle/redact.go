@@ -26,6 +26,8 @@ func RedactBytes(data []byte) []byte {
 	// carry "--token=..." or query-string credentials, and those must not
 	// survive into a shared markdown report or zip entry.
 	s = redactSensitiveString(s)
+	s = selectorTextPattern.ReplaceAllString(s, `${1}[REDACTED]${2}`)
+	s = selectorJSONPattern.ReplaceAllString(s, `${1}[REDACTED]${2}`)
 
 	// Parse complete address-shaped tokens so IPv6 prefixes cannot leak and
 	// invalid dotted versions are not partially mistaken for IPv4 addresses.
@@ -87,6 +89,12 @@ func redactStructuredValue(value any, parentKey string) any {
 				typed[key] = redactStructuredFieldValue(child)
 				continue
 			}
+			if normalized == "selector" {
+				if _, ok := child.(string); ok {
+					typed[key] = "[REDACTED]"
+					continue
+				}
+			}
 			if nodeRedactableField(normalized, parentKey) {
 				if text, ok := child.(string); ok && text != "" {
 					typed[key] = "[REDACTED-NODE]"
@@ -118,6 +126,10 @@ func redactStructuredValue(value any, parentKey string) any {
 	}
 	return value
 }
+
+// Selector values may also occur inside human-readable analysis and embedded JSON.
+var selectorTextPattern = regexp.MustCompile(`(?i)(selector=\\?")[^"\\]*(\\?")`)
+var selectorJSONPattern = regexp.MustCompile(`(?i)("selector"\s*:\s*")[^"\\]*(")`)
 
 const sensitiveNameCorePattern = `(?:access[-_]?token|auth[-_]?token|token|password|passwd|credential(?:s)?|api[-_]?key|apikey|client[-_]?secret|secret|access[-_]?key(?:[-_]?id)?|secret[-_]?access[-_]?key|authorization|proxy[-_]?authorization|cookie)`
 const sensitiveNamePattern = `(?:(?:[a-z0-9]+[-_])*` + sensitiveNameCorePattern + `)`
@@ -189,6 +201,7 @@ func isStandaloneSensitiveFlag(value string) bool {
 var redactedParentKeys = map[string]bool{
 	"annotations": true,
 	"labels":      true,
+	"matchlabels": true,
 	"data":        true,
 	"stringdata":  true,
 }
@@ -233,8 +246,11 @@ func nodeRedactableField(key, parentKey string) bool {
 }
 
 func shouldRedactStructuredField(key, parentKey string) bool {
-	if redactedParentKeys[parentKey] || redactedFieldKeys[key] {
+	if redactedParentKeys[parentKey] || redactedFieldKeys[key] || (parentKey == "matchexpressions" && key == "values") {
 		return true
+	}
+	if key == "selector" {
+		return false // structured selectors are traversed; string selectors are redacted below
 	}
 	if key == "value" && parentKey == "env" {
 		return true

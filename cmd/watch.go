@@ -142,6 +142,10 @@ func writeWatchReport(out io.Writer, opts *options, report hpaanalysis.StatusRep
 
 // writeStabilizationCountdown prints the prominent stabilization countdown line when scale-down stabilization is active.
 func writeStabilizationCountdown(out io.Writer, a *hpaanalysis.Analysis) {
+	if a.Conditions.StabilizationActive {
+		_, _ = fmt.Fprintln(out, "\n  STABILIZING: scale-down stabilization observed; remaining time unknown")
+		return
+	}
 	if a.Conditions.StabilizationRemaining == nil || *a.Conditions.StabilizationRemaining <= 0 {
 		return
 	}
