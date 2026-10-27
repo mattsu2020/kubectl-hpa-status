@@ -101,7 +101,7 @@ func FormatMetricValue(utilization *int32, averageValue *resource.Quantity) stri
 	if utilization != nil {
 		return fmt.Sprintf("%d%%", *utilization)
 	}
-	if averageValue != nil && !averageValue.IsZero() {
+	if averageValue != nil {
 		return averageValue.String()
 	}
 	return "<unknown>"
@@ -112,10 +112,10 @@ func FormatMetricValueStatus(value autoscalingv2.MetricValueStatus) string {
 	if value.AverageUtilization != nil {
 		return fmt.Sprintf("%d%%", *value.AverageUtilization)
 	}
-	if value.AverageValue != nil && !value.AverageValue.IsZero() {
+	if value.AverageValue != nil {
 		return value.AverageValue.String()
 	}
-	if value.Value != nil && !value.Value.IsZero() {
+	if value.Value != nil {
 		return value.Value.String()
 	}
 	return "<unknown>"

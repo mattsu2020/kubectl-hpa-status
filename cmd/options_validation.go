@@ -92,6 +92,9 @@ func validateAnalysisRanges(opts *options) error {
 	if opts.TrendSince < 0 || opts.TrendRetain < 0 {
 		return fmt.Errorf("--trend-since and --trend-retain must be >= 0")
 	}
+	if opts.TrendSince > opts.TrendRetain {
+		return fmt.Errorf("--trend-since (%s) must not exceed --trend-retain (%s)", opts.TrendSince, opts.TrendRetain)
+	}
 	if opts.SimulateDuration < 0 {
 		return fmt.Errorf("--simulate-duration must be >= 0, got %d", opts.SimulateDuration)
 	}

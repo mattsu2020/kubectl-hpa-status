@@ -109,6 +109,10 @@ func renderDetailHiddenFactors(sb *strings.Builder, a *hpaanalysis.Analysis) {
 }
 
 func renderDetailStabilization(sb *strings.Builder, a *hpaanalysis.Analysis) {
+	if a.Conditions.StabilizationActive {
+		sb.WriteString("\nScale-down stabilization observed; remaining time unknown\n")
+		return
+	}
 	if a.Conditions.StabilizationRemaining == nil || *a.Conditions.StabilizationRemaining <= 0 {
 		return
 	}

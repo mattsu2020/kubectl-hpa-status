@@ -124,12 +124,11 @@ func buildDecisionLimitCheck(trace *DecisionTrace) string {
 }
 
 func buildDecisionStabilization(hpa *autoscalingv2.HorizontalPodAutoscaler) string {
-	if remaining := estimateStabilizationRemaining(hpa); remaining != nil && *remaining > 0 {
-		window := scaleDownStabilizationWindow(hpa)
-		if window != nil {
-			return fmt.Sprintf("scaleDown window active, about %ds remaining in %ds window", *remaining, *window)
+	if condition := FindCondition(hpa, ConditionAbleToScale); condition != nil && condition.Reason == ReasonScaleDownStabilized {
+		if window := scaleDownStabilizationWindow(hpa); window != nil {
+			return fmt.Sprintf("scaleDown stabilization observed; configured window %ds, remaining time unknown", *window)
 		}
-		return "scaleDown window active"
+		return "scaleDown stabilization observed; remaining time unknown"
 	}
 	return "scaleDown window not visibly active"
 }

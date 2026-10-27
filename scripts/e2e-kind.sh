@@ -19,7 +19,8 @@
 
 set -euo pipefail
 
-CLUSTER_NAME="hpa-status-e2e"
+CLUSTER_NAME="hpa-status-e2e-$(date +%s)-$$"
+CLUSTER_CREATED=false
 # Keep the default node image inside the CI compatibility matrix
 # (.github/workflows/ci.yml e2e job) so local runs exercise a tested version.
 KIND_NODE_IMAGE="${KIND_NODE_IMAGE:-kindest/node:v1.36.1}"
@@ -44,7 +45,7 @@ warn() { echo -e "${YELLOW}[e2e]${NC} $*"; }
 fail() { echo -e "${RED}[e2e FAIL]${NC} $*" >&2; exit 1; }
 
 cleanup() {
-    if kind get clusters 2>/dev/null | grep -q "$CLUSTER_NAME"; then
+    if [ "$CLUSTER_CREATED" = true ]; then
         log "Deleting kind cluster $CLUSTER_NAME..."
         kind delete cluster --name "$CLUSTER_NAME"
     fi
@@ -59,12 +60,9 @@ log "Building kubectl-hpa-status..."
 (cd "$PROJECT_DIR" && go build -o "$BINARY" .) || fail "Build failed"
 
 # --- Create cluster ---
-if kind get clusters 2>/dev/null | grep -q "$CLUSTER_NAME"; then
-    warn "Cluster $CLUSTER_NAME already exists, deleting..."
-    kind delete cluster --name "$CLUSTER_NAME"
-fi
 log "Creating kind cluster $CLUSTER_NAME with $KIND_NODE_IMAGE..."
 kind create cluster --name "$CLUSTER_NAME" --image "$KIND_NODE_IMAGE" --wait 60s
+CLUSTER_CREATED=true
 
 KUBECONFIG_FILE="$(mktemp "${TMPDIR:-/tmp}/hpa-status-e2e-kubeconfig.XXXXXX")"
 kind get kubeconfig --name "$CLUSTER_NAME" > "$KUBECONFIG_FILE"
@@ -161,7 +159,14 @@ log "  ✓ version command works"
 
 # --- Test: scan (problem list) ---
 log "Testing: scan command..."
-OUTPUT=$("$BINARY" scan 2>&1) || true  # scan may return non-zero if problems found
+set +e
+OUTPUT=$("$BINARY" scan 2>&1)
+SCAN_RC=$?
+set -e
+if [ "$SCAN_RC" -gt 2 ]; then
+    fail "scan command failed unexpectedly (exit=${SCAN_RC}): $OUTPUT"
+fi
+echo "$OUTPUT" | grep -q "broken" || fail "scan output did not include the broken HPA: $OUTPUT"
 log "  ✓ scan command works"
 
 # --- Test: suggest ---

@@ -18,11 +18,15 @@ func BuildMetricDecisionTrace(hpa *autoscalingv2.HorizontalPodAutoscaler, minRep
 	}
 
 	entries := buildPerMetricTrace(hpa, minReplicas)
-	winner, winnerConfidence := determineWinner(entries, hpa)
-	selectPolicy := resolveSelectPolicy(hpa, entries, winner)
+	winnerIndex, winnerConfidence := determineWinner(entries, hpa)
+	winner := ""
+	if winnerIndex >= 0 {
+		winner = entries[winnerIndex].Name
+	}
+	selectPolicy := resolveSelectPolicy(hpa, entries, winnerIndex)
 	stabEffect := buildStabilizationEffect(hpa)
 	tolEffect := buildToleranceEffect(hpa, entries)
-	summary := buildTraceSummary(entries, winner, winnerConfidence)
+	summary := buildTraceSummary(entries, winnerIndex, winnerConfidence, hpa)
 
 	return &MetricDecisionTrace{
 		Metrics:             entries,
@@ -96,20 +100,20 @@ func buildPerMetricTrace(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []
 // count, matching the HPA controller's multi-metric selection rule.
 // When desiredReplicas == maxReplicas, confidence is Low because the winner
 // cannot be reliably determined.
-func determineWinner(entries []MetricTraceEntry, hpa *autoscalingv2.HorizontalPodAutoscaler) (string, Confidence) {
+func determineWinner(entries []MetricTraceEntry, hpa *autoscalingv2.HorizontalPodAutoscaler) (int, Confidence) {
 	if len(entries) == 0 {
-		return "", ""
+		return -1, ""
 	}
 
-	var bestName string
+	bestIndex := -1
 	var bestDesired int32
 	found := false
 	bestCount := 0
 
-	for _, entry := range entries {
+	for i, entry := range entries {
 		if entry.EstimatedDesiredReplicas != nil && (!found || *entry.EstimatedDesiredReplicas > bestDesired) {
 			bestDesired = *entry.EstimatedDesiredReplicas
-			bestName = entry.Name
+			bestIndex = i
 			found = true
 			bestCount = 1
 		} else if entry.EstimatedDesiredReplicas != nil && *entry.EstimatedDesiredReplicas == bestDesired {
@@ -118,14 +122,14 @@ func determineWinner(entries []MetricTraceEntry, hpa *autoscalingv2.HorizontalPo
 	}
 
 	if !found {
-		return "", ""
+		return -1, ""
 	}
 
 	if bestCount > 1 || winnerHiddenByControllerState(hpa) {
-		return bestName, ConfidenceLow
+		return bestIndex, ConfidenceLow
 	}
 
-	return bestName, ConfidenceMedium
+	return bestIndex, ConfidenceMedium
 }
 
 func winnerHiddenByControllerState(hpa *autoscalingv2.HorizontalPodAutoscaler) bool {
@@ -227,17 +231,14 @@ func buildToleranceEffect(hpa *autoscalingv2.HorizontalPodAutoscaler, entries []
 
 // resolveSelectPolicy reads the selectPolicy from the behavior spec.
 // Returns the effective policy or "Max" as default.
-func resolveSelectPolicy(hpa *autoscalingv2.HorizontalPodAutoscaler, entries []MetricTraceEntry, winner string) string {
+func resolveSelectPolicy(hpa *autoscalingv2.HorizontalPodAutoscaler, entries []MetricTraceEntry, winner int) string {
 	if hpa.Spec.Behavior == nil {
 		return "Max"
 	}
 
 	direction := ""
-	for _, entry := range entries {
-		if entry.Name == winner {
-			direction = entry.DesiredDirection
-			break
-		}
+	if winner >= 0 && winner < len(entries) {
+		direction = entries[winner].DesiredDirection
 	}
 	if direction == "down" {
 		if rules := hpa.Spec.Behavior.ScaleDown; rules != nil && rules.SelectPolicy != nil {
@@ -251,14 +252,14 @@ func resolveSelectPolicy(hpa *autoscalingv2.HorizontalPodAutoscaler, entries []M
 }
 
 // buildTraceSummary creates a one-line human-readable summary of the decision trace.
-func buildTraceSummary(entries []MetricTraceEntry, winner string, winnerConfidence Confidence) string {
+func buildTraceSummary(entries []MetricTraceEntry, winner int, winnerConfidence Confidence, hpa *autoscalingv2.HorizontalPodAutoscaler) string {
 	if len(entries) == 0 {
 		return "no metrics available for decision trace"
 	}
 
 	var parts []string
 
-	for _, entry := range entries {
+	for i, entry := range entries {
 		if entry.Ratio == nil {
 			parts = append(parts, fmt.Sprintf("%s has no ratio data", entry.Name))
 			continue
@@ -266,7 +267,7 @@ func buildTraceSummary(entries []MetricTraceEntry, winner string, winnerConfiden
 
 		ratioStr := formatRatio(*entry.Ratio)
 		switch {
-		case entry.Name == winner:
+		case i == winner:
 			parts = append(parts, fmt.Sprintf("%s is dominant (%sx target)", entry.Name, ratioStr))
 		case entry.WithinTolerance:
 			parts = append(parts, fmt.Sprintf("%s is within tolerance (%sx)", entry.Name, ratioStr))
@@ -277,8 +278,37 @@ func buildTraceSummary(entries []MetricTraceEntry, winner string, winnerConfiden
 
 	summary := strings.Join(parts, "; ")
 
-	if winner != "" && winnerConfidence == ConfidenceLow {
-		summary += " (winner confidence is low: desiredReplicas == maxReplicas)"
+	if winner >= 0 && winnerConfidence == ConfidenceLow {
+		var reasons []string
+		ties := 0
+		for _, entry := range entries {
+			if entry.EstimatedDesiredReplicas != nil && *entry.EstimatedDesiredReplicas == *entries[winner].EstimatedDesiredReplicas {
+				ties++
+			}
+		}
+		if ties > 1 {
+			reasons = append(reasons, "multiple metrics have the same estimated desired replicas")
+		}
+		if hpa.Status.DesiredReplicas >= hpa.Spec.MaxReplicas {
+			reasons = append(reasons, "desired replicas reach maxReplicas")
+		}
+		min := int32(1)
+		if hpa.Spec.MinReplicas != nil {
+			min = *hpa.Spec.MinReplicas
+		}
+		if hpa.Status.DesiredReplicas <= min && winnerHiddenByControllerState(hpa) {
+			reasons = append(reasons, "minReplicas or controller state may obscure the winner")
+		}
+		if len(hpa.Status.CurrentMetrics) < len(hpa.Spec.Metrics) {
+			reasons = append(reasons, "metric status is missing")
+		}
+		if condition := FindCondition(hpa, ConditionAbleToScale); condition != nil && condition.Reason == ReasonScaleDownStabilized {
+			reasons = append(reasons, "scale-down stabilization is reported")
+		}
+		if len(reasons) == 0 {
+			reasons = append(reasons, "controller state may obscure the winner")
+		}
+		summary += " (winner confidence is low: " + strings.Join(reasons, "; ") + ")"
 	}
 
 	return summary

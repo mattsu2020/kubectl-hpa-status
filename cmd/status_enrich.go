@@ -342,7 +342,7 @@ func recordHealthSnapshotAndTrend(ctx context.Context, opts *options, hpa *autos
 		HealthState:     report.Analysis.Decision.Health,
 		DesiredReplicas: report.Analysis.Replicas.Desired,
 		CurrentReplicas: report.Analysis.Replicas.Current,
-		Stabilizing:     report.Analysis.Conditions.StabilizationRemaining != nil && *report.Analysis.Conditions.StabilizationRemaining > 0,
+		Stabilizing:     report.Analysis.Conditions.StabilizationActive,
 		Since:           opts.TrendSince,
 		Retention:       opts.TrendRetain,
 	})

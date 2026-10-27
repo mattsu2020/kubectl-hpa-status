@@ -212,6 +212,7 @@ func TestRunHistoryRendersTrendReport(t *testing.T) {
 		},
 	}
 
+	opts.TrendRetain = 72 * time.Hour
 	var out bytes.Buffer
 	if err := runHistory(context.Background(), &out, opts, "web", 6*time.Hour, ""); err != nil {
 		t.Fatalf("runHistory returned error: %v", err)
@@ -239,6 +240,7 @@ func TestRunHistoryEmitsPrometheusLinks(t *testing.T) {
 		},
 	}
 
+	opts.TrendRetain = 72 * time.Hour
 	var out bytes.Buffer
 	if err := runHistory(context.Background(), &out, opts, "web", time.Hour, "http://prometheus.example"); err != nil {
 		t.Fatalf("runHistory returned error: %v", err)

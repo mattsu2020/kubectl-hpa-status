@@ -144,51 +144,13 @@ func TestEstimateStabilizationRemaining(t *testing.T) {
 			t.Fatalf("got %v, want nil", *got)
 		}
 	})
-	t.Run("returns remaining seconds", func(t *testing.T) {
-		hpa := &autoscalingv2.HorizontalPodAutoscaler{
-			Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-				Behavior: &autoscalingv2.HorizontalPodAutoscalerBehavior{
-					ScaleDown: &autoscalingv2.HPAScalingRules{StabilizationWindowSeconds: &window},
-				},
-			},
-			Status: autoscalingv2.HorizontalPodAutoscalerStatus{
-				LastScaleTime: &lastScale,
-				Conditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
-					{Type: AbleToScale, Reason: "ScaleDownStabilized"},
-				},
-			},
-		}
-		// window=300, elapsed=120 -> remaining=180
-		got := EstimateStabilizationRemaining(hpa)
-		if got == nil {
-			t.Fatalf("got nil, want 180")
-		}
-		if *got != 180 {
-			t.Fatalf("remaining = %d, want 180", *got)
-		}
-	})
-	t.Run("clamps negative remaining to zero", func(t *testing.T) {
-		late := lastScale.Add(400 * time.Second) // window already expired
-		defer clock.SetForTest(late)()
-		hpa := &autoscalingv2.HorizontalPodAutoscaler{
-			Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-				Behavior: &autoscalingv2.HorizontalPodAutoscalerBehavior{
-					ScaleDown: &autoscalingv2.HPAScalingRules{StabilizationWindowSeconds: &window},
-				},
-			},
-			Status: autoscalingv2.HorizontalPodAutoscalerStatus{
-				LastScaleTime: &lastScale,
-				Conditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
-					{Type: AbleToScale, Reason: "ScaleDownStabilized"},
-				},
-			},
-		}
-		got := EstimateStabilizationRemaining(hpa)
-		if got == nil {
-			t.Fatalf("got nil, want 0")
-		}
-		if *got != 0 {
-			t.Fatalf("remaining = %d, want 0 (clamped)", *got)
+	t.Run("remaining time is unknown even when last scale time exists", func(t *testing.T) {
+		hpa := &autoscalingv2.HorizontalPodAutoscaler{Status: autoscalingv2.HorizontalPodAutoscalerStatus{
+			LastScaleTime: &lastScale,
+			Conditions:    []autoscalingv2.HorizontalPodAutoscalerCondition{{Type: AbleToScale, Reason: "ScaleDownStabilized"}},
+		}}
+		if got := EstimateStabilizationRemaining(hpa); got != nil {
+			t.Fatalf("remaining time = %v, want unknown", *got)
 		}
 	})
 }

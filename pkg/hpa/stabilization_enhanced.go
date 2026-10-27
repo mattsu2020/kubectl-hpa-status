@@ -102,9 +102,9 @@ func FormatStabilizationExplain(a Analysis) string {
 	remainingStr := FormatDuration(remaining)
 	if window > 0 {
 		windowStr := FormatDuration(window)
-		lines = append(lines, fmt.Sprintf("→ Scale down will be enabled in approximately %s (window: %s)", remainingStr, windowStr))
+		lines = append(lines, fmt.Sprintf("→ Last-scale-based estimate: %s (window: %s); actual remaining time is unknown", remainingStr, windowStr))
 	} else {
-		lines = append(lines, fmt.Sprintf("→ Scale down will be enabled in approximately %s", remainingStr))
+		lines = append(lines, fmt.Sprintf("→ Last-scale-based estimate: %s; actual remaining time is unknown", remainingStr))
 	}
 
 	// Source and confidence.

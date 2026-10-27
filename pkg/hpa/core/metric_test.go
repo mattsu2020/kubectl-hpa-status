@@ -1,6 +1,7 @@
 package core
 
 import (
+	"k8s.io/apimachinery/pkg/api/resource"
 	"testing"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -20,5 +21,20 @@ func TestFormatMetricStatus(t *testing.T) {
 	}
 	if got := FormatMetricStatus(nil, autoscalingv2.MetricStatus{}, nil); got.Text == "" {
 		t.Fatal("empty status must retain fallback text")
+	}
+}
+
+func TestZeroQuantityIsAReading(t *testing.T) {
+	zero := resource.MustParse("0")
+	if got := FormatMetricValue(nil, &zero); got != "0" {
+		t.Fatalf("average = %q", got)
+	}
+	for _, value := range []autoscalingv2.MetricValueStatus{{Value: &zero}, {AverageValue: &zero}} {
+		if got := FormatMetricValueStatus(value); got != "0" {
+			t.Fatalf("value = %q", got)
+		}
+	}
+	if got := FormatMetricValueStatus(autoscalingv2.MetricValueStatus{}); got != "<unknown>" {
+		t.Fatalf("missing = %q", got)
 	}
 }

@@ -1,6 +1,7 @@
 package hpa
 
 import (
+	"strings"
 	"testing"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -640,5 +641,21 @@ func TestDetectMetricDecisionTrace(t *testing.T) {
 				t.Fatalf("expected no MetricDecisionTrace, got %+v", result.Decision.MetricDecisionTrace)
 			}
 		})
+	}
+}
+
+func TestWinnerWithDuplicateMetricNamesUsesWinningEntry(t *testing.T) {
+	up, down := autoscalingv2.MinChangePolicySelect, autoscalingv2.DisabledPolicySelect
+	hpa := &autoscalingv2.HorizontalPodAutoscaler{Spec: autoscalingv2.HorizontalPodAutoscalerSpec{MaxReplicas: 20, Behavior: &autoscalingv2.HorizontalPodAutoscalerBehavior{ScaleUp: &autoscalingv2.HPAScalingRules{SelectPolicy: &up}, ScaleDown: &autoscalingv2.HPAScalingRules{SelectPolicy: &down}}}, Status: autoscalingv2.HorizontalPodAutoscalerStatus{CurrentReplicas: 5, DesiredReplicas: 8}}
+	first, second := int32(3), int32(8)
+	r1, r2 := 0.5, 1.6
+	entries := []MetricTraceEntry{{Name: "queue", DesiredDirection: "down", Ratio: &r1, EstimatedDesiredReplicas: &first}, {Name: "queue", DesiredDirection: "up", Ratio: &r2, EstimatedDesiredReplicas: &second}}
+	winner, confidence := determineWinner(entries, hpa)
+	if winner != 1 || resolveSelectPolicy(hpa, entries, winner) != string(up) {
+		t.Fatalf("winner=%d policy=%s", winner, resolveSelectPolicy(hpa, entries, winner))
+	}
+	summary := buildTraceSummary(entries, winner, confidence, hpa)
+	if strings.Count(summary, "is dominant") != 1 {
+		t.Fatalf("summary = %s", summary)
 	}
 }
