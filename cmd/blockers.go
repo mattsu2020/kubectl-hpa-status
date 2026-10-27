@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	"k8s.io/apimachinery/pkg/api/meta"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kubeconv"
@@ -139,8 +140,8 @@ func assembleBlockerInputWithSnapshot(ctx context.Context, client *kube.Client, 
 			}
 
 			// Fetch events for the scale target and pods.
-			objectNames := blockerEventObjectNames(hpa, podInfos.Data)
-			events, eventsErr := kube.FetchRecentEventsForObjects(ctx, client.Interface, hpa.Namespace, objectNames, diagnosticEventLimit)
+			objects := eventObjectIdentities(hpa, info, podInfos.Data, nil)
+			events, eventsErr := kube.FetchRecentEventsForIdentities(ctx, client.Interface, hpa.Namespace, objects, diagnosticEventLimit)
 			input.FailedSchedulingEvents = extractFailedSchedulingMessages(events)
 			if eventsErr != nil {
 				warnings = append(warnings, fmt.Sprintf("events incomplete: %v", eventsErr))
@@ -237,23 +238,27 @@ func extractFailedSchedulingMessages(events []kube.EventInfo) []string {
 	return messages
 }
 
-// blockerEventObjectNames collects object names for event fetching.
-// blockerEventObjectNames collects the object names whose recent events are
-// relevant for an HPA diagnosis: the HPA itself, its scale target, and the
-// target's pods. Shared with the support-bundle collector (see
-// bundleEventObjectNames) so both event fetches use the same scope.
-func blockerEventObjectNames(hpa *autoscalingv2.HorizontalPodAutoscaler, pods []kube.PodInfo) []string {
-	names := []string{hpa.Name, hpa.Spec.ScaleTargetRef.Name}
-	for _, pod := range pods {
-		names = append(names, pod.Name)
-	}
-	return names
-}
-
 // replicasOrDefault returns the value or 1 if nil.
 func replicasOrDefault(replicas *int32) int32 {
 	if replicas == nil {
 		return 1
 	}
 	return *replicas
+}
+
+// eventObjectIdentities keeps observation identity at the collection boundary.
+func eventObjectIdentities(hpa *autoscalingv2.HorizontalPodAutoscaler, target *kube.ScaleTargetInfo, pods []kube.PodInfo, sets []kube.ReplicaSetInfo) []kube.EventObject {
+	refs := []kube.EventObject{{Name: hpa.Name, Kind: "HorizontalPodAutoscaler", UID: hpa.UID}}
+	if target != nil && target.Object != nil {
+		if obj, err := meta.Accessor(target.Object); err == nil {
+			refs = append(refs, kube.EventObject{Name: target.Name, Kind: target.Kind, UID: obj.GetUID()})
+		}
+	}
+	for _, pod := range pods {
+		refs = append(refs, kube.EventObject{Name: pod.Name, Kind: "Pod", UID: pod.UID})
+	}
+	for _, rs := range sets {
+		refs = append(refs, kube.EventObject{Name: rs.Name, Kind: "ReplicaSet", UID: rs.UID})
+	}
+	return refs
 }

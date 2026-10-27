@@ -75,3 +75,23 @@ func TestFetchRecentHPAEventsForObjectSinceIdentityAndTime(t *testing.T) {
 		t.Fatal("nil HPA accepted")
 	}
 }
+
+func TestFetchRecentEventsForIdentitiesFiltersAndLimitsAcrossPages(t *testing.T) {
+	now := time.Now()
+	makeEvent := func(reason, kind string, uid types.UID, offset time.Duration) corev1.Event {
+		return corev1.Event{InvolvedObject: corev1.ObjectReference{Name: "web", Kind: kind, UID: uid}, Reason: reason, LastTimestamp: metav1.NewTime(now.Add(offset))}
+	}
+	client := fake.NewClientset()
+	calls := 0
+	client.PrependReactor("list", "events", func(action ktesting.Action) (bool, runtime.Object, error) {
+		calls++
+		if calls == 1 {
+			return true, &corev1.EventList{Items: []corev1.Event{makeEvent("old", "Pod", "current", -time.Hour), makeEvent("wrong-kind", "Deployment", "current", time.Hour)}, ListMeta: metav1.ListMeta{Continue: "next"}}, nil
+		}
+		return true, &corev1.EventList{Items: []corev1.Event{makeEvent("replaced", "Pod", "old", 2*time.Hour), makeEvent("new", "Pod", "current", 0)}}, nil
+	})
+	events, err := FetchRecentEventsForIdentities(context.Background(), client, "default", []EventObject{{Name: "web", Kind: "Pod", UID: "current"}}, 1)
+	if err != nil || calls != 2 || len(events) != 1 || events[0].Reason != "new" {
+		t.Fatalf("events=%+v calls=%d error=%v", events, calls, err)
+	}
+}

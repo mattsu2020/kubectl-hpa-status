@@ -6,11 +6,13 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 )
 
 // PodInfo is a compact pod status used by higher-level HPA analysis.
 type PodInfo struct {
+	UID           types.UID `json:"-" yaml:"-"`
 	Name          string
 	Phase         string
 	Ready         bool
@@ -72,6 +74,7 @@ func PodInfosFromPods(pods []corev1.Pod) []PodInfo {
 	for _, pod := range pods {
 		info := PodInfo{
 			Name:          pod.Name,
+			UID:           pod.UID,
 			Phase:         string(pod.Status.Phase),
 			Ready:         podReady(pod),
 			Unschedulable: podUnschedulableInfo(pod),

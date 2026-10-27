@@ -44,7 +44,10 @@ type ResourceRequests struct {
 //
 //nolint:nilnil // nil result with no error is intentional for unsupported kinds
 func FetchScaleTargetResources(ctx context.Context, client kubernetes.Interface, namespace, kind, name string) (*ResourceRequests, error) {
-	ref := autoscalingv2.CrossVersionObjectReference{Kind: kind, Name: name}
+	return FetchScaleTargetResourcesForRef(ctx, client, namespace, autoscalingv2.CrossVersionObjectReference{Kind: kind, Name: name})
+}
+
+func FetchScaleTargetResourcesForRef(ctx context.Context, client kubernetes.Interface, namespace string, ref autoscalingv2.CrossVersionObjectReference) (*ResourceRequests, error) {
 	info, err := FetchScaleTargetInfo(ctx, client, namespace, ref)
 	if err != nil {
 		return nil, err

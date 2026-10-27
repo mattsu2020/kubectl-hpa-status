@@ -59,3 +59,15 @@ func TestRunPipelineAbortOnError(t *testing.T) {
 		t.Fatal("pipeline continued after fatal task")
 	}
 }
+
+func TestRunPipelineStopsOnCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	ran := false
+	err := RunPipeline(ctx, []PipelineTask{
+		{Enabled: true, Run: func(context.Context) error { cancel(); return nil }},
+		{Enabled: true, Run: func(context.Context) error { ran = true; return nil }},
+	}, nil)
+	if !errors.Is(err, context.Canceled) || ran {
+		t.Fatalf("error=%v, later task ran=%v", err, ran)
+	}
+}

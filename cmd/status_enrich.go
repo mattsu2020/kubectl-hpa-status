@@ -108,7 +108,7 @@ func enrichMetricFreshnessReport(ctx context.Context, client *kube.Client, hpa *
 }
 
 func enrichResourceCheck(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) {
-	resources, err := kube.FetchScaleTargetResources(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef.Kind, hpa.Spec.ScaleTargetRef.Name)
+	resources, err := kube.FetchScaleTargetResourcesForRef(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef)
 	if err != nil {
 		// The user explicitly asked for resource checks (--check-resources);
 		// surface the fetch failure so it is not silently dropped.

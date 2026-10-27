@@ -19,6 +19,14 @@ stable Kubernetes API surfaces:
 When Kubernetes does not expose an internal decision, the output must say so.
 Inference should be labeled with confidence language and covered by tests.
 
+Diagnostic collection must retain object identity through the Kubernetes boundary:
+Event queries use the observed kind and UID when available, and partial collection
+failures are carried into report warnings. When a target cannot be observed, its
+Events are omitted rather than attributed by name alone. Analysis consumes the
+resulting observations, while renderers are responsible for presenting their
+availability and warnings consistently across formats. Request-scoped snapshots
+should be reused by collectors to avoid duplicate reads.
+
 ## Package Layout
 
 | Path | Responsibility |

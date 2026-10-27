@@ -177,8 +177,12 @@ func collectBundleData(ctx context.Context, client *kube.Client, opts *options, 
 	collectBundlePodData(ctx, client, selector, data)
 
 	// 7. Events with wider scope (HPA + scale target + pods).
-	objectNames := blockerEventObjectNames(hpa, data.PodInfos)
-	events, eventsErr := kube.FetchRecentEventsForObjects(ctx, client.Interface, hpa.Namespace, objectNames, bundleEventLimit)
+	eventTarget, targetErr := kube.FetchScaleTargetInfo(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef)
+	if targetErr != nil {
+		data.Warnings = append(data.Warnings, fmt.Sprintf("event target unavailable: %v", targetErr))
+	}
+	objects := eventObjectIdentities(hpa, eventTarget, data.PodInfos, nil)
+	events, eventsErr := kube.FetchRecentEventsForIdentities(ctx, client.Interface, hpa.Namespace, objects, bundleEventLimit)
 	data.Events = formatBundleEvents(events)
 	if eventsErr != nil {
 		data.Warnings = append(data.Warnings, fmt.Sprintf("events incomplete: %v", eventsErr))

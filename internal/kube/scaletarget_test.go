@@ -10,6 +10,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/fake"
 )
 
 func TestFetchScaleTargetInfo_Deployment(t *testing.T) {
@@ -328,5 +329,14 @@ func TestFetchScaleTargetInfo_MultipleContainers(t *testing.T) {
 	}
 	if len(info.PodTemplate.Spec.Containers) != 2 {
 		t.Fatalf("expected 2 containers, got %d", len(info.PodTemplate.Spec.Containers))
+	}
+}
+
+func TestFetchScaleTargetInfoRejectsOtherAPIGroup(t *testing.T) {
+	client := fake.NewClientset(&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "default"}})
+	ref := autoscalingv2.CrossVersionObjectReference{APIVersion: "example.io/v1", Kind: "Deployment", Name: "web"}
+	info, err := FetchScaleTargetInfo(context.Background(), client, "default", ref)
+	if err != nil || info != nil || len(client.Actions()) != 0 {
+		t.Fatalf("info=%v error=%v actions=%v", info, err, client.Actions())
 	}
 }

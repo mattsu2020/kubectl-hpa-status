@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -118,7 +119,7 @@ func collectSnapshotData(ctx context.Context, client *kube.Client, opts *options
 	data.Pods = snapshotObservationJSON("pods", observations.PodInfos(ctx))
 
 	// 5. Fetch Events
-	data.Events = fetchSnapshotEvents(ctx, client, hpa)
+	data.Events = fetchSnapshotEvents(ctx, client, hpa, observations)
 
 	// 6. Fetch metrics API status
 	data.MetricsAPI = fetchSnapshotMetricsAPI(ctx, client)
@@ -189,9 +190,18 @@ func snapshotObservationJSON[T any](name string, value observation.Value[T]) []b
 	return content
 }
 
-func fetchSnapshotEvents(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) []byte {
-	objectNames := []string{hpa.Name, hpa.Spec.ScaleTargetRef.Name}
-	events, eventsErr := kube.FetchRecentEventsForObjects(ctx, client.Interface, hpa.Namespace, objectNames, diagnosticEventLimit)
+func fetchSnapshotEvents(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, snapshots ...*observation.Snapshot) []byte {
+	var target *kube.ScaleTargetInfo
+	var targetErr error
+	if len(snapshots) > 0 && snapshots[0] != nil {
+		observed := snapshots[0].ScaleTarget(ctx)
+		target, targetErr = observed.Data, observed.Err
+	} else {
+		target, targetErr = kube.FetchScaleTargetInfo(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef)
+	}
+	objects := eventObjectIdentities(hpa, target, nil, nil)
+	events, eventsErr := kube.FetchRecentEventsForIdentities(ctx, client.Interface, hpa.Namespace, objects, diagnosticEventLimit)
+	eventsErr = errors.Join(eventsErr, targetErr)
 
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("# Recent Events for %s/%s\n\n", hpa.Namespace, hpa.Name))
