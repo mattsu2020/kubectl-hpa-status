@@ -1,12 +1,25 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="420" viewBox="0 0 960 420" role="img" aria-label="JSON output">
-  <rect width="960" height="420" rx="12" fill="#111827"/>
-  <text x="28" y="46" fill="#93c5fd" font-family="ui-monospace,Menlo,monospace" font-size="18">$ kubectl hpa status web -o json</text>
-  <text x="28" y="100" fill="#e2e8f0" font-family="ui-monospace,Menlo,monospace" font-size="17">{</text>
-  <text x="52" y="136" fill="#e2e8f0" font-family="ui-monospace,Menlo,monospace" font-size="17">"analysis": {</text>
-  <text x="76" y="172" fill="#86efac" font-family="ui-monospace,Menlo,monospace" font-size="17">"name": "web",</text>
-  <text x="76" y="208" fill="#86efac" font-family="ui-monospace,Menlo,monospace" font-size="17">"healthScore": 100,</text>
-  <text x="76" y="244" fill="#86efac" font-family="ui-monospace,Menlo,monospace" font-size="17">"summary": "HPA currently wants to scale up.",</text>
-  <text x="76" y="280" fill="#86efac" font-family="ui-monospace,Menlo,monospace" font-size="17">"suggestions": []</text>
-  <text x="52" y="316" fill="#e2e8f0" font-family="ui-monospace,Menlo,monospace" font-size="17">}</text>
-  <text x="28" y="352" fill="#e2e8f0" font-family="ui-monospace,Menlo,monospace" font-size="17">}</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="460" viewBox="0 0 960 460" role="img" aria-label="JSON output">
+  <rect width="960" height="460" rx="12" fill="#0d1117" stroke="#30363d" stroke-width="1.5"/>
+  <path d="M 0 12 Q 0 0 12 0 L 948 0 Q 960 0 960 12 L 960 40 L 0 40 Z" fill="#161b22"/>
+  <line x1="0" y1="40" x2="960" y2="40" stroke="#30363d" stroke-width="1"/>
+  <circle cx="24" cy="20" r="6" fill="#ff5f56"/>
+  <circle cx="44" cy="20" r="6" fill="#ffbd2e"/>
+  <circle cx="64" cy="20" r="6" fill="#27c93f"/>
+  <text x="480" y="25" text-anchor="middle" fill="#8b949e" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="13" font-weight="600">structured output (-o json, hpa-status/v2)</text>
+
+  <text x="28" y="80" fill="#7ee787" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="16" font-weight="700">$</text>
+  <text x="46" y="80" fill="#f0f6fc" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="16" font-weight="600">kubectl hpa_status status web -o json</text>
+
+  <text x="28" y="122" fill="#c9d1d9" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="15">{</text>
+  <text x="48" y="150" fill="#79c0ff" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="15">"apiVersion": <tspan fill="#a5d6ff">"hpa-status/v2"</tspan>,</text>
+  <text x="48" y="178" fill="#79c0ff" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="15">"analysis": {</text>
+  <text x="72" y="206" fill="#79c0ff" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="15">"meta": { <tspan fill="#7ee787">"namespace"</tspan>: <tspan fill="#a5d6ff">"default"</tspan>, <tspan fill="#7ee787">"name"</tspan>: <tspan fill="#a5d6ff">"web"</tspan> },</text>
+  <text x="72" y="234" fill="#79c0ff" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="15">"replicas": { <tspan fill="#7ee787">"current"</tspan>: <tspan fill="#f2cc60">3</tspan>, <tspan fill="#7ee787">"desired"</tspan>: <tspan fill="#f2cc60">5</tspan> },</text>
+  <text x="72" y="262" fill="#79c0ff" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="15">"decision": {</text>
+  <text x="96" y="290" fill="#7ee787" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="15">"health": <tspan fill="#a5d6ff">"OK"</tspan>, <tspan fill="#7ee787">"healthScore"</tspan>: <tspan fill="#f2cc60">100</tspan>,</text>
+  <text x="96" y="318" fill="#7ee787" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="15">"summary": <tspan fill="#a5d6ff">"HPA currently wants to scale up."</tspan></text>
+  <text x="72" y="346" fill="#79c0ff" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="15">},</text>
+  <text x="72" y="374" fill="#79c0ff" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="15">"actions": { <tspan fill="#7ee787">"suggestions"</tspan>: [] }</text>
+  <text x="48" y="402" fill="#79c0ff" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="15">}</text>
+  <text x="28" y="430" fill="#c9d1d9" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="15">}</text>
 </svg>

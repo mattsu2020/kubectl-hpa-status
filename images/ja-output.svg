@@ -1,9 +1,24 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="420" viewBox="0 0 960 420" role="img" aria-label="Japanese output">
-  <rect width="960" height="420" rx="12" fill="#111827"/>
-  <text x="28" y="46" fill="#93c5fd" font-family="ui-monospace,Menlo,monospace" font-size="18">$ kubectl hpa status web --lang=ja</text>
-  <text x="28" y="100" fill="#e2e8f0" font-family="ui-monospace,Menlo,monospace" font-size="18">HPA default/web</text>
-  <text x="28" y="136" fill="#e2e8f0" font-family="ui-monospace,Menlo,monospace" font-size="18">対象: Deployment/web</text>
-  <text x="28" y="172" fill="#e2e8f0" font-family="ui-monospace,Menlo,monospace" font-size="18">レプリカ: current=3 desired=5 min=2 max=10</text>
-  <text x="28" y="208" fill="#86efac" font-family="ui-monospace,Menlo,monospace" font-size="18">ヘルススコア: 🟢 Healthy 100/100</text>
-  <text x="28" y="260" fill="#facc15" font-family="ui-monospace,Menlo,monospace" font-size="18">要約: HPA currently wants to scale up.</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="440" viewBox="0 0 960 440" role="img" aria-label="Japanese output">
+  <rect width="960" height="440" rx="12" fill="#0d1117" stroke="#30363d" stroke-width="1.5"/>
+  <path d="M 0 12 Q 0 0 12 0 L 948 0 Q 960 0 960 12 L 960 40 L 0 40 Z" fill="#161b22"/>
+  <line x1="0" y1="40" x2="960" y2="40" stroke="#30363d" stroke-width="1"/>
+  <circle cx="24" cy="20" r="6" fill="#ff5f56"/>
+  <circle cx="44" cy="20" r="6" fill="#ffbd2e"/>
+  <circle cx="64" cy="20" r="6" fill="#27c93f"/>
+  <text x="480" y="25" text-anchor="middle" fill="#8b949e" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="13" font-weight="600">--lang=ja localization</text>
+
+  <text x="28" y="80" fill="#7ee787" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="16" font-weight="700">$</text>
+  <text x="46" y="80" fill="#f0f6fc" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="16" font-weight="600">kubectl hpa_status status web --lang=ja</text>
+
+  <text x="28" y="132" fill="#58a6ff" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="15" font-weight="700">HPA:</text>
+  <text x="128" y="132" fill="#e6edf3" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="15">default/web</text>
+  <text x="28" y="168" fill="#58a6ff" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="15" font-weight="700">対象:</text>
+  <text x="128" y="168" fill="#e6edf3" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="15">Deployment/web</text>
+  <text x="28" y="204" fill="#58a6ff" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="15" font-weight="700">レプリカ:</text>
+  <text x="128" y="204" fill="#e6edf3" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="15">current=3  desired=5  min=2  max=10</text>
+  <text x="28" y="240" fill="#58a6ff" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="15" font-weight="700">状態:</text>
+  <text x="128" y="240" fill="#3fb950" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="15" font-weight="700">✔ OK (100/100)</text>
+
+  <rect x="28" y="272" width="904" height="52" rx="8" fill="#161b22" stroke="#30363d"/>
+  <text x="46" y="304" fill="#facc15" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="15">要約: HPA currently wants to scale up.</text>
 </svg>
