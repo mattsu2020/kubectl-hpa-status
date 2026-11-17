@@ -109,13 +109,6 @@ func buildStatusReport(ctx context.Context, opts *options, client *kube.Client, 
 	return buildStatusReportFromObservation(ctx, opts, client, hpa, includeInterpretation, ec, observation.New(client.Interface, hpa, clusters...))
 }
 
-// buildStatusReportFromHPA reuses an HPA already read by the caller. Compound
-// workflows such as snapshot and rollout use this entry point to keep one
-// request-scoped view of cluster state and avoid duplicate API reads.
-func buildStatusReportFromHPA(ctx context.Context, opts *options, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, includeInterpretation bool, ec *enrichmentContext) (hpaanalysis.StatusReport, error) {
-	return buildStatusReportFromObservation(ctx, opts, client, hpa, includeInterpretation, ec, observation.New(client.Interface, hpa))
-}
-
 // buildStatusReportFromObservation shares workload reads with compound collectors.
 func buildStatusReportFromObservation(ctx context.Context, opts *options, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, includeInterpretation bool, ec *enrichmentContext, snapshot *observation.Snapshot) (hpaanalysis.StatusReport, error) {
 	report := hpaanalysis.StatusReport{

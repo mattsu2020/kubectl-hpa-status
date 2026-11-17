@@ -84,48 +84,56 @@ func RedactStructuredBytes(data []byte) []byte {
 func redactStructuredValue(value any, parentKey string) any {
 	switch typed := value.(type) {
 	case map[string]any:
-		for key, child := range typed {
-			normalized := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(key, "-", ""), "_", ""))
-			if shouldRedactStructuredField(normalized, parentKey) {
-				typed[key] = redactStructuredFieldValue(child)
-				continue
-			}
-			if normalized == "selector" {
-				if _, ok := child.(string); ok {
-					typed[key] = "[REDACTED]"
-					continue
-				}
-			}
-			if nodeRedactableField(normalized, parentKey) {
-				if text, ok := child.(string); ok && text != "" {
-					typed[key] = "[REDACTED-NODE]"
-					continue
-				}
-			}
-			typed[key] = redactStructuredValue(child, normalized)
-		}
+		redactStructuredMap(typed, parentKey)
 	case []any:
-		redactNext := false
-		for i, child := range typed {
-			if text, ok := child.(string); ok {
-				if redactNext {
-					typed[i] = "[REDACTED]"
-					redactNext = false
-					continue
-				}
-				typed[i] = RedactString(text)
-				if (parentKey == "args" || parentKey == "command") && isStandaloneSensitiveFlag(text) {
-					redactNext = true
-				}
-				continue
-			}
-			redactNext = false
-			typed[i] = redactStructuredValue(child, parentKey)
-		}
+		redactStructuredSlice(typed, parentKey)
 	case string:
 		return RedactString(typed)
 	}
 	return value
+}
+
+func redactStructuredMap(typed map[string]any, parentKey string) {
+	for key, child := range typed {
+		normalized := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(key, "-", ""), "_", ""))
+		if shouldRedactStructuredField(normalized, parentKey) {
+			typed[key] = redactStructuredFieldValue(child)
+			continue
+		}
+		if normalized == "selector" {
+			if _, ok := child.(string); ok {
+				typed[key] = "[REDACTED]"
+				continue
+			}
+		}
+		if nodeRedactableField(normalized, parentKey) {
+			if text, ok := child.(string); ok && text != "" {
+				typed[key] = "[REDACTED-NODE]"
+				continue
+			}
+		}
+		typed[key] = redactStructuredValue(child, normalized)
+	}
+}
+
+func redactStructuredSlice(typed []any, parentKey string) {
+	redactNext := false
+	for i, child := range typed {
+		if text, ok := child.(string); ok {
+			if redactNext {
+				typed[i] = "[REDACTED]"
+				redactNext = false
+				continue
+			}
+			typed[i] = RedactString(text)
+			if (parentKey == "args" || parentKey == "command") && isStandaloneSensitiveFlag(text) {
+				redactNext = true
+			}
+			continue
+		}
+		redactNext = false
+		typed[i] = redactStructuredValue(child, parentKey)
+	}
 }
 
 // Selector values may also occur inside human-readable analysis, HTML-escaped markdown, and embedded JSON.
@@ -457,7 +465,10 @@ func isHostnameBoundaryBefore(s string, i int) bool {
 		return true
 	}
 	prev := s[i-1]
-	return !((prev >= 'a' && prev <= 'z') || (prev >= 'A' && prev <= 'Z') || (prev >= '0' && prev <= '9') || prev == '-' || prev == '_')
+	isLower := prev >= 'a' && prev <= 'z'
+	isUpper := prev >= 'A' && prev <= 'Z'
+	isDigit := prev >= '0' && prev <= '9'
+	return !isLower && !isUpper && !isDigit && prev != '-' && prev != '_'
 }
 
 func isHostnameChar(c byte) bool {

@@ -1,10 +1,10 @@
 package core
 
 import (
-	"k8s.io/apimachinery/pkg/api/resource"
 	"testing"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 type testFormatter struct{}

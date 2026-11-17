@@ -279,39 +279,44 @@ func buildTraceSummary(entries []MetricTraceEntry, winner int, winnerConfidence 
 	summary := strings.Join(parts, "; ")
 
 	if winner >= 0 && winnerConfidence == ConfidenceLow {
-		var reasons []string
-		ties := 0
-		for _, entry := range entries {
-			if entry.EstimatedDesiredReplicas != nil && *entry.EstimatedDesiredReplicas == *entries[winner].EstimatedDesiredReplicas {
-				ties++
-			}
-		}
-		if ties > 1 {
-			reasons = append(reasons, "multiple metrics have the same estimated desired replicas")
-		}
-		if hpa.Status.DesiredReplicas >= hpa.Spec.MaxReplicas {
-			reasons = append(reasons, "desired replicas reach maxReplicas")
-		}
-		min := int32(1)
-		if hpa.Spec.MinReplicas != nil {
-			min = *hpa.Spec.MinReplicas
-		}
-		if hpa.Status.DesiredReplicas <= min && winnerHiddenByControllerState(hpa) {
-			reasons = append(reasons, "minReplicas or controller state may obscure the winner")
-		}
-		if len(hpa.Status.CurrentMetrics) < len(hpa.Spec.Metrics) {
-			reasons = append(reasons, "metric status is missing")
-		}
-		if condition := FindCondition(hpa, ConditionAbleToScale); condition != nil && condition.Reason == ReasonScaleDownStabilized {
-			reasons = append(reasons, "scale-down stabilization is reported")
-		}
-		if len(reasons) == 0 {
-			reasons = append(reasons, "controller state may obscure the winner")
-		}
+		reasons := lowConfidenceReasons(entries, winner, hpa)
 		summary += " (winner confidence is low: " + strings.Join(reasons, "; ") + ")"
 	}
 
 	return summary
+}
+
+func lowConfidenceReasons(entries []MetricTraceEntry, winner int, hpa *autoscalingv2.HorizontalPodAutoscaler) []string {
+	var reasons []string
+	ties := 0
+	for _, entry := range entries {
+		if entry.EstimatedDesiredReplicas != nil && *entry.EstimatedDesiredReplicas == *entries[winner].EstimatedDesiredReplicas {
+			ties++
+		}
+	}
+	if ties > 1 {
+		reasons = append(reasons, "multiple metrics have the same estimated desired replicas")
+	}
+	if hpa.Status.DesiredReplicas >= hpa.Spec.MaxReplicas {
+		reasons = append(reasons, "desired replicas reach maxReplicas")
+	}
+	minReplicas := int32(1)
+	if hpa.Spec.MinReplicas != nil {
+		minReplicas = *hpa.Spec.MinReplicas
+	}
+	if hpa.Status.DesiredReplicas <= minReplicas && winnerHiddenByControllerState(hpa) {
+		reasons = append(reasons, "minReplicas or controller state may obscure the winner")
+	}
+	if len(hpa.Status.CurrentMetrics) < len(hpa.Spec.Metrics) {
+		reasons = append(reasons, "metric status is missing")
+	}
+	if condition := FindCondition(hpa, ConditionAbleToScale); condition != nil && condition.Reason == ReasonScaleDownStabilized {
+		reasons = append(reasons, "scale-down stabilization is reported")
+	}
+	if len(reasons) == 0 {
+		reasons = append(reasons, "controller state may obscure the winner")
+	}
+	return reasons
 }
 
 // formatRatio formats a ratio value for display.

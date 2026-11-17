@@ -130,7 +130,7 @@ func nodeEligibleForPod(node *corev1.Node, podSpec *corev1.PodSpec) bool { //nol
 	return true
 }
 
-func listNodes(ctx context.Context, client kubernetes.Interface, opts metav1.ListOptions) ([]corev1.Node, error) {
+func listNodes(ctx context.Context, client kubernetes.Interface, opts metav1.ListOptions) ([]corev1.Node, error) { //nolint:unparam // keeps ListOptions parameter explicit for future selectors
 	return collectListPages(ctx, opts, func(ctx context.Context, page metav1.ListOptions) ([]corev1.Node, string, error) {
 		list, err := client.CoreV1().Nodes().List(ctx, page)
 		if err != nil {

@@ -88,7 +88,7 @@ func TestCachedRecordAndLoadMatchesDiskAcrossRetention(t *testing.T) {
 		t.Fatal(err)
 	}
 	key := testKey("prod", "default", "web")
-	now := time.Now().Round(0)
+	now := time.Now().UTC().Round(0)
 	for i := 0; i < 150; i++ {
 		clock := now.Add(time.Duration(i) * time.Minute)
 		if i == 100 {
@@ -114,7 +114,12 @@ func TestCachedRecordAndLoadMatchesDiskAcrossRetention(t *testing.T) {
 			t.Fatalf("iteration %d: cache=%d disk=%d", i, len(fresh), len(disk))
 		}
 		for j := range disk {
-			if fresh[j] != disk[j] {
+			if !fresh[j].Timestamp.Equal(disk[j].Timestamp) ||
+				fresh[j].HealthScore != disk[j].HealthScore ||
+				fresh[j].HealthState != disk[j].HealthState ||
+				fresh[j].DesiredReplicas != disk[j].DesiredReplicas ||
+				fresh[j].CurrentReplicas != disk[j].CurrentReplicas ||
+				fresh[j].Stabilizing != disk[j].Stabilizing {
 				t.Fatalf("iteration %d record %d: cache=%+v disk=%+v", i, j, fresh[j], disk[j])
 			}
 		}

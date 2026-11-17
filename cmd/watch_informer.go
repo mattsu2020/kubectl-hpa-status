@@ -204,20 +204,14 @@ func consumeWatchEvents(
 			if !ok {
 				return false, rv, false, nil
 			}
-			if ev.Type == watch.Error {
+			resync, nextRV, emit := handleWatchEvent(ev, rv, cacheMap)
+			rv = nextRV
+			if resync {
 				return true, rv, false, nil
 			}
-			hpa, isHPA := ev.Object.(*autoscalingv2.HorizontalPodAutoscaler)
-			if !isHPA || hpa == nil {
+			if !emit {
 				continue
 			}
-			if hpa.ResourceVersion != "" {
-				rv = hpa.ResourceVersion
-			}
-			if ev.Type == watch.Bookmark {
-				continue
-			}
-			applyWatchEventToCache(cacheMap, ev.Type, hpa)
 			if informerDebounce <= 0 {
 				stop, err := onSnapshot(sortedHPACache(cacheMap))
 				if err != nil || stop {
@@ -231,6 +225,24 @@ func consumeWatchEvents(
 			}
 		}
 	}
+}
+
+func handleWatchEvent(ev watch.Event, rv string, cacheMap map[string]*autoscalingv2.HorizontalPodAutoscaler) (resync bool, nextRV string, emit bool) {
+	if ev.Type == watch.Error {
+		return true, rv, false
+	}
+	hpa, isHPA := ev.Object.(*autoscalingv2.HorizontalPodAutoscaler)
+	if !isHPA || hpa == nil {
+		return false, rv, false
+	}
+	if hpa.ResourceVersion != "" {
+		rv = hpa.ResourceVersion
+	}
+	if ev.Type == watch.Bookmark {
+		return false, rv, false
+	}
+	applyWatchEventToCache(cacheMap, ev.Type, hpa)
+	return false, rv, true
 }
 
 func applyWatchEventToCache(cacheMap map[string]*autoscalingv2.HorizontalPodAutoscaler, evType watch.EventType, hpa *autoscalingv2.HorizontalPodAutoscaler) {

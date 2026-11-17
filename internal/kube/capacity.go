@@ -318,15 +318,15 @@ func DetectClusterAutoscaler(ctx context.Context, client kubernetes.Interface) b
 	return detected
 }
 
-// DetectClusterAutoscalerWithError performs the same detection while
-// preserving read failures. A NotFound deployment is an expected negative
-// signal; RBAC, transport, and node-list failures make a negative result
-// unknown.
 // FetchNodes lists all cluster Nodes once for reuse across cluster checks.
 func FetchNodes(ctx context.Context, client kubernetes.Interface) ([]corev1.Node, error) {
 	return listNodes(ctx, client, metav1.ListOptions{})
 }
 
+// DetectClusterAutoscalerWithError performs the same detection while
+// preserving read failures. A NotFound deployment is an expected negative
+// signal; RBAC, transport, and node-list failures make a negative result
+// unknown.
 func DetectClusterAutoscalerWithError(ctx context.Context, client kubernetes.Interface) (bool, error) {
 	// Check nodes for CA annotation.
 	nodes, nodeErr := listNodes(ctx, client, metav1.ListOptions{})
