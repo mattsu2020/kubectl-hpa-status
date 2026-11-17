@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Read-only MCP server mode (`mcp` subcommand).** Starts a zero-dependency
+  JSON-RPC 2.0 MCP server over stdio exposing `hpa_status`, `hpa_doctor`,
+  `hpa_list`, `hpa_timeline`, and `hpa_simulate` as read-only diagnostic tools
+  for AI agents.
+- **Grafana dashboard generation (`alerts generate --dashboard grafana`).**
+  Emits a ready-to-import Grafana dashboard JSON covering health scores,
+  current/desired/max replicas, and `ScalingLimited`/`ScalingInactive`
+  conditions alongside the existing Prometheus and Datadog alert rules.
+
 ### Breaking Changes (v5.0.0)
 
 - **Removed `--output-schema` CLI flag and `outputSchema` config key.** Structured

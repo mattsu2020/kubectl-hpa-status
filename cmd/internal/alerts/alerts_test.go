@@ -1,6 +1,7 @@
 package alerts
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -103,5 +104,50 @@ func TestRulesRejectsUnknownFormat(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("expected %q in the error, got: %v", want, err)
 		}
+	}
+}
+
+func TestGrafanaDashboardIsValidJSON(t *testing.T) {
+	doc, err := Dashboard(DashboardGrafana)
+	if err != nil {
+		t.Fatalf("Dashboard(grafana) returned error: %v", err)
+	}
+	var parsed struct {
+		Title  string `json:"title"`
+		UID    string `json:"uid"`
+		Panels []struct {
+			Title string `json:"title"`
+			Type  string `json:"type"`
+		} `json:"panels"`
+		Templating struct {
+			List []struct {
+				Name string `json:"name"`
+			} `json:"list"`
+		} `json:"templating"`
+	}
+	if err := json.Unmarshal([]byte(doc), &parsed); err != nil {
+		t.Fatalf("Grafana dashboard is not valid JSON: %v", err)
+	}
+	if parsed.Title == "" || parsed.UID == "" {
+		t.Fatalf("expected title and uid in dashboard, got title=%q uid=%q", parsed.Title, parsed.UID)
+	}
+	if len(parsed.Panels) < 4 {
+		t.Fatalf("expected at least 4 panels, got %d", len(parsed.Panels))
+	}
+	if len(parsed.Templating.List) < 3 {
+		t.Fatalf("expected at least 3 template variables, got %d", len(parsed.Templating.List))
+	}
+	if !strings.Contains(doc, "hpa_status_health_score") {
+		t.Error("expected Grafana dashboard to reference hpa_status_health_score")
+	}
+}
+
+func TestDashboardRejectsUnknownFormat(t *testing.T) {
+	_, err := Dashboard("kibana")
+	if err == nil {
+		t.Fatal("expected error for unsupported dashboard format")
+	}
+	if !strings.Contains(err.Error(), "grafana") {
+		t.Fatalf("expected error to mention grafana, got: %v", err)
 	}
 }

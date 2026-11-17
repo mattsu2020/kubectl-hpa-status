@@ -417,16 +417,15 @@ long-standing Medium Term item; it lands in the v5 cycle because the
 history-validation work touches the same snapshot pipeline and both benefit
 from the same recorder seams.
 
-### Secondary candidates (scoped during the v5 cycle)
+### Secondary candidates (Delivered in v5 Phase 4)
 
 - **Grafana dashboard generation:** `alerts generate --dashboard grafana`
-  emits dashboard JSON next to alert rules, reusing the scan/report
-  renderers. Alert rules alone leave monitoring adoption half-done; this is
-  a low-cost companion that ships if the headline items leave room.
-- **MCP server mode:** expose `status`, `doctor`, `list`, and `timeline` as
-  read-only MCP tools so AI agents investigate HPAs through the same request
-  pipeline as human operators. Extends the local-AI-context-pack direction;
-  read-only by construction and adds no new Kubernetes permissions.
+  emits a Grafana dashboard JSON next to alert rules, covering health scores,
+  replica ratios, and `ScalingLimited`/`ScalingInactive` conditions.
+- **MCP server mode:** `mcp` exposes `status`, `doctor`, `list`, `timeline`,
+  and `simulate` as read-only MCP tools over stdio JSON-RPC 2.0 so AI agents
+  investigate HPAs through the same request pipeline as human operators
+  without any mutating permissions.
 
 ### Explicit non-goals
 

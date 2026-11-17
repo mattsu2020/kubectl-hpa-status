@@ -183,6 +183,7 @@ var commandGroups = []commandGroup{
 			rootCommand(newExportCommand), rootCommand(newSnapshotCommand),
 			rootCommand(func(*options) *cobra.Command { return newAlertsCommand() }),
 			rootCommand(newLintCommand), rootCommand(newCompatCommand),
+			rootCommand(newMCPCommand),
 		},
 	},
 }
