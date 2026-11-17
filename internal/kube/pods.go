@@ -34,7 +34,7 @@ func FetchPodInfosForSelector(ctx context.Context, client kubernetes.Interface, 
 // FetchPodObjectsForSelector performs the shared, paginated pod list used by
 // bundle and analysis collectors that need multiple views of the same pods.
 func FetchPodObjectsForSelector(ctx context.Context, client kubernetes.Interface, namespace, selector string) ([]corev1.Pod, error) {
-	if selector == "" {
+	if selector == "" || selector == "<none>" {
 		return nil, nil
 	}
 	pods, err := listPods(ctx, client, namespace, metav1.ListOptions{LabelSelector: selector})

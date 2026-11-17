@@ -124,8 +124,8 @@ func (m Model) keyHandlers() []keyBindingHandler {
 		{m.keys.Replay, func(m Model) (tea.Model, tea.Cmd) { return m.handleReplayKey() }},
 		{m.keys.BatchAudit, func(m Model) (tea.Model, tea.Cmd) { return m.handleBatchAuditKey() }},
 		{m.keys.BatchApply, func(m Model) (tea.Model, tea.Cmd) { return m.handleBatchApplyKey() }},
-		{m.keys.IntervalFaster, func(m Model) (tea.Model, tea.Cmd) { return m.handleIntervalKey(-1), nil }},
-		{m.keys.IntervalSlower, func(m Model) (tea.Model, tea.Cmd) { return m.handleIntervalKey(+1), nil }},
+		{m.keys.IntervalFaster, func(m Model) (tea.Model, tea.Cmd) { return m.handleIntervalKey(-1) }},
+		{m.keys.IntervalSlower, func(m Model) (tea.Model, tea.Cmd) { return m.handleIntervalKey(+1) }},
 	}
 }
 
@@ -234,7 +234,7 @@ func (m Model) handleHintsKey() Model {
 	}
 	flows := hpaanalysis.BuildTroubleshootingFlows(report.Analysis.Metrics.MetricHints.Hints)
 	if len(flows) > 0 {
-		m.hintsState = &hintsState{flows: flows}
+		m.hintsState = &hintsState{key: k, flows: flows}
 		m.viewMode = hintsView
 	}
 	return m
@@ -311,8 +311,9 @@ func (m Model) handleTabField(delta int) Model {
 }
 
 // handleIntervalKey adjusts the auto-refresh interval by delta half-steps
-// (delta=+1 lengthens, -1 shortens), clamped to [1s, 60s].
-func (m Model) handleIntervalKey(delta int) Model {
+// (delta=+1 lengthens, -1 shortens), clamped to [1s, 60s], and reschedules
+// the active tick chain so the new cadence applies immediately.
+func (m Model) handleIntervalKey(delta int) (Model, tea.Cmd) {
 	step := m.interval / 2
 	if step < time.Second {
 		step = time.Second
@@ -330,7 +331,8 @@ func (m Model) handleIntervalKey(delta int) Model {
 		}
 	}
 	m.interval = newInterval
-	return m
+	m.tickID++
+	return m, tickCmd(m.tickID, m.interval)
 }
 
 // clampCursor clamps v into [0, hi]; when hi < 0 (empty list) it returns 0.

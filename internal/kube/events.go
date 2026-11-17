@@ -51,14 +51,28 @@ func FetchRecentEventsForIdentities(ctx context.Context, client kubernetes.Inter
 	if limit <= 0 {
 		return nil, nil
 	}
-	seen := make(map[EventObject]bool)
+	uniqueRefs := deduplicateEventRefs(refs)
+	if len(uniqueRefs) == 0 {
+		return nil, nil
+	}
 	var result []EventInfo
-	var failures []error
-	for _, ref := range refs {
-		if ref.Name == "" || seen[ref] {
-			continue
+	if len(uniqueRefs) > 3 {
+		err := visitCoreEvents(ctx, client, namespace, "", func(events []corev1.Event) error {
+			for _, event := range events {
+				if matchesAnyEventRef(event.InvolvedObject, uniqueRefs) {
+					insertBoundedEvent(&result, limit, event)
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, fmt.Errorf("list events in namespace %s: %w", namespace, err)
 		}
-		seen[ref] = true
+		return result, nil
+	}
+
+	var failures []error
+	for _, ref := range uniqueRefs {
 		selectors := []fields.Selector{fields.OneTermEqualSelector("involvedObject.name", ref.Name)}
 		if ref.Kind != "" {
 			selectors = append(selectors, fields.OneTermEqualSelector("involvedObject.kind", ref.Kind))
@@ -68,20 +82,8 @@ func FetchRecentEventsForIdentities(ctx context.Context, client kubernetes.Inter
 		}
 		err := visitCoreEvents(ctx, client, namespace, fields.AndSelectors(selectors...).String(), func(events []corev1.Event) error {
 			for _, event := range events {
-				obj := event.InvolvedObject
-				if obj.Name != ref.Name || (ref.Kind != "" && obj.Kind != ref.Kind) || (ref.UID != "" && obj.UID != ref.UID) {
-					continue
-				}
-				item := EventInfo{Reason: event.Reason, Message: strings.ReplaceAll(event.Message, "\n", " "), Timestamp: coreEventTimestamp(event)}
-				pos := sort.Search(len(result), func(i int) bool { return item.Timestamp.After(result[i].Timestamp) })
-				if pos >= limit {
-					continue
-				}
-				result = append(result, EventInfo{})
-				copy(result[pos+1:], result[pos:])
-				result[pos] = item
-				if len(result) > limit {
-					result = result[:limit]
+				if matchesEventRef(event.InvolvedObject, ref) {
+					insertBoundedEvent(&result, limit, event)
 				}
 			}
 			return nil
@@ -91,6 +93,52 @@ func FetchRecentEventsForIdentities(ctx context.Context, client kubernetes.Inter
 		}
 	}
 	return result, errors.Join(failures...)
+}
+
+func deduplicateEventRefs(refs []EventObject) []EventObject {
+	seen := make(map[EventObject]bool, len(refs))
+	out := make([]EventObject, 0, len(refs))
+	for _, ref := range refs {
+		if ref.Name == "" || seen[ref] {
+			continue
+		}
+		seen[ref] = true
+		out = append(out, ref)
+	}
+	return out
+}
+
+func matchesEventRef(obj corev1.ObjectReference, ref EventObject) bool {
+	return obj.Name == ref.Name &&
+		(ref.Kind == "" || obj.Kind == ref.Kind) &&
+		(ref.UID == "" || obj.UID == ref.UID)
+}
+
+func matchesAnyEventRef(obj corev1.ObjectReference, refs []EventObject) bool {
+	for _, ref := range refs {
+		if matchesEventRef(obj, ref) {
+			return true
+		}
+	}
+	return false
+}
+
+func insertBoundedEvent(result *[]EventInfo, limit int, event corev1.Event) {
+	item := EventInfo{
+		Reason:    event.Reason,
+		Message:   strings.ReplaceAll(event.Message, "\n", " "),
+		Timestamp: coreEventTimestamp(event),
+	}
+	pos := sort.Search(len(*result), func(i int) bool { return item.Timestamp.After((*result)[i].Timestamp) })
+	if pos >= limit {
+		return
+	}
+	*result = append(*result, EventInfo{})
+	copy((*result)[pos+1:], (*result)[pos:])
+	(*result)[pos] = item
+	if len(*result) > limit {
+		*result = (*result)[:limit]
+	}
 }
 
 func coreEventTimestamp(event corev1.Event) time.Time {

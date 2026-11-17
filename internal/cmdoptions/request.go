@@ -16,6 +16,7 @@ type StatusRequest struct {
 // after Cobra's PersistentPreRunE normalization has completed.
 func NewStatusRequest(root Root, names []string) StatusRequest {
 	options := root.Copy()
+	options.Normalize()
 	return StatusRequest{
 		options:               options,
 		names:                 cloneStrings(names),

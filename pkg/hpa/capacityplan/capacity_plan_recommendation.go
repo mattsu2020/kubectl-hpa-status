@@ -80,17 +80,24 @@ func capacityRemediationActions(checks []CapacityCheckResult) []string {
 		CapacityCheckQuotaLimitMemory:  "Increase namespace memory limit quota or reduce pod memory limits",
 		CapacityCheckLimitRangeMaximum: "Adjust pod requests or LimitRange constraints",
 		CapacityCheckLimitRangeMinimum: "Raise container requests to meet LimitRange minimums",
+		CapacityCheckLimitRangeRatio:   "Adjust pod limits or requests to satisfy LimitRange maxLimitRequestRatio",
+		CapacityCheckNodeCPU:           "Add nodes, resize node pools, or reduce pod CPU requests",
+		CapacityCheckNodeMemory:        "Add nodes, resize node pools, or reduce pod memory requests",
 		CapacityCheckNodeSchedulable:   "Add nodes or remove blocking taints",
 		CapacityCheckNodePods:          "Add nodes or reduce the number of Pods scheduled per node",
 		CapacityCheckPendingPods:       "Resolve pending pod scheduling issues before scaling",
 	}
 	var actions []string
+	seen := make(map[string]struct{}, len(checks))
 	for _, c := range checks {
 		if c.capacityStatus() != CapacityCheckFail {
 			continue
 		}
 		if action, ok := remediations[c.CheckID]; ok {
-			actions = append(actions, action)
+			if _, dup := seen[action]; !dup {
+				seen[action] = struct{}{}
+				actions = append(actions, action)
+			}
 		}
 	}
 	return actions

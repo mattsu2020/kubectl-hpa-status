@@ -15,9 +15,6 @@ import (
 func (s *simState) clone() *simState {
 	out := *s
 	out.fields = slices.Clone(s.fields)
-	if s.hpa != nil {
-		out.hpa = s.hpa.DeepCopy()
-	}
 	return &out
 }
 
@@ -49,7 +46,7 @@ func (s *fixState) verifyAgainstCurrentData(reports map[string]*hpaanalysis.Stat
 // the wizard open and clamping the selection. Any pending confirm/dry-run
 // state is dropped because it belonged to the previous suggestion set.
 func (s *fixState) regenerateFrom(report *hpaanalysis.StatusReport) {
-	s.suggestions = append(s.suggestions[:0], report.Analysis.Actions.Suggestions...)
+	s.suggestions = slices.Clone(report.Analysis.Actions.Suggestions)
 	if s.selected >= len(s.suggestions) {
 		s.selected = 0
 	}
@@ -93,6 +90,10 @@ func (s *replayState) update(msg replayLoadedMsg) {
 	s.loading = false
 	s.trace = msg.trace
 	s.err = msg.err
+	s.replayAnalysis = msg.analysis
+	if s.replayAnalysis == nil && msg.trace != nil && len(msg.trace.Snapshots) > 0 {
+		s.replayAnalysis = analyzeTimelineTraceReplay(msg.trace)
+	}
 }
 
 func (s *batchAuditState) clone() *batchAuditState {

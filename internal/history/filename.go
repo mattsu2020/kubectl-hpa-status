@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 )
 
 // filePath maps a snapshot key onto its JSONL file. The readable prefix keeps
@@ -16,10 +17,25 @@ func (s *HealthStore) filePath(key SnapshotKey) string {
 	prefix := sanitizeFilename(key.Cluster) + "_" + sanitizeFilename(key.Namespace) + "_" + sanitizeFilename(key.Name)
 	sum := sha256.Sum256([]byte(key.Cluster + "\x00" + key.Namespace + "\x00" + key.Name + "\x00" + key.UID))
 	suffix := "_" + hex.EncodeToString(sum[:6]) + ".jsonl"
-	if len(prefix)+len(suffix) > maxHistoryFilenameLength {
-		prefix = prefix[:maxHistoryFilenameLength-len(suffix)]
-	}
+	prefix = truncateUTF8Bytes(prefix, maxHistoryFilenameLength-len(suffix))
 	return filepath.Join(s.dir, prefix+suffix)
+}
+
+func truncateUTF8Bytes(s string, maxBytes int) string {
+	if maxBytes <= 0 {
+		return ""
+	}
+	if len(s) <= maxBytes {
+		return s
+	}
+	for len(s) > maxBytes {
+		_, size := utf8.DecodeLastRuneInString(s)
+		if size <= 0 {
+			break
+		}
+		s = s[:len(s)-size]
+	}
+	return s
 }
 
 // Keep enough headroom below the common NAME_MAX=255 byte limit.
@@ -49,8 +65,5 @@ func sanitizeFilename(s string) string {
 	if s == "" || s == "." || strings.HasPrefix(s, "..") {
 		s = "_" + s
 	}
-	if len(s) > maxFilenameSegmentLength {
-		s = s[:maxFilenameSegmentLength]
-	}
-	return s
+	return truncateUTF8Bytes(s, maxFilenameSegmentLength)
 }

@@ -8,8 +8,6 @@ import (
 	"math"
 	"sort"
 	"time"
-
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/flapping"
 )
 
 // HealthSnapshot records a single health observation for trend tracking.
@@ -24,16 +22,16 @@ type HealthSnapshot struct {
 
 // Result holds the analysis of health score history over time.
 type Result struct {
-	Snapshots        []HealthSnapshot            `json:"snapshots" yaml:"snapshots"`
-	Variance         float64                     `json:"variance" yaml:"variance"`
-	MinScore         int                         `json:"minScore" yaml:"minScore"`
-	MaxScore         int                         `json:"maxScore" yaml:"maxScore"`
-	MeanScore        float64                     `json:"meanScore" yaml:"meanScore"`
-	DegradationRate  float64                     `json:"degradationRate" yaml:"degradationRate"`
-	FlappingDetected bool                        `json:"flappingDetected" yaml:"flappingDetected"`
-	FlappingSeverity string                      `json:"flappingSeverity,omitempty" yaml:"flappingSeverity,omitempty"`
-	Sparkline        string                      `json:"sparkline,omitempty" yaml:"sparkline,omitempty"`
-	Anomalies        []flapping.AnomalyDetection `json:"anomalies,omitempty" yaml:"anomalies,omitempty"`
+	Snapshots        []HealthSnapshot   `json:"snapshots" yaml:"snapshots"`
+	Variance         float64            `json:"variance" yaml:"variance"`
+	MinScore         int                `json:"minScore" yaml:"minScore"`
+	MaxScore         int                `json:"maxScore" yaml:"maxScore"`
+	MeanScore        float64            `json:"meanScore" yaml:"meanScore"`
+	DegradationRate  float64            `json:"degradationRate" yaml:"degradationRate"`
+	FlappingDetected bool               `json:"flappingDetected" yaml:"flappingDetected"`
+	FlappingSeverity string             `json:"flappingSeverity,omitempty" yaml:"flappingSeverity,omitempty"`
+	Sparkline        string             `json:"sparkline,omitempty" yaml:"sparkline,omitempty"`
+	Anomalies        []AnomalyDetection `json:"anomalies,omitempty" yaml:"anomalies,omitempty"`
 }
 
 // AnalyzeHealthTrend computes trend statistics from a series of health snapshots.
@@ -91,18 +89,15 @@ func DetectFlapping(snapshots []HealthSnapshot) (bool, string) {
 	}
 
 	transitions := 0
-	seenStates := make(map[string]int)
 
 	for i := 1; i < len(snapshots); i++ {
 		prev := snapshots[i-1].HealthState
 		curr := snapshots[i].HealthState
-		seenStates[curr]++
 
 		if prev != curr {
 			transitions++
 		}
 	}
-	seenStates[snapshots[0].HealthState]++
 
 	// Flapping detection: a series needs at least flappingMinTransitions
 	// state transitions before a flapping verdict is meaningful.

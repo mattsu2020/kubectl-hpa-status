@@ -35,6 +35,6 @@ func runSupportBundle(ctx context.Context, out io.Writer, opts *options, name, f
 	if format == "" {
 		format = "markdown"
 	}
-	outputPath = defaultBundleOutputPath(outputPath, name, format, "hpa-support-bundle")
+	outputPath = defaultBundleOutputPath(outputPath, name, format, "hpa-support-bundle", opts.CurrentTime())
 	return runBundle(ctx, out, &local, name, format, outputPath, redact)
 }

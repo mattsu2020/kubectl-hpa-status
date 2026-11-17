@@ -353,6 +353,26 @@ func TestNormalizeSimulatedDesiredMatchesHPANormalization(t *testing.T) {
 			wantLimited: false,
 			wantReason:  "DesiredWithinRange",
 		},
+		{
+			name:    "scale-up policy stricter than maxReplicas hits ScaleUpLimit",
+			current: 4,
+			desired: 20,
+			min:     1,
+			max:     15,
+			behavior: &autoscalingv2.HorizontalPodAutoscalerBehavior{
+				ScaleUp: &autoscalingv2.HPAScalingRules{
+					SelectPolicy: &maxPolicy,
+					Policies: []autoscalingv2.HPAScalingPolicy{{
+						Type:          autoscalingv2.PodsScalingPolicy,
+						Value:         2,
+						PeriodSeconds: 60,
+					}},
+				},
+			},
+			want:        6,
+			wantLimited: true,
+			wantReason:  "ScaleUpLimit",
+		},
 	}
 
 	for _, tt := range tests {

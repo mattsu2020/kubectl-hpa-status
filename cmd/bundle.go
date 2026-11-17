@@ -11,6 +11,7 @@ import (
 
 	"github.com/mattsu2020/kubectl-hpa-status/cmd/bundle"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/observation"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/spf13/cobra"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -149,8 +150,11 @@ func collectBundleData(ctx context.Context, client *kube.Client, opts *options, 
 		data.HPA = marshaled
 	}
 
-	// 2. Fetch scale target YAML (reuse snapshot helper).
-	data.ScaleTarget = fetchSnapshotTarget(ctx, client, hpa)
+	// 2. Fetch scale target YAML using one shared observation snapshot so
+	// selector resolution, ReplicaSets, and event identities avoid repeat calls.
+	snap := observation.New(client.Interface, hpa)
+	targetObs := snap.ScaleTarget(ctx)
+	data.ScaleTarget = snapshotTargetYAML(ctx, snap)
 
 	// 3. Build full doctor-level analysis with KEDA+VPA enrichment.
 	ec := newEnrichmentContext(ctx, &bundleOpts)
@@ -164,24 +168,25 @@ func collectBundleData(ctx context.Context, client *kube.Client, opts *options, 
 	// 4. Resolve selector for additional data collection. A failed read is
 	// surfaced as a warning so the bundle does not silently omit every
 	// pod-derived section.
-	selector, selectorErr := capacitySelectorWithError(ctx, client, hpa)
-	if selectorErr != nil {
-		data.Warnings = append(data.Warnings, fmt.Sprintf("scale target selector unavailable: %v", selectorErr))
+	var selector string
+	if targetObs.Err != nil {
+		data.Warnings = append(data.Warnings, fmt.Sprintf("scale target selector unavailable: %v", targetObs.Err))
+	} else if targetObs.Known() && targetObs.Data != nil && targetObs.Data.SelectorStr != "<none>" {
+		selector = targetObs.Data.SelectorStr
 	}
 
 	// 5. ReplicaSets (reuse snapshot helper).
-	data.ReplicaSets = fetchSnapshotReplicaSets(ctx, client, hpa)
+	data.ReplicaSets = snapshotObservationJSON("ReplicaSets", snap.ReplicaSets(ctx))
 
 	// 6. Fetch pods once and derive every bundle view (serialized pod info,
 	// event object names, and container status) from the same snapshot.
 	collectBundlePodData(ctx, client, selector, data)
 
 	// 7. Events with wider scope (HPA + scale target + pods).
-	eventTarget, targetErr := kube.FetchScaleTargetInfo(ctx, client.Interface, hpa.Namespace, hpa.Spec.ScaleTargetRef)
-	if targetErr != nil {
-		data.Warnings = append(data.Warnings, fmt.Sprintf("event target unavailable: %v", targetErr))
+	if targetObs.Err != nil {
+		data.Warnings = append(data.Warnings, fmt.Sprintf("event target unavailable: %v", targetObs.Err))
 	}
-	objects := eventObjectIdentities(hpa, eventTarget, data.PodInfos, nil)
+	objects := eventObjectIdentities(hpa, targetObs.Data, data.PodInfos, nil)
 	events, eventsErr := kube.FetchRecentEventsForIdentities(ctx, client.Interface, hpa.Namespace, objects, bundleEventLimit)
 	data.Events = formatBundleEvents(events)
 	if eventsErr != nil {
@@ -279,6 +284,7 @@ func redactBundleData(data *bundle.Data) {
 	data.Events = bundle.RedactBytes(data.Events)
 	data.MetricsAPI = bundle.RedactBytes(data.MetricsAPI)
 	data.Redacted = true
+	data.RawBytesRedacted = true
 
 	// Redact node names from PodInfos so the markdown table is safe.
 	for i := range data.PodInfos {
@@ -289,6 +295,9 @@ func redactBundleData(data *bundle.Data) {
 	// Redact node names from ContainerStatuses.
 	for i := range data.ContainerStatuses {
 		data.ContainerStatuses[i].Pod = bundle.RedactString(data.ContainerStatuses[i].Pod)
+	}
+	for i := range data.Warnings {
+		data.Warnings[i] = hpaanalysis.SanitizeTerminalText(bundle.RedactString(data.Warnings[i]))
 	}
 }
 

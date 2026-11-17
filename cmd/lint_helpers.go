@@ -3,14 +3,17 @@ package cmd
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 
+	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	k8syaml "k8s.io/apimachinery/pkg/util/yaml"
 	"sigs.k8s.io/yaml"
 
@@ -19,20 +22,15 @@ import (
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/lint"
 )
 
-// collectLintFiles walks the given path and returns the list of YAML/JSON
-// files to lint. If filePath is a single file it is returned as-is. Directory
-// walks are bounded (depth, file count) by collectManifestFiles.
-func collectLintFiles(filePath string) ([]string, error) {
-	info, err := os.Stat(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("cannot access %s: %w", filePath, err)
-	}
+type runtimeDecoder interface {
+	Decode(data []byte, defaults *schema.GroupVersionKind, into runtime.Object) (runtime.Object, *schema.GroupVersionKind, error)
+}
 
-	if !info.IsDir() {
-		return []string{filePath}, nil
-	}
-
-	return collectManifestFiles(filePath)
+type parsedLintHPA struct {
+	file     string
+	document int
+	hpa      *autoscalingv2.HorizontalPodAutoscaler
+	earlyErr *lintFileResult
 }
 
 // lintFileResultForReadError builds a lintFileResult representing a file that
@@ -52,37 +50,71 @@ func lintFileResultForReadError(file string, readErr error) lintFileResult {
 	}
 }
 
-// decodeHPAFromDoc attempts to decode a single YAML/JSON document. isHPA stays
-// true when a HorizontalPodAutoscaler document is malformed or uses an
-// unsupported API version, allowing lint to surface the decode error instead
-// of silently treating it as an unrelated manifest.
-func decodeHPAFromDoc(doc []byte, decoder runtimeDecoder) (hpa *autoscalingv2.HorizontalPodAutoscaler, isHPA bool, decodeErr error) {
-	doc = []byte(strings.TrimSpace(string(doc)))
-	if len(doc) == 0 {
-		return nil, false, nil
-	}
+// collectLintDocuments reads, splits, and decodes every manifest file once,
+// recording both HPAs (plus HPA decode/read errors) and Deployment/StatefulSet
+// replica declarations for cross-resource GitOps checks.
+func collectLintDocuments(ctx context.Context, files []string, decoder runtimeDecoder) ([]parsedLintHPA, map[lintWorkloadKey]lintWorkloadInfo, error) {
+	workloads := make(map[lintWorkloadKey]lintWorkloadInfo)
+	var entries []parsedLintHPA
 
+	for _, file := range files {
+		if err := ctx.Err(); err != nil {
+			return nil, nil, err
+		}
+		data, readErr := readFileBounded(file)
+		if readErr != nil {
+			errRes := lintFileResultForReadError(file, readErr)
+			entries = append(entries, parsedLintHPA{earlyErr: &errRes})
+			continue
+		}
+		docs, splitErr := readYAMLDocuments(data)
+		if splitErr != nil {
+			errRes := lintFileResultForDecodeError(file, 0, splitErr)
+			entries = append(entries, parsedLintHPA{earlyErr: &errRes})
+			continue
+		}
+		for i, doc := range docs {
+			if entry, ok := decodeLintDocument(file, i+1, doc, decoder, workloads); ok {
+				entries = append(entries, entry)
+			}
+		}
+	}
+	return entries, workloads, nil
+}
+
+func decodeLintDocument(file string, docNum int, doc []byte, decoder runtimeDecoder, workloads map[lintWorkloadKey]lintWorkloadInfo) (parsedLintHPA, bool) {
+	doc = bytes.TrimSpace(doc)
+	if len(doc) == 0 {
+		return parsedLintHPA{}, false
+	}
 	obj, gvk, decodeErr := decoder.Decode(doc, nil, nil)
 	if decodeErr != nil {
-		isHPA := looksLikeHPADocument(doc)
-		if gvk != nil && gvk.Kind == "HorizontalPodAutoscaler" {
-			isHPA = true
+		if (gvk != nil && gvk.Kind == "HorizontalPodAutoscaler") || looksLikeHPADocument(doc) {
+			errRes := lintFileResultForDecodeError(file, docNum, decodeErr)
+			return parsedLintHPA{earlyErr: &errRes}, true
 		}
-		return nil, isHPA, decodeErr
+		return parsedLintHPA{}, false
 	}
-
-	hpa, ok := obj.(*autoscalingv2.HorizontalPodAutoscaler)
-	if !ok {
+	switch typed := obj.(type) {
+	case *autoscalingv2.HorizontalPodAutoscaler:
+		return parsedLintHPA{file: file, document: docNum, hpa: typed}, true
+	case *appsv1.Deployment:
+		workloads[lintObjectKey(typed.Namespace, "Deployment", typed.Name)] = lintWorkloadInfo{Replicas: typed.Spec.Replicas}
+		return parsedLintHPA{}, false
+	case *appsv1.StatefulSet:
+		workloads[lintObjectKey(typed.Namespace, "StatefulSet", typed.Name)] = lintWorkloadInfo{Replicas: typed.Spec.Replicas}
+		return parsedLintHPA{}, false
+	default:
 		if (gvk != nil && gvk.Kind == "HorizontalPodAutoscaler") || looksLikeHPADocument(doc) {
 			apiVersion := ""
 			if gvk != nil {
 				apiVersion = gvk.GroupVersion().String()
 			}
-			return nil, true, fmt.Errorf("unsupported HorizontalPodAutoscaler apiVersion %q; use autoscaling/v2", apiVersion)
+			errRes := lintFileResultForDecodeError(file, docNum, fmt.Errorf("unsupported HorizontalPodAutoscaler apiVersion %q; use autoscaling/v2", apiVersion))
+			return parsedLintHPA{earlyErr: &errRes}, true
 		}
-		return nil, false, nil
+		return parsedLintHPA{}, false
 	}
-	return hpa, true, nil
 }
 
 func looksLikeHPADocument(doc []byte) bool {
@@ -114,52 +146,10 @@ func lintFileResultForDecodeError(file string, document int, decodeErr error) li
 	}
 }
 
-// lintOneFile decodes and lints every HPA document in file, appending a
-// lintFileResult per HPA found. Returns true if at least one HPA document was
-// found in the file.
-func lintOneFile(file string, decoder runtimeDecoder, workloads map[lintWorkloadKey]lintWorkloadInfo) ([]lintFileResult, bool) {
-	data, readErr := readFileBounded(file)
-	if readErr != nil {
-		return []lintFileResult{lintFileResultForReadError(file, readErr)}, true
-	}
-
-	docs, splitErr := readYAMLDocuments(data)
-	if splitErr != nil {
-		return []lintFileResult{lintFileResultForDecodeError(file, 0, splitErr)}, true
-	}
-	var results []lintFileResult
-	foundHPA := false
-	for i, doc := range docs {
-		hpa, isHPA, decodeErr := decodeHPAFromDoc(doc, decoder)
-		if !isHPA {
-			continue
-		}
-		foundHPA = true
-		if decodeErr != nil {
-			results = append(results, lintFileResultForDecodeError(file, i+1, decodeErr))
-			continue
-		}
-
-		result := lint.Run(hpa)
-		addGitOpsLintFindings(result, hpa, workloads)
-		results = append(results, lintFileResult{
-			File:     file,
-			Document: i + 1,
-			HPA:      hpa.Name,
-			Result:   result,
-		})
-	}
-	return results, foundHPA
-}
-
-// splitYAMLDocuments uses Kubernetes' stream reader, which accepts standard
+// readYAMLDocuments uses Kubernetes' stream reader, which accepts standard
 // separator variants (including comments and CRLF) instead of matching only
 // one literal newline sequence. A stream-level failure is returned instead of
 // being flattened into "zero documents".
-func splitYAMLDocuments(data []byte) ([][]byte, error) {
-	return readYAMLDocuments(data)
-}
-
 func readYAMLDocuments(data []byte) ([][]byte, error) {
 	reader := k8syaml.NewYAMLReader(bufio.NewReader(bytes.NewReader(data)))
 	var docs [][]byte

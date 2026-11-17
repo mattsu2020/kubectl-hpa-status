@@ -30,9 +30,14 @@ var metricReasonRegex = regexp.MustCompile(`(?i)reason:\s*(.+)$`)
 //
 // Precondition: events must be sorted in ascending chronological order.
 func BuildTimeline(events []eventutil.Event, hpa *autoscalingv2.HorizontalPodAutoscaler, since time.Time) Timeline {
+	var hpaName, namespace string
+	if hpa != nil {
+		hpaName = hpa.Name
+		namespace = hpa.Namespace
+	}
 	tl := Timeline{
-		HPAName:   hpa.Name,
-		Namespace: hpa.Namespace,
+		HPAName:   hpaName,
+		Namespace: namespace,
 		Since:     since,
 		Until:     clock.Now(),
 		Disclaimer: "Best-effort reconstruction from Kubernetes events. " +
@@ -129,7 +134,8 @@ func classifyEvent(event eventutil.Event, prevDesired *int32, hpa *autoscalingv2
 			Confidence: "high",
 		}
 
-	case "FailedGetResourceMetric", "FailedGetExternalMetric", "FailedGetObjectMetric":
+	case "FailedGetResourceMetric", "FailedGetExternalMetric", "FailedGetObjectMetric",
+		"FailedGetPodsMetric", "FailedGetContainerResourceMetric", "FailedGetContainerMetric":
 		return &Entry{
 			Timestamp:  event.Timestamp,
 			Category:   "metrics-unavailable",
@@ -205,10 +211,7 @@ func formatMetricContext(message string) string {
 		return ""
 	}
 	reason := strings.TrimSpace(match[1])
-	if len(reason) > 50 {
-		reason = reason[:47] + "..."
-	}
-	return reason
+	return rendutil.TruncateDisplayWidth(reason, 50, "...")
 }
 
 func formatScaleDownStabilizedTimelineMessage(hpa *autoscalingv2.HorizontalPodAutoscaler) string {

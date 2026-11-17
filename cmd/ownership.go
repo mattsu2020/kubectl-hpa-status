@@ -12,7 +12,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
-	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 )
 
 type ownershipReport struct {
@@ -76,7 +75,7 @@ func writeOwnershipReport(out io.Writer, opts *options, reports []ownershipRepor
 	} else {
 		value = ownershipListReport{Items: reports}
 	}
-	return render.Format(out, opts.Output, opts.Template, value, func(out io.Writer) error {
+	return renderWithOutput(out, opts, value, func(out io.Writer) error {
 		var buffer strings.Builder
 		writeOwnershipText(&buffer, reports)
 		_, err := io.WriteString(out, buffer.String())

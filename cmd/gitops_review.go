@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -37,7 +36,7 @@ func newGitOpsReviewCommand(opts *options) *cobra.Command {
 }
 
 func runGitOpsReview(_ context.Context, out io.Writer, opts *options, filePath string) error {
-	files, err := collectGitOpsReviewFiles(filePath)
+	files, err := collectManifestPaths(filePath)
 	if err != nil {
 		return err
 	}
@@ -69,23 +68,6 @@ func runGitOpsReview(_ context.Context, out io.Writer, opts *options, filePath s
 
 }
 
-// collectGitOpsReviewFiles walks the given path and returns the list of
-// YAML/JSON files to review. If filePath is a single file it is returned
-// as-is. Directory walks are bounded (depth, file count) by
-// collectManifestFiles.
-func collectGitOpsReviewFiles(filePath string) ([]string, error) {
-	info, err := os.Stat(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("cannot access %s: %w", filePath, err)
-	}
-
-	if !info.IsDir() {
-		return []string{filePath}, nil
-	}
-
-	return collectManifestFiles(filePath)
-}
-
 // decodeGitOpsReviewInputs decodes HPA manifests from files. Files that
 // cannot be read or split into documents are reported as warnings so a
 // malformed stream no longer silently vanishes from the review.
@@ -101,7 +83,7 @@ func decodeGitOpsReviewInputs(files []string) ([]gitops.ReviewInput, []string) {
 			continue
 		}
 
-		docs, splitErr := splitYAMLDocuments(data)
+		docs, splitErr := readYAMLDocuments(data)
 		if splitErr != nil {
 			warnings = append(warnings, fmt.Sprintf("could not parse %s: %v", f, splitErr))
 			continue

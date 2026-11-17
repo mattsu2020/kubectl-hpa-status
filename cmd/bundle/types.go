@@ -46,4 +46,9 @@ type Data struct {
 	// assembly uses it to run a final redaction pass over every generated entry,
 	// including entries derived from typed fields such as StatusReport.
 	Redacted bool
+
+	// RawBytesRedacted records that the raw byte fields (HPA, ScaleTarget,
+	// ReplicaSets, Pods, Events, MetricsAPI) have already been redacted once by
+	// redactBundleData so zip assembly does not pass them through redaction twice.
+	RawBytesRedacted bool
 }

@@ -42,8 +42,14 @@ var ErrInvalidCandidateSpec = errors.New("candidate HPA has an invalid spec")
 // matching. When namespace is empty the historical phrasing used by
 // replay_lab is preserved.
 func NoSnapshotsError(namespace, name string) error {
-	if namespace == "" {
+	switch {
+	case namespace == "" && name == "":
 		return fmt.Errorf("record file has no snapshots for namespace %s: %w", namespace, ErrNoRecordedSnapshots)
+	case namespace == "":
+		return fmt.Errorf("record file has no snapshots for %s: %w", name, ErrNoRecordedSnapshots)
+	case name == "":
+		return fmt.Errorf("record file has no snapshots for namespace %s: %w", namespace, ErrNoRecordedSnapshots)
+	default:
+		return fmt.Errorf("record file has no snapshots for %s/%s: %w", namespace, name, ErrNoRecordedSnapshots)
 	}
-	return fmt.Errorf("record file has no snapshots for %s/%s: %w", namespace, name, ErrNoRecordedSnapshots)
 }

@@ -55,14 +55,62 @@ type AdvisorPlan struct{ Churn, Flapping, TrendAnomaly, Container, Behavior bool
 
 // Plan derives an immutable grouped analysis plan from mutable CLI flags.
 func (f Features) Plan() AnalysisPlan {
-	return AnalysisPlan{
-		Presentation: PresentationPlan{f.Interpret && !f.NoInterpret, f.Explain, f.Suggest, f.Fix, f.Recommend, f.HiddenFactors, f.ContextForAI},
-		Depth:        DepthPlan{f.Deep, f.NoEnrich, f.HPAOnly},
-		Metrics:      MetricsPlan{f.DiagnoseMetrics, f.MetricsFreshness, f.MetricContract, f.AdapterDiagnostics, f.MetricHints},
-		Workload:     WorkloadPlan{f.CheckResources, f.ExplainPods},
-		Capacity:     CapacityPlan{f.CapacityContext, f.CapacityHeadroom, f.CapacityDeep, f.CapacityPlan, f.ScalePath, f.NodeAutoscaler, f.Karpenter},
-		Rollout:      RolloutPlan{f.Rollout, f.RolloutImpact, f.ReadinessImpact, f.ScaleoutBlockers},
-		Decision:     DecisionPlan{f.ControllerProfile, f.DecisionTrace, f.GitOpsCheck},
-		Advisors:     AdvisorPlan{f.ChurnDetect, f.FlappingAdvisor, f.TrendAnomaly, f.ContainerAdvisor, f.BehaviorAdvisor},
+	plan := AnalysisPlan{
+		Presentation: PresentationPlan{
+			Interpret:     f.Interpret && !f.NoInterpret,
+			Explain:       f.Explain,
+			Suggest:       f.Suggest,
+			Fix:           f.Fix,
+			Recommend:     f.Recommend,
+			HiddenFactors: f.HiddenFactors,
+			ContextForAI:  f.ContextForAI,
+		},
+		Depth: DepthPlan{
+			Deep:     f.Deep,
+			NoEnrich: f.NoEnrich || f.HPAOnly,
+			HPAOnly:  f.HPAOnly,
+		},
 	}
+	if plan.Depth.NoEnrich {
+		return plan
+	}
+	plan.Metrics = MetricsPlan{
+		Diagnose:           f.DiagnoseMetrics,
+		Freshness:          f.MetricsFreshness,
+		Contract:           f.MetricContract,
+		AdapterDiagnostics: f.AdapterDiagnostics,
+		Hints:              f.MetricHints,
+	}
+	plan.Workload = WorkloadPlan{
+		CheckResources: f.CheckResources,
+		ExplainPods:    f.ExplainPods,
+	}
+	plan.Capacity = CapacityPlan{
+		Context:        f.CapacityContext,
+		Headroom:       f.CapacityHeadroom,
+		Deep:           f.CapacityDeep,
+		Plan:           f.CapacityPlan,
+		ScalePath:      f.ScalePath,
+		NodeAutoscaler: f.NodeAutoscaler,
+		Karpenter:      f.Karpenter,
+	}
+	plan.Rollout = RolloutPlan{
+		Rollout:          f.Rollout,
+		Impact:           f.RolloutImpact,
+		ReadinessImpact:  f.ReadinessImpact,
+		ScaleoutBlockers: f.ScaleoutBlockers,
+	}
+	plan.Decision = DecisionPlan{
+		ControllerProfile: f.ControllerProfile,
+		Trace:             f.DecisionTrace,
+		GitOpsCheck:       f.GitOpsCheck,
+	}
+	plan.Advisors = AdvisorPlan{
+		Churn:        f.ChurnDetect,
+		Flapping:     f.FlappingAdvisor,
+		TrendAnomaly: f.TrendAnomaly,
+		Container:    f.ContainerAdvisor,
+		Behavior:     f.BehaviorAdvisor,
+	}
+	return plan
 }

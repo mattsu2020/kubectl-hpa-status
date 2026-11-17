@@ -112,13 +112,15 @@ func (s *Snapshot) Pods(ctx context.Context) Value[[]corev1.Pod] {
 	target := s.ScaleTarget(ctx)
 	switch target.State {
 	case StateUnavailable:
-		return Value[[]corev1.Pod]{State: StateUnavailable, Err: target.Err}
+		s.pods = Value[[]corev1.Pod]{State: StateUnavailable, Err: target.Err}
+		s.podsOK = true
+		return s.pods
 	case StateNotApplicable:
 		s.pods = Value[[]corev1.Pod]{State: StateNotApplicable}
 		s.podsOK = true
 		return s.pods
 	}
-	if target.Data.SelectorStr == "" {
+	if target.Data.SelectorStr == "" || target.Data.SelectorStr == "<none>" {
 		s.pods = Value[[]corev1.Pod]{State: StateNotApplicable}
 		s.podsOK = true
 		return s.pods
@@ -171,12 +173,14 @@ func (s *Snapshot) ReplicaSets(ctx context.Context) Value[[]kube.ReplicaSetInfo]
 	}
 	target := s.ScaleTarget(ctx)
 	if !target.Known() {
-		return Value[[]kube.ReplicaSetInfo]{State: target.State, Err: target.Err}
+		s.replicaSets = Value[[]kube.ReplicaSetInfo]{State: target.State, Err: target.Err}
+		s.replicaSetsOK = true
+		return s.replicaSets
 	}
 	var items []kube.ReplicaSetInfo
 	if target.Data.Kind == "ReplicaSet" {
 		info := target.Data
-		items = []kube.ReplicaSetInfo{{Name: info.Name, DesiredReplicas: info.DesiredReplicas, CurrentReplicas: info.Replicas, ReadyReplicas: info.ReadyReplicas}}
+		items = []kube.ReplicaSetInfo{{Name: info.Name, UID: info.UID, DesiredReplicas: info.DesiredReplicas, CurrentReplicas: info.Replicas, ReadyReplicas: info.ReadyReplicas}}
 	} else {
 		var err error
 		items, err = kube.FetchReplicaSetsForScaleTarget(ctx, s.client, s.hpa.Namespace, s.hpa.Spec.ScaleTargetRef, target.Data.SelectorStr)
@@ -195,7 +199,10 @@ func (s *Snapshot) ReplicaSets(ctx context.Context) Value[[]kube.ReplicaSetInfo]
 // All consumers must use the same cluster client. A new polling tick needs a new
 // snapshot so neither successful observations nor failures become stale.
 type ClusterSnapshot struct {
-	once           sync.Once
+	nodesOnce      sync.Once
+	nodes          []corev1.Node
+	nodeErr        error
+	headroomOnce   sync.Once
 	data           *kube.ClusterResourceSnapshot
 	err            error
 	autoscalerOnce sync.Once
@@ -203,26 +210,34 @@ type ClusterSnapshot struct {
 	autoscalerErr  error
 }
 
+func (c *ClusterSnapshot) loadNodes(ctx context.Context, client kubernetes.Interface) {
+	c.nodesOnce.Do(func() { c.nodes, c.nodeErr = kube.FetchNodes(ctx, client) })
+}
+
 // ClusterHeadroom projects target placement without repeating the cluster lists.
 func (s *Snapshot) ClusterHeadroom(ctx context.Context, podSpec *corev1.PodSpec) (*kube.ClusterResourceHeadroom, error) {
 	if s == nil || s.client == nil || s.cluster == nil {
 		return nil, fmt.Errorf("cluster observation is unavailable")
 	}
-	s.cluster.once.Do(func() { s.cluster.data, s.cluster.err = kube.FetchClusterResourceSnapshot(ctx, s.client) })
+	s.cluster.loadNodes(ctx, s.client)
+	s.cluster.headroomOnce.Do(func() {
+		s.cluster.data, s.cluster.err = kube.BuildClusterResourceSnapshotWithNodes(ctx, s.client, s.cluster.nodes, s.cluster.nodeErr)
+	})
 	if s.cluster.err != nil {
 		return nil, s.cluster.err
 	}
 	return s.cluster.data.HeadroomForPod(podSpec), nil
 }
 
-// ClusterAutoscaler shares detection across the same request and reuses Nodes.
+// ClusterAutoscaler shares detection across the same request and reuses Nodes
+// without triggering a cluster-wide Pod list when headroom is not requested.
 func (s *Snapshot) ClusterAutoscaler(ctx context.Context) (bool, error) {
 	if s == nil || s.client == nil || s.cluster == nil {
 		return false, fmt.Errorf("cluster observation is unavailable")
 	}
-	s.cluster.once.Do(func() { s.cluster.data, s.cluster.err = kube.FetchClusterResourceSnapshot(ctx, s.client) })
+	s.cluster.loadNodes(ctx, s.client)
 	s.cluster.autoscalerOnce.Do(func() {
-		s.cluster.autoscaler, s.cluster.autoscalerErr = s.cluster.data.DetectClusterAutoscaler(ctx, s.client)
+		s.cluster.autoscaler, s.cluster.autoscalerErr = kube.DetectClusterAutoscalerWithNodes(ctx, s.client, s.cluster.nodes, s.cluster.nodeErr)
 	})
 	return s.cluster.autoscaler, s.cluster.autoscalerErr
 }

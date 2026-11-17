@@ -8,10 +8,7 @@ import (
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/lint"
 	"github.com/spf13/cobra"
-	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/kubernetes/scheme"
 )
@@ -63,7 +60,7 @@ func runLint(ctx context.Context, out io.Writer, _ *options, filePath, outputFmt
 		return err
 	}
 
-	files, err := collectLintFiles(filePath)
+	files, err := collectManifestPaths(filePath)
 	if err != nil {
 		return err
 	}
@@ -77,17 +74,25 @@ func runLint(ctx context.Context, out io.Writer, _ *options, filePath, outputFmt
 	}
 
 	decoder := serializer.NewCodecFactory(scheme.Scheme).UniversalDeserializer()
-	var allResults []lintFileResult
-	workloads := collectLintWorkloads(files, decoder)
+	entries, workloads, err := collectLintDocuments(ctx, files, decoder)
+	if err != nil {
+		return err
+	}
 
-	for _, f := range files {
-		if err := ctx.Err(); err != nil {
-			return err
+	allResults := make([]lintFileResult, 0, len(entries))
+	for _, entry := range entries {
+		if entry.earlyErr != nil {
+			allResults = append(allResults, *entry.earlyErr)
+			continue
 		}
-		// Files without an HPA document are skipped silently; lintOneFile
-		// returns no results for them, so allResults is unchanged.
-		results, _ := lintOneFile(f, decoder, workloads)
-		allResults = append(allResults, results...)
+		result := lint.Run(entry.hpa)
+		addGitOpsLintFindings(result, entry.hpa, workloads)
+		allResults = append(allResults, lintFileResult{
+			File:     entry.file,
+			Document: entry.document,
+			HPA:      entry.hpa.Name,
+			Result:   result,
+		})
 	}
 
 	if err := emitLintOutput(out, allResults, filePath, outputFmt, sarif, fix); err != nil {
@@ -156,41 +161,6 @@ type lintWorkloadKey struct {
 
 type lintWorkloadInfo struct {
 	Replicas *int32
-}
-
-func collectLintWorkloads(files []string, decoder runtimeDecoder) map[lintWorkloadKey]lintWorkloadInfo {
-	workloads := make(map[lintWorkloadKey]lintWorkloadInfo)
-	for _, f := range files {
-		data, err := readFileBounded(f)
-		if err != nil {
-			continue
-		}
-		docs, splitErr := splitYAMLDocuments(data)
-		if splitErr != nil {
-			continue
-		}
-		for _, doc := range docs {
-			doc = []byte(strings.TrimSpace(string(doc)))
-			if len(doc) == 0 {
-				continue
-			}
-			obj, _, decodeErr := decoder.Decode(doc, nil, nil)
-			if decodeErr != nil {
-				continue
-			}
-			switch workload := obj.(type) {
-			case *appsv1.Deployment:
-				workloads[lintObjectKey(workload.Namespace, "Deployment", workload.Name)] = lintWorkloadInfo{Replicas: workload.Spec.Replicas}
-			case *appsv1.StatefulSet:
-				workloads[lintObjectKey(workload.Namespace, "StatefulSet", workload.Name)] = lintWorkloadInfo{Replicas: workload.Spec.Replicas}
-			}
-		}
-	}
-	return workloads
-}
-
-type runtimeDecoder interface {
-	Decode(data []byte, defaults *schema.GroupVersionKind, into runtime.Object) (runtime.Object, *schema.GroupVersionKind, error)
 }
 
 func lintObjectKey(namespace, kind, name string) lintWorkloadKey {

@@ -2,9 +2,9 @@ package hpa
 
 import (
 	"fmt"
-	"strconv"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 // ContainerResources holds the resource requests and limits for a single
@@ -52,9 +52,11 @@ func CheckResourceConsistency(hpa *autoscalingv2.HorizontalPodAutoscaler, resour
 			warnings = append(warnings, checkResourceMetricAllContainers(
 				resName,
 				metric.Resource.Target,
-				containerMap,
+				resources.Containers,
 			)...)
-			warnings = append(warnings, checkSidecarDistortion(containerMap, resName)...)
+			if metric.Resource.Target.AverageUtilization != nil {
+				warnings = append(warnings, checkSidecarDistortion(resources.Containers, resName)...)
+			}
 		case autoscalingv2.ContainerResourceMetricSourceType:
 			if metric.ContainerResource == nil {
 				continue
@@ -89,10 +91,10 @@ func CheckResourceConsistency(hpa *autoscalingv2.HorizontalPodAutoscaler, resour
 
 // checkResourceMetricAllContainers checks a Resource-type metric (applies to
 // all containers) against every container in the pod template.
-func checkResourceMetricAllContainers(resourceName string, target autoscalingv2.MetricTarget, containerMap map[string]ContainerResources) []ResourceWarning {
+func checkResourceMetricAllContainers(resourceName string, target autoscalingv2.MetricTarget, containers []ContainerResources) []ResourceWarning {
 	var warnings []ResourceWarning
-	for containerName, cr := range containerMap {
-		warnings = append(warnings, checkSingleContainer(containerName, resourceName, target, cr)...)
+	for _, cr := range containers {
+		warnings = append(warnings, checkSingleContainer(cr.Name, resourceName, target, cr)...)
 	}
 	return warnings
 }
@@ -206,15 +208,16 @@ func tinyThreshold(resourceName string) string {
 // checkSidecarDistortion detects when a Resource-type metric (which averages
 // across all containers) is applied to a pod with containers whose requests
 // differ significantly, causing utilization distortion.
-func checkSidecarDistortion(containerMap map[string]ContainerResources, resourceName string) []ResourceWarning {
-	if len(containerMap) < 2 {
+func checkSidecarDistortion(containers []ContainerResources, resourceName string) []ResourceWarning {
+	if len(containers) < 2 {
 		return nil
 	}
 
 	var minVal, maxVal float64
 	var minName, maxName string
+	var minQty, maxQty string
 	first := true
-	for name, cr := range containerMap {
+	for _, cr := range containers {
 		requestStr, ok := cr.Requests[resourceName]
 		if !ok || isZeroQuantity(requestStr) {
 			continue
@@ -223,16 +226,19 @@ func checkSidecarDistortion(containerMap map[string]ContainerResources, resource
 		val := q.AsApproximateFloat64()
 		if first {
 			minVal, maxVal = val, val
-			minName, maxName = name, name
+			minName, maxName = cr.Name, cr.Name
+			minQty, maxQty = requestStr, requestStr
 			first = false
 		} else {
 			if val < minVal {
 				minVal = val
-				minName = name
+				minName = cr.Name
+				minQty = requestStr
 			}
 			if val > maxVal {
 				maxVal = val
-				maxName = name
+				maxName = cr.Name
+				maxQty = requestStr
 			}
 		}
 	}
@@ -253,8 +259,8 @@ func checkSidecarDistortion(containerMap map[string]ContainerResources, resource
 		Details: fmt.Sprintf("containers have a %.1fx difference in %s requests (%s=%v, %s=%v); "+
 			"Resource metric averages across all containers, so the smaller container distorts utilization. "+
 			"Consider switching to ContainerResource metric type to target specific containers.",
-			ratio, resourceName, minName, parseQuantityOrZero(containerMap[minName].Requests[resourceName]),
-			maxName, parseQuantityOrZero(containerMap[maxName].Requests[resourceName])),
+			ratio, resourceName, minName, parseQuantityOrZero(minQty),
+			maxName, parseQuantityOrZero(maxQty)),
 		Severity: "warning",
 	}}
 }
@@ -262,25 +268,9 @@ func checkSidecarDistortion(containerMap map[string]ContainerResources, resource
 // isZeroQuantity checks if a resource quantity string represents zero.
 // Handles common formats like "0", "0m", "0Ki", "0Mi", "0Gi", etc.
 func isZeroQuantity(value string) bool {
-	if value == "" || value == "0" {
+	if value == "" {
 		return true
 	}
-	// Try parsing as an integer (handles bare "0")
-	if n, err := strconv.Atoi(value); err == nil && n == 0 {
-		return true
-	}
-	// Handle Kubernetes quantity suffixes: try parsing the numeric prefix
-	// for formats like "0m", "0Ki", "0Mi", "0Gi", "0Ti", "0Pi", "0Ei"
-	// and decimal formats like "0.1", "0.00"
-	numStr := value
-	for i, r := range value {
-		if (r < '0' || r > '9') && r != '.' && r != '-' {
-			numStr = value[:i]
-			break
-		}
-	}
-	if f, err := strconv.ParseFloat(numStr, 64); err == nil && f == 0 {
-		return true
-	}
-	return false
+	q, err := resource.ParseQuantity(value)
+	return err == nil && q.IsZero()
 }

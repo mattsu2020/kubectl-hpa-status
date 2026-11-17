@@ -42,6 +42,12 @@ func MergePatches(patches []Patch) (string, error) {
 		return "{}", nil
 	}
 	if len(patches) == 1 {
+		if patches[0].JSON != "" {
+			var parsed map[string]any
+			if err := json.Unmarshal([]byte(patches[0].JSON), &parsed); err != nil {
+				return "", err
+			}
+		}
 		return patches[0].JSON, nil
 	}
 
@@ -51,22 +57,7 @@ func MergePatches(patches []Patch) (string, error) {
 		if err := json.Unmarshal([]byte(p.JSON), &parsed); err != nil {
 			return "", err
 		}
-		for k, v := range parsed {
-			existing, exists := merged[k]
-			if !exists {
-				merged[k] = v
-				continue
-			}
-			// Deep merge nested maps (e.g., spec.behavior.scaleDown).
-			existingMap, ok1 := existing.(map[string]any)
-			vMap, ok2 := v.(map[string]any)
-			if ok1 && ok2 {
-				merged[k] = DeepMerge(existingMap, vMap)
-				continue
-			}
-			// Last value wins for scalar conflicts.
-			merged[k] = v
-		}
+		merged = DeepMerge(merged, parsed)
 	}
 	data, err := json.Marshal(merged)
 	if err != nil {

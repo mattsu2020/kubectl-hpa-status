@@ -21,7 +21,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		return m.updateKeyMsg(msg)
 	case tickMsg:
-		return m.updateTick()
+		return m.updateTick(msg)
 	case fetchResultMsg:
 		return m.updateFetchResult(msg)
 	case batchApplyResultMsg:
@@ -52,13 +52,16 @@ func (m Model) updateKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m.handleKey(msg)
 }
 
-func (m Model) updateTick() (tea.Model, tea.Cmd) {
+func (m Model) updateTick(msg tickMsg) (tea.Model, tea.Cmd) {
+	if msg.id != 0 && msg.id != m.tickID {
+		return m, nil
+	}
 	if m.paused || m.loading {
-		return m, tickCmd(m.interval)
+		return m, tickCmd(m.tickID, m.interval)
 	}
 	m.loading = true
 	m.fetchRequestID++
-	return m, tea.Batch(fetchHPAs(m), tickCmd(m.interval))
+	return m, tea.Batch(fetchHPAs(m), tickCmd(m.tickID, m.interval))
 }
 
 func (m Model) updateFetchResult(msg fetchResultMsg) (tea.Model, tea.Cmd) {
@@ -183,8 +186,17 @@ func (m *Model) pruneStaleSelections(current map[string]struct{}) {
 	}
 }
 
-// refocusAndClampCursorAfterFetch re-sorts items, focuses the initial item on first load, and clamps the cursor.
+// refocusAndClampCursorAfterFetch re-sorts items, anchors focus by identity
+// so refreshes do not jump detail/metrics/hints views to another HPA, focuses
+// the initial item on first load, and clamps the cursor.
 func (m *Model) refocusAndClampCursorAfterFetch() {
+	var anchoredKey string
+	if m.initialFocused {
+		prev := m.filteredItems()
+		if m.cursor >= 0 && m.cursor < len(prev) {
+			anchoredKey = prev[m.cursor].Namespace + "/" + prev[m.cursor].Name
+		}
+	}
 	if m.sortField != "" {
 		m.sortItems()
 	}
@@ -193,6 +205,14 @@ func (m *Model) refocusAndClampCursorAfterFetch() {
 		m.initialFocused = true
 	}
 	filtered := m.filteredItems()
+	if anchoredKey != "" {
+		for i, item := range filtered {
+			if item.Namespace+"/"+item.Name == anchoredKey {
+				m.cursor = i
+				return
+			}
+		}
+	}
 	if m.cursor >= len(filtered) {
 		m.cursor = len(filtered) - 1
 	}
@@ -252,6 +272,31 @@ func (m Model) updateBatchAudit(msg batchAuditMsg) Model {
 func (m Model) cloneForMessage(msg tea.Msg) Model {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg, tickMsg:
+		return m
+	case simResultMsg:
+		if m.simState != nil {
+			m.simState = m.simState.clone()
+		}
+		return m
+	case applyResultMsg, dryRunResultMsg:
+		if m.fixState != nil {
+			m.fixState = m.fixState.clone()
+		}
+		return m
+	case replayLoadedMsg:
+		if m.replayState != nil {
+			m.replayState = m.replayState.clone()
+		}
+		return m
+	case batchAuditMsg:
+		if m.batchAuditState != nil {
+			m.batchAuditState = m.batchAuditState.clone()
+		}
+		return m
+	case historyLoadedMsg:
+		if m.historyState != nil {
+			m.historyState = m.historyState.clone()
+		}
 		return m
 	case tea.KeyMsg:
 		if !m.filtering && (key.Matches(msg, m.keys.Up) || key.Matches(msg, m.keys.Down)) {

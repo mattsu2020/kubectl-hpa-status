@@ -23,7 +23,7 @@ func AnalyzeRollout(input RolloutInput) *RolloutReport {
 
 	// Set new pods ready ratio.
 	if input.RolloutInProgress && input.DesiredReplicas > 0 {
-		report.NewPodsReady = fmt.Sprintf("%d/%d", input.UpdatedReplicas, input.DesiredReplicas)
+		report.NewPodsReady = fmt.Sprintf("%d/%d", input.ReadyReplicas, input.DesiredReplicas)
 	}
 
 	// Run checks.
@@ -253,9 +253,8 @@ func buildRolloutNextActions(report *RolloutReport, input RolloutInput) []string
 	}
 
 	if report.RolloutInProgress {
-		targetName := strings.TrimPrefix(report.Target, "Deployment/")
-		targetName = strings.TrimPrefix(targetName, "StatefulSet/")
-		addAction(fmt.Sprintf("kubectl rollout status deployment %s -n %s", targetName, report.Namespace))
+		targetKind, targetName := rolloutWorkloadRef(report.Target)
+		addAction(fmt.Sprintf("kubectl rollout status %s %s -n %s", targetKind, targetName, report.Namespace))
 	}
 
 	addAction(fmt.Sprintf("kubectl get pods -n %s -l <scale-target-selector>", report.Namespace))
@@ -266,12 +265,18 @@ func buildRolloutNextActions(report *RolloutReport, input RolloutInput) []string
 	}
 
 	if !input.HasStartupProbe {
-		targetName := strings.TrimPrefix(report.Target, "Deployment/")
-		targetName = strings.TrimPrefix(targetName, "StatefulSet/")
-		addAction(fmt.Sprintf("kubectl describe deploy %s -n %s | grep -A5 Probe", targetName, report.Namespace))
+		targetKind, targetName := rolloutWorkloadRef(report.Target)
+		addAction(fmt.Sprintf("kubectl describe %s %s -n %s | grep -A5 Probe", targetKind, targetName, report.Namespace))
 	}
 
 	return actions
+}
+
+func rolloutWorkloadRef(target string) (kind, name string) {
+	if rawKind, rawName, ok := strings.Cut(target, "/"); ok && rawName != "" {
+		return strings.ToLower(rawKind), rawName
+	}
+	return "deployment", target
 }
 
 // countFailedChecks returns the number of checks that did not pass.

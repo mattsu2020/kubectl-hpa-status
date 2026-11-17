@@ -130,7 +130,6 @@ func appendBlockerReportSection(out *[]byte, a *Analysis, theme style.Theme, lab
 		return
 	}
 	AppendBlockerText(out, a.Blockers.BlockerReport, theme, labels)
-	appendScaleoutBlockersText(out, a.Blockers.BlockerReport, theme)
 }
 
 func appendCapacityPlanSection(out *[]byte, a *Analysis, theme style.Theme, labels labels) {

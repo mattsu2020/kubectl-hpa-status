@@ -2,10 +2,13 @@ package tui
 
 import (
 	"fmt"
+	"slices"
+	"strings"
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/retrospective"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/simulate"
 )
 
@@ -38,7 +41,7 @@ func (m Model) handleFixKey() (tea.Model, tea.Cmd) {
 		namespace:   report.Analysis.Meta.Namespace,
 		name:        report.Analysis.Meta.Name,
 		uid:         m.hpaUIDs[report.Analysis.Meta.Namespace+"/"+report.Analysis.Meta.Name],
-		suggestions: report.Analysis.Actions.Suggestions,
+		suggestions: slices.Clone(report.Analysis.Actions.Suggestions),
 		selected:    0,
 	}
 	m.viewMode = fixView
@@ -210,8 +213,57 @@ func (m Model) applyFix() tea.Cmd {
 func loadReplayTrace(path string) tea.Cmd {
 	return func() tea.Msg {
 		trace, err := hpaanalysis.LoadTimelineTrace(path)
-		return replayLoadedMsg{trace: trace, err: err}
+		var analysis *retrospective.ReplayAnalysis
+		if err == nil && trace != nil {
+			analysis = analyzeTimelineTraceReplay(trace)
+		}
+		return replayLoadedMsg{trace: trace, analysis: analysis, err: err}
 	}
+}
+
+func analyzeTimelineTraceReplay(trace *hpaanalysis.TimelineTrace) *retrospective.ReplayAnalysis {
+	if trace == nil || len(trace.Snapshots) == 0 {
+		return nil
+	}
+	tl := retrospective.Timeline{
+		HPAName:   trace.HPAName,
+		Namespace: trace.Namespace,
+		Since:     trace.Start,
+		Until:     trace.End,
+	}
+	if tl.Until.IsZero() {
+		tl.Until = trace.Snapshots[len(trace.Snapshots)-1].Timestamp
+	}
+	for i, snap := range trace.Snapshots {
+		if i > 0 {
+			prev := trace.Snapshots[i-1]
+			if snap.Desired != prev.Desired {
+				from, to := prev.Desired, snap.Desired
+				tl.Entries = append(tl.Entries, retrospective.Entry{
+					Timestamp:     snap.Timestamp,
+					Category:      "rescale",
+					FromReplicas:  &from,
+					ToReplicas:    &to,
+					ParseValid:    true,
+					MetricContext: snap.TopMetric,
+				})
+			}
+		}
+		if snap.Health == string(hpaanalysis.HealthError) {
+			tl.Entries = append(tl.Entries, retrospective.Entry{
+				Timestamp: snap.Timestamp,
+				Category:  "metrics-unavailable",
+				Message:   snap.Summary,
+			})
+		} else if snap.Health == string(hpaanalysis.HealthStabilized) {
+			tl.Entries = append(tl.Entries, retrospective.Entry{
+				Timestamp: snap.Timestamp,
+				Category:  "stabilized",
+				Message:   snap.Summary,
+			})
+		}
+	}
+	return retrospective.AnalyzeReplay(tl, nil)
 }
 
 // handleSimInput handles text input when in simulation metric mode.
@@ -246,64 +298,28 @@ func (m Model) currentReport() *hpaanalysis.StatusReport {
 	return m.reports[k]
 }
 
-func int32Ptr(v int32) *int32 {
-	return &v
-}
-
 // parseMetricInput parses a metric input string like "cpu=80%" into
 // the format expected by SimulateMetricChange.
 func parseMetricInput(input string) (map[string]string, error) {
-	if input == "" {
+	if strings.TrimSpace(input) == "" {
 		return nil, fmt.Errorf("empty metric input")
 	}
-	parts := splitPairs(input)
-	if len(parts) == 0 {
+	result := make(map[string]string)
+	for _, pair := range strings.Split(input, ",") {
+		k, v, ok := strings.Cut(strings.TrimSpace(pair), "=")
+		if !ok {
+			continue
+		}
+		k = strings.TrimSpace(k)
+		v = strings.TrimSpace(v)
+		if k != "" {
+			result[k] = v
+		}
+	}
+	if len(result) == 0 {
 		return nil, fmt.Errorf("invalid metric format; use name=value (e.g. cpu=80%%)")
 	}
-	return parts, nil
-}
-
-func splitPairs(input string) map[string]string {
-	result := make(map[string]string)
-	current := ""
-	for _, ch := range input {
-		if ch == ',' {
-			pair := splitKeyValue(current)
-			if pair != nil {
-				result[pair[0]] = pair[1]
-			}
-			current = ""
-		} else {
-			current += string(ch)
-		}
-	}
-	pair := splitKeyValue(current)
-	if pair != nil {
-		result[pair[0]] = pair[1]
-	}
-	return result
-}
-
-func splitKeyValue(s string) []string {
-	s = trimSpaces(s)
-	for i, ch := range s {
-		if ch == '=' {
-			return []string{s[:i], s[i+1:]}
-		}
-	}
-	return nil
-}
-
-func trimSpaces(s string) string {
-	start := 0
-	for start < len(s) && s[start] == ' ' {
-		start++
-	}
-	end := len(s)
-	for end > start && s[end-1] == ' ' {
-		end--
-	}
-	return s[start:end]
+	return result, nil
 }
 
 // simulateWeights adapts the configured penalty weights to the simulate

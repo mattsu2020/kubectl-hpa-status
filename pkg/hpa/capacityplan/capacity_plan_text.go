@@ -71,11 +71,27 @@ func appendCapacityChecks(out *[]byte, plan *CapacityPlan, theme style.Theme) {
 }
 
 func appendCapacitySchedulableNow(out *[]byte, plan *CapacityPlan) {
-	if plan.SchedulableNow <= 0 {
+	if plan.SchedulableNow < 0 {
+		return
+	}
+	if plan.SchedulableNow == 0 && !hasEvaluatedNodeCapacityCheck(plan.Checks) {
 		return
 	}
 	*out = append(*out, '\n')
-	*out = fmt.Appendf(*out, "  Schedulable now: likely %d replicas\n", plan.SchedulableNow)
+	*out = fmt.Appendf(*out, "  Schedulable now: likely %d additional pod(s)\n", plan.SchedulableNow)
+}
+
+func hasEvaluatedNodeCapacityCheck(checks []CapacityCheckResult) bool {
+	for _, c := range checks {
+		if c.capacityStatus() == CapacityCheckUnknown {
+			continue
+		}
+		switch c.CheckID {
+		case CapacityCheckNodeCPU, CapacityCheckNodeMemory, CapacityCheckNodePods, CapacityCheckNodeSchedulable:
+			return true
+		}
+	}
+	return false
 }
 
 func appendCapacityNodeAutoscaler(out *[]byte, plan *CapacityPlan) {

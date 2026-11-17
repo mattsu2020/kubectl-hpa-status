@@ -85,8 +85,8 @@ func fetchHPAs(m Model) tea.Cmd {
 	}
 }
 
-func tickCmd(interval time.Duration) tea.Cmd {
+func tickCmd(id uint64, interval time.Duration) tea.Cmd {
 	return tea.Tick(interval, func(t time.Time) tea.Msg {
-		return tickMsg(t)
+		return tickMsg{id: id, at: t}
 	})
 }

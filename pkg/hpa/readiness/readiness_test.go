@@ -193,6 +193,26 @@ func TestAnalyzeReadinessDoctor(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "exclusion estimate clamped to total pods",
+			input: DoctorInput{
+				Namespace: "prod",
+				HPAName:   "web",
+				Target:    "Deployment/web",
+				PodDetails: []DoctorPod{
+					{Name: "web-1", Ready: false, AgeSeconds: 20},
+					{Name: "web-2", Ready: true, AgeSeconds: 600},
+				},
+				CPUInitPeriodSeconds:  300,
+				InitialReadinessDelay: 30,
+				MissingMetricPods:     2,
+			},
+			check: func(t *testing.T, report *DoctorReport) {
+				if report.ExclusionEstimate.EstimatedExcludedCount != 2 {
+					t.Errorf("expected excluded count clamped to 2 total pods, got %d", report.ExclusionEstimate.EstimatedExcludedCount)
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {

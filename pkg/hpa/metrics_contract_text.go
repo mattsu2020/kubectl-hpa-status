@@ -10,6 +10,9 @@ import (
 
 // WriteMetricContractText writes a metrics contract report in plain text.
 func WriteMetricContractText(w io.Writer, report *MetricContractReport) error {
+	if report == nil {
+		return ErrNilReport
+	}
 	var out []byte
 	appendMetricContractText(&out, report, style.Theme{})
 	_, err := w.Write(out)
@@ -75,6 +78,9 @@ func appendMetricContractText(out *[]byte, report *MetricContractReport, theme s
 
 // WriteMetricContractMarkdown writes a metrics contract report in Markdown format.
 func WriteMetricContractMarkdown(w io.Writer, report *MetricContractReport) error {
+	if report == nil {
+		return ErrNilReport
+	}
 	var out []byte
 
 	out = fmt.Appendf(out, "## Metrics Contract: %s/%s (%s)\n\n",
@@ -137,6 +143,9 @@ func WriteMetricContractMarkdown(w io.Writer, report *MetricContractReport) erro
 
 // WriteMetricContractHTML writes a metrics contract report in HTML format.
 func WriteMetricContractHTML(w io.Writer, report *MetricContractReport) error {
+	if report == nil {
+		return ErrNilReport
+	}
 	var out []byte
 
 	out = fmt.Appendf(out, `<h2>Metrics Contract: %s/%s (%s)</h2>`+"\n", rendutil.HTMLEscape(report.Namespace), rendutil.HTMLEscape(report.Name), rendutil.HTMLEscape(report.Target))

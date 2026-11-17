@@ -62,13 +62,25 @@ func GuardFix(suggestions []model.Suggestion, policyFile File, hpa *autoscalingv
 		return result
 	}
 
+	base, err := json.Marshal(hpa)
+	if err != nil {
+		for _, sug := range suggestions {
+			result.Blocked = append(result.Blocked, suggestion.GuardBlocked{
+				Suggestion: sug,
+				Reason:     fmt.Sprintf("invalid HPA object: %v", err),
+				PolicyRule: "policy-guard",
+			})
+		}
+		return result
+	}
+
 	for _, sug := range suggestions {
 		if !sug.Apply || sug.Patch == "" {
 			result.Allowed = append(result.Allowed, sug)
 			continue
 		}
 
-		patched, err := applySuggestionPatch(hpa, sug.Patch)
+		patched, err := applySuggestionPatchBase(base, sug.Patch)
 		if err != nil {
 			result.Blocked = append(result.Blocked, suggestion.GuardBlocked{
 				Suggestion: sug,
@@ -107,6 +119,10 @@ func applySuggestionPatch(hpa *autoscalingv2.HorizontalPodAutoscaler, patch stri
 	if err != nil {
 		return nil, err
 	}
+	return applySuggestionPatchBase(base, patch)
+}
+
+func applySuggestionPatchBase(base []byte, patch string) (*autoscalingv2.HorizontalPodAutoscaler, error) {
 	var baseMap map[string]any
 	if err := json.Unmarshal(base, &baseMap); err != nil {
 		return nil, err

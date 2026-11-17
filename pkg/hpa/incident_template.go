@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 )
 
 // WriteRichIncidentMarkdown generates a comprehensive incident report in
@@ -77,8 +79,8 @@ func writeIncidentExecutiveSummary(buf *strings.Builder, reports []StatusReport)
 	for _, r := range reports {
 		a := r.Analysis
 		buf.WriteString(fmt.Sprintf("| %s | %s | %s | %d | %d | %d | %d | %d |\n",
-			escapeMarkdown(a.Meta.Namespace),
-			escapeMarkdown(a.Meta.Name),
+			rendutil.EscapeMarkdown(a.Meta.Namespace),
+			rendutil.EscapeMarkdown(a.Meta.Name),
 			severityPrefix(a.Decision.Health),
 			a.Decision.HealthScore,
 			a.Replicas.Current,
@@ -123,8 +125,8 @@ func writeIncidentTimeline(buf *strings.Builder, reports []StatusReport) {
 			}
 			buf.WriteString(fmt.Sprintf("| %s | %s | %s |\n",
 				ts,
-				escapeMarkdown(e.Reason),
-				escapeMarkdown(e.Message),
+				rendutil.EscapeMarkdown(e.Reason),
+				rendutil.EscapeMarkdown(e.Message),
 			))
 		}
 		buf.WriteString("\n")
@@ -163,7 +165,7 @@ func writeRootCauseConditions(buf *strings.Builder, a Analysis) {
 	for _, c := range a.Conditions.Conditions {
 		implication := conditionImplication(c)
 		buf.WriteString(fmt.Sprintf("- **%s** (%s): %s — %s\n",
-			c.Type, c.Status, escapeMarkdown(c.Reason), implication))
+			c.Type, c.Status, rendutil.EscapeMarkdown(c.Reason), implication))
 	}
 	buf.WriteString("\n")
 }
@@ -176,7 +178,7 @@ func writeRootCauseMetricsPipeline(buf *strings.Builder, a Analysis) {
 	buf.WriteString(fmt.Sprintf("**Metrics Pipeline:** %s\n\n", a.Metrics.MetricsDiagnostics.OverallStatus))
 	for _, check := range a.Metrics.MetricsDiagnostics.PerMetricChecks {
 		buf.WriteString(fmt.Sprintf("- %s/%s: %s — %s\n",
-			check.MetricType, check.MetricName, check.Status, escapeMarkdown(check.Details)))
+			check.MetricType, check.MetricName, check.Status, rendutil.EscapeMarkdown(check.Details)))
 	}
 	if len(a.Metrics.MetricsDiagnostics.RemediationSteps) > 0 {
 		buf.WriteString("\n**Remediation Steps:**\n\n")

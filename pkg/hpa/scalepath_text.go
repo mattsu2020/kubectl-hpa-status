@@ -3,7 +3,6 @@ package hpa
 import (
 	"fmt"
 
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/readiness"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
@@ -202,27 +201,6 @@ func appendRolloutDiagnosisText(out *[]byte, diagnosis *RolloutDiagnosis, theme 
 		*out = append(*out, "  next actions:\n"...)
 		for _, action := range diagnosis.NextActions {
 			*out = fmt.Appendf(*out, "    - %s\n", action)
-		}
-	}
-}
-
-// appendScaleoutBlockersText renders the scale-out blockers section.
-func appendScaleoutBlockersText(out *[]byte, report *blocker.Report, theme style.Theme) {
-	if report == nil || len(report.Blockers) == 0 {
-		return
-	}
-	*out = append(*out, '\n')
-	*out = append(*out, "Scale-out blockers:\n"...)
-	for i, b := range report.Blockers {
-		if b.Severity == blocker.BlockerInfo && i > 2 {
-			continue
-		}
-		*out = fmt.Appendf(*out, "  %d. %s\n", i+1, b.Message)
-		if b.Detail != "" {
-			*out = fmt.Appendf(*out, "     evidence: %s\n", b.Detail)
-		}
-		if b.NextCommand != "" {
-			*out = fmt.Appendf(*out, "     next: %s\n", theme.ActionLine(b.NextCommand))
 		}
 	}
 }

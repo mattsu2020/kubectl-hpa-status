@@ -17,6 +17,9 @@ import (
 
 // Input aggregates signals for behavior tuning analysis.
 type Input struct {
+	// Namespace and Name identify the analyzed HPA for actionable patches.
+	Namespace string
+	Name      string
 	// HasExplicitBehavior is true when spec.behavior is set.
 	HasExplicitBehavior bool
 	// ScaleDownWindow is the configured scaleDown.stabilizationWindowSeconds, nil if unset.
@@ -103,6 +106,8 @@ func Analyze(hpa *autoscalingv2.HorizontalPodAutoscaler) *Result {
 // extractBehaviorAdvisorInput extracts behavior advisor input from an HPA.
 func extractBehaviorAdvisorInput(hpa *autoscalingv2.HorizontalPodAutoscaler) Input {
 	input := Input{
+		Namespace:           hpa.Namespace,
+		Name:                hpa.Name,
 		HasExplicitBehavior: hpa.Spec.Behavior != nil,
 		CurrentReplicas:     hpa.Status.CurrentReplicas,
 		DesiredReplicas:     hpa.Status.DesiredReplicas,
@@ -162,7 +167,7 @@ func checkStabilizationWindow(input Input) []Finding {
 					window, minutes, minutes),
 				Current:     fmt.Sprintf("%ds", window),
 				Recommended: fmt.Sprintf("For latency-sensitive: ≤120s. For cost-sensitive: ≤%ds.", conditions.DefaultScaleDownStabilizationWindowSeconds),
-				Patch:       fmt.Sprintf(`kubectl patch hpa <name> --type=merge -p '{"spec":{"behavior":{"scaleDown":{"stabilizationWindowSeconds":%d}}}}'`, conditions.DefaultScaleDownStabilizationWindowSeconds),
+				Patch:       stabilizationWindowPatchCmd(input, conditions.DefaultScaleDownStabilizationWindowSeconds),
 			})
 		}
 	} else {
@@ -175,7 +180,7 @@ func checkStabilizationWindow(input Input) []Finding {
 				"Explicit configuration prevents surprise behavior changes across Kubernetes upgrades.", conditions.DefaultScaleDownStabilizationWindowSeconds),
 			Current:     fmt.Sprintf("unset (default %ds)", conditions.DefaultScaleDownStabilizationWindowSeconds),
 			Recommended: "Set stabilizationWindowSeconds explicitly",
-			Patch:       fmt.Sprintf(`kubectl patch hpa <name> --type=merge -p '{"spec":{"behavior":{"scaleDown":{"stabilizationWindowSeconds":%d}}}}'`, conditions.DefaultScaleDownStabilizationWindowSeconds),
+			Patch:       stabilizationWindowPatchCmd(input, conditions.DefaultScaleDownStabilizationWindowSeconds),
 		})
 	}
 
@@ -303,4 +308,16 @@ func buildBehaviorAdvisorSummary(findings []Finding) string {
 		return fmt.Sprintf("Found %d warnings and %d informational behavior tuning recommendations.", warnings, infos)
 	}
 	return fmt.Sprintf("Found %d informational behavior tuning recommendations.", infos)
+}
+
+func stabilizationWindowPatchCmd(input Input, windowSeconds int32) string {
+	name := input.Name
+	if name == "" {
+		name = "<name>"
+	}
+	nsFlag := ""
+	if input.Namespace != "" {
+		nsFlag = " -n " + input.Namespace
+	}
+	return fmt.Sprintf(`kubectl patch hpa %s%s --type=merge -p '{"spec":{"behavior":{"scaleDown":{"stabilizationWindowSeconds":%d}}}}'`, name, nsFlag, windowSeconds)
 }

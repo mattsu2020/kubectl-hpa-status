@@ -127,6 +127,10 @@ func assumptionsSummary(a *ControllerAssumptions) string {
 		a.SyncPeriod, a.GlobalTolerance, a.CPUInitializationPeriod,
 		a.InitialReadinessDelay, a.DownscaleStabilization, a.UpscaleStabilization,
 	} {
+		if row.Source == "overridden" {
+			overridden++
+			continue
+		}
 		switch row.Confidence {
 		case "high":
 			high++
@@ -134,8 +138,6 @@ func assumptionsSummary(a *ControllerAssumptions) string {
 			medium++
 		case "low":
 			low++
-		case "overridden":
-			overridden++
 		}
 	}
 	parts := []string{fmt.Sprintf("high=%d", high), fmt.Sprintf("medium=%d", medium), fmt.Sprintf("low=%d", low)}

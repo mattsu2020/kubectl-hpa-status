@@ -74,11 +74,20 @@ func FetchClusterResourceSnapshot(ctx context.Context, client kubernetes.Interfa
 	if err != nil {
 		return &ClusterResourceSnapshot{nodeErr: err}, fmt.Errorf("failed to list nodes: %w", err)
 	}
+	return BuildClusterResourceSnapshotWithNodes(ctx, client, nodes, nil)
+}
+
+// BuildClusterResourceSnapshotWithNodes aggregates scheduled Pod requests onto
+// pre-fetched Nodes without repeating the Node list call.
+func BuildClusterResourceSnapshotWithNodes(ctx context.Context, client kubernetes.Interface, nodes []corev1.Node, nodeErr error) (*ClusterResourceSnapshot, error) {
+	if nodeErr != nil {
+		return &ClusterResourceSnapshot{nodeErr: nodeErr}, fmt.Errorf("failed to list nodes: %w", nodeErr)
+	}
 	snapshot := &ClusterResourceSnapshot{nodes: nodes, usage: make(map[string]*nodeResourceUsage, len(nodes))}
 	for i := range nodes {
 		snapshot.usage[nodes[i].Name] = &nodeResourceUsage{}
 	}
-	err = visitPods(ctx, client, metav1.NamespaceAll, metav1.ListOptions{}, func(pods []corev1.Pod) error {
+	err := visitPods(ctx, client, metav1.NamespaceAll, metav1.ListOptions{}, func(pods []corev1.Pod) error {
 		for i := range pods {
 			pod := &pods[i]
 			usage := snapshot.usage[pod.Spec.NodeName]
@@ -105,31 +114,23 @@ func FetchClusterResourceSnapshot(ctx context.Context, client kubernetes.Interfa
 // HeadroomForPod evaluates target-specific placement against the shared observation.
 func (s *ClusterResourceSnapshot) HeadroomForPod(podSpec *corev1.PodSpec) *ClusterResourceHeadroom {
 	nodeCapacity := summarizeNodeCapacityForPod(s.nodes, podSpec)
-	eligible := make(map[string]*corev1.Node)
-	var requestedCPU, requestedMemory resource.Quantity
+	var requestedCPU, requestedMemory, availableCPU, availableMemory resource.Quantity
+	var requestedPods, availablePods int64
+	nodeHeadrooms := make([]NodeResourceHeadroom, 0, len(s.nodes))
 	for i := range s.nodes {
 		node := &s.nodes[i]
 		if !nodeEligibleForPod(node, podSpec) {
 			continue
 		}
-		eligible[node.Name] = node
-		requestedCPU.Add(s.usage[node.Name].cpu)
-		requestedMemory.Add(s.usage[node.Name].memory)
-	}
-	var availableCPU, availableMemory resource.Quantity
-	var requestedPods, availablePods int64
-	nodeHeadrooms := make([]NodeResourceHeadroom, 0, len(eligible))
-	for _, node := range s.nodes {
-		eligibleNode := eligible[node.Name]
-		if eligibleNode == nil {
-			continue
-		}
 		nodeUsage := s.usage[node.Name]
-		cpu := eligibleNode.Status.Allocatable[corev1.ResourceCPU].DeepCopy()
+		requestedCPU.Add(nodeUsage.cpu)
+		requestedMemory.Add(nodeUsage.memory)
+
+		cpu := node.Status.Allocatable[corev1.ResourceCPU].DeepCopy()
 		cpu.Sub(nodeUsage.cpu)
-		memory := eligibleNode.Status.Allocatable[corev1.ResourceMemory].DeepCopy()
+		memory := node.Status.Allocatable[corev1.ResourceMemory].DeepCopy()
 		memory.Sub(nodeUsage.memory)
-		nodePods, podCapacityKnown := eligibleNode.Status.Allocatable[corev1.ResourcePods]
+		nodePods, podCapacityKnown := node.Status.Allocatable[corev1.ResourcePods]
 		nodeAvailablePods := int64(0)
 		if podCapacityKnown {
 			nodeAvailablePods = nodePods.Value() - nodeUsage.pods

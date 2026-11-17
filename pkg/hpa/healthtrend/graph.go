@@ -3,10 +3,9 @@ package healthtrend
 import (
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"time"
-
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/flapping"
 )
 
 const (
@@ -27,9 +26,12 @@ func RenderHealthTrendASCII(snapshots []HealthSnapshot, width int) string {
 		return ""
 	}
 
-	// Use a working copy to avoid mutating the input.
+	// Use a sorted working copy to avoid mutating the caller's slice.
 	sorted := make([]HealthSnapshot, len(snapshots))
 	copy(sorted, snapshots)
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].Timestamp.Before(sorted[j].Timestamp)
+	})
 
 	// Detect anomalies to mark on the graph.
 	anomalies := DetectAnomalies(sorted)
@@ -91,7 +93,7 @@ func renderGraphRow(snapshots []HealthSnapshot, columns []int, anomalyIndices ma
 		}
 
 		score := snapshot.HealthScore
-		if score > threshold && score <= yMax {
+		if scoreInBand(score, threshold, yMax) {
 			if anomalyIndices[idx] {
 				line[col] = '╳'
 			} else {
@@ -114,8 +116,8 @@ func connectAdjacentPoints(line []rune, snapshots []HealthSnapshot, columns []in
 		scoreI := snapshots[i].HealthScore
 		scoreJ := snapshots[i+1].HealthScore
 
-		inBandI := scoreI > threshold && scoreI <= yMax
-		inBandJ := scoreJ > threshold && scoreJ <= yMax
+		inBandI := scoreInBand(scoreI, threshold, yMax)
+		inBandJ := scoreInBand(scoreJ, threshold, yMax)
 
 		if !inBandI && !inBandJ {
 			continue
@@ -207,9 +209,19 @@ func evenlySpacedIndices(n int, count int) []int {
 	return result
 }
 
+func scoreInBand(score, threshold, yMax int) bool {
+	if score > yMax {
+		return false
+	}
+	if threshold == 0 {
+		return score >= 0
+	}
+	return score > threshold
+}
+
 // buildAnomalyIndexSet creates a set of snapshot indices that are near
 // detected anomalies, so the graph can render them with anomaly markers.
-func buildAnomalyIndexSet(snapshots []HealthSnapshot, anomalies []flapping.AnomalyDetection) map[int]bool {
+func buildAnomalyIndexSet(snapshots []HealthSnapshot, anomalies []AnomalyDetection) map[int]bool {
 	iface := make(map[int]bool)
 
 	for _, anomaly := range anomalies {

@@ -93,7 +93,7 @@ func runTUI(ctx context.Context, out io.Writer, opts *options, initialName strin
 				HorizontalPodAutoscalers(ns).
 				Get(auditCtx, name, metav1.GetOptions{})
 			if err != nil {
-				return nil, wrapHPALookupError(client.Namespace, name, err)
+				return nil, wrapHPALookupError(ns, name, err)
 			}
 			minReplicas := hpaanalysis.DefaultMinReplicas
 			if hpa.Spec.MinReplicas != nil {

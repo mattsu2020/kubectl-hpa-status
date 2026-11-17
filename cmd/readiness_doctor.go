@@ -12,7 +12,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
-	"github.com/mattsu2020/kubectl-hpa-status/internal/metricsapi"
 )
 
 func newReadinessDoctorCommand(opts *options) *cobra.Command {
@@ -88,7 +87,7 @@ func runReadinessDoctor(ctx context.Context, out io.Writer, opts *options, name 
 		}
 		podDetails = append(podDetails, hpareadiness.DoctorPod{
 			Name:       pod.Name,
-			Ready:      isPodReady(pod),
+			Ready:      isPodReadyCondition(pod),
 			AgeSeconds: ageSeconds,
 		})
 	}
@@ -120,45 +119,15 @@ func runReadinessDoctor(ctx context.Context, out io.Writer, opts *options, name 
 
 }
 
-// isPodReady checks if a pod's Ready condition is True.
-func isPodReady(pod *corev1.Pod) bool {
-	for _, cond := range pod.Status.Conditions {
-		if cond.Type == corev1.PodReady {
-			return cond.Status == corev1.ConditionTrue
-		}
-	}
-	return false
-}
-
-// countMissingMetrics fetches PodMetrics and counts pods not present in the response.
+// countMissingMetrics fetches PodMetrics and counts non-terminal pods not present in the response.
 //
 // A missing metrics API is not an error here: the count is an advisory input
 // to the readiness diagnosis, so every failure path degrades to 0 ("no pods
 // known to be missing metrics") rather than failing the command.
 func countMissingMetrics(ctx context.Context, client *kube.Client, namespace, selector string, pods []corev1.Pod) int32 {
-	if client == nil || client.Interface == nil || len(pods) == 0 {
-		return 0
-	}
-
-	// Discovery().RESTClient() is nil for clients built without a REST config
-	// (fake clients, and discovery implementations that do not wrap one).
-	// Calling Get() on it panics, so guard it the same way
-	// fetchPodMetricSamples and fetchPodMetricNames do.
-	metricsList, err := metricsapi.ListPodMetrics(ctx, client.Interface, namespace, selector)
+	missing, err := findMissingMetricPods(ctx, client, namespace, selector, pods)
 	if err != nil {
 		return 0
 	}
-
-	metricsMap := make(map[string]bool, len(metricsList.Items))
-	for _, item := range metricsList.Items {
-		metricsMap[item.Metadata.Name] = true
-	}
-
-	var missing int32
-	for i := range pods {
-		if !metricsMap[pods[i].Name] {
-			missing++
-		}
-	}
-	return missing
+	return int32(len(missing))
 }

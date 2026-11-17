@@ -7,13 +7,13 @@ package history
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/healthtrend"
@@ -36,6 +36,7 @@ const (
 	// its own cutoff — so steady-state recording stays a single O(1) append
 	// instead of rewriting the whole history on every observation.
 	compactionMinExpired = 64
+	maxHistoryFileSize   = 64 * 1024 * 1024 // 64 MiB safety cap
 )
 
 // CorruptLinesError reports malformed JSONL records while valid snapshots are
@@ -98,18 +99,26 @@ func (s *HealthStore) Append(ctx context.Context, key SnapshotKey, snapshot heal
 	}
 	defer release()
 
-	return appendSnapshotLine(path, snapshot)
+	return appendSnapshotLineCached(path, snapshot, true)
 }
 
 func appendSnapshotLine(path string, snapshot healthtrend.HealthSnapshot) error {
-	sharedScanCache.remove(path)
+	return appendSnapshotLineCached(path, snapshot, true)
+}
+
+func appendSnapshotLineCached(path string, snapshot healthtrend.HealthSnapshot, invalidateCache bool) error {
+	if invalidateCache {
+		sharedScanCache.remove(path)
+	}
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, storeFileMode)
 	if err != nil {
 		return fmt.Errorf("opening health store file: %w", err)
 	}
-	if err := f.Chmod(storeFileMode); err != nil {
-		_ = f.Close()
-		return fmt.Errorf("securing health store file: %w", err)
+	if info, statErr := f.Stat(); statErr == nil && info.Mode().Perm() != storeFileMode {
+		if err := f.Chmod(storeFileMode); err != nil {
+			_ = f.Close()
+			return fmt.Errorf("securing health store file: %w", err)
+		}
 	}
 
 	data, err := json.Marshal(snapshot)
@@ -118,7 +127,8 @@ func appendSnapshotLine(path string, snapshot healthtrend.HealthSnapshot) error 
 		return fmt.Errorf("marshaling health snapshot: %w", err)
 	}
 
-	if _, err = fmt.Fprintln(f, string(data)); err != nil {
+	data = append(data, '\n')
+	if _, err = f.Write(data); err != nil {
 		_ = f.Close()
 		return fmt.Errorf("writing health snapshot: %w", err)
 	}
@@ -141,6 +151,9 @@ func (s *HealthStore) Load(ctx context.Context, key SnapshotKey, since time.Dura
 // LoadAt reads health snapshots relative to the supplied time. Application
 // services use this form so one command run has a consistent, testable clock.
 func (s *HealthStore) LoadAt(ctx context.Context, key SnapshotKey, since time.Duration, now time.Time) ([]healthtrend.HealthSnapshot, error) {
+	if err := key.validate(); err != nil {
+		return nil, err
+	}
 	path := s.filePath(key)
 	release, err := acquireLockContext(ctx, path)
 	if err != nil {
@@ -173,6 +186,9 @@ func (s *HealthStore) Prune(ctx context.Context, key SnapshotKey, retention time
 
 // PruneAt removes entries older than retention relative to the supplied time.
 func (s *HealthStore) PruneAt(ctx context.Context, key SnapshotKey, retention time.Duration, now time.Time) error {
+	if err := key.validate(); err != nil {
+		return err
+	}
 	path := s.filePath(key)
 	release, err := acquireLockContext(ctx, path)
 	if err != nil {
@@ -224,12 +240,14 @@ func (s *HealthStore) RecordAndLoad(ctx context.Context, key SnapshotKey, snapsh
 	copy(retained[index+1:], retained[index:len(retained)-1])
 	retained[index] = snapshot
 
-	if shouldCompact(scan.total, scan.expired) {
+	compact := shouldCompact(scan.total, scan.expired)
+	if compact {
 		if err := s.replaceSnapshots(path, retained); err != nil {
 			return nil, err
 		}
 	} else {
-		if err := appendSnapshotLine(path, snapshot); err != nil {
+		if err := appendSnapshotLineCached(path, snapshot, false); err != nil {
+			sharedScanCache.remove(path)
 			return nil, err
 		}
 	}
@@ -237,7 +255,7 @@ func (s *HealthStore) RecordAndLoad(ctx context.Context, key SnapshotKey, snapsh
 	// Cache the exact written state. A compaction also removes corrupt lines;
 	// report the previous warning once, but do not keep it after repair.
 	written := historyScan{total: scan.total + 1, expired: scan.expired, retained: retained, corruptLines: scan.corruptLines}
-	if shouldCompact(scan.total, scan.expired) {
+	if compact {
 		written.total = len(retained)
 		written.expired = 0
 		written.corruptLines = nil
@@ -291,6 +309,10 @@ func scanHistoryFile(path string, retention time.Duration, now time.Time) (histo
 	}
 	defer func() { _ = f.Close() }()
 
+	if info, statErr := f.Stat(); statErr == nil && info.Size() > maxHistoryFileSize {
+		return scan, fmt.Errorf("history store file %s exceeds maximum size (%d bytes)", path, info.Size())
+	}
+
 	cutoff := now.Add(-retention)
 
 	scanner := bufio.NewScanner(f)
@@ -301,13 +323,13 @@ func scanHistoryFile(path string, retention time.Duration, now time.Time) (histo
 	lineNum := 0
 	for scanner.Scan() {
 		lineNum++
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
+		line := bytes.TrimSpace(scanner.Bytes())
+		if len(line) == 0 {
 			continue
 		}
 
 		var snap healthtrend.HealthSnapshot
-		if err := json.Unmarshal([]byte(line), &snap); err != nil {
+		if err := json.Unmarshal(line, &snap); err != nil {
 			scan.corruptLines = append(scan.corruptLines, lineNum)
 			continue
 		}

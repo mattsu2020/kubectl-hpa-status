@@ -1406,6 +1406,69 @@ func TestUpdate_FetchResultClampsCursorNegative(t *testing.T) {
 	}
 }
 
+func TestView_ListViewSingleCursorIndicator(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.width = 120
+	m.height = 40
+	m.loading = false
+	m.items = []hpaanalysis.ListItem{
+		{Namespace: "default", Name: "web", Health: "OK", HealthScore: 100},
+		{Namespace: "default", Name: "api", Health: "WARN", HealthScore: 70},
+	}
+	m.cursor = 1
+	output := m.View().Content
+	if got := strings.Count(output, "▸"); got != 1 {
+		t.Fatalf("expected exactly one cursor marker ▸, got %d in:\n%s", got, output)
+	}
+}
+
+func TestUpdateTick_DropsStaleTickIDAndIntervalReschedules(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.loading = false
+	m.paused = false
+	m.tickID = 3
+
+	staleUpdated, staleCmd := m.Update(tickMsg{id: 2})
+	if staleUpdated.(Model).loading || staleCmd != nil {
+		t.Fatal("expected stale tickID to be ignored")
+	}
+
+	incUpdated, incCmd := m.Update(tea.KeyPressMsg{Code: '+', Text: "+"})
+	mAfter := incUpdated.(Model)
+	if mAfter.tickID != 4 || incCmd == nil {
+		t.Fatalf("expected interval key to bump tickID to 4 and schedule cmd, got tickID=%d cmd=%v", mAfter.tickID, incCmd)
+	}
+}
+
+func TestFetchResult_AnchorsFocusAcrossResort(t *testing.T) {
+	m := NewModel(nil, "default", Options{})
+	m.sortField = "health-score"
+	m.sortDescending = false
+
+	updated, _ := m.Update(fetchResultMsg{
+		items: []hpaanalysis.ListItem{
+			{Namespace: "default", Name: "web", HealthScore: 50},
+			{Namespace: "default", Name: "api", HealthScore: 90},
+		},
+		reports: map[string]*hpaanalysis.StatusReport{},
+	})
+	m1 := updated.(Model)
+	m1.cursor = 1 // focused on "default/api"
+
+	// Re-order via score change: api drops to lowest score -> moves to index 0.
+	updated2, _ := m1.Update(fetchResultMsg{
+		items: []hpaanalysis.ListItem{
+			{Namespace: "default", Name: "web", HealthScore: 80},
+			{Namespace: "default", Name: "api", HealthScore: 30},
+		},
+		reports: map[string]*hpaanalysis.StatusReport{},
+	})
+	m2 := updated2.(Model)
+	if got := m2.filteredItems()[m2.cursor].Name; got != "api" {
+		t.Fatalf("expected focus anchored on api after resort, got %q (cursor=%d)", got, m2.cursor)
+	}
+}
+
 // helper to avoid importing strings
 func containsSubstring(s, sub string) bool {
 	for i := 0; i <= len(s)-len(sub); i++ {

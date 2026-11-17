@@ -11,7 +11,7 @@ import (
 // NewListItem converts an Analysis into a compact ListItem for list output.
 func NewListItem(src Analysis) ListItem {
 	errors, limiteds := classifyListConditions(src.Conditions.Conditions)
-	if src.Replicas.Current == src.Replicas.Desired && src.Replicas.Desired == src.Replicas.Max {
+	if len(limiteds) == 0 && src.Replicas.Current == src.Replicas.Desired && src.Replicas.Desired == src.Replicas.Max {
 		limiteds = append(limiteds, "LIMITED: maxReplicas")
 	}
 
@@ -22,7 +22,7 @@ func NewListItem(src Analysis) ListItem {
 	behavior := compactBehavior(src.Conditions.Behavior)
 
 	stabilizationLabel := FormatCountdownBadge(src.Conditions.StabilizationRemaining)
-	if src.Conditions.StabilizationActive {
+	if src.Conditions.StabilizationActive && stabilizationLabel == "" {
 		stabilizationLabel = "unknown"
 	}
 

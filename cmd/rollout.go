@@ -12,6 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"github.com/mattsu2020/kubectl-hpa-status/internal/observation"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
 
@@ -19,6 +20,7 @@ type rolloutOutput struct {
 	Namespace string                     `json:"namespace" yaml:"namespace"`
 	Name      string                     `json:"name" yaml:"name"`
 	Target    string                     `json:"target" yaml:"target"`
+	Warnings  []string                   `json:"warnings,omitempty" yaml:"warnings,omitempty"`
 	Report    *hpaanalysis.RolloutReport `json:"rolloutReport" yaml:"rolloutReport"`
 }
 
@@ -35,45 +37,65 @@ func newRolloutCommand(opts *options) *cobra.Command {
 }
 
 func runRollout(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	return runPerHPACommand(ctx, out, opts, names, presetRollout,
-		func(ctx context.Context, local *options, client *kube.Client, name string) (rolloutOutput, error) {
-			hpa, err := fetchHPA(ctx, client, name)
-			if err != nil {
-				return rolloutOutput{}, err
-			}
-			report, err := buildStatusReportFromHPA(ctx, local, client, hpa, false, nil)
-			if err != nil {
-				return rolloutOutput{}, err
-			}
+	local := applyCommandPreset(opts, presetRollout)
+	client, err := newClientOrDefault(&local)
+	if err != nil {
+		return writeErrorIfStructured(out, local.Output, err)
+	}
+	ec := newEnrichmentContext(ctx, &local)
+	outputs, err := collectPerHPA(ctx, &local, names, func(ctx context.Context, name string) (rolloutOutput, error) {
+		hpa, err := fetchHPA(ctx, client, name)
+		if err != nil {
+			return rolloutOutput{}, err
+		}
+		obs := observation.New(client.Interface, hpa)
+		report, err := buildStatusReportFromObservation(ctx, &local, client, hpa, false, ec, obs)
+		if err != nil {
+			return rolloutOutput{}, err
+		}
+		rolloutReport := buildRolloutReportWithObservation(ctx, client, hpa, &report.Analysis, obs)
+		return rolloutOutput{
+			Namespace: report.Analysis.Meta.Namespace,
+			Name:      report.Analysis.Meta.Name,
+			Target:    report.Analysis.Meta.Target,
+			Warnings:  append([]string(nil), report.Analysis.Actions.Warnings...),
+			Report:    rolloutReport,
+		}, nil
+	})
+	if err != nil {
+		return writeErrorIfStructured(out, local.Output, err)
+	}
 
-			return rolloutOutput{
-				Namespace: report.Analysis.Meta.Namespace,
-				Name:      report.Analysis.Meta.Name,
-				Target:    report.Analysis.Meta.Target,
-				Report:    buildRolloutReport(ctx, client, hpa, &report.Analysis),
-			}, nil
-		},
-		func(out io.Writer, local *options, o rolloutOutput) error {
-			theme := themeFor(local.Color, out)
-			if err := hpaanalysis.WriteRolloutReportText(out, o.Report, theme); err != nil {
-				return fmt.Errorf("write rollout report for %s/%s: %w", o.Namespace, o.Name, err)
+	return renderPerHPA(out, &local, outputs, func(w io.Writer, o rolloutOutput) error {
+		theme := themeFor(local.Color, w)
+		if err := hpaanalysis.WriteRolloutReportText(w, o.Report, theme); err != nil {
+			return fmt.Errorf("write rollout report for %s/%s: %w", o.Namespace, o.Name, err)
+		}
+		for _, warn := range o.Warnings {
+			if _, err := fmt.Fprintf(w, "Warning: %s\n", warn); err != nil {
+				return fmt.Errorf("write rollout warning for %s/%s: %w", o.Namespace, o.Name, err)
 			}
-			return nil
-		})
+		}
+		return nil
+	})
 }
 
 // buildRolloutReport assembles RolloutInput and runs the rollout analysis.
 // Warnings discovered while gathering live state are appended to analysis.Warnings
 // so they surface in the report rather than being silently dropped.
 func buildRolloutReport(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, analysis *hpaanalysis.Analysis) *hpaanalysis.RolloutReport {
-	input := assembleRolloutInput(ctx, client, hpa, analysis)
+	return buildRolloutReportWithObservation(ctx, client, hpa, analysis, observation.New(client.Interface, hpa))
+}
+
+func buildRolloutReportWithObservation(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, analysis *hpaanalysis.Analysis, obs *observation.Snapshot) *hpaanalysis.RolloutReport {
+	input := assembleRolloutInput(ctx, client, hpa, analysis, obs)
 	return hpaanalysis.AnalyzeRollout(input)
 }
 
 // assembleRolloutInput gathers all observable signals for rollout analysis.
 // Fetch failures are appended to analysis.Warnings so callers can see why a
 // signal is missing instead of silently treating it as absent.
-func assembleRolloutInput(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, analysis *hpaanalysis.Analysis) hpaanalysis.RolloutInput {
+func assembleRolloutInput(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, analysis *hpaanalysis.Analysis, obs *observation.Snapshot) hpaanalysis.RolloutInput {
 	input := hpaanalysis.RolloutInput{
 		Namespace: hpa.Namespace,
 		HPAName:   hpa.Name,
@@ -82,11 +104,16 @@ func assembleRolloutInput(ctx context.Context, client *kube.Client, hpa *autosca
 
 	ref := hpa.Spec.ScaleTargetRef
 
-	// Fetch scale target info and pod template.
-	info, err := kube.FetchScaleTargetInfo(ctx, client.Interface, hpa.Namespace, ref)
-	if err != nil || info == nil {
+	// Reuse memoized scale target info and pod template from the shared observation snapshot.
+	target := obs.ScaleTarget(ctx)
+	if target.State == observation.StateUnavailable && target.Err != nil {
+		analysis.Actions.Warnings = append(analysis.Actions.Warnings, fmt.Sprintf("could not read scale target %s/%s: %v", hpa.Namespace, ref.Name, target.Err))
 		return input
 	}
+	if !target.Known() || target.Data == nil {
+		return input
+	}
+	info := target.Data
 
 	input.DesiredReplicas = info.DesiredReplicas
 	input.ReadyReplicas = info.ReadyReplicas
@@ -99,30 +126,22 @@ func assembleRolloutInput(ctx context.Context, client *kube.Client, hpa *autosca
 	// Extract HPA ContainerResource metric container names.
 	input.HPAContainerMetrics = extractHPAContainerMetrics(hpa)
 
-	// Fetch Deployment/StatefulSet rollout status and new ReplicaSet containers.
+	// Reuse the already-fetched Deployment/StatefulSet object from observation.Snapshot.
 	switch ref.Kind {
 	case "Deployment":
-		deploy, err := client.Interface.AppsV1().Deployments(hpa.Namespace).Get(ctx, ref.Name, metav1.GetOptions{})
-		if err == nil {
+		if deploy, ok := info.Object.(*appsv1.Deployment); ok && deploy != nil {
 			input.RolloutInProgress = deploymentRolloutInProgress(deploy)
 			input.UpdatedReplicas = deploy.Status.UpdatedReplicas
 			input.NewReplicaSetContainerNames = extractNewReplicaSetContainers(ctx, client, hpa.Namespace, deploy)
-		} else {
-			// Surface the fetch failure so RolloutInProgress=0 isn't mistaken
-			// for "no rollout in progress" on an RBAC-denied or transient error.
-			analysis.Actions.Warnings = append(analysis.Actions.Warnings, fmt.Sprintf("could not read Deployment %s/%s rollout status: %v", hpa.Namespace, ref.Name, err))
 		}
 	case "StatefulSet":
-		sts, err := client.Interface.AppsV1().StatefulSets(hpa.Namespace).Get(ctx, ref.Name, metav1.GetOptions{})
-		if err == nil {
+		if sts, ok := info.Object.(*appsv1.StatefulSet); ok && sts != nil {
 			input.RolloutInProgress = sts.Status.UpdatedReplicas < replicasOrDefault(sts.Spec.Replicas) ||
 				sts.Status.ReadyReplicas < replicasOrDefault(sts.Spec.Replicas)
 			input.UpdatedReplicas = sts.Status.UpdatedReplicas
 			for _, c := range sts.Spec.Template.Spec.Containers {
 				input.NewReplicaSetContainerNames = append(input.NewReplicaSetContainerNames, c.Name)
 			}
-		} else {
-			analysis.Actions.Warnings = append(analysis.Actions.Warnings, fmt.Sprintf("could not read StatefulSet %s/%s rollout status: %v", hpa.Namespace, ref.Name, err))
 		}
 	}
 

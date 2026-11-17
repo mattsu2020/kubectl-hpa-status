@@ -65,6 +65,7 @@ type Model struct {
 	height         int
 	loading        bool
 	fetchRequestID uint64
+	tickID         uint64
 	// fixEpoch invalidates fix-wizard apply/dry-run results across state
 	// boundaries: it is bumped whenever the suggestion set can change (a
 	// refresh or re-entering the fix wizard), and in-flight results carrying
@@ -212,8 +213,11 @@ func (m Model) currentTime() time.Time {
 	return time.Now()
 }
 
-// tickMsg is sent on each interval tick.
-type tickMsg time.Time
+// tickMsg is sent on each interval tick. Zero id indicates a synthetic test tick.
+type tickMsg struct {
+	id uint64
+	at time.Time
+}
 
 // fetchResultMsg carries the result of a background data fetch.
 type fetchResultMsg struct {
@@ -252,6 +256,7 @@ func NewModel(client kubernetes.Interface, namespace string, opts Options) Model
 		filterInput:    ti,
 		loading:        true,
 		fetchRequestID: 1,
+		tickID:         1,
 		selected:       map[string]bool{},
 	}
 }
@@ -267,5 +272,5 @@ func (m Model) WithContext(ctx context.Context) Model {
 
 // Init starts the first data fetch.
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(fetchHPAs(m), tickCmd(m.interval))
+	return tea.Batch(fetchHPAs(m), tickCmd(m.tickID, m.interval))
 }

@@ -63,7 +63,7 @@ func FormatNames() []string {
 // serializes value directly.
 func Format(out io.Writer, format string, templateStr string, value any, writeText func(io.Writer) error) error {
 	switch format {
-	case "", "table", "wide", "ja":
+	case "", "text", "table", "wide", "ja":
 		if writeText == nil {
 			return fmt.Errorf("text output requires a text renderer")
 		}
@@ -161,7 +161,7 @@ func JSONLines(out io.Writer, value any) error {
 		}
 		return nil
 	default:
-		if err := encoder.Encode(value); err != nil {
+		if err := encoder.Encode(projectForReflection(value)); err != nil {
 			return fmt.Errorf("jsonl: encode value: %w", err)
 		}
 		return nil

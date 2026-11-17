@@ -155,14 +155,16 @@ func writeReplayLabMarkdown(out io.Writer, report Report) error {
 }
 
 func writeReplayLabMarkdownTo(out io.Writer, report Report) {
-	_, _ = fmt.Fprintf(out, "# Scenario comparison: %s/%s\n\n", report.Namespace, report.Name)
+	_, _ = fmt.Fprintf(out, "# Scenario comparison: %s/%s\n\n",
+		rendutil.MarkdownInline(report.Namespace),
+		rendutil.MarkdownInline(report.Name))
 	if len(report.Candidates) > 1 {
 		writeReplayPolicyMarkdown(out, report)
 		if len(report.Limitations) > 0 {
 			_, _ = fmt.Fprintln(out, "## Limitations")
 			_, _ = fmt.Fprintln(out)
 			for _, limitation := range report.Limitations {
-				_, _ = fmt.Fprintf(out, "- %s\n", limitation)
+				_, _ = fmt.Fprintf(out, "- %s\n", rendutil.MarkdownInline(limitation))
 			}
 		}
 		return
@@ -175,12 +177,14 @@ func writeReplayLabMarkdownTo(out io.Writer, report Report) {
 		_, _ = fmt.Fprintln(out, "## Proposed Config")
 		_, _ = fmt.Fprintln(out)
 		for _, key := range sortedReplayConfigKeys(report.ProposedConfig) {
-			_, _ = fmt.Fprintf(out, "- **%s:** %s\n", key, report.ProposedConfig[key])
+			_, _ = fmt.Fprintf(out, "- **%s:** %s\n",
+				rendutil.MarkdownInline(key),
+				rendutil.MarkdownInline(report.ProposedConfig[key]))
 		}
 		_, _ = fmt.Fprintln(out)
 	}
 	if report.Recommendation != "" {
-		_, _ = fmt.Fprintf(out, "## Recommendation\n\n%s\n\n", report.Recommendation)
+		_, _ = fmt.Fprintf(out, "## Recommendation\n\n%s\n\n", rendutil.MarkdownInline(report.Recommendation))
 	}
 	if report.Impact != nil {
 		writeReplayImpactMarkdown(out, *report.Impact, report.Current, report.CandidateResult)
@@ -189,14 +193,14 @@ func writeReplayLabMarkdownTo(out io.Writer, report Report) {
 		_, _ = fmt.Fprintln(out, "## Limitations")
 		_, _ = fmt.Fprintln(out)
 		for _, limitation := range report.Limitations {
-			_, _ = fmt.Fprintf(out, "- %s\n", limitation)
+			_, _ = fmt.Fprintf(out, "- %s\n", rendutil.MarkdownInline(limitation))
 		}
 	}
 }
 
 func writeReplayPolicyMarkdown(out io.Writer, report Report) {
 	if len(report.Score) > 0 {
-		_, _ = fmt.Fprintf(out, "**Score focus:** %s\n\n", strings.Join(report.Score, ", "))
+		_, _ = fmt.Fprintf(out, "**Score focus:** %s\n\n", rendutil.MarkdownInline(strings.Join(report.Score, ", ")))
 	}
 	_, _ = fmt.Fprintln(out, "| Candidate | SLO risk | Replica-minutes | Churn | Max hit |")
 	_, _ = fmt.Fprintln(out, "| --- | --- | ---: | ---: | ---: |")
@@ -209,7 +213,7 @@ func writeReplayPolicyMarkdown(out io.Writer, report Report) {
 		_, _ = fmt.Fprintln(out, "## Recommended")
 		_, _ = fmt.Fprintln(out)
 		for _, recommendation := range report.Recommendations {
-			_, _ = fmt.Fprintf(out, "- %s\n", recommendation)
+			_, _ = fmt.Fprintf(out, "- %s\n", rendutil.MarkdownInline(recommendation))
 		}
 		_, _ = fmt.Fprintln(out)
 	}
@@ -217,8 +221,8 @@ func writeReplayPolicyMarkdown(out io.Writer, report Report) {
 
 func writeReplayPolicyMarkdownRow(out io.Writer, name string, summary Summary) {
 	_, _ = fmt.Fprintf(out, "| %s | %s | %.0f | %d | %d |\n",
-		name,
-		replaySLORisk(summary),
+		rendutil.MarkdownCell(name),
+		rendutil.MarkdownCell(replaySLORisk(summary)),
 		summary.PodHours*60,
 		summary.ScaleEvents,
 		summary.MaxReplicasReached,

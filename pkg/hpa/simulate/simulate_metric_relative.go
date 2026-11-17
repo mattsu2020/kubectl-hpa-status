@@ -11,86 +11,133 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
-// applyRelativeOverride handles +/- percentage relative changes.
+// applyRelativeOverride handles +/- percentage relative changes across all HPA metric source types.
 func applyRelativeOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, spec autoscalingv2.MetricSpec, idx int, value string) error {
 	switch spec.Type {
 	case autoscalingv2.ResourceMetricSourceType:
-		return applyRelativeResourceOverride(hpa, spec, idx, value)
+		if spec.Resource == nil {
+			return fmt.Errorf("cannot apply relative change: missing resource spec")
+		}
+		current := hpa.Status.CurrentMetrics[idx].Resource
+		if current == nil {
+			return fmt.Errorf("cannot apply relative change: no current value for metric %q", spec.Resource.Name)
+		}
+		next, err := applyRelativeMetricValue(string(spec.Resource.Name), spec.Resource.Target.Type, current.Current, value)
+		if err != nil {
+			return err
+		}
+		hpa.Status.CurrentMetrics[idx].Resource = &autoscalingv2.ResourceMetricStatus{
+			Name:    spec.Resource.Name,
+			Current: next,
+		}
+		return nil
+	case autoscalingv2.ContainerResourceMetricSourceType:
+		if spec.ContainerResource == nil {
+			return fmt.Errorf("cannot apply relative change: missing container resource spec")
+		}
+		current := hpa.Status.CurrentMetrics[idx].ContainerResource
+		if current == nil {
+			return fmt.Errorf("cannot apply relative change: no current value for metric %q", spec.ContainerResource.Name)
+		}
+		next, err := applyRelativeMetricValue(string(spec.ContainerResource.Name), spec.ContainerResource.Target.Type, current.Current, value)
+		if err != nil {
+			return err
+		}
+		hpa.Status.CurrentMetrics[idx].ContainerResource = &autoscalingv2.ContainerResourceMetricStatus{
+			Name:      spec.ContainerResource.Name,
+			Container: spec.ContainerResource.Container,
+			Current:   next,
+		}
+		return nil
+	case autoscalingv2.PodsMetricSourceType:
+		if spec.Pods == nil {
+			return fmt.Errorf("cannot apply relative change: missing pods metric spec")
+		}
+		current := hpa.Status.CurrentMetrics[idx].Pods
+		if current == nil {
+			return fmt.Errorf("cannot apply relative change: no current value for pods metric %q", spec.Pods.Metric.Name)
+		}
+		next, err := applyRelativeMetricValue(spec.Pods.Metric.Name, spec.Pods.Target.Type, current.Current, value)
+		if err != nil {
+			return err
+		}
+		hpa.Status.CurrentMetrics[idx].Pods = &autoscalingv2.PodsMetricStatus{
+			Metric:  spec.Pods.Metric,
+			Current: next,
+		}
+		return nil
+	case autoscalingv2.ObjectMetricSourceType:
+		if spec.Object == nil {
+			return fmt.Errorf("cannot apply relative change: missing object metric spec")
+		}
+		current := hpa.Status.CurrentMetrics[idx].Object
+		if current == nil {
+			return fmt.Errorf("cannot apply relative change: no current value for object metric %q", spec.Object.Metric.Name)
+		}
+		next, err := applyRelativeMetricValue(spec.Object.Metric.Name, spec.Object.Target.Type, current.Current, value)
+		if err != nil {
+			return err
+		}
+		hpa.Status.CurrentMetrics[idx].Object = &autoscalingv2.ObjectMetricStatus{
+			Metric:          spec.Object.Metric,
+			DescribedObject: spec.Object.DescribedObject,
+			Current:         next,
+		}
+		return nil
 	case autoscalingv2.ExternalMetricSourceType:
-		return applyRelativeExternalOverride(hpa, spec, idx, value)
+		if spec.External == nil {
+			return fmt.Errorf("cannot apply relative change: missing external metric spec")
+		}
+		current := hpa.Status.CurrentMetrics[idx].External
+		if current == nil {
+			return fmt.Errorf("cannot apply relative change: no current value for external metric %q", spec.External.Metric.Name)
+		}
+		next, err := applyRelativeMetricValue(spec.External.Metric.Name, spec.External.Target.Type, current.Current, value)
+		if err != nil {
+			return err
+		}
+		hpa.Status.CurrentMetrics[idx].External = &autoscalingv2.ExternalMetricStatus{
+			Metric:  spec.External.Metric,
+			Current: next,
+		}
+		return nil
 	default:
-		return fmt.Errorf("relative overrides are only supported for Resource and External metrics, not %q", spec.Type)
+		return fmt.Errorf("relative overrides are not supported for metric type %q", spec.Type)
 	}
 }
 
-func applyRelativeResourceOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, spec autoscalingv2.MetricSpec, idx int, value string) error {
-	current := hpa.Status.CurrentMetrics[idx].Resource
-	if current == nil {
-		return fmt.Errorf("cannot apply relative change: no current value for metric %q", spec.Resource.Name)
-	}
-	switch spec.Resource.Target.Type {
+func applyRelativeMetricValue(name string, targetType autoscalingv2.MetricTargetType, current autoscalingv2.MetricValueStatus, value string) (autoscalingv2.MetricValueStatus, error) {
+	switch targetType {
 	case autoscalingv2.UtilizationMetricType:
-		if current.Current.AverageUtilization == nil {
-			return fmt.Errorf("cannot apply relative change: no current utilization for metric %q", spec.Resource.Name)
+		if current.AverageUtilization == nil {
+			return autoscalingv2.MetricValueStatus{}, fmt.Errorf("cannot apply relative change: no current utilization for metric %q", name)
 		}
-		newValue, err := parseRelativeValue(value, *current.Current.AverageUtilization)
+		newValue, err := parseRelativeValue(value, *current.AverageUtilization)
 		if err != nil {
-			return err
+			return autoscalingv2.MetricValueStatus{}, err
 		}
-		hpa.Status.CurrentMetrics[idx].Resource = &autoscalingv2.ResourceMetricStatus{
-			Name:    spec.Resource.Name,
-			Current: autoscalingv2.MetricValueStatus{AverageUtilization: &newValue},
-		}
+		return autoscalingv2.MetricValueStatus{AverageUtilization: &newValue}, nil
 	case autoscalingv2.AverageValueMetricType:
-		if current.Current.AverageValue == nil {
-			return fmt.Errorf("cannot apply relative change: no current average value for metric %q", spec.Resource.Name)
+		if current.AverageValue == nil {
+			return autoscalingv2.MetricValueStatus{}, fmt.Errorf("cannot apply relative change: no current average value for metric %q", name)
 		}
-		newValue, err := parseRelativeQuantity(value, current.Current.AverageValue)
+		newValue, err := parseRelativeQuantity(value, current.AverageValue)
 		if err != nil {
-			return err
+			return autoscalingv2.MetricValueStatus{}, err
 		}
-		hpa.Status.CurrentMetrics[idx].Resource = &autoscalingv2.ResourceMetricStatus{
-			Name:    spec.Resource.Name,
-			Current: autoscalingv2.MetricValueStatus{AverageValue: &newValue},
-		}
-	default:
-		return fmt.Errorf("unsupported resource metric target type %q", spec.Resource.Target.Type)
-	}
-	return nil
-}
-
-func applyRelativeExternalOverride(hpa *autoscalingv2.HorizontalPodAutoscaler, spec autoscalingv2.MetricSpec, idx int, value string) error {
-	current := hpa.Status.CurrentMetrics[idx].External
-	if current == nil {
-		return fmt.Errorf("cannot apply relative change: no current value for external metric %q", spec.External.Metric.Name)
-	}
-	var currentQuantity *resource.Quantity
-	switch spec.External.Target.Type {
-	case autoscalingv2.AverageValueMetricType:
-		currentQuantity = current.Current.AverageValue
+		return autoscalingv2.MetricValueStatus{AverageValue: &newValue}, nil
 	case autoscalingv2.ValueMetricType:
-		currentQuantity = current.Current.Value
+		if current.Value == nil {
+			return autoscalingv2.MetricValueStatus{}, fmt.Errorf("cannot apply relative change: no current value for metric %q", name)
+		}
+		newValue, err := parseRelativeQuantity(value, current.Value)
+		if err != nil {
+			return autoscalingv2.MetricValueStatus{}, err
+		}
+		return autoscalingv2.MetricValueStatus{Value: &newValue}, nil
 	default:
-		return fmt.Errorf("unsupported external metric target type %q", spec.External.Target.Type)
+		return autoscalingv2.MetricValueStatus{}, fmt.Errorf("unsupported metric target type %q for metric %q", targetType, name)
 	}
-	if currentQuantity == nil {
-		return fmt.Errorf("cannot apply relative change: current value shape does not match %q target for external metric %q", spec.External.Target.Type, spec.External.Metric.Name)
-	}
-	newValue, err := parseRelativeQuantity(value, currentQuantity)
-	if err != nil {
-		return err
-	}
-	next := autoscalingv2.MetricValueStatus{}
-	if spec.External.Target.Type == autoscalingv2.AverageValueMetricType {
-		next.AverageValue = &newValue
-	} else {
-		next.Value = &newValue
-	}
-	hpa.Status.CurrentMetrics[idx].External = &autoscalingv2.ExternalMetricStatus{
-		Metric:  spec.External.Metric,
-		Current: next,
-	}
-	return nil
 }
 
 // parseRelativeValue parses a relative change like +20% or -10% and applies it

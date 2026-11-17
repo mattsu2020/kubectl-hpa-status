@@ -35,9 +35,10 @@ func ExtractKEDAInfo(u *unstructured.Unstructured) KEDAInfo {
 
 	if status, ok := nestedMap(u.Object, "status"); ok {
 		info.Conditions = extractKEDAConditions(status)
+		health, _ := nestedMap(status, "health")
 		// Merge trigger health status into triggers extracted from spec.
-		extractTriggerStatus(u, info.Triggers)
-		if health, ok := nestedMap(status, "health"); ok {
+		extractTriggerStatus(status, health, info.Triggers)
+		if health != nil {
 			info.Health = make(map[string]KEDAMetricHealth, len(health))
 			for name, raw := range health {
 				if entry, ok := mapAt(raw); ok {
@@ -91,12 +92,10 @@ func extractTriggers(spec map[string]any) []KEDATrigger {
 }
 
 // extractTriggerStatus separates metric health from named trigger activity.
-func extractTriggerStatus(u *unstructured.Unstructured, triggers []KEDATrigger) {
-	status, ok := nestedMap(u.Object, "status")
-	if !ok {
+func extractTriggerStatus(status, health map[string]any, triggers []KEDATrigger) {
+	if status == nil {
 		return
 	}
-	health, _ := nestedMap(status, "health")
 	activity, _ := nestedMap(status, "triggersActivity")
 	metrics, _ := nestedSlice(status, "externalMetricNames")
 	for i := range triggers {
@@ -278,7 +277,7 @@ func extractInt32Ptr(m map[string]any, key string) *int32 {
 		val := int32(v) // #nosec G115 -- bounds checked immediately above
 		return &val
 	case float64:
-		if v < math.MinInt32 || v > math.MaxInt32 {
+		if math.IsNaN(v) || math.IsInf(v, 0) || v < math.MinInt32 || v > math.MaxInt32 {
 			return nil
 		}
 		val := int32(v)

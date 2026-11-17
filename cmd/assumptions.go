@@ -107,19 +107,11 @@ func runAssumptions(ctx context.Context, out io.Writer, opts *options, names []s
 		return err
 	}
 
-	for i, report := range reports {
-		if i > 0 {
-			if _, err := fmt.Fprintln(out); err != nil {
-				return fmt.Errorf("write assumptions separator: %w", err)
-			}
-		}
-		if err := renderWithOutput(out, opts, report, func(out io.Writer) error {
-			return hpaanalysis.WriteAssumptionsTextWithExplain(out, report.Assumptions,
-				flags.explain, themeFor(opts.Color, out))
-		}); err != nil {
+	return renderPerHPA(out, opts, reports, func(out io.Writer, report assumptionsOutput) error {
+		if err := hpaanalysis.WriteAssumptionsTextWithExplain(out, report.Assumptions,
+			flags.explain, themeFor(opts.Color, out)); err != nil {
 			return fmt.Errorf("write assumptions report for %s/%s: %w", report.Namespace, report.Name, err)
 		}
-	}
-
-	return nil
+		return nil
+	})
 }

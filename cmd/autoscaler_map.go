@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sync"
 
 	"github.com/spf13/cobra"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/dynamic"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/enrichment"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
@@ -51,13 +53,14 @@ func runAutoscalerMap(ctx context.Context, out io.Writer, opts *options, names [
 		return writeErrorIfStructured(out, opts.Output, err)
 	}
 
+	shared := newAutoscalerMapShared(ctx, client, opts)
 	outputs, err := collectPerHPA(ctx, opts, names, func(ctx context.Context, name string) (autoscalerMapOutput, error) {
 		hpa, err := kube.GetHPAFromClient(ctx, client, name)
 		if err != nil {
-			return autoscalerMapOutput{}, err
+			return autoscalerMapOutput{}, wrapHPALookupError(client.Namespace, name, err)
 		}
 
-		input, warnings := assembleAutoscalerMapInput(ctx, client, opts, hpa)
+		input, warnings := assembleAutoscalerMapInput(ctx, client, shared, hpa)
 		report := autoscalermap.Analyze(input)
 		report.Warnings = append(report.Warnings, warnings...)
 
@@ -82,11 +85,45 @@ func runAutoscalerMap(ctx context.Context, out io.Writer, opts *options, names [
 
 }
 
+type autoscalerMapShared struct {
+	cluster        *observation.ClusterSnapshot
+	dynClient      dynamic.Interface
+	dynErr         error
+	nodeCapOnce    sync.Once
+	nodeCap        *kube.NodeCapacityInfo
+	nodeCapErr     error
+	karpenterOnce  sync.Once
+	karpenterFound bool
+}
+
+func newAutoscalerMapShared(_ context.Context, _ *kube.Client, opts *options) *autoscalerMapShared {
+	dynClient, _, dynErr := kube.NewDynamicClient(opts.KubeOptions())
+	return &autoscalerMapShared{
+		cluster:   &observation.ClusterSnapshot{},
+		dynClient: dynClient,
+		dynErr:    dynErr,
+	}
+}
+
+func (s *autoscalerMapShared) fetchNodeCap(ctx context.Context, client *kube.Client) (*kube.NodeCapacityInfo, error) {
+	s.nodeCapOnce.Do(func() {
+		s.nodeCap, s.nodeCapErr = kube.FetchNodeCapacity(ctx, client.Interface)
+	})
+	return s.nodeCap, s.nodeCapErr
+}
+
+func (s *autoscalerMapShared) fetchKarpenter(ctx context.Context, client *kube.Client) bool {
+	s.karpenterOnce.Do(func() {
+		s.karpenterFound = detectKarpenter(ctx, client)
+	})
+	return s.karpenterFound
+}
+
 // assembleAutoscalerMapInput gathers all observable signals for autoscaler map
 // from one request-scoped observation snapshot, returning any collection
 // warnings alongside the input. Failed reads surface as warnings instead of
 // silently degrading to "no pods / no quotas near limit".
-func assembleAutoscalerMapInput(ctx context.Context, client *kube.Client, opts *options, hpa *autoscalingv2.HorizontalPodAutoscaler) (autoscalermap.Input, []string) {
+func assembleAutoscalerMapInput(ctx context.Context, client *kube.Client, shared *autoscalerMapShared, hpa *autoscalingv2.HorizontalPodAutoscaler) (autoscalermap.Input, []string) {
 	input := autoscalermap.Input{
 		Namespace:       hpa.Namespace,
 		HPAName:         hpa.Name,
@@ -102,7 +139,7 @@ func assembleAutoscalerMapInput(ctx context.Context, client *kube.Client, opts *
 
 	// Observe the scale target, pods, and pending details through one
 	// memoized snapshot so derived views reuse the same API reads.
-	snapshot := observation.New(client.Interface, hpa)
+	snapshot := observation.New(client.Interface, hpa, shared.cluster)
 	target := snapshot.ScaleTarget(ctx)
 	switch target.State {
 	case observation.StateUnavailable:
@@ -138,7 +175,7 @@ func assembleAutoscalerMapInput(ctx context.Context, client *kube.Client, opts *
 
 	// Fetch node capacity. Preserve RBAC/network failures as unknown data rather
 	// than turning the zero value into a false "no schedulable nodes" blocker.
-	nodeCap, nodeErr := kube.FetchNodeCapacity(ctx, client.Interface)
+	nodeCap, nodeErr := shared.fetchNodeCap(ctx, client)
 	if nodeErr != nil {
 		input.NodeFetchError = nodeErr.Error()
 	}
@@ -151,17 +188,18 @@ func assembleAutoscalerMapInput(ctx context.Context, client *kube.Client, opts *
 		}
 	}
 
-	// Detect Cluster Autoscaler.
-	input.ClusterAutoscaler = kube.DetectClusterAutoscaler(ctx, client.Interface)
+	// Detect Cluster Autoscaler using the shared node observation.
+	caDetected, _ := snapshot.ClusterAutoscaler(ctx)
+	input.ClusterAutoscaler = caDetected
 
 	// Detect Karpenter (check for Karpenter pods in kube-system).
-	input.Karpenter = detectKarpenter(ctx, client)
+	input.Karpenter = shared.fetchKarpenter(ctx, client)
 
 	// Fetch KEDA ScaledObject info if KEDA-managed.
-	input.KEDAInfo = fetchAutoscalerMapKEDA(ctx, opts, hpa)
+	input.KEDAInfo = fetchAutoscalerMapKEDA(ctx, shared.dynClient, shared.dynErr, hpa)
 
 	// Fetch VPA conflict info.
-	input.VPAInfo = fetchAutoscalerMapVPA(ctx, opts, hpa)
+	input.VPAInfo = fetchAutoscalerMapVPA(ctx, shared.dynClient, shared.dynErr, hpa)
 
 	// Fetch PodDisruptionBudgets.
 	pdbs, pdbErr := fetchAutoscalerMapPDBs(ctx, client, hpa.Namespace)
@@ -192,14 +230,13 @@ func detectKarpenter(ctx context.Context, client *kube.Client) bool {
 }
 
 // fetchAutoscalerMapKEDA attempts to detect KEDA and fetch ScaledObject info.
-func fetchAutoscalerMapKEDA(ctx context.Context, opts *options, hpa *autoscalingv2.HorizontalPodAutoscaler) *autoscalermap.KEDAInfo {
+func fetchAutoscalerMapKEDA(ctx context.Context, dynClient dynamic.Interface, dynErr error, hpa *autoscalingv2.HorizontalPodAutoscaler) *autoscalermap.KEDAInfo {
 	detection := kube.DetectKEDA(hpa)
 	if !detection.Managed {
 		return nil
 	}
 
-	dynClient, _, err := kube.NewDynamicClient(opts.KubeOptions())
-	if err != nil {
+	if dynErr != nil || dynClient == nil {
 		// Best-effort: a dynamic-client failure (RBAC denial on keda.sh,
 		// missing KEDA CRD) silently skips the KEDA section rather than
 		// aborting the whole autoscaler map.
@@ -233,7 +270,7 @@ func fetchAutoscalerMapKEDA(ctx context.Context, opts *options, hpa *autoscaling
 }
 
 // fetchAutoscalerMapVPA attempts to detect VPA conflicts with the HPA.
-func fetchAutoscalerMapVPA(ctx context.Context, opts *options, hpa *autoscalingv2.HorizontalPodAutoscaler) *autoscalermap.VPAInfo {
+func fetchAutoscalerMapVPA(ctx context.Context, dynClient dynamic.Interface, dynErr error, hpa *autoscalingv2.HorizontalPodAutoscaler) *autoscalermap.VPAInfo {
 	// Check if HPA uses resource metrics (CPU/memory) that VPA could conflict with.
 	hasResourceMetrics := false
 	for _, m := range hpa.Spec.Metrics {
@@ -246,8 +283,7 @@ func fetchAutoscalerMapVPA(ctx context.Context, opts *options, hpa *autoscalingv
 		return nil
 	}
 
-	dynClient, _, err := kube.NewDynamicClient(opts.KubeOptions())
-	if err != nil {
+	if dynErr != nil || dynClient == nil {
 		// Best-effort: a dynamic-client failure (RBAC denial on autoscaling.k8s.io,
 		// missing VPA CRD) silently skips the VPA section rather than aborting
 		// the whole autoscaler map.

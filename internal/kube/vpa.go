@@ -78,13 +78,13 @@ func ExtractVPAInfo(u *unstructured.Unstructured) VPAInfo {
 		Name: u.GetName(),
 	}
 
-	spec, ok := u.Object["spec"].(map[string]any)
+	spec, ok := nestedMap(u.Object, "spec")
 	if !ok {
 		return info
 	}
 
 	// Extract targetRef
-	if targetRef, ok := spec["targetRef"].(map[string]any); ok {
+	if targetRef, ok := nestedMap(spec, "targetRef"); ok {
 		info.TargetAPIVersion = stringValue(targetRef, "apiVersion")
 		kind := stringValue(targetRef, "kind")
 		name := stringValue(targetRef, "name")
@@ -94,7 +94,7 @@ func ExtractVPAInfo(u *unstructured.Unstructured) VPAInfo {
 	}
 
 	// Extract updatePolicy.updateMode
-	if updatePolicy, ok := spec["updatePolicy"].(map[string]any); ok {
+	if updatePolicy, ok := nestedMap(spec, "updatePolicy"); ok {
 		info.UpdateMode = stringValue(updatePolicy, "updateMode")
 	}
 	info.ContainerPolicies = extractContainerPolicies(spec)
@@ -105,17 +105,17 @@ func ExtractVPAInfo(u *unstructured.Unstructured) VPAInfo {
 }
 
 func extractContainerPolicies(spec map[string]any) []VPAContainerPolicy {
-	resourcePolicy, ok := spec["resourcePolicy"].(map[string]any)
+	resourcePolicy, ok := nestedMap(spec, "resourcePolicy")
 	if !ok {
 		return nil
 	}
-	containerPolicies, ok := resourcePolicy["containerPolicies"].([]any)
+	containerPolicies, ok := nestedSlice(resourcePolicy, "containerPolicies")
 	if !ok {
 		return nil
 	}
 	policies := make([]VPAContainerPolicy, 0, len(containerPolicies))
 	for _, item := range containerPolicies {
-		policy, ok := item.(map[string]any)
+		policy, ok := mapAt(item)
 		if !ok {
 			continue
 		}
@@ -161,21 +161,21 @@ func aggregateControlledResources(policies []VPAContainerPolicy) []string {
 }
 
 func extractVPARecommendations(u *unstructured.Unstructured) []VPARecommendationInfo {
-	status, ok := u.Object["status"].(map[string]any)
+	status, ok := nestedMap(u.Object, "status")
 	if !ok {
 		return nil
 	}
-	recommendation, ok := status["recommendation"].(map[string]any)
+	recommendation, ok := nestedMap(status, "recommendation")
 	if !ok {
 		return nil
 	}
-	containerRecommendations, ok := recommendation["containerRecommendations"].([]any)
+	containerRecommendations, ok := nestedSlice(recommendation, "containerRecommendations")
 	if !ok {
 		return nil
 	}
 	var out []VPARecommendationInfo
 	for _, item := range containerRecommendations {
-		rec, ok := item.(map[string]any)
+		rec, ok := mapAt(item)
 		if !ok {
 			continue
 		}
@@ -201,7 +201,7 @@ func extractVPARecommendations(u *unstructured.Unstructured) []VPARecommendation
 
 func resourceMap(parent map[string]any, field string) map[string]string {
 	values := map[string]string{}
-	raw, ok := parent[field].(map[string]any)
+	raw, ok := nestedMap(parent, field)
 	if !ok {
 		return values
 	}

@@ -97,7 +97,7 @@ func TestRunRolloutTextOutput(t *testing.T) {
 	}
 
 	output := buf.String()
-	if !strings.Contains(output, "Rollout-aware HPA checks for HPA web/default") {
+	if !strings.Contains(output, "Rollout-aware HPA checks for HPA default/web") {
 		t.Errorf("expected output to contain HPA header, got:\n%s", output)
 	}
 	if !strings.Contains(output, "Checks:") {

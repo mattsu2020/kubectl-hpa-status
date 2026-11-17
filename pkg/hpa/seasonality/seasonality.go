@@ -102,7 +102,7 @@ func Analyze(obs []Observation, opts Options) *Analysis {
 	peak := buildPeakWindow(days, start, length, buckets, o, result.Threshold, useMetric)
 	result.Peak = peak.PeakWindow
 
-	scheduleDays, narrowed := scheduleWeekdays(days, peak.matched)
+	scheduleDays, narrowed := scheduleWeekdays(days, peak.matched, peak.coveredDay)
 	if narrowed {
 		result.Cycle = CycleWeekly
 	}
@@ -444,10 +444,13 @@ func peakDayMaxima(day dayProfile, byDate map[string]dayProfile, start, length, 
 // single observation of a weekday would overfit the recording.
 //
 // The second return value reports whether narrowing actually happened.
-func scheduleWeekdays(days []dayProfile, matched []bool) ([]time.Weekday, bool) {
+func scheduleWeekdays(days []dayProfile, matched, coveredDay []bool) ([]time.Weekday, bool) {
 	type tally struct{ covered, matched int }
 	counts := map[time.Weekday]*tally{}
 	for i, day := range days {
+		if !coveredDay[i] {
+			continue
+		}
 		t, ok := counts[day.weekday]
 		if !ok {
 			t = &tally{}

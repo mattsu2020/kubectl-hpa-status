@@ -7,6 +7,7 @@ import (
 	"time"
 
 	hparender "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/render"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 )
 
 // RenderMarkdown renders all bundle sections to an io.Writer. The first
@@ -82,8 +83,11 @@ func writeBundleTOC(b *Writer) {
 
 func writeBundleStatusSummary(b *Writer, data *Data) {
 	b.Print("## HPA Status Summary\n\n")
-	if err := hparender.WriteMarkdownReport(b.w, data.StatusReport); err != nil {
+	var sb strings.Builder
+	if err := hparender.WriteMarkdownReport(&sb, data.StatusReport); err != nil {
 		b.Printf("_Error rendering status summary: %v_\n", err)
+	} else {
+		b.Write([]byte(sb.String()))
 	}
 	b.Print("\n---\n\n")
 }
@@ -146,6 +150,9 @@ func writeBundleFullAnalysis(b *Writer, data *Data) {
 	if err != nil {
 		b.Printf("Error serializing analysis: %v\n", err)
 	} else {
+		if data.Redacted {
+			analysisJSON = RedactStructuredBytes(analysisJSON)
+		}
 		b.Write(analysisJSON)
 	}
 
@@ -163,12 +170,12 @@ func writeBundleWarnings(b *Writer, data *Data) {
 	b.Print("## Collection Warnings\n\n")
 	b.Print("_Some data sources could not be collected. The sections above may be incomplete or empty as a result._\n\n")
 	for _, w := range data.Warnings {
-		b.Printf("- %s\n", w)
+		b.Printf("- %s\n", rendutil.MarkdownInline(w))
 	}
 	b.Print("\n---\n\n")
 }
 
-// mdEscape escapes the pipe character for safe use inside markdown tables.
+// mdEscape escapes markdown control sequences for safe use inside markdown tables.
 func mdEscape(s string) string {
-	return strings.ReplaceAll(s, "|", "\\|")
+	return rendutil.EscapeMarkdown(s)
 }

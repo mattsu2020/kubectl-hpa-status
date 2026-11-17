@@ -9,6 +9,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -16,6 +17,7 @@ import (
 type ScaleTargetInfo struct {
 	// Object is the original workload used to derive this view. Treat it as immutable.
 	Object          runtime.Object `json:"-" yaml:"-"`
+	UID             types.UID
 	Kind            string
 	Name            string
 	Namespace       string
@@ -48,11 +50,12 @@ func FetchScaleTargetInfo(ctx context.Context, client kubernetes.Interface, name
 		}
 		return &ScaleTargetInfo{
 			Object:          deploy,
+			UID:             deploy.UID,
 			Kind:            ref.Kind,
 			Name:            ref.Name,
 			Namespace:       namespace,
 			Selector:        deploy.Spec.Selector,
-			SelectorStr:     metav1.FormatLabelSelector(deploy.Spec.Selector),
+			SelectorStr:     formatValidLabelSelector(deploy.Spec.Selector),
 			DesiredReplicas: replicasValue(deploy.Spec.Replicas),
 			Replicas:        deploy.Status.Replicas,
 			ReadyReplicas:   deploy.Status.ReadyReplicas,
@@ -66,11 +69,12 @@ func FetchScaleTargetInfo(ctx context.Context, client kubernetes.Interface, name
 		}
 		return &ScaleTargetInfo{
 			Object:          sts,
+			UID:             sts.UID,
 			Kind:            ref.Kind,
 			Name:            ref.Name,
 			Namespace:       namespace,
 			Selector:        sts.Spec.Selector,
-			SelectorStr:     metav1.FormatLabelSelector(sts.Spec.Selector),
+			SelectorStr:     formatValidLabelSelector(sts.Spec.Selector),
 			DesiredReplicas: replicasValue(sts.Spec.Replicas),
 			Replicas:        sts.Status.Replicas,
 			ReadyReplicas:   sts.Status.ReadyReplicas,
@@ -84,11 +88,12 @@ func FetchScaleTargetInfo(ctx context.Context, client kubernetes.Interface, name
 		}
 		return &ScaleTargetInfo{
 			Object:          rs,
+			UID:             rs.UID,
 			Kind:            ref.Kind,
 			Name:            ref.Name,
 			Namespace:       namespace,
 			Selector:        rs.Spec.Selector,
-			SelectorStr:     metav1.FormatLabelSelector(rs.Spec.Selector),
+			SelectorStr:     formatValidLabelSelector(rs.Spec.Selector),
 			DesiredReplicas: replicasValue(rs.Spec.Replicas),
 			Replicas:        rs.Status.Replicas,
 			ReadyReplicas:   rs.Status.ReadyReplicas,
@@ -107,6 +112,17 @@ func FetchScaleTargetInfo(ctx context.Context, client kubernetes.Interface, name
 	default:
 		return nil, nil
 	}
+}
+
+func formatValidLabelSelector(selector *metav1.LabelSelector) string {
+	if selector == nil {
+		return "<none>"
+	}
+	sel, err := metav1.LabelSelectorAsSelector(selector)
+	if err != nil {
+		return ""
+	}
+	return sel.String()
 }
 
 func replicasValue(replicas *int32) int32 {

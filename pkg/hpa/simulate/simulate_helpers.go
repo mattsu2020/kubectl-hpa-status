@@ -169,10 +169,10 @@ func buildSimulationInterpretation(before, after *SimulationState, modified *aut
 	if before.ScalingLimited && !after.ScalingLimited {
 		lines = append(lines, "ScalingLimited condition would be resolved")
 	} else if !before.ScalingLimited && after.ScalingLimited {
-		lines = append(lines, "Warning: SimulationLimited condition would appear")
+		lines = append(lines, "Warning: ScalingLimited condition would appear")
 	}
 
-	if modified.Spec.MaxReplicas > 0 && before.DesiredReplicas >= modified.Spec.MaxReplicas {
+	if modified.Spec.MaxReplicas > 0 && after.DesiredReplicas >= modified.Spec.MaxReplicas {
 		lines = append(lines, fmt.Sprintf("desiredReplicas=%d still at or above new maxReplicas=%d; further increase may be needed", after.DesiredReplicas, modified.Spec.MaxReplicas))
 	}
 
@@ -188,19 +188,25 @@ func assessSimulationRisk(original, modified *autoscalingv2.HorizontalPodAutosca
 		risks = append(risks, fmt.Sprintf("Raising maxReplicas from %d to %d (%.1fx capacity); verify node and quota headroom", original.Spec.MaxReplicas, modified.Spec.MaxReplicas, ratio))
 	}
 
-	if modified.Spec.MinReplicas != nil && original.Spec.MinReplicas != nil {
-		if *modified.Spec.MinReplicas < *original.Spec.MinReplicas {
-			risks = append(risks, fmt.Sprintf("Lowering minReplicas from %d to %d may reduce availability during low-traffic periods", *original.Spec.MinReplicas, *modified.Spec.MinReplicas))
-		}
-		if *modified.Spec.MinReplicas > *original.Spec.MinReplicas {
-			risks = append(risks, fmt.Sprintf("Raising minReplicas from %d to %d increases baseline resource consumption", *original.Spec.MinReplicas, *modified.Spec.MinReplicas))
-		}
+	origMin := int32(1)
+	if original.Spec.MinReplicas != nil {
+		origMin = *original.Spec.MinReplicas
+	}
+	modMin := int32(1)
+	if modified.Spec.MinReplicas != nil {
+		modMin = *modified.Spec.MinReplicas
+	}
+	if modMin < origMin {
+		risks = append(risks, fmt.Sprintf("Lowering minReplicas from %d to %d may reduce availability during low-traffic periods", origMin, modMin))
+	} else if modMin > origMin {
+		risks = append(risks, fmt.Sprintf("Raising minReplicas from %d to %d increases baseline resource consumption", origMin, modMin))
 	}
 
 	if modified.Spec.Behavior != nil && modified.Spec.Behavior.ScaleDown != nil &&
 		modified.Spec.Behavior.ScaleDown.StabilizationWindowSeconds != nil {
 		window := *modified.Spec.Behavior.ScaleDown.StabilizationWindowSeconds
-		if window < 60 {
+		origWindow := conditions.EffectiveScaleDownStabilizationWindow(original)
+		if window < 60 && window != origWindow {
 			risks = append(risks, fmt.Sprintf("Reducing scaleDown stabilization to %ds may cause thrashing; monitor for flapping", window))
 		}
 	}

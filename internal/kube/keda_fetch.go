@@ -14,7 +14,9 @@ import (
 
 // FetchScaledObject retrieves a KEDA ScaledObject using the dynamic client.
 func FetchScaledObject(ctx context.Context, client dynamic.Interface, namespace, name string) (*unstructured.Unstructured, error) {
-	return client.Resource(scaledObjectGVR).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
+	return retryTransient(ctx, func() (*unstructured.Unstructured, error) {
+		return client.Resource(scaledObjectGVR).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
+	})
 }
 
 // NewDynamicClient creates a dynamic client from the same Options used for the typed client.
@@ -42,10 +44,10 @@ func NewDynamicClient(opts Options) (dynamic.Interface, string, error) {
 func FindScaledObjectForHPA(ctx context.Context, dynClient dynamic.Interface, hpa *autoscalingv2.HorizontalPodAutoscaler) (*unstructured.Unstructured, error) {
 	if name := extractScaledObjectName(hpa); name != "" {
 		obj, err := FetchScaledObject(ctx, dynClient, hpa.Namespace, name)
-		if err == nil {
+		if err == nil && scaledObjectMatchesTargetOrUnset(obj, hpa) {
 			return obj, nil
 		}
-		if !apierrors.IsNotFound(err) {
+		if err != nil && !apierrors.IsNotFound(err) {
 			return nil, err
 		}
 	}
@@ -65,13 +67,13 @@ func FindScaledObjectForHPA(ctx context.Context, dynClient dynamic.Interface, hp
 }
 
 // ResolveScaledObjectForHPA applies the canonical single and batch matching
-// rule: prefer the explicitly named object, otherwise require one unique
-// scaleTargetRef match. The boolean reports an ambiguous target match.
+// rule: prefer the explicitly named object (when its scaleTargetRef does not
+// conflict with the HPA), otherwise require one unique scaleTargetRef match.
 func ResolveScaledObjectForHPA(hpa *autoscalingv2.HorizontalPodAutoscaler, items []unstructured.Unstructured) (*unstructured.Unstructured, bool) {
 	preferred := DetectKEDA(hpa).Name
 	if preferred != "" {
 		for i := range items {
-			if items[i].GetName() == preferred {
+			if items[i].GetName() == preferred && scaledObjectMatchesTargetOrUnset(&items[i], hpa) {
 				return &items[i], false
 			}
 		}
@@ -87,6 +89,23 @@ func ResolveScaledObjectForHPA(hpa *autoscalingv2.HorizontalPodAutoscaler, items
 		return candidates[0], false
 	}
 	return nil, len(candidates) > 1
+}
+
+func scaledObjectMatchesTargetOrUnset(u *unstructured.Unstructured, hpa *autoscalingv2.HorizontalPodAutoscaler) bool {
+	if u == nil || hpa == nil {
+		return false
+	}
+	ref := extractScaleTargetRef(u)
+	if ref == nil || (ref.Kind == "" && ref.Name == "") {
+		return true
+	}
+	if ref.Name != "" && ref.Name != hpa.Spec.ScaleTargetRef.Name {
+		return false
+	}
+	if ref.Kind != "" && ref.Kind != hpa.Spec.ScaleTargetRef.Kind {
+		return false
+	}
+	return true
 }
 
 // FetchScaledObjects lists all KEDA ScaledObjects in a namespace using the

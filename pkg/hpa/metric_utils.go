@@ -142,22 +142,30 @@ func metricTargetUtilization(hpa *autoscalingv2.HorizontalPodAutoscaler, name st
 	return FindResourceTargetSpec(hpa, name).AverageUtilization
 }
 
-// MetricOutsideTarget finds a resource metric whose ratio differs from 1.0.
+// MetricOutsideTarget finds a metric whose ratio differs from 1.0 across any
+// supported metric source type, preferring the metric with the highest desired
+// replica impact.
 func MetricOutsideTarget(hpa *autoscalingv2.HorizontalPodAutoscaler) (MetricImpactGuess, bool) {
 	if hpa == nil {
 		return MetricImpactGuess{}, false
 	}
+	var best MetricImpactGuess
+	var bestDesired int32
+	found := false
 	for _, metric := range hpa.Status.CurrentMetrics {
-		if metric.Type != autoscalingv2.ResourceMetricSourceType || metric.Resource == nil {
+		name, ratio := metricImpactRatio(hpa, metric)
+		if name == "" || ratio == nil || *ratio == 1 {
 			continue
 		}
-		ratio := utilizationRatio(metric.Resource.Current.AverageUtilization, metricTargetUtilization(hpa, string(metric.Resource.Name)))
-		if ratio != nil && *ratio != 1 {
-			return MetricImpactGuess{Name: string(metric.Resource.Name), Ratio: *ratio}, true
+		desired := estimatedDesiredForRatio(hpa, *ratio)
+		if !found || desired > bestDesired {
+			bestDesired = desired
+			found = true
+			best = MetricImpactGuess{Name: name, Ratio: *ratio}
 		}
 	}
 
-	return MetricImpactGuess{}, false
+	return best, found
 }
 
 // MostInfluentialMetric estimates the metric that would request the largest

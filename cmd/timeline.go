@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -203,11 +202,13 @@ func runTimelineFromRecord(out io.Writer, opts *options, name, path string) erro
 }
 
 func isKnownOutputFormat(format string) bool {
-	switch format {
-	case "", "table", "wide", "ja", "json", "yaml", "markdown", "md", "html", "incident", "prometheus":
+	normalized := normalizeOutputFormat(format)
+	switch normalized {
+	case "", "text", "table", "wide", "ja", "json", "jsonl", "yaml", "markdown", "md", "html", "incident", "prometheus", "gotemplate", "go-template", "template", "junit", "sarif", "github":
 		return true
 	default:
-		return strings.HasPrefix(format, "jsonpath") || strings.HasPrefix(format, "template") || strings.HasPrefix(format, "go-template")
+		_, _, ok := render.ParsePrefixedFormat(format)
+		return ok
 	}
 }
 

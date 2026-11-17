@@ -79,7 +79,7 @@ func WriteRolloutReportText(w io.Writer, report *RolloutReport, theme style.Them
 	}
 
 	var out []byte
-	out = fmt.Appendf(out, "Rollout-aware HPA checks for HPA %s/%s\n", report.Name, report.Namespace)
+	out = fmt.Appendf(out, "Rollout-aware HPA checks for HPA %s/%s\n", report.Namespace, report.Name)
 	out = fmt.Appendf(out, "Target: %s\n", report.Target)
 	out = fmt.Appendf(out, "Rollout in progress: %s\n", rolloutBoolStr(report.RolloutInProgress))
 	if report.RolloutInProgress && report.NewPodsReady != "" {

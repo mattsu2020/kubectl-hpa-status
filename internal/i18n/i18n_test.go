@@ -50,6 +50,14 @@ func TestGetJapanese(t *testing.T) {
 	}
 }
 
+func TestLocaleNormalization(t *testing.T) {
+	for _, tag := range []string{"ja_JP.UTF-8", "JA-jp", " ja "} {
+		if got := Get(tag, "label_target"); got != "対象" {
+			t.Errorf("Get(%q, label_target) = %q, want 対象", tag, got)
+		}
+	}
+}
+
 func TestGetUnknownKey(t *testing.T) {
 	got := Get("en", "nonexistent_key")
 	if got != "nonexistent_key" {

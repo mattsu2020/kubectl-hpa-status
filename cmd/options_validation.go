@@ -232,7 +232,7 @@ func validateOutputOption(cmd *cobra.Command, opts *options) error {
 		return err
 	}
 	switch format {
-	case "", "table", "wide", "ja", "json", "jsonl", "yaml", "markdown", "md",
+	case "", "text", "table", "wide", "ja", "json", "jsonl", "yaml", "markdown", "md",
 		"html", "incident", "prometheus", "junit", "sarif", "github":
 		return nil
 	case "jsonpath", "go-template", "template":

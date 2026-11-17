@@ -23,12 +23,13 @@ func EnrichVPA(ctx context.Context, ec *Context, hpa *autoscalingv2.HorizontalPo
 		entry.Reason = "dynamic client is unavailable"
 		return entry
 	}
-	vpaInfo, err := FindConflictingVPA(ctx, ec.dynClient, report.Analysis.Meta.Namespace, hpa)
+	vpas, err := ec.fetchNamespaceVPAs(ctx, report.Analysis.Meta.Namespace)
 	if err != nil {
 		entry.State = StateError
 		entry.Reason = err.Error()
 		return entry
 	}
+	vpaInfo := findConflictingVPAInInfos(hpa, vpas)
 	if vpaInfo == nil {
 		entry.Reason = "no conflicting VPA found"
 		return entry
@@ -39,6 +40,15 @@ func EnrichVPA(ctx context.Context, ec *Context, hpa *autoscalingv2.HorizontalPo
 	report.Analysis.Actions.Interpretation = append(report.Analysis.Actions.Interpretation, hpavpa.Analyze(hpa, analysisVPA)...)
 	entry.State = StateActive
 	return entry
+}
+
+func findConflictingVPAInInfos(hpa *autoscalingv2.HorizontalPodAutoscaler, vpas []kube.VPAInfo) *kube.VPAInfo {
+	for i := range vpas {
+		if hpavpa.ConflictsWithHPA(hpa, kubeconv.VPAInfo(&vpas[i])) {
+			return &vpas[i]
+		}
+	}
+	return nil
 }
 
 // BatchVPA performs batched VPA enrichment for multiple HPAs.
@@ -59,13 +69,13 @@ func BatchVPA(ctx context.Context, ec *Context, hpas []autoscalingv2.HorizontalP
 	warnings := map[string][]string{}
 	allVPAs := map[string][]kube.VPAInfo{}
 	for ns := range namespaces {
-		vpaList, err := kube.FetchVPAs(ctx, ec.dynClient, ns)
+		vpaInfos, err := ec.fetchNamespaceVPAs(ctx, ns)
 		if err != nil {
 			warnings[ns] = append(warnings[ns], fmt.Sprintf("VPA list failed: %v", err))
 			continue
 		}
-		for i := range vpaList {
-			info := kube.ExtractVPAInfo(&vpaList[i])
+		for i := range vpaInfos {
+			info := vpaInfos[i]
 			key := ns + "/" + info.TargetKind + "/" + info.TargetName
 			allVPAs[key] = append(allVPAs[key], info)
 		}
