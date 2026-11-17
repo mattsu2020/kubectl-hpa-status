@@ -21,7 +21,7 @@
 
 </details>
 
-![kubectl-hpa-status demo](images/demo.png)
+![kubectl-hpa-status demo](images/demo.gif)
 
 既存の Kubernetes API シグナルを活用し、詳細なスケーリング分析とともに HorizontalPodAutoscaler (HPA) の状態を調査するための kubectl プラグインです。
 
