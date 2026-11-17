@@ -310,37 +310,40 @@ func (m Model) cloneForMessage(msg tea.Msg) Model {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg, tickMsg:
 		return m
-	case simResultMsg:
-		if m.simState != nil {
-			m.simState = m.simState.clone()
-		}
-		return m
-	case applyResultMsg, dryRunResultMsg:
-		if m.fixState != nil {
-			m.fixState = m.fixState.clone()
-		}
-		return m
-	case replayLoadedMsg:
-		if m.replayState != nil {
-			m.replayState = m.replayState.clone()
-		}
-		return m
-	case batchAuditMsg:
-		if m.batchAuditState != nil {
-			m.batchAuditState = m.batchAuditState.clone()
-		}
-		return m
-	case historyLoadedMsg:
-		if m.historyState != nil {
-			m.historyState = m.historyState.clone()
-		}
-		return m
+	case simResultMsg, applyResultMsg, dryRunResultMsg, replayLoadedMsg, batchAuditMsg, historyLoadedMsg:
+		return m.cloneAsyncState(msg)
 	case tea.KeyMsg:
 		if !m.filtering && (key.Matches(msg, m.keys.Up) || key.Matches(msg, m.keys.Down)) {
 			return m.cloneActiveView()
 		}
 	}
 	return m.clone()
+}
+
+func (m Model) cloneAsyncState(msg tea.Msg) Model {
+	switch msg.(type) {
+	case simResultMsg:
+		if m.simState != nil {
+			m.simState = m.simState.clone()
+		}
+	case applyResultMsg, dryRunResultMsg:
+		if m.fixState != nil {
+			m.fixState = m.fixState.clone()
+		}
+	case replayLoadedMsg:
+		if m.replayState != nil {
+			m.replayState = m.replayState.clone()
+		}
+	case batchAuditMsg:
+		if m.batchAuditState != nil {
+			m.batchAuditState = m.batchAuditState.clone()
+		}
+	case historyLoadedMsg:
+		if m.historyState != nil {
+			m.historyState = m.historyState.clone()
+		}
+	}
+	return m
 }
 
 // cloneActiveView copies only state modified by cursor movement.

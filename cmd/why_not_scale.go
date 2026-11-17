@@ -50,9 +50,7 @@ func runWhyNotScale(ctx context.Context, out io.Writer, opts *options, names []s
 	if err != nil {
 		return writeErrorIfStructured(out, local.Output, err)
 	}
-	return renderPerHPA(out, &local, outputs, func(w io.Writer, report whyNotScaleReport) error {
-		return writeWhyNotScaleText(w, report)
-	})
+	return renderPerHPA(out, &local, outputs, writeWhyNotScaleText)
 }
 
 // collectWhyNotScaleObservations gathers human-readable signals (summary,

@@ -266,7 +266,7 @@ func TestE2E_MaxReplicasCap(t *testing.T) {
 		pollCancel()
 		if err == nil {
 			lastRepl = got.Status.DesiredReplicas
-			if got.Status.DesiredReplicas >= maxRepl {
+			if got.Status.DesiredReplicas >= maxRepl && (got.Status.CurrentReplicas >= maxRepl || hasConditionTrue(got.Status.Conditions, autoscalingv2.ScalingLimited)) {
 				reached = true
 				break
 			}
@@ -310,6 +310,15 @@ func TestE2E_MaxReplicasCap(t *testing.T) {
 func conditionPresent(conds []hpaanalysis.Condition, wantType string) bool {
 	for _, c := range conds {
 		if c.Type == wantType {
+			return true
+		}
+	}
+	return false
+}
+
+func hasConditionTrue(conds []autoscalingv2.HorizontalPodAutoscalerCondition, want autoscalingv2.HorizontalPodAutoscalerConditionType) bool {
+	for _, c := range conds {
+		if c.Type == want && c.Status == corev1.ConditionTrue {
 			return true
 		}
 	}

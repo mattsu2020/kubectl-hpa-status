@@ -46,7 +46,7 @@ func TestLoadTrace_SuccessWithMetricsAndConditions(t *testing.T) {
 				return jsonResponse(http.StatusOK, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{},"values":[[1777629600,"45.5"],[1777629660,"85.0"],[1777629720,"NaN"]]}]}}`), nil
 			default:
 				t.Fatalf("unexpected PromQL query: %s", q)
-				return nil, nil
+				return nil, context.Canceled
 			}
 		}),
 	}

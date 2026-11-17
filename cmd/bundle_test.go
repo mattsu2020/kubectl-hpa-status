@@ -552,7 +552,7 @@ func TestBundleRedactsSelectorsInAllOutputs(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer archive.Close()
+			defer func() { _ = archive.Close() }()
 			for _, entry := range archive.File {
 				r, err := entry.Open()
 				if err != nil {

@@ -32,7 +32,7 @@ func validateOutputPath(path string) error {
 func inspectOutputPath(path string) (os.FileInfo, error) {
 	fi, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
+		return nil, nil //nolint:nilnil // nil FileInfo with nil error denotes a not-yet-existing path
 	}
 	if err != nil {
 		return nil, fmt.Errorf("inspect output path: %w", err)

@@ -152,11 +152,6 @@ func writeSnapshotZip(data *snapshotData, outputPath string) error {
 	return bundle.WriteEntries(outputPath, entries, false)
 }
 
-// These wrappers serve standalone collectors; snapshot passes one shared observation.
-func fetchSnapshotTarget(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) []byte {
-	return snapshotTargetYAML(ctx, observation.New(client.Interface, hpa))
-}
-
 func snapshotTargetYAML(ctx context.Context, snapshot *observation.Snapshot) []byte {
 	target := snapshot.ScaleTarget(ctx)
 	if target.Err != nil {
@@ -170,10 +165,6 @@ func snapshotTargetYAML(ctx context.Context, snapshot *observation.Snapshot) []b
 		return []byte(fmt.Sprintf("# Error serializing scale target: %v\n", err))
 	}
 	return content
-}
-
-func fetchSnapshotReplicaSets(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) []byte {
-	return snapshotObservationJSON("ReplicaSets", observation.New(client.Interface, hpa).ReplicaSets(ctx))
 }
 
 func snapshotObservationJSON[T any](name string, value observation.Value[T]) []byte {

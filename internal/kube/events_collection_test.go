@@ -83,7 +83,7 @@ func TestFetchRecentEventsForIdentitiesFiltersAndLimitsAcrossPages(t *testing.T)
 	}
 	client := fake.NewClientset()
 	calls := 0
-	client.PrependReactor("list", "events", func(action ktesting.Action) (bool, runtime.Object, error) {
+	client.PrependReactor("list", "events", func(_ ktesting.Action) (bool, runtime.Object, error) {
 		calls++
 		if calls == 1 {
 			return true, &corev1.EventList{Items: []corev1.Event{makeEvent("old", "Pod", "current", -time.Hour), makeEvent("wrong-kind", "Deployment", "current", time.Hour)}, ListMeta: metav1.ListMeta{Continue: "next"}}, nil

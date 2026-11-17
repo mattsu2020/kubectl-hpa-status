@@ -47,6 +47,10 @@ func FetchScaleTargetResources(ctx context.Context, client kubernetes.Interface,
 	return FetchScaleTargetResourcesForRef(ctx, client, namespace, autoscalingv2.CrossVersionObjectReference{Kind: kind, Name: name})
 }
 
+// FetchScaleTargetResourcesForRef resolves the scale target by full object
+// reference and extracts its Pod template resource requests.
+//
+//nolint:nilnil // nil result with no error is intentional for unsupported kinds
 func FetchScaleTargetResourcesForRef(ctx context.Context, client kubernetes.Interface, namespace string, ref autoscalingv2.CrossVersionObjectReference) (*ResourceRequests, error) {
 	info, err := FetchScaleTargetInfo(ctx, client, namespace, ref)
 	if err != nil {

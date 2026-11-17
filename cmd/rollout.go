@@ -80,13 +80,6 @@ func runRollout(ctx context.Context, out io.Writer, opts *options, names []strin
 	})
 }
 
-// buildRolloutReport assembles RolloutInput and runs the rollout analysis.
-// Warnings discovered while gathering live state are appended to analysis.Warnings
-// so they surface in the report rather than being silently dropped.
-func buildRolloutReport(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, analysis *hpaanalysis.Analysis) *hpaanalysis.RolloutReport {
-	return buildRolloutReportWithObservation(ctx, client, hpa, analysis, observation.New(client.Interface, hpa))
-}
-
 func buildRolloutReportWithObservation(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler, analysis *hpaanalysis.Analysis, obs *observation.Snapshot) *hpaanalysis.RolloutReport {
 	input := assembleRolloutInput(ctx, client, hpa, analysis, obs)
 	return hpaanalysis.AnalyzeRollout(input)

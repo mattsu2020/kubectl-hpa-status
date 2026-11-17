@@ -192,16 +192,16 @@ func querySingleSeries(ctx context.Context, cfg QueryConfig, promQL string) (map
 		return nil, fmt.Errorf("prometheus error (%s): %s", decoded.ErrorType, decoded.Error)
 	}
 	if len(decoded.Data.Result) == 0 {
-		return nil, nil
+		return nil, nil //nolint:nilnil // empty series result is a valid non-error signal
 	}
 	if len(decoded.Data.Result) > 1 {
 		return nil, fmt.Errorf("%w: query %q matched %d series; narrow label filters", ErrAmbiguousSeries, promQL, len(decoded.Data.Result))
 	}
 
-	return parseMatrixSamples(decoded.Data.Result[0].Values)
+	return parseMatrixSamples(decoded.Data.Result[0].Values), nil
 }
 
-func parseMatrixSamples(rawValues [][]any) (map[int64]float64, error) {
+func parseMatrixSamples(rawValues [][]any) map[int64]float64 {
 	samples := make(map[int64]float64, len(rawValues))
 	for _, pair := range rawValues {
 		if len(pair) != 2 {
@@ -221,7 +221,7 @@ func parseMatrixSamples(rawValues [][]any) (map[int64]float64, error) {
 		}
 		samples[int64(math.Round(tsFloat))] = val
 	}
-	return samples, nil
+	return samples
 }
 
 func buildTimelineTrace(

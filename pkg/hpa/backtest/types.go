@@ -14,11 +14,12 @@ const (
 	// DefaultTolerance is the Kubernetes HPA controller's default 10% deadband.
 	DefaultTolerance = 0.10
 
-	// Confidence levels indicate how much of the trace carried typed metric
-	// readings versus falling back to recorded desiredReplicas.
-	ConfidenceHigh   = "high"
+	// ConfidenceHigh indicates most trace snapshots carried typed metric readings.
+	ConfidenceHigh = "high"
+	// ConfidenceMedium indicates partial typed metric readings.
 	ConfidenceMedium = "medium"
-	ConfidenceLow    = "low"
+	// ConfidenceLow indicates fallback to recorded desiredReplicas.
+	ConfidenceLow = "low"
 )
 
 // PrescaleWindow raises the effective minReplicas during a recurring time-of-day

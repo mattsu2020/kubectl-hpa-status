@@ -74,18 +74,6 @@ func formatCapacityNodeHints(observations []kube.NodeHintObservation) []string {
 	return hints
 }
 
-// capacitySelectorWithError resolves the label selector for the HPA scale
-// target, reporting resolution failures so callers can surface them instead of
-// silently collecting without pod-derived data.
-func capacitySelectorWithError(ctx context.Context, client *kube.Client, hpa *autoscalingv2.HorizontalPodAutoscaler) (string, error) {
-	selector, err := scaleTargetSelector(ctx, client, hpa.Namespace, hpa.Spec.ScaleTargetRef)
-	if err != nil || selector == nil {
-		return "", err
-	}
-
-	return metav1.FormatLabelSelector(selector), nil
-}
-
 // scaleTargetSelector resolves the label selector of the HPA's scale target.
 // Returns (nil, nil) when the scale target kind is not one we recognise;
 // callers must check for a nil selector before using it.

@@ -136,12 +136,6 @@ func CompareMetricToTarget(utilization, target *int32) string {
 	}
 }
 
-// metricTargetUtilization returns the numeric utilization target of the named
-// resource metric, or nil when the spec carries no utilization target.
-func metricTargetUtilization(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) *int32 {
-	return FindResourceTargetSpec(hpa, name).AverageUtilization
-}
-
 // MetricOutsideTarget finds a metric whose ratio differs from 1.0 across any
 // supported metric source type, preferring the metric with the highest desired
 // replica impact.
