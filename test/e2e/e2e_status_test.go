@@ -264,7 +264,7 @@ func TestE2E_JSONOutput(t *testing.T) {
 	rootCmd := cmd.NewRootCommand()
 	rootCmd.SetOut(buf)
 	rootCmd.SetErr(buf)
-	rootCmd.SetArgs([]string{"status", "test-hpa", "-n", nsName, "-o", "json", "--output-schema=v2", "--kubeconfig", kubeconfig})
+	rootCmd.SetArgs([]string{"status", "test-hpa", "-n", nsName, "-o", "json", "--kubeconfig", kubeconfig})
 
 	if err := rootCmd.Execute(); err != nil {
 		t.Fatalf("failed to execute status -o json command: %v. Output:\n%s", err, buf.String())
@@ -657,7 +657,7 @@ func TestE2E_JSONTypedDecode(t *testing.T) {
 	rootCmd := cmd.NewRootCommand()
 	rootCmd.SetOut(buf)
 	rootCmd.SetErr(buf)
-	rootCmd.SetArgs([]string{"status", "typed-hpa", "-n", nsName, "-o", "json", "--output-schema=v2", "--explain", "--kubeconfig", kubeconfig})
+	rootCmd.SetArgs([]string{"status", "typed-hpa", "-n", nsName, "-o", "json", "--explain", "--kubeconfig", kubeconfig})
 
 	if err := rootCmd.Execute(); err != nil {
 		var exitErr *cmd.ExitCodeError

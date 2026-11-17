@@ -65,7 +65,7 @@ func TestE2E_JSONStructuredOutput(t *testing.T) {
 	rootCmd := cmd.NewRootCommand()
 	rootCmd.SetOut(buf)
 	rootCmd.SetErr(buf)
-	rootCmd.SetArgs([]string{"status", "json-struct-hpa", "-n", nsName, "-o", "json", "--output-schema=v2", "--explain", "--kubeconfig", kubeconfig})
+	rootCmd.SetArgs([]string{"status", "json-struct-hpa", "-n", nsName, "-o", "json", "--explain", "--kubeconfig", kubeconfig})
 
 	if err := rootCmd.Execute(); err != nil {
 		var exitErr *cmd.ExitCodeError
