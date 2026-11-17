@@ -246,23 +246,42 @@ jobs:
       matrix:
         kubernetes:
           - "1.26"
+          - "1.27"
           - "1.28"
+          - "1.29"
           - "1.30"
+          - "1.31"
+          - "1.32"
+          - "1.33"
+          - "1.34"
           - "1.35"
           - "1.36"
+          - "1.37"
         include:
           - kubernetes: "1.26"
             kind-node-image: kindest/node:v1.26.15
+          - kubernetes: "1.27"
+            kind-node-image: kindest/node:v1.27.16
           - kubernetes: "1.28"
             kind-node-image: kindest/node:v1.28.15
+          - kubernetes: "1.29"
+            kind-node-image: kindest/node:v1.29.14
           - kubernetes: "1.30"
             kind-node-image: kindest/node:v1.30.13
+          - kubernetes: "1.31"
+            kind-node-image: kindest/node:v1.31.14
+          - kubernetes: "1.32"
+            kind-node-image: kindest/node:v1.32.11
+          - kubernetes: "1.33"
+            kind-node-image: kindest/node:v1.33.12
+          - kubernetes: "1.34"
+            kind-node-image: kindest/node:v1.34.11
           - kubernetes: "1.35"
-            kind-node-image: kindest/node:v1.35.0
-          # kindest/node v1.36 images shipped mid-2026 (v1.36.1 is the
-          # current kind default); the earlier v1.36.0-only gap is resolved.
+            kind-node-image: kindest/node:v1.35.8
           - kubernetes: "1.36"
-            kind-node-image: kindest/node:v1.36.1
+            kind-node-image: kindest/node:v1.36.4
+          - kubernetes: "1.37"
+            kind-node-image: kindest/node:v1.37.0
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
