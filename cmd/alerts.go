@@ -18,9 +18,21 @@ func newAlertsCommand() *cobra.Command {
 	}
 	generate := &cobra.Command{
 		Use:   "generate",
-		Short: "Generate Prometheus or Datadog alert rules",
+		Short: "Generate Prometheus or Datadog alert rules, or a Grafana dashboard",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			dashboard, err := flagString(cmd, "dashboard")
+			if err != nil {
+				return err
+			}
+			if dashboard != "" {
+				doc, err := alerts.Dashboard(dashboard)
+				if err != nil {
+					return err
+				}
+				_, err = fmt.Fprint(cmd.OutOrStdout(), doc)
+				return err
+			}
 			format, err := flagString(cmd, "format")
 			if err != nil {
 				return err
@@ -34,6 +46,7 @@ func newAlertsCommand() *cobra.Command {
 		},
 	}
 	generate.Flags().String("format", string(alerts.FormatPrometheus), "alert rule format: prometheus or datadog")
+	generate.Flags().String("dashboard", "", "dashboard template format: grafana")
 	cmd.AddCommand(generate)
 	return cmd
 }
