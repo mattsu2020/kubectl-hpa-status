@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"sort"
@@ -28,16 +29,22 @@ type analyzeRecordOptions struct {
 	bucketMinutes int
 	minDays       int
 	signal        string
+	hpaName       string
+	prom          prometheusImportFlags
 }
 
 func newAnalyzeRecordCommand(opts *options) *cobra.Command {
 	params := analyzeRecordOptions{}
 	cmd := &cobra.Command{
-		Use:   "analyze-record FILE",
-		Short: "Analyze durable record JSONL for flapping, churn, and recurring demand patterns",
-		Args:  cobra.ExactArgs(1),
+		Use:   "analyze-record [FILE]",
+		Short: "Analyze durable record JSONL or Prometheus history for flapping, churn, and recurring demand patterns",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runAnalyzeRecord(cmd.OutOrStdout(), opts, args[0], params)
+			path := ""
+			if len(args) > 0 {
+				path = args[0]
+			}
+			return runAnalyzeRecordWithContext(cmd.Context(), cmd.OutOrStdout(), opts, path, params)
 		},
 	}
 	cmd.Flags().StringVar(&params.detect, "detect", detectFlapping,
@@ -52,6 +59,9 @@ func newAnalyzeRecordCommand(opts *options) *cobra.Command {
 		"minimum distinct days required to claim daily periodicity (default 2)")
 	cmd.Flags().StringVar(&params.signal, "signal", "auto",
 		"demand signal for seasonality detection: auto, metric, replicas (default auto)")
+	cmd.Flags().StringVar(&params.hpaName, "name", "",
+		"HPA name when importing history with --from-prometheus")
+	addPrometheusImportFlags(cmd, &params.prom, true)
 	return cmd
 }
 
@@ -62,19 +72,45 @@ const (
 )
 
 func runAnalyzeRecord(out io.Writer, opts *options, path string, params analyzeRecordOptions) error {
+	return runAnalyzeRecordWithContext(context.Background(), out, opts, path, params)
+}
+
+func runAnalyzeRecordWithContext(ctx context.Context, out io.Writer, opts *options, path string, params analyzeRecordOptions) error {
 	switch params.detect {
 	case "", detectFlapping:
-		return runAnalyzeRecordFlapping(out, opts, path)
+		return runAnalyzeRecordFlapping(ctx, out, opts, path, params)
 	case detectSeasonality:
-		return runAnalyzeRecordSeasonality(out, opts, path, params)
+		return runAnalyzeRecordSeasonality(ctx, out, opts, path, params)
 	default:
 		return fmt.Errorf("unsupported detector %q (use %s or %s)",
 			params.detect, detectFlapping, detectSeasonality)
 	}
 }
 
-func runAnalyzeRecordFlapping(out io.Writer, opts *options, path string) error {
-	traces, err := loadAllRecordedTraces(path)
+func loadAnalyzeTraces(ctx context.Context, opts *options, path string, params analyzeRecordOptions) (map[string]hpaanalysis.TimelineTrace, error) {
+	if params.prom.requested() {
+		if path != "" {
+			return nil, fmt.Errorf("record FILE argument and --from-prometheus cannot be used together")
+		}
+		name := strings.TrimSpace(params.hpaName)
+		if name == "" {
+			return nil, fmt.Errorf("--name is required when using --from-prometheus")
+		}
+		imported, err := loadTraceFromPrometheus(ctx, opts, name, params.prom.Since, params.prom)
+		if err != nil {
+			return nil, err
+		}
+		key := imported.Trace.Namespace + "/" + imported.Trace.HPAName
+		return map[string]hpaanalysis.TimelineTrace{key: imported.Trace}, nil
+	}
+	if path == "" {
+		return nil, fmt.Errorf("record FILE argument or --from-prometheus is required")
+	}
+	return loadAllRecordedTraces(path)
+}
+
+func runAnalyzeRecordFlapping(ctx context.Context, out io.Writer, opts *options, path string, params analyzeRecordOptions) error {
+	traces, err := loadAnalyzeTraces(ctx, opts, path, params)
 	if err != nil {
 		return err
 	}

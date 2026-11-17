@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"sort"
@@ -23,13 +24,13 @@ type recordSeasonalityItem struct {
 	Analysis  *seasonality.Analysis `json:"analysis" yaml:"analysis"`
 }
 
-func runAnalyzeRecordSeasonality(out io.Writer, opts *options, path string, params analyzeRecordOptions) error {
+func runAnalyzeRecordSeasonality(ctx context.Context, out io.Writer, opts *options, path string, params analyzeRecordOptions) error {
 	sopts, err := seasonalityOptions(params)
 	if err != nil {
 		return err
 	}
 
-	traces, err := loadAllRecordedTraces(path)
+	traces, err := loadAnalyzeTraces(ctx, opts, path, params)
 	if err != nil {
 		return err
 	}
