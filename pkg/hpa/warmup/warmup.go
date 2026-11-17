@@ -11,8 +11,6 @@ import (
 	"math"
 	"sort"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/confidence"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/model"
 )
@@ -89,41 +87,18 @@ type PodDetail struct {
 // The cmd layer assembles this from multiple kube fetchers, keeping the core
 // analysis in pkg/hpa free of Kubernetes API dependencies.
 type Input struct {
-	// Namespace is the Kubernetes namespace.
-	//
-	// Deprecated: the analyzer no longer reads this field; per-namespace
-	// context comes from the report envelope. It will be removed in the next
-	// major release.
-	Namespace string
 	// DesiredReplicas is the HPA desired replica count.
 	DesiredReplicas int32
 	// CurrentReplicas is the HPA current replica count.
 	CurrentReplicas int32
 	// MinReplicas is the HPA minimum replica count.
 	MinReplicas int32
-	// MaxReplicas is the HPA maximum replica count.
-	//
-	// Deprecated: the analyzer no longer reads this field; replica pressure
-	// is derived from Desired/CurrentReplicas. It will be removed in the
-	// next major release.
-	MaxReplicas int32
 	// ScalingActive indicates whether the HPA ScalingActive condition is True.
 	ScalingActive bool
 	// ScalingLimited indicates whether the HPA is capped by min/max.
 	ScalingLimited bool
-	// TargetReadyReplicas is the ready replica count from the scale target.
-	//
-	// Deprecated: the analyzer no longer reads this field; readiness comes
-	// from ReadyPods and PodDetails. It will be removed in the next major
-	// release.
-	TargetReadyReplicas int32
 	// TargetAvailableReplicas is the available replica count from the scale target.
 	TargetAvailableReplicas int32
-	// TargetDesiredReplicas is the desired replica count from the scale target.
-	//
-	// Deprecated: the analyzer no longer reads this field; use DesiredReplicas.
-	// It will be removed in the next major release.
-	TargetDesiredReplicas int32
 	// TotalPods is the total number of pods for the scale target.
 	TotalPods int32
 	// ReadyPods is the count of pods in Running/Ready state.
@@ -140,12 +115,6 @@ type Input struct {
 	ReadinessProbeMaxDelaySeconds int32
 	// StartupProbeMaxDelaySeconds is the maximum startup probe delay.
 	StartupProbeMaxDelaySeconds int32
-	// Now is the current time.
-	//
-	// Deprecated: the analyzer no longer reads this field; pod ages arrive
-	// precomputed as PodDetail.AgeSeconds. It will be removed in the next
-	// major release.
-	Now metav1.Time
 }
 
 // EventInfo holds a pod-level event relevant to warmup analysis.

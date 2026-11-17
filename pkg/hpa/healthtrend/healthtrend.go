@@ -126,17 +126,6 @@ const (
 	flappingHighTransitionRatio     = 0.5
 )
 
-// ComputeHealthVariance returns the population variance of health scores.
-//
-// Deprecated: no production caller reads this value; it survives only for
-// external importers and will be removed in the next major release.
-func ComputeHealthVariance(scores []int) float64 {
-	if len(scores) == 0 {
-		return 0
-	}
-	return varianceValue(scores, meanValue(scores))
-}
-
 // computeDegradationRate computes a linear regression slope of health scores
 // over time. A negative value indicates degradation. Returns score change
 // per hour.

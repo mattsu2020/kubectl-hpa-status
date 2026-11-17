@@ -99,7 +99,7 @@ func TestStatusOutputSchemaV2StructuredFormats(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			hpa := testutil.BuildHPA("default", "web", testutil.WithReplicas(3, 3))
 			output := executeOutputSchemaV2CLI(t, testutil.NewFakeClient(hpa),
-				"status", "web", "--no-enrich", "--output-schema=v2", "--output="+tc.format)
+				"status", "web", "--no-enrich", "--output="+tc.format)
 			assertV2SingleOutputShape(t, tc.decode(t, output))
 		})
 	}
@@ -117,7 +117,6 @@ func TestWatchOutputSchemaV2UsesProjectedValueForEverySupportedFormat(t *testing
 
 	t.Run("json", func(t *testing.T) {
 		opts := defaultRootOptions()
-		opts.OutputSchema = "v2"
 		opts.Output = "json"
 		var output bytes.Buffer
 		if err := writeWatchReport(&output, &opts, report, nil); err != nil {
@@ -128,7 +127,6 @@ func TestWatchOutputSchemaV2UsesProjectedValueForEverySupportedFormat(t *testing
 
 	t.Run("yaml", func(t *testing.T) {
 		opts := defaultRootOptions()
-		opts.OutputSchema = "v2"
 		opts.Output = "yaml"
 		var output bytes.Buffer
 		if err := writeWatchReport(&output, &opts, report, nil); err != nil {
@@ -143,7 +141,6 @@ func TestWatchOutputSchemaV2UsesProjectedValueForEverySupportedFormat(t *testing
 
 	t.Run("jsonl", func(t *testing.T) {
 		opts := defaultRootOptions()
-		opts.OutputSchema = "v2"
 		opts.Output = "jsonl"
 		var output bytes.Buffer
 		if err := writeWatchReport(&output, &opts, report, nil); err != nil {
@@ -157,7 +154,6 @@ func TestWatchOutputSchemaV2UsesProjectedValueForEverySupportedFormat(t *testing
 
 	t.Run("jsonpath", func(t *testing.T) {
 		opts := defaultRootOptions()
-		opts.OutputSchema = "v2"
 		opts.Output = "jsonpath={.apiVersion}"
 		var output bytes.Buffer
 		if err := writeWatchReport(&output, &opts, report, nil); err != nil {
@@ -170,7 +166,6 @@ func TestWatchOutputSchemaV2UsesProjectedValueForEverySupportedFormat(t *testing
 
 	t.Run("go-template", func(t *testing.T) {
 		opts := defaultRootOptions()
-		opts.OutputSchema = "v2"
 		opts.Output = "go-template"
 		opts.Template = "{{.APIVersion}}"
 		var output bytes.Buffer
@@ -201,7 +196,7 @@ func decodeStatusRecordLinesV2(t *testing.T, output string) []hpaanalysis.Status
 func TestStatusOutputSchemaV2JSONLSingleSuccessUsesRecordEnvelope(t *testing.T) {
 	hpa := testutil.BuildHPA("default", "web", testutil.WithReplicas(3, 3))
 	output := executeOutputSchemaV2CLI(t, testutil.NewFakeClient(hpa),
-		"status", "web", "--no-enrich", "--output-schema=v2", "--output=jsonl")
+		"status", "web", "--no-enrich", "--output=jsonl")
 
 	records := decodeStatusRecordLinesV2(t, output)
 	if len(records) != 1 {
@@ -219,7 +214,7 @@ func TestStatusOutputSchemaV2JSONLMultipleSuccessesUseRecordEnvelopes(t *testing
 	web := testutil.BuildHPA("default", "web", testutil.WithReplicas(3, 3))
 	api := testutil.BuildHPA("default", "api", testutil.WithReplicas(2, 2))
 	output := executeOutputSchemaV2CLI(t, testutil.NewFakeClient(web, api),
-		"status", "web", "api", "--no-enrich", "--output-schema=v2", "--output=jsonl")
+		"status", "web", "api", "--no-enrich", "--output=jsonl")
 
 	records := decodeStatusRecordLinesV2(t, output)
 	if len(records) != 2 {
@@ -239,7 +234,7 @@ func TestStatusOutputSchemaV2JSONLPartialFailureUsesSameRecordEnvelope(t *testin
 	root.SetOut(&stdout)
 	root.SetErr(&stderr)
 	root.SetArgs([]string{
-		"status", "web", "missing", "--no-enrich", "--output-schema=v2", "--output=jsonl",
+		"status", "web", "missing", "--no-enrich", "--output=jsonl",
 	})
 	if err := root.Execute(); err == nil {
 		t.Fatal("partial failure returned nil, want aggregate error")
@@ -267,7 +262,7 @@ func TestStatusOutputSchemaV2SingleFailureUsesErrorRecord(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			root.SetOut(&stdout)
 			root.SetErr(&stderr)
-			root.SetArgs([]string{"status", "missing", "--no-enrich", "--output-schema=v2", "--output=" + format})
+			root.SetArgs([]string{"status", "missing", "--no-enrich", "--output=" + format})
 			if err := root.Execute(); err == nil {
 				t.Fatal("missing HPA returned nil")
 			}
@@ -297,8 +292,8 @@ func TestWatchCLIOutputSchemaV2KeepsStdoutMachineReadable(t *testing.T) {
 		testutil.WithScalingLimitedTrue("TooManyReplicas"),
 	)
 	for _, args := range [][]string{
-		{"status", "web", "--watch", "--no-enrich", "--until-condition=ScalingLimited", "--output-schema=v2", "--output=jsonl"},
-		{"watch", "web", "--until-condition=ScalingLimited", "--output-schema=v2", "--output=jsonl"},
+		{"status", "web", "--watch", "--no-enrich", "--until-condition=ScalingLimited", "--output=jsonl"},
+		{"watch", "web", "--until-condition=ScalingLimited", "--output=jsonl"},
 	} {
 		root := newOutputSchemaV2CLIRoot(testutil.NewFakeClient(hpa))
 		var stdout, stderr bytes.Buffer
@@ -318,15 +313,12 @@ func TestWatchCLIOutputSchemaV2KeepsStdoutMachineReadable(t *testing.T) {
 	}
 }
 
-func TestStatusOutputSchemaV1IsRejected(t *testing.T) {
+func TestOutputSchemaFlagRemovedInV5(t *testing.T) {
 	web := testutil.BuildHPA("default", "web", testutil.WithReplicas(3, 3))
 	_, err := executeOutputSchemaV2CLIWithError(t, testutil.NewFakeClient(web),
-		"status", "web", "--no-enrich", "--output-schema=v1", "--output=jsonl")
-	if err == nil {
-		t.Fatal("expected --output-schema=v1 to be rejected in v4")
-	}
-	if !strings.Contains(err.Error(), "v1") || !strings.Contains(err.Error(), "v2") {
-		t.Fatalf("error should point from v1 to v2, got: %v", err)
+		"status", "web", "--no-enrich", "--output-schema=v2", "--output=jsonl")
+	if err == nil || !strings.Contains(err.Error(), "unknown flag: --output-schema") {
+		t.Fatalf("expected unknown flag error for removed --output-schema, got: %v", err)
 	}
 }
 
@@ -388,7 +380,7 @@ func TestStatusOutputSchemaV2BatchEnvelope(t *testing.T) {
 	web := testutil.BuildHPA("default", "web", testutil.WithReplicas(3, 3))
 	api := testutil.BuildHPA("default", "api", testutil.WithReplicas(2, 2))
 	output := executeOutputSchemaV2CLI(t, testutil.NewFakeClient(web, api),
-		"status", "web", "api", "--no-enrich", "--output-schema=v2", "--output=json")
+		"status", "web", "api", "--no-enrich", "--output=json")
 
 	var batch hpaanalysis.StatusBatchV2
 	if err := json.Unmarshal([]byte(output), &batch); err != nil {
@@ -404,54 +396,6 @@ func TestStatusOutputSchemaV2BatchEnvelope(t *testing.T) {
 		if item.Report == nil || item.Report.APIVersion != hpaanalysis.SchemaVersionV2 {
 			t.Fatalf("batch item %d report = %#v", i, item.Report)
 		}
-	}
-}
-
-func TestOutputSchemaV2RejectsInvalidCLICombinations(t *testing.T) {
-	tests := []struct {
-		name    string
-		args    []string
-		wantErr string
-	}{
-		{
-			name:    "unknown schema",
-			args:    []string{"status", "web", "--output=json", "--output-schema=v3"},
-			wantErr: "--output-schema must be one of",
-		},
-		{
-			name:    "text output",
-			args:    []string{"status", "web", "--output-schema=v2"},
-			wantErr: "--output-schema=v2 requires",
-		},
-		{
-			name:    "prometheus output",
-			args:    []string{"status", "web", "--output=prometheus", "--output-schema=v2"},
-			wantErr: "--output-schema=v2 requires",
-		},
-		{
-			name:    "report output",
-			args:    []string{"status", "web", "--report=markdown", "--output-schema=v2"},
-			wantErr: "--output-schema=v2 requires",
-		},
-		{
-			name:    "non-status command",
-			args:    []string{"list", "--output=json", "--output-schema=v2"},
-			wantErr: "--output-schema=v2 is supported by status and watch output only",
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			root := NewRootCommand()
-			var output bytes.Buffer
-			root.SetOut(&output)
-			root.SetErr(&output)
-			root.SetArgs(tc.args)
-			err := root.Execute()
-			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
-				t.Fatalf("error = %v, want substring %q\noutput:\n%s", err, tc.wantErr, output.String())
-			}
-		})
 	}
 }
 

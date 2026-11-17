@@ -61,8 +61,7 @@ kubectl-hpa-status completion zsh
 | `--config` | all commands | Read defaults from a YAML/JSON config file. Defaults to `~/.kube/hpa-status.yaml` when present. |
 | `--chunk-size` | `list`, `scan`, `tui` | Kubernetes list page size. Defaults to 500; set 0 to disable pagination. |
 | `--health-weight name=value` | all analysis commands | Override one health score penalty from the CLI. Repeatable; names include `scalingInactive`, `unableToScale`, `scalingLimited`, `implicitMaxReplicas`, `scaleDownStabilized`, and `atMinimumReplicas`. |
-| `-o table\|wide\|json\|jsonl\|yaml\|jsonpath=...\|template=...\|prometheus\|junit\|sarif` | status, doctor, list, scan | Output format. YAML is supported for both single and multiple HPA output. `junit` and `sarif` are intended for `list`/`scan`. `jsonl` streams one JSON object per line for `list`/`scan` and keeps memory flat on large clusters when enrichment and whole-report features are disabled. For the JSON schemas, see [v1](output-schema.json) and [v2](output-schema-v2.json). |
-| `--output-schema v2` | status | Accepts only the grouped v2 structured status projection (the default). The flat v1 projection was removed in v4. Applies to JSON, YAML, JSONL, JSONPath, and Go template output. |
+| `-o table\|wide\|json\|jsonl\|yaml\|jsonpath=...\|template=...\|prometheus\|junit\|sarif` | status, doctor, list, scan | Output format. YAML is supported for both single and multiple HPA output. `junit` and `sarif` are intended for `list`/`scan`. `jsonl` streams one JSON object per line for `list`/`scan` and keeps memory flat on large clusters when enrichment and whole-report features are disabled. For the JSON schema, see [v2](output-schema-v2.json). |
 | `--wide` | table output | Show target, min, max, and replica delta columns where applicable. |
 | `--sort-by namespace\|name\|current\|desired\|diff\|health-score\|issue\|problem` | `list`, `scan` | Sort list output. `problem` puts the lowest health score and largest replica delta first. |
 | `--filter all\|ok\|error\|limited\|scaling-limited\|issue` | `list`, `scan` | Filter by health or issue text. |
@@ -232,10 +231,9 @@ kubectl hpa status scan -o jsonl --keda=off --vpa=off
 The structured output is the grouped v2 projection; the flat v1 shape was removed in v4. For machine-readable validation, see the [v2 schema](output-schema-v2.json)
 and the [grouped v2 schema](output-schema-v2.json).
 
-For `status --output-schema=v2 -o jsonl`, every line uses the same
+For `status -o jsonl`, every line uses the same
 `StatusRecordV2` envelope (`apiVersion`, `namespace`, `name`, `status`, and
-either `report` or `error`), including partial failures. Multi-HPA v1 JSONL
-retains its legacy compatibility shape: one JSON array on one line.
+either `report` or `error`), including partial failures.
 
 ## Output Interpretation
 

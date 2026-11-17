@@ -58,7 +58,6 @@ func (c *Common) CurrentTime() time.Time {
 // templates, color, language, and export destination.
 type OutputOptions struct {
 	Output          string
-	OutputSchema    string
 	Template        string
 	Wide            bool
 	Color           string

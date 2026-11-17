@@ -15,10 +15,6 @@
 # Default output format: table, wide, json, jsonl, yaml
 # output: json
 
-# Structured status output schema: v1 (flat) or v2 (grouped). This applies to
-# status/watch machine-readable output; pair v2 with json, jsonl, or yaml.
-# outputSchema: v2
-
 # Show extra columns in list output
 # wide: true
 

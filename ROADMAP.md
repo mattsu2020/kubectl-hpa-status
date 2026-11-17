@@ -358,13 +358,14 @@ from Prometheus so the detector pipeline works without prior recording, and
 replay candidate configurations against that history through the existing
 simulation engine so proposals are validated before they reach a cluster.
 
-### v5 `--output-schema` flag removal (announced in v4)
+### v5 `--output-schema` flag removal (Executed)
 
-The final item from the v4 migration table. The flag kept accepting only
-`v2` through the whole v4 line so scripts pinning `--output-schema=v2`
-would not break twice; v5 removes the flag outright. Structured output stays
-grouped-v2-only, which it already is, so this is a pure flag-surface cleanup
-carried in the release's migration table.
+The final item from the v4 migration table is now complete. The flag kept
+accepting only `v2` through the whole v4 line so scripts pinning
+`--output-schema=v2` would not break twice; v5 removes `--output-schema` (and
+the `outputSchema` config key) outright, along with the deprecated `history
+--prometheus` and `simulate --duration` flags. Structured output stays
+grouped-v2-only.
 
 ### Prometheus history import (planned)
 
