@@ -1,20 +1,43 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="520" viewBox="0 0 1120 520" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="1160" height="500" viewBox="0 0 1160 500" role="img" aria-labelledby="title desc">
   <title id="title">kubectl describe hpa versus kubectl-hpa-status</title>
   <desc id="desc">Comparison of raw Kubernetes HPA output and actionable kubectl-hpa-status output.</desc>
-  <rect width="1120" height="520" fill="#f8fafc"/>
-  <text x="40" y="56" font-family="Inter,Arial,sans-serif" font-size="30" font-weight="700" fill="#0f172a">HPA troubleshooting: raw dump vs actionable diagnosis</text>
-  <rect x="40" y="96" width="500" height="360" rx="10" fill="#ffffff" stroke="#cbd5e1"/>
-  <rect x="580" y="96" width="500" height="360" rx="10" fill="#ffffff" stroke="#86efac"/>
-  <text x="72" y="142" font-family="Inter,Arial,sans-serif" font-size="22" font-weight="700" fill="#334155">kubectl describe hpa</text>
-  <text x="612" y="142" font-family="Inter,Arial,sans-serif" font-size="22" font-weight="700" fill="#166534">kubectl hpa status --explain</text>
-  <text x="72" y="188" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="18" fill="#475569">Conditions:</text>
-  <text x="96" y="226" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="16" fill="#64748b">ScalingLimited=True</text>
-  <text x="96" y="258" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="16" fill="#64748b">Reason=TooManyReplicas</text>
-  <text x="96" y="290" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="16" fill="#64748b">Current / target metrics...</text>
-  <text x="72" y="352" font-family="Inter,Arial,sans-serif" font-size="17" fill="#334155">You still infer the root cause manually.</text>
-  <text x="612" y="188" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="18" fill="#166534">Summary: HPA is at maxReplicas.</text>
-  <text x="612" y="226" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="16" fill="#15803d">Health score: 🔴 ScalingLimited 75/100</text>
-  <text x="612" y="258" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="16" fill="#15803d">Recommended command:</text>
-  <text x="636" y="290" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="15" fill="#166534">kubectl patch hpa api ... maxReplicas=20</text>
-  <text x="612" y="352" font-family="Inter,Arial,sans-serif" font-size="17" fill="#166534">The tool explains the signal and proposes the next action.</text>
+  <rect width="1160" height="500" rx="14" fill="#f8fafc"/>
+  <text x="44" y="54" font-family="Inter,-apple-system,BlinkMacSystemFont,sans-serif" font-size="26" font-weight="700" fill="#0f172a">HPA troubleshooting: raw dump vs. actionable diagnosis</text>
+
+  <!-- Left Card: Before -->
+  <rect x="44" y="84" width="496" height="372" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <rect x="44" y="84" width="496" height="52" rx="12" fill="#f1f5f9"/>
+  <rect x="44" y="124" width="496" height="12" fill="#f1f5f9"/>
+  <text x="68" y="117" font-family="SFMono-Regular,Menlo,monospace" font-size="17" font-weight="700" fill="#475569">Before: kubectl describe hpa</text>
+
+  <text x="68" y="172" font-family="SFMono-Regular,Menlo,monospace" font-size="15" fill="#475569">Metrics:      cpu: 92% / 60%</text>
+  <text x="68" y="202" font-family="SFMono-Regular,Menlo,monospace" font-size="15" fill="#475569">Replicas:     10 current / 10 desired</text>
+  <text x="68" y="232" font-family="SFMono-Regular,Menlo,monospace" font-size="15" fill="#475569">Conditions:</text>
+  <text x="88" y="262" font-family="SFMono-Regular,Menlo,monospace" font-size="15" fill="#64748b">AbleToScale=True</text>
+  <text x="88" y="290" font-family="SFMono-Regular,Menlo,monospace" font-size="15" fill="#64748b">ScalingActive=True</text>
+  <text x="88" y="318" font-family="SFMono-Regular,Menlo,monospace" font-size="15" fill="#64748b">ScalingLimited=True (TooManyReplicas)</text>
+
+  <rect x="64" y="362" width="456" height="68" rx="8" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="82" y="392" font-family="Inter,-apple-system,sans-serif" font-size="15" font-weight="600" fill="#475569">You still have to infer the root cause,</text>
+  <text x="82" y="414" font-family="Inter,-apple-system,sans-serif" font-size="15" fill="#64748b">check node headroom, and write patches manually.</text>
+
+  <!-- Arrow -->
+  <text x="580" y="278" text-anchor="middle" font-family="Inter,-apple-system,sans-serif" font-size="30" font-weight="700" fill="#16a34a">→</text>
+
+  <!-- Right Card: After -->
+  <rect x="620" y="84" width="496" height="372" rx="12" fill="#0f172a" stroke="#22c55e" stroke-width="2"/>
+  <rect x="620" y="84" width="496" height="52" rx="12" fill="#14532d"/>
+  <rect x="620" y="124" width="496" height="12" fill="#14532d"/>
+  <text x="644" y="117" font-family="SFMono-Regular,Menlo,monospace" font-size="16" font-weight="700" fill="#dcfce7">After: kubectl hpa_status status --explain</text>
+
+  <text x="644" y="172" font-family="SFMono-Regular,Menlo,monospace" font-size="15" font-weight="700" fill="#facc15">Health: LIMITED (72/100) — Capped at maxReplicas</text>
+  <text x="644" y="204" font-family="SFMono-Regular,Menlo,monospace" font-size="15" fill="#e2e8f0">Target: cpu 92% / 60% (wants 16 pods, max=10)</text>
+  <text x="644" y="236" font-family="SFMono-Regular,Menlo,monospace" font-size="13.5" fill="#86efac">Checks: Metrics OK · Readiness OK · Node headroom OK</text>
+  <text x="644" y="274" font-family="SFMono-Regular,Menlo,monospace" font-size="15" font-weight="700" fill="#93c5fd">Next step (--suggest):</text>
+  <rect x="644" y="288" width="448" height="44" rx="6" fill="#1e293b" stroke="#334155"/>
+  <text x="658" y="315" font-family="SFMono-Regular,Menlo,monospace" font-size="13.5" fill="#bfdbfe">kubectl patch hpa web ... maxReplicas=20</text>
+
+  <rect x="640" y="362" width="456" height="68" rx="8" fill="#052e16" stroke="#16a34a"/>
+  <text x="658" y="392" font-family="Inter,-apple-system,sans-serif" font-size="15" font-weight="600" fill="#dcfce7">Instant root cause, health score, and</text>
+  <text x="658" y="414" font-family="Inter,-apple-system,sans-serif" font-size="15" fill="#86efac">a safe dry-runnable remediation patch.</text>
 </svg>
