@@ -54,12 +54,6 @@ func newSimulateCommand(opts *options) *cobra.Command {
 		"show suggestions for the simulated state")
 	cmd.Flags().Int32Var(&duration, "duration-seconds", 0,
 		"time-series projection duration in seconds (0 = single-point)")
-	// Legacy spelling: `record`/`timeline --duration` accept a Go duration
-	// (e.g. 1h); this flag is a bare second count, so the canonical name
-	// spells the unit out. The old name still binds to the same value.
-	cmd.Flags().Int32Var(&duration, "duration", 0,
-		"alias of --duration-seconds")
-	_ = cmd.Flags().MarkDeprecated("duration", "use --duration-seconds instead")
 	return cmd
 }
 
@@ -82,7 +76,7 @@ func runSimulate(ctx context.Context, out io.Writer, opts *options, name string,
 		return err
 	}
 	if duration < 0 {
-		return fmt.Errorf("--duration must be >= 0")
+		return fmt.Errorf("--duration-seconds must be >= 0")
 	}
 
 	// Honor configured health weights (--health-weight / config file) so the

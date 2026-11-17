@@ -60,8 +60,9 @@ func fetchHPAs(m Model) tea.Cmd {
 			kedaResults, vpaResults, enrichmentWarnings = cfg.opts.EnrichHPAs(cfg.ctx, hpas.Items)
 		}
 
+		includeInterp := !cfg.opts.LazyReports
 		analyzed := analysisservice.AnalyzeBatch(hpas.Items, analysisservice.Options{
-			IncludeInterpretation: true,
+			IncludeInterpretation: includeInterp,
 			Debug:                 cfg.opts.Debug,
 			HealthWeights:         cfg.opts.HealthWeights,
 		}, analysisservice.BatchEnrichment{
@@ -70,18 +71,32 @@ func fetchHPAs(m Model) tea.Cmd {
 			Warnings: enrichmentWarnings,
 		})
 		items := make([]hpaanalysis.ListItem, 0, len(analyzed))
-		reports := make(map[string]*hpaanalysis.StatusReport, len(analyzed))
+		reports := make(map[string]*hpaanalysis.StatusReport)
+		if !cfg.opts.LazyReports {
+			reports = make(map[string]*hpaanalysis.StatusReport, len(analyzed))
+		}
 		uids := make(map[string]string, len(analyzed))
 		hpaSnapshots := make(map[string]*autoscalingv2.HorizontalPodAutoscaler, len(analyzed))
 		for i := range analyzed {
 			items = append(items, analyzed[i].ListItem)
-			report := analyzed[i].Report
-			reports[analyzed[i].Key] = &report
+			if !cfg.opts.LazyReports {
+				report := analyzed[i].Report
+				reports[analyzed[i].Key] = &report
+			}
 			uids[analyzed[i].Key] = string(hpas.Items[i].UID)
 			hpaSnapshots[analyzed[i].Key] = hpas.Items[i].DeepCopy()
 		}
 
-		return fetchResultMsg{requestID: cfg.requestID, items: items, reports: reports, uids: uids, hpas: hpaSnapshots}
+		return fetchResultMsg{
+			requestID: cfg.requestID,
+			items:     items,
+			reports:   reports,
+			uids:      uids,
+			hpas:      hpaSnapshots,
+			keda:      kedaResults,
+			vpa:       vpaResults,
+			warnings:  enrichmentWarnings,
+		}
 	}
 }
 

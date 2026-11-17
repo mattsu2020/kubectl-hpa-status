@@ -1,11 +1,32 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="420" viewBox="0 0 960 420" role="img" aria-label="watch mode output">
-  <rect width="960" height="420" rx="12" fill="#0b1220"/>
-  <text x="28" y="46" fill="#93c5fd" font-family="ui-monospace,Menlo,monospace" font-size="18">$ kubectl hpa status watch web --interval 5s</text>
-  <text x="28" y="100" fill="#94a3b8" font-family="ui-monospace,Menlo,monospace" font-size="16">Updated: 2026-05-30T21:30:00+09:00</text>
-  <text x="28" y="142" fill="#e2e8f0" font-family="ui-monospace,Menlo,monospace" font-size="18">Replicas: current=3 desired=5 min=2 max=10</text>
-  <text x="28" y="178" fill="#facc15" font-family="ui-monospace,Menlo,monospace" font-size="18">Summary: HPA currently wants to scale up.</text>
-  <line x1="28" y1="218" x2="900" y2="218" stroke="#334155"/>
-  <text x="28" y="260" fill="#94a3b8" font-family="ui-monospace,Menlo,monospace" font-size="16">Updated: 2026-05-30T21:30:05+09:00</text>
-  <text x="28" y="302" fill="#86efac" font-family="ui-monospace,Menlo,monospace" font-size="18">Replicas: current=5 desired=5 min=2 max=10</text>
-  <text x="28" y="338" fill="#86efac" font-family="ui-monospace,Menlo,monospace" font-size="18">Summary: HPA currently keeps the replica count unchanged.</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="440" viewBox="0 0 960 440">
+  <rect width="960" height="440" rx="12" fill="#0d1117" stroke="#30363d" stroke-width="1.5"/>
+  <path d="M 0 12 Q 0 0 12 0 L 948 0 Q 960 0 960 12 L 960 40 L 0 40 Z" fill="#161b22"/>
+  <line x1="0" y1="40" x2="960" y2="40" stroke="#30363d" stroke-width="1"/>
+  <circle cx="24" cy="20" r="6" fill="#ff5f56"/>
+  <circle cx="44" cy="20" r="6" fill="#ffbd2e"/>
+  <circle cx="64" cy="20" r="6" fill="#27c93f"/>
+  <text x="480" y="25" text-anchor="middle" fill="#8b949e" font-family="SFMono-Regular,Menlo,Monaco,Consolas,monospace" font-size="13" font-weight="600">kubectl hpa_status watch web --interval 5s</text>
+
+  <text x="28" y="80" fill="#7ee787" font-family="SFMono-Regular,Menlo,Monaco,Consolas,monospace" font-size="15" font-weight="700">$</text>
+  <text x="46" y="80" fill="#f0f6fc" font-family="SFMono-Regular,Menlo,Monaco,Consolas,monospace" font-size="15" font-weight="600">kubectl hpa_status watch web --interval 5s</text>
+
+  <rect x="28" y="106" width="904" height="142" rx="8" fill="#161b22" stroke="#30363d"/>
+  <text x="44" y="132" fill="#8b949e" font-family="SFMono-Regular,Menlo,Monaco,Consolas,monospace" font-size="13" font-weight="700">Updated: 2026-04-12T10:15:00Z</text>
+  <text x="44" y="160" fill="#79c0ff" font-family="SFMono-Regular,Menlo,Monaco,Consolas,monospace" font-size="14" font-weight="700">Target:</text>
+  <text x="128" y="160" fill="#e6edf3" font-family="SFMono-Regular,Menlo,Monaco,Consolas,monospace" font-size="14">default/web (Deployment/web)</text>
+  <text x="44" y="186" fill="#79c0ff" font-family="SFMono-Regular,Menlo,Monaco,Consolas,monospace" font-size="14" font-weight="700">Replicas:</text>
+  <text x="128" y="186" fill="#e6edf3" font-family="SFMono-Regular,Menlo,Monaco,Consolas,monospace" font-size="14">3 current / 5 desired (min 2, max 10)</text>
+  <text x="44" y="212" fill="#79c0ff" font-family="SFMono-Regular,Menlo,Monaco,Consolas,monospace" font-size="14" font-weight="700">Status:</text>
+  <text x="128" y="212" fill="#7ee787" font-family="SFMono-Regular,Menlo,Monaco,Consolas,monospace" font-size="14">Healthy 100/100</text>
+  <text x="276" y="212" fill="#ffa657" font-family="SFMono-Regular,Menlo,Monaco,Consolas,monospace" font-size="14">Scaling up: 3 -&gt; 5</text>
+
+  <rect x="28" y="266" width="904" height="142" rx="8" fill="#161b22" stroke="#30363d"/>
+  <text x="44" y="292" fill="#8b949e" font-family="SFMono-Regular,Menlo,Monaco,Consolas,monospace" font-size="13" font-weight="700">Updated: 2026-04-12T10:15:05Z</text>
+  <text x="44" y="320" fill="#79c0ff" font-family="SFMono-Regular,Menlo,Monaco,Consolas,monospace" font-size="14" font-weight="700">Target:</text>
+  <text x="128" y="320" fill="#e6edf3" font-family="SFMono-Regular,Menlo,Monaco,Consolas,monospace" font-size="14">default/web (Deployment/web)</text>
+  <text x="44" y="346" fill="#79c0ff" font-family="SFMono-Regular,Menlo,Monaco,Consolas,monospace" font-size="14" font-weight="700">Replicas:</text>
+  <text x="128" y="346" fill="#e6edf3" font-family="SFMono-Regular,Menlo,Monaco,Consolas,monospace" font-size="14">5 current / 5 desired (min 2, max 10)</text>
+  <text x="44" y="372" fill="#79c0ff" font-family="SFMono-Regular,Menlo,Monaco,Consolas,monospace" font-size="14" font-weight="700">Status:</text>
+  <text x="128" y="372" fill="#7ee787" font-family="SFMono-Regular,Menlo,Monaco,Consolas,monospace" font-size="14">Healthy 100/100</text>
+  <text x="276" y="372" fill="#8b949e" font-family="SFMono-Regular,Menlo,Monaco,Consolas,monospace" font-size="14">Target reached (unchanged)</text>
 </svg>

@@ -39,7 +39,6 @@ func validateEffectiveOptions(cmd *cobra.Command, opts *options) error {
 	checks := []func() error{
 		func() error { return validateNumericRanges(opts) },
 		func() error { return validateEnumModes(opts) },
-		func() error { return validateOutputSchemaOption(cmd, opts) },
 		func() error { return validateCommandOutputModes(cmd, opts) },
 		func() error { return validateConfiguredHealthWeights(opts) },
 		func() error { return validateOutputOption(cmd, opts) },
@@ -89,6 +88,12 @@ func validateAnalysisRanges(opts *options) error {
 	if opts.WatchTimeout < 0 {
 		return fmt.Errorf("--timeout must be >= 0, got %s", opts.WatchTimeout)
 	}
+	opts.WatchMode = strings.ToLower(strings.TrimSpace(opts.WatchMode))
+	switch opts.WatchMode {
+	case "", "poll", "informer":
+	default:
+		return fmt.Errorf("invalid --watch-mode %q: must be one of poll, informer", opts.WatchMode)
+	}
 	if opts.TrendSince < 0 || opts.TrendRetain < 0 {
 		return fmt.Errorf("--trend-since and --trend-retain must be >= 0")
 	}
@@ -120,7 +125,6 @@ func validateEnumModes(opts *options) error {
 		{"--decision-trace-format", opts.DecisionTraceFormat, []string{"", "text", "json", "yaml"}},
 		{"--report", opts.Report, []string{"", "markdown", "md", "html", "incident", "junit", "sarif"}},
 		{"--export", opts.Export, []string{"", "yaml", "kustomize", "helm-values", "directory"}},
-		{"--output-schema", opts.OutputSchema, []string{"", "v2"}},
 	}
 	for _, mode := range modes {
 		if err := validateMode(mode.flag, mode.value, mode.accepted...); err != nil {
@@ -130,35 +134,8 @@ func validateEnumModes(opts *options) error {
 	return nil
 }
 
-func validateOutputSchemaOption(cmd *cobra.Command, opts *options) error {
-	if opts.OutputSchema == "" {
-		return nil
-	}
-	if cmd != nil && cmd.Parent() != nil && cmd.Name() != "status" && cmd.Name() != "watch" {
-		// outputSchema is a global config key so users can make structured
-		// status/watch output their default without breaking unrelated
-		// commands. An explicit flag on an unsupported command remains an
-		// actionable error instead of being silently ignored.
-		if flagChanged(cmd, "output-schema") {
-			return fmt.Errorf("--output-schema=v2 is supported by status and watch output only")
-		}
-		return nil
-	}
-	// v2 is the default schema, and the text path is schema-independent: an
-	// implicit v2 with text output is the normal `status NAME` invocation, not
-	// an error. Only an explicitly requested v2 paired with a format that
-	// cannot carry it stays an actionable error.
-	if structuredStatusOutput(opts) {
-		return nil
-	}
-	if flagChanged(cmd, "output-schema") {
-		return fmt.Errorf("--output-schema=v2 requires json, yaml, jsonl, jsonpath, or go-template output")
-	}
-	return nil
-}
-
 // structuredStatusOutput reports whether the selected output format can carry
-// a projected status schema (v1 or v2). Text output is schema-independent.
+// a projected status schema. Text output is schema-independent.
 func structuredStatusOutput(opts *options) bool {
 	format, _ := selectOutputFromOptions(opts)
 	switch normalizeOutputFormat(format) {
@@ -171,10 +148,10 @@ func structuredStatusOutput(opts *options) bool {
 }
 
 // statusUsesV2Schema reports whether status output should render through the
-// v2 grouped projection. v2 is the default wire schema, but it only applies
-// to structured output; the text path keeps rendering the report directly.
+// v2 grouped projection. v2 is the sole structured wire schema in v5, and
+// applies to structured output; the text path keeps rendering the report directly.
 func statusUsesV2Schema(opts *options) bool {
-	return opts != nil && opts.OutputSchema == "v2" && structuredStatusOutput(opts)
+	return opts != nil && structuredStatusOutput(opts)
 }
 
 func validateListCommandOptions(cmd *cobra.Command, opts *options) error {
@@ -283,7 +260,6 @@ func normalizeEffectiveEnums(cmd *cobra.Command, opts *options) {
 	opts.DecisionTraceFormat = strings.ToLower(strings.TrimSpace(opts.DecisionTraceFormat))
 	opts.Report = strings.ToLower(strings.TrimSpace(opts.Report))
 	opts.Export = strings.ToLower(strings.TrimSpace(opts.Export))
-	opts.OutputSchema = strings.ToLower(strings.TrimSpace(opts.OutputSchema))
 	// Normalize the output format name so validation, the batch envelope
 	// checks, and the render dispatcher all see the same value (--output=JSON
 	// used to pass validation but fail at render time). The record command's

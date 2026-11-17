@@ -165,31 +165,6 @@ func TestDetectFlapping(t *testing.T) {
 	}
 }
 
-func TestComputeHealthVariance(t *testing.T) {
-	tests := []struct {
-		name   string
-		scores []int
-		want   float64
-	}{
-		{name: "empty returns 0", scores: nil, want: 0},
-		{name: "single value returns 0", scores: []int{100}, want: 0},
-		{name: "all same returns 0", scores: []int{80, 80, 80}, want: 0},
-		{name: "different values returns positive", scores: []int{60, 80, 100}, want: 266.67},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := ComputeHealthVariance(tt.scores)
-			if tt.want == 0 && got != 0 {
-				t.Errorf("ComputeHealthVariance() = %.2f, want 0", got)
-			}
-			if tt.want > 0 && got < tt.want-1 {
-				t.Errorf("ComputeHealthVariance() = %.2f, want ~%.2f", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestFormatHealthSparkline(t *testing.T) {
 	tests := []struct {
 		name   string

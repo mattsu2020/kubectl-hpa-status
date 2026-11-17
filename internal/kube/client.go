@@ -5,13 +5,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth" // for cloud provider auth
 	restclient "k8s.io/client-go/rest"
@@ -30,10 +33,27 @@ type Options struct {
 	Timeout    time.Duration // Per-request timeout applied to the REST config. 0 means no timeout.
 }
 
-// Client wraps a Kubernetes typed client with namespace information.
+// Client wraps a Kubernetes typed client with namespace information and shares
+// a single REST config and HTTP transport across lazy discovery/dynamic clients.
 type Client struct {
 	Interface kubernetes.Interface
 	Namespace string
+
+	restConfig *restclient.Config
+	httpClient *http.Client
+	mu         sync.Mutex
+	disco      discovery.DiscoveryInterface
+	dyn        dynamic.Interface
+}
+
+// ClientBundle shares one parsed rest.Config and HTTP transport across typed,
+// discovery, and dynamic Kubernetes clients.
+type ClientBundle struct {
+	Client    *Client
+	Discovery discovery.DiscoveryInterface
+	Dynamic   dynamic.Interface
+	Config    *restclient.Config
+	HTTP      *http.Client
 }
 
 // ClientOption is a functional option for configuring a Client.
@@ -73,12 +93,93 @@ func NewClient(opts Options, extra ...ClientOption) (*Client, error) {
 		return nil, fmt.Errorf("failed to create Kubernetes client from kubeconfig/context flags: %w", err)
 	}
 
-	client, err := kubernetes.NewForConfig(restConfig)
+	httpClient, err := restclient.HTTPClientFor(restConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create shared HTTP transport: %w", err)
+	}
+
+	client, err := kubernetes.NewForConfigAndClient(restConfig, httpClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Kubernetes client from kubeconfig/context flags: %w", err)
 	}
 
-	return &Client{Interface: client, Namespace: namespace}, nil
+	return &Client{
+		Interface:  client,
+		Namespace:  namespace,
+		restConfig: restConfig,
+		httpClient: httpClient,
+	}, nil
+}
+
+// NewClientBundle creates a typed Client along with discovery and dynamic
+// clients that all share one parsed rest.Config and underlying HTTP transport.
+func NewClientBundle(opts Options, extra ...ClientOption) (*ClientBundle, error) {
+	c, err := NewClient(opts, extra...)
+	if err != nil {
+		return nil, err
+	}
+	disco, err := c.DiscoveryClient()
+	if err != nil {
+		return nil, err
+	}
+	dyn, err := c.DynamicClient()
+	if err != nil && c.restConfig != nil {
+		return nil, err
+	}
+	return &ClientBundle{
+		Client:    c,
+		Discovery: disco,
+		Dynamic:   dyn,
+		Config:    c.restConfig,
+		HTTP:      c.httpClient,
+	}, nil
+}
+
+// DiscoveryClient returns a discovery client sharing this Client's HTTP
+// transport, or falls back to Interface.Discovery() when injected in tests.
+func (c *Client) DiscoveryClient() (discovery.DiscoveryInterface, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.disco != nil {
+		return c.disco, nil
+	}
+	if c.restConfig != nil && c.httpClient != nil {
+		disco, err := discovery.NewDiscoveryClientForConfigAndClient(c.restConfig, c.httpClient)
+		if err != nil {
+			return nil, err
+		}
+		c.disco = disco
+		return disco, nil
+	}
+	if c.Interface != nil {
+		disco := c.Interface.Discovery()
+		c.disco = disco
+		return disco, nil
+	}
+	return nil, fmt.Errorf("client is not initialized")
+}
+
+// DynamicClient returns a dynamic client sharing this Client's HTTP transport.
+func (c *Client) DynamicClient() (dynamic.Interface, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.dyn != nil {
+		return c.dyn, nil
+	}
+	if c.restConfig != nil && c.httpClient != nil {
+		dyn, err := dynamic.NewForConfigAndClient(c.restConfig, c.httpClient)
+		if err != nil {
+			return nil, err
+		}
+		c.dyn = dyn
+		return dyn, nil
+	}
+	return nil, fmt.Errorf("dynamic client unavailable without REST config")
+}
+
+// SharedHTTPClient returns the underlying HTTP client when built from a REST config.
+func (c *Client) SharedHTTPClient() *http.Client {
+	return c.httpClient
 }
 
 // ListHPAs reads HPAs with Kubernetes API pagination enabled when chunkSize is

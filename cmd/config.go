@@ -19,10 +19,9 @@ import (
 // values are kept in canonical (normalized) form because validateConfig
 // normalizes user input before comparison.
 var (
-	validColorValues        = []string{"auto", "always", "never"}
-	validOutputSchemaValues = []string{"v2"}
-	validOutputValues       = canonicalOutputValues()
-	validLangValues         = []string{"en", "ja"}
+	validColorValues  = []string{"auto", "always", "never"}
+	validOutputValues = canonicalOutputValues()
+	validLangValues   = []string{"en", "ja"}
 
 	// outputFlagDisplayValues mirrors validOutputValues but keeps the
 	// kubectl-conventional "go-template" spelling for the --help string.
@@ -81,7 +80,6 @@ type configFile struct {
 	Namespace       string                          `json:"namespace" yaml:"namespace"`
 	AllNamespaces   *bool                           `json:"allNamespaces" yaml:"allNamespaces"`
 	Output          string                          `json:"output" yaml:"output"`
-	OutputSchema    string                          `json:"outputSchema" yaml:"outputSchema"`
 	Wide            *bool                           `json:"wide" yaml:"wide"`
 	Selector        string                          `json:"selector" yaml:"selector"`
 	SortBy          string                          `json:"sortBy" yaml:"sortBy"`
@@ -173,9 +171,6 @@ func validateConfigSelectors(cfg configFile) error {
 	// against the canonical "gotemplate" spelling used in validOutputValues.
 	if !isAcceptedConfigOutput(cfg.Output, cfg.Templates) {
 		return fmt.Errorf("config output must be one of %s; got %q", strings.Join(validOutputValues, ", "), cfg.Output)
-	}
-	if !isAcceptedNormalized(strings.ToLower(cfg.OutputSchema), validOutputSchemaValues) {
-		return fmt.Errorf("config outputSchema must be one of %s; got %q", strings.Join(validOutputSchemaValues, ", "), cfg.OutputSchema)
 	}
 
 	if !isAcceptedNormalized(strings.ToLower(cfg.Lang), validLangValues) {

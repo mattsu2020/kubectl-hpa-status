@@ -111,9 +111,13 @@ func runListWithClient(ctx context.Context, out io.Writer, opts *options, client
 		return reportListError(out, opts.Output, fmt.Errorf("failed to list HPAs: %w", err))
 	}
 
-	report := hpaanalysis.ListReport{APIVersion: hpaanalysis.SchemaVersion, Items: buildListItems(ctx, opts, hpas.Items, filter)}
+	return renderAccumulatedList(ctx, out, opts, filter, hpas.Items)
+}
+
+func renderAccumulatedList(ctx context.Context, out io.Writer, opts *options, filter string, hpaItems []autoscalingv2.HorizontalPodAutoscaler) error {
+	report := hpaanalysis.ListReport{APIVersion: hpaanalysis.SchemaVersion, Items: buildListItems(ctx, opts, hpaItems, filter)}
 	if opts.GitOpsDrift {
-		report.GitOpsDrift = buildGitOpsDriftSignals(hpas.Items)
+		report.GitOpsDrift = buildGitOpsDriftSignals(hpaItems)
 	}
 
 	sortBy := opts.SortBy
@@ -122,7 +126,7 @@ func runListWithClient(ctx context.Context, out io.Writer, opts *options, client
 	}
 	sortListItems(report.Items, sortBy)
 
-	return finishAccumulatedList(ctx, out, opts, filter, hpas.Items, report)
+	return finishAccumulatedList(ctx, out, opts, filter, hpaItems, report)
 }
 
 // finishAccumulatedList runs the apply / export / write phase for the buffered

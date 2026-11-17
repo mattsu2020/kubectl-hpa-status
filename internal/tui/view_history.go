@@ -131,7 +131,7 @@ func (m Model) renderHistoryView() string {
 	appendHistoryChurnSection(&sb, churn)
 	appendHistoryRecommendations(&sb, churn, m.width)
 	appendHistoryReplicaTrend(&sb, snapshots, churn, graphWidth)
-	appendHistoryMetricTrends(&sb, m.reports[item.Namespace+"/"+item.Name])
+	appendHistoryMetricTrends(&sb, m.ensureReport(item.Namespace+"/"+item.Name))
 	appendHistoryHealthTimeline(&sb, snapshots, graphWidth)
 	appendHistoryEventLog(&sb, snapshots, scrollPos, m.height, m.width)
 

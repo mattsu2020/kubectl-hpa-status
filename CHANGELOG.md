@@ -18,6 +18,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   current/desired/max replicas, and `ScalingLimited`/`ScalingInactive`
   conditions alongside the existing Prometheus and Datadog alert rules.
 
+### Breaking Changes (v5.0.0)
+
+- **Removed `--output-schema` CLI flag and `outputSchema` config key.** Structured
+  `status` / `watch` output uses the grouped `v2` schema unconditionally; drop
+  `--output-schema=v2` from scripts and `outputSchema` from config files.
+- **Removed deprecated `history --prometheus` flag.** Use `--prometheus-url`
+  instead (`export --prometheus` remains a boolean flag and is unchanged).
+- **Removed deprecated `simulate --duration` flag.** Use `--duration-seconds`
+  instead.
+- **Removed deprecated `pkg/hpa` symbols and unified `lint.Severity`:**
+  - `warmup.Input`: removed unused `Namespace`, `MaxReplicas`,
+    `TargetReadyReplicas`, `TargetDesiredReplicas`, and `Now` fields.
+  - `healthtrend.ComputeHealthVariance`: removed.
+  - `flapping.AnomalyType`, `flapping.AnomalyDetection`, and the `Anomaly*`
+    constants: removed compatibility aliases; import them from
+    `pkg/hpa/healthtrend` (or root `pkg/hpa`).
+  - `lint.Severity`: aliased to `model.Severity` (`Error`/`Warning`/`Info`
+    constants now match `model.SeverityError`/`SeverityWarning`/`SeverityInfo`).
+
 ### Fixed
 
 - **Structured bundle redaction preserves valid JSON and YAML.** Credentials,

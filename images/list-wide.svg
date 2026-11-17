@@ -1,8 +1,45 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="360" viewBox="0 0 1180 360" role="img" aria-label="wide list output">
-  <rect width="1180" height="360" rx="12" fill="#111827"/>
-  <text x="28" y="46" fill="#93c5fd" font-family="ui-monospace,Menlo,monospace" font-size="18">$ kubectl hpa status list -A --wide --problem</text>
-  <text x="28" y="96" fill="#cbd5e1" font-family="ui-monospace,Menlo,monospace" font-size="15">NAMESPACE  NAME     TARGET             CURRENT DESIRED MIN MAX HEALTH             SCORE METRICS        ISSUE</text>
-  <text x="28" y="140" fill="#fecaca" font-family="ui-monospace,Menlo,monospace" font-size="16">default    api      Deployment/api     10      10      2   10  🔴 ScalingLimited 75    cpu ██████████  LIMITED: TooManyReplicas</text>
-  <text x="28" y="184" fill="#fecaca" font-family="ui-monospace,Menlo,monospace" font-size="16">payments   worker   Deployment/worker  2       0       1   10  🔴 ERROR          55                  ERROR: FailedGetResourceMetric</text>
-  <text x="28" y="250" fill="#86efac" font-family="Inter,Arial,sans-serif" font-size="20">Problem-only scan focuses the operator on HPAs that need attention.</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="380" viewBox="0 0 1180 380" role="img" aria-label="wide list output">
+  <rect width="1180" height="380" rx="12" fill="#0d1117" stroke="#30363d" stroke-width="1.5"/>
+  <path d="M 0 12 Q 0 0 12 0 L 1168 0 Q 1180 0 1180 12 L 1180 40 L 0 40 Z" fill="#161b22"/>
+  <line x1="0" y1="40" x2="1180" y2="40" stroke="#30363d" stroke-width="1"/>
+  <circle cx="24" cy="20" r="6" fill="#ff5f56"/>
+  <circle cx="44" cy="20" r="6" fill="#ffbd2e"/>
+  <circle cx="64" cy="20" r="6" fill="#27c93f"/>
+  <text x="590" y="25" text-anchor="middle" fill="#8b949e" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="13" font-weight="600">list -A --wide --problem</text>
+
+  <text x="28" y="80" fill="#7ee787" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="16" font-weight="700">$</text>
+  <text x="46" y="80" fill="#f0f6fc" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="16" font-weight="600">kubectl hpa_status list -A --wide --problem</text>
+
+  <text x="28" y="124" fill="#8b949e" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="14" font-weight="700">NAMESPACE</text>
+  <text x="148" y="124" fill="#8b949e" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="14" font-weight="700">NAME</text>
+  <text x="248" y="124" fill="#8b949e" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="14" font-weight="700">TARGET</text>
+  <text x="438" y="124" fill="#8b949e" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="14" font-weight="700">REPLICAS</text>
+  <text x="580" y="124" fill="#8b949e" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="14" font-weight="700">HEALTH</text>
+  <text x="708" y="124" fill="#8b949e" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="14" font-weight="700">SCORE</text>
+  <text x="786" y="124" fill="#8b949e" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="14" font-weight="700">METRICS</text>
+  <text x="930" y="124" fill="#8b949e" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="14" font-weight="700">ISSUE</text>
+  <line x1="28" y1="136" x2="1152" y2="136" stroke="#21262d" stroke-width="1.5"/>
+
+  <rect x="20" y="148" width="1140" height="36" rx="6" fill="#2a1f0d" fill-opacity="0.55"/>
+  <text x="28" y="171" fill="#c9d1d9" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="14">default</text>
+  <text x="148" y="171" fill="#f0f6fc" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="14">api</text>
+  <text x="248" y="171" fill="#c9d1d9" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="14">Deployment/api</text>
+  <text x="438" y="171" fill="#c9d1d9" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="14">10/10 (2..10)</text>
+  <text x="580" y="171" fill="#d29922" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="14" font-weight="700">▲ LIMITED</text>
+  <text x="708" y="171" fill="#d29922" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="14">75/100</text>
+  <text x="786" y="171" fill="#e3b341" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="14">cpu ██████████</text>
+  <text x="930" y="171" fill="#e3b341" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="14">TooManyReplicas</text>
+
+  <rect x="20" y="194" width="1140" height="36" rx="6" fill="#2d1215" fill-opacity="0.6"/>
+  <text x="28" y="217" fill="#c9d1d9" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="14">payments</text>
+  <text x="148" y="217" fill="#f0f6fc" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="14">worker</text>
+  <text x="248" y="217" fill="#c9d1d9" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="14">Deployment/worker</text>
+  <text x="438" y="217" fill="#c9d1d9" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="14">2/0   (1..10)</text>
+  <text x="580" y="217" fill="#f85149" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="14" font-weight="700">✖ ERROR</text>
+  <text x="708" y="217" fill="#f85149" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="14">55/100</text>
+  <text x="786" y="217" fill="#8b949e" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="14">-</text>
+  <text x="930" y="217" fill="#ff7b72" font-family="SFMono-Regular,Menlo,Monaco,monospace" font-size="14">FailedGetResourceMetric</text>
+
+  <rect x="28" y="276" width="1124" height="58" rx="8" fill="#161b22" stroke="#238636"/>
+  <text x="48" y="311" fill="#7ee787" font-family="Inter,-apple-system,sans-serif" font-size="17" font-weight="600">Tip: --problem filters out healthy HPAs so you immediately focus on what needs attention.</text>
 </svg>

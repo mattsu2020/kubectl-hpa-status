@@ -228,8 +228,8 @@ func (m Model) handleHintsKey() Model {
 	}
 	item := filtered[m.cursor]
 	k := item.Namespace + "/" + item.Name
-	report, ok := m.reports[k]
-	if !ok || report.Analysis.Metrics.MetricHints == nil {
+	report := m.ensureReport(k)
+	if report == nil || report.Analysis.Metrics.MetricHints == nil {
 		return m
 	}
 	flows := hpaanalysis.BuildTroubleshootingFlows(report.Analysis.Metrics.MetricHints.Hints)

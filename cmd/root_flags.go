@@ -25,7 +25,6 @@ func registerCommonFlags(cmd *cobra.Command, opts *options) {
 	cmd.PersistentFlags().StringVar(&opts.Kubeconfig, "kubeconfig", "", "path to kubeconfig")
 	cmd.PersistentFlags().StringVar(&opts.Cluster, "cluster", "", "kubeconfig cluster")
 	cmd.PersistentFlags().StringVarP(&opts.Output, "output", "o", "", "output format: "+strings.Join(outputFlagDisplayValues, ", ")+", jsonpath=..., template=...")
-	cmd.PersistentFlags().StringVar(&opts.OutputSchema, "output-schema", opts.OutputSchema, "structured status output schema: v2 (the flat v1 shape was removed in v4)")
 	cmd.PersistentFlags().StringVar(&opts.Template, "template", "", "template string to use when -o jsonpath or -o go-template/template is specified")
 	cmd.PersistentFlags().BoolVar(&opts.Wide, "wide", false, "show additional columns in table output")
 	cmd.PersistentFlags().StringVarP(&opts.Selector, "selector", "l", "", "label selector for list and scan, for example app=web,tier!=canary")
@@ -166,6 +165,7 @@ func registerStatusFlags(cmd *cobra.Command, opts *options) {
 func newWatchFlagSet(opts *options) *pflag.FlagSet {
 	fs := pflag.NewFlagSet("watch", pflag.ContinueOnError)
 	fs.BoolVarP(&opts.Watch.Watch, "watch", "w", false, "watch HPA status periodically")
+	fs.StringVar(&opts.WatchMode, "watch-mode", "poll", "watch event source: poll or informer")
 	fs.BoolVar(&opts.Dashboard, "dashboard", false, "render watch output as a compact terminal dashboard")
 	fs.DurationVar(&opts.WatchInterval, "interval", opts.WatchInterval, "watch refresh interval")
 	fs.DurationVar(&opts.WatchTimeout, "timeout", 0, "stop watching after this duration")

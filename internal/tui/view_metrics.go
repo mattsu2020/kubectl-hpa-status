@@ -21,8 +21,8 @@ func (m Model) renderMetricsView() string {
 	sb.WriteString(headerStyle.Render(fmt.Sprintf("Metrics Diagnostics: %s/%s", item.Namespace, item.Name)))
 	sb.WriteString("\n\n")
 
-	report, ok := m.reports[key]
-	if !ok || report == nil {
+	report := m.ensureReport(key)
+	if report == nil {
 		sb.WriteString(dimStyle.Render("No detailed metrics data available."))
 		sb.WriteString("\n")
 	} else {
