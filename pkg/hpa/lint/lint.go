@@ -11,21 +11,22 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/model"
 )
 
-// Severity represents the severity of a lint finding.
-type Severity string
+// Severity represents the severity of a lint finding, unified with model.Severity.
+type Severity = model.Severity
 
 const (
 	// Error indicates a finding that makes the HPA configuration invalid or
 	// non-functional (e.g. minReplicas > maxReplicas).
-	Error Severity = "error"
+	Error Severity = model.SeverityError
 	// Warning indicates a finding that the HPA will function but the
 	// configuration is risky or suboptimal (e.g. no scaleDown behavior).
-	Warning Severity = "warning"
+	Warning Severity = model.SeverityWarning
 	// Info indicates an informational finding that may be of interest but
 	// does not require action (e.g. only one metric configured).
-	Info Severity = "info"
+	Info Severity = model.SeverityInfo
 )
 
 // Finding represents a single lint finding.

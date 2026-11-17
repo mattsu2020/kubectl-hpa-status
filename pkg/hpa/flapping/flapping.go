@@ -12,7 +12,6 @@ import (
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/healthtrend"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/conditions"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/event"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/model"
@@ -94,21 +93,6 @@ type Fix struct {
 	// Rationale explains why this fix helps.
 	Rationale string `json:"rationale" yaml:"rationale"`
 }
-
-// AnomalyType aliases healthtrend.AnomalyType for backward compatibility.
-type AnomalyType = healthtrend.AnomalyType
-
-const (
-	// AnomalySuddenDegradation aliases healthtrend.AnomalySuddenDegradation.
-	AnomalySuddenDegradation = healthtrend.AnomalySuddenDegradation
-	// AnomalyStuckState aliases healthtrend.AnomalyStuckState.
-	AnomalyStuckState = healthtrend.AnomalyStuckState
-	// AnomalyOscillationEscalation aliases healthtrend.AnomalyOscillationEscalation.
-	AnomalyOscillationEscalation = healthtrend.AnomalyOscillationEscalation
-)
-
-// AnomalyDetection aliases healthtrend.AnomalyDetection for backward compatibility.
-type AnomalyDetection = healthtrend.AnomalyDetection
 
 const (
 	// eventTTLDefault is the default Kubernetes event TTL used in the
