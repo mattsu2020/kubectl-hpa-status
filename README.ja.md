@@ -23,24 +23,24 @@
 
 ![kubectl-hpa-status demo](images/demo.png)
 
-既存の Kubernetes API シグナルを活用し、詳細なスケーリング分析とともに HorizontalPodAutoscaler (HPA) の状態を調査するための kubectl プラグインです。
+**「なぜ HPA がスケールしないのか？」をもう手作業で追う必要はありません。**
+`kubectl-hpa-status` は、Kubernetes の HPA Condition・メトリクス・Pod Readiness・イベントを自動で突き合わせ、**原因の言語化・ヘルススコア算出・安全な修正パッチ提案**をワンコマンドで行う kubectl プラグインです。**クラスタへのエージェントや CRD の導入は一切不要**です。
 
 English README: [README.md](README.md)
 
-> **注記**: Krew 経由でインストールした場合、プラグインは `kubectl hpa_status`（アンダースコア形式）として検出されます。本 README の例はこの形式を標準の呼び出し方として使用しています。ネスト形式 `kubectl hpa status`（スペース形式）も、ネストプラグイン検出をサポートする kubectl では動作しますが、すべての環境で使えるとは限らないため、スクリプトや運用手順では `kubectl hpa_status` を推奨します。
+### 主な特徴
 
-このツールは、HPA運用でよくある3つの疑問にすばやく答えます。
-
-- このHPAは正常か、上限に張り付いているか、安定化中か、メトリクス取得に失敗しているか。
-- どのConditionやメトリクスが現在の挙動を説明しているか。
-- 次に実行すべきコマンドは何か、安全にdry-run検証できるか。
+- **原因がひと目でわかる (`status --explain`, `doctor`)**: 正常稼働か、`maxReplicas` 上限到達か、スケールダウン安定化待機中か、Pod の `requests` 未設定による計算不能か、メトリクス取得失敗かを即座に特定します。
+- **クラスタ全体の一括トリアージ & 対話型 TUI (`list --problem`, `scan`, `tui`)**: 全 Namespace から問題のある HPA だけを瞬時に抽出。スパークラインやドリルダウンを備えた対話型ダッシュボード (`tui`) も搭載しています。
+- **安全な修正提案 & シミュレーション (`--suggest`, `--simulate-metric`, `alpha backtest`)**: そのまま使える `kubectl patch` の生成・Dry-Run 適用、負荷急増時の What-If シミュレーション、記録データや Prometheus 履歴を用いたバックテスト検証に対応。
+- **既存環境でそのまま動く**: KEDA `ScaledObject` の管理状態、VPA との競合、ロールアウト中の足止め、ノード容量不足を標準 Kubernetes API の読み取りだけで診断します。
 
 ## Before / After
 
 <table>
 <tr>
 <th>Before: 生の <code>kubectl describe hpa</code></th>
-<th>After: <code>kubectl hpa status --explain</code></th>
+<th>After: <code>kubectl hpa_status status web --explain</code></th>
 </tr>
 <tr>
 <td>
@@ -58,9 +58,9 @@ Events:
   SuccessfulRescale New size: 10</code></pre>
 </td>
 <td>
-<pre><code>web production
+<pre><code>web production  [LIMITED] (score: 75/100)
 Summary: maxReplicasの上限に到達
-Replicas: 10 current / 10 desired
+Replicas: 10 current / 10 desired (min=2, max=10)
 CPU: 92% / 60% target
 
 Interpretation:
@@ -97,19 +97,36 @@ Recommended actions:
 
 ## 5分で始める
 
-使い捨ての namespace とサンプル HPA から始めます。
+### 1. 10秒でインストール
+
+```sh
+# Krew 経由（macOS / Linux / Windows）
+kubectl krew install hpa-status
+
+# または Homebrew 経由（macOS）
+brew install mattsu2020/kubectl-hpa-status/kubectl-hpa-status
+```
+
+### 2. 自分のクラスタで試す
+
+```sh
+# クラスタ全体から問題のある HPA を抽出
+kubectl hpa_status list -A --problem
+
+# スケールしない原因の解説と修正提案を表示
+kubectl hpa_status status <hpa-name> -n <namespace> --explain --suggest
+
+# 対話型 TUI ダッシュボードを起動
+kubectl hpa_status tui -A
+```
+
+### 3. 同梱のサンプルマニフェストで試す（事前準備不要）
 
 ```sh
 kubectl apply -f examples/cpu-memory-hpa.yaml
 kubectl hpa_status status web-multi -n hpa-status-examples --explain
 kubectl hpa_status status web-multi -n hpa-status-examples --suggest
 kubectl hpa_status list -n hpa-status-examples --wide
-```
-
-まだインストールしていない場合は、このリポジトリ内で `kubectl hpa_status` を `go run .` に置き換えて実行できます。
-
-```sh
-go run . status web-multi -n hpa-status-examples --explain
 ```
 
 ## インストール
@@ -120,67 +137,54 @@ go run . status web-multi -n hpa-status-examples --explain
 kubectl krew install hpa-status
 ```
 
-```sh
-kubectl hpa_status status <hpa-name> -n <namespace>
-kubectl hpa_status list -A --wide
-kubectl hpa_status status <hpa-name> --suggest
-```
+> **コマンド名のヒント**: Krew でインストールすると `kubectl-hpa_status` として配置され、`kubectl hpa_status <command>` で呼び出せます。Homebrew や `go install` で導入した場合は `kubectl-hpa-status <command>` としても直接実行できます。
 
-Krew はプラグインを `hpa-status` として登録し、`kubectl hpa_status`（アンダースコア形式）で検出されます。これがスクリプトや運用手順で推奨される標準形式です。ネスト形式 `kubectl hpa status`（スペース形式）は、ネストプラグイン検出をサポートする kubectl では動作しますが、すべての環境で使えるとは限りません。動作しない場合は `kubectl hpa_status status <hpa-name>` または `kubectl-hpa-status status <hpa-name>` を使用してください。
-
-### Homebrew
+### Homebrew (macOS)
 
 ```sh
 brew install mattsu2020/kubectl-hpa-status/kubectl-hpa-status
 kubectl-hpa-status list -A --wide
 ```
 
-Homebrew 配布は cask 形式で、ビルド済みの macOS バイナリをインストールします。Linux では krew、リリースアーカイブ、または `go install` を利用してください。
-
-### 手動インストール
+### ソースからビルド
 
 ```sh
 go build -o kubectl-hpa-status .
 sudo mv ./kubectl-hpa-status /usr/local/bin/
-kubectl hpa status <hpa-name> -n <namespace>
+kubectl-hpa-status status <hpa-name> -n <namespace>
 ```
 
-RBAC 権限については [docs/rbac.yaml](docs/rbac.yaml) を参照してください。
+### 必要要件と RBAC
 
-### 必要要件
+- **Kubernetes 1.26+**（`autoscaling/v2`）および設定済みの `kubeconfig`
+- `metrics-server`（CPU/メモリ用）またはカスタム/外部メトリクスアダプター
+- **最小 RBAC 対応**: オプションなしの `status <hpa>` は **HPA オブジェクトのみ** を読み取ります。より深い診断フラグを指定したときだけ段階的に Pod / Event 等を読み取ります（詳細は [docs/rbac.yaml](docs/rbac.yaml)）:
 
-- **Kubernetes 1.26+**（`autoscaling/v2` 安定API）— 正式サポートかつ E2E テスト対象のバージョン帯です。API 自体は 1.23+ から存在し、プラグインが動作する可能性はありますが、それより古いバージョンは CI マトリクスの対象外です。完全な互換性マトリクスは [docs/reference.md](docs/reference.md) を参照してください。
-- kubeconfig が設定された kubectl
-- metrics-server（CPU/メモリメトリクス用）またはカスタム/外部メトリクスアダプター
-
-### status の深度ティア
-
-`status` は層構造になっており、通常実行は高速かつ制限付き RBAC 環境でも動作します。各ティアは API 読み取りを追加するので、疑問に答えられる最も浅いティアを選んでください:
-
-| コマンド | 読み取り | 使いどき |
+| コマンド | 読み取るリソース | 使いどき |
 | --- | --- | --- |
-| `status <hpa>` | HPA 本体のみ | 高速なヘルスチェック。RBAC 制限・監査環境向け |
-| `status <hpa> --explain` | + コンディション、イベント、スケールターゲット Pod | 「なぜこの挙動か？」の調査 |
-| `status <hpa> --explain-pods` | + Pod 単位の readiness とリソース要求 | Pod レベルの診断 |
-| `status <hpa> --deep` | + キャパシティ、ロールアウト、アダプタ診断 | スケールアウト問題の網羅調査 |
-| `status <hpa> --no-enrich` | HPA 本体のみ（明示） | 他フラグが設定されていても HPA のみ強制。エイリアス `--hpa-only` |
-
-`--no-enrich`/`--hpa-only` と `--deep` は `--analysis-profile` の値（`--analysis-profile deep`）としても利用できます。通常の `status` 実行は HPA オブジェクトのみを読むため、Pod/Deployment の権限は不要になりました。
-
-### コマンド体系
-
-コマンドは4層にグループ化されており、トップレベルは日常的な HPA 業務に集中しています:
-
-| 層 | コマンド | 備考 |
-| --- | --- | --- |
-| 基本 | `status`, `list`, `scan`, `doctor`, `watch`, `explain`, `tui` | 日常の HPA 検査 |
-| 調査 | `doctor trace`, `doctor path`, `timeline`, `metrics`, `recommend`, `blockers`, `rollout`, `compare` | 原因分析 |
-| 運用 (`alpha`) | `alpha policy`, `alpha gitops`, `alpha bundle`, `alpha incident-bundle`, `alpha support-bundle` | apply 時のガード、GitOps、サポートデータ |
-| 実験的 (`alpha`) | `alpha capacity`, `alpha capacity-gap`, `alpha autoscaler-map`, `alpha analyze-record`, `alpha flap` | ニッチなツール。リリース間で変更される可能性あり |
-
-運用・実験的コマンドは `alpha` 配下でのみ利用できます。従来のトップレベルエイリアスは v2.0 で削除されました。
+| `status <hpa>` | HPA 本体のみ | 高速なヘルスチェック・強い RBAC 制限がある環境 |
+| `status <hpa> --explain` | + コンディション、イベント、ターゲット Pod | 「なぜこの挙動なのか？」を知りたいとき |
+| `status <hpa> --explain-pods` | + Pod 単位の Readiness・リソース requests | 未準備 Pod や requests 歪みの診断 |
+| `status <hpa> --deep` | + キャパシティ、ロールアウト、アダプタ診断 | スケールアウト阻害要因の網羅調査 |
+| `status <hpa> --no-enrich` | HPA 本体のみ（明示、別名 `--hpa-only`） | プリセット有効時でも HPA 読み取りのみに固定 |
 
 ## 代表コマンド
+
+### 困ったときの逆引きチートシート
+
+| 知りたいこと・やりたいこと | 実行するコマンド |
+| --- | --- |
+| **「今クラスタ内で異常・上限到達している HPA はどれ？」** | `kubectl hpa_status list -A --problem` |
+| **「なぜこの HPA はスケールアップ／ダウンしないの？」** | `kubectl hpa_status status <hpa> -n <ns> --explain` |
+| **「メトリクス・プローブ・容量・KEDA/VPA を丸ごと診断したい」** | `kubectl hpa_status doctor <hpa> -n <ns>` |
+| **「複数メトリクスのうちどれがレプリカ数を決めている？」** | `kubectl hpa_status doctor trace <hpa> -n <ns>` |
+| **「もし CPU が 85% に上がったら何 Pod にスケールする？」** | `kubectl hpa_status status <hpa> -n <ns> --simulate-metric cpu=85%` |
+| **「安全な修正パッチを作って Dry-Run 検証したい」** | `kubectl hpa_status status <hpa> -n <ns> --suggest --fix --dry-run` |
+| **「直近 30 分間（または Prometheus 履歴）の推移を見たい」** | `kubectl hpa_status timeline <hpa> -n <ns> --since=30m` |
+| **「HPA 設定案を過去の実負荷履歴でバックテスト比較したい」** | `kubectl hpa_status alpha backtest <hpa> -n <ns> --from-record record.jsonl` |
+| **「HPA の変化をリアルタイムに監視したい」** | `kubectl hpa_status watch <hpa> -n <ns> --watch-mode=informer` |
+
+### コピー＆ペーストで使える基本コマンド
 
 ```sh
 # 1. 詳細なステータスと解釈・次のアクションを表示
@@ -199,70 +203,91 @@ kubectl hpa_status status <hpa> --suggest
 kubectl hpa_status scan
 ```
 
+### コマンド体系
+
+日常運用で使う基本コマンドから、深い原因調査・GitOps・履歴検証まで4つのレイヤーに整理されています:
+
+| レイヤー | コマンド | 用途 |
+| --- | --- | --- |
+| **基本 (Basic)** | `status`, `list`, `scan`, `doctor`, `watch`, `explain`, `tui` | 日常のヘルスチェック・一覧トリアージ・リアルタイム監視 |
+| **調査 (Investigation)** | `doctor trace`, `doctor path`, `timeline`, `metrics`, `recommend`, `blockers`, `rollout`, `compare` | 根本原因の深掘り・ベストプラクティス監査 |
+| **運用 (`alpha`)** | `alpha policy`, `alpha gitops`, `alpha bundle`, `alpha incident-bundle`, `alpha support-bundle` | CI/CD ポリシーゲート、GitOps ドリフト検査、マスク済み調査バンドル出力 |
+| **実験的 (`alpha`)** | `alpha backtest`, `alpha analyze-record`, `alpha capacity`, `alpha capacity-gap`, `alpha autoscaler-map`, `alpha flap` | 履歴バックテスト、周期性（Seasonality）検出、キャパシティ計画 |
+
 ## 例
 
-実践的なサンプルマニフェストは [examples/](examples/) にあります。
+実践的なサンプルマニフェストは [examples/](examples/) に同梱されています:
 
 ```sh
 kubectl apply -f examples/cpu-memory-hpa.yaml
-kubectl hpa status web-multi -n hpa-status-examples --explain --suggest
-kubectl hpa status list -n hpa-status-examples --wide
+kubectl hpa_status status web-multi -n hpa-status-examples --explain --suggest
+kubectl hpa_status list -n hpa-status-examples --wide
 ```
 
-### 言語対応の範囲
+### 日本語表示 (`--lang=en|ja`)
 
-`--lang=en|ja` は、表・セクションのラベルと status のサマリー行を
-ローカライズします。詳細な診断根拠、リスク、推奨事項、修復手順は英語のままです。
-JSON/YAML のフィールド名と機械処理向け enum 値も言語に依存しないため、表示言語に
-かかわらずスクリプトから安定したスキーマを利用できます。
+`--lang=en|ja` を指定すると、テーブル見出し・セクション名・サマリー行が日本語化されます。JSON/YAML のフィールド名や機械処理用の enum 値は言語に依存しないため、スクリプトの互換性はそのまま維持されます。
 
-## 複数 HPA の出力と partial result
+### 複数 HPA 指定と Exit Code（CI / 自動化向け）
 
-`status NAME1 NAME2 ...` を実行すると、指定したすべての HPA をまとめて報告します。すべての HPA に到達できる場合は入力順に各アイテムの結果を出力します。一部の HPA の取得に失敗した場合（名前違い・namespace 違い・RBAC 拒否など）でも全体を中断せず、**partial result** として成功したアイテムを出力します。これにより list/fleet 的な用途でも健全なアイテムを取りこぼしません。
+`status NAME1 NAME2 ...` のように複数 HPA を指定した場合、一部の HPA が取得失敗しても処理全体を止めずに **Partial Result（部分結果）** を返します:
 
-exit code は最も深刻なアイテムの結果を採用します:
-
-| アイテム状態 | exit code |
+| 結果状態 | Exit code |
 | --- | --- |
-| すべて OK | `0` |
-| warning アイテムあり（health が `ERROR` / `LIMITED`）、ビルドエラーなし | `2` |
-| ビルドエラーアイテムあり（取得/ビルド失敗） | `1` |
+| すべての HPA が正常 (`OK`) | `0` |
+| 1つ以上の HPA が `LIMITED` / `ERROR`（API 取得エラーなし） | `2` |
+| 対象の HPA が存在しない (`ErrHPANotFound`) | `3` |
+| API エラーまたは実行時エラー | `1` |
 
-`-o json` / `-o yaml` では、複数 HPA の出力は `StatusBatch` エンベロープで包まれます。各アイテムは `status` として `ok` / `warning` / `error` を持ちます。失敗アイテムは `status: "error"`、`error` メッセージ、`report` フィールドなしになります:
+構造化出力（`-o json`, `-o yaml`, `-o jsonl`）はグループ化された `hpa-status/v2` スキーマ（`docs/output-schema-v2.json`）を使用します:
 
 ```json
 {
-  "apiVersion": "hpa-status/v1",
+  "apiVersion": "hpa-status/v2",
   "items": [
-    {"namespace": "default", "name": "web", "status": "ok", "report": { "apiVersion": "hpa-status/v1", "analysis": { "name": "web", "health": "OK", "...": "..." } } },
-    {"namespace": "default", "name": "missing", "status": "error", "error": "HPA \"missing\" was not found in namespace \"default\""}
+    {
+      "namespace": "default",
+      "name": "web",
+      "status": "ok",
+      "report": {
+        "apiVersion": "hpa-status/v2",
+        "analysis": {
+          "meta": { "name": "web", "namespace": "default" },
+          "decision": { "health": "OK", "healthScore": 100 }
+        }
+      }
+    },
+    {
+      "namespace": "default",
+      "name": "missing",
+      "status": "error",
+      "error": "HPA \"missing\" was not found in namespace \"default\""
+    }
   ]
 }
 ```
-
-v3 以降、構造化出力はグループ化された v2 射影（`apiVersion: "hpa-status/v2"`）です。フラットな v1 形状は v4 で削除されました。単一 HPA の `status NAME -o json` は v2 レポートエンベロープを出力します。テキスト出力では成功アイテムを通常どおり描画し、失敗アイテムごとに `Error: <メッセージ>` 行を1行ずつ出力します。
 
 ## ドキュメント
 
 | ドキュメント | 内容 |
 | --- | --- |
-| [Usage Guide](docs/usage.md) | フラグ参照、設定ファイル、ヘルススコア、TUIキーバインド、JSONPath例 |
-| [TUI Manual](docs/tui.md) | インタラクティブダッシュボードの運用フロー、ショートカット、エクスポート方針、トラブルシューティング |
-| [Reference](docs/reference.md) | Doctor、Safe Fix Flow、マルチメトリクストレース、Simulator、Auditor、Timeline、トラブルシューティング |
-| [Troubleshooting](docs/troubleshooting.md) | 症状/コマンド表、FAQ |
-| [Roadmap](ROADMAP.md) | TUI、メトリクス、KEP-6111、サプライチェーン強化の計画 |
-| [Promotion Kit](docs/social-promotion.md) | X、Reddit、Slack、Connpass、Zenn 向けのリリース告知テンプレート |
+| [Usage Guide](docs/usage.md) | 全フラグ一覧、設定ファイル、ヘルススコア計算、JSONPath 例 |
+| [TUI Manual](docs/tui.md) | 対話型ダッシュボードの操作方法、ショートカット、修正/シミュレーション画面 |
+| [Reference](docs/reference.md) | Doctor 診断項目、安全な修正フロー、マルチメトリクストレース、シミュレータ詳細 |
+| [Troubleshooting](docs/troubleshooting.md) | 症状別の逆引きランブックと FAQ |
+| [Roadmap](ROADMAP.md) | 今後のマイルストーンとアーキテクチャ計画 |
+| [Promotion Kit](docs/social-promotion.md) | SNS・勉強会・記事向けの紹介テンプレート |
 
 ## コミュニティとプロモーション
 
-- HPA 運用に役立った場合は、リポジトリの Star や Fork をお願いします。
-- デモ画像 [images/demo.png](images/demo.png) と [images/](images/) のスクリーンショット集を紹介素材として利用できます。
-- リリースやデモを告知するときは [docs/social-promotion.md](docs/social-promotion.md) のテンプレートを使えます。
-- GitHub Discussions が有効化されたら、バグ報告にはしづらい質問、運用パターン、トラブルシューティング共有に利用してください。
+- インシデント対応や日々の HPA 運用に役立った場合は、ぜひリポジトリの Star や Fork をお願いします。
+- デモ画像 [images/demo.png](images/demo.png) や [images/](images/) 内のスクリーンショットはチーム内共有や紹介記事で自由にご活用ください。
+- 紹介テンプレートは [docs/social-promotion.md](docs/social-promotion.md) にまとまっています。
+- 機能要望や判断に迷う HPA のケースがあれば、お気軽に Issue や Discussions で共有してください。
 
 ## ロードマップ
 
-現在のロードマップは [ROADMAP.md](ROADMAP.md) で管理しています。直近の優先事項は、複数メトリクス/KEDA/VPA の E2E カバレッジ拡充、KEP-6111 対応準備、リリースのサプライチェーン強化です。
+開発ロードマップは [ROADMAP.md](ROADMAP.md) で管理しています。直近では Prometheus 履歴インポート（`--from-prometheus`）、`alpha backtest`、Informer ベースの Watch モード（`--watch-mode=informer`）、大規模クラスタ向け TUI のオンデマンドレポート生成を実装しました。
 
 ## 開発
 

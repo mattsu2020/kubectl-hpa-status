@@ -29,8 +29,8 @@ func (m Model) renderDetailView() string {
 	renderDetailReplicas(&sb, item)
 	renderDetailSummary(&sb, item)
 
-	report, ok := m.reports[key]
-	if !ok || report == nil {
+	report := m.ensureReport(key)
+	if report == nil {
 		sb.WriteString("\n")
 		sb.WriteString(dimStyle.Render("Press esc to go back, r to refresh, m metrics detail"))
 		return sb.String()

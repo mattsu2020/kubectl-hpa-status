@@ -89,6 +89,12 @@ func validateAnalysisRanges(opts *options) error {
 	if opts.WatchTimeout < 0 {
 		return fmt.Errorf("--timeout must be >= 0, got %s", opts.WatchTimeout)
 	}
+	opts.WatchMode = strings.ToLower(strings.TrimSpace(opts.WatchMode))
+	switch opts.WatchMode {
+	case "", "poll", "informer":
+	default:
+		return fmt.Errorf("invalid --watch-mode %q: must be one of poll, informer", opts.WatchMode)
+	}
 	if opts.TrendSince < 0 || opts.TrendRetain < 0 {
 		return fmt.Errorf("--trend-since and --trend-retain must be >= 0")
 	}

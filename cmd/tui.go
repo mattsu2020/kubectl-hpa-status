@@ -84,6 +84,7 @@ func runTUI(ctx context.Context, out io.Writer, opts *options, initialName strin
 		InitialName:   initialName,
 		InitialNS:     client.Namespace,
 		StartInDetail: startInDetail,
+		LazyReports:   true,
 		EnrichHPAs:    enrichFn,
 		HealthWeights: opts.HealthWeights,
 		ApplyFn:       liveApplyFn,

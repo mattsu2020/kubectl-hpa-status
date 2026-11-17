@@ -146,3 +146,34 @@ func TestIdleKEDATriggerIsNotDisplayedAsFailure(t *testing.T) {
 		t.Fatalf("idle trigger shown as failure: %q", got)
 	}
 }
+
+func TestLazyReportsHydratesOnDemand(t *testing.T) {
+	hpa1 := testutil.BuildHPA("default", "web", testutil.WithMinMax(1, 10), testutil.WithReplicas(2, 2))
+	hpa2 := testutil.BuildHPA("default", "api", testutil.WithMinMax(1, 10), testutil.WithReplicas(3, 4))
+	m := NewModel(testutil.NewFakeClient(hpa1, hpa2), "default", Options{LazyReports: true})
+
+	fetched := fetchHPAs(m)().(fetchResultMsg)
+	if len(fetched.reports) != 0 {
+		t.Fatalf("expected LazyReports fetch to omit eager reports, got %d", len(fetched.reports))
+	}
+	if len(fetched.items) != 2 {
+		t.Fatalf("expected 2 list items, got %d", len(fetched.items))
+	}
+
+	updated, _ := m.Update(fetched)
+	m = updated.(Model)
+	if len(m.reports) != 0 {
+		t.Fatalf("expected 0 cached reports in list view, got %d", len(m.reports))
+	}
+
+	// Opening detail / currentReport hydrates only the focused item.
+	m.cursor = 0
+	focusedKey := m.filteredItems()[0].Namespace + "/" + m.filteredItems()[0].Name
+	report := m.currentReport()
+	if report == nil || report.Analysis.Meta.Name == "" {
+		t.Fatal("expected on-demand hydrated report for focused item")
+	}
+	if len(m.reports) != 1 {
+		t.Fatalf("expected exactly 1 hydrated report in cache, got %d (%v)", len(m.reports), focusedKey)
+	}
+}

@@ -6,6 +6,8 @@ import (
 	"charm.land/bubbles/v2/key"
 
 	tea "charm.land/bubbletea/v2"
+	analysisservice "github.com/mattsu2020/kubectl-hpa-status/internal/analysis"
+	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
 
 // Update handles all bubbletea messages.
@@ -88,14 +90,49 @@ func (m Model) updateFetchResult(msg fetchResultMsg) (tea.Model, tea.Cmd) {
 	}
 	m.items = msg.items
 	m.reports = msg.reports
+	if m.reports == nil {
+		m.reports = make(map[string]*hpaanalysis.StatusReport)
+	}
 	m.hpaUIDs = msg.uids
 	m.hpas = msg.hpas
+	m.kedaCache = msg.keda
+	m.vpaCache = msg.vpa
+	m.warnCache = msg.warnings
 	m.err = nil
 
 	m.refreshFixStateAfterFetch()
 	m.updateReplicaHistory()
 	m.refocusAndClampCursorAfterFetch()
 	return m, nil
+}
+
+// ensureReport returns the full StatusReport for key, hydrating it on demand
+// from m.hpas when LazyReports skipped upfront report construction.
+func (m *Model) ensureReport(key string) *hpaanalysis.StatusReport {
+	if m.reports != nil {
+		if report, ok := m.reports[key]; ok && report != nil {
+			return report
+		}
+	}
+	hpa, ok := m.hpas[key]
+	if !ok || hpa == nil {
+		return nil
+	}
+	res := analysisservice.AnalyzeOne(hpa, analysisservice.Options{
+		IncludeInterpretation: true,
+		Debug:                 m.opts.Debug,
+		HealthWeights:         m.opts.HealthWeights,
+	}, analysisservice.ItemEnrichment{
+		KEDA:     m.kedaCache[key],
+		VPA:      m.vpaCache[key],
+		Warnings: m.warnCache[key],
+	})
+	if m.reports == nil {
+		m.reports = make(map[string]*hpaanalysis.StatusReport)
+	}
+	report := res.Report
+	m.reports[key] = &report
+	return &report
 }
 
 // refreshFixStateAfterFetch re-binds the open fix wizard to the freshly
@@ -116,8 +153,8 @@ func (m *Model) refreshFixStateAfterFetch() {
 		return
 	}
 
-	report, ok := m.reports[st.key()]
-	if !ok {
+	report := m.ensureReport(st.key())
+	if report == nil {
 		if m.viewMode == fixView {
 			m.viewMode = listView
 		}

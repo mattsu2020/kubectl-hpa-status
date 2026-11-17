@@ -166,6 +166,7 @@ func registerStatusFlags(cmd *cobra.Command, opts *options) {
 func newWatchFlagSet(opts *options) *pflag.FlagSet {
 	fs := pflag.NewFlagSet("watch", pflag.ContinueOnError)
 	fs.BoolVarP(&opts.Watch.Watch, "watch", "w", false, "watch HPA status periodically")
+	fs.StringVar(&opts.WatchMode, "watch-mode", "poll", "watch event source: poll or informer")
 	fs.BoolVar(&opts.Dashboard, "dashboard", false, "render watch output as a compact terminal dashboard")
 	fs.DurationVar(&opts.WatchInterval, "interval", opts.WatchInterval, "watch refresh interval")
 	fs.DurationVar(&opts.WatchTimeout, "timeout", 0, "stop watching after this duration")

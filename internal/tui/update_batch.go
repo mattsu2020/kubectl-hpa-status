@@ -87,6 +87,9 @@ func (m Model) handleBatchApplyKey() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	for _, key := range selected {
+		m.ensureReport(key)
+	}
 	patches := collectBatchApplyPatches(selected, m.reports)
 	if len(patches) == 0 {
 		m.err = fmt.Errorf("no applicable patches found in %d selected HPA(s)", len(selected))

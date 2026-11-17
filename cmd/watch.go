@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -31,6 +32,16 @@ func runWatch(ctx context.Context, out io.Writer, opts *options, name string, in
 		return runTUI(ctx, out, opts, name, true)
 	}
 
+	theme := themeFor(opts.Color, out)
+	client, err := newClientOrDefault(opts)
+	if err != nil {
+		return err
+	}
+	ec := newEnrichmentContext(ctx, opts)
+	if strings.EqualFold(strings.TrimSpace(opts.WatchMode), "informer") {
+		return runWatchInformer(ctx, out, opts, client, ec, name, includeInterpretation, theme)
+	}
+
 	ctx, cancel, ticker, err := startWatchLoop(ctx, out, opts)
 	defer cancel()
 	if err != nil {
@@ -38,12 +49,6 @@ func runWatch(ctx context.Context, out io.Writer, opts *options, name string, in
 	}
 	defer ticker.Stop()
 
-	theme := themeFor(opts.Color, out)
-	client, err := newClientOrDefault(opts)
-	if err != nil {
-		return err
-	}
-	ec := newEnrichmentContext(ctx, opts)
 	return runWatchPolling(ctx, out, opts, client, ec, name, includeInterpretation, theme, ticker)
 }
 
@@ -210,15 +215,7 @@ func waitWatchTick(ctx context.Context, out io.Writer, ticker *time.Ticker, huma
 }
 
 func runWatchList(ctx context.Context, out io.Writer, opts *options) error {
-	ctx, cancel, ticker, err := startWatchLoop(ctx, out, opts)
-	defer cancel()
-	if err != nil {
-		return err
-	}
-	defer ticker.Stop()
-
 	theme := themeFor(opts.Color, out)
-	humanOutput := watchUsesHumanOutput(opts)
 	// Build the list client once for the whole watch session; runList would
 	// otherwise re-read and re-parse the kubeconfig on every poll tick. The
 	// raw error keeps the structured JSON/YAML list error contract.
@@ -226,6 +223,18 @@ func runWatchList(ctx context.Context, out io.Writer, opts *options) error {
 	if err != nil {
 		return reportListError(out, opts.Output, err)
 	}
+	if strings.EqualFold(strings.TrimSpace(opts.WatchMode), "informer") {
+		return runWatchListInformer(ctx, out, opts, client, theme)
+	}
+
+	ctx, cancel, ticker, err := startWatchLoop(ctx, out, opts)
+	defer cancel()
+	if err != nil {
+		return err
+	}
+	defer ticker.Stop()
+
+	humanOutput := watchUsesHumanOutput(opts)
 	for {
 		if humanOutput {
 			if err := clearWatchScreen(out, theme, opts.CurrentTime()); err != nil {

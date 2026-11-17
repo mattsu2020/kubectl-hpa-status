@@ -155,14 +155,14 @@ func NewContext(ctx context.Context, cfg Config) *Context {
 		}
 	}
 
-	disco, err := kube.NewDiscoveryClient(cfg.Kube)
+	bundle, err := kube.NewClientBundle(cfg.Kube)
 	if err != nil {
 		setEnrichmentError(kedaEntry, Requested(cfg.KEDA), fmt.Sprintf("discovery client creation failed: %v", err))
 		setEnrichmentError(vpaEntry, Requested(cfg.VPA), fmt.Sprintf("discovery client creation failed: %v", err))
 		return &Context{status: status}
 	}
 
-	crdAvail := kube.DetectCRDs(disco)
+	crdAvail := kube.DetectCRDs(bundle.Discovery)
 
 	kedaEnabled := kedaMode.Enabled(crdAvail.KEDA)
 	vpaEnabled := vpaMode.Enabled(crdAvail.VPA)
@@ -178,10 +178,11 @@ func NewContext(ctx context.Context, cfg Config) *Context {
 		return &Context{status: status}
 	}
 
-	dynClient, ns, err := kube.NewDynamicClient(cfg.Kube)
-	if err != nil {
-		setEnrichmentError(kedaEntry, kedaEnabled, fmt.Sprintf("dynamic client creation failed: %v", err))
-		setEnrichmentError(vpaEntry, vpaEnabled, fmt.Sprintf("dynamic client creation failed: %v", err))
+	dynClient := bundle.Dynamic
+	ns := bundle.Client.Namespace
+	if dynClient == nil {
+		setEnrichmentError(kedaEntry, kedaEnabled, "dynamic client creation failed: unavailable")
+		setEnrichmentError(vpaEntry, vpaEnabled, "dynamic client creation failed: unavailable")
 		return &Context{status: status}
 	}
 
