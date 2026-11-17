@@ -21,7 +21,7 @@
 
 </details>
 
-![kubectl-hpa-status demo](images/demo.png)
+![kubectl-hpa-status demo](images/demo.gif)
 
 **「なぜ HPA がスケールしないのか？」をもう手作業で追う必要はありません。**
 `kubectl-hpa-status` は、Kubernetes の HPA Condition・メトリクス・Pod Readiness・イベントを自動で突き合わせ、**原因の言語化・ヘルススコア算出・安全な修正パッチ提案**をワンコマンドで行う kubectl プラグインです。**クラスタへのエージェントや CRD の導入は一切不要**です。

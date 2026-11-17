@@ -21,7 +21,7 @@
 
 </details>
 
-![kubectl-hpa-status demo](images/demo.png)
+![kubectl-hpa-status demo](images/demo.gif)
 
 **Stop guessing why your HorizontalPodAutoscaler is not scaling.**
 `kubectl-hpa-status` turns raw Kubernetes HPA conditions, metrics, pod readiness, and cluster events into a clear root-cause explanation, health score, and safe remediation plan — with **zero in-cluster agents or CRDs required**.
