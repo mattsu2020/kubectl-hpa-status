@@ -1,10 +1,13 @@
 package history
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+	"unicode/utf8"
 )
 
 func TestResolveStoreDir_WithXDG(t *testing.T) {
@@ -73,5 +76,29 @@ func TestCorruptLinesError(t *testing.T) {
 		if !strings.Contains(msg, want) {
 			t.Fatalf("CorruptLinesError.Error() = %q, missing %q", msg, want)
 		}
+	}
+}
+
+func TestTruncateUTF8Bytes_PreservesRuneBoundaries(t *testing.T) {
+	input := strings.Repeat("あ", 10) // 30 bytes, 3 bytes per rune
+	got := truncateUTF8Bytes(input, 10)
+	if len(got) > 10 || !utf8.ValidString(got) {
+		t.Fatalf("truncateUTF8Bytes(%q, 10) = %q (len=%d valid=%v)", input, got, len(got), utf8.ValidString(got))
+	}
+	if got != "あああ" {
+		t.Fatalf("expected 3 full runes (9 bytes), got %q", got)
+	}
+}
+
+func TestHealthStore_LoadAtAndPruneAtValidateKey(t *testing.T) {
+	store, err := NewHealthStoreWithDir(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewHealthStoreWithDir: %v", err)
+	}
+	if _, err := store.LoadAt(context.Background(), SnapshotKey{}, time.Hour, time.Now()); err == nil {
+		t.Fatal("expected LoadAt to reject empty SnapshotKey")
+	}
+	if err := store.PruneAt(context.Background(), SnapshotKey{}, time.Hour, time.Now()); err == nil {
+		t.Fatal("expected PruneAt to reject empty SnapshotKey")
 	}
 }

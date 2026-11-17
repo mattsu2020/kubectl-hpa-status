@@ -283,6 +283,9 @@ func metricDisagreementRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32,
 		if ratio == nil {
 			continue
 		}
+		if within, _ := ratioWithinTolerance(hpa, *ratio); within {
+			continue
+		}
 		name := metricDisplayName(metric)
 		if *ratio > 1.0 {
 			scaleUp = append(scaleUp, name)
@@ -293,7 +296,7 @@ func metricDisagreementRule(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32,
 	if len(scaleUp) > 0 && len(scaleDown) > 0 {
 		ctx.cases = append(ctx.cases, interpretationCase{
 			reason:     "MetricDisagreement",
-			message:    fmt.Sprintf(confidence.BadgeEstimated+" Metric disagreement detected: %s want scale-up (ratio > 1.0) while %s want scale-down (ratio < 1.0). The HPA controller will use its selectPolicy to resolve this, but consider whether the metric targets are well-tuned.", strings.Join(scaleUp, ", "), strings.Join(scaleDown, ", ")),
+			message:    fmt.Sprintf(confidence.BadgeEstimated+" Metric disagreement detected: %s want scale-up (ratio > 1.0) while %s want scale-down (ratio < 1.0). The HPA controller always picks the highest desired replica recommendation across metrics, so scale-up requests take precedence unless blocked by scaleUp.selectPolicy.", strings.Join(scaleUp, ", "), strings.Join(scaleDown, ", ")),
 			severity:   SeverityWarning,
 			confidence: ConfidenceMedium,
 		})

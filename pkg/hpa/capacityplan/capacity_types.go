@@ -2,26 +2,12 @@ package capacityplan
 
 import (
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/blocker"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/util"
 )
 
-// PendingPodInfo is a local type for capacityplan to avoid import cycles.
-// It matches the structure of hpa.PendingPodInfo but is a separate type.
-type PendingPodInfo struct {
-	Name          string
-	Phase         string
-	Unschedulable bool
-	Reasons       []string
-}
-
-// QuotaConstraint is a local type for capacityplan to avoid import cycles.
-// It matches the structure of hpa.QuotaConstraint but is a separate type.
-type QuotaConstraint struct {
-	Name     string
-	Resource string
-	Used     string
-	Hard     string
-	Message  string
-}
+// PendingPodInfo aliases the shared PendingPodInfo shape so capacityplan and
+// pkg/hpa share one canonical type without creating an import cycle.
+type PendingPodInfo = util.PendingPodInfo
 
 // PDBInterference is a local type for capacityplan to avoid import cycles.
 // It matches the structure of hpa.PDBInterference but is a separate type.
@@ -277,16 +263,7 @@ type CapacityCheckResult struct {
 
 // labels holds localized labels for capacity plan text output.
 type labels struct {
-	CapacityPlan   string
-	Recommendation string
-	Checks         string
-	Safe           string
-	Failed         string
-	AdditionalPods string
-	RequiredCPU    string
-	RequiredMemory string
-	Headroom       string
-	NextActions    string
+	CapacityPlan string
 }
 
 // Labels is the exported version of labels for cross-package usage.

@@ -7,6 +7,7 @@ package containeradvisor
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/confidence"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/model"
@@ -63,8 +64,8 @@ func Analyze(hpa *autoscalingv2.HorizontalPodAutoscaler, input Input) *Result {
 		return nil
 	}
 
-	// Only relevant for multi-container pods.
-	if input.ContainerCount <= 1 {
+	// Only relevant for multi-container pods with known container names.
+	if input.ContainerCount <= 1 || len(input.ContainerNames) == 0 {
 		return nil
 	}
 
@@ -88,25 +89,16 @@ func Analyze(hpa *autoscalingv2.HorizontalPodAutoscaler, input Input) *Result {
 	risk := "Pod-level CPU/memory averages app + sidecar containers. " +
 		"If one container dominates resource usage, HPA scaling decisions may be delayed or inaccurate."
 
-	// Build suggested metric using the first container name as a starting point.
+	// Build suggested metric using app/main container if available, otherwise the first.
 	targetContainer := input.ContainerNames[0]
-	if len(input.ContainerNames) > 1 {
-		// Try to pick "app" or "main" if available, otherwise use the first.
-		for _, name := range input.ContainerNames {
-			if name == "app" || name == "main" || name == "application" {
-				targetContainer = name
-				break
-			}
+	for _, name := range input.ContainerNames {
+		if name == "app" || name == "main" || name == "application" {
+			targetContainer = name
+			break
 		}
 	}
 
-	suggested := fmt.Sprintf(`type: ContainerResource
-containerResource:
-  name: cpu
-  container: %s
-  target:
-    type: Utilization
-    averageUtilization: 60`, targetContainer)
+	suggested := formatSuggestedContainerMetric(targetContainer, input.ResourceMetrics)
 
 	nextAction := "Review container names and add ContainerResource metric during a safe rollout. " +
 		"Use 'kubectl get --raw /apis/metrics.k8s.io/v1beta1/namespaces/<ns>/pods' to check per-container usage."
@@ -120,6 +112,25 @@ containerResource:
 	}
 }
 
+func formatSuggestedContainerMetric(container string, resourceMetrics []autoscalingv2.MetricSpec) string {
+	metricName := "cpu"
+	targetBlock := "    type: Utilization\n    averageUtilization: 60"
+	for _, m := range resourceMetrics {
+		if m.Resource == nil {
+			continue
+		}
+		metricName = string(m.Resource.Name)
+		if m.Resource.Target.AverageUtilization != nil {
+			targetBlock = fmt.Sprintf("    type: Utilization\n    averageUtilization: %d", *m.Resource.Target.AverageUtilization)
+		} else if m.Resource.Target.AverageValue != nil {
+			targetBlock = fmt.Sprintf("    type: AverageValue\n    averageValue: %s", m.Resource.Target.AverageValue.String())
+		}
+		break
+	}
+	return fmt.Sprintf("type: ContainerResource\ncontainerResource:\n  name: %s\n  container: %s\n  target:\n%s",
+		metricName, container, targetBlock)
+}
+
 // AnalyzeWithMetrics enriches the advisor result with per-container
 // usage hints when PodMetrics data is available.
 func AnalyzeWithMetrics(hpa *autoscalingv2.HorizontalPodAutoscaler, input Input, containerMetrics []UsageHint) *Result {
@@ -129,12 +140,12 @@ func AnalyzeWithMetrics(hpa *autoscalingv2.HorizontalPodAutoscaler, input Input,
 	}
 
 	if len(containerMetrics) > 0 {
-		result.ContainerUsageHints = containerMetrics
+		result.ContainerUsageHints = slices.Clone(containerMetrics)
 
 		// Find dominant container.
 		maxCPU := -1
 		dominantIdx := -1
-		for i, m := range containerMetrics {
+		for i, m := range result.ContainerUsageHints {
 			if m.CPUPercent > maxCPU {
 				maxCPU = m.CPUPercent
 				dominantIdx = i
@@ -144,13 +155,7 @@ func AnalyzeWithMetrics(hpa *autoscalingv2.HorizontalPodAutoscaler, input Input,
 			result.ContainerUsageHints[dominantIdx].Dominant = true
 			name := result.ContainerUsageHints[dominantIdx].Container
 			result.Finding += fmt.Sprintf(" The %q container appears to be the scaling-critical container.", name)
-			result.SuggestedMetric = fmt.Sprintf(`type: ContainerResource
-containerResource:
-  name: cpu
-  container: %s
-  target:
-    type: Utilization
-    averageUtilization: 60`, name)
+			result.SuggestedMetric = formatSuggestedContainerMetric(name, input.ResourceMetrics)
 			result.Confidence = confidence.High
 		}
 	}

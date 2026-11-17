@@ -11,7 +11,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
-	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/compare"
 )
@@ -66,8 +65,8 @@ func runCompare(ctx context.Context, out io.Writer, opts *options, fromRef, toRe
 	if err != nil {
 		return fmt.Errorf("fetching TO HPA %s: %w", toRef, err)
 	}
-	report := compare.BuildReportWithScorer(fromLabel, toLabel, fromHPA, toHPA, compareHealthScorer)
-	return render.Format(out, opts.Output, opts.Template, report, func(out io.Writer) error {
+	report := compare.BuildReportWithScorer(fromLabel, toLabel, fromHPA, toHPA, compareHealthScorer(opts))
+	return renderWithOutput(out, opts, report, func(out io.Writer) error {
 		return writeCompareText(out, report)
 	})
 }
@@ -135,13 +134,13 @@ func runCompareAll(ctx context.Context, out io.Writer, opts *options, fromContex
 			reports = append(reports, compare.Report{From: key, To: "<missing>", Differences: []compare.Diff{{Field: "exists", From: "true", To: "false"}}, Risks: []string{"target environment is missing this HPA"}})
 			continue
 		}
-		report := compare.BuildReportWithScorer(key, key, from, to, compareHealthScorer)
+		report := compare.BuildReportWithScorer(key, key, from, to, compareHealthScorer(opts))
 		if !onlyDrift || len(report.Differences) > 0 {
 			reports = append(reports, report)
 		}
 	}
 	list := compare.ListReport{Items: reports}
-	return render.Format(out, opts.Output, opts.Template, list, func(out io.Writer) error {
+	return renderWithOutput(out, opts, list, func(out io.Writer) error {
 		return renderCompareDriftText(out, reports)
 	})
 }
@@ -202,7 +201,16 @@ func splitNamespacedRef(ref, defaultNamespace string) (string, string) {
 // compareHealthScorer adapts the full analysis pipeline into the narrow
 // health-score dependency the compare package accepts, keeping compare free
 // of the pkg/hpa root import.
-func compareHealthScorer(hpa *autoscalingv2.HorizontalPodAutoscaler) int {
-	analysis := hpaanalysis.Analyze(hpa, false)
-	return analysis.Decision.HealthScore
+func compareHealthScorer(opts *options) func(*autoscalingv2.HorizontalPodAutoscaler) int {
+	var hw hpaanalysis.HealthWeights
+	var debug bool
+	if opts != nil {
+		hw = opts.HealthWeights
+		debug = opts.Debug
+	}
+	aopts := analysisOptions(hw, debug)
+	return func(hpa *autoscalingv2.HorizontalPodAutoscaler) int {
+		analysis := hpaanalysis.AnalyzeWithOptions(hpa, false, aopts)
+		return analysis.Decision.HealthScore
+	}
 }

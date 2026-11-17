@@ -26,7 +26,7 @@ type ReplicaSetInfo struct {
 func FetchReplicaSetsForScaleTarget(ctx context.Context, client kubernetes.Interface, namespace string, ref autoscalingv2.CrossVersionObjectReference, selector string) ([]ReplicaSetInfo, error) {
 	switch ref.Kind {
 	case "Deployment":
-		if selector == "" {
+		if selector == "" || selector == "<none>" {
 			return nil, nil
 		}
 		items, err := collectListPages(ctx, metav1.ListOptions{LabelSelector: selector}, func(ctx context.Context, page metav1.ListOptions) ([]appsv1.ReplicaSet, string, error) {
@@ -48,7 +48,9 @@ func FetchReplicaSetsForScaleTarget(ctx context.Context, client kubernetes.Inter
 		}
 		return result, nil
 	case "ReplicaSet":
-		rs, err := client.AppsV1().ReplicaSets(namespace).Get(ctx, ref.Name, metav1.GetOptions{})
+		rs, err := retryTransient(ctx, func() (*appsv1.ReplicaSet, error) {
+			return client.AppsV1().ReplicaSets(namespace).Get(ctx, ref.Name, metav1.GetOptions{})
+		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to get ReplicaSet %s/%s: %w", namespace, ref.Name, err)
 		}

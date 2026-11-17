@@ -143,7 +143,7 @@ func loadKEDAIndexes(ctx context.Context, ec *Context, hpas []autoscalingv2.Hori
 		byTarget: map[string][]*unstructured.Unstructured{},
 	}
 	for ns := range namespaces {
-		soList, err := kube.FetchScaledObjects(ctx, ec.dynClient, ns)
+		soList, err := ec.fetchNamespaceScaledObjects(ctx, ns)
 		if err != nil {
 			warnings[ns] = append(warnings[ns], fmt.Sprintf("KEDA ScaledObject list failed: %v", err))
 			continue

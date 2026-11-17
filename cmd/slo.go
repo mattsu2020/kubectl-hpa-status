@@ -6,8 +6,6 @@ import (
 	"io"
 
 	"github.com/spf13/cobra"
-
-	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 )
 
 type sloReport struct {
@@ -41,7 +39,8 @@ func newSLOCommand(opts *options) *cobra.Command {
 
 func runSLO(ctx context.Context, out io.Writer, opts *options, name, metric, target string) error {
 	local := applyCommandPreset(opts, presetSLO)
-	report, err := buildStatusReportWithClient(ctx, &local, name, true, nil)
+	ec := newEnrichmentContext(ctx, &local)
+	report, err := buildStatusReportWithClient(ctx, &local, name, true, ec)
 	if err != nil {
 		return err
 	}
@@ -66,8 +65,7 @@ func runSLO(ctx context.Context, out io.Writer, opts *options, name, metric, tar
 	if len(report.Analysis.Metrics.Metrics) == 0 {
 		result.Findings = append(result.Findings, "no current HPA metrics are visible; SLO correlation may require adapter diagnostics")
 	}
-	format, templateStr := outputSelection(outputConfig{output: opts.Output, template: opts.Template, outputTemplates: opts.OutputTemplates})
-	return render.Format(out, format, templateStr, result, func(out io.Writer) error {
+	return renderWithOutput(out, opts, result, func(out io.Writer) error {
 		_, _ = fmt.Fprintf(out, "SLO-aware HPA Report: %s/%s\n", result.Namespace, result.Name)
 		_, _ = fmt.Fprintf(out, "SLO: %s target=%s\n\nFindings:\n", result.Metric, result.Target)
 		for _, finding := range result.Findings {

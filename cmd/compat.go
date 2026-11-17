@@ -8,7 +8,6 @@ import (
 
 	"github.com/mattsu2020/kubectl-hpa-status/cmd/internal/compat"
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
-	"github.com/mattsu2020/kubectl-hpa-status/internal/render"
 )
 
 // The compat report model, its rules, and its text renderer live in
@@ -31,7 +30,7 @@ func runCompat(ctx context.Context, out io.Writer, opts *options) error {
 		return err
 	}
 	report := compat.BuildReport(ctx, disco)
-	return render.Format(out, opts.Output, opts.Template, report, func(out io.Writer) error {
+	return renderWithOutput(out, opts, report, func(out io.Writer) error {
 		return compat.WriteText(out, report)
 	})
 }

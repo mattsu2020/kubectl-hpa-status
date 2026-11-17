@@ -43,7 +43,7 @@ func (m Model) renderSimView() string {
 
 	// Footer.
 	sb.WriteString("\n")
-	sb.WriteString(dimStyle.Render("Enter=simulate  a=apply  M=toggle metric  Esc=back"))
+	sb.WriteString(dimStyle.Render("Enter=simulate  Tab=field  M=toggle metric  Esc=back"))
 
 	return sb.String()
 }

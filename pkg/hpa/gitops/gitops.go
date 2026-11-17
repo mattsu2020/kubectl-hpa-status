@@ -5,7 +5,11 @@
 // etc.).
 package gitops
 
-import "fmt"
+import (
+	"fmt"
+	"sort"
+	"strings"
+)
 
 // Conflict holds the result of GitOps manifest conflict analysis.
 type Conflict struct {
@@ -158,18 +162,18 @@ func AnalyzeConflict(input Input) *Conflict {
 	return result
 }
 
-// annotationKeys returns a comma-separated list of annotation keys.
+// annotationKeys returns a deterministic comma-separated list of annotation keys.
 func annotationKeys(annotations map[string]string) string {
+	if len(annotations) == 0 {
+		return ""
+	}
 	keys := make([]string, 0, len(annotations))
 	for k := range annotations {
 		keys = append(keys, k)
 	}
-	if len(keys) == 1 {
-		return keys[0]
+	sort.Strings(keys)
+	if len(keys) <= 3 {
+		return strings.Join(keys, ", ")
 	}
-	// Return first few keys if many
-	if len(keys) > 3 {
-		return fmt.Sprintf("%s, ...", keys[0])
-	}
-	return fmt.Sprintf("%s, %s", keys[0], keys[1])
+	return fmt.Sprintf("%s, %s, ...", keys[0], keys[1])
 }

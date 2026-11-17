@@ -202,9 +202,16 @@ func analyzeInitializationImpact(input DoctorInput) InitImpact {
 	}
 
 	youngCount := int32(0)
+	readyYoungCount := int32(0)
+	notReadyYoungCount := int32(0)
 	for _, pod := range input.PodDetails {
 		if pod.AgeSeconds < int64(input.CPUInitPeriodSeconds) {
 			youngCount++
+			if pod.Ready {
+				readyYoungCount++
+			} else {
+				notReadyYoungCount++
+			}
 		}
 	}
 	impact.EstimatedExcludedPods = youngCount
@@ -213,9 +220,9 @@ func analyzeInitializationImpact(input DoctorInput) InitImpact {
 	case youngCount == 0:
 		impact.ImpactDescription = "No pods are in the CPU initialization window."
 	case youngCount <= 2:
-		impact.ImpactDescription = fmt.Sprintf("%d pod(s) are in the CPU initialization window (%ds). CPU metrics from these pods may be ignored.", youngCount, input.CPUInitPeriodSeconds)
+		impact.ImpactDescription = fmt.Sprintf("%d pod(s) are in the CPU initialization window (%ds; %d ready, %d not-ready). CPU metrics from not-ready or uninitialized pods may be ignored.", youngCount, input.CPUInitPeriodSeconds, readyYoungCount, notReadyYoungCount)
 	default:
-		impact.ImpactDescription = fmt.Sprintf("%d pods are in the CPU initialization window (%ds). CPU metrics from these pods are likely ignored, which can suppress scale-up decisions.", youngCount, input.CPUInitPeriodSeconds)
+		impact.ImpactDescription = fmt.Sprintf("%d pods are in the CPU initialization window (%ds; %d ready, %d not-ready). CPU metrics from these pods are likely ignored or discounted, which can suppress scale-up decisions.", youngCount, input.CPUInitPeriodSeconds, readyYoungCount, notReadyYoungCount)
 	}
 
 	return impact
@@ -235,7 +242,12 @@ func analyzeExclusionEstimate(input DoctorInput) ExclusionEstimate {
 		}
 	}
 	estimate.NotReadyPods = notReady
-	estimate.EstimatedExcludedCount = notReady + input.MissingMetricPods
+	excluded := notReady + input.MissingMetricPods
+	totalPods := int32(len(input.PodDetails))
+	if totalPods > 0 && excluded > totalPods {
+		excluded = totalPods
+	}
+	estimate.EstimatedExcludedCount = excluded
 
 	var parts []string
 	if notReady > 0 {

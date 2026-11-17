@@ -8,7 +8,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
 
@@ -35,17 +34,25 @@ func newWhyNotScaleCommand(opts *options) *cobra.Command {
 }
 
 func runWhyNotScale(ctx context.Context, out io.Writer, opts *options, names []string) error {
-	return runPerHPACommand(ctx, out, opts, names, presetWhyNotScale,
-		func(ctx context.Context, local *options, client *kube.Client, name string) (whyNotScaleReport, error) {
-			statusReport, err := buildStatusReport(ctx, local, client, name, true, nil)
-			if err != nil {
-				return whyNotScaleReport{}, err
-			}
-			return buildWhyNotScaleReport(statusReport.Analysis), nil
-		},
-		func(_ io.Writer, _ *options, report whyNotScaleReport) error {
-			return writeWhyNotScaleText(out, report)
-		})
+	local := applyCommandPreset(opts, presetWhyNotScale)
+	client, err := newClientOrDefault(&local)
+	if err != nil {
+		return writeErrorIfStructured(out, local.Output, err)
+	}
+	ec := newEnrichmentContext(ctx, &local)
+	outputs, err := collectPerHPA(ctx, &local, names, func(ctx context.Context, name string) (whyNotScaleReport, error) {
+		statusReport, err := buildStatusReport(ctx, &local, client, name, true, ec)
+		if err != nil {
+			return whyNotScaleReport{}, err
+		}
+		return buildWhyNotScaleReport(statusReport.Analysis), nil
+	})
+	if err != nil {
+		return writeErrorIfStructured(out, local.Output, err)
+	}
+	return renderPerHPA(out, &local, outputs, func(w io.Writer, report whyNotScaleReport) error {
+		return writeWhyNotScaleText(w, report)
+	})
 }
 
 // collectWhyNotScaleObservations gathers human-readable signals (summary,

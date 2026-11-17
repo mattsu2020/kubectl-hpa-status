@@ -97,6 +97,7 @@ func containerFailureRule(input Input) []Finding {
 	var findings []Finding
 	backOffCount := 0
 	crashLoopCount := 0
+	ns := describeNamespace(input)
 
 	for _, cs := range input.ContainerStatuses {
 		if !cs.Waiting {
@@ -111,7 +112,7 @@ func containerFailureRule(input Input) []Finding {
 				Category:    "application",
 				Message:     fmt.Sprintf("Pod %s container %s: %s", cs.Pod, cs.Container, cs.WaitingReason),
 				Detail:      "The container image cannot be pulled. Verify the image name, tag, registry credentials, and network access.",
-				NextCommand: fmt.Sprintf("kubectl describe pod %s", cs.Pod),
+				NextCommand: fmt.Sprintf("kubectl describe pod %s -n %s", cs.Pod, ns),
 			})
 		case "CrashLoopBackOff":
 			crashLoopCount++
@@ -121,7 +122,7 @@ func containerFailureRule(input Input) []Finding {
 				Category:    "application",
 				Message:     fmt.Sprintf("Pod %s container %s: CrashLoopBackOff (restarts: %d)", cs.Pod, cs.Container, cs.RestartCount),
 				Detail:      "The container is crashing repeatedly. Check application logs for the root cause.",
-				NextCommand: fmt.Sprintf("kubectl logs %s --previous", cs.Pod),
+				NextCommand: fmt.Sprintf("kubectl logs %s -n %s --previous", cs.Pod, ns),
 			})
 		}
 	}
@@ -131,13 +132,13 @@ func containerFailureRule(input Input) []Finding {
 		findings = deduplicateFindings(findings, "image-pull-failure",
 			fmt.Sprintf("%d pods have image pull failures (ImagePullBackOff/ErrImagePull)", backOffCount),
 			"Multiple pods cannot pull their container images. Verify the image registry, credentials, and network.",
-			"kubectl get pods --field-selector status.containerStatuses[0].state.waiting.reason=ImagePullBackOff")
+			fmt.Sprintf("kubectl get pods -n %s -o wide", ns))
 	}
 	if crashLoopCount > 1 {
 		findings = deduplicateFindings(findings, "crash-loop",
 			fmt.Sprintf("%d pods are in CrashLoopBackOff", crashLoopCount),
 			"Multiple pods are crashing repeatedly. Check application logs and recent deployments.",
-			"kubectl get pods --field-selector status.containerStatuses[0].state.waiting.reason=CrashLoopBackOff")
+			fmt.Sprintf("kubectl get pods -n %s -o wide", ns))
 	}
 
 	return findings
@@ -158,6 +159,7 @@ const quotaNearLimitRatio = 0.80
 // quotaNearLimitRule detects ResourceQuotas where usage is at or above 80%.
 func quotaNearLimitRule(input Input) []Finding {
 	var findings []Finding
+	ns := describeNamespace(input)
 	for _, q := range input.Quotas {
 		if q.Ratio < quotaNearLimitRatio {
 			continue
@@ -172,7 +174,7 @@ func quotaNearLimitRule(input Input) []Finding {
 			Category:    "quota",
 			Message:     fmt.Sprintf("ResourceQuota %q %s is %.0f%% used (%s/%s)", q.Name, q.Resource, q.Ratio*100, q.Used, q.Hard),
 			Detail:      "Namespace ResourceQuota is near its limit. New pods may be rejected if the quota is exhausted.",
-			NextCommand: fmt.Sprintf("kubectl describe quota %s", q.Name),
+			NextCommand: fmt.Sprintf("kubectl describe quota %s -n %s", q.Name, ns),
 		})
 	}
 	return findings

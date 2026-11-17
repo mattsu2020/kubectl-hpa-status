@@ -27,6 +27,7 @@ func RedactBytes(data []byte) []byte {
 	// survive into a shared markdown report or zip entry.
 	s = redactSensitiveString(s)
 	s = selectorTextPattern.ReplaceAllString(s, `${1}[REDACTED]${2}`)
+	s = selectorHTMLPattern.ReplaceAllString(s, `${1}[REDACTED]${2}`)
 	s = selectorJSONPattern.ReplaceAllString(s, `${1}[REDACTED]${2}`)
 
 	// Parse complete address-shaped tokens so IPv6 prefixes cannot leak and
@@ -127,8 +128,9 @@ func redactStructuredValue(value any, parentKey string) any {
 	return value
 }
 
-// Selector values may also occur inside human-readable analysis and embedded JSON.
+// Selector values may also occur inside human-readable analysis, HTML-escaped markdown, and embedded JSON.
 var selectorTextPattern = regexp.MustCompile(`(?i)(selector=\\?")[^"\\]*(\\?")`)
+var selectorHTMLPattern = regexp.MustCompile(`(?i)(selector=&quot;).*?(&quot;)`)
 var selectorJSONPattern = regexp.MustCompile(`(?i)("selector"\s*:\s*")[^"\\]*(")`)
 
 const sensitiveNameCorePattern = `(?:access[-_]?token|auth[-_]?token|token|password|passwd|credential(?:s)?|api[-_]?key|apikey|client[-_]?secret|secret|access[-_]?key(?:[-_]?id)?|secret[-_]?access[-_]?key|authorization|proxy[-_]?authorization|cookie)`
@@ -450,6 +452,18 @@ func isUUID(s string) bool {
 }
 
 // redactHostnames replaces hostname-like patterns (e.g., ip-10-0-1-23.ec2.internal).
+func isHostnameBoundaryBefore(s string, i int) bool {
+	if i == 0 {
+		return true
+	}
+	prev := s[i-1]
+	return !((prev >= 'a' && prev <= 'z') || (prev >= 'A' && prev <= 'Z') || (prev >= '0' && prev <= '9') || prev == '-' || prev == '_')
+}
+
+func isHostnameChar(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '.'
+}
+
 func redactHostnames(s string) string {
 	// Common cloud hostname patterns.
 	patterns := []string{
@@ -463,17 +477,24 @@ func redactHostnames(s string) string {
 	i := 0
 	for i < len(s) {
 		matched := false
-		for _, p := range patterns {
-			if i+len(p) <= len(s) && s[i:i+len(p)] == p {
-				// Find the end of the hostname.
-				j := i
-				for j < len(s) && s[j] != ' ' && s[j] != '\n' && s[j] != '\r' && s[j] != '\t' && s[j] != ',' && s[j] != '"' && s[j] != '\'' {
-					j++
+		if isHostnameBoundaryBefore(s, i) {
+			for _, p := range patterns {
+				if i+len(p) <= len(s) && s[i:i+len(p)] == p {
+					// Scan hostname characters and trim trailing sentence dots.
+					j := i + len(p)
+					for j < len(s) && isHostnameChar(s[j]) {
+						j++
+					}
+					for j > i+len(p) && s[j-1] == '.' {
+						j--
+					}
+					if j > i+len(p) {
+						result.WriteString("[REDACTED-HOSTNAME]")
+						i = j
+						matched = true
+						break
+					}
 				}
-				result.WriteString("[REDACTED-HOSTNAME]")
-				i = j
-				matched = true
-				break
 			}
 		}
 		if !matched {

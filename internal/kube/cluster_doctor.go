@@ -3,7 +3,9 @@ package kube
 import (
 	"context"
 	"fmt"
+	"strings"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/metricsapi"
 	appsv1 "k8s.io/api/apps/v1"
 	authorizationv1 "k8s.io/api/authorization/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -23,24 +25,30 @@ func CheckAPIServices(ctx context.Context, client kubernetes.Interface) []APISer
 		}}
 	}
 	services := []struct {
-		name       string
-		apiGroup   string
-		apiVersion string
+		defaultName string
+		source      string
 	}{
-		{"metrics.k8s.io/v1beta1", "metrics.k8s.io", "v1beta1"},
-		{"custom.metrics.k8s.io/v1beta1", "custom.metrics.k8s.io", "v1beta1"},
-		{"external.metrics.k8s.io/v1beta1", "external.metrics.k8s.io", "v1beta1"},
+		{"metrics.k8s.io/v1beta1", metricsapi.Resource},
+		{"custom.metrics.k8s.io/v1beta1", metricsapi.Custom},
+		{"external.metrics.k8s.io/v1beta1", metricsapi.External},
 	}
 
 	groups, groupsErr := client.Discovery().ServerGroups()
-
-	var results []APIServiceStatus
-	for _, svc := range services {
-		var shared *metav1.APIGroupList
-		if groupsErr == nil {
-			shared = groups
+	if groupsErr != nil {
+		results := make([]APIServiceStatus, 0, len(services))
+		for _, svc := range services {
+			results = append(results, APIServiceStatus{
+				Name:    svc.defaultName,
+				Status:  "unknown",
+				Message: fmt.Sprintf("failed to discover API groups: %v", groupsErr),
+			})
 		}
-		results = append(results, checkAPIGroup(client, svc.name, svc.apiGroup, svc.apiVersion, shared))
+		return results
+	}
+
+	results := make([]APIServiceStatus, 0, len(services))
+	for _, svc := range services {
+		results = append(results, checkAPIGroupCandidates(groups, svc.defaultName, metricsapi.GroupVersions(svc.source)))
 	}
 	return results
 }
@@ -52,36 +60,32 @@ type APIServiceStatus struct {
 	Message string
 }
 
-// checkAPIGroup reports one API group's availability. groups may carry a
-// previously fetched discovery result; nil triggers a fresh ServerGroups call.
-func checkAPIGroup(client kubernetes.Interface, name, apiGroup, apiVersion string, groups *metav1.APIGroupList) APIServiceStatus {
-	if groups == nil {
-		fetched, err := client.Discovery().ServerGroups()
-		if err != nil {
-			return APIServiceStatus{
-				Name:    name,
-				Status:  "unknown",
-				Message: fmt.Sprintf("failed to discover API groups: %v", err),
+func checkAPIGroupCandidates(groups *metav1.APIGroupList, defaultName string, candidates []string) APIServiceStatus {
+	if groups != nil {
+		for _, gv := range candidates {
+			apiGroup, apiVersion, ok := strings.Cut(gv, "/")
+			if !ok {
+				continue
 			}
-		}
-		groups = fetched
-	}
-
-	for _, group := range groups.Groups {
-		if group.Name == apiGroup {
-			for _, v := range group.Versions {
-				if v.Version == apiVersion {
-					return APIServiceStatus{
-						Name:   name,
-						Status: "available",
+			for _, group := range groups.Groups {
+				if group.Name != apiGroup {
+					continue
+				}
+				for _, v := range group.Versions {
+					if v.Version == apiVersion {
+						return APIServiceStatus{
+							Name:   gv,
+							Status: "available",
+						}
 					}
 				}
 			}
 		}
 	}
 
+	apiGroup, apiVersion, _ := strings.Cut(defaultName, "/")
 	return APIServiceStatus{
-		Name:    name,
+		Name:    defaultName,
 		Status:  "unavailable",
 		Message: fmt.Sprintf("API group %s version %s not found; install the corresponding metrics adapter", apiGroup, apiVersion),
 	}

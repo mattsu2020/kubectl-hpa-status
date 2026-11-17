@@ -381,3 +381,30 @@ func TestCountDirectionFlips(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildCandidateWindows_CapsAt3600AndHandlesZero(t *testing.T) {
+	for _, current := range []int32{0, 3000, 3600} {
+		candidates := buildCandidateWindows(current)
+		for _, c := range candidates {
+			if c <= current || c > 3600 || c <= 0 {
+				t.Fatalf("current=%d produced out-of-range candidate %d (all=%v)", current, c, candidates)
+			}
+		}
+	}
+	if got := buildCandidateWindows(3600); len(got) != 0 {
+		t.Fatalf("expected empty candidates at max 3600s, got %v", got)
+	}
+}
+
+func TestSimulateWindow_PreservesDirectionOnSuppressedFlip(t *testing.T) {
+	t0 := time.Now()
+	rescales := []event.RescaleData{
+		{Timestamp: t0, NewSize: 2},
+		{Timestamp: t0.Add(10 * time.Second), NewSize: 4},  // up
+		{Timestamp: t0.Add(20 * time.Second), NewSize: 3},  // down within 60s window (suppressed; prevDir stays +1)
+		{Timestamp: t0.Add(200 * time.Second), NewSize: 2}, // down outside 60s window from 10s -> flips once
+	}
+	if got := simulateWindow(rescales, 60); got != 1 {
+		t.Fatalf("expected 1 remaining flip after suppressed flip preserved direction, got %d", got)
+	}
+}

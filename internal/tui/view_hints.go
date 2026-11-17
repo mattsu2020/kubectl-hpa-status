@@ -12,12 +12,27 @@ import (
 // badges, and the selected hint's step-by-step diagnostic commands.
 func (m Model) renderHintsView() string {
 	items := m.filteredItems()
-	if m.cursor < 0 || m.cursor >= len(items) {
-		return headerStyle.Render("Metric Troubleshooting") + "\n\n" +
-			dimStyle.Render("No HPA selected.")
+	var item hpaanalysis.ListItem
+	found := false
+	if m.hintsState != nil && m.hintsState.key != "" {
+		for _, candidate := range items {
+			if candidate.Namespace+"/"+candidate.Name == m.hintsState.key {
+				item = candidate
+				found = true
+				break
+			}
+		}
+		if !found {
+			return headerStyle.Render(fmt.Sprintf("Metric Troubleshooting: %s", m.hintsState.key)) + "\n\n" +
+				dimStyle.Render("Selected HPA is no longer present.")
+		}
+	} else {
+		if m.cursor < 0 || m.cursor >= len(items) {
+			return headerStyle.Render("Metric Troubleshooting") + "\n\n" +
+				dimStyle.Render("No HPA selected.")
+		}
+		item = items[m.cursor]
 	}
-
-	item := items[m.cursor]
 
 	if m.hintsState == nil || len(m.hintsState.flows) == 0 {
 		return headerStyle.Render(fmt.Sprintf("Metric Troubleshooting: %s/%s", item.Namespace, item.Name)) +

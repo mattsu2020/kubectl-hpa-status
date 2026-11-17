@@ -3,9 +3,40 @@ package healthtrend
 import (
 	"time"
 
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/flapping"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 )
+
+// AnomalyType identifies the kind of anomaly detected in health score history.
+type AnomalyType string
+
+const (
+	// AnomalySuddenDegradation indicates a rapid health score drop.
+	AnomalySuddenDegradation AnomalyType = "sudden-degradation"
+	// AnomalyStuckState indicates the health score has not changed for an extended period.
+	AnomalyStuckState AnomalyType = "stuck-state"
+	// AnomalyOscillationEscalation indicates increasing oscillation in health scores.
+	AnomalyOscillationEscalation AnomalyType = "oscillation-escalation"
+)
+
+// AnomalyDetection holds a single anomaly detected in health score history.
+type AnomalyDetection struct {
+	// Timestamp is when the anomaly was detected.
+	Timestamp time.Time `json:"timestamp" yaml:"timestamp"`
+	// Type is the anomaly type.
+	Type AnomalyType `json:"type" yaml:"type"`
+	// Severity is the severity: "critical", "warning", or "info".
+	Severity string `json:"severity" yaml:"severity"`
+	// ScoreBefore is the health score before the anomaly.
+	ScoreBefore int `json:"scoreBefore" yaml:"scoreBefore"`
+	// ScoreAfter is the health score after the anomaly.
+	ScoreAfter int `json:"scoreAfter" yaml:"scoreAfter"`
+	// Duration describes how long the anomaly condition persisted.
+	Duration string `json:"duration,omitempty" yaml:"duration,omitempty"`
+	// CauseEstimate is the estimated root cause of the anomaly.
+	CauseEstimate string `json:"causeEstimate,omitempty" yaml:"causeEstimate,omitempty"`
+	// Remediation suggests actions to address the anomaly.
+	Remediation string `json:"remediation,omitempty" yaml:"remediation,omitempty"`
+}
 
 const (
 	// anomalyMinSnapshots is the minimum number of snapshots required for
@@ -45,12 +76,12 @@ const (
 // DetectAnomalies analyzes a sorted series of health snapshots and returns
 // any detected anomalies. Returns nil if fewer than anomalyMinSnapshots are
 // provided. The input slice is not modified.
-func DetectAnomalies(snapshots []HealthSnapshot) []flapping.AnomalyDetection {
+func DetectAnomalies(snapshots []HealthSnapshot) []AnomalyDetection {
 	if len(snapshots) < anomalyMinSnapshots {
 		return nil
 	}
 
-	var anomalies []flapping.AnomalyDetection
+	var anomalies []AnomalyDetection
 
 	anomalies = append(anomalies, detectSuddenDegradation(snapshots)...)
 	anomalies = append(anomalies, detectStuckState(snapshots)...)
@@ -61,8 +92,8 @@ func DetectAnomalies(snapshots []HealthSnapshot) []flapping.AnomalyDetection {
 
 // detectSuddenDegradation finds consecutive snapshots where the health score
 // drops by more than suddenDegradationThreshold within suddenDegradationMaxWindow.
-func detectSuddenDegradation(snapshots []HealthSnapshot) []flapping.AnomalyDetection {
-	var anomalies []flapping.AnomalyDetection
+func detectSuddenDegradation(snapshots []HealthSnapshot) []AnomalyDetection {
+	var anomalies []AnomalyDetection
 
 	for i := 1; i < len(snapshots); i++ {
 		prev := snapshots[i-1]
@@ -83,9 +114,9 @@ func detectSuddenDegradation(snapshots []HealthSnapshot) []flapping.AnomalyDetec
 			severity = "critical"
 		}
 
-		anomalies = append(anomalies, flapping.AnomalyDetection{
+		anomalies = append(anomalies, AnomalyDetection{
 			Timestamp:     curr.Timestamp,
-			Type:          flapping.AnomalySuddenDegradation,
+			Type:          AnomalySuddenDegradation,
 			Severity:      severity,
 			ScoreBefore:   prev.HealthScore,
 			ScoreAfter:    curr.HealthScore,
@@ -100,12 +131,12 @@ func detectSuddenDegradation(snapshots []HealthSnapshot) []flapping.AnomalyDetec
 
 // detectStuckState finds runs of consecutive snapshots where the health score
 // stays within stuckStateThreshold for more than stuckStateMinConsecutive.
-func detectStuckState(snapshots []HealthSnapshot) []flapping.AnomalyDetection {
+func detectStuckState(snapshots []HealthSnapshot) []AnomalyDetection {
 	if len(snapshots) < stuckStateMinConsecutive {
 		return nil
 	}
 
-	var anomalies []flapping.AnomalyDetection
+	var anomalies []AnomalyDetection
 
 	runStart := 0
 	for i := 1; i <= len(snapshots); i++ {
@@ -121,9 +152,9 @@ func detectStuckState(snapshots []HealthSnapshot) []flapping.AnomalyDetection {
 			last := snapshots[i-1]
 			duration := last.Timestamp.Sub(first.Timestamp)
 
-			anomalies = append(anomalies, flapping.AnomalyDetection{
+			anomalies = append(anomalies, AnomalyDetection{
 				Timestamp:     last.Timestamp,
-				Type:          flapping.AnomalyStuckState,
+				Type:          AnomalyStuckState,
 				Severity:      "info",
 				ScoreBefore:   first.HealthScore,
 				ScoreAfter:    last.HealthScore,
@@ -141,7 +172,7 @@ func detectStuckState(snapshots []HealthSnapshot) []flapping.AnomalyDetection {
 
 // detectOscillationEscalation compares the variance of the last
 // oscillationWindow snapshots against the previous oscillationWindow.
-func detectOscillationEscalation(snapshots []HealthSnapshot) []flapping.AnomalyDetection {
+func detectOscillationEscalation(snapshots []HealthSnapshot) []AnomalyDetection {
 	minRequired := oscillationWindow * 2
 	if len(snapshots) < minRequired {
 		return nil
@@ -164,13 +195,13 @@ func detectOscillationEscalation(snapshots []HealthSnapshot) []flapping.AnomalyD
 		// If the previous window had zero variance, any non-zero recent
 		// variance counts as escalation.
 		if recentVar > 0 {
-			return []flapping.AnomalyDetection{buildOscillationAnomaly(snapshots)}
+			return []AnomalyDetection{buildOscillationAnomaly(snapshots)}
 		}
 		return nil
 	}
 
 	if recentVar > prevVar*oscillationEscalationFactor {
-		return []flapping.AnomalyDetection{buildOscillationAnomaly(snapshots)}
+		return []AnomalyDetection{buildOscillationAnomaly(snapshots)}
 	}
 
 	return nil
@@ -178,15 +209,15 @@ func detectOscillationEscalation(snapshots []HealthSnapshot) []flapping.AnomalyD
 
 // buildOscillationAnomaly creates an oscillation escalation anomaly from the
 // full snapshot series.
-func buildOscillationAnomaly(snapshots []HealthSnapshot) flapping.AnomalyDetection {
+func buildOscillationAnomaly(snapshots []HealthSnapshot) AnomalyDetection {
 	n := len(snapshots)
 	first := snapshots[n-oscillationWindow]
 	last := snapshots[n-1]
 	duration := last.Timestamp.Sub(first.Timestamp)
 
-	return flapping.AnomalyDetection{
+	return AnomalyDetection{
 		Timestamp:     last.Timestamp,
-		Type:          flapping.AnomalyOscillationEscalation,
+		Type:          AnomalyOscillationEscalation,
 		Severity:      "warning",
 		ScoreBefore:   first.HealthScore,
 		ScoreAfter:    last.HealthScore,

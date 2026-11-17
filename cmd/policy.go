@@ -145,6 +145,14 @@ rules:
 }
 
 func runPolicy(ctx context.Context, out io.Writer, opts *options, policyOpts *policyCommandOptions, name string) error {
+	var names []string
+	if name != "" {
+		names = []string{name}
+	}
+	return runPolicyMany(ctx, out, opts, policyOpts, names...)
+}
+
+func runPolicyMany(ctx context.Context, out io.Writer, opts *options, policyOpts *policyCommandOptions, names ...string) error {
 	path := policyOpts.file
 	if path == "" {
 		path = "~/.kube/hpa-policies.yaml"
@@ -161,12 +169,14 @@ func runPolicy(ctx context.Context, out io.Writer, opts *options, policyOpts *po
 	}
 
 	var reports []hpapolicy.Report
-	if name != "" {
-		hpa, err := client.Interface.AutoscalingV2().HorizontalPodAutoscalers(client.Namespace).Get(ctx, name, metav1.GetOptions{})
-		if err != nil {
-			return wrapHPALookupError(client.Namespace, name, err)
+	if len(names) > 0 {
+		for _, n := range names {
+			hpa, err := client.Interface.AutoscalingV2().HorizontalPodAutoscalers(client.Namespace).Get(ctx, n, metav1.GetOptions{})
+			if err != nil {
+				return wrapHPALookupError(client.Namespace, n, err)
+			}
+			reports = append(reports, *hpapolicy.EvaluatePolicies(hpa, policyFile))
 		}
-		reports = append(reports, *hpapolicy.EvaluatePolicies(hpa, policyFile))
 	} else {
 		namespace := client.Namespace
 		if opts.AllNamespaces {

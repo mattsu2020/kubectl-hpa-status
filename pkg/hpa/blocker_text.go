@@ -36,6 +36,9 @@ func AppendBlockerText(out *[]byte, report *blocker.Report, theme style.Theme, l
 			if b.Detail != "" {
 				*out = fmt.Appendf(*out, "      %s\n", theme.Dim.Render(b.Detail))
 			}
+			if b.NextCommand != "" {
+				*out = fmt.Appendf(*out, "      next: %s\n", theme.ActionLine(b.NextCommand))
+			}
 		}
 	} else {
 		*out = append(*out, '\n')

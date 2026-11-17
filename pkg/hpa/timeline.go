@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 	"time"
 
@@ -141,7 +142,7 @@ func WriteTimelineMarkdown(w io.Writer, trace TimelineTrace) error {
 	if len(anomalies) > 0 {
 		out.WriteString("## Anomalies\n\n")
 		for _, anomaly := range anomalies {
-			out.WriteString(fmt.Sprintf("- %s\n", escapeMarkdown(anomaly)))
+			out.WriteString(fmt.Sprintf("- %s\n", rendutil.EscapeMarkdown(anomaly)))
 		}
 		out.WriteString("\n")
 	}
@@ -164,8 +165,8 @@ func WriteTimelineMarkdown(w io.Writer, trace TimelineTrace) error {
 			snap.Desired,
 			snap.Health,
 			snap.HealthScore,
-			escapeMarkdown(topMetric),
-			escapeMarkdown(summary)))
+			rendutil.EscapeMarkdown(topMetric),
+			rendutil.EscapeMarkdown(summary)))
 	}
 	out.WriteString("\n")
 
@@ -183,12 +184,12 @@ func WriteTimelineHTML(w io.Writer, trace TimelineTrace) error {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>HPA Timeline: `)
-	out.WriteString(htmlEscape(trace.HPAName))
+	out.WriteString(rendutil.HTMLEscape(trace.HPAName))
 	out.WriteString("</title>\n<style>\n")
-	out.WriteString(htmlCSS())
+	out.WriteString(rendutil.HTMLCSS())
 	out.WriteString("</style>\n</head>\n<body>\n")
 
-	out.WriteString(fmt.Sprintf("<h1>HPA Timeline: %s/%s</h1>\n", htmlEscape(trace.Namespace), htmlEscape(trace.HPAName)))
+	out.WriteString(fmt.Sprintf("<h1>HPA Timeline: %s/%s</h1>\n", rendutil.HTMLEscape(trace.Namespace), rendutil.HTMLEscape(trace.HPAName)))
 	out.WriteString(fmt.Sprintf("<p>Interval: %s | Snapshots: %d | Start: %s",
 		trace.Interval, len(trace.Snapshots), trace.Start.Format(time.RFC3339)))
 	if !trace.End.IsZero() {
@@ -199,7 +200,7 @@ func WriteTimelineHTML(w io.Writer, trace TimelineTrace) error {
 	if len(anomalies) > 0 {
 		out.WriteString("<h2>Anomalies</h2>\n<ul>\n")
 		for _, anomaly := range anomalies {
-			out.WriteString(fmt.Sprintf("<li>%s</li>\n", htmlEscape(anomaly)))
+			out.WriteString(fmt.Sprintf("<li>%s</li>\n", rendutil.HTMLEscape(anomaly)))
 		}
 		out.WriteString("</ul>\n")
 	}
@@ -211,10 +212,10 @@ func WriteTimelineHTML(w io.Writer, trace TimelineTrace) error {
 			out.WriteString(fmt.Sprintf("<td>%s</td>", snap.Timestamp.Format("15:04:05")))
 			out.WriteString(fmt.Sprintf("<td>%d</td>", snap.Current))
 			out.WriteString(fmt.Sprintf("<td>%d</td>", snap.Desired))
-			out.WriteString(fmt.Sprintf("<td>%s</td>", htmlHealthBadge(snap.Health, snap.HealthScore)))
+			out.WriteString(fmt.Sprintf("<td>%s</td>", rendutil.HTMLHealthBadge(snap.Health, snap.HealthScore)))
 			out.WriteString(fmt.Sprintf("<td>%d</td>", snap.HealthScore))
-			out.WriteString(fmt.Sprintf("<td>%s</td>", htmlEscape(snap.TopMetric)))
-			out.WriteString(fmt.Sprintf("<td>%s</td>", htmlEscape(snap.Summary)))
+			out.WriteString(fmt.Sprintf("<td>%s</td>", rendutil.HTMLEscape(snap.TopMetric)))
+			out.WriteString(fmt.Sprintf("<td>%s</td>", rendutil.HTMLEscape(snap.Summary)))
 			out.WriteString("</tr>\n")
 		}
 		out.WriteString("</table>\n")
@@ -247,12 +248,28 @@ func DiffSnapshots(prev, curr TimelineSnapshot) []string {
 
 	prevConditions := timelineConditionMap(prev.Conditions)
 	currConditions := timelineConditionMap(curr.Conditions)
-	for t, c := range currConditions {
-		if p, ok := prevConditions[t]; !ok || p.Status != c.Status || p.Reason != c.Reason {
-			prevStatus := p.Status
-			prevReason := p.Reason
+	condTypes := make([]string, 0, len(currConditions)+len(prevConditions))
+	seen := make(map[string]struct{}, len(currConditions)+len(prevConditions))
+	for t := range currConditions {
+		seen[t] = struct{}{}
+		condTypes = append(condTypes, t)
+	}
+	for t := range prevConditions {
+		if _, ok := seen[t]; !ok {
+			condTypes = append(condTypes, t)
+		}
+	}
+	sort.Strings(condTypes)
+	for _, t := range condTypes {
+		p, inPrev := prevConditions[t]
+		c, inCurr := currConditions[t]
+		if !inCurr {
+			changes = append(changes, fmt.Sprintf("condition %s: %s/%s -> <removed>", t, p.Status, p.Reason))
+			continue
+		}
+		if !inPrev || p.Status != c.Status || p.Reason != c.Reason {
 			changes = append(changes, fmt.Sprintf("condition %s: %s/%s -> %s/%s",
-				t, prevStatus, prevReason, c.Status, c.Reason))
+				t, p.Status, p.Reason, c.Status, c.Reason))
 		}
 	}
 
@@ -294,18 +311,20 @@ func DetectTimelineAnomalies(trace TimelineTrace) []string {
 	directionFlips := event.CountDirectionFlips(desired)
 	largeJumps := 0
 	errorSnapshots := 0
-	for i := 1; i < len(trace.Snapshots); i++ {
+	for i, curr := range trace.Snapshots {
+		if curr.Health == string(HealthError) {
+			errorSnapshots++
+		}
+		if i == 0 {
+			continue
+		}
 		prev := trace.Snapshots[i-1]
-		curr := trace.Snapshots[i]
 		delta := curr.Desired - prev.Desired
 		// Round the half-of-previous threshold up ((n+1)/2) so the jump
 		// sensitivity does not stall at the same value for two consecutive
 		// replica counts (prev.Desired/2 truncated 6 and 7 to the same 3).
 		if absInt32(delta) >= maxInt32(3, (prev.Desired+1)/2) {
 			largeJumps++
-		}
-		if curr.Health == string(HealthError) {
-			errorSnapshots++
 		}
 	}
 	if directionFlips >= 3 {

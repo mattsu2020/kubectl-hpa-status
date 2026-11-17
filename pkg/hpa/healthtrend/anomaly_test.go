@@ -3,8 +3,6 @@ package healthtrend
 import (
 	"testing"
 	"time"
-
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/flapping"
 )
 
 func TestDetectAnomalies_TooFewSnapshots(t *testing.T) {
@@ -68,7 +66,7 @@ func TestDetectAnomalies_SuddenDegradation(t *testing.T) {
 
 	var found bool
 	for _, a := range anomalies {
-		if a.Type == flapping.AnomalySuddenDegradation {
+		if a.Type == AnomalySuddenDegradation {
 			found = true
 			if a.ScoreBefore != 85 {
 				t.Errorf("ScoreBefore = %d, want 85", a.ScoreBefore)
@@ -106,7 +104,7 @@ func TestDetectAnomalies_SuddenDegradation_Critical(t *testing.T) {
 
 	var found bool
 	for _, a := range anomalies {
-		if a.Type == flapping.AnomalySuddenDegradation {
+		if a.Type == AnomalySuddenDegradation {
 			found = true
 			if a.Severity != "critical" {
 				t.Errorf("Severity = %q, want %q for 50-point drop", a.Severity, "critical")
@@ -137,7 +135,7 @@ func TestDetectAnomalies_SuddenDegradation_OutsideTimeWindow(t *testing.T) {
 
 	anomalies := DetectAnomalies(snapshots)
 	for _, a := range anomalies {
-		if a.Type == flapping.AnomalySuddenDegradation {
+		if a.Type == AnomalySuddenDegradation {
 			t.Error("sudden degradation should not be detected when drop is outside 10-minute window")
 		}
 	}
@@ -159,7 +157,7 @@ func TestDetectAnomalies_StuckState(t *testing.T) {
 
 	var found bool
 	for _, a := range anomalies {
-		if a.Type == flapping.AnomalyStuckState {
+		if a.Type == AnomalyStuckState {
 			found = true
 			if a.Severity != "info" {
 				t.Errorf("Severity = %q, want %q", a.Severity, "info")
@@ -194,7 +192,7 @@ func TestDetectAnomalies_StuckState_WithinThreshold(t *testing.T) {
 
 	var found bool
 	for _, a := range anomalies {
-		if a.Type == flapping.AnomalyStuckState {
+		if a.Type == AnomalyStuckState {
 			found = true
 		}
 	}
@@ -222,7 +220,7 @@ func TestDetectAnomalies_StuckState_NotEnoughConsecutive(t *testing.T) {
 
 	anomalies := DetectAnomalies(snapshots)
 	for _, a := range anomalies {
-		if a.Type == flapping.AnomalyStuckState {
+		if a.Type == AnomalyStuckState {
 			t.Error("stuck state should not be detected with only 19 consecutive identical scores")
 		}
 	}
@@ -258,7 +256,7 @@ func TestDetectAnomalies_OscillationEscalation(t *testing.T) {
 
 	var found bool
 	for _, a := range anomalies {
-		if a.Type == flapping.AnomalyOscillationEscalation {
+		if a.Type == AnomalyOscillationEscalation {
 			found = true
 			if a.Severity != "warning" {
 				t.Errorf("Severity = %q, want %q", a.Severity, "warning")
@@ -291,7 +289,7 @@ func TestDetectAnomalies_OscillationEscalation_Stable(t *testing.T) {
 
 	anomalies := DetectAnomalies(snapshots)
 	for _, a := range anomalies {
-		if a.Type == flapping.AnomalyOscillationEscalation {
+		if a.Type == AnomalyOscillationEscalation {
 			t.Error("oscillation escalation should not be detected for stable scores")
 		}
 	}
@@ -312,7 +310,7 @@ func TestDetectAnomalies_OscillationEscalation_TooFewSnapshots(t *testing.T) {
 
 	anomalies := DetectAnomalies(snapshots)
 	for _, a := range anomalies {
-		if a.Type == flapping.AnomalyOscillationEscalation {
+		if a.Type == AnomalyOscillationEscalation {
 			t.Error("oscillation escalation should not be detected with fewer than 20 snapshots")
 		}
 	}

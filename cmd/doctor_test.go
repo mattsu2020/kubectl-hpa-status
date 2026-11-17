@@ -95,12 +95,12 @@ func TestNewContextCommands(t *testing.T) {
 	if rolloutCmd.Use != "rollout-context NAME [NAME...]" {
 		t.Fatalf("unexpected rollout-context Use: %q", rolloutCmd.Use)
 	}
-	containerCmd := newContainerAdvisorCommand(opts)
-	if containerCmd.Use != "container-advisor NAME [NAME...]" {
-		t.Fatalf("unexpected container-advisor Use: %q", containerCmd.Use)
+	containerResourceCmd := newAdvisorContainerResourceCommand(opts)
+	if containerResourceCmd.Use != "container-resource NAME [NAME...]" {
+		t.Fatalf("unexpected container-resource Use: %q", containerResourceCmd.Use)
 	}
-	if !slices.Contains(containerCmd.Aliases, "container-metric") {
-		t.Fatalf("expected container-advisor aliases to include container-metric, got %v", containerCmd.Aliases)
+	if !slices.Contains(containerResourceCmd.Aliases, "container") {
+		t.Fatalf("expected container-resource aliases to include container, got %v", containerResourceCmd.Aliases)
 	}
 	ownershipCmd := newOwnershipCommand(opts)
 	if ownershipCmd.Use != "ownership NAME [NAME...]" {

@@ -286,25 +286,22 @@ func attachDecisionSignals(a Analysis, src *autoscalingv2.HorizontalPodAutoscale
 		return a
 	}
 
-	// Use the new DecisionSignals interface if the adapter implements it.
-	signalsAdapter, ok := adapter.(DecisionSignals)
-	if ok {
-		signals := signalsAdapter.FromStructuredOutput(src)
-		if signals == nil {
-			signals = signalsAdapter.FromEstimation(src)
+	if signalsAdapter, ok := adapter.(DecisionSignals); ok {
+		if signals := signalsAdapter.FromStructuredOutput(src); signals != nil {
+			a.Decision.DecisionSignals = signals
+			return a
 		}
-		if len(signals) > 0 {
+		if signals := signalsAdapter.FromEstimation(src); len(signals) > 0 {
 			a.Decision.DecisionSignals = signals
 		}
 		return a
 	}
 
-	// Fallback to legacy adapter interface.
-	signals := adapter.FromStructuredOutput(src)
-	if signals == nil {
-		signals = adapter.FromEstimation(src)
+	if signals := adapter.FromStructuredOutput(src); signals != nil {
+		a.Decision.DecisionSignals = signals
+		return a
 	}
-	if len(signals) > 0 {
+	if signals := adapter.FromEstimation(src); len(signals) > 0 {
 		a.Decision.DecisionSignals = signals
 	}
 	return a

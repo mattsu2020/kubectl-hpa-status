@@ -42,41 +42,42 @@ func normalizeSimulatedDesired(
 		}
 	}
 
-	if desired > current {
+	clamped := desired
+	limited := false
+	reason := "DesiredWithinRange"
+	if clamped < minReplicas {
+		clamped = minReplicas
+		limited = true
+		reason = "TooFewReplicas"
+	} else if clamped > maxReplicas {
+		clamped = maxReplicas
+		limited = true
+		reason = "TooManyReplicas"
+	}
+
+	if clamped > current {
 		scaleUpLimit := simulatedPolicyReplicaLimit(current, true, hpa.Spec.Behavior.ScaleUp)
 		if scaleUpLimit < current {
 			scaleUpLimit = current
 		}
-		maximumAllowed := maxReplicas
-		reason := "TooManyReplicas"
-		if maximumAllowed > scaleUpLimit {
-			maximumAllowed = scaleUpLimit
-			reason = "ScaleUpLimit"
+		if clamped > scaleUpLimit {
+			return scaleUpLimit, true, "ScaleUpLimit"
 		}
-		if desired > maximumAllowed {
-			return maximumAllowed, true, reason
-		}
-		return desired, false, "DesiredWithinRange"
+		return clamped, limited, reason
 	}
 
-	if desired < current {
+	if clamped < current {
 		scaleDownLimit := simulatedPolicyReplicaLimit(current, false, hpa.Spec.Behavior.ScaleDown)
 		if scaleDownLimit > current {
 			scaleDownLimit = current
 		}
-		minimumAllowed := minReplicas
-		reason := "TooFewReplicas"
-		if minimumAllowed < scaleDownLimit {
-			minimumAllowed = scaleDownLimit
-			reason = "ScaleDownLimit"
+		if clamped < scaleDownLimit {
+			return scaleDownLimit, true, "ScaleDownLimit"
 		}
-		if desired < minimumAllowed {
-			return minimumAllowed, true, reason
-		}
-		return desired, false, "DesiredWithinRange"
+		return clamped, limited, reason
 	}
 
-	return desired, false, "DesiredWithinRange"
+	return clamped, limited, reason
 }
 
 func legacySimulatedScaleUpLimit(current int32) int32 {

@@ -96,6 +96,19 @@ func collectManifestFiles(root string) ([]string, error) {
 	return files, nil
 }
 
+// collectManifestPaths resolves filePath to either the single file itself or
+// every YAML/JSON file beneath a directory (bounded by collectManifestFiles).
+func collectManifestPaths(filePath string) ([]string, error) {
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("cannot access %s: %w", filePath, err)
+	}
+	if !info.IsDir() {
+		return []string{filePath}, nil
+	}
+	return collectManifestFiles(filePath)
+}
+
 // walkDepth counts the directory levels between root and path (root itself is
 // depth 0, a direct child is depth 1).
 func walkDepth(root, path string) int {

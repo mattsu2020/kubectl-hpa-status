@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"context"
+	"io"
+
 	"github.com/spf13/cobra"
 )
 
@@ -28,4 +31,8 @@ func newAdvisorContainerResourceCommand(opts *options) *cobra.Command {
 			return runContainerAdvisor(cmd.Context(), cmd.OutOrStdout(), opts, args)
 		},
 	}
+}
+
+func runContainerAdvisor(ctx context.Context, out io.Writer, opts *options, names []string) error {
+	return runStatusWithPreset(ctx, out, opts, presetContainerAdvisor, names)
 }

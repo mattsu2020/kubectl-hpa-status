@@ -25,14 +25,8 @@ var (
 // shallow copy: mutating it cannot corrupt the process-wide bundle other
 // goroutines and the alt-screen TUI read from.
 func Load(lang string) map[string]string {
-	once.Do(func() {
-		bundles = loadAllBundles()
-	})
-	b := bundles["en"]
-	if candidate, ok := bundles[lang]; ok {
-		b = candidate
-	}
-	if b == nil {
+	b := bundleFor(lang)
+	if len(b) == 0 {
 		return map[string]string{}
 	}
 	out := make(map[string]string, len(b))
@@ -42,13 +36,40 @@ func Load(lang string) map[string]string {
 	return out
 }
 
-// Get returns a message for the given language and key.
+// Get returns a message for the given language and key without allocating.
 func Get(lang, key string) string {
-	b := Load(lang)
-	if msg, ok := b[key]; ok {
+	if msg, ok := bundleFor(lang)[key]; ok {
+		return msg
+	}
+	if msg, ok := bundles["en"][key]; ok {
 		return msg
 	}
 	return key
+}
+
+func bundleFor(lang string) map[string]string {
+	once.Do(func() {
+		bundles = loadAllBundles()
+	})
+	normalized := normalizeLangCode(lang)
+	if candidate, ok := bundles[normalized]; ok {
+		return candidate
+	}
+	if base, _, ok := strings.Cut(normalized, "-"); ok {
+		if candidate, ok := bundles[base]; ok {
+			return candidate
+		}
+	}
+	return bundles["en"]
+}
+
+func normalizeLangCode(lang string) string {
+	lang = strings.TrimSpace(lang)
+	if base, _, ok := strings.Cut(lang, "."); ok {
+		lang = base
+	}
+	lang = strings.ReplaceAll(lang, "_", "-")
+	return strings.ToLower(lang)
 }
 
 // loadAllBundles scans the embedded locales directory and builds a bundle per
@@ -82,10 +103,22 @@ func loadAllBundles() map[string]map[string]string {
 		result[lang] = loadYAML(path.Join("locales", name))
 	}
 
-	// Guarantee the fallback bundle is present.
-	if _, ok := result["en"]; !ok {
+	// Guarantee the fallback bundle is present and backfill missing keys in non-en locales.
+	enBundle, ok := result["en"]
+	if !ok {
 		log.Printf("i18n: no en.yaml locale found; all messages will fall back to their keys")
-		result["en"] = map[string]string{}
+		enBundle = map[string]string{}
+		result["en"] = enBundle
+	}
+	for lang, bundle := range result {
+		if lang == "en" {
+			continue
+		}
+		for k, v := range enBundle {
+			if _, exists := bundle[k]; !exists {
+				bundle[k] = v
+			}
+		}
 	}
 	return result
 }

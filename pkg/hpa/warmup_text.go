@@ -6,6 +6,7 @@ import (
 	"math"
 
 	"charm.land/lipgloss/v2"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/warmup"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
@@ -48,7 +49,13 @@ func AppendWarmupText(out *[]byte, analysis *warmup.Analysis, theme style.Theme,
 	// Impact section.
 	if analysis.Impact != "" {
 		pct := int(math.Round(analysis.EffectiveCapacityRatio * 100))
-		pctLabel := theme.SummaryColor(fmt.Sprintf("%d%%", pct))
+		pctStyle := theme.Success
+		if pct < 50 {
+			pctStyle = theme.Error
+		} else if pct < 80 {
+			pctStyle = theme.Warning
+		}
+		pctLabel := pctStyle.Render(fmt.Sprintf("%d%%", pct))
 		*out = fmt.Appendf(*out, "\n  Impact:\n    %s (effective capacity: %s)\n",
 			analysis.Impact, pctLabel)
 	}
@@ -115,8 +122,8 @@ func WriteWarmupHTML(w io.Writer, analysis *warmup.Analysis) error {
 	var out []byte
 	out = append(out, `<div class="warmup-analysis">`...)
 	out = append(out, `<h3>Warmup Analysis</h3>`...)
-	out = fmt.Appendf(out, `<p><span class="warmup-%s">Summary: %s</span></p>`,
-		htmlEscape(analysis.Summary), htmlEscape(analysis.Summary))
+	out = fmt.Appendf(out, `<p><span class="warmup-summary">Summary: %s</span></p>`,
+		rendutil.HTMLEscape(analysis.Summary))
 	out = fmt.Appendf(out, `<p>Effective capacity: %.0f%% (%d/%d pods ready)</p>`,
 		analysis.EffectiveCapacityRatio*100, analysis.ReadyPods, analysis.DesiredReplicas)
 
@@ -124,7 +131,7 @@ func WriteWarmupHTML(w io.Writer, analysis *warmup.Analysis) error {
 		out = append(out, `<h4>Bottlenecks</h4><ul>`...)
 		for _, b := range analysis.Bottlenecks {
 			out = fmt.Appendf(out, `<li><strong>%s</strong> (%s): %s</li>`,
-				htmlEscape(b.Type), htmlEscape(string(b.Severity)), htmlEscape(b.Message))
+				rendutil.HTMLEscape(b.Type), rendutil.HTMLEscape(string(b.Severity)), rendutil.HTMLEscape(b.Message))
 		}
 		out = append(out, `</ul>`...)
 	}
@@ -132,7 +139,7 @@ func WriteWarmupHTML(w io.Writer, analysis *warmup.Analysis) error {
 	if len(analysis.RecommendedActions) > 0 {
 		out = append(out, `<h4>Recommended Actions</h4><ul>`...)
 		for _, a := range analysis.RecommendedActions {
-			out = fmt.Appendf(out, `<li>%s</li>`, htmlEscape(a))
+			out = fmt.Appendf(out, `<li>%s</li>`, rendutil.HTMLEscape(a))
 		}
 		out = append(out, `</ul>`...)
 	}

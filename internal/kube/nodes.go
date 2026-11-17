@@ -42,6 +42,7 @@ func summarizeNodeCapacity(nodes []corev1.Node) *NodeCapacityInfo {
 
 func summarizeNodeCapacityForPod(nodes []corev1.Node, podSpec *corev1.PodSpec) *NodeCapacityInfo {
 	info := &NodeCapacityInfo{TotalNodes: int32(len(nodes))}
+	allEligibleHavePodCap := true
 	for i := range nodes {
 		node := &nodes[i]
 		ready := nodeReady(node)
@@ -68,20 +69,11 @@ func summarizeNodeCapacityForPod(nodes []corev1.Node, podSpec *corev1.PodSpec) *
 		if pods, ok := node.Status.Allocatable[corev1.ResourcePods]; ok {
 			info.AllocPods += pods.Value()
 		} else {
-			info.PodCapacityKnown = false
+			allEligibleHavePodCap = false
 		}
 	}
 	if info.SchedulableNodes > 0 {
-		info.PodCapacityKnown = true
-		for i := range nodes {
-			if !nodeEligibleForPod(&nodes[i], podSpec) {
-				continue
-			}
-			if _, ok := nodes[i].Status.Allocatable[corev1.ResourcePods]; !ok {
-				info.PodCapacityKnown = false
-				break
-			}
-		}
+		info.PodCapacityKnown = allEligibleHavePodCap
 	}
 	return info
 }

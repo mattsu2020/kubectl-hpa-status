@@ -70,7 +70,7 @@ func buildReadinessImpactWithSnapshot(ctx context.Context, client *kube.Client, 
 // countNotYetReadyPods increments NotYetReadyPods for young non-Ready pods and records evidence and describe-pod next-checks.
 func countNotYetReadyPods(impact *hpareadiness.Impact, pods []corev1.Pod, namespace string, now time.Time) {
 	for _, pod := range pods {
-		if podReadyForImpact(pod) {
+		if isPodReadyCondition(&pod) {
 			continue
 		}
 		age := time.Duration(0)
@@ -89,23 +89,14 @@ func countNotYetReadyPods(impact *hpareadiness.Impact, pods []corev1.Pod, namesp
 
 // countMissingMetricPods increments MissingMetricPods for running pods lacking a PodMetrics sample, recording evidence.
 func countMissingMetricPods(ctx context.Context, impact *hpareadiness.Impact, client *kube.Client, namespace, selector string, pods []corev1.Pod) {
-	metricPods, metricErr := fetchPodMetricNames(ctx, client, namespace, selector)
+	missing, metricErr := findMissingMetricPods(ctx, client, namespace, selector, pods)
 	if metricErr != nil {
 		impact.Evidence = append(impact.Evidence, fmt.Sprintf("PodMetrics not checked: %v", metricErr))
 		return
 	}
-	seen := make(map[string]struct{}, len(metricPods))
-	for _, name := range metricPods {
-		seen[name] = struct{}{}
-	}
-	for _, pod := range pods {
-		if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
-			continue
-		}
-		if _, ok := seen[pod.Name]; !ok {
-			impact.MissingMetricPods++
-			impact.Evidence = append(impact.Evidence, fmt.Sprintf("metrics window missing for pod/%s", pod.Name))
-		}
+	for _, podName := range missing {
+		impact.MissingMetricPods++
+		impact.Evidence = append(impact.Evidence, fmt.Sprintf("metrics window missing for pod/%s", podName))
 	}
 }
 
@@ -126,7 +117,10 @@ func finalizeReadinessImpact(impact *hpareadiness.Impact) {
 	}
 }
 
-func podReadyForImpact(pod corev1.Pod) bool {
+func isPodReadyCondition(pod *corev1.Pod) bool {
+	if pod == nil {
+		return false
+	}
 	for _, condition := range pod.Status.Conditions {
 		if condition.Type == corev1.PodReady {
 			return condition.Status == corev1.ConditionTrue
@@ -135,10 +129,29 @@ func podReadyForImpact(pod corev1.Pod) bool {
 	return false
 }
 
-func fetchPodMetricNames(ctx context.Context, client *kube.Client, namespace, selector string) ([]string, error) {
+// findMissingMetricPods returns the names of non-terminal pods in pods that
+// lack a PodMetrics sample.
+func findMissingMetricPods(ctx context.Context, client *kube.Client, namespace, selector string, pods []corev1.Pod) ([]string, error) {
+	if client == nil || client.Interface == nil || len(pods) == 0 {
+		return nil, nil
+	}
 	list, err := metricsapi.ListPodMetrics(ctx, client.Interface, namespace, selector)
 	if err != nil {
 		return nil, err
 	}
-	return list.Names(), nil
+	seen := make(map[string]struct{}, len(list.Items))
+	for _, name := range list.Names() {
+		seen[name] = struct{}{}
+	}
+	var missing []string
+	for i := range pods {
+		pod := &pods[i]
+		if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
+			continue
+		}
+		if _, ok := seen[pod.Name]; !ok {
+			missing = append(missing, pod.Name)
+		}
+	}
+	return missing, nil
 }

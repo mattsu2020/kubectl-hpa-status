@@ -5,6 +5,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/style"
 )
 
@@ -90,9 +91,9 @@ func WriteDoctorMarkdown(w io.Writer, report *DoctorReport) error {
 	var buf strings.Builder
 
 	buf.WriteString(fmt.Sprintf("## Readiness Doctor: %s/%s (%s)\n\n",
-		report.Namespace, report.Name, report.Target))
+		rendutil.EscapeMarkdown(report.Namespace), rendutil.EscapeMarkdown(report.Name), rendutil.EscapeMarkdown(report.Target)))
 
-	buf.WriteString(fmt.Sprintf("**Summary:** %s\n\n", report.Summary))
+	buf.WriteString(fmt.Sprintf("**Summary:** %s\n\n", rendutil.EscapeMarkdown(report.Summary)))
 
 	dist := report.PodAgeDistribution
 	buf.WriteString("### Pod Age Distribution\n\n")
@@ -111,9 +112,9 @@ func WriteDoctorMarkdown(w io.Writer, report *DoctorReport) error {
 	buf.WriteString("| Probe | Present | Delay |\n|---|---|---|\n")
 	buf.WriteString(fmt.Sprintf("| readinessProbe | %t | %ds |\n", pa.HasReadinessProbe, pa.ReadinessInitialDelaySec))
 	buf.WriteString(fmt.Sprintf("| startupProbe | %t | - |\n\n", pa.HasStartupProbe))
-	buf.WriteString(fmt.Sprintf("**Assessment:** %s\n\n", pa.Assessment))
+	buf.WriteString(fmt.Sprintf("**Assessment:** %s\n\n", rendutil.EscapeMarkdown(pa.Assessment)))
 	for _, w := range pa.Warnings {
-		buf.WriteString(fmt.Sprintf("- %s\n", w))
+		buf.WriteString(fmt.Sprintf("- %s\n", rendutil.EscapeMarkdown(w)))
 	}
 	buf.WriteString("\n")
 
@@ -121,12 +122,29 @@ func WriteDoctorMarkdown(w io.Writer, report *DoctorReport) error {
 	impact := report.InitializationImpact
 	buf.WriteString(fmt.Sprintf("- CPU init period: %ds\n", impact.CPUInitPeriodSeconds))
 	buf.WriteString(fmt.Sprintf("- Estimated excluded pods: %d\n", impact.EstimatedExcludedPods))
-	buf.WriteString(fmt.Sprintf("- %s\n\n", impact.ImpactDescription))
+	buf.WriteString(fmt.Sprintf("- %s\n\n", rendutil.EscapeMarkdown(impact.ImpactDescription)))
+
+	excl := report.ExclusionEstimate
+	if excl.EstimatedExcludedCount > 0 {
+		buf.WriteString("### Metric Exclusion Estimate\n\n")
+		buf.WriteString(fmt.Sprintf("- Not-ready pods: %d\n", excl.NotReadyPods))
+		buf.WriteString(fmt.Sprintf("- Missing metric pods: %d\n", excl.MissingMetricPods))
+		buf.WriteString(fmt.Sprintf("- Estimated excluded: %d\n", excl.EstimatedExcludedCount))
+		buf.WriteString(fmt.Sprintf("- %s\n\n", rendutil.EscapeMarkdown(excl.Explanation)))
+	}
 
 	if len(report.Recommendations) > 0 {
 		buf.WriteString("### Recommendations\n\n")
 		for _, rec := range report.Recommendations {
-			buf.WriteString(fmt.Sprintf("- %s\n", rec))
+			buf.WriteString(fmt.Sprintf("- %s\n", rendutil.EscapeMarkdown(rec)))
+		}
+		buf.WriteString("\n")
+	}
+
+	if len(report.NextChecks) > 0 {
+		buf.WriteString("### Next Checks\n\n")
+		for _, check := range report.NextChecks {
+			buf.WriteString(fmt.Sprintf("- `%s`\n", check))
 		}
 		buf.WriteString("\n")
 	}

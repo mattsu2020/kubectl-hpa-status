@@ -16,7 +16,7 @@ func (m Model) renderListView() string {
 	}
 
 	// Calculate column widths.
-	availWidth := m.width - 2 // account for cursor marker
+	availWidth := m.width - 6 // account for 2-char cursor marker + 4-char checkbox
 	nsW, nameW := 12, 20
 	healthW, scoreW, stabW, sparkW, issueW := 10, 8, 8, 15, 14
 	summaryW := availWidth - nsW - nameW - healthW - scoreW - stabW - sparkW - issueW - 7*2 // 7 gaps
@@ -39,9 +39,10 @@ func (m Model) renderListView() string {
 		sb.WriteString("\n\n")
 	}
 
-	// Header.
+	// Header (6 leading spaces match the cursor marker + checkbox prefix).
 	sb.WriteString(dimStyle.Render(
-		fitWidth("NAMESPACE", nsW) + "  " +
+		"      " +
+			fitWidth("NAMESPACE", nsW) + "  " +
 			fitWidth("NAME", nameW) + "  " +
 			fitWidth("HEALTH", healthW) + "  " +
 			fitWidth("SCORE", scoreW) + "  " +
@@ -58,13 +59,17 @@ func (m Model) renderListView() string {
 
 	for i := start; i < end; i++ {
 		item := filtered[i]
-		// Checkbox for selection.
+		// Cursor indicator on focused row + checkbox for selection.
 		itemKey := item.Namespace + "/" + item.Name
+		marker := "  "
+		if i == m.cursor {
+			marker = cursorStyle.Render("▸ ")
+		}
 		var cursor string
 		if m.selected[itemKey] {
-			cursor = cursorStyle.Render("▸ ") + okStyle.Render("[x] ")
+			cursor = marker + okStyle.Render("[x] ")
 		} else {
-			cursor = cursorStyle.Render("▸ ") + dimStyle.Render("[ ] ")
+			cursor = marker + dimStyle.Render("[ ] ")
 		}
 
 		ns := truncate(item.Namespace, nsW)

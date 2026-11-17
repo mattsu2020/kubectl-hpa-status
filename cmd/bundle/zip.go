@@ -12,8 +12,9 @@ import (
 
 // Entry is a single file in an evidence-pack archive.
 type Entry struct {
-	Name    string
-	Content []byte
+	Name        string
+	Content     []byte
+	PreRedacted bool
 }
 
 // WriteEntries writes an evidence pack atomically with private permissions.
@@ -25,7 +26,7 @@ func WriteEntries(outputPath string, entries []Entry, redact bool) error {
 				continue
 			}
 			content := entry.Content
-			if redact {
+			if redact && !entry.PreRedacted {
 				if strings.HasSuffix(entry.Name, ".json") || strings.HasSuffix(entry.Name, ".yaml") {
 					content = RedactStructuredBytes(content)
 				} else {
@@ -66,13 +67,13 @@ func buildBundleZipEntries(data *Data) ([]Entry, error) {
 	}
 
 	entries := []Entry{
-		{"report.md", mdBuf.Bytes()},
-		{"hpa.yaml", data.HPA},
-		{"scale-target.yaml", data.ScaleTarget},
-		{"replicasets.yaml", data.ReplicaSets},
-		{"pods.yaml", data.Pods},
-		{"events.txt", data.Events},
-		{"metrics-api.txt", data.MetricsAPI},
+		{Name: "report.md", Content: mdBuf.Bytes()},
+		{Name: "hpa.yaml", Content: data.HPA, PreRedacted: data.RawBytesRedacted},
+		{Name: "scale-target.yaml", Content: data.ScaleTarget, PreRedacted: data.RawBytesRedacted},
+		{Name: "replicasets.yaml", Content: data.ReplicaSets, PreRedacted: data.RawBytesRedacted},
+		{Name: "pods.yaml", Content: data.Pods, PreRedacted: data.RawBytesRedacted},
+		{Name: "events.txt", Content: data.Events, PreRedacted: data.RawBytesRedacted},
+		{Name: "metrics-api.txt", Content: data.MetricsAPI, PreRedacted: data.RawBytesRedacted},
 	}
 
 	if err := appendJSONEntry(&entries, "analysis.json", data.StatusReport.Analysis); err != nil {

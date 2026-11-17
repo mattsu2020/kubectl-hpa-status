@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/core"
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/metricidentity"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/model"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
@@ -70,6 +71,9 @@ func BuildReport(fromLabel, toLabel string, from, to *autoscalingv2.HorizontalPo
 // healthScore diff instead of guessing a score.
 func BuildReportWithScorer(fromLabel, toLabel string, from, to *autoscalingv2.HorizontalPodAutoscaler, scorer HealthScorer) Report {
 	report := Report{From: fromLabel, To: toLabel}
+	if from == nil || to == nil {
+		return report
+	}
 	addDiff := func(field, left, right string) {
 		if left != right {
 			report.Differences = append(report.Differences, Diff{Field: field, From: left, To: right})
@@ -92,19 +96,29 @@ func BuildReportWithScorer(fromLabel, toLabel string, from, to *autoscalingv2.Ho
 // definitions. Each metric is formatted as "Type/name=target" and joined with
 // commas. The format is stable and suitable for comparison.
 func MetricSummary(hpa *autoscalingv2.HorizontalPodAutoscaler) string {
+	if hpa == nil {
+		return ""
+	}
 	parts := make([]string, 0, len(hpa.Spec.Metrics))
 	for _, metric := range hpa.Spec.Metrics {
+		var summary string
 		switch {
 		case metric.Resource != nil:
-			parts = append(parts, fmt.Sprintf("Resource/%s=%s", metric.Resource.Name, core.FormatMetricTarget(metric.Resource.Target)))
+			summary = fmt.Sprintf("Resource/%s=%s", metric.Resource.Name, core.FormatMetricTarget(metric.Resource.Target))
 		case metric.ContainerResource != nil:
-			parts = append(parts, fmt.Sprintf("ContainerResource/%s/%s=%s", metric.ContainerResource.Container, metric.ContainerResource.Name, core.FormatMetricTarget(metric.ContainerResource.Target)))
+			summary = fmt.Sprintf("ContainerResource/%s/%s=%s", metric.ContainerResource.Container, metric.ContainerResource.Name, core.FormatMetricTarget(metric.ContainerResource.Target))
 		case metric.External != nil:
-			parts = append(parts, fmt.Sprintf("External/%s=%s", metric.External.Metric.Name, core.FormatMetricTarget(metric.External.Target)))
+			summary = fmt.Sprintf("External/%s=%s", metric.External.Metric.Name, core.FormatMetricTarget(metric.External.Target))
 		case metric.Pods != nil:
-			parts = append(parts, fmt.Sprintf("Pods/%s=%s", metric.Pods.Metric.Name, core.FormatMetricTarget(metric.Pods.Target)))
+			summary = fmt.Sprintf("Pods/%s=%s", metric.Pods.Metric.Name, core.FormatMetricTarget(metric.Pods.Target))
 		case metric.Object != nil:
-			parts = append(parts, fmt.Sprintf("Object/%s=%s", metric.Object.Metric.Name, core.FormatMetricTarget(metric.Object.Target)))
+			summary = fmt.Sprintf("Object/%s=%s", metric.Object.Metric.Name, core.FormatMetricTarget(metric.Object.Target))
+		}
+		if summary != "" {
+			if id, err := metricidentity.MetricIDFromSpec(metric); err == nil && id.Selector != "" {
+				summary += " selector=" + id.Selector
+			}
+			parts = append(parts, summary)
 		}
 	}
 	return strings.Join(parts, ",")
@@ -113,7 +127,7 @@ func MetricSummary(hpa *autoscalingv2.HorizontalPodAutoscaler) string {
 // StabilizationWindow returns a string representation of the HPA's scale-down
 // stabilization window. Returns "<default>" when no explicit window is set.
 func StabilizationWindow(hpa *autoscalingv2.HorizontalPodAutoscaler) string {
-	if hpa.Spec.Behavior == nil || hpa.Spec.Behavior.ScaleDown == nil || hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds == nil {
+	if hpa == nil || hpa.Spec.Behavior == nil || hpa.Spec.Behavior.ScaleDown == nil || hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds == nil {
 		return "<default>"
 	}
 	return strconv.FormatInt(int64(*hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds), 10)

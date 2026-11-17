@@ -247,3 +247,44 @@ func TestSnapshotFromReport_EmptyMetrics(t *testing.T) {
 		t.Errorf("expected empty TopMetric for no metrics, got %q", snap.TopMetric)
 	}
 }
+
+func TestDiffSnapshots_RemovedConditionAndDeterministicOrder(t *testing.T) {
+	prev := TimelineSnapshot{
+		Conditions: []Condition{
+			{Type: "ScalingLimited", Status: "True", Reason: "TooManyReplicas"},
+			{Type: "AbleToScale", Status: "True", Reason: "ReadyForNewScale"},
+		},
+	}
+	curr := TimelineSnapshot{
+		Conditions: []Condition{
+			{Type: "AbleToScale", Status: "True", Reason: "ReadyForNewScale"},
+			{Type: "ScalingActive", Status: "True", Reason: "ValidMetricFound"},
+		},
+	}
+
+	changes := DiffSnapshots(prev, curr)
+	if len(changes) != 2 {
+		t.Fatalf("expected 2 condition changes, got %v", changes)
+	}
+	if !strings.HasPrefix(changes[0], "condition ScalingActive:") {
+		t.Errorf("expected ScalingActive sorted first, got %q", changes[0])
+	}
+	if changes[1] != "condition ScalingLimited: True/TooManyReplicas -> <removed>" {
+		t.Errorf("unexpected removed condition diff: %q", changes[1])
+	}
+}
+
+func TestDetectTimelineAnomalies_IncludesIndexZeroError(t *testing.T) {
+	trace := TimelineTrace{
+		Snapshots: []TimelineSnapshot{
+			{Desired: 2, Health: "ERROR"},
+			{Desired: 2, Health: "OK"},
+			{Desired: 2, Health: "OK"},
+		},
+	}
+	anomalies := DetectTimelineAnomalies(trace)
+	joined := strings.Join(anomalies, "\n")
+	if !strings.Contains(joined, "1 snapshot(s) reported ERROR health") {
+		t.Fatalf("expected index-0 ERROR snapshot to be counted, got %v", anomalies)
+	}
+}

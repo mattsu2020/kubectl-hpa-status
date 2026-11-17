@@ -166,6 +166,9 @@ func suppressedLabel(suppressed bool) string {
 // WriteReplayText renders a ReplayAnalysis as a text timeline with
 // bottleneck markers, control cycles, and stabilization windows.
 func WriteReplayText(w io.Writer, analysis *ReplayAnalysis, tl Timeline, theme style.Theme) error {
+	if analysis == nil {
+		return nil
+	}
 	var out strings.Builder
 
 	out.WriteString(theme.Header.Render(fmt.Sprintf("HPA Replay Analysis: %s (%s)", tl.HPAName, tl.Namespace)) + "\n")
@@ -250,7 +253,11 @@ func replayDecisionText(c ControlCycle) string {
 	case c.Decision == "capped":
 		return "scale-up capped by maxReplicas"
 	case c.MetricDriver != "unknown":
-		return fmt.Sprintf("%s (%s above target)", c.Decision, c.MetricDriver)
+		relation := "above target"
+		if c.Decision == "scale-down" {
+			relation = "below target"
+		}
+		return fmt.Sprintf("%s (%s %s)", c.Decision, c.MetricDriver, relation)
 	}
 	return c.Decision
 }
@@ -314,6 +321,9 @@ func replayToleranceEffectsText(analysis *ReplayAnalysis) string {
 
 // WriteReplayMarkdown renders a ReplayAnalysis as a Markdown document.
 func WriteReplayMarkdown(w io.Writer, analysis *ReplayAnalysis, tl Timeline) error {
+	if analysis == nil {
+		return nil
+	}
 	var out strings.Builder
 
 	out.WriteString(fmt.Sprintf("# HPA Replay Analysis: %s/%s\n\n", tl.Namespace, tl.HPAName))
@@ -397,6 +407,9 @@ func WriteReplayMarkdown(w io.Writer, analysis *ReplayAnalysis, tl Timeline) err
 
 // WriteReplayHTML renders a ReplayAnalysis as a standalone HTML page.
 func WriteReplayHTML(w io.Writer, analysis *ReplayAnalysis, tl Timeline) error {
+	if analysis == nil {
+		return nil
+	}
 	var out strings.Builder
 
 	out.WriteString(`<!DOCTYPE html>

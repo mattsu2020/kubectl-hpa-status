@@ -61,7 +61,8 @@ func runHistory(ctx context.Context, out io.Writer, opts *options, name string, 
 	if since < 0 || since > local.TrendRetain {
 		return fmt.Errorf("--since (%s) must be non-negative and not exceed --trend-retain (%s)", since, local.TrendRetain)
 	}
-	report, err := buildStatusReportWithClient(ctx, &local, name, true, nil)
+	ec := newEnrichmentContext(ctx, &local)
+	report, err := buildStatusReportWithClient(ctx, &local, name, true, ec)
 	if err != nil {
 		return err
 	}

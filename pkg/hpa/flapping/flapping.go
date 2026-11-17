@@ -12,6 +12,7 @@ import (
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/healthtrend"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/conditions"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/event"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/model"
@@ -94,37 +95,20 @@ type Fix struct {
 	Rationale string `json:"rationale" yaml:"rationale"`
 }
 
-// AnomalyType identifies the kind of anomaly detected in health score history.
-type AnomalyType string
+// AnomalyType aliases healthtrend.AnomalyType for backward compatibility.
+type AnomalyType = healthtrend.AnomalyType
 
 const (
-	// AnomalySuddenDegradation indicates a rapid health score drop.
-	AnomalySuddenDegradation AnomalyType = "sudden-degradation"
-	// AnomalyStuckState indicates the health score has not changed for an extended period.
-	AnomalyStuckState AnomalyType = "stuck-state"
-	// AnomalyOscillationEscalation indicates increasing oscillation in health scores.
-	AnomalyOscillationEscalation AnomalyType = "oscillation-escalation"
+	// AnomalySuddenDegradation aliases healthtrend.AnomalySuddenDegradation.
+	AnomalySuddenDegradation = healthtrend.AnomalySuddenDegradation
+	// AnomalyStuckState aliases healthtrend.AnomalyStuckState.
+	AnomalyStuckState = healthtrend.AnomalyStuckState
+	// AnomalyOscillationEscalation aliases healthtrend.AnomalyOscillationEscalation.
+	AnomalyOscillationEscalation = healthtrend.AnomalyOscillationEscalation
 )
 
-// AnomalyDetection holds a single anomaly detected in health score history.
-type AnomalyDetection struct {
-	// Timestamp is when the anomaly was detected.
-	Timestamp time.Time `json:"timestamp" yaml:"timestamp"`
-	// Type is the anomaly type.
-	Type AnomalyType `json:"type" yaml:"type"`
-	// Severity is the severity: "critical", "warning", or "info".
-	Severity string `json:"severity" yaml:"severity"`
-	// ScoreBefore is the health score before the anomaly.
-	ScoreBefore int `json:"scoreBefore" yaml:"scoreBefore"`
-	// ScoreAfter is the health score after the anomaly.
-	ScoreAfter int `json:"scoreAfter" yaml:"scoreAfter"`
-	// Duration describes how long the anomaly condition persisted.
-	Duration string `json:"duration,omitempty" yaml:"duration,omitempty"`
-	// CauseEstimate is the estimated root cause of the anomaly.
-	CauseEstimate string `json:"causeEstimate,omitempty" yaml:"causeEstimate,omitempty"`
-	// Remediation suggests actions to address the anomaly.
-	Remediation string `json:"remediation,omitempty" yaml:"remediation,omitempty"`
-}
+// AnomalyDetection aliases healthtrend.AnomalyDetection for backward compatibility.
+type AnomalyDetection = healthtrend.AnomalyDetection
 
 const (
 	// eventTTLDefault is the default Kubernetes event TTL used in the

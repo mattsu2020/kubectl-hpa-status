@@ -245,11 +245,23 @@ func ApplyCommandPreset(root Root, preset CommandPreset, extra ...CommandPresetO
 	return local
 }
 
-func applyPresetDoctor(local *Root, _ CommandPresetOptions) {
+func applyPresetDoctor(local *Root, opts CommandPresetOptions) {
 	applyDoctorFeatures(&local.Features)
-	local.Events = EventOption{Enabled: true, Limit: 5}
-	local.KEDA = "auto"
-	local.VPA = "auto"
+	if opts.Events != nil {
+		local.Events = *opts.Events
+	} else {
+		local.Events = EventOption{Enabled: true, Limit: 5}
+	}
+	if opts.KEDA != "" {
+		local.KEDA = opts.KEDA
+	} else if local.KEDA == "" {
+		local.KEDA = "auto"
+	}
+	if opts.VPA != "" {
+		local.VPA = opts.VPA
+	} else if local.VPA == "" {
+		local.VPA = "auto"
+	}
 }
 
 func applyPresetExplain(local *Root, opts CommandPresetOptions) {
@@ -292,12 +304,12 @@ func applyPresetBundle(local *Root, opts CommandPresetOptions) {
 	local.ScalePath = true
 	if opts.KEDA != "" {
 		local.KEDA = opts.KEDA
-	} else {
+	} else if local.KEDA == "" {
 		local.KEDA = "on"
 	}
 	if opts.VPA != "" {
 		local.VPA = opts.VPA
-	} else {
+	} else if local.VPA == "" {
 		local.VPA = "on"
 	}
 	if opts.Events != nil {
@@ -314,14 +326,22 @@ func applyPresetIncidentBundle(local *Root, _ CommandPresetOptions) {
 	local.ControllerProfile = true
 }
 
-func applyPresetSupportBundle(local *Root, _ CommandPresetOptions) {
+func applyPresetSupportBundle(local *Root, opts CommandPresetOptions) {
 	applyDoctorFeatures(&local.Features)
 	local.ReadinessImpact = true
 	local.RolloutImpact = true
 	local.ScaleoutBlockers = true
 	local.ControllerProfile = true
-	local.KEDA = "on"
-	local.VPA = "on"
+	if opts.KEDA != "" {
+		local.KEDA = opts.KEDA
+	} else if local.KEDA == "" {
+		local.KEDA = "on"
+	}
+	if opts.VPA != "" {
+		local.VPA = opts.VPA
+	} else if local.VPA == "" {
+		local.VPA = "on"
+	}
 }
 
 func applyPresetCapacityPlan(local *Root, _ CommandPresetOptions) {

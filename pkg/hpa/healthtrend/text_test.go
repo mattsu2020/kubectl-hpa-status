@@ -4,8 +4,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/flapping"
 )
 
 func trendResult() Result {
@@ -22,9 +20,9 @@ func trendResult() Result {
 		FlappingDetected: true,
 		FlappingSeverity: "HIGH",
 		Sparkline:        "▁▂▃",
-		Anomalies: []flapping.AnomalyDetection{
+		Anomalies: []AnomalyDetection{
 			{
-				Type:          flapping.AnomalySuddenDegradation,
+				Type:          AnomalySuddenDegradation,
 				Severity:      "critical",
 				ScoreBefore:   90,
 				ScoreAfter:    60,

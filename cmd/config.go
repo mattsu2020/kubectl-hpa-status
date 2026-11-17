@@ -47,7 +47,7 @@ func canonicalOutputValues() []string {
 	for _, name := range render.FormatNames() {
 		values = append(values, normalizeSelector(name))
 	}
-	return append(values, "template", "md", "junit", "sarif", "github")
+	return append(values, "text", "template", "md", "junit", "sarif", "github")
 }
 
 // isAcceptedNormalized reports whether value (already normalized) is one of the

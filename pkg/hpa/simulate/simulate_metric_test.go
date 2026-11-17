@@ -527,6 +527,111 @@ func TestApplyRelativeOverride_External(t *testing.T) {
 	}
 }
 
+func TestApplyRelativeOverride_AllSourceTypes(t *testing.T) {
+	t.Run("ContainerResource utilization", func(t *testing.T) {
+		targetUtil := int32(50)
+		currUtil := int32(40)
+		hpa := &autoscalingv2.HorizontalPodAutoscaler{
+			Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+				Metrics: []autoscalingv2.MetricSpec{{
+					Type: autoscalingv2.ContainerResourceMetricSourceType,
+					ContainerResource: &autoscalingv2.ContainerResourceMetricSource{
+						Name:      "cpu",
+						Container: "app",
+						Target: autoscalingv2.MetricTarget{
+							Type:               autoscalingv2.UtilizationMetricType,
+							AverageUtilization: &targetUtil,
+						},
+					},
+				}},
+			},
+			Status: autoscalingv2.HorizontalPodAutoscalerStatus{
+				CurrentMetrics: []autoscalingv2.MetricStatus{{
+					Type: autoscalingv2.ContainerResourceMetricSourceType,
+					ContainerResource: &autoscalingv2.ContainerResourceMetricStatus{
+						Name:      "cpu",
+						Container: "app",
+						Current:   autoscalingv2.MetricValueStatus{AverageUtilization: &currUtil},
+					},
+				}},
+			},
+		}
+		if err := applyRelativeOverride(hpa, hpa.Spec.Metrics[0], 0, "+25%"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		got := hpa.Status.CurrentMetrics[0].ContainerResource.Current.AverageUtilization
+		if got == nil || *got != 50 {
+			t.Fatalf("expected utilization 50, got %v", got)
+		}
+	})
+
+	t.Run("Pods averageValue", func(t *testing.T) {
+		target := resource.MustParse("100")
+		curr := resource.MustParse("200")
+		hpa := &autoscalingv2.HorizontalPodAutoscaler{
+			Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+				Metrics: []autoscalingv2.MetricSpec{{
+					Type: autoscalingv2.PodsMetricSourceType,
+					Pods: &autoscalingv2.PodsMetricSource{
+						Metric: autoscalingv2.MetricIdentifier{Name: "rps"},
+						Target: autoscalingv2.MetricTarget{Type: autoscalingv2.AverageValueMetricType, AverageValue: &target},
+					},
+				}},
+			},
+			Status: autoscalingv2.HorizontalPodAutoscalerStatus{
+				CurrentMetrics: []autoscalingv2.MetricStatus{{
+					Type: autoscalingv2.PodsMetricSourceType,
+					Pods: &autoscalingv2.PodsMetricStatus{
+						Metric:  autoscalingv2.MetricIdentifier{Name: "rps"},
+						Current: autoscalingv2.MetricValueStatus{AverageValue: &curr},
+					},
+				}},
+			},
+		}
+		if err := applyRelativeOverride(hpa, hpa.Spec.Metrics[0], 0, "+50%"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		got := hpa.Status.CurrentMetrics[0].Pods.Current.AverageValue
+		if got == nil || got.MilliValue() != 300000 {
+			t.Fatalf("expected averageValue 300, got %v", got)
+		}
+	})
+
+	t.Run("Object value", func(t *testing.T) {
+		target := resource.MustParse("100")
+		curr := resource.MustParse("200")
+		hpa := &autoscalingv2.HorizontalPodAutoscaler{
+			Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+				Metrics: []autoscalingv2.MetricSpec{{
+					Type: autoscalingv2.ObjectMetricSourceType,
+					Object: &autoscalingv2.ObjectMetricSource{
+						DescribedObject: autoscalingv2.CrossVersionObjectReference{Kind: "Service", Name: "api"},
+						Metric:          autoscalingv2.MetricIdentifier{Name: "latency"},
+						Target:          autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType, Value: &target},
+					},
+				}},
+			},
+			Status: autoscalingv2.HorizontalPodAutoscalerStatus{
+				CurrentMetrics: []autoscalingv2.MetricStatus{{
+					Type: autoscalingv2.ObjectMetricSourceType,
+					Object: &autoscalingv2.ObjectMetricStatus{
+						DescribedObject: autoscalingv2.CrossVersionObjectReference{Kind: "Service", Name: "api"},
+						Metric:          autoscalingv2.MetricIdentifier{Name: "latency"},
+						Current:         autoscalingv2.MetricValueStatus{Value: &curr},
+					},
+				}},
+			},
+		}
+		if err := applyRelativeOverride(hpa, hpa.Spec.Metrics[0], 0, "-25%"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		got := hpa.Status.CurrentMetrics[0].Object.Current.Value
+		if got == nil || got.MilliValue() != 150000 {
+			t.Fatalf("expected value 150, got %v", got)
+		}
+	})
+}
+
 func TestParseRelativeQuantity(t *testing.T) {
 	tests := []struct {
 		name    string

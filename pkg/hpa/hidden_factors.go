@@ -24,16 +24,16 @@ func attachHiddenDecisionFactors(a Analysis, hpa *autoscalingv2.HorizontalPodAut
 
 	if hpa.Status.DesiredReplicas == hpa.Status.CurrentReplicas {
 		for _, metric := range a.Metrics.Metrics {
-			if metric.Ratio == nil {
+			if metric.Ratio == nil || *metric.Ratio == 1.0 {
 				continue
 			}
-			if *metric.Ratio > 0.9 && *metric.Ratio < 1.1 {
+			if within, tol := ratioWithinTolerance(hpa, *metric.Ratio); within {
 				factors = append(factors, HiddenDecisionFactor{
 					Name:       "Tolerance",
 					Status:     "possible no-op reason",
-					Evidence:   []string{fmt.Sprintf("%s ratio %.3f is near the default 10%% tolerance band", metric.Name, *metric.Ratio)},
+					Evidence:   []string{fmt.Sprintf("%s ratio %.3f is within the %.0f%% tolerance band", metric.Name, *metric.Ratio, tol*100)},
 					Impact:     "The controller may intentionally skip scaling when all metrics remain within tolerance.",
-					Confidence: "estimated",
+					Confidence: string(ConfidenceMedium),
 				})
 				break
 			}
@@ -46,7 +46,7 @@ func attachHiddenDecisionFactors(a Analysis, hpa *autoscalingv2.HorizontalPodAut
 			Status:     "active",
 			Evidence:   []string{"HPA reports ScaleDownStabilized; remaining time is unknown"},
 			Impact:     "The controller may suppress a scale recommendation until the stabilization window expires.",
-			Confidence: "medium",
+			Confidence: string(ConfidenceMedium),
 		})
 	}
 
@@ -56,7 +56,7 @@ func attachHiddenDecisionFactors(a Analysis, hpa *autoscalingv2.HorizontalPodAut
 			Status:     "unknown",
 			Evidence:   []string{"HPA status does not expose which pods were excluded from CPU calculations."},
 			Impact:     "New or not-ready pods can reduce the effective scale-up recommendation for resource metrics.",
-			Confidence: "unknown",
+			Confidence: string(ConfidenceLow),
 		})
 	}
 

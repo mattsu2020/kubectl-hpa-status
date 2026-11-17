@@ -3,10 +3,13 @@ package enrichment
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/dynamic"
 )
 
@@ -32,6 +35,71 @@ type Context struct {
 	kedaEnabled bool
 	vpaEnabled  bool
 	status      Status
+
+	cacheMu  sync.Mutex
+	vpaCache map[string]cachedVPAResult
+	soCache  map[string]cachedSOResult
+}
+
+type cachedVPAResult struct {
+	items []kube.VPAInfo
+	err   error
+}
+
+type cachedSOResult struct {
+	items []unstructured.Unstructured
+	err   error
+}
+
+func (ec *Context) fetchNamespaceVPAs(ctx context.Context, namespace string) ([]kube.VPAInfo, error) {
+	if ec == nil || ec.dynClient == nil {
+		return nil, fmt.Errorf("dynamic client is unavailable")
+	}
+	ec.cacheMu.Lock()
+	if entry, ok := ec.vpaCache[namespace]; ok {
+		ec.cacheMu.Unlock()
+		return entry.items, entry.err
+	}
+	ec.cacheMu.Unlock()
+
+	rawList, err := kube.FetchVPAs(ctx, ec.dynClient, namespace)
+	var infos []kube.VPAInfo
+	if err == nil {
+		infos = make([]kube.VPAInfo, 0, len(rawList))
+		for i := range rawList {
+			infos = append(infos, kube.ExtractVPAInfo(&rawList[i]))
+		}
+	}
+
+	ec.cacheMu.Lock()
+	if ec.vpaCache == nil {
+		ec.vpaCache = make(map[string]cachedVPAResult)
+	}
+	ec.vpaCache[namespace] = cachedVPAResult{items: infos, err: err}
+	ec.cacheMu.Unlock()
+	return infos, err
+}
+
+func (ec *Context) fetchNamespaceScaledObjects(ctx context.Context, namespace string) ([]unstructured.Unstructured, error) {
+	if ec == nil || ec.dynClient == nil {
+		return nil, fmt.Errorf("dynamic client is unavailable")
+	}
+	ec.cacheMu.Lock()
+	if entry, ok := ec.soCache[namespace]; ok {
+		ec.cacheMu.Unlock()
+		return entry.items, entry.err
+	}
+	ec.cacheMu.Unlock()
+
+	items, err := kube.FetchScaledObjects(ctx, ec.dynClient, namespace)
+
+	ec.cacheMu.Lock()
+	if ec.soCache == nil {
+		ec.soCache = make(map[string]cachedSOResult)
+	}
+	ec.soCache[namespace] = cachedSOResult{items: items, err: err}
+	ec.cacheMu.Unlock()
+	return items, err
 }
 
 // Status returns the enrichment status for diagnostic output.
@@ -137,7 +205,7 @@ func NewContext(ctx context.Context, cfg Config) *Context {
 // (RBAC denial, network timeout, etc.) and is surfaced verbatim so operators
 // see the actual cause instead of a misleading "not found".
 func crdReason(err error) string {
-	if err == nil {
+	if err == nil || errors.Is(err, kube.ErrKEDACRDNotDetected) || errors.Is(err, kube.ErrVPACRDNotDetected) {
 		return "CRD not found in API discovery"
 	}
 	return err.Error()

@@ -90,25 +90,29 @@ func countDirectionFlips(rescales []event.RescaleData) int {
 }
 
 // buildCandidateWindows generates the set of candidate stabilization window
-// values to simulate. It includes multiples of the current window plus
-// fixed values. Duplicates and values equal to the current window are
-// removed. The result is sorted in ascending order.
+// values to simulate. It includes strictly larger multiples of the current
+// window plus fixed values capped at the Kubernetes max (3600s). Duplicates
+// and values <= currentWindow are removed. The result is sorted ascending.
 func buildCandidateWindows(currentWindow int32) []int32 {
+	const maxStabilizationWindowSeconds int32 = 3600
+
 	seen := make(map[int32]bool)
 	seen[currentWindow] = true
 
 	var candidates []int32
 
-	for _, mult := range candidateWindowMultipliers {
-		val := int32(float64(currentWindow) * mult)
-		if !seen[val] {
-			seen[val] = true
-			candidates = append(candidates, val)
+	if currentWindow > 0 {
+		for _, mult := range candidateWindowMultipliers {
+			val := int32(float64(currentWindow) * mult)
+			if val > currentWindow && val <= maxStabilizationWindowSeconds && !seen[val] {
+				seen[val] = true
+				candidates = append(candidates, val)
+			}
 		}
 	}
 
 	for _, fixed := range fixedCandidateWindows {
-		if !seen[fixed] {
+		if fixed > currentWindow && fixed <= maxStabilizationWindowSeconds && !seen[fixed] {
 			seen[fixed] = true
 			candidates = append(candidates, fixed)
 		}
@@ -180,9 +184,12 @@ func simulateWindow(rescales []event.RescaleData, windowSeconds int32) int {
 		}
 
 		if prevDirection != 0 && direction != prevDirection {
-			if gap >= window {
-				flips++
+			if gap < window {
+				// Flip suppressed by stabilization window; preserve last
+				// realized direction and timestamp for subsequent comparisons.
+				continue
 			}
+			flips++
 		}
 
 		prevDirection = direction

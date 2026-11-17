@@ -53,3 +53,13 @@ func TestValidateOutputPath_AllowsRegularFileAndMissingPath(t *testing.T) {
 		t.Fatalf("regular file should be allowed: %v", err)
 	}
 }
+
+func TestValidateOutputPath_RejectsDirectory(t *testing.T) {
+	err := validateOutputPath(t.TempDir())
+	if err == nil {
+		t.Fatal("expected error when writing bundle over a directory")
+	}
+	if !strings.Contains(err.Error(), "non-regular") {
+		t.Fatalf("expected non-regular file error, got: %v", err)
+	}
+}

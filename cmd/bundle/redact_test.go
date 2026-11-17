@@ -103,6 +103,21 @@ func TestRedactString(t *testing.T) {
 			in:   "HPA web scaled to 5 replicas",
 			want: "HPA web scaled to 5 replicas",
 		},
+		{
+			name: "word boundary skips substring match",
+			in:   "run skip-check and my-ec2-note safely",
+			want: "run skip-check and my-ec2-note safely",
+		},
+		{
+			name: "trailing dot and parens preserved on hostname",
+			in:   "pod (ip-10-0-1-23.ec2.internal.) failed",
+			want: "pod ([REDACTED-HOSTNAME].) failed",
+		},
+		{
+			name: "html escaped selector redacted",
+			in:   "external queue selector=&quot;queue=payments-private&quot;",
+			want: "external queue selector=&quot;[REDACTED]&quot;",
+		},
 	}
 
 	for _, tt := range tests {

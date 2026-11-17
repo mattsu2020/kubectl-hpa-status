@@ -181,3 +181,32 @@ func TestRenderHealthTrendASCII_InputNotMutated(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderHealthTrendASCII_ScoreZeroPlottedAndSorted(t *testing.T) {
+	t0 := time.Date(2025, 1, 1, 10, 0, 0, 0, time.UTC)
+	t1 := t0.Add(time.Hour)
+	t2 := t0.Add(2 * time.Hour)
+	// Supply snapshots out of chronological order with a score == 0 entry.
+	snapshots := []HealthSnapshot{
+		{Timestamp: t2, HealthScore: 100, HealthState: "OK"},
+		{Timestamp: t0, HealthScore: 0, HealthState: "ERROR"},
+		{Timestamp: t1, HealthScore: 50, HealthState: "LIMITED"},
+	}
+
+	result := RenderHealthTrendASCII(snapshots, 30)
+	var bottomBand string
+	for _, line := range strings.Split(result, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "20 │") {
+			bottomBand = line
+			break
+		}
+	}
+	if !strings.Contains(bottomBand, "•") {
+		t.Fatalf("expected HealthScore=0 point plotted in lowest band row %q\nfull graph:\n%s", bottomBand, result)
+	}
+	idxT0 := strings.Index(result, t0.Format("15:04"))
+	idxT2 := strings.Index(result, t2.Format("15:04"))
+	if idxT0 == -1 || idxT2 == -1 || idxT0 >= idxT2 {
+		t.Fatalf("expected X-axis timestamps sorted earliest before latest in:\n%s", result)
+	}
+}

@@ -97,6 +97,7 @@ type batchAuditEntry struct {
 
 // hintsState holds the metric hints troubleshooting view state.
 type hintsState struct {
+	key        string
 	flows      []hpaanalysis.MetricHintTroubleshooting
 	selected   int
 	stepScroll int
@@ -139,8 +140,9 @@ type batchApplyResultMsg struct {
 
 // replayLoadedMsg carries a loaded timeline trace.
 type replayLoadedMsg struct {
-	trace *hpaanalysis.TimelineTrace
-	err   error
+	trace    *hpaanalysis.TimelineTrace
+	analysis *retrospective.ReplayAnalysis
+	err      error
 }
 
 // batchAuditMsg carries the results of a batch audit operation.

@@ -27,7 +27,7 @@ func newRecommendCommand(opts *options) *cobra.Command {
 				return policyErr
 			}
 			if policyFile != "" {
-				return runPolicy(cmd.Context(), cmd.OutOrStdout(), opts, &policyCommandOptions{file: policyFile}, args[0])
+				return runPolicyMany(cmd.Context(), cmd.OutOrStdout(), opts, &policyCommandOptions{file: policyFile}, args...)
 			}
 			return runRecommend(cmd.Context(), cmd.OutOrStdout(), opts, args, audit.Profile(profile))
 		},
@@ -43,10 +43,10 @@ func runRecommend(ctx context.Context, out io.Writer, opts *options, args []stri
 		return err
 	}
 
-	for _, hpaName := range args {
+	reports, err := collectPerHPA(ctx, opts, args, func(ctx context.Context, hpaName string) (*audit.Report, error) {
 		hpa, err := kube.GetHPAFromClient(ctx, client, hpaName)
 		if err != nil {
-			return wrapHPALookupError(client.Namespace, hpaName, err)
+			return nil, wrapHPALookupError(client.Namespace, hpaName, err)
 		}
 
 		minReplicas := hpaanalysis.DefaultMinReplicas
@@ -54,18 +54,16 @@ func runRecommend(ctx context.Context, out io.Writer, opts *options, args []stri
 			minReplicas = *hpa.Spec.MinReplicas
 		}
 
-		var report *audit.Report
 		if profile != "" {
-			report = audit.RunWithProfile(hpa, minReplicas, profile)
-		} else {
-			report = audit.Run(hpa, minReplicas)
+			return audit.RunWithProfile(hpa, minReplicas, profile), nil
 		}
-
-		if err := renderWithOutput(out, opts, report, func(out io.Writer) error {
-			return audit.WriteText(out, report, labelProviderForLang(opts.Lang, opts.Output))
-		}); err != nil {
-			return err
-		}
+		return audit.Run(hpa, minReplicas), nil
+	})
+	if err != nil {
+		return err
 	}
-	return nil
+
+	return renderPerHPA(out, opts, reports, func(w io.Writer, report *audit.Report) error {
+		return audit.WriteText(w, report, labelProviderForLang(opts.Lang, opts.Output))
+	})
 }

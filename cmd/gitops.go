@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/kube"
@@ -121,26 +119,9 @@ func fetchLiveWorkload(ctx context.Context, client *kube.Client, namespace, kind
 //
 //nolint:nilnil // nil replica pointer with no error means "not pinned in manifest"
 func parseManifestReplicas(manifestPath string, targetKind, targetName string) (*int32, error) {
-	info, err := os.Stat(manifestPath)
+	files, err := collectManifestPaths(manifestPath)
 	if err != nil {
-		return nil, fmt.Errorf("stat manifest path: %w", err)
-	}
-
-	var files []string
-	if info.IsDir() {
-		entries, err := os.ReadDir(manifestPath)
-		if err != nil {
-			return nil, fmt.Errorf("read manifest directory: %w", err)
-		}
-		for _, e := range entries {
-			if !e.IsDir() && (strings.HasSuffix(e.Name(), ".yaml") ||
-				strings.HasSuffix(e.Name(), ".yml") ||
-				strings.HasSuffix(e.Name(), ".json")) {
-				files = append(files, filepath.Join(manifestPath, e.Name()))
-			}
-		}
-	} else {
-		files = []string{manifestPath}
+		return nil, fmt.Errorf("collect manifests: %w", err)
 	}
 
 	var parseErrors []error

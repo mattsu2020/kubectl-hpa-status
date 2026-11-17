@@ -50,7 +50,7 @@ func detailModel(opts Options) Model {
 	}
 	m.hpas = map[string]*autoscalingv2.HorizontalPodAutoscaler{"default/web": {
 		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "default"},
-		Spec:       autoscalingv2.HorizontalPodAutoscalerSpec{MaxReplicas: 5, MinReplicas: int32Ptr(1)},
+		Spec:       autoscalingv2.HorizontalPodAutoscalerSpec{MaxReplicas: 5, MinReplicas: ptrInt32(1)},
 	}}
 	m.viewMode = detailView
 	m.width = 120

@@ -5,6 +5,7 @@ import (
 	"math"
 	"strings"
 
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/internal/conditions"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
@@ -113,15 +114,14 @@ func computeEndReplicas(_, modified *autoscalingv2.HorizontalPodAutoscaler) (int
 // scaleDown when it decreases. The controller never applies the scale-down
 // window to an increase, so projecting it that way overstated ramp latency.
 func computeStabilizationDelay(modified *autoscalingv2.HorizontalPodAutoscaler, startReplicas, endReplicas int32) int32 {
-	if modified.Spec.Behavior == nil {
+	if endReplicas > startReplicas {
+		if modified.Spec.Behavior != nil && modified.Spec.Behavior.ScaleUp != nil && modified.Spec.Behavior.ScaleUp.StabilizationWindowSeconds != nil {
+			return *modified.Spec.Behavior.ScaleUp.StabilizationWindowSeconds
+		}
 		return 0
 	}
-	rules := modified.Spec.Behavior.ScaleDown
-	if endReplicas > startReplicas {
-		rules = modified.Spec.Behavior.ScaleUp
-	}
-	if rules != nil && rules.StabilizationWindowSeconds != nil {
-		return *rules.StabilizationWindowSeconds
+	if endReplicas < startReplicas {
+		return conditions.EffectiveScaleDownStabilizationWindow(modified)
 	}
 	return 0
 }

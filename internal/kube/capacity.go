@@ -322,18 +322,24 @@ func DetectClusterAutoscaler(ctx context.Context, client kubernetes.Interface) b
 // preserving read failures. A NotFound deployment is an expected negative
 // signal; RBAC, transport, and node-list failures make a negative result
 // unknown.
+// FetchNodes lists all cluster Nodes once for reuse across cluster checks.
+func FetchNodes(ctx context.Context, client kubernetes.Interface) ([]corev1.Node, error) {
+	return listNodes(ctx, client, metav1.ListOptions{})
+}
+
 func DetectClusterAutoscalerWithError(ctx context.Context, client kubernetes.Interface) (bool, error) {
 	// Check nodes for CA annotation.
 	nodes, nodeErr := listNodes(ctx, client, metav1.ListOptions{})
-	return detectClusterAutoscalerWithNodes(ctx, client, nodes, nodeErr)
+	return DetectClusterAutoscalerWithNodes(ctx, client, nodes, nodeErr)
 }
 
 // DetectClusterAutoscaler reuses the observed Nodes even if Pod collection failed.
 func (s *ClusterResourceSnapshot) DetectClusterAutoscaler(ctx context.Context, client kubernetes.Interface) (bool, error) {
-	return detectClusterAutoscalerWithNodes(ctx, client, s.nodes, s.nodeErr)
+	return DetectClusterAutoscalerWithNodes(ctx, client, s.nodes, s.nodeErr)
 }
 
-func detectClusterAutoscalerWithNodes(ctx context.Context, client kubernetes.Interface, nodes []corev1.Node, nodeErr error) (bool, error) {
+// DetectClusterAutoscalerWithNodes detects Cluster Autoscaler using pre-fetched Nodes.
+func DetectClusterAutoscalerWithNodes(ctx context.Context, client kubernetes.Interface, nodes []corev1.Node, nodeErr error) (bool, error) {
 	if nodeErr == nil {
 		for _, node := range nodes {
 			if _, ok := node.Annotations["cluster-autoscaler.kubernetes.io/safe-to-evict"]; ok {

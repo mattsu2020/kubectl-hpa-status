@@ -25,17 +25,35 @@ func WritePrivateFile(path string, data []byte) error {
 // shared directory pointing at a sensitive path). A not-yet-existing target is
 // fine: WritePrivateFileAtomic creates it atomically.
 func validateOutputPath(path string) error {
+	_, err := inspectOutputPath(path)
+	return err
+}
+
+func inspectOutputPath(path string) (os.FileInfo, error) {
 	fi, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil
+		return nil, nil
 	}
 	if err != nil {
-		return fmt.Errorf("inspect output path: %w", err)
+		return nil, fmt.Errorf("inspect output path: %w", err)
 	}
 	if fi.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("refusing to write bundle through symlink %s", path)
+		return nil, fmt.Errorf("refusing to write bundle through symlink %s", path)
 	}
-	return nil
+	if !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("refusing to write bundle to non-regular file %s", path)
+	}
+	return fi, nil
+}
+
+func outputPathUnchanged(initial, current os.FileInfo) bool {
+	if initial == nil && current == nil {
+		return true
+	}
+	if initial == nil || current == nil {
+		return false
+	}
+	return os.SameFile(initial, current)
 }
 
 // WritePrivateFileAtomic writes through a temporary file in the destination
@@ -43,7 +61,8 @@ func validateOutputPath(path string) error {
 // must finish any nested writer (for example zip.Writer) before returning so
 // its footer errors are included in the result.
 func WritePrivateFileAtomic(path string, write func(io.Writer) error) (retErr error) {
-	if err := validateOutputPath(path); err != nil {
+	initialInfo, err := inspectOutputPath(path)
+	if err != nil {
 		return err
 	}
 	dir := filepath.Dir(path)
@@ -73,11 +92,15 @@ func WritePrivateFileAtomic(path string, write func(io.Writer) error) (retErr er
 	}
 	// Re-validate immediately before the rename to shrink the TOCTOU window
 	// between the initial check and the replacement: an attacker with write
-	// access to the directory could otherwise swap the target for a symlink
-	// while the temporary file is being built. Mirrors
+	// access to the directory could otherwise swap the target for a symlink or
+	// replace it while the temporary file is being built. Mirrors
 	// ensureRecordDestinationUnchanged in cmd/timeline.go.
-	if err := validateOutputPath(path); err != nil {
+	currentInfo, err := inspectOutputPath(path)
+	if err != nil {
 		return err
+	}
+	if !outputPathUnchanged(initialInfo, currentInfo) {
+		return fmt.Errorf("output path %s changed concurrently before replace", path)
 	}
 	if err := os.Rename(tmpPath, path); err != nil {
 		return fmt.Errorf("replace output: %w", err)

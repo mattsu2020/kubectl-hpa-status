@@ -288,6 +288,10 @@ func buildAssumptionsSummary(ca *ControllerAssumptions) string {
 	}
 
 	for _, a := range assumptions {
+		if a.Source == "overridden" {
+			overriddenCount++
+			continue
+		}
 		switch a.Confidence {
 		case "low":
 			lowCount++
@@ -295,8 +299,6 @@ func buildAssumptionsSummary(ca *ControllerAssumptions) string {
 			mediumCount++
 		case "high":
 			highCount++
-		case "overridden":
-			overriddenCount++
 		}
 	}
 

@@ -268,6 +268,9 @@ func toleranceRule(ctx SuggestionContext) []Suggestion {
 	if !ok || metric.Ratio < toleranceRuleMinRatio || metric.Ratio > toleranceRuleMaxRatio {
 		return nil
 	}
+	if configuredUp, _ := configuredDirectionalTolerances(hpa); configuredUp != nil && *configuredUp <= defaultToleranceQty.AsApproximateFloat64() {
+		return nil
+	}
 
 	tolerance := defaultToleranceQty
 	patch := marshalJSON(map[string]any{

@@ -206,10 +206,13 @@ func fetchSnapshotEvents(ctx context.Context, client *kube.Client, hpa *autoscal
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("# Recent Events for %s/%s\n\n", hpa.Namespace, hpa.Name))
 	for _, event := range events {
-		sb.WriteString(fmt.Sprintf("[%s] %s: %s\n", event.Timestamp.Format(time.RFC3339), event.Reason, event.Message))
+		sb.WriteString(fmt.Sprintf("[%s] %s: %s\n",
+			event.Timestamp.Format(time.RFC3339),
+			hpaanalysis.SanitizeTerminalText(event.Reason),
+			hpaanalysis.SanitizeTerminalText(event.Message)))
 	}
 	if eventsErr != nil {
-		sb.WriteString(fmt.Sprintf("Events collection incomplete: %v\n", eventsErr))
+		sb.WriteString(fmt.Sprintf("Events collection incomplete: %s\n", hpaanalysis.SanitizeTerminalText(eventsErr.Error())))
 	} else if len(events) == 0 {
 		sb.WriteString("No recent events found.\n")
 	}
@@ -271,7 +274,7 @@ func redactSnapshotData(data *snapshotData) {
 	data.Pods = bundle.RedactStructuredBytes(data.Pods)
 	data.Events = redactBytes(data.Events)
 	data.MetricsAPI = redactBytes(data.MetricsAPI)
-	data.Analysis = redactBytes(data.Analysis)
+	data.Analysis = bundle.RedactStructuredBytes(data.Analysis)
 	data.Report = redactBytes(data.Report)
 }
 

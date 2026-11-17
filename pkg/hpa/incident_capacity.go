@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/rendutil"
 )
 
 // writeIncidentAffectedWorkloads renders the affected workloads section per HPA.
@@ -152,7 +154,7 @@ func writeIncidentPendingPods(buf *strings.Builder, pods []PendingPodInfo) {
 			status = "unschedulable"
 		}
 		buf.WriteString(fmt.Sprintf("- %s (%s): %s\n",
-			p.Name, status, escapeMarkdown(strings.Join(p.Reasons, "; "))))
+			p.Name, status, rendutil.EscapeMarkdown(strings.Join(p.Reasons, "; "))))
 	}
 	buf.WriteString("\n")
 }

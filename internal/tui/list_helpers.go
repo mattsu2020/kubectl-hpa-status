@@ -27,34 +27,10 @@ func (m Model) filteredItems() []hpaanalysis.ListItem {
 }
 
 func containsIgnoreCase(s, substr string) bool {
-	return len(substr) == 0 ||
-		(len(s) >= len(substr) && findSubstring(s, substr))
-}
-
-func findSubstring(s, substr string) bool {
-	sl := len(s)
-	subl := len(substr)
-	for i := 0; i <= sl-subl; i++ {
-		match := true
-		for j := 0; j < subl; j++ {
-			sc := s[i+j]
-			bc := substr[j]
-			if sc >= 'A' && sc <= 'Z' {
-				sc += 32
-			}
-			if bc >= 'A' && bc <= 'Z' {
-				bc += 32
-			}
-			if sc != bc {
-				match = false
-				break
-			}
-		}
-		if match {
-			return true
-		}
+	if substr == "" {
+		return true
 	}
-	return false
+	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }
 
 // sortItems sorts the item list by the current sort field.

@@ -3,10 +3,13 @@ package kube
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/kubernetes"
@@ -271,17 +274,47 @@ func NewDiscoveryClient(opts Options) (discovery.DiscoveryInterface, error) {
 func DetectCRDs(disco discovery.DiscoveryInterface) CRDAvailability {
 	var avail CRDAvailability
 
-	if _, err := disco.ServerResourcesForGroupVersion("keda.sh/v1alpha1"); err == nil {
-		avail.KEDA = true
-	} else {
-		avail.KEDError = fmt.Errorf("keda.sh/v1alpha1: %w: %w", ErrKEDACRDNotDetected, err)
-	}
-
-	if _, err := disco.ServerResourcesForGroupVersion("autoscaling.k8s.io/v1"); err == nil {
-		avail.VPA = true
-	} else {
-		avail.VPAError = fmt.Errorf("autoscaling.k8s.io/v1: %w: %w", ErrVPACRDNotDetected, err)
-	}
+	avail.KEDA, avail.KEDError = detectCRDResource(disco, "keda.sh/v1alpha1", "scaledobjects", ErrKEDACRDNotDetected)
+	avail.VPA, avail.VPAError = detectCRDResource(disco, "autoscaling.k8s.io/v1", "verticalpodautoscalers", ErrVPACRDNotDetected)
 
 	return avail
+}
+
+func detectCRDResource(disco discovery.DiscoveryInterface, groupVersion, resourceName string, notDetectedErr error) (bool, error) {
+	list, err := disco.ServerResourcesForGroupVersion(groupVersion)
+	if err != nil {
+		if isGroupVersionNotFound(err) {
+			return false, fmt.Errorf("%s: %w: %w", groupVersion, notDetectedErr, err)
+		}
+		return false, fmt.Errorf("%s: %w", groupVersion, err)
+	}
+	if list == nil || !containsAPIResource(list.APIResources, resourceName) {
+		return false, fmt.Errorf("%s: %w: resource %q not served", groupVersion, notDetectedErr, resourceName)
+	}
+	return true, nil
+}
+
+func containsAPIResource(resources []metav1.APIResource, name string) bool {
+	for i := range resources {
+		if resources[i].Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func isGroupVersionNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	if apierrors.IsNotFound(err) {
+		return true
+	}
+	var statusErr *apierrors.StatusError
+	if errors.As(err, &statusErr) {
+		return false
+	}
+	// client-go FakeDiscovery returns plain errors when a GroupVersion is absent.
+	msg := err.Error()
+	return strings.Contains(msg, "not found") || strings.Contains(msg, "could not find the requested resource")
 }
