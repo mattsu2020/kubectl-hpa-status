@@ -22,6 +22,7 @@ func newTimelineCommand(opts *options) *cobra.Command {
 	var since time.Duration
 	var replay bool
 	var fromRecord string
+	var promFlags prometheusImportFlags
 
 	cmd := &cobra.Command{
 		Use:               "timeline NAME",
@@ -29,8 +30,14 @@ func newTimelineCommand(opts *options) *cobra.Command {
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: hpaNameCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if fromRecord != "" && promFlags.requested() {
+				return fmt.Errorf("--from-record and --from-prometheus cannot be used together")
+			}
 			if fromRecord != "" {
 				return runTimelineFromRecord(cmd.OutOrStdout(), opts, args[0], fromRecord)
+			}
+			if promFlags.requested() {
+				return runTimelineFromPrometheus(cmd.Context(), cmd.OutOrStdout(), opts, args[0], since, promFlags)
 			}
 			// Retrospective mode takes priority when --since is provided.
 			if since > 0 {
@@ -51,6 +58,7 @@ func newTimelineCommand(opts *options) *cobra.Command {
 	cmd.Flags().DurationVar(&since, "since", 0, "show retrospective timeline for the given duration (e.g. 30m, 1h); 0 means live mode")
 	cmd.Flags().BoolVar(&replay, "replay", false, "enhanced retrospective replay with bottleneck markers and control cycle analysis")
 	cmd.Flags().StringVar(&fromRecord, "from-record", "", fromRecordFlagDescription+" instead of Kubernetes events")
+	addPrometheusImportFlags(cmd, &promFlags, false)
 	return cmd
 }
 
@@ -189,16 +197,31 @@ func runTimelineFromRecord(out io.Writer, opts *options, name, path string) erro
 	if err != nil {
 		return err
 	}
+	return renderTimelineTrace(out, opts, *trace)
+}
+
+func runTimelineFromPrometheus(ctx context.Context, out io.Writer, opts *options, name string, since time.Duration, promFlags prometheusImportFlags) error {
+	if err := validateTimelineOutput(opts, false); err != nil {
+		return err
+	}
+	imported, err := loadTraceFromPrometheus(ctx, opts, name, since, promFlags)
+	if err != nil {
+		return err
+	}
+	return renderTimelineTrace(out, opts, imported.Trace)
+}
+
+func renderTimelineTrace(out io.Writer, opts *options, trace hpaanalysis.TimelineTrace) error {
 	format, templateStr := selectOutputFromOptions(opts)
 	switch format {
 	case "markdown", "md":
-		return hpaanalysis.WriteTimelineMarkdown(out, *trace)
+		return hpaanalysis.WriteTimelineMarkdown(out, trace)
 	case "html":
-		return hpaanalysis.WriteTimelineHTML(out, *trace)
+		return hpaanalysis.WriteTimelineHTML(out, trace)
 	}
 	return render.Format(out, format, templateStr, trace, func(out io.Writer) error {
 		theme := themeFor(opts.Color, out)
-		return hpaanalysis.WriteTimelineTable(out, *trace, theme)
+		return hpaanalysis.WriteTimelineTable(out, trace, theme)
 	})
 }
 

@@ -34,6 +34,7 @@ var alphaCommandSpecs = []alphaCommandSpec{
 	{newAutoscalerMapCommand, "experimental"},
 	{newAnalyzeRecordCommand, "experimental"},
 	{newFlapCommand, "experimental"},
+	{newBacktestCommand, "experimental"},
 }
 
 // newAlphaCommand creates the `alpha` parent command grouping operational and
