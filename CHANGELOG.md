@@ -7,8 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.0.0] - 2026-11-17
+
 ### Added
 
+- **Prometheus history import (`--from-prometheus` / `--prometheus-url`) on
+  `timeline` and `alpha analyze-record`.** Synthesizes `TimelineSnapshot`
+  records from `kube-state-metrics` and container/custom PromQL queries with
+  explicit provenance and confidence metadata (fail-closed on ambiguous series).
+- **Candidate backtesting (`alpha backtest`).** Replays recorded JSONL or
+  Prometheus-imported demand history against candidate HPA configurations
+  (utilization targets, min/max replicas, `spec.behavior` policies, and
+  seasonality pre-scale windows) using `pkg/hpa/simulate`, ranking candidates by
+  health score, SLO risk, flapping rate, and pod-hours.
+- **Event-driven informer watch (`--watch-mode=informer|poll`).** Opt-in
+  Kubernetes shared-informer path for `watch`, `status --watch`, and
+  `list --watch` with debounced snapshots and automatic resync.
+- **TUI lazy hydration and shared HTTP transport.** `tui` retains lightweight
+  list items and hydrates full `StatusReport`s on demand via
+  `internal/analysis.AnalyzeOne`, while `internal/kube.NewClientBundle` shares
+  one `rest.Config` HTTP transport across typed, discovery, and dynamic clients.
 - **Read-only MCP server mode (`mcp` subcommand).** Starts a zero-dependency
   JSON-RPC 2.0 MCP server over stdio exposing `hpa_status`, `hpa_doctor`,
   `hpa_list`, `hpa_timeline`, and `hpa_simulate` as read-only diagnostic tools
@@ -17,6 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Emits a ready-to-import Grafana dashboard JSON covering health scores,
   current/desired/max replicas, and `ScalingLimited`/`ScalingInactive`
   conditions alongside the existing Prometheus and Datadog alert rules.
+- **Expanded Kubernetes E2E coverage (`1.26` through `1.37`).** Covers every
+  Kubernetes minor release from 1.26 to 1.37 using `kind` `v0.33.0`.
 
 ### Breaking Changes (v5.0.0)
 

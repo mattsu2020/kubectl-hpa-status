@@ -138,54 +138,13 @@ func (s *Server) HandleMessage(ctx context.Context, raw []byte) ([]byte, bool) {
 
 	switch req.Method {
 	case "initialize":
-		var p initializeParams
-		if len(req.Params) > 0 {
-			_ = json.Unmarshal(req.Params, &p)
-		}
-		proto := p.ProtocolVersion
-		if proto == "" {
-			proto = defaultProtocolVersion
-		}
-		result = map[string]any{
-			"protocolVersion": proto,
-			"capabilities": map[string]any{
-				"tools": map[string]any{},
-			},
-			"serverInfo": map[string]any{
-				"name":    s.name,
-				"version": s.version,
-			},
-		}
+		result = s.handleInitialize(req.Params)
 	case "ping":
 		result = map[string]any{}
 	case "tools/list":
-		listed := make([]Tool, 0, len(s.order))
-		for _, name := range s.order {
-			listed = append(listed, s.tools[name])
-		}
-		result = map[string]any{"tools": listed}
+		result = s.handleToolsList()
 	case "tools/call":
-		var p callToolParams
-		if err := json.Unmarshal(req.Params, &p); err != nil || p.Name == "" {
-			rpcErr = &rpcError{Code: -32602, Message: "invalid params: tool name is required"}
-			break
-		}
-		tool, ok := s.tools[p.Name]
-		if !ok || tool.Handler == nil {
-			rpcErr = &rpcError{Code: -32602, Message: fmt.Sprintf("unknown tool %q", p.Name)}
-			break
-		}
-		text, err := tool.Handler(ctx, p.Arguments)
-		if err != nil {
-			result = callToolResult{
-				Content: []toolContent{{Type: "text", Text: err.Error()}},
-				IsError: true,
-			}
-		} else {
-			result = callToolResult{
-				Content: []toolContent{{Type: "text", Text: text}},
-			}
-		}
+		result, rpcErr = s.handleToolCall(ctx, req.Params)
 	default:
 		rpcErr = &rpcError{Code: -32601, Message: fmt.Sprintf("method not found: %s", req.Method)}
 	}
@@ -203,6 +162,56 @@ func (s *Server) HandleMessage(ctx context.Context, raw []byte) ([]byte, bool) {
 		Result:  result,
 		Error:   rpcErr,
 	}), true
+}
+
+func (s *Server) handleInitialize(params json.RawMessage) map[string]any {
+	var p initializeParams
+	if len(params) > 0 {
+		_ = json.Unmarshal(params, &p)
+	}
+	proto := p.ProtocolVersion
+	if proto == "" {
+		proto = defaultProtocolVersion
+	}
+	return map[string]any{
+		"protocolVersion": proto,
+		"capabilities": map[string]any{
+			"tools": map[string]any{},
+		},
+		"serverInfo": map[string]any{
+			"name":    s.name,
+			"version": s.version,
+		},
+	}
+}
+
+func (s *Server) handleToolsList() map[string]any {
+	listed := make([]Tool, 0, len(s.order))
+	for _, name := range s.order {
+		listed = append(listed, s.tools[name])
+	}
+	return map[string]any{"tools": listed}
+}
+
+func (s *Server) handleToolCall(ctx context.Context, params json.RawMessage) (any, *rpcError) {
+	var p callToolParams
+	if err := json.Unmarshal(params, &p); err != nil || p.Name == "" {
+		return nil, &rpcError{Code: -32602, Message: "invalid params: tool name is required"}
+	}
+	tool, ok := s.tools[p.Name]
+	if !ok || tool.Handler == nil {
+		return nil, &rpcError{Code: -32602, Message: fmt.Sprintf("unknown tool %q", p.Name)}
+	}
+	text, err := tool.Handler(ctx, p.Arguments)
+	if err != nil {
+		return callToolResult{
+			Content: []toolContent{{Type: "text", Text: err.Error()}},
+			IsError: true,
+		}, nil
+	}
+	return callToolResult{
+		Content: []toolContent{{Type: "text", Text: text}},
+	}, nil
 }
 
 func mustMarshal(v any) []byte {
