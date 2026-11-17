@@ -23,24 +23,24 @@
 
 ![kubectl-hpa-status demo](images/demo.png)
 
-A kubectl plugin for investigating HorizontalPodAutoscaler (HPA) status using existing Kubernetes API signals, with detailed scaling analysis.
+**Stop guessing why your HorizontalPodAutoscaler is not scaling.**
+`kubectl-hpa-status` turns raw Kubernetes HPA conditions, metrics, pod readiness, and cluster events into a clear root-cause explanation, health score, and safe remediation plan — with **zero in-cluster agents or CRDs required**.
 
 Japanese README: [README.ja.md](README.ja.md)
 
-> **Note**: When installed via Krew, the plugin is discovered as `kubectl hpa_status` (underscore form). The examples in this README use that form as the canonical invocation. The nested form `kubectl hpa status` (space form) also works on kubectl builds that support nested plugin discovery, but it is not universally available, so prefer `kubectl hpa_status` in scripts and runbooks.
+### Why `kubectl-hpa-status`?
 
-This tool quickly answers three common HPA operations questions:
-
-- Is this HPA healthy, capped at limits, in stabilization, or failing to read metrics?
-- Which condition or metric best explains the current behavior?
-- What command should I run next, and can I safely dry-run it?
+- **Instant root-cause answers (`status --explain`, `doctor`)**: Immediately see whether an HPA is healthy, capped at `maxReplicas`, waiting on scale-down stabilization, blocked by missing pod resource `requests`, or failing to read metrics.
+- **Cluster-wide triage & interactive TUI (`list --problem`, `scan`, `tui`)**: Spot unhealthy HPAs across all namespaces in seconds, or launch the interactive terminal dashboard (`tui`) with live sparklines and drill-down views.
+- **Safe fixes & what-if simulation (`--suggest`, `--simulate-metric`, `alpha backtest`)**: Generate ready-to-run `kubectl patch` commands, preview metric spikes before they happen, or backtest candidate configs against recorded / Prometheus history.
+- **Works with your existing stack**: Detects KEDA `ScaledObject` ownership, VPA resource conflicts, rollout bottlenecks, and cluster capacity ceilings using standard read-only Kubernetes API calls.
 
 ## Before / After
 
 <table>
 <tr>
 <th>Before: raw <code>kubectl describe hpa</code></th>
-<th>After: <code>kubectl hpa status --explain</code></th>
+<th>After: <code>kubectl hpa_status status web --explain</code></th>
 </tr>
 <tr>
 <td>
@@ -58,9 +58,9 @@ Events:
   SuccessfulRescale New size: 10</code></pre>
 </td>
 <td>
-<pre><code>web production
+<pre><code>web production  [LIMITED] (score: 75/100)
 Summary: limited at maxReplicas
-Replicas: 10 current / 10 desired
+Replicas: 10 current / 10 desired (min=2, max=10)
 CPU: 92% / 60% target
 
 Interpretation:
@@ -97,19 +97,36 @@ Recommended actions:
 
 ## Quick Start
 
-Start from a disposable namespace and one sample HPA:
+### 1. Install in 10 seconds
+
+```sh
+# Via Krew (macOS / Linux / Windows)
+kubectl krew install hpa-status
+
+# Or via Homebrew (macOS)
+brew install mattsu2020/kubectl-hpa-status/kubectl-hpa-status
+```
+
+### 2. Run on your cluster
+
+```sh
+# Find problematic HPAs across all namespaces
+kubectl hpa_status list -A --problem
+
+# Explain why an HPA is or isn't scaling, and show fix suggestions
+kubectl hpa_status status <hpa-name> -n <namespace> --explain --suggest
+
+# Launch the interactive terminal dashboard
+kubectl hpa_status tui -A
+```
+
+### 3. Try with the included sample manifest (no setup needed)
 
 ```sh
 kubectl apply -f examples/cpu-memory-hpa.yaml
 kubectl hpa_status status web-multi -n hpa-status-examples --explain
 kubectl hpa_status status web-multi -n hpa-status-examples --suggest
 kubectl hpa_status list -n hpa-status-examples --wide
-```
-
-If you have not installed the plugin yet, replace `kubectl hpa_status` with `go run .` from this repository:
-
-```sh
-go run . status web-multi -n hpa-status-examples --explain
 ```
 
 ## Install
@@ -120,67 +137,54 @@ go run . status web-multi -n hpa-status-examples --explain
 kubectl krew install hpa-status
 ```
 
-```sh
-kubectl hpa_status status <hpa-name> -n <namespace>
-kubectl hpa_status list -A --wide
-kubectl hpa_status status <hpa-name> --suggest
-```
+> **Tip on command name**: Krew registers the binary as `kubectl-hpa_status`, which you invoke as `kubectl hpa_status <command>`. You can also run `kubectl-hpa-status <command>` directly when installed via Homebrew or `go install`.
 
-Krew registers the plugin as `hpa-status`, discovered via `kubectl hpa_status` (underscore form). This README uses `kubectl hpa status` as the recommended form where supported. If it doesn't work, use `kubectl hpa_status status <hpa-name>` or `kubectl-hpa-status status <hpa-name>`.
-
-### Homebrew
+### Homebrew (macOS)
 
 ```sh
 brew install mattsu2020/kubectl-hpa-status/kubectl-hpa-status
 kubectl-hpa-status list -A --wide
 ```
 
-The Homebrew distribution is a cask that installs the prebuilt macOS binary. On Linux, use krew, the release archive, or `go install` instead.
-
-### Manual install
+### Build from source
 
 ```sh
 go build -o kubectl-hpa-status .
 sudo mv ./kubectl-hpa-status /usr/local/bin/
-kubectl hpa status <hpa-name> -n <namespace>
+kubectl-hpa-status status <hpa-name> -n <namespace>
 ```
 
-For RBAC permissions, see [docs/rbac.yaml](docs/rbac.yaml).
+### Requirements & RBAC
 
-### Requirements
+- **Kubernetes 1.26+** (`autoscaling/v2`) and a configured `kubeconfig`
+- `metrics-server` (for CPU/memory metrics) or a custom/external metrics adapter
+- **Minimal RBAC friendly**: A plain `status <hpa>` reads **only** the HPA object. Deeper flags opt into additional reads as needed (see [docs/rbac.yaml](docs/rbac.yaml)):
 
-- **Kubernetes 1.26+** (`autoscaling/v2` stable API) — officially supported and E2E-tested range. The API exists from 1.23+ and the plugin may run there, but those older versions are not part of the CI matrix. See [docs/reference.md](docs/reference.md) for the full compatibility matrix.
-- kubectl configured with a kubeconfig
-- metrics-server (for CPU/memory metrics) or a custom/external metrics adapter
-
-### Status depth tiers
-
-`status` is layered so a plain run stays fast and works under restricted RBAC. Each tier adds API reads, so pick the shallowest one that answers your question:
-
-| Command | Reads | Use when |
+| Command | API Reads | When to use |
 | --- | --- | --- |
-| `status <hpa>` | HPA only | Quick health check; RBAC-light / audited environments |
+| `status <hpa>` | HPA only | Fast health check; restricted RBAC environments |
 | `status <hpa> --explain` | + conditions, events, scale-target pods | "Why is it behaving this way?" |
-| `status <hpa> --explain-pods` | + per-pod readiness and resource requests | Pod-level diagnosis |
-| `status <hpa> --deep` | + capacity, rollout, adapter diagnostics | Full scale-out investigation |
-| `status <hpa> --no-enrich` | HPA only (explicit) | Force HPA-only even if other flags are set; alias `--hpa-only` |
-
-`--no-enrich`/`--hpa-only` and `--deep` are also available as `--analysis-profile` values (`--analysis-profile deep`). The plain `status` run reads only the HPA object, so it no longer requires Pod/Deployment permissions.
-
-### Command surface
-
-Commands are grouped into four layers so the top-level surface stays focused on daily HPA work:
-
-| Layer | Commands | Notes |
-| --- | --- | --- |
-| Basic | `status`, `list`, `scan`, `doctor`, `watch`, `explain`, `tui` | Daily HPA inspection |
-| Investigation | `doctor trace`, `doctor path`, `timeline`, `metrics`, `recommend`, `blockers`, `rollout`, `compare` | Root-cause analysis |
-| Operational (`alpha`) | `alpha policy`, `alpha gitops`, `alpha bundle`, `alpha incident-bundle`, `alpha support-bundle` | Apply-time gating, GitOps, support data |
-| Experimental (`alpha`) | `alpha capacity`, `alpha capacity-gap`, `alpha autoscaler-map`, `alpha analyze-record`, `alpha flap` | Niche tools; may change between releases |
-
-Operational and experimental commands are available only below `alpha`; the historical top-level aliases were removed in v2.0.
+| `status <hpa> --explain-pods` | + per-pod readiness and resource requests | Pod-level distortion or unready pods |
+| `status <hpa> --deep` | + capacity, rollout, adapter diagnostics | Full scale-out blocker investigation |
+| `status <hpa> --no-enrich` | HPA only (explicit, alias `--hpa-only`) | Force HPA-only even when presets are active |
 
 ## Representative Commands
+
+### Symptom-to-Command Cheat Sheet
+
+| What you want to know | Command to run |
+| --- | --- |
+| **"Which HPAs in my cluster are broken or capped right now?"** | `kubectl hpa_status list -A --problem` |
+| **"Why is this HPA not scaling up or down?"** | `kubectl hpa_status status <hpa> -n <ns> --explain` |
+| **"Run a full health check (metrics, probes, capacity, KEDA/VPA)"** | `kubectl hpa_status doctor <hpa> -n <ns>` |
+| **"Which metric won the replica calculation, and by how much?"** | `kubectl hpa_status doctor trace <hpa> -n <ns>` |
+| **"What happens if CPU jumps to 85% or `maxReplicas` is raised?"** | `kubectl hpa_status status <hpa> -n <ns> --simulate-metric cpu=85%` |
+| **"Give me a safe patch to fix this HPA (and dry-run it)"** | `kubectl hpa_status status <hpa> -n <ns> --suggest --fix --dry-run` |
+| **"What happened over the last 30 minutes (or in Prometheus)?"** | `kubectl hpa_status timeline <hpa> -n <ns> --since=30m` |
+| **"Validate candidate HPA configs against recorded/Prometheus load"** | `kubectl hpa_status alpha backtest <hpa> -n <ns> --from-record record.jsonl` |
+| **"Watch HPA changes in real time"** | `kubectl hpa_status watch <hpa> -n <ns> --watch-mode=informer` |
+
+### Copy-Paste Command Examples
 
 ```sh
 # 1. Detailed status with interpretation and next steps
@@ -199,71 +203,91 @@ kubectl hpa_status status <hpa> --suggest
 kubectl hpa_status scan
 ```
 
+### Command Architecture
+
+Commands are organized into four layers so daily operations stay simple while deep investigation tools remain easy to discover:
+
+| Layer | Commands | Purpose |
+| --- | --- | --- |
+| **Basic** | `status`, `list`, `scan`, `doctor`, `watch`, `explain`, `tui` | Daily inspection, triage, live monitoring |
+| **Investigation** | `doctor trace`, `doctor path`, `timeline`, `metrics`, `recommend`, `blockers`, `rollout`, `compare` | Root-cause analysis & configuration audit |
+| **Operational (`alpha`)** | `alpha policy`, `alpha gitops`, `alpha bundle`, `alpha incident-bundle`, `alpha support-bundle` | CI/CD policy gating, GitOps drift, redacted incident bundles |
+| **Experimental (`alpha`)** | `alpha backtest`, `alpha analyze-record`, `alpha capacity`, `alpha capacity-gap`, `alpha autoscaler-map`, `alpha flap` | History validation, seasonality, capacity planning |
+
 ## Examples
 
-Practical sample manifests are in [examples/](examples/).
+Practical sample manifests are included in [examples/](examples/):
 
 ```sh
 kubectl apply -f examples/cpu-memory-hpa.yaml
-kubectl hpa status web-multi -n hpa-status-examples --explain --suggest
-kubectl hpa status list -n hpa-status-examples --wide
+kubectl hpa_status status web-multi -n hpa-status-examples --explain --suggest
+kubectl hpa_status list -n hpa-status-examples --wide
 ```
 
-### Language scope
+### Localization (`--lang=en|ja`)
 
-`--lang=en|ja` localizes table and section labels plus the status summary line.
-Detailed diagnostic evidence, risks, recommendations, and remediation text
-remain English. JSON/YAML field names and machine-readable enum values are
-also language-independent so scripts receive a stable schema regardless of
-the selected display language.
+`--lang=en|ja` localizes table headers, section titles, and the status summary line while keeping JSON/YAML field names and enum values language-independent for scripts.
 
-## Multi-HPA output and partial results
+### Multi-HPA Automation & Exit Codes
 
-`status NAME1 NAME2 ...` runs report all named HPAs together. When every HPA is reachable, the output is the per-item result in input order. When one or more HPAs fail to fetch (e.g. wrong name, wrong namespace, RBAC denial), the run no longer aborts: it emits a **partial result** so the fleet/list use case still gets the healthy items.
+Passing multiple HPAs (`status NAME1 NAME2 ...`) returns partial results even if one HPA is missing, making CI and fleet scripts resilient:
 
-Exit code reflects the most severe per-item outcome:
-
-| Per-item state | Exit code |
+| Outcome | Exit code |
 | --- | --- |
-| All items OK | `0` |
-| Any item warning (`ERROR` / `LIMITED` health), no build errors | `2` |
-| Any item failed to build (fetch/build error) | `1` |
+| All HPAs healthy (`OK`) | `0` |
+| One or more HPAs in `LIMITED` or `ERROR` health (no API/fetch errors) | `2` |
+| HPA not found (`ErrHPANotFound`) | `3` |
+| Generic API or execution error | `1` |
 
-For `-o json` / `-o yaml`, multi-HPA output is wrapped in a `StatusBatch` envelope. Each item carries a `status` of `ok`, `warning`, or `error`; failed items have `status: "error"`, an `error` message, and no `report` field:
+Structured output (`-o json`, `-o yaml`, `-o jsonl`) uses the grouped `hpa-status/v2` schema (`docs/output-schema-v2.json`):
 
 ```json
 {
-  "apiVersion": "hpa-status/v1",
+  "apiVersion": "hpa-status/v2",
   "items": [
-    {"namespace": "default", "name": "web", "status": "ok", "report": { "apiVersion": "hpa-status/v1", "analysis": { "name": "web", "health": "OK", "...": "..." } } },
-    {"namespace": "default", "name": "missing", "status": "error", "error": "HPA \"missing\" was not found in namespace \"default\""}
+    {
+      "namespace": "default",
+      "name": "web",
+      "status": "ok",
+      "report": {
+        "apiVersion": "hpa-status/v2",
+        "analysis": {
+          "meta": { "name": "web", "namespace": "default" },
+          "decision": { "health": "OK", "healthScore": 100 }
+        }
+      }
+    },
+    {
+      "namespace": "default",
+      "name": "missing",
+      "status": "error",
+      "error": "HPA \"missing\" was not found in namespace \"default\""
+    }
   ]
 }
 ```
-
-Since v3, structured output uses the grouped v2 projection (`apiVersion: "hpa-status/v2"`); the flat v1 shape was removed in v4. Single-HPA `status NAME -o json` emits the v2 report envelope. Text output renders successful items normally and a single `Error: <message>` row per failed item.
 
 ## Documentation
 
 | Document | Content |
 | --- | --- |
-| [Usage Guide](docs/usage.md) | Flag reference, config file, health score, TUI key bindings, JSONPath examples |
-| [TUI Manual](docs/tui.md) | Interactive dashboard workflow, shortcuts, export guidance, troubleshooting |
-| [Reference](docs/reference.md) | Doctor command, safe fix flow, multi-metric trace, simulator, auditor, timeline, troubleshooting |
-| [Troubleshooting](docs/troubleshooting.md) | Symptom/command table and FAQ |
-| [Roadmap](ROADMAP.md) | Planned TUI, metrics, KEP-6111, and supply-chain work |
-| [Promotion Kit](docs/social-promotion.md) | Release announcement drafts for X, Reddit, Slack, Connpass, and Zenn |
+| [Usage Guide](docs/usage.md) | Complete flag reference, config file, health scoring, JSONPath examples |
+| [TUI Manual](docs/tui.md) | Interactive dashboard workflow, keyboard shortcuts, fix/simulate wizards |
+| [Reference](docs/reference.md) | Doctor checks, safe fix flow, multi-metric trace, simulator, auditor, timeline |
+| [Troubleshooting](docs/troubleshooting.md) | Symptom-based runbook and FAQ |
+| [Roadmap](ROADMAP.md) | Upcoming milestones and architectural plans |
+| [Promotion Kit](docs/social-promotion.md) | Release announcement templates |
 
 ## Community and Promotion
 
-- Star or fork the repository if the plugin helps your HPA operations.
-- Share the demo image [images/demo.png](images/demo.png) and the screenshot gallery in [images/](images/).
-- Use the announcement templates in [docs/social-promotion.md](docs/social-promotion.md) when posting a release or demo.
-- Open GitHub Discussions when it is enabled for questions, workflows, and troubleshooting patterns that do not fit a bug report.
+- Star or fork the repository if `kubectl-hpa-status` saves you time during incidents.
+- Share [images/demo.png](images/demo.png) and the workflow visuals in [images/](images/).
+- Use the templates in [docs/social-promotion.md](docs/social-promotion.md) when sharing workflows with your team.
+- Open an issue or discussion for feature requests, edge-case HPA manifests, or troubleshooting patterns.
 
 ## Roadmap
 
-The active roadmap is tracked in [ROADMAP.md](ROADMAP.md). Near-term priorities are broader multi-metric/KEDA/VPA E2E coverage, KEP-6111 readiness, and continued release supply-chain hardening.
+The active roadmap is tracked in [ROADMAP.md](ROADMAP.md). Recent milestones include Prometheus history import (`--from-prometheus`), `alpha backtest`, informer-backed watch mode (`--watch-mode=informer`), and lazy TUI report hydration for large clusters.
 
 ## Development
 

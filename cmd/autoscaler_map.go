@@ -96,7 +96,15 @@ type autoscalerMapShared struct {
 	karpenterFound bool
 }
 
-func newAutoscalerMapShared(_ context.Context, _ *kube.Client, opts *options) *autoscalerMapShared {
+func newAutoscalerMapShared(_ context.Context, client *kube.Client, opts *options) *autoscalerMapShared {
+	if client != nil {
+		if dyn, err := client.DynamicClient(); err == nil && dyn != nil {
+			return &autoscalerMapShared{
+				cluster:   &observation.ClusterSnapshot{},
+				dynClient: dyn,
+			}
+		}
+	}
 	dynClient, _, dynErr := kube.NewDynamicClient(opts.KubeOptions())
 	return &autoscalerMapShared{
 		cluster:   &observation.ClusterSnapshot{},

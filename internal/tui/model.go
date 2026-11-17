@@ -41,9 +41,12 @@ type Model struct {
 	opts      Options
 	ctx       context.Context
 
-	items   []hpaanalysis.ListItem
-	reports map[string]*hpaanalysis.StatusReport
-	hpas    map[string]*autoscalingv2.HorizontalPodAutoscaler
+	items     []hpaanalysis.ListItem
+	reports   map[string]*hpaanalysis.StatusReport
+	hpas      map[string]*autoscalingv2.HorizontalPodAutoscaler
+	kedaCache map[string]*hpakeda.Analysis
+	vpaCache  map[string]*hpavpa.ConflictInfo
+	warnCache map[string][]string
 	// hpaUIDs maps "namespace/name" to the observed HPA UID so interactive
 	// states (the fix wizard) can verify their target still is the same
 	// object after a refresh, instead of matching by name alone.
@@ -169,6 +172,7 @@ type Options struct {
 	InitialName   string
 	InitialNS     string
 	StartInDetail bool
+	LazyReports   bool
 	Now           func() time.Time
 
 	// EnrichHPAs is an optional callback that applies KEDA/VPA enrichment
@@ -225,6 +229,9 @@ type fetchResultMsg struct {
 	items     []hpaanalysis.ListItem
 	reports   map[string]*hpaanalysis.StatusReport
 	hpas      map[string]*autoscalingv2.HorizontalPodAutoscaler
+	keda      map[string]*hpakeda.Analysis
+	vpa       map[string]*hpavpa.ConflictInfo
+	warnings  map[string][]string
 	// uids maps "namespace/name" to the observed HPA UID for this fetch.
 	uids map[string]string
 	err  error

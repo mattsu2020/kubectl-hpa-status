@@ -295,7 +295,7 @@ func (m Model) currentReport() *hpaanalysis.StatusReport {
 	}
 	item := filtered[m.cursor]
 	k := item.Namespace + "/" + item.Name
-	return m.reports[k]
+	return m.ensureReport(k)
 }
 
 // parseMetricInput parses a metric input string like "cpu=80%" into
