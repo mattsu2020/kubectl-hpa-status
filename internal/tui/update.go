@@ -21,7 +21,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		return m.updateWindowSize(msg)
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		return m.updateKeyMsg(msg)
 	case tickMsg:
 		return m.updateTick(msg)
@@ -79,7 +79,9 @@ func (m Model) updateFetchResult(msg fetchResultMsg) (tea.Model, tea.Cmd) {
 	// apply/dry-run still in flight (their results would otherwise mark a
 	// stale suggestion set as applied).
 	m.statusMessage = ""
-	m.fixEpoch++
+	if m.fixState == nil || !m.fixState.applying {
+		m.fixEpoch++
+	}
 	if m.fixState != nil {
 		m.fixState.applyConfirm = false
 	}

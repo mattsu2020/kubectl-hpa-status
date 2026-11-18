@@ -124,9 +124,12 @@ func extractContainerPolicies(spec map[string]any) []VPAContainerPolicy {
 			Mode:          stringValue(policy, "mode"),
 		}
 		rawResources, specified := policy["controlledResources"]
-		extracted.ControlledResourcesSpecified = specified
-		if resources, ok := rawResources.([]any); ok {
+		if resources, ok := rawResources.([]any); ok && specified {
+			extracted.ControlledResourcesSpecified = true
 			for _, resource := range resources {
+				if resource == nil {
+					continue
+				}
 				name := strings.ToLower(fmt.Sprint(resource))
 				if name != "" {
 					extracted.ControlledResources = append(extracted.ControlledResources, name)

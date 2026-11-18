@@ -286,7 +286,7 @@ func enrichMetricContractAndAdapter(ctx context.Context, client *kube.Client, hp
 }
 
 func enrichChurnAndFlapping(_ context.Context, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport, cfg ChurnAndFlappingConfig) {
-	if cfg.ChurnDetect && cfg.EventsEnabled {
+	if cfg.ChurnDetect {
 		report.Analysis.Stability.ChurnAnalysis = hpachurn.AnalyzeChurnFromEvents(report.Events, hpa)
 		if report.Analysis.Stability.ChurnAnalysis != nil {
 			hpaanalysis.ApplyChurnPenalty(&report.Analysis, cfg.HealthWeights)

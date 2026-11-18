@@ -194,7 +194,7 @@ func extractNewReplicaSetContainers(ctx context.Context, client *kube.Client, na
 		rs := &rsList.Items[i]
 		for _, ownerRef := range rs.OwnerReferences {
 			if ownerRef.UID == deploy.UID && rs.Spec.Replicas != nil && *rs.Spec.Replicas > 0 {
-				if _, ok := rs.Labels["deployment.kubernetes.io/revision"]; ok {
+				if _, ok := rs.Annotations["deployment.kubernetes.io/revision"]; ok {
 					var names []string
 					for _, c := range rs.Spec.Template.Spec.Containers {
 						names = append(names, c.Name)

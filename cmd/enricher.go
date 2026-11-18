@@ -121,7 +121,7 @@ func enricherPhaseCore(opts *options) []enricherSpec {
 		},
 		{
 			name:    "events",
-			enabled: func() bool { return opts.Events.Enabled || plan.Advisors.Flapping },
+			enabled: func() bool { return opts.Events.Enabled || plan.Advisors.Flapping || plan.Advisors.Churn },
 			run: func(ctx context.Context, p *PipelineContext, hpa *autoscalingv2.HorizontalPodAutoscaler, report *hpaanalysis.StatusReport) error {
 				enrichEvents(ctx, p.Client, hpa, report, opts.Events.Limit)
 				return nil

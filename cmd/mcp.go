@@ -64,7 +64,7 @@ func mcpStatusTool(opts *options) mcp.Tool {
 			}
 			var buf bytes.Buffer
 			req := snapshotStatusRequest(&local, []string{p.Name})
-			if err := executeStatusRequest(ctx, &buf, req); err != nil && (exitCodeForError(err) != ExitWarning || !json.Valid(buf.Bytes())) {
+			if err := executeStatusRequest(ctx, &buf, req); err != nil && !mcpAllowWarningJSON(err, buf.Bytes()) {
 				return "", err
 			}
 			return buf.String(), nil
@@ -91,7 +91,7 @@ func mcpDoctorTool(opts *options) mcp.Tool {
 			local := cloneMCPOptions(opts, p.Namespace)
 			local.Output = "json"
 			var buf bytes.Buffer
-			if err := runDoctor(ctx, &buf, &local, []string{p.Name}); err != nil {
+			if err := runDoctor(ctx, &buf, &local, []string{p.Name}); err != nil && !mcpAllowWarningJSON(err, buf.Bytes()) {
 				return "", err
 			}
 			return buf.String(), nil
@@ -152,16 +152,13 @@ func mcpTimelineTool(opts *options) mcp.Tool {
 			local.Output = "json"
 			var buf bytes.Buffer
 			if p.FromRecord != "" {
-				if err := runTimelineFromRecord(&buf, &local, p.Name, p.FromRecord); err != nil {
-					return "", err
-				}
-				return buf.String(), nil
+				return "", fmt.Errorf("fromRecord is disabled in MCP mode for security; query live cluster events with since instead")
 			}
 			since := time.Hour
 			if strings.TrimSpace(p.Since) != "" {
 				parsed, err := time.ParseDuration(p.Since)
-				if err != nil {
-					return "", fmt.Errorf("invalid since duration %q: %w", p.Since, err)
+				if err != nil || parsed <= 0 {
+					return "", fmt.Errorf("invalid since duration %q: must be a positive duration", p.Since)
 				}
 				since = parsed
 			}
@@ -202,6 +199,10 @@ func mcpSimulateTool(opts *options) mcp.Tool {
 			return buf.String(), nil
 		},
 	}
+}
+
+func mcpAllowWarningJSON(err error, payload []byte) bool {
+	return exitCodeForError(err) == ExitWarning && json.Valid(payload)
 }
 
 func cloneMCPOptions(opts *options, namespace string) options {

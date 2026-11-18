@@ -55,6 +55,10 @@ func acquireLockContext(ctx context.Context, path string) (func(), error) {
 			}
 			return release, nil
 		}
+		if !isLockContention(err) {
+			_ = f.Close()
+			return nil, fmt.Errorf("locking history file %s: %w", lockPath, err)
+		}
 		if time.Now().After(deadline) {
 			_ = f.Close()
 			return nil, fmt.Errorf("timed out waiting for history lock %s", lockPath)

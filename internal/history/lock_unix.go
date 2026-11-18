@@ -3,6 +3,7 @@
 package history
 
 import (
+	"errors"
 	"os"
 	"syscall"
 )
@@ -18,6 +19,12 @@ func tryLockFile(f *os.File) error {
 		}
 		return err
 	}
+}
+
+// isLockContention reports whether err indicates the lock is currently held by
+// another process rather than a permanent filesystem/OS error.
+func isLockContention(err error) bool {
+	return errors.Is(err, syscall.EWOULDBLOCK) || errors.Is(err, syscall.EAGAIN)
 }
 
 // unlockFile releases the advisory lock taken by tryLockFile.

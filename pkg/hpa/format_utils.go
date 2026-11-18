@@ -77,6 +77,12 @@ func FormatCountdownBadge(remaining *int64) string {
 // progressBar renders a 10-cell unicode bar for a metric ratio (0–2 mapped to
 // 0–10 filled cells). Shared by the list and status text renderers.
 func progressBar(ratio float64) string {
+	if math.IsNaN(ratio) || ratio <= 0 {
+		return rendutil.ProgressBar(0, 2000, 10)
+	}
+	if math.IsInf(ratio, 1) || ratio >= 2 {
+		return rendutil.ProgressBar(2000, 2000, 10)
+	}
 	return rendutil.ProgressBar(int64(ratio*1000), 2000, 10)
 }
 

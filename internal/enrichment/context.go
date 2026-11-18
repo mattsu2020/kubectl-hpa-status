@@ -71,9 +71,16 @@ func (ec *Context) fetchNamespaceVPAs(ctx context.Context, namespace string) ([]
 		}
 	}
 
+	if err != nil && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || ctx.Err() != nil) {
+		return nil, err
+	}
 	ec.cacheMu.Lock()
 	if ec.vpaCache == nil {
 		ec.vpaCache = make(map[string]cachedVPAResult)
+	}
+	if prev, ok := ec.vpaCache[namespace]; ok && prev.err == nil && err != nil {
+		ec.cacheMu.Unlock()
+		return prev.items, prev.err
 	}
 	ec.vpaCache[namespace] = cachedVPAResult{items: infos, err: err}
 	ec.cacheMu.Unlock()
@@ -93,9 +100,16 @@ func (ec *Context) fetchNamespaceScaledObjects(ctx context.Context, namespace st
 
 	items, err := kube.FetchScaledObjects(ctx, ec.dynClient, namespace)
 
+	if err != nil && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || ctx.Err() != nil) {
+		return nil, err
+	}
 	ec.cacheMu.Lock()
 	if ec.soCache == nil {
 		ec.soCache = make(map[string]cachedSOResult)
+	}
+	if prev, ok := ec.soCache[namespace]; ok && prev.err == nil && err != nil {
+		ec.cacheMu.Unlock()
+		return prev.items, prev.err
 	}
 	ec.soCache[namespace] = cachedSOResult{items: items, err: err}
 	ec.cacheMu.Unlock()

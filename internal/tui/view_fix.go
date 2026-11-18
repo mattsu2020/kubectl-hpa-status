@@ -125,7 +125,11 @@ func appendFixPreview(sb *strings.Builder, st *fixState) {
 }
 
 func appendFixApplyStatus(sb *strings.Builder, st *fixState) {
-	if st.applyConfirm {
+	if st.applying {
+		sb.WriteString("\n")
+		sb.WriteString(warnStyle.Render("  Applying patch to cluster..."))
+		sb.WriteString("\n")
+	} else if st.applyConfirm {
 		sb.WriteString("\n")
 		sb.WriteString(warnStyle.Render("  WARNING: the next Enter will persist this patch."))
 		sb.WriteString("\n")
@@ -137,6 +141,10 @@ func appendFixApplyStatus(sb *strings.Builder, st *fixState) {
 		} else {
 			sb.WriteString(okStyle.Render("  ✓ Applied successfully"))
 		}
+		sb.WriteString("\n")
+	} else if st.applyErr != nil && st.dryRunResult == "" {
+		sb.WriteString("\n")
+		sb.WriteString(errorStyle.Render(fmt.Sprintf("  Apply failed: %v", st.applyErr)))
 		sb.WriteString("\n")
 	}
 	if st.dryRunResult != "" {

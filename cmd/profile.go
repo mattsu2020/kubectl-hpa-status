@@ -17,6 +17,8 @@ func newProfileCommand(opts *options) *cobra.Command {
 			return runProfile(cmd.Context(), cmd.OutOrStdout(), opts)
 		},
 	}
+	cmd.PersistentFlags().StringVar(&opts.AssumeProfile, "assume-profile", "", "assume a named HPA controller profile when controller-manager args are not visible")
+	cmd.PersistentFlags().StringVar(&opts.ControllerProfileFile, "controller-profile-file", "", "path to an HPA controller profile YAML file")
 	cmd.AddCommand(&cobra.Command{
 		Use:   "detect",
 		Short: "Detect or assume HPA controller-manager timing parameters",

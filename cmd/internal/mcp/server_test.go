@@ -130,3 +130,18 @@ func TestHandleMessageParseError(t *testing.T) {
 		t.Fatalf("expected -32700 parse error, got %+v", resp.Error)
 	}
 }
+
+func TestHandleMessageInvalidRequest(t *testing.T) {
+	srv := NewServer("kubectl-hpa-status", "v5.0.0")
+	respBytes, ok := srv.HandleMessage(context.Background(), []byte(`{"id":1,"method":""}`))
+	if !ok {
+		t.Fatal("expected invalid request response")
+	}
+	var resp rpcResponse
+	if err := json.Unmarshal(respBytes, &resp); err != nil {
+		t.Fatalf("decode invalid request response: %v", err)
+	}
+	if resp.Error == nil || resp.Error.Code != -32600 {
+		t.Fatalf("expected -32600 invalid request, got %+v", resp.Error)
+	}
+}

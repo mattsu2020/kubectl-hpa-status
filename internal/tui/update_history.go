@@ -44,7 +44,7 @@ func (m Model) loadHistorySnapshots() tea.Cmd {
 // view. Results for another HPA identity (the cursor moved and history was
 // re-entered) are dropped.
 func (m Model) updateHistoryLoaded(msg historyLoadedMsg) (tea.Model, tea.Cmd) {
-	if m.viewMode != historyView || m.historyState == nil {
+	if m.historyState == nil {
 		return m, nil
 	}
 	if m.historyState.key != "" && m.historyState.key != msg.key {

@@ -165,7 +165,10 @@ func contractAdapterChecks(contract *MetricContractReport) []AdapterCheck {
 			continue
 		}
 		status := "warning"
-		if issue.Status == "missing-api" || issue.Status == "missing-data" || issue.Status == "selector-mismatch" {
+		switch issue.Status {
+		case "ok":
+			status = "ok"
+		case "missing-api", "missing-data", "selector-mismatch":
 			status = "error"
 		}
 		checks = append(checks, AdapterCheck{

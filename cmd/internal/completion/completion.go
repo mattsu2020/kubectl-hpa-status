@@ -186,11 +186,11 @@ var (
 		{"false", "Hide events"},
 	}
 	UntilConditionValues = []completionValue{
-		{"ok", "HPA is healthy"},
-		{"healthy", "HPA is healthy"},
-		{"stable", "HPA is stable (not scaling)"},
-		{"scaling-limited", "HPA hit min or max replicas"},
-		{"error", "HPA has an error condition"},
+		{"scaling-limited", "HPA hit min or max replicas (ScalingLimited=True)"},
+		{"scaling-active", "HPA metrics are active (ScalingActive=True)"},
+		{"able-to-scale", "HPA can scale (AbleToScale=True)"},
+		{"scaling-active=false", "HPA metrics unavailable (ScalingActive=False)"},
+		{"able-to-scale=false", "HPA unable to scale (AbleToScale=False)"},
 	}
 )
 
@@ -271,6 +271,12 @@ func RegisterFlagCompletions(root *cobra.Command, deps Deps) error {
 	var visit func(*cobra.Command) error
 	visit = func(cmd *cobra.Command) error {
 		for name, fn := range registrations {
+			if name == "output" {
+				switch cmd.Name() {
+				case "bundle", "incident-bundle", "support-bundle", "snapshot", "record":
+					continue
+				}
+			}
 			flag := cmd.LocalNonPersistentFlags().Lookup(name)
 			if flag == nil {
 				flag = cmd.PersistentFlags().Lookup(name)

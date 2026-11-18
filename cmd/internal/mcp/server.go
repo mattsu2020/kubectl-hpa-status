@@ -128,8 +128,23 @@ func (s *Server) HandleMessage(ctx context.Context, raw []byte) ([]byte, bool) {
 		}), true
 	}
 
-	isNotification := len(req.ID) == 0 || string(req.ID) == "null"
+	if req.JSONRPC != "2.0" || strings.TrimSpace(req.Method) == "" {
+		id := req.ID
+		if len(id) == 0 {
+			id = json.RawMessage("null")
+		}
+		return mustMarshal(rpcResponse{
+			JSONRPC: "2.0",
+			ID:      id,
+			Error:   &rpcError{Code: -32600, Message: "invalid request: jsonrpc must be \"2.0\" and method is required"},
+		}), true
+	}
+
+	isNotification := len(req.ID) == 0
 	if req.Method == "notifications/initialized" || (isNotification && strings.HasPrefix(req.Method, "notifications/")) {
+		return nil, false
+	}
+	if isNotification {
 		return nil, false
 	}
 

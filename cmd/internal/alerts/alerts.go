@@ -47,15 +47,15 @@ const prometheusRules = `groups:
 - name: hpa-status
   rules:
   - alert: HPAScalingLimited
-    expr: hpa_status_health_score < 80
+    expr: hpa_health_score < 80
     for: 10m
     labels:
       severity: warning
     annotations:
       summary: HPA health score is degraded
-      description: Run kubectl hpa status doctor {{ $labels.hpa }} -n {{ $labels.namespace }}.
+      description: Run kubectl hpa status doctor {{ $labels.name }} -n {{ $labels.namespace }}.
   - alert: HPAMetricsUnavailable
-    expr: hpa_status_health_score < 60
+    expr: hpa_health_score < 60
     for: 5m
     labels:
       severity: critical
@@ -65,13 +65,13 @@ const prometheusRules = `groups:
 `
 
 const datadogRules = `- name: HPA health score degraded
-  query: avg(last_10m):avg:hpa_status_health_score{*} by {namespace,hpa} < 80
-  message: "Run kubectl hpa status doctor {{hpa.name}} -n {{namespace.name}}"
+  query: avg(last_10m):avg:hpa_health_score{*} by {namespace,name} < 80
+  message: "Run kubectl hpa status doctor {{name.name}} -n {{namespace.name}}"
   tags:
     - hpa
     - autoscaling
 - name: HPA metrics unavailable
-  query: avg(last_5m):avg:hpa_status_health_score{*} by {namespace,hpa} < 60
+  query: avg(last_5m):avg:hpa_health_score{*} by {namespace,name} < 60
   message: "Check metrics APIs and external/custom metric adapters"
   tags:
     - hpa
@@ -125,7 +125,7 @@ const grafanaDashboardJSON = `{
       },
       "targets": [
         {
-          "expr": "min(hpa_status_health_score{namespace=~\"$namespace\",hpa=~\"$hpa\"})",
+          "expr": "min(hpa_health_score{namespace=~\"$namespace\",name=~\"$hpa\"})",
           "legendFormat": "Min Health Score",
           "refId": "A"
         }
@@ -142,8 +142,8 @@ const grafanaDashboardJSON = `{
       "id": 2,
       "targets": [
         {
-          "expr": "hpa_status_health_score{namespace=~\"$namespace\",hpa=~\"$hpa\"}",
-          "legendFormat": "{{namespace}}/{{hpa}}",
+          "expr": "hpa_health_score{namespace=~\"$namespace\",name=~\"$hpa\"}",
+          "legendFormat": "{{namespace}}/{{name}}",
           "refId": "A"
         }
       ],
@@ -215,7 +215,7 @@ const grafanaDashboardJSON = `{
         "label": "Namespace",
         "multi": true,
         "name": "namespace",
-        "query": "label_values(hpa_status_health_score, namespace)",
+        "query": "label_values(hpa_health_score, namespace)",
         "refresh": 2,
         "type": "query"
       },
@@ -227,7 +227,7 @@ const grafanaDashboardJSON = `{
         "label": "HPA",
         "multi": true,
         "name": "hpa",
-        "query": "label_values(hpa_status_health_score{namespace=~\"$namespace\"}, hpa)",
+        "query": "label_values(hpa_health_score{namespace=~\"$namespace\"}, name)",
         "refresh": 2,
         "type": "query"
       }

@@ -55,6 +55,7 @@ type fixState struct {
 	suggestions  []hpaanalysis.Suggestion
 	selected     int
 	applyConfirm bool
+	applying     bool
 	applied      bool
 	applyErr     error
 	dryRunResult string

@@ -81,7 +81,14 @@ func ResolveScaledObjectForHPA(hpa *autoscalingv2.HorizontalPodAutoscaler, items
 	candidates := make([]*unstructured.Unstructured, 0, 1)
 	for i := range items {
 		ref := extractScaleTargetRef(&items[i])
-		if ref != nil && ref.Name == hpa.Spec.ScaleTargetRef.Name && ref.Kind == hpa.Spec.ScaleTargetRef.Kind {
+		if ref == nil {
+			continue
+		}
+		refKind := ref.Kind
+		if refKind == "" {
+			refKind = "Deployment"
+		}
+		if ref.Name == hpa.Spec.ScaleTargetRef.Name && refKind == hpa.Spec.ScaleTargetRef.Kind {
 			candidates = append(candidates, &items[i])
 		}
 	}

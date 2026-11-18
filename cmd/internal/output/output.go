@@ -23,6 +23,9 @@ func ShouldColorize(mode string, out io.Writer) bool {
 	case "never", "false", "no":
 		return false
 	case "", "auto":
+		if os.Getenv("NO_COLOR") != "" || strings.EqualFold(os.Getenv("TERM"), "dumb") {
+			return false
+		}
 		out = unwrapWriter(out)
 		file, ok := out.(*os.File)
 		return ok && term.IsTerminal(int(file.Fd()))

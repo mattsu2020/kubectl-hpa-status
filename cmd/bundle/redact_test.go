@@ -405,3 +405,62 @@ func TestRedactSelectorValues(t *testing.T) {
 		}
 	}
 }
+
+func TestRedactDialErrorsTokensAndAssignedNodes(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		in   string
+		leak string
+		want string
+	}{
+		{
+			name: "dial tcp ip:port with trailing colon",
+			in:   `Get "http://10.0.1.23:8080/healthz": dial tcp 10.0.1.23:8080: i/o timeout`,
+			leak: "10.0.1.23",
+			want: "[REDACTED-IP]:8080:",
+		},
+		{
+			name: "trailing period after ip",
+			in:   `failed to connect to 10.0.1.23.`,
+			leak: "10.0.1.23",
+			want: "[REDACTED-IP].",
+		},
+		{
+			name: "node prefix colon ip",
+			in:   `node:10.0.1.23 unreachable`,
+			leak: "10.0.1.23",
+			want: "[REDACTED-IP]",
+		},
+		{
+			name: "x-auth-token bearer",
+			in:   `X-Auth-Token: Bearer secret-jwt-token-value`,
+			leak: "secret-jwt-token-value",
+			want: "[REDACTED]",
+		},
+		{
+			name: "proxy_authorization basic",
+			in:   `proxy_authorization: Basic dXNlcjpwYXNz`,
+			leak: "dXNlcjpwYXNz",
+			want: "[REDACTED]",
+		},
+		{
+			name: "successfully assigned node event",
+			in:   `Successfully assigned default/web-1 to worker-private-01`,
+			leak: "worker-private-01",
+			want: "[REDACTED-NODE]",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := string(RedactBytes([]byte(tc.in)))
+			if strings.Contains(got, tc.leak) {
+				t.Fatalf("sensitive value %q leaked in %q", tc.leak, got)
+			}
+			if !strings.Contains(got, tc.want) {
+				t.Fatalf("expected %q in %q", tc.want, got)
+			}
+		})
+	}
+}

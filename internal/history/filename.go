@@ -62,6 +62,12 @@ func sanitizeFilename(s string) string {
 	}
 	s = strings.ReplaceAll(b.String(), "/", "_")
 	s = strings.ReplaceAll(s, "\\", "_")
+	for _, illegal := range []string{":", "*", "?", `"`, "<", ">", "|"} {
+		s = strings.ReplaceAll(s, illegal, "_")
+	}
+	if s != "." && s != ".." {
+		s = strings.TrimRight(s, ". ")
+	}
 	if s == "" || s == "." || strings.HasPrefix(s, "..") {
 		s = "_" + s
 	}

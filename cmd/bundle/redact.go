@@ -160,6 +160,13 @@ var sensitiveStringPatterns = []struct {
 		replacement: `${1}[REDACTED]`,
 	},
 	{
+		// Bearer / Basic scheme tokens embedded in any header or log line
+		// (e.g. X-Auth-Token: Bearer <secret> or Authorization logs). Must run
+		// before generic key:value matching so "Bearer" is not redacted alone.
+		re:          regexp.MustCompile(`(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}`),
+		replacement: `${1} [REDACTED]`,
+	},
+	{
 		// Inline JSON/YAML-like values embedded in a command string.
 		re:          regexp.MustCompile(`(?i)(["']?` + sensitiveNamePattern + `["']?\s*:\s*)(?:"[^"]*"|'[^']*'|[^,\s}\]]+)`),
 		replacement: `${1}[REDACTED]`,
@@ -167,7 +174,7 @@ var sensitiveStringPatterns = []struct {
 	{
 		// Authentication headers frequently appear in curl command strings.
 		// Redact the complete value regardless of authentication scheme.
-		re:          regexp.MustCompile(`(?i)(\b(?:authorization|proxy-authorization)\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^"'\r\n]+)`),
+		re:          regexp.MustCompile(`(?i)(\b(?:authorization|proxy[-_]?authorization)\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^"'\r\n]+)`),
 		replacement: `${1}[REDACTED]`,
 	},
 	{
@@ -328,14 +335,45 @@ func redactIPAddresses(s string) string {
 // redactAddressToken rewrites one address-shaped token. Bare IP addresses
 // become [REDACTED-IP]; "host:port" pairs keep the port so a redacted bundle
 // still shows the service shape, e.g. http://[REDACTED-IP]:8080/health.
+// Surrounding sentence punctuation (e.g. "10.0.1.23:8080:" or "10.0.1.23.")
+// and leading non-IP hex prefixes (e.g. "node:10.0.1.23") are preserved outside
+// the redacted address so kubelet/dial errors never leak raw IPs.
 func redactAddressToken(token string) string {
-	if net.ParseIP(token) != nil {
-		return "[REDACTED-IP]"
+	lead := ""
+	trail := ""
+	core := token
+	for len(core) > 0 && (core[0] == ':' || core[0] == '.') {
+		lead += core[:1]
+		core = core[1:]
 	}
-	if _, port, ok := splitIPTokenHostPort(token); ok {
-		return "[REDACTED-IP]" + port
+	for len(core) > 0 && (core[len(core)-1] == ':' || core[len(core)-1] == '.') {
+		trail = core[len(core)-1:] + trail
+		core = core[:len(core)-1]
+	}
+	if core == "" {
+		return token
+	}
+	if redacted, ok := redactCoreAddress(core); ok {
+		return lead + redacted + trail
+	}
+	if colon := strings.IndexByte(core, ':'); colon > 0 && colon < len(core)-1 {
+		prefix := core[:colon+1]
+		rest := core[colon+1:]
+		if redacted, ok := redactCoreAddress(rest); ok {
+			return lead + prefix + redacted + trail
+		}
 	}
 	return token
+}
+
+func redactCoreAddress(core string) (string, bool) {
+	if net.ParseIP(core) != nil {
+		return "[REDACTED-IP]", true
+	}
+	if _, port, ok := splitIPTokenHostPort(core); ok {
+		return "[REDACTED-IP]" + port, true
+	}
+	return "", false
 }
 
 // splitIPTokenHostPort splits a trailing numeric :port suffix when the head
@@ -383,12 +421,19 @@ func redactNodeNames(s string) string {
 		"nodeName: ", "nodeName: [REDACTED-NODE]",
 		"nodename: ", "nodename: [REDACTED-NODE]",
 		"nodeName=", "nodeName=[REDACTED-NODE]",
+		"Successfully assigned ", "",
 	}
 	for i := 0; i < len(replacements); i += 2 {
+		if replacements[i] == "Successfully assigned " {
+			s = assignedNodePattern.ReplaceAllString(s, "${1}[REDACTED-NODE]")
+			continue
+		}
 		s = replaceAfterKeyword(s, replacements[i], replacements[i+1])
 	}
 	return s
 }
+
+var assignedNodePattern = regexp.MustCompile(`(Successfully assigned [^\s]+ to )([^\s"',;]+)`)
 
 // replaceAfterKeyword replaces the value after a keyword.
 func replaceAfterKeyword(s, keyword, _ string) string {

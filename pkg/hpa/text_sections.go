@@ -53,9 +53,11 @@ func appendMetricsSection(out *[]byte, a *Analysis, theme style.Theme, labels la
 		return
 	}
 	for _, metric := range a.Metrics.Metrics {
-		note := theme.MetricNote(metric.Note)
-		text := formatMetricText(metric, note)
-		*out = fmt.Appendf(*out, "  - %s\n", SanitizeTerminalText(text))
+		sanitized := metric
+		sanitized.Text = SanitizeTerminalText(metric.Text)
+		note := theme.MetricNote(SanitizeTerminalText(metric.Note))
+		text := formatMetricText(sanitized, note)
+		*out = fmt.Appendf(*out, "  - %s\n", text)
 	}
 }
 

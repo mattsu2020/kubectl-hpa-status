@@ -255,9 +255,9 @@ func metricsHealthyInfoRule(input Input) []Finding {
 	if !input.ScalingActive {
 		return []Finding{
 			{
-				ID:          "metrics-healthy",
-				Severity:    BlockerInfo,
-				Category:    "info",
+				ID:          "metrics-inactive",
+				Severity:    BlockerHigh,
+				Category:    "metrics",
 				Message:     "HPA ScalingActive is False — metrics may not be reaching the controller",
 				Detail:      "When ScalingActive is False, the HPA cannot compute reliable scaling decisions. Check the metrics pipeline (Prometheus Adapter, metrics-server, etc.).",
 				NextCommand: "kubectl get --raw /apis/metrics.k8s.io/v1beta1/namespaces/" + describeNamespace(input) + "/pods",

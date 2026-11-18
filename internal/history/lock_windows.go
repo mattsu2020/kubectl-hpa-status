@@ -3,6 +3,7 @@
 package history
 
 import (
+	"errors"
 	"os"
 
 	"golang.org/x/sys/windows"
@@ -26,6 +27,12 @@ func tryLockFile(f *os.File) error {
 		lockWholeRangeHigh,
 		overlapped,
 	)
+}
+
+// isLockContention reports whether err indicates the lock is currently held by
+// another process rather than a permanent filesystem/OS error.
+func isLockContention(err error) bool {
+	return errors.Is(err, windows.ERROR_LOCK_VIOLATION)
 }
 
 // unlockFile releases the range lock taken by tryLockFile.

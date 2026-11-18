@@ -220,13 +220,14 @@ func confirmBatchApply(out io.Writer, opts *options, count int) (bool, error) {
 		action = "apply"
 	}
 	// Resolve the reader locally without mutating opts: when stdin was not
-	// explicitly wired (e.g. by tests or an embedding caller) and the process
-	// stdin is not an interactive terminal, a prompt would either block forever
-	// or silently consume non-confirmation input. Require an explicit --yes/-y
-	// in that case. A caller that deliberately sets opts.In is allowed to drive
-	// the prompt programmatically.
+	// explicitly wired (e.g. by tests or an embedding caller) or when Cobra
+	// bound os.Stdin directly, require an interactive terminal; otherwise a
+	// prompt would either block forever or silently consume non-confirmation
+	// input. Require an explicit --yes/-y in that case. A caller that
+	// deliberately sets opts.In to a custom reader is allowed to drive the
+	// prompt programmatically.
 	in := opts.In
-	if in == nil {
+	if in == nil || in == os.Stdin {
 		if !stdinIsTerminal(os.Stdin) {
 			return false, fmt.Errorf("cannot prompt for confirmation (stdin is not a terminal); pass --yes/-y to apply non-interactively")
 		}
@@ -237,6 +238,9 @@ func confirmBatchApply(out io.Writer, opts *options, count int) (bool, error) {
 	}
 	scanner := bufio.NewScanner(in)
 	if !scanner.Scan() {
+		if err := scanner.Err(); err != nil {
+			return false, fmt.Errorf("read confirmation input: %w", err)
+		}
 		return false, nil
 	}
 	answer := strings.ToLower(strings.TrimSpace(scanner.Text()))
