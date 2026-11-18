@@ -175,11 +175,15 @@ func (m Model) runMetricSimulation() tea.Cmd {
 // never the current cursor row: a background refresh may have reordered the
 // list between opening the wizard and confirming.
 func (m Model) applyFix() tea.Cmd {
-	if m.fixState == nil || len(m.fixState.suggestions) == 0 {
+	if m.fixState == nil || len(m.fixState.suggestions) == 0 || m.fixState.applying {
 		return nil
 	}
 	if m.opts.ApplyFn == nil {
 		m.fixState.applyErr = fmt.Errorf("apply not available (no Kubernetes client)")
+		return nil
+	}
+	if m.fixState.selected < 0 || m.fixState.selected >= len(m.fixState.suggestions) {
+		m.fixState.applyErr = fmt.Errorf("no suggestion selected")
 		return nil
 	}
 
@@ -198,13 +202,16 @@ func (m Model) applyFix() tea.Cmd {
 		return nil
 	}
 
+	m.fixState.applying = true
+	m.fixState.applyErr = nil
 	namespace := m.fixState.namespace
 	name := m.fixState.name
 	applyFn := m.opts.ApplyFn
 	epoch := m.fixEpoch
+	ctx := m.ctx
 
 	return func() tea.Msg {
-		err := applyFn(m.ctx, namespace, name, []hpaanalysis.Suggestion{suggestion})
+		err := applyFn(ctx, namespace, name, []hpaanalysis.Suggestion{suggestion})
 		return applyResultMsg{epoch: epoch, title: suggestion.Title, err: err}
 	}
 }

@@ -48,14 +48,27 @@ func ReplicaLimit(current int32, scaleUp bool, policy autoscalingv2.HPAScalingPo
 	case autoscalingv2.PercentScalingPolicy:
 		// Round fractionally-generated replica counts up in both directions so
 		// the projection is symmetric and never underestimates how many pods
-		// remain after a scale-down band. (This is a projection, deliberately
-		// not a byte-for-byte reimplementation of the controller's separate
-		// truncate-the-change approach.)
-		multiplier := 1 + float64(policy.Value)/100
-		if !scaleUp {
-			multiplier = 1 - float64(policy.Value)/100
+		// remain after a scale-down band, using exact integer arithmetic to
+		// avoid IEEE-754 rounding drift.
+		pct := int64(policy.Value)
+		if scaleUp {
+			if current64 > 0 && pct > (math.MaxInt64-99)/current64 {
+				candidate = int64(math.Ceil(float64(current64) * (1 + float64(pct)/100)))
+			} else {
+				candidate = current64 + (current64*pct+99)/100
+			}
+		} else {
+			if pct >= 100 {
+				candidate = 0
+			} else {
+				rem := 100 - pct
+				if current64 > 0 && rem > (math.MaxInt64-99)/current64 {
+					candidate = int64(math.Ceil(float64(current64) * float64(rem) / 100))
+				} else {
+					candidate = (current64*rem + 99) / 100
+				}
+			}
 		}
-		candidate = int64(math.Ceil(float64(current) * multiplier))
 	default:
 		return 0, false
 	}
@@ -87,9 +100,17 @@ func Limit(current int32, scaleUp bool, selectPolicy autoscalingv2.ScalingPolicy
 	found := false
 	for _, policy := range policies {
 		baseline := int64(current)
-		for _, event := range history {
-			if event.TimeSeconds > now-int64(policy.PeriodSeconds) && event.TimeSeconds <= now {
-				baseline -= int64(event.Change)
+		if policy.PeriodSeconds > 0 {
+			for _, event := range history {
+				if scaleUp && event.Change <= 0 {
+					continue
+				}
+				if !scaleUp && event.Change >= 0 {
+					continue
+				}
+				if event.TimeSeconds > now-int64(policy.PeriodSeconds) && event.TimeSeconds <= now {
+					baseline -= int64(event.Change)
+				}
 			}
 		}
 		baseline = max(int64(0), min(baseline, int64(math.MaxInt32)))

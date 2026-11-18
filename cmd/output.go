@@ -87,9 +87,19 @@ func analysisOptions(hw hpaanalysis.HealthWeights, debug bool) hpaanalysis.Analy
 }
 
 func reportHasCondition(report hpaanalysis.StatusReport, condition string) bool {
-	want := normalizeSelector(condition)
+	wantType, wantStatus, hasExplicitStatus := strings.Cut(condition, "=")
+	want := normalizeSelector(wantType)
 	for _, current := range report.Analysis.Conditions.Conditions {
-		if normalizeSelector(current.Type) == want {
+		if normalizeSelector(current.Type) != want {
+			continue
+		}
+		if hasExplicitStatus {
+			if strings.EqualFold(strings.TrimSpace(current.Status), strings.TrimSpace(wantStatus)) {
+				return true
+			}
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(current.Status), "True") {
 			return true
 		}
 	}

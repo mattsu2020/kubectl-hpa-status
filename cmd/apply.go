@@ -285,12 +285,13 @@ func confirmApply(out io.Writer, opts *options, count int, namespace, name strin
 		return fmt.Errorf("write apply warning: %w", err)
 	}
 	// When stdin was not explicitly wired (e.g. by tests or an embedding
-	// caller) and the process stdin is not an interactive terminal, a prompt
-	// would either block forever or silently consume non-confirmation input.
-	// Require an explicit --yes/-y in that case. A caller that deliberately
-	// sets opts.In is allowed to drive the prompt programmatically.
+	// caller) or when Cobra bound os.Stdin directly, require an interactive
+	// terminal; otherwise a prompt would either block forever or silently consume
+	// non-confirmation input. Require an explicit --yes/-y in that case. A
+	// caller that deliberately sets opts.In to a custom reader (e.g. tests)
+	// is allowed to drive the prompt programmatically.
 	in := opts.In
-	if in == nil {
+	if in == nil || in == os.Stdin {
 		if !stdinIsTerminal(os.Stdin) {
 			return fmt.Errorf("cannot prompt for confirmation (stdin is not a terminal); pass --yes/-y to apply non-interactively")
 		}
@@ -393,14 +394,18 @@ func mergePatchWithResourceVersion(mergePatch, resourceVersion string) (string, 
 	if err := json.Unmarshal([]byte(mergePatch), &patchMap); err != nil {
 		return "", err
 	}
+	if patchMap == nil {
+		return "", fmt.Errorf("merge patch must be a JSON object")
+	}
+	if resourceVersion == "" {
+		return mergePatch, nil
+	}
 	metadata, ok := patchMap["metadata"].(map[string]any)
 	if !ok {
 		metadata = map[string]any{}
 		patchMap["metadata"] = metadata
 	}
-	if resourceVersion != "" {
-		metadata["resourceVersion"] = resourceVersion
-	}
+	metadata["resourceVersion"] = resourceVersion
 	encoded, err := json.Marshal(patchMap)
 	if err != nil {
 		return "", err

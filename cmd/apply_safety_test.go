@@ -307,3 +307,19 @@ func TestTUIApplyRejectsChangedSuggestionSource(t *testing.T) {
 		})
 	}
 }
+
+func TestConfirmApplyRejectsNonTerminalOSStdinAndNullPatch(t *testing.T) {
+	if _, err := mergePatchWithResourceVersion("null", "1"); err == nil {
+		t.Fatal("expected mergePatchWithResourceVersion to reject null patch")
+	}
+
+	var out bytes.Buffer
+	opts := &options{}
+	opts.In = os.Stdin
+	if err := confirmApply(&out, opts, 1, "default", "web"); err == nil || !strings.Contains(err.Error(), "not a terminal") {
+		t.Fatalf("expected non-terminal stdin rejection, got %v", err)
+	}
+	if _, err := confirmBatchApply(&out, opts, 1); err == nil || !strings.Contains(err.Error(), "not a terminal") {
+		t.Fatalf("expected non-terminal batch stdin rejection, got %v", err)
+	}
+}

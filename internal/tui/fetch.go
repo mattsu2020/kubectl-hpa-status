@@ -24,6 +24,7 @@ type fetchConfig struct {
 	ctx       context.Context
 	client    kubernetes.Interface
 	namespace string
+	interval  time.Duration
 	opts      Options
 }
 
@@ -34,6 +35,7 @@ func (m Model) newFetchConfig() fetchConfig {
 		ctx:       m.ctx,
 		client:    m.client,
 		namespace: m.namespace,
+		interval:  m.interval,
 		opts:      m.opts,
 	}
 }
@@ -42,12 +44,16 @@ func (m Model) newFetchConfig() fetchConfig {
 func fetchHPAs(m Model) tea.Cmd {
 	cfg := m.newFetchConfig()
 	return func() tea.Msg {
+		timeout := max(30*time.Second, cfg.interval*2)
+		fetchCtx, cancel := context.WithTimeout(cfg.ctx, timeout)
+		defer cancel()
+
 		ns := cfg.namespace
 		if cfg.opts.AllNamespaces {
 			ns = metav1.NamespaceAll
 		}
 
-		hpas, err := kube.ListHPAsFromInterface(cfg.ctx, cfg.client, ns, metav1.ListOptions{}, cfg.opts.ChunkSize)
+		hpas, err := kube.ListHPAsFromInterface(fetchCtx, cfg.client, ns, metav1.ListOptions{}, cfg.opts.ChunkSize)
 		if err != nil {
 			return fetchResultMsg{requestID: cfg.requestID, err: err}
 		}
@@ -57,7 +63,7 @@ func fetchHPAs(m Model) tea.Cmd {
 		var vpaResults map[string]*hpavpa.ConflictInfo
 		var enrichmentWarnings map[string][]string
 		if cfg.opts.EnrichHPAs != nil {
-			kedaResults, vpaResults, enrichmentWarnings = cfg.opts.EnrichHPAs(cfg.ctx, hpas.Items)
+			kedaResults, vpaResults, enrichmentWarnings = cfg.opts.EnrichHPAs(fetchCtx, hpas.Items)
 		}
 
 		includeInterp := !cfg.opts.LazyReports

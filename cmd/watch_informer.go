@@ -153,6 +153,9 @@ func runWatchStream(
 			if ctx.Err() != nil {
 				return false, ctx.Err()
 			}
+			if apierrors.IsForbidden(err) || apierrors.IsUnauthorized(err) || apierrors.IsMethodNotSupported(err) {
+				return false, err
+			}
 			return true, nil
 		}
 
@@ -203,6 +206,17 @@ func consumeWatchEvents(
 			}
 		case ev, ok := <-ch:
 			if !ok {
+				if debounceTimer != nil {
+					debounceTimer.Stop()
+					debounceTimer = nil
+					debounceCh = nil
+					if ctx.Err() == nil {
+						stop, err := onSnapshot(sortedHPACache(cacheMap))
+						if err != nil || stop {
+							return false, rv, stop, err
+						}
+					}
+				}
 				return false, rv, false, nil
 			}
 			resync, nextRV, emit := handleWatchEvent(ev, rv, cacheMap)

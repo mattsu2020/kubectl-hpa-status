@@ -86,7 +86,7 @@ func TestUntilConditionCompletions(t *testing.T) {
 	if directive != cobra.ShellCompDirectiveNoFileComp {
 		t.Errorf("expected NoFileComp, got %v", directive)
 	}
-	if got, want := completionKeys(completions), []string{"ok", "healthy", "stable", "scaling-limited", "error"}; !slices.Equal(got, want) {
+	if got, want := completionKeys(completions), []string{"scaling-limited", "scaling-active", "able-to-scale", "scaling-active=false", "able-to-scale=false"}; !slices.Equal(got, want) {
 		t.Fatalf("completions = %v, want %v", got, want)
 	}
 }

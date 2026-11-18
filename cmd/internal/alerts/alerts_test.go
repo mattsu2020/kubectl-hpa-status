@@ -89,8 +89,8 @@ func TestRulesReferenceTheHealthScoreMetric(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Rules(%s) returned error: %v", format, err)
 		}
-		if !strings.Contains(rules, "hpa_status_health_score") {
-			t.Errorf("%s rules do not reference hpa_status_health_score", format)
+		if !strings.Contains(rules, "hpa_health_score") {
+			t.Errorf("%s rules do not reference hpa_health_score", format)
 		}
 	}
 }
@@ -137,8 +137,8 @@ func TestGrafanaDashboardIsValidJSON(t *testing.T) {
 	if len(parsed.Templating.List) < 3 {
 		t.Fatalf("expected at least 3 template variables, got %d", len(parsed.Templating.List))
 	}
-	if !strings.Contains(doc, "hpa_status_health_score") {
-		t.Error("expected Grafana dashboard to reference hpa_status_health_score")
+	if !strings.Contains(doc, "hpa_health_score") {
+		t.Error("expected Grafana dashboard to reference hpa_health_score")
 	}
 }
 

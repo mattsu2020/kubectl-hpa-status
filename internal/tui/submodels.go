@@ -63,12 +63,14 @@ func (s *fixState) move(delta int) {
 
 func (s *fixState) updateApply(msg applyResultMsg) {
 	s.applyConfirm = false
+	s.applying = false
 	s.applied = true
 	s.applyErr = msg.err
 }
 
 func (s *fixState) updateDryRun(msg dryRunResultMsg) {
 	s.applyConfirm = false
+	s.applying = false
 	s.applied = false
 	s.applyErr = msg.err
 	if msg.err != nil {

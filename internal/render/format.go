@@ -220,26 +220,34 @@ func Template(out io.Writer, expression string, value any) error {
 func Prometheus(w io.Writer, value any) error {
 	switch report := value.(type) {
 	case []hpaanalysis.StatusReport:
-		if err := writePrometheusMetadata(w); err != nil {
-			return err
+		samples := make([]prometheusItem, 0, len(report))
+		for _, r := range report {
+			a := r.Analysis
+			samples = append(samples, prometheusItem{
+				namespace:   a.Meta.Namespace,
+				name:        a.Meta.Name,
+				healthScore: a.Decision.HealthScore,
+				current:     a.Replicas.Current,
+				desired:     a.Replicas.Desired,
+				minR:        a.Replicas.Min,
+				maxR:        a.Replicas.Max,
+			})
 		}
-		for _, report := range report {
-			a := report.Analysis
-			if err := writePrometheusSamples(w, a.Meta.Namespace, a.Meta.Name, a.Decision.HealthScore, a.Replicas.Current, a.Replicas.Desired, a.Replicas.Min, a.Replicas.Max); err != nil {
-				return err
-			}
-		}
-		return nil
+		return writePrometheusFamilies(w, samples)
 	case hpaanalysis.ListReport:
-		if err := writePrometheusMetadata(w); err != nil {
-			return err
-		}
+		samples := make([]prometheusItem, 0, len(report.Items))
 		for _, item := range report.Items {
-			if err := writePrometheusSamples(w, item.Namespace, item.Name, item.HealthScore, item.Current, item.Desired, item.Min, item.Max); err != nil {
-				return err
-			}
+			samples = append(samples, prometheusItem{
+				namespace:   item.Namespace,
+				name:        item.Name,
+				healthScore: item.HealthScore,
+				current:     item.Current,
+				desired:     item.Desired,
+				minR:        item.Min,
+				maxR:        item.Max,
+			})
 		}
-		return nil
+		return writePrometheusFamilies(w, samples)
 	case hpaanalysis.StatusReport:
 		a := report.Analysis
 		return PrometheusMetrics(w, a.Meta.Namespace, a.Meta.Name, a.Decision.HealthScore, a.Replicas.Current, a.Replicas.Desired, a.Replicas.Min, a.Replicas.Max)
@@ -253,6 +261,16 @@ type prometheusMetricDefinition struct {
 	help string
 }
 
+type prometheusItem struct {
+	namespace   string
+	name        string
+	healthScore int
+	current     int32
+	desired     int32
+	minR        int32
+	maxR        int32
+}
+
 var prometheusMetricDefinitions = []prometheusMetricDefinition{
 	{name: "hpa_health_score", help: "Health score of an HPA (0-100)"},
 	{name: "hpa_current_replicas", help: "Current replica count"},
@@ -261,37 +279,51 @@ var prometheusMetricDefinitions = []prometheusMetricDefinition{
 	{name: "hpa_max_replicas", help: "Maximum replica count"},
 }
 
-func writePrometheusMetadata(w io.Writer) error {
-	for _, metric := range prometheusMetricDefinitions {
+func (p prometheusItem) valueForIndex(i int) any {
+	switch i {
+	case 0:
+		return p.healthScore
+	case 1:
+		return p.current
+	case 2:
+		return p.desired
+	case 3:
+		return p.minR
+	default:
+		return p.maxR
+	}
+}
+
+func writePrometheusFamilies(w io.Writer, items []prometheusItem) error {
+	for i, metric := range prometheusMetricDefinitions {
 		if _, err := fmt.Fprintf(w, "# HELP %s %s\n", metric.name, metric.help); err != nil {
 			return err
 		}
 		if _, err := fmt.Fprintf(w, "# TYPE %s gauge\n", metric.name); err != nil {
 			return err
 		}
-	}
-	return nil
-}
-
-func writePrometheusSamples(w io.Writer, namespace, name string, healthScore int, current, desired, minR, maxR int32) error {
-	values := []any{healthScore, current, desired, minR, maxR}
-	labels := fmt.Sprintf(`namespace="%s",name="%s"`, EscapePrometheusLabelValue(namespace), EscapePrometheusLabelValue(name))
-	for i, metric := range prometheusMetricDefinitions {
-		if _, err := fmt.Fprintf(w, "%s{%s} %v\n", metric.name, labels, values[i]); err != nil {
-			return err
+		for _, item := range items {
+			labels := fmt.Sprintf(`namespace="%s",name="%s"`, EscapePrometheusLabelValue(item.namespace), EscapePrometheusLabelValue(item.name))
+			if _, err := fmt.Fprintf(w, "%s{%s} %v\n", metric.name, labels, item.valueForIndex(i)); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
 }
 
 // PrometheusMetrics writes a complete minimal Prometheus exposition for a
-// single HPA. List rendering writes the shared HELP/TYPE metadata once and then
-// calls writePrometheusSamples for each item.
+// single HPA.
 func PrometheusMetrics(w io.Writer, namespace, name string, healthScore int, current, desired, minR, maxR int32) error {
-	if err := writePrometheusMetadata(w); err != nil {
-		return err
-	}
-	return writePrometheusSamples(w, namespace, name, healthScore, current, desired, minR, maxR)
+	return writePrometheusFamilies(w, []prometheusItem{{
+		namespace:   namespace,
+		name:        name,
+		healthScore: healthScore,
+		current:     current,
+		desired:     desired,
+		minR:        minR,
+		maxR:        maxR,
+	}})
 }
 
 // EscapePrometheusLabelValue escapes a string for safe inclusion in a
@@ -371,9 +403,14 @@ func Incident(out io.Writer, value any) error {
 // propagated so a broken output pipe fails loudly even on the error path;
 // callers decide whether to surface or log the secondary write failure.
 func Error(out io.Writer, format string, err error) error {
+	if err == nil {
+		return nil
+	}
 	switch format {
-	case "json":
-		return json.NewEncoder(out).Encode(map[string]string{"error": err.Error()})
+	case "json", "jsonl":
+		enc := json.NewEncoder(out)
+		enc.SetEscapeHTML(false)
+		return enc.Encode(map[string]string{"error": err.Error()})
 	case "yaml":
 		data, marshalErr := yaml.Marshal(map[string]string{"error": err.Error()})
 		if marshalErr != nil {

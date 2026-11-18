@@ -80,9 +80,11 @@ func buildStructuredMetricTraces(hpa *autoscalingv2.HorizontalPodAutoscaler) []S
 			entry.WithinTolerance, entry.EffectiveTolerance = ratioWithinTolerance(hpa, *ratio)
 
 			switch {
-			case *ratio > 1.0+entry.EffectiveTolerance:
+			case entry.WithinTolerance:
+				entry.DesiredDirection = "none"
+			case *ratio > 1.0:
 				entry.DesiredDirection = "up"
-			case *ratio < 1.0-entry.EffectiveTolerance:
+			case *ratio < 1.0:
 				entry.DesiredDirection = "down"
 			default:
 				entry.DesiredDirection = "none"
@@ -221,11 +223,7 @@ func buildStructuredStabilizationTrace(hpa *autoscalingv2.HorizontalPodAutoscale
 		return nil
 	}
 
-	window := scaleDownStabilizationWindow(hpa)
-	windowSeconds := int32(0)
-	if window != nil {
-		windowSeconds = *window
-	}
+	windowSeconds := effectiveScaleDownStabilizationWindow(hpa)
 
 	direction := "scaleDown"
 	if a.Conditions.StabilizationSource != "" {

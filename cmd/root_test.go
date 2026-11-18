@@ -239,12 +239,21 @@ func TestPatchDiffIncludesCurrentDesiredReplicas(t *testing.T) {
 func TestReportHasConditionNormalizesConditionName(t *testing.T) {
 	report := hpaanalysis.StatusReport{
 		Analysis: hpaanalysis.Analysis{
-			Conditions: hpaanalysis.ConditionsView{Conditions: []hpaanalysis.Condition{{Type: "ScalingLimited"}}},
+			Conditions: hpaanalysis.ConditionsView{Conditions: []hpaanalysis.Condition{
+				{Type: "ScalingLimited", Status: "True"},
+				{Type: "ScalingActive", Status: "False"},
+			}},
 		},
 	}
 
 	if !reportHasCondition(report, "scaling-limited") {
-		t.Fatalf("expected scaling-limited to match ScalingLimited")
+		t.Fatalf("expected scaling-limited to match ScalingLimited=True")
+	}
+	if reportHasCondition(report, "scaling-active") {
+		t.Fatalf("did not expect scaling-active to match ScalingActive=False")
+	}
+	if !reportHasCondition(report, "scaling-active=false") {
+		t.Fatalf("expected scaling-active=false to match ScalingActive=False")
 	}
 }
 

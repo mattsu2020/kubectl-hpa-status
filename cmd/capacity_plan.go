@@ -25,7 +25,7 @@ type capacityPlanOutput struct {
 }
 
 func newCapacityPlanCommand(opts *options) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:               "capacity NAME [NAME...]",
 		Short:             "Diagnose whether it is safe to raise HPA maxReplicas",
 		Args:              cobra.MinimumNArgs(1),
@@ -34,6 +34,8 @@ func newCapacityPlanCommand(opts *options) *cobra.Command {
 			return runCapacityPlan(cmd.Context(), cmd.OutOrStdout(), opts, args)
 		},
 	}
+	cmd.Flags().Int32Var(&opts.TargetMax, "target-max", 0, "target maxReplicas for capacity plan (default: 2x current max, soft-capped at 200)")
+	return cmd
 }
 
 func runCapacityPlan(ctx context.Context, out io.Writer, opts *options, names []string) error {

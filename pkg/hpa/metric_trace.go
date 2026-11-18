@@ -65,9 +65,11 @@ func buildPerMetricTrace(hpa *autoscalingv2.HorizontalPodAutoscaler, _ int32) []
 			entry.ReplicaImpact = float64(estimatedDesired - hpa.Status.CurrentReplicas)
 
 			switch {
-			case *ratio > 1.0+tolerance:
+			case withinTolerance:
+				entry.DesiredDirection = "none"
+			case *ratio > 1.0:
 				entry.DesiredDirection = "up"
-			case *ratio < 1.0-tolerance:
+			case *ratio < 1.0:
 				entry.DesiredDirection = "down"
 			default:
 				entry.DesiredDirection = "none"
@@ -172,22 +174,22 @@ func buildStabilizationEffect(hpa *autoscalingv2.HorizontalPodAutoscaler) *Stabi
 		return nil
 	}
 
-	window := scaleDownStabilizationWindow(hpa)
-	if window == nil {
+	windowSeconds := effectiveScaleDownStabilizationWindow(hpa)
+	if windowSeconds <= 0 {
 		return nil
 	}
 
 	effect := &StabilizationEffect{
-		WindowSeconds:       *window,
+		WindowSeconds:       windowSeconds,
 		SuppressedScaleDown: true,
 	}
 
 	remaining := estimateStabilizationRemaining(hpa)
 	if remaining != nil {
 		effect.RemainingSeconds = remaining
-		effect.Note = fmt.Sprintf("scale-down suppressed, ~%ds remaining in %ds stabilization window", *remaining, *window)
+		effect.Note = fmt.Sprintf("scale-down suppressed, ~%ds remaining in %ds stabilization window", *remaining, windowSeconds)
 	} else {
-		effect.Note = fmt.Sprintf("scale-down suppressed by %ds stabilization window", *window)
+		effect.Note = fmt.Sprintf("scale-down suppressed by %ds stabilization window", windowSeconds)
 	}
 
 	return effect

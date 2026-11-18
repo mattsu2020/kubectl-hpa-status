@@ -5,6 +5,7 @@ package recordio
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,6 +28,13 @@ func (e invalidJSONLineError) Unwrap() error { return ErrInvalidJSONLine }
 // ScanTraces streams non-empty JSONL records from path into visit. The returned
 // line count includes empty lines, matching bufio.Scanner's input line count.
 func ScanTraces(path string, visit func(hpaanalysis.TimelineTrace) error) (int, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read record file: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return 0, fmt.Errorf("failed to read record file: %s is not a regular file", path)
+	}
 	file, err := os.Open(path)
 	if err != nil {
 		return 0, fmt.Errorf("failed to read record file: %w", err)
@@ -38,7 +46,7 @@ func ScanTraces(path string, visit func(hpaanalysis.TimelineTrace) error) (int, 
 	scanner.Buffer(make([]byte, 64*1024), maxJSONLineSize)
 	for scanner.Scan() {
 		lineCount++
-		line := scanner.Bytes()
+		line := bytes.TrimSpace(scanner.Bytes())
 		if len(line) == 0 {
 			continue
 		}

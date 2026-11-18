@@ -24,5 +24,8 @@ func MissingPolicies(behavior *autoscalingv2.HorizontalPodAutoscalerBehavior, di
 	if rules == nil {
 		return true
 	}
+	if rules.SelectPolicy != nil && *rules.SelectPolicy == autoscalingv2.DisabledPolicySelect {
+		return false
+	}
 	return len(rules.Policies) == 0
 }

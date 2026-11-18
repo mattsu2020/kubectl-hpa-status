@@ -109,28 +109,27 @@ func renderDetailHiddenFactors(sb *strings.Builder, a *hpaanalysis.Analysis) {
 }
 
 func renderDetailStabilization(sb *strings.Builder, a *hpaanalysis.Analysis) {
+	if a.Conditions.StabilizationRemaining != nil && *a.Conditions.StabilizationRemaining > 0 {
+		source := a.Conditions.StabilizationSource
+		if source == "" {
+			source = "scaleDown"
+		}
+		progress := hpaanalysis.FormatStabilizationProgress(a.Conditions.StabilizationRemaining, a.Conditions.StabilizationWindowSeconds)
+		sb.WriteString("\n")
+		sb.WriteString(warnStyle.Render(fmt.Sprintf("Stabilized (%s): %s", source, progress)))
+		sb.WriteString("\n")
+		if a.Conditions.StabilizationWindowSeconds != nil && *a.Conditions.StabilizationWindowSeconds > 0 {
+			bar := renderEnhancedCountdownBar(int(*a.Conditions.StabilizationRemaining), int(*a.Conditions.StabilizationWindowSeconds))
+			sb.WriteString(bar)
+			sb.WriteString("\n")
+		}
+		sb.WriteString(dimStyle.Render("  [estimated]"))
+		sb.WriteString("\n")
+		return
+	}
 	if a.Conditions.StabilizationActive {
 		sb.WriteString("\nScale-down stabilization observed; remaining time unknown\n")
-		return
 	}
-	if a.Conditions.StabilizationRemaining == nil || *a.Conditions.StabilizationRemaining <= 0 {
-		return
-	}
-	source := a.Conditions.StabilizationSource
-	if source == "" {
-		source = "scaleDown"
-	}
-	progress := hpaanalysis.FormatStabilizationProgress(a.Conditions.StabilizationRemaining, a.Conditions.StabilizationWindowSeconds)
-	sb.WriteString("\n")
-	sb.WriteString(warnStyle.Render(fmt.Sprintf("Stabilized (%s): %s", source, progress)))
-	sb.WriteString("\n")
-	if a.Conditions.StabilizationWindowSeconds != nil && *a.Conditions.StabilizationWindowSeconds > 0 {
-		bar := renderEnhancedCountdownBar(int(*a.Conditions.StabilizationRemaining), int(*a.Conditions.StabilizationWindowSeconds))
-		sb.WriteString(bar)
-		sb.WriteString("\n")
-	}
-	sb.WriteString(dimStyle.Render("  [estimated]"))
-	sb.WriteString("\n")
 }
 
 func renderDetailConditions(sb *strings.Builder, a *hpaanalysis.Analysis) {
@@ -140,8 +139,17 @@ func renderDetailConditions(sb *strings.Builder, a *hpaanalysis.Analysis) {
 	sb.WriteString("\nConditions:\n")
 	for _, c := range a.Conditions.Conditions {
 		statusStyle := okStyle
-		if c.Status != "True" {
-			statusStyle = errorStyle
+		switch c.Type {
+		case hpaanalysis.ConditionScalingLimited:
+			if c.Status == "True" {
+				statusStyle = warnStyle
+			} else if c.Status != "False" {
+				statusStyle = dimStyle
+			}
+		default:
+			if c.Status != "True" {
+				statusStyle = errorStyle
+			}
 		}
 		sb.WriteString(fmt.Sprintf("  %-15s %s %s\n",
 			hpaanalysis.SanitizeTerminalText(string(c.Type)),

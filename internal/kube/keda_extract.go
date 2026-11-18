@@ -296,7 +296,7 @@ func extractAdvanced(advanced map[string]any) map[string]string {
 }
 
 func stringValue(m map[string]any, key string) string {
-	if v, ok := m[key]; ok {
+	if v, ok := m[key]; ok && v != nil {
 		if s, ok := v.(string); ok {
 			return s
 		}

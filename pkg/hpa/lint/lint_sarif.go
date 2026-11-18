@@ -7,11 +7,15 @@ import (
 
 // FormatLintSARIF formats lint results as SARIF JSON for CI integration.
 func FormatLintSARIF(result *Result, filePath string) string {
+	var findings []Finding
+	if result != nil {
+		findings = result.Findings
+	}
 	// Collect unique rules preserving first-appearance order so the output is
 	// deterministic (a map would randomize rule ordering across runs).
-	var rules []map[string]any
+	rules := make([]map[string]any, 0, len(findings))
 	seenRules := make(map[string]struct{})
-	for _, f := range result.Findings {
+	for _, f := range findings {
 		if _, ok := seenRules[f.Rule]; ok {
 			continue
 		}
@@ -24,16 +28,18 @@ func FormatLintSARIF(result *Result, filePath string) string {
 		})
 	}
 
-	results := make([]map[string]any, 0, len(result.Findings))
-	for _, f := range result.Findings {
+	results := make([]map[string]any, 0, len(findings))
+	for _, f := range findings {
 		level := sarifLevel(f.Severity)
-		results = append(results, map[string]any{
+		entry := map[string]any{
 			"ruleId": f.Rule,
 			"level":  level,
 			"message": map[string]any{
 				"text": f.Message,
 			},
-			"locations": []map[string]any{
+		}
+		if filePath != "" {
+			entry["locations"] = []map[string]any{
 				{
 					"physicalLocation": map[string]any{
 						"artifactLocation": map[string]any{
@@ -41,8 +47,9 @@ func FormatLintSARIF(result *Result, filePath string) string {
 						},
 					},
 				},
-			},
-		})
+			}
+		}
+		results = append(results, entry)
 	}
 
 	doc := map[string]any{

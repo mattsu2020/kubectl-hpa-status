@@ -240,7 +240,7 @@ func (s *HealthStore) RecordAndLoad(ctx context.Context, key SnapshotKey, snapsh
 	copy(retained[index+1:], retained[index:len(retained)-1])
 	retained[index] = snapshot
 
-	compact := shouldCompact(scan.total, scan.expired)
+	compact := shouldCompact(scan.total, scan.expired) || len(scan.corruptLines) > 0
 	if compact {
 		if err := s.replaceSnapshots(path, retained); err != nil {
 			return nil, err

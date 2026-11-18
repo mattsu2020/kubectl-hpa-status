@@ -4,6 +4,7 @@ package observation
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -74,6 +75,16 @@ func New(client kubernetes.Interface, hpa *autoscalingv2.HorizontalPodAutoscaler
 	return &Snapshot{client: client, cluster: cluster, hpa: *hpa.DeepCopy()}
 }
 
+func isContextErr(ctx context.Context, err error) bool {
+	if err == nil {
+		return false
+	}
+	if ctx != nil && ctx.Err() != nil {
+		return true
+	}
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+}
+
 // ScaleTarget returns the memoized target observation.
 func (s *Snapshot) ScaleTarget(ctx context.Context) Value[*kube.ScaleTargetInfo] {
 	if s == nil || s.client == nil {
@@ -86,9 +97,12 @@ func (s *Snapshot) ScaleTarget(ctx context.Context) Value[*kube.ScaleTargetInfo]
 	}
 	info, err := kube.FetchScaleTargetInfo(ctx, s.client, s.hpa.Namespace, s.hpa.Spec.ScaleTargetRef)
 	if err != nil {
-		s.target = Value[*kube.ScaleTargetInfo]{State: StateUnavailable, Err: err}
-		s.targetOK = true
-		return s.target
+		res := Value[*kube.ScaleTargetInfo]{State: StateUnavailable, Err: err}
+		if !isContextErr(ctx, err) {
+			s.target = res
+			s.targetOK = true
+		}
+		return res
 	}
 	if info == nil {
 		s.target = Value[*kube.ScaleTargetInfo]{State: StateNotApplicable}
@@ -112,9 +126,12 @@ func (s *Snapshot) Pods(ctx context.Context) Value[[]corev1.Pod] {
 	target := s.ScaleTarget(ctx)
 	switch target.State {
 	case StateUnavailable:
-		s.pods = Value[[]corev1.Pod]{State: StateUnavailable, Err: target.Err}
-		s.podsOK = true
-		return s.pods
+		res := Value[[]corev1.Pod]{State: StateUnavailable, Err: target.Err}
+		if !isContextErr(ctx, target.Err) {
+			s.pods = res
+			s.podsOK = true
+		}
+		return res
 	case StateNotApplicable:
 		s.pods = Value[[]corev1.Pod]{State: StateNotApplicable}
 		s.podsOK = true
@@ -127,9 +144,12 @@ func (s *Snapshot) Pods(ctx context.Context) Value[[]corev1.Pod] {
 	}
 	pods, err := kube.FetchPodObjectsForSelector(ctx, s.client, s.hpa.Namespace, target.Data.SelectorStr)
 	if err != nil {
-		s.pods = Value[[]corev1.Pod]{State: StateUnavailable, Err: err}
-		s.podsOK = true
-		return s.pods
+		res := Value[[]corev1.Pod]{State: StateUnavailable, Err: err}
+		if !isContextErr(ctx, err) {
+			s.pods = res
+			s.podsOK = true
+		}
+		return res
 	}
 	s.pods = Value[[]corev1.Pod]{Data: pods, State: StateKnown}
 	s.podsOK = true
@@ -173,9 +193,12 @@ func (s *Snapshot) ReplicaSets(ctx context.Context) Value[[]kube.ReplicaSetInfo]
 	}
 	target := s.ScaleTarget(ctx)
 	if !target.Known() {
-		s.replicaSets = Value[[]kube.ReplicaSetInfo]{State: target.State, Err: target.Err}
-		s.replicaSetsOK = true
-		return s.replicaSets
+		res := Value[[]kube.ReplicaSetInfo]{State: target.State, Err: target.Err}
+		if !isContextErr(ctx, target.Err) {
+			s.replicaSets = res
+			s.replicaSetsOK = true
+		}
+		return res
 	}
 	var items []kube.ReplicaSetInfo
 	if target.Data.Kind == "ReplicaSet" {
@@ -185,9 +208,12 @@ func (s *Snapshot) ReplicaSets(ctx context.Context) Value[[]kube.ReplicaSetInfo]
 		var err error
 		items, err = kube.FetchReplicaSetsForScaleTarget(ctx, s.client, s.hpa.Namespace, s.hpa.Spec.ScaleTargetRef, target.Data.SelectorStr)
 		if err != nil {
-			s.replicaSets = Value[[]kube.ReplicaSetInfo]{State: StateUnavailable, Err: err}
-			s.replicaSetsOK = true
-			return s.replicaSets
+			res := Value[[]kube.ReplicaSetInfo]{State: StateUnavailable, Err: err}
+			if !isContextErr(ctx, err) {
+				s.replicaSets = res
+				s.replicaSetsOK = true
+			}
+			return res
 		}
 	}
 	s.replicaSets = Value[[]kube.ReplicaSetInfo]{Data: items, State: StateKnown}

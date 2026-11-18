@@ -80,3 +80,63 @@ func TestMCPCommandExposesReadOnlyToolsAndExecutesStatusListSimulate(t *testing.
 		}
 	}
 }
+
+func TestMCPDoctorWarningAndTimelineFromRecordBlocked(t *testing.T) {
+	web := testutil.BuildHPA("default", "web",
+		testutil.WithReplicas(3, 5),
+		testutil.WithMinMax(2, 10),
+		testutil.WithResourceMetric("cpu", 80, 120),
+		testutil.WithConditions(autoscalingv2.HorizontalPodAutoscalerCondition{
+			Type: autoscalingv2.ScalingLimited, Status: corev1.ConditionTrue, Reason: "TooManyReplicas",
+		}),
+	)
+	client := testutil.NewFakeClient(web)
+	root := NewRootCommandWithDeps(AppDeps{Kubernetes: client})
+
+	requests := strings.Join([]string{
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"hpa_doctor","arguments":{"name":"web","namespace":"default"}}}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"hpa_timeline","arguments":{"name":"web","fromRecord":"/etc/passwd"}}}`,
+	}, "\n") + "\n"
+
+	var stdout bytes.Buffer
+	root.SetIn(strings.NewReader(requests))
+	root.SetOut(&stdout)
+	root.SetArgs([]string{"mcp"})
+	if err := root.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("mcp command failed: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 responses, got %d:\n%s", len(lines), stdout.String())
+	}
+
+	var docResp struct {
+		Result struct {
+			IsError bool `json:"isError"`
+			Content []struct {
+				Text string `json:"text"`
+			} `json:"content"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(lines[0]), &docResp); err != nil {
+		t.Fatalf("decode doctor response: %v", err)
+	}
+	if docResp.Result.IsError || len(docResp.Result.Content) == 0 || !strings.Contains(docResp.Result.Content[0].Text, "LIMITED") {
+		t.Fatalf("expected valid JSON diagnosis for limited HPA, got %+v", docResp.Result)
+	}
+
+	var tlResp struct {
+		Result struct {
+			IsError bool `json:"isError"`
+			Content []struct {
+				Text string `json:"text"`
+			} `json:"content"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(lines[1]), &tlResp); err != nil {
+		t.Fatalf("decode timeline response: %v", err)
+	}
+	if !tlResp.Result.IsError || len(tlResp.Result.Content) == 0 || !strings.Contains(tlResp.Result.Content[0].Text, "disabled") {
+		t.Fatalf("expected fromRecord to be rejected in MCP mode, got %+v", tlResp.Result)
+	}
+}

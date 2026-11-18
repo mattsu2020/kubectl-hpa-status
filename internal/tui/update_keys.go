@@ -186,7 +186,11 @@ func (m Model) handleToggleSelectKey() Model {
 		filtered := m.filteredItems()
 		if m.cursor >= 0 && m.cursor < len(filtered) {
 			k := filtered[m.cursor].Namespace + "/" + filtered[m.cursor].Name
-			m.selected[k] = !m.selected[k]
+			if m.selected[k] {
+				delete(m.selected, k)
+			} else {
+				m.selected[k] = true
+			}
 			m.batchApplyConfirm = false
 			m.batchApplyPreview = nil
 		}

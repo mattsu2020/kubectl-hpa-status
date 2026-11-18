@@ -42,6 +42,8 @@ func newAssumptionsCommand(opts *options) *cobra.Command {
 	cmd.Flags().StringVar(&assumeSyncPeriod, "assume-sync-period", "", "override HPA sync period (e.g. 15s)")
 	cmd.Flags().StringVar(&assumeCPUInitPeriod, "assume-cpu-init-period", "", "override CPU initialization period (e.g. 5m)")
 	cmd.Flags().StringVar(&assumeInitialReadiness, "assume-initial-readiness-delay", "", "override initial readiness delay (e.g. 30s)")
+	cmd.Flags().StringVar(&opts.AssumeProfile, "assume-profile", "", "assume a named HPA controller profile when controller-manager args are not visible")
+	cmd.Flags().StringVar(&opts.ControllerProfileFile, "controller-profile-file", "", "path to an HPA controller profile YAML file")
 
 	return cmd
 }

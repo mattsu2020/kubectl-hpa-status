@@ -57,6 +57,10 @@ func scaleDownStabilizationWindow(hpa *autoscalingv2.HorizontalPodAutoscaler) *i
 	return conditions.ScaleDownStabilizationWindow(hpa)
 }
 
+func effectiveScaleDownStabilizationWindow(hpa *autoscalingv2.HorizontalPodAutoscaler) int32 {
+	return conditions.EffectiveScaleDownStabilizationWindow(hpa)
+}
+
 // estimateStabilizationRemaining estimates how many seconds remain before the
 // scale-down stabilization window expires. Delegates to
 // conditions.EstimateStabilizationRemaining.

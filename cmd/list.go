@@ -164,7 +164,7 @@ func finishAccumulatedList(ctx context.Context, out io.Writer, opts *options, fi
 // Any feature outside this set keeps the historical accumulated path, so the
 // streaming path is purely additive and never changes existing output.
 func canStreamList(opts *options) bool {
-	if opts.SortBy != "" || opts.Apply || opts.Export == "directory" || opts.GitOpsDrift || opts.Trend {
+	if opts.SortBy != "" || opts.Problem || opts.Apply || opts.Export == "directory" || opts.GitOpsDrift || opts.Trend {
 		return false
 	}
 	if enrichment.Requested(opts.KEDA) || enrichment.Requested(opts.VPA) {
