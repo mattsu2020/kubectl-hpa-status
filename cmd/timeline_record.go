@@ -201,6 +201,7 @@ func ensurePublishedRecordFile(file *os.File, path string) error {
 }
 
 func recordOnce(ctx context.Context, opts *options, client *kube.Client, name string, interval time.Duration, ec *enrichmentContext) ([]hpaanalysis.TimelineTrace, error) {
+	ec = ec.NewObservation()
 	if name != "" {
 		report, err := buildStatusReport(ctx, opts, client, name, true, ec)
 		if err != nil {

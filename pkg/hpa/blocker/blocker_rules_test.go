@@ -54,8 +54,8 @@ func TestPendingPodsRule(t *testing.T) {
 		if findings[0].Severity != BlockerHigh {
 			t.Errorf("expected HIGH severity, got %s", findings[0].Severity)
 		}
-		if !strings.Contains(findings[0].Message, "2 pods are Pending") {
-			t.Errorf("expected message to mention 2 pods, got %s", findings[0].Message)
+		if !strings.Contains(findings[0].Message, "1 pending pod(s) have not been scheduled") {
+			t.Errorf("expected message to count only the unscheduled pod, got %s", findings[0].Message)
 		}
 	})
 

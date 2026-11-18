@@ -25,9 +25,15 @@ func scaleOutDesiredRule(input Input) []Finding {
 	}
 }
 
-// pendingPodsRule detects pods stuck in Pending phase.
+// pendingPodsRule reports pending pods with evidence of incomplete scheduling.
 func pendingPodsRule(input Input) []Finding {
-	if len(input.PendingPods) == 0 {
+	count := 0
+	for _, pod := range input.PendingPods {
+		if pod.SchedulingPending || pod.Unschedulable {
+			count++
+		}
+	}
+	if count == 0 {
 		return nil
 	}
 	return []Finding{
@@ -35,7 +41,7 @@ func pendingPodsRule(input Input) []Finding {
 			ID:       "pending-pods",
 			Severity: BlockerHigh,
 			Category: "scheduling",
-			Message:  fmt.Sprintf("%d pods are Pending", len(input.PendingPods)),
+			Message:  fmt.Sprintf("%d pending pod(s) have not been scheduled", count),
 			Detail:   "Pending pods indicate that new replicas were requested but have not been scheduled. Check node capacity, taints, affinity, and namespace quotas.",
 			NextCommand: fmt.Sprintf(
 				"kubectl get pods -n %s --field-selector status.phase=Pending",

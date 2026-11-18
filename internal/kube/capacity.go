@@ -15,9 +15,10 @@ import (
 
 // PendingPodDetail holds information about a pending pod.
 type PendingPodDetail struct {
-	Name          string
-	Unschedulable bool
-	Reasons       []string
+	Name              string
+	SchedulingPending bool
+	Unschedulable     bool
+	Reasons           []string
 }
 
 // QuotaInfo holds information about a ResourceQuota.
@@ -69,9 +70,11 @@ func PendingPodDetailsFromPods(pods []corev1.Pod) []PendingPodDetail {
 			Name: pod.Name,
 		}
 		for _, condition := range pod.Status.Conditions {
-			if condition.Type == corev1.PodScheduled &&
-				condition.Status == corev1.ConditionFalse &&
-				condition.Reason == corev1.PodReasonUnschedulable {
+			if condition.Type != corev1.PodScheduled || condition.Status != corev1.ConditionFalse {
+				continue
+			}
+			detail.SchedulingPending = true
+			if condition.Reason == corev1.PodReasonUnschedulable {
 				detail.Unschedulable = true
 				// Skip empty messages so downstream renderers never emit a
 				// trailing empty reason (matches PodInfo.Reasons derivation).

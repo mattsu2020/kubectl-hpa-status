@@ -107,3 +107,28 @@ func TestContainerStatusesFromPods(t *testing.T) {
 		}
 	})
 }
+
+func TestScheduledPendingPodWithInitImagePullFailure(t *testing.T) {
+	pods := []corev1.Pod{{
+		Status: corev1.PodStatus{
+			Phase:      corev1.PodPending,
+			Conditions: []corev1.PodCondition{{Type: corev1.PodScheduled, Status: corev1.ConditionTrue}},
+			InitContainerStatuses: []corev1.ContainerStatus{{
+				Name:  "init",
+				State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{Reason: "ImagePullBackOff"}},
+			}},
+		},
+	}}
+	statuses := ContainerStatusesFromPods(pods)
+	if len(statuses) != 1 || !statuses[0].Waiting || statuses[0].WaitingReason != "ImagePullBackOff" {
+		t.Fatalf("missing init image pull failure: %v", statuses)
+	}
+	pending := PendingPodDetailsFromPods(pods)
+	if len(pending) != 1 || pending[0].SchedulingPending || pending[0].Unschedulable {
+		t.Fatalf("scheduled pod was classified as unscheduled: %v", pending)
+	}
+	pods[0].Status.Conditions[0].Status = corev1.ConditionFalse
+	if pending := PendingPodDetailsFromPods(pods); len(pending) != 1 || !pending[0].SchedulingPending {
+		t.Fatalf("missing pending scheduling condition: %v", pending)
+	}
+}

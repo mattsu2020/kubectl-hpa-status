@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	corev1 "k8s.io/api/core/v1"
 )
 
 func TestMCPCommandExposesReadOnlyToolsAndExecutesStatusListSimulate(t *testing.T) {
@@ -15,6 +17,9 @@ func TestMCPCommandExposesReadOnlyToolsAndExecutesStatusListSimulate(t *testing.
 		testutil.WithReplicas(3, 5),
 		testutil.WithMinMax(2, 10),
 		testutil.WithResourceMetric("cpu", 80, 120),
+		testutil.WithConditions(autoscalingv2.HorizontalPodAutoscalerCondition{
+			Type: autoscalingv2.ScalingLimited, Status: corev1.ConditionTrue, Reason: "TooManyReplicas",
+		}),
 	)
 	client := testutil.NewFakeClient(web)
 
@@ -66,6 +71,9 @@ func TestMCPCommandExposesReadOnlyToolsAndExecutesStatusListSimulate(t *testing.
 		}
 		if err := json.Unmarshal([]byte(lines[idx]), &callResp); err != nil {
 			t.Fatalf("decode tool response %d: %v", idx, err)
+		}
+		if idx == 2 && (len(callResp.Result.Content) == 0 || !strings.Contains(callResp.Result.Content[0].Text, "LIMITED")) {
+			t.Fatalf("expected diagnosis for limited HPA, got %+v", callResp.Result)
 		}
 		if callResp.Result.IsError || len(callResp.Result.Content) == 0 || !strings.Contains(callResp.Result.Content[0].Text, "web") {
 			t.Fatalf("unexpected tool response %d: %+v", idx, callResp.Result)

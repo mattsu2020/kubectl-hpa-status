@@ -15,6 +15,7 @@ import (
 )
 
 func newGitOpsReviewCommand(opts *options) *cobra.Command {
+	var basePath string
 	cmd := &cobra.Command{
 		Use:   "review",
 		Short: "Review HPA manifest changes for risky modifications in PR diffs",
@@ -27,15 +28,16 @@ func newGitOpsReviewCommand(opts *options) *cobra.Command {
 			if path == "" {
 				return fmt.Errorf("--path is required")
 			}
-			return runGitOpsReview(cmd.Context(), cmd.OutOrStdout(), opts, path)
+			return runGitOpsReview(cmd.Context(), cmd.OutOrStdout(), opts, path, basePath)
 		},
 	}
 	cmd.Flags().String("path", "", "path to manifest file or directory containing HPA manifests")
+	cmd.Flags().StringVar(&basePath, "base-path", "", "path to the baseline manifest file or directory for change review")
 	_ = cmd.MarkFlagRequired("path")
 	return cmd
 }
 
-func runGitOpsReview(_ context.Context, out io.Writer, opts *options, filePath string) error {
+func runGitOpsReview(_ context.Context, out io.Writer, opts *options, filePath, basePath string) error {
 	files, err := collectManifestPaths(filePath)
 	if err != nil {
 		return err
@@ -59,6 +61,11 @@ func runGitOpsReview(_ context.Context, out io.Writer, opts *options, filePath s
 		return nil
 	}
 
+	if basePath != "" {
+		if err := pairGitOpsReviewInputs(inputs, basePath); err != nil {
+			return err
+		}
+	}
 	review := gitops.AnalyzeReview(inputs)
 	review.Warnings = warnings
 
@@ -66,6 +73,43 @@ func runGitOpsReview(_ context.Context, out io.Writer, opts *options, filePath s
 		return gitops.WriteReviewText(out, review, themeFor(opts.Color, out))
 	})
 
+}
+
+func pairGitOpsReviewInputs(inputs []gitops.ReviewInput, basePath string) error {
+	files, err := collectManifestPaths(basePath)
+	if err != nil {
+		return fmt.Errorf("collecting baseline manifests: %w", err)
+	}
+	baseline, warnings := decodeGitOpsReviewInputs(files)
+	if len(warnings) > 0 {
+		return fmt.Errorf("reading baseline manifests: %s", strings.Join(warnings, "; "))
+	}
+	byKey := make(map[string]*autoscalingv2.HorizontalPodAutoscaler, len(baseline))
+	for _, input := range baseline {
+		key := gitOpsReviewKey(input.After)
+		if _, exists := byKey[key]; exists {
+			return fmt.Errorf("duplicate baseline HPA %s", key)
+		}
+		byKey[key] = input.After
+	}
+	seen := make(map[string]bool, len(inputs))
+	for i := range inputs {
+		key := gitOpsReviewKey(inputs[i].After)
+		if seen[key] {
+			return fmt.Errorf("duplicate current HPA %s", key)
+		}
+		seen[key] = true
+		inputs[i].Before = byKey[key]
+	}
+	return nil
+}
+
+func gitOpsReviewKey(hpa *autoscalingv2.HorizontalPodAutoscaler) string {
+	namespace := hpa.Namespace
+	if namespace == "" {
+		namespace = "default"
+	}
+	return namespace + "/" + hpa.Name
 }
 
 // decodeGitOpsReviewInputs decodes HPA manifests from files. Files that

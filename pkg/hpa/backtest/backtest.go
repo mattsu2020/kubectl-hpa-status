@@ -114,6 +114,15 @@ func validateCandidate(spec CandidateSpec, idx int) error {
 	if spec.TargetValue != nil && *spec.TargetValue <= 0 {
 		return fmt.Errorf("candidate %q: targetValue must be > 0", label)
 	}
+	return validatePrescaleWindows(spec, label)
+}
+
+func validatePrescaleWindows(spec CandidateSpec, label string) error {
+	for _, window := range spec.PrescaleWindows {
+		if window.MinReplicas < 0 || window.MinReplicas > spec.MaxReplicas {
+			return fmt.Errorf("candidate %q: prescale minReplicas (%d) must be between 0 and maxReplicas (%d)", label, window.MinReplicas, spec.MaxReplicas)
+		}
+	}
 	return nil
 }
 
@@ -290,7 +299,12 @@ func computeDemandDesired(snap hpaanalysis.TimelineSnapshot, spec CandidateSpec,
 
 func resolveMetricTarget(reading hpaanalysis.MetricReading, spec CandidateSpec) float64 {
 	if reading.Unit == "%" && spec.TargetUtilization != nil {
-		return float64(*spec.TargetUtilization)
+		isCPU := (reading.Type == hpaanalysis.MetricTypeResource && reading.Name == "cpu") ||
+			(reading.Type == hpaanalysis.MetricTypeContainerResource && strings.HasSuffix(reading.Name, "/cpu"))
+		if isCPU {
+			return float64(*spec.TargetUtilization)
+		}
+		return reading.Target
 	}
 	if spec.TargetValue != nil {
 		return *spec.TargetValue

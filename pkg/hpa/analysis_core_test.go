@@ -376,13 +376,14 @@ func TestAnalyzeToleranceBoundaries(t *testing.T) {
 	// Case 2: Outside tolerance (e.g. 90% vs 70% target -> ratio ~1.286)
 	hpa2 := baseHPA()
 	hpa2.Status.CurrentReplicas = 5
-	hpa2.Status.DesiredReplicas = 7
+	hpa2.Status.DesiredReplicas = 5
 	hpa2.Spec.Metrics = []autoscalingv2.MetricSpec{resourceMetricSpec(corev1.ResourceCPU, 70)}
 	hpa2.Status.CurrentMetrics = []autoscalingv2.MetricStatus{resourceMetricStatus(corev1.ResourceCPU, 90)}
 
 	got2 := Analyze(hpa2, true)
-	if containsLine(got2.Actions.Interpretation, "consistent with tolerance-based no-scale") {
-		t.Fatalf("did not expect tolerance mention for ratio outside margin, got %#v", got2.Actions.Interpretation)
+	if !containsLine(got2.Actions.Interpretation, "outside the Kubernetes default scaleUp tolerance") ||
+		containsLine(got2.Actions.Interpretation, "consistent with tolerance-based no-scale") {
+		t.Fatalf("expected outside-tolerance evidence without a no-scale cause, got %#v", got2.Actions.Interpretation)
 	}
 }
 

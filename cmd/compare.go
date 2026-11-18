@@ -130,6 +130,7 @@ func runCompareAll(ctx context.Context, out io.Writer, opts *options, fromContex
 		from := &fromHPAs.Items[i]
 		key := from.Namespace + "/" + from.Name
 		to := toMap[key]
+		delete(toMap, key)
 		if to == nil {
 			reports = append(reports, compare.Report{From: key, To: "<missing>", Differences: []compare.Diff{{Field: "exists", From: "true", To: "false"}}, Risks: []string{"target environment is missing this HPA"}})
 			continue
@@ -137,6 +138,13 @@ func runCompareAll(ctx context.Context, out io.Writer, opts *options, fromContex
 		report := compare.BuildReportWithScorer(key, key, from, to, compareHealthScorer(opts))
 		if !onlyDrift || len(report.Differences) > 0 {
 			reports = append(reports, report)
+		}
+	}
+	for i := range toHPAs.Items {
+		hpa := &toHPAs.Items[i]
+		key := hpa.Namespace + "/" + hpa.Name
+		if _, exists := toMap[key]; exists {
+			reports = append(reports, compare.Report{From: "<missing>", To: key, Differences: []compare.Diff{{Field: "exists", From: "false", To: "true"}}, Risks: []string{"source environment is missing this HPA"}})
 		}
 	}
 	list := compare.ListReport{Items: reports}

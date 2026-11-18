@@ -204,27 +204,13 @@ func toleranceDiagnosticRule(hpa *autoscalingv2.HorizontalPodAutoscaler, minRepl
 			severity:   SeverityInfo,
 			confidence: level,
 		})
-	} else {
-		ctx.cases = append(ctx.cases,
-			interpretationCase{
-				reason:     "ToleranceNoScale",
-				message:    fmt.Sprintf(confidence.BadgeEstimated+" %s metric ratio is approximately %.3f, which is close to the target.", metric.Name, metric.Ratio),
-				severity:   SeverityInfo,
-				confidence: ConfidenceMedium,
-			},
-			interpretationCase{
-				reason:     "ToleranceNoScale",
-				message:    confidence.BadgeEstimated + " This is consistent with tolerance-based no-scale. Kubernetes commonly uses a tolerance band around the target, but HPA status does not expose tolerance as an explicit reason.",
-				severity:   SeverityInfo,
-				confidence: ConfidenceMedium,
-			},
-		)
+		return
 	}
 	ctx.cases = append(ctx.cases, interpretationCase{
-		reason:     "ToleranceNoScale",
-		message:    confidence.BadgeObserved + " The plugin avoids claiming the exact internal reason because rounding, stabilization, or conservative metric handling may also affect the final result.",
+		reason:     "MetricOutsideTolerance",
+		message:    fmt.Sprintf("%s %s metric ratio is %.3f, outside the %s %s tolerance %.3f; replicas are unchanged for an undetermined reason.", confidence.BadgeEstimated, metric.Name, metric.Ratio, source, direction, tolerance),
 		severity:   SeverityInfo,
-		confidence: ConfidenceHigh,
+		confidence: ConfidenceMedium,
 	})
 }
 

@@ -47,6 +47,7 @@ kubectl-hpa-status status <hpa-name> --suggest
 kubectl-hpa-status status <hpa-name> --fix --apply
 kubectl-hpa-status scan
 kubectl-hpa-status list -A
+kubectl-hpa-status alpha gitops review --base-path k8s-before/ --path k8s-after/
 kubectl-hpa-status completion zsh
 ```
 
@@ -54,7 +55,7 @@ kubectl-hpa-status completion zsh
 
 | Flag | Applies to | Description |
 | --- | --- | --- |
-| `-n, --namespace` | all commands | Namespace to read when `-A` is not set. Defaults to the current kubeconfig namespace or `default`. |
+| `-n, --namespace` | Namespaced commands | Defaults to the current kubeconfig namespace or `default`. For a single namespace, use `list --problem -n NAMESPACE`. `scan` always covers all namespaces and rejects `--namespace`. |
 | `-A, --all-namespaces` | `list`, `scan`, completion | List HPAs across all namespaces. |
 | `-l, --selector` | `list`, `scan` | Kubernetes label selector passed to the HPA list call, such as `app=web,tier!=canary`. |
 | `--context`, `--kubeconfig`, `--cluster` | all commands | Explicit kubeconfig selection. |

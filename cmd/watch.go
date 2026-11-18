@@ -64,7 +64,7 @@ func runWatchPolling(ctx context.Context, out io.Writer, opts *options, client *
 			return err
 		}
 
-		report, err := buildStatusReport(ctx, opts, client, name, includeInterpretation, ec)
+		report, err := buildStatusReport(ctx, opts, client, name, includeInterpretation, ec.NewObservation())
 		if err != nil {
 			return err
 		}

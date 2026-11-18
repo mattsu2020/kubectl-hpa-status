@@ -115,7 +115,10 @@ func TestTemplateFlagsWorkThroughCommandTree(t *testing.T) {
 			var out bytes.Buffer
 			command.SetOut(&out)
 			command.SetErr(&bytes.Buffer{})
-			flags := []string{"-n", "default", "--color", "never", "-o", "go-template", "--template", "{{printf \"cli-template\"}}"}
+			flags := []string{"--color", "never", "-o", "go-template", "--template", "{{printf \"cli-template\"}}"}
+			if args[0] != "scan" {
+				flags = append(flags, "-n", "default")
+			}
 			command.SetArgs(append(append([]string{}, args...), flags...))
 			if err := command.Execute(); err != nil {
 				t.Fatal(err)

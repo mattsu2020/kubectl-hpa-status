@@ -152,7 +152,7 @@ func runTimeline(ctx context.Context, out io.Writer, opts *options, name string,
 	const maxTimelineSnapshots = 500
 
 	for {
-		report, err := buildStatusReport(ctx, opts, client, name, true, ec)
+		report, err := buildStatusReport(ctx, opts, client, name, true, ec.NewObservation())
 		if err != nil {
 			return err
 		}

@@ -238,3 +238,33 @@ func TestBatchVPA_SkipsOffModeVPA(t *testing.T) {
 		t.Fatalf("expected no conflict result for Off-mode VPA, got %v", results)
 	}
 }
+
+func TestNewObservationRefreshesNamespaceLists(t *testing.T) {
+	ctx := context.Background()
+	scaledObjectGVR := schema.GroupVersionResource{Group: "keda.sh", Version: "v1alpha1", Resource: "scaledobjects"}
+	dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(),
+		map[schema.GroupVersionResource]string{vpaGVRForTest: "VerticalPodAutoscalerList", scaledObjectGVR: "ScaledObjectList"})
+	ec := &Context{dynClient: dyn}
+	first := ec.NewObservation()
+	if items, err := first.fetchNamespaceVPAs(ctx, "default"); err != nil || len(items) != 0 {
+		t.Fatalf("initial VPAs: %v, %v", items, err)
+	}
+	if items, err := first.fetchNamespaceScaledObjects(ctx, "default"); err != nil || len(items) != 0 {
+		t.Fatalf("initial ScaledObjects: %v, %v", items, err)
+	}
+	vpa := vpaUnstructured("default", "web", "Deployment", "web", "Auto")
+	if _, err := dyn.Resource(vpaGVRForTest).Namespace("default").Create(ctx, vpa, metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	so := scaledObjectUnstructured("default", "web", "Deployment", "web")
+	if _, err := dyn.Resource(scaledObjectGVR).Namespace("default").Create(ctx, &so, metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	next := ec.NewObservation()
+	if items, err := next.fetchNamespaceVPAs(ctx, "default"); err != nil || len(items) != 1 {
+		t.Fatalf("refreshed VPAs: %v, %v", items, err)
+	}
+	if items, err := next.fetchNamespaceScaledObjects(ctx, "default"); err != nil || len(items) != 1 {
+		t.Fatalf("refreshed ScaledObjects: %v, %v", items, err)
+	}
+}

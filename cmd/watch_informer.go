@@ -55,7 +55,7 @@ func runWatchInformer(
 			return false, err
 		}
 		obs := observation.New(client.Interface, target.DeepCopy())
-		report, err := buildStatusReportFromObservation(ctx, opts, client, target.DeepCopy(), includeInterpretation, ec, obs)
+		report, err := buildStatusReportFromObservation(ctx, opts, client, target.DeepCopy(), includeInterpretation, ec.NewObservation(), obs)
 		if err != nil {
 			return false, err
 		}
@@ -196,6 +196,7 @@ func consumeWatchEvents(
 			return false, rv, false, ctx.Err()
 		case <-debounceCh:
 			debounceCh = nil
+			debounceTimer = nil
 			stop, err := onSnapshot(sortedHPACache(cacheMap))
 			if err != nil || stop {
 				return false, rv, stop, err

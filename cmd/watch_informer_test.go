@@ -12,6 +12,7 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/watch"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 )
@@ -162,5 +163,39 @@ func TestValidateOptions_WatchMode(t *testing.T) {
 	}
 	if err := validateAnalysisRanges(opts); err == nil {
 		t.Fatal("expected invalid --watch-mode error")
+	}
+}
+
+func TestConsumeWatchEventsEmitsEachChangeBatch(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	watcher := watch.NewRaceFreeFake()
+	defer watcher.Stop()
+	frames := make(chan string, 2)
+	done := make(chan error, 1)
+	go func() {
+		_, _, _, err := consumeWatchEvents(ctx, watcher, "", map[string]*autoscalingv2.HorizontalPodAutoscaler{},
+			func(items []autoscalingv2.HorizontalPodAutoscaler) (bool, error) {
+				version := items[0].ResourceVersion
+				frames <- version
+				return version == "2", nil
+			})
+		done <- err
+	}()
+	for _, version := range []string{"1", "2"} {
+		hpa := testutil.BuildHPA("default", "web")
+		hpa.ResourceVersion = version
+		watcher.Modify(hpa)
+		select {
+		case got := <-frames:
+			if got != version {
+				t.Fatalf("rendered resourceVersion = %s, want %s", got, version)
+			}
+		case <-ctx.Done():
+			t.Fatalf("resourceVersion %s was never rendered", version)
+		}
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
 	}
 }

@@ -189,3 +189,28 @@ func TestRun_ValidationErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestRunMixedMetricCPUTargetAndPrescaleBounds(t *testing.T) {
+	input := Input{
+		Trace: hpaanalysis.TimelineTrace{Snapshots: []hpaanalysis.TimelineSnapshot{{
+			Current: 4, Desired: 4,
+			MetricValues: []hpaanalysis.MetricReading{
+				{Type: "Resource", Name: "cpu", Value: 25, Target: 50, Unit: "%"},
+				{Type: "Resource", Name: "memory", Value: 80, Target: 80, Unit: "%"},
+			},
+		}}},
+		Candidates: []CandidateSpec{{MaxReplicas: 10, TargetUtilization: ptr.To(int32(50))}},
+	}
+	report, err := Run(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if peak := report.Candidates[0].Summary.PeakReplicas; peak != 4 {
+		t.Fatalf("peak = %d, want 4", peak)
+	}
+	input.Candidates[0].MaxReplicas = 3
+	input.Candidates[0].PrescaleWindows = []PrescaleWindow{{StartMinute: 540, EndMinute: 600, MinReplicas: 6}}
+	if _, err := Run(input); err == nil || !strings.Contains(err.Error(), "prescale minReplicas") {
+		t.Fatalf("expected invalid prescale error, got %v", err)
+	}
+}
