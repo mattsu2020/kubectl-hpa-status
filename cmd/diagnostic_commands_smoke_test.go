@@ -328,7 +328,7 @@ spec:
 
 	opts := &options{}
 	var out bytes.Buffer
-	if err := runGitOpsReview(context.Background(), &out, opts, manifest); err != nil {
+	if err := runGitOpsReview(context.Background(), &out, opts, manifest, ""); err != nil {
 		t.Fatalf("runGitOpsReview returned error: %v", err)
 	}
 	if strings.TrimSpace(out.String()) == "" {
@@ -348,7 +348,7 @@ data:
 
 	opts := &options{}
 	var out bytes.Buffer
-	if err := runGitOpsReview(context.Background(), &out, opts, dir); err != nil {
+	if err := runGitOpsReview(context.Background(), &out, opts, dir, ""); err != nil {
 		t.Fatalf("runGitOpsReview returned error: %v", err)
 	}
 	if !strings.Contains(out.String(), "No HPA manifests found.") {
@@ -359,7 +359,7 @@ data:
 func TestRunGitOpsReviewMissingPath(t *testing.T) {
 	opts := &options{}
 	var out bytes.Buffer
-	err := runGitOpsReview(context.Background(), &out, opts, filepath.Join(t.TempDir(), "absent"))
+	err := runGitOpsReview(context.Background(), &out, opts, filepath.Join(t.TempDir(), "absent"), "")
 	if err == nil {
 		t.Fatal("expected an error for a missing path")
 	}
@@ -478,5 +478,23 @@ func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatalf("writing %s: %v", path, err)
+	}
+}
+
+func TestGitOpsReviewCommandDetectsReducedMaxReplicas(t *testing.T) {
+	dir := t.TempDir()
+	base, current := filepath.Join(dir, "base.yaml"), filepath.Join(dir, "current.yaml")
+	manifest := "apiVersion: autoscaling/v2\nkind: HorizontalPodAutoscaler\nmetadata:\n  name: web\n  namespace: prod\nspec:\n  maxReplicas: "
+	writeFile(t, base, manifest+"50\n")
+	writeFile(t, current, manifest+"5\n")
+	root := NewRootCommand()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetArgs([]string{"alpha", "gitops", "review", "--base-path", base, "--path", current, "-o", "json"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if got := out.String(); !strings.Contains(got, "maxReplicas decreased from 50 to 5") {
+		t.Fatalf("expected risk from baseline difference, got %s", got)
 	}
 }

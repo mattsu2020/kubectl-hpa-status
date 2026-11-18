@@ -790,3 +790,30 @@ func buildScalingLimitedHPA(maxReplicas, desiredReplicas int32) *autoscalingv2.H
 		),
 	)
 }
+
+func TestFixedReplicaLimitSuggestionsFollowConditionReason(t *testing.T) {
+	for _, tc := range []struct{ reason, title string }{
+		{"TooFewReplicas", "Lower minReplicas"},
+		{"TooManyReplicas", "Raise maxReplicas"},
+		{"ScaleUpLimit", ""},
+		{"", ""},
+	} {
+		t.Run(tc.reason, func(t *testing.T) {
+			hpa := buildScalingLimitedHPA(5, 5)
+			hpa.Spec.MinReplicas = ptr.To(int32(5))
+			hpa.Status.CurrentReplicas = 5
+			hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{
+				{Type: autoscalingv2.ScalingLimited, Status: corev1.ConditionTrue, Reason: tc.reason},
+			}
+			var got []string
+			for _, suggestion := range BuildSuggestions(hpa, 5) {
+				if suggestion.Apply && (suggestion.Title == "Raise maxReplicas" || suggestion.Title == "Lower minReplicas") {
+					got = append(got, suggestion.Title)
+				}
+			}
+			if (tc.title == "" && len(got) != 0) || (tc.title != "" && (len(got) != 1 || got[0] != tc.title)) {
+				t.Fatalf("applicable replica-limit suggestions = %v, want %q", got, tc.title)
+			}
+		})
+	}
+}

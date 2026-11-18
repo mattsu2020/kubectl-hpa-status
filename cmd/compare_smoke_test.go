@@ -8,6 +8,9 @@ import (
 	"testing"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes/fake"
+	ktesting "k8s.io/client-go/testing"
 
 	"github.com/mattsu2020/kubectl-hpa-status/internal/testutil"
 	"github.com/mattsu2020/kubectl-hpa-status/pkg/hpa/compare"
@@ -198,5 +201,27 @@ func TestSplitNamespacedRef(t *testing.T) {
 			t.Errorf("splitNamespacedRef(%q, %q) = (%q, %q), want (%q, %q)",
 				tc.ref, tc.defaultNamespace, namespace, name, tc.wantNamespace, tc.wantName)
 		}
+	}
+}
+
+func TestRunCompareAllReportsHPAOnlyInTarget(t *testing.T) {
+	opts := compareTestOptions()
+	client := opts.ClientOverride.(*fake.Clientset)
+	hpa := testutil.BuildHPA("prod", "api")
+	calls := 0
+	client.PrependReactor("list", "horizontalpodautoscalers", func(ktesting.Action) (bool, runtime.Object, error) {
+		calls++
+		list := &autoscalingv2.HorizontalPodAutoscalerList{}
+		if calls == 2 {
+			list.Items = append(list.Items, *hpa)
+		}
+		return true, list, nil
+	})
+	var out bytes.Buffer
+	if err := runCompareAll(context.Background(), &out, opts, "", "", true); err != nil {
+		t.Fatal(err)
+	}
+	if got := out.String(); !strings.Contains(got, "<missing> -> prod/api") || !strings.Contains(got, "exists: false -> true") {
+		t.Fatalf("expected newly added target HPA, got %q", got)
 	}
 }

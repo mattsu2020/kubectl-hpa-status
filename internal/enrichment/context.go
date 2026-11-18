@@ -102,6 +102,18 @@ func (ec *Context) fetchNamespaceScaledObjects(ctx context.Context, namespace st
 	return items, err
 }
 
+// NewObservation shares the clients and discovery results with a fresh
+// namespace cache for a single observation cycle.
+func (ec *Context) NewObservation() *Context {
+	if ec == nil {
+		return nil
+	}
+	return &Context{
+		dynClient: ec.dynClient, namespace: ec.namespace, crdAvail: ec.crdAvail,
+		kedaEnabled: ec.kedaEnabled, vpaEnabled: ec.vpaEnabled, status: ec.status,
+	}
+}
+
 // Status returns the enrichment status for diagnostic output.
 func (ec *Context) Status() Status {
 	if ec == nil {

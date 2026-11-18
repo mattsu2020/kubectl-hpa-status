@@ -46,14 +46,15 @@ func PendingPodInfos(details []kube.PendingPodDetail) []hpaanalysis.PendingPodIn
 }
 
 // ToBlockerPodInfos translates into the blocker-analysis destination type
-// (same four fields, different package-local struct).
+// including the PodScheduled observation.
 func ToBlockerPodInfos(details []kube.PendingPodDetail) []blocker.PodInfo {
 	return PendingPodDetail(details, func(d kube.PendingPodDetail) blocker.PodInfo {
 		return blocker.PodInfo{
-			Name:          d.Name,
-			Phase:         "Pending",
-			Unschedulable: d.Unschedulable,
-			Reasons:       d.Reasons,
+			SchedulingPending: d.SchedulingPending,
+			Name:              d.Name,
+			Phase:             "Pending",
+			Unschedulable:     d.Unschedulable,
+			Reasons:           d.Reasons,
 		}
 	})
 }

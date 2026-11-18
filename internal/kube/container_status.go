@@ -1,6 +1,8 @@
 package kube
 
 import (
+	"slices"
+
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -19,7 +21,7 @@ type ContainerStatusDetail struct {
 func ContainerStatusesFromPods(pods []corev1.Pod) []ContainerStatusDetail {
 	var result []ContainerStatusDetail
 	for _, pod := range pods {
-		for _, cs := range pod.Status.ContainerStatuses {
+		for _, cs := range slices.Concat(pod.Status.InitContainerStatuses, pod.Status.ContainerStatuses) {
 			detail := ContainerStatusDetail{
 				Pod:          pod.Name,
 				Container:    cs.Name,

@@ -62,7 +62,7 @@ func scalingLimitedMaxRule(ctx SuggestionContext) []Suggestion {
 	if condition == nil || condition.Status != corev1.ConditionTrue {
 		return nil
 	}
-	if hpa.Status.DesiredReplicas != hpa.Spec.MaxReplicas {
+	if hpa.Status.DesiredReplicas != hpa.Spec.MaxReplicas || !supportsReplicaLimitSuggestion(ctx, condition.Reason, true) {
 		return nil
 	}
 	// Only suggest raising maxReplicas when the workload is actively running.
@@ -110,7 +110,7 @@ func scalingLimitedMinRule(ctx SuggestionContext) []Suggestion {
 	if condition == nil || condition.Status != corev1.ConditionTrue {
 		return nil
 	}
-	if hpa.Status.DesiredReplicas != minReplicas {
+	if hpa.Status.DesiredReplicas != minReplicas || !supportsReplicaLimitSuggestion(ctx, condition.Reason, false) {
 		return nil
 	}
 	// Only suggest lowering minReplicas when there is room to lower.
@@ -142,6 +142,21 @@ func scalingLimitedMinRule(ctx SuggestionContext) []Suggestion {
 		Warnings: []string{"Validate availability, cold-start behavior, and disruption budgets before persisting this change."},
 		Apply:    true,
 	}}
+}
+
+// Older or synthetic objects may omit the reason. Only fall back to the
+// replica bounds when they identify a single direction.
+func supportsReplicaLimitSuggestion(ctx SuggestionContext, reason string, upper bool) bool {
+	switch reason {
+	case "TooManyReplicas", "DesiredReplicasAboveMaxReplicas":
+		return upper
+	case "TooFewReplicas", "DesiredReplicasBelowMinReplicas":
+		return !upper
+	case "":
+		return ctx.MinReplicas != ctx.HPA.Spec.MaxReplicas
+	default:
+		return false
+	}
 }
 
 // scaleDownStabilizedRule suggests shortening scale-down stabilization window.

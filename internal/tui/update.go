@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"slices"
 
 	"charm.land/bubbles/v2/key"
 
@@ -88,7 +89,16 @@ func (m Model) updateFetchResult(msg fetchResultMsg) (tea.Model, tea.Cmd) {
 		m.err = msg.err
 		return m, nil
 	}
-	m.items = msg.items
+	var anchoredKey string
+	if m.initialFocused {
+		previousItems := m.filteredItems()
+		if m.cursor >= 0 && m.cursor < len(previousItems) {
+			item := previousItems[m.cursor]
+			anchoredKey = item.Namespace + "/" + item.Name
+		}
+	}
+	// Sorting the new list must not mutate the fetch result.
+	m.items = slices.Clone(msg.items)
 	m.reports = msg.reports
 	if m.reports == nil {
 		m.reports = make(map[string]*hpaanalysis.StatusReport)
@@ -102,7 +112,7 @@ func (m Model) updateFetchResult(msg fetchResultMsg) (tea.Model, tea.Cmd) {
 
 	m.refreshFixStateAfterFetch()
 	m.updateReplicaHistory()
-	m.refocusAndClampCursorAfterFetch()
+	m.refocusAndClampCursorAfterFetch(anchoredKey)
 	return m, nil
 }
 
@@ -125,7 +135,7 @@ func (m *Model) ensureReport(key string) *hpaanalysis.StatusReport {
 	}, analysisservice.ItemEnrichment{
 		KEDA:     m.kedaCache[key],
 		VPA:      m.vpaCache[key],
-		Warnings: m.warnCache[key],
+		Warnings: m.warnCache[hpa.Namespace],
 	})
 	if m.reports == nil {
 		m.reports = make(map[string]*hpaanalysis.StatusReport)
@@ -226,14 +236,7 @@ func (m *Model) pruneStaleSelections(current map[string]struct{}) {
 // refocusAndClampCursorAfterFetch re-sorts items, anchors focus by identity
 // so refreshes do not jump detail/metrics/hints views to another HPA, focuses
 // the initial item on first load, and clamps the cursor.
-func (m *Model) refocusAndClampCursorAfterFetch() {
-	var anchoredKey string
-	if m.initialFocused {
-		prev := m.filteredItems()
-		if m.cursor >= 0 && m.cursor < len(prev) {
-			anchoredKey = prev[m.cursor].Namespace + "/" + prev[m.cursor].Name
-		}
-	}
+func (m *Model) refocusAndClampCursorAfterFetch(anchoredKey string) {
 	if m.sortField != "" {
 		m.sortItems()
 	}

@@ -177,3 +177,15 @@ func TestLazyReportsHydratesOnDemand(t *testing.T) {
 		t.Fatalf("expected exactly 1 hydrated report in cache, got %d (%v)", len(m.reports), focusedKey)
 	}
 }
+
+func TestRefreshKeepsDetailedHPAWhenEarlierItemAppears(t *testing.T) {
+	m := NewModel(nil, "default", Options{InitialName: "web", StartInDetail: true})
+	web := hpaanalysis.ListItem{Namespace: "default", Name: "web"}
+	api := hpaanalysis.ListItem{Namespace: "default", Name: "api"}
+	updated, _ := m.Update(fetchResultMsg{items: []hpaanalysis.ListItem{web}})
+	updated, _ = updated.(Model).Update(fetchResultMsg{items: []hpaanalysis.ListItem{api, web}})
+	m = updated.(Model)
+	if m.viewMode != detailView || m.filteredItems()[m.cursor].Name != "web" {
+		t.Fatalf("refresh switched the detail view to %s", m.filteredItems()[m.cursor].Name)
+	}
+}

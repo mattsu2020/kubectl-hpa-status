@@ -68,8 +68,9 @@ func runTUI(ctx context.Context, out io.Writer, opts *options, initialName strin
 	var enrichFn func(context.Context, []autoscalingv2.HorizontalPodAutoscaler) (map[string]*hpakeda.Analysis, map[string]*hpavpa.ConflictInfo, map[string][]string)
 	if ec != nil {
 		enrichFn = func(enrichCtx context.Context, hpas []autoscalingv2.HorizontalPodAutoscaler) (map[string]*hpakeda.Analysis, map[string]*hpavpa.ConflictInfo, map[string][]string) {
-			keda, kedaWarnings := enrichListKEDA(enrichCtx, ec, hpas)
-			vpa, vpaWarnings := enrichListVPA(enrichCtx, ec, hpas)
+			observation := ec.NewObservation()
+			keda, kedaWarnings := enrichListKEDA(enrichCtx, observation, hpas)
+			vpa, vpaWarnings := enrichListVPA(enrichCtx, observation, hpas)
 			return keda, vpa, analysisservice.MergeNamespaceWarnings(kedaWarnings, vpaWarnings)
 		}
 	}

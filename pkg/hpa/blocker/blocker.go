@@ -189,6 +189,8 @@ type PodInfo struct {
 	Name string
 	// Phase is the pod phase (Pending, Running, etc.).
 	Phase string
+	// SchedulingPending is true when the PodScheduled condition is False.
+	SchedulingPending bool
 	// Unschedulable is true when the pod has an unschedulable condition.
 	Unschedulable bool
 	// Reasons lists scheduling failure reasons from pod conditions.

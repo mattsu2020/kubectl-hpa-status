@@ -48,6 +48,9 @@ func newScanCommand(opts *options) *cobra.Command {
 		Short:   "Scan all namespaces for HPAs with visible problems",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if opts.Namespace != "" || cmd.Flags().Changed("namespace") {
+				return fmt.Errorf("scan covers all namespaces and does not accept --namespace; use list --problem --namespace to select one")
+			}
 			request := snapshotScanRequest(opts)
 			executionOptions := request.Options()
 			return runList(cmd.Context(), cmd.OutOrStdout(), &executionOptions)

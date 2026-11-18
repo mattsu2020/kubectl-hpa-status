@@ -64,7 +64,7 @@ func mcpStatusTool(opts *options) mcp.Tool {
 			}
 			var buf bytes.Buffer
 			req := snapshotStatusRequest(&local, []string{p.Name})
-			if err := executeStatusRequest(ctx, &buf, req); err != nil {
+			if err := executeStatusRequest(ctx, &buf, req); err != nil && (exitCodeForError(err) != ExitWarning || !json.Valid(buf.Bytes())) {
 				return "", err
 			}
 			return buf.String(), nil

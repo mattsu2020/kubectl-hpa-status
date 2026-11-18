@@ -369,3 +369,15 @@ func TestRunListApplyBatchNoPatchesFound(t *testing.T) {
 // --------------------------------------------------------------------------
 // Watch command integration tests
 // --------------------------------------------------------------------------
+
+func TestScanRejectsNamespaceBeforeAnyKubernetesRequest(t *testing.T) {
+	client := testutil.NewFakeClient(testutil.BuildHPA("prod", "api"))
+	root := NewRootCommandWithDeps(AppDeps{Kubernetes: client})
+	root.SetArgs([]string{"scan", "-n", "dev", "--apply", "--dry-run=false", "-y"})
+	if err := root.Execute(); err == nil || !strings.Contains(err.Error(), "scan covers all namespaces") {
+		t.Fatalf("expected scope error, got %v", err)
+	}
+	if actions := client.Actions(); len(actions) != 0 {
+		t.Fatalf("unexpected Kubernetes actions: %v", actions)
+	}
+}
