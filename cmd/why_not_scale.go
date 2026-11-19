@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/mattsu2020/kubectl-hpa-status/internal/observation"
 	hpaanalysis "github.com/mattsu2020/kubectl-hpa-status/pkg/hpa"
 )
 
@@ -40,8 +41,9 @@ func runWhyNotScale(ctx context.Context, out io.Writer, opts *options, names []s
 		return writeErrorIfStructured(out, local.Output, err)
 	}
 	ec := newEnrichmentContext(ctx, &local)
+	cluster := &observation.ClusterSnapshot{}
 	outputs, err := collectPerHPA(ctx, &local, names, func(ctx context.Context, name string) (whyNotScaleReport, error) {
-		statusReport, err := buildStatusReport(ctx, &local, client, name, true, ec)
+		statusReport, err := buildStatusReport(ctx, &local, client, name, true, ec, cluster)
 		if err != nil {
 			return whyNotScaleReport{}, err
 		}

@@ -87,7 +87,9 @@ func BuildClusterResourceSnapshotWithNodes(ctx context.Context, client kubernete
 	for i := range nodes {
 		snapshot.usage[nodes[i].Name] = &nodeResourceUsage{}
 	}
-	err := visitPods(ctx, client, metav1.NamespaceAll, metav1.ListOptions{}, func(pods []corev1.Pod) error {
+	err := visitPods(ctx, client, metav1.NamespaceAll, metav1.ListOptions{
+		FieldSelector: "status.phase!=Succeeded,status.phase!=Failed",
+	}, func(pods []corev1.Pod) error {
 		for i := range pods {
 			pod := &pods[i]
 			usage := snapshot.usage[pod.Spec.NodeName]

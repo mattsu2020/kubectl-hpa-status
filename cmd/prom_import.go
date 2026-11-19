@@ -61,9 +61,13 @@ func loadTraceFromPrometheus(
 	if ns == "" {
 		ns = "default"
 	}
+	token := strings.TrimSpace(p.Token)
+	if token == "" {
+		token = strings.TrimSpace(os.Getenv("PROMETHEUS_TOKEN"))
+	}
 	return promLoadTrace(ctx, promhistory.QueryConfig{
 		BaseURL:     baseURL,
-		BearerToken: p.Token,
+		BearerToken: token,
 		Namespace:   ns,
 		HPAName:     name,
 		Start:       end.Add(-since),

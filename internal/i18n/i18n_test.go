@@ -99,8 +99,8 @@ func TestDirectionKeysPresent(t *testing.T) {
 // key-return-on-missing (i18n.go Get fallback) regressions when a new key is
 // added to one locale but not the others.
 func TestLocaleKeyParity(t *testing.T) {
-	en := Load("en")
-	ja := Load("ja")
+	en := loadYAML("locales/en.yaml")
+	ja := loadYAML("locales/ja.yaml")
 	enKeys := sortedKeys(en)
 	jaKeys := sortedKeys(ja)
 	if len(enKeys) != len(jaKeys) {

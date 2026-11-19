@@ -32,15 +32,28 @@ func ResourceUtilizationTargets(hpa *autoscalingv2.HorizontalPodAutoscaler) []Re
 	}
 	var targets []ResourceUtilizationTarget
 	for index, metric := range hpa.Spec.Metrics {
-		if metric.Type != autoscalingv2.ResourceMetricSourceType || metric.Resource == nil ||
-			metric.Resource.Target.Type != autoscalingv2.UtilizationMetricType || metric.Resource.Target.AverageUtilization == nil {
-			continue
+		switch metric.Type {
+		case autoscalingv2.ResourceMetricSourceType:
+			if metric.Resource == nil ||
+				metric.Resource.Target.Type != autoscalingv2.UtilizationMetricType || metric.Resource.Target.AverageUtilization == nil {
+				continue
+			}
+			targets = append(targets, ResourceUtilizationTarget{
+				MetricIndex: index,
+				Resource:    string(metric.Resource.Name),
+				Percent:     *metric.Resource.Target.AverageUtilization,
+			})
+		case autoscalingv2.ContainerResourceMetricSourceType:
+			if metric.ContainerResource == nil ||
+				metric.ContainerResource.Target.Type != autoscalingv2.UtilizationMetricType || metric.ContainerResource.Target.AverageUtilization == nil {
+				continue
+			}
+			targets = append(targets, ResourceUtilizationTarget{
+				MetricIndex: index,
+				Resource:    string(metric.ContainerResource.Name),
+				Percent:     *metric.ContainerResource.Target.AverageUtilization,
+			})
 		}
-		targets = append(targets, ResourceUtilizationTarget{
-			MetricIndex: index,
-			Resource:    string(metric.Resource.Name),
-			Percent:     *metric.Resource.Target.AverageUtilization,
-		})
 	}
 	return targets
 }

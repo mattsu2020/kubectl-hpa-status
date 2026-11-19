@@ -98,16 +98,14 @@ func compareHPAManifests(before, after *autoscalingv2.HorizontalPodAutoscaler) [
 	}
 
 	// Metric removed.
-	if len(after.Spec.Metrics) < len(before.Spec.Metrics) {
-		removed := findRemovedMetrics(before.Spec.Metrics, after.Spec.Metrics)
-		if len(removed) > 0 {
-			findings = append(findings, ReviewFinding{
-				Severity: "medium",
-				Category: "metric",
-				Message:  fmt.Sprintf("metric(s) removed: %s", strings.Join(removed, ", ")),
-				Detail:   "Removing metrics reduces the signals available for scaling decisions.",
-			})
-		}
+	removed := findRemovedMetrics(before.Spec.Metrics, after.Spec.Metrics)
+	if len(removed) > 0 {
+		findings = append(findings, ReviewFinding{
+			Severity: "medium",
+			Category: "metric",
+			Message:  fmt.Sprintf("metric(s) removed: %s", strings.Join(removed, ", ")),
+			Detail:   "Removing metrics reduces the signals available for scaling decisions.",
+		})
 	}
 
 	// ScaleDown stabilization removed.
@@ -266,25 +264,41 @@ func behaviorMoreAggressive(before, after *autoscalingv2.HorizontalPodAutoscaler
 	}
 	beforeRules := before.Spec.Behavior.ScaleUp
 	afterRules := after.Spec.Behavior.ScaleUp
+	if effectiveSelectPolicy(afterRules.SelectPolicy) == autoscalingv2.DisabledPolicySelect {
+		return false
+	}
+	if effectiveSelectPolicy(beforeRules.SelectPolicy) == autoscalingv2.DisabledPolicySelect {
+		return true
+	}
 	if effectiveSelectPolicy(afterRules.SelectPolicy) == autoscalingv2.MaxChangePolicySelect &&
 		effectiveSelectPolicy(beforeRules.SelectPolicy) == autoscalingv2.MinChangePolicySelect {
 		return true
 	}
-	beforeByType := make(map[autoscalingv2.HPAScalingPolicyType]autoscalingv2.HPAScalingPolicy, len(beforeRules.Policies))
+	beforeMaxRate := make(map[autoscalingv2.HPAScalingPolicyType]float64, len(beforeRules.Policies))
 	for _, policy := range beforeRules.Policies {
-		beforeByType[policy.Type] = policy
+		rate := policyRatePerSecond(policy)
+		if prev, ok := beforeMaxRate[policy.Type]; !ok || rate > prev {
+			beforeMaxRate[policy.Type] = rate
+		}
 	}
 	for _, afterPolicy := range afterRules.Policies {
-		beforePolicy, exists := beforeByType[afterPolicy.Type]
+		beforeRate, exists := beforeMaxRate[afterPolicy.Type]
 		if !exists {
 			return true
 		}
-		if afterPolicy.Value > beforePolicy.Value ||
-			(afterPolicy.Value == beforePolicy.Value && afterPolicy.PeriodSeconds < beforePolicy.PeriodSeconds) {
+		if policyRatePerSecond(afterPolicy) > beforeRate {
 			return true
 		}
 	}
 	return false
+}
+
+func policyRatePerSecond(p autoscalingv2.HPAScalingPolicy) float64 {
+	period := p.PeriodSeconds
+	if period <= 0 {
+		period = 1
+	}
+	return float64(p.Value) / float64(period)
 }
 
 func effectiveSelectPolicy(policy *autoscalingv2.ScalingPolicySelect) autoscalingv2.ScalingPolicySelect {

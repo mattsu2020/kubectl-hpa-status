@@ -58,9 +58,17 @@ func loadControllerProfileFile(path string) (*hpaanalysis.ControllerProfile, err
 }
 
 func observeControllerManagerProfile(ctx context.Context, client *kube.Client) (*hpaanalysis.ControllerProfile, bool) {
-	pods, err := client.Interface.CoreV1().Pods("kube-system").List(ctx, metav1.ListOptions{})
+	pods, err := client.Interface.CoreV1().Pods("kube-system").List(ctx, metav1.ListOptions{
+		LabelSelector: "component=kube-controller-manager",
+	})
 	if err != nil {
 		return nil, false
+	}
+	if len(pods.Items) == 0 {
+		pods, err = client.Interface.CoreV1().Pods("kube-system").List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return nil, false
+		}
 	}
 	for _, pod := range pods.Items {
 		if !strings.Contains(pod.Name, "kube-controller-manager") {

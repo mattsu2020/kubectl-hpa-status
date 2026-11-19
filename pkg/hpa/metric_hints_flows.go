@@ -1,5 +1,7 @@
 package hpa
 
+import "slices"
+
 // MetricHintFix represents a single troubleshooting step with an optional
 // copy-pasteable command and expected output description.
 type MetricHintFix struct {
@@ -207,6 +209,6 @@ func buildFlow(h MetricHint) *MetricHintTroubleshooting {
 		Title:      h.Title,
 		MetricType: h.MetricType,
 		MetricName: h.MetricName,
-		Steps:      steps,
+		Steps:      slices.Clone(steps),
 	}
 }

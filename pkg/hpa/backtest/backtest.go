@@ -111,8 +111,11 @@ func validateCandidate(spec CandidateSpec, idx int) error {
 	if spec.TargetUtilization != nil && *spec.TargetUtilization <= 0 {
 		return fmt.Errorf("candidate %q: targetUtilization must be > 0", label)
 	}
-	if spec.TargetValue != nil && *spec.TargetValue <= 0 {
-		return fmt.Errorf("candidate %q: targetValue must be > 0", label)
+	if spec.TargetValue != nil && (math.IsNaN(*spec.TargetValue) || math.IsInf(*spec.TargetValue, 0) || *spec.TargetValue <= 0) {
+		return fmt.Errorf("candidate %q: targetValue must be finite and > 0", label)
+	}
+	if math.IsNaN(spec.Tolerance) || math.IsInf(spec.Tolerance, 0) || spec.Tolerance < 0 {
+		return fmt.Errorf("candidate %q: tolerance must be finite and >= 0", label)
 	}
 	return validatePrescaleWindows(spec, label)
 }
@@ -384,10 +387,25 @@ func effectiveMinReplicas(baseMin int32, windows []PrescaleWindow, ts time.Time)
 	minute := ts.Hour()*60 + ts.Minute()
 	day := ts.Weekday()
 	for _, w := range windows {
-		if len(w.Weekdays) > 0 && !containsWeekday(w.Weekdays, day) {
+		if w.StartMinute == w.EndMinute {
 			continue
 		}
-		if minuteInWindow(minute, w.StartMinute, w.EndMinute) && w.MinReplicas > eff {
+		if w.StartMinute < w.EndMinute {
+			if len(w.Weekdays) > 0 && !containsWeekday(w.Weekdays, day) {
+				continue
+			}
+			if minute >= w.StartMinute && minute < w.EndMinute && w.MinReplicas > eff {
+				eff = w.MinReplicas
+			}
+			continue
+		}
+		// Overnight window wrapping midnight (StartMinute > EndMinute):
+		// [StartMinute..1440) belongs to `day`; [0..EndMinute) belongs to the
+		// previous weekday `(day + 6) % 7`.
+		prevDay := (day + 6) % 7
+		inMorning := minute < w.EndMinute && (len(w.Weekdays) == 0 || containsWeekday(w.Weekdays, prevDay))
+		inEvening := minute >= w.StartMinute && (len(w.Weekdays) == 0 || containsWeekday(w.Weekdays, day))
+		if (inMorning || inEvening) && w.MinReplicas > eff {
 			eff = w.MinReplicas
 		}
 	}
@@ -401,16 +419,6 @@ func containsWeekday(days []time.Weekday, target time.Weekday) bool {
 		}
 	}
 	return false
-}
-
-func minuteInWindow(minute, start, end int) bool {
-	if start == end {
-		return false
-	}
-	if start < end {
-		return minute >= start && minute < end
-	}
-	return minute >= start || minute < end
 }
 
 func summarizeTrace(trace hpaanalysis.TimelineTrace, maxReplicas int32) Summary {

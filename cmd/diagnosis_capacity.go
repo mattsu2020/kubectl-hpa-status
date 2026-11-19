@@ -49,7 +49,7 @@ func buildCapacityHeadroomWithSnapshot(ctx context.Context, client *kube.Client,
 	if headroomErr != nil {
 		headroom.Evidence = append(headroom.Evidence, fmt.Sprintf("cluster request headroom unavailable: %v", headroomErr))
 	}
-	if headroomErr == nil && clusterHeadroom != nil {
+	if headroomErr == nil && clusterHeadroom != nil && clusterHeadroom.NodeCapacity != nil {
 		assessClusterHeadroom(headroom, clusterHeadroom, addCPU, addMem, additional)
 	}
 	return headroom

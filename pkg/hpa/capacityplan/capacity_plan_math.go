@@ -22,6 +22,16 @@ func parseQuantityOrZero(s string) resource.Quantity {
 
 func effectivePerPodResources(input Input) (resource.Quantity, resource.Quantity) {
 	cpu, memory := sumContainerResources(input.ContainerResources)
+	if input.PodLevelRequestCPU != "" {
+		if q := parseQuantityOrZero(input.PodLevelRequestCPU); q.Cmp(cpu) > 0 {
+			cpu = q
+		}
+	}
+	if input.PodLevelRequestMemory != "" {
+		if q := parseQuantityOrZero(input.PodLevelRequestMemory); q.Cmp(memory) > 0 {
+			memory = q
+		}
+	}
 	if input.PodRequestCPU != "" {
 		cpu = parseQuantityOrZero(input.PodRequestCPU)
 	}
@@ -39,6 +49,16 @@ func effectivePerPodLimits(input Input) (resource.Quantity, resource.Quantity) {
 		}
 		if container.LimitMemory != "" {
 			memory.Add(parseQuantityOrZero(container.LimitMemory))
+		}
+	}
+	if input.PodLevelLimitCPU != "" {
+		if q := parseQuantityOrZero(input.PodLevelLimitCPU); q.Cmp(cpu) > 0 {
+			cpu = q
+		}
+	}
+	if input.PodLevelLimitMemory != "" {
+		if q := parseQuantityOrZero(input.PodLevelLimitMemory); q.Cmp(memory) > 0 {
+			memory = q
 		}
 	}
 	if input.PodLimitCPU != "" {

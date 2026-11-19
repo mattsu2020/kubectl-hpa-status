@@ -73,7 +73,7 @@ func calculateRatioAndNote(currentVal autoscalingv2.MetricValueStatus, targetVal
 	var note string
 
 	switch {
-	case currentVal.AverageUtilization != nil:
+	case currentVal.AverageUtilization != nil && targetVal.AverageUtilization != nil:
 		ratio = utilizationRatio(currentVal.AverageUtilization, targetVal.AverageUtilization)
 		note = CompareMetricToTarget(currentVal.AverageUtilization, targetVal.AverageUtilization)
 	case currentVal.AverageValue != nil && targetVal.AverageValue != nil:
@@ -222,7 +222,7 @@ func prioritizedConditions(conditions []autoscalingv2.HorizontalPodAutoscalerCon
 }
 
 func utilizationRatio(utilization, target *int32) *float64 {
-	if utilization == nil || target == nil || *target == 0 {
+	if utilization == nil || target == nil || *target <= 0 {
 		return nil
 	}
 	ratio := float64(*utilization) / float64(*target)
@@ -230,7 +230,7 @@ func utilizationRatio(utilization, target *int32) *float64 {
 }
 
 func quantityRatio(current, target *resource.Quantity) *float64 {
-	if current == nil || target == nil || target.IsZero() {
+	if current == nil || target == nil || target.Sign() <= 0 {
 		return nil
 	}
 	ratio := current.AsApproximateFloat64() / target.AsApproximateFloat64()

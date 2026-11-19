@@ -552,7 +552,7 @@ func detectionNotes(result *Analysis, peak *peakInternals, totalDays int, replic
 		fmt.Sprintf(confidence.BadgeObserved+" the recording spans %.1fh across %d day(s) in %s.",
 			result.SpanHours, totalDays, result.Timezone),
 	}
-	if result.SignalUnit != "" {
+	if result.Signal != "" && result.Signal != "replicas" {
 		notes = append(notes,
 			fmt.Sprintf(confidence.BadgeObserved+" the %s signal rises from a baseline of %.1f%s%s to %.1f%s%s between %s and %s on %d of %d recorded day(s); desiredReplicas reaches %d in the window.",
 				result.Signal, result.Baseline, result.SignalUnit, unitSep(result.SignalUnit), peak.PeakSignal, result.SignalUnit, unitSep(result.SignalUnit),
