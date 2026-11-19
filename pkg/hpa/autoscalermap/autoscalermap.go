@@ -245,8 +245,10 @@ func appendConstraintsLayer(input Input, am *Map) {
 	constraintDetails := []string{}
 	constraintHealthy := true
 
-	if input.VPAInfo != nil {
+	if input.VPAInfo != nil && !strings.EqualFold(input.VPAInfo.UpdateMode, "Off") && len(input.VPAInfo.ConflictResources) > 0 {
 		constraintDetails, constraintHealthy = appendVPAConstraint(input, am, constraintDetails), false
+	} else if input.VPAInfo != nil {
+		constraintDetails = append(constraintDetails, fmt.Sprintf("VPA/%s (%s) — no active conflict", input.VPAInfo.VPAName, input.VPAInfo.UpdateMode))
 	}
 	for _, pdb := range input.PDBs {
 		constraintDetails = appendPDBConstraint(input, am, constraintDetails, pdb)

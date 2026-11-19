@@ -203,7 +203,7 @@ func checkMissingMetricInStatus(
 	if findMatchingCurrentMetric(spec, currentMetrics) {
 		return nil
 	}
-	if entry := findFreshnessEntryForSpec(freshness, spec, allowLegacyFallback); entry != nil && entry.Status != "" {
+	if entry := findFreshnessEntryForSpec(freshness, spec, allowLegacyFallback); entry != nil && entry.Status == string(FreshnessOK) {
 		return nil
 	}
 	if contractHasMetricIssueForSpec(contract, spec, allowLegacyFallback) {

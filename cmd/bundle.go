@@ -89,6 +89,12 @@ func defaultBundleOutputPath(outputPath, name, format, prefix string, now ...tim
 
 // runBundle orchestrates data collection and output for the bundle command.
 func runBundle(ctx context.Context, out io.Writer, opts *options, name, format, outputPath string, redact bool) error {
+	switch format {
+	case "markdown", "md", "zip":
+	default:
+		return fmt.Errorf("unsupported format %q (use markdown or zip)", format)
+	}
+
 	client, err := newClientOrDefault(opts)
 	if err != nil {
 		return err
@@ -156,10 +162,11 @@ func collectBundleData(ctx context.Context, client *kube.Client, opts *options, 
 	targetObs := snap.ScaleTarget(ctx)
 	data.ScaleTarget = snapshotTargetYAML(ctx, snap)
 
-	// 3. Build full doctor-level analysis with KEDA+VPA enrichment.
+	// 3. Build full doctor-level analysis with KEDA+VPA enrichment, reusing
+	// the already-fetched HPA and observation snapshot.
 	ec := newEnrichmentContext(ctx, &bundleOpts)
 	includeInterpretation := !bundleOpts.NoInterpret
-	statusReport, err := buildStatusReport(ctx, &bundleOpts, client, name, includeInterpretation, ec)
+	statusReport, err := buildStatusReportFromObservation(ctx, &bundleOpts, client, hpa, includeInterpretation, ec, snap)
 	if err != nil {
 		return nil, fmt.Errorf("building status report: %w", err)
 	}

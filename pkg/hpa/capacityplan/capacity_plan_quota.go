@@ -368,9 +368,8 @@ func limitRangeBoundsViolations(
 			))
 		default:
 			ratioQuantity := parseQuantityOrZero(lr.MaxLimitRequestRatio)
-			ratio := ratioQuantity.AsApproximateFloat64()
-			actual := limit.AsApproximateFloat64() / request.AsApproximateFloat64()
-			if actual > ratio {
+			if limitExceedsRatio(limit, request, ratioQuantity) {
+				actual := limit.AsApproximateFloat64() / request.AsApproximateFloat64()
 				violations = append(violations, newCapacityCheckResult(
 					CapacityCheckLimitRangeRatio,
 					CapacityCheckFail,
@@ -387,4 +386,10 @@ func limitRangeBoundsViolations(
 		}
 	}
 	return violations
+}
+
+func limitExceedsRatio(limit, request, ratioQuantity resource.Quantity) bool {
+	maxAllowed := *request.AsDec()
+	maxAllowed.Mul(&maxAllowed, ratioQuantity.AsDec())
+	return limit.AsDec().Cmp(&maxAllowed) > 0
 }

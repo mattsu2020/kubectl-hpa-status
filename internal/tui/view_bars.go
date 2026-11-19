@@ -99,11 +99,7 @@ func renderStabBadge(item hpaanalysis.ListItem, width int) string {
 	if !item.Stabilizing || item.StabilizationLabel == "" {
 		return dimStyle.Render(fitWidth("-", width))
 	}
-	label := item.StabilizationLabel
-	if len(label) > width {
-		label = label[:width]
-	}
-	return warnStyle.Render(fitWidth(label, width))
+	return warnStyle.Render(fitWidth(item.StabilizationLabel, width))
 }
 
 // renderInlineSparkline renders a compact sparkline for the list view TREND column.

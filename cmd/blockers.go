@@ -39,6 +39,7 @@ func runBlockers(ctx context.Context, out io.Writer, opts *options, names []stri
 	// No preset: the dedicated blocker path gathers only the observations it
 	// needs, so it does not run the full status pipeline or record an unrelated
 	// health history sample.
+	cluster := &observation.ClusterSnapshot{}
 	return runPerHPACommand(ctx, out, opts, names, "",
 		func(ctx context.Context, local *options, client *kube.Client, name string) (blockerOutput, error) {
 			hpa, err := fetchHPA(ctx, client, name)
@@ -51,7 +52,7 @@ func runBlockers(ctx context.Context, out io.Writer, opts *options, names []stri
 				client,
 				hpa,
 				analysis.Meta.Target,
-				observation.New(client.Interface, hpa),
+				observation.New(client.Interface, hpa, cluster),
 			)
 
 			return blockerOutput{

@@ -131,7 +131,12 @@ func normalizeConfig(cfg QueryConfig) (QueryConfig, error) {
 		cfg.Step = defaultStep
 	}
 	if cfg.HTTPClient == nil {
-		cfg.HTTPClient = &http.Client{Timeout: defaultHTTPTimeout}
+		cfg.HTTPClient = &http.Client{
+			Timeout: defaultHTTPTimeout,
+			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
 	}
 	if cfg.MetricName == "" {
 		cfg.MetricName = defaultMetricName
@@ -155,14 +160,19 @@ func queryOptionalSeries(ctx context.Context, cfg QueryConfig, promQL string) (m
 }
 
 func querySingleSeries(ctx context.Context, cfg QueryConfig, promQL string) (map[int64]float64, error) {
-	endpoint := fmt.Sprintf("%s/api/v1/query_range", cfg.BaseURL)
-	params := url.Values{}
+	parsedBase, err := url.Parse(cfg.BaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("parse base URL: %w", err)
+	}
+	parsedBase.Path = strings.TrimRight(parsedBase.Path, "/") + "/api/v1/query_range"
+	params := parsedBase.Query()
 	params.Set("query", promQL)
 	params.Set("start", strconv.FormatInt(cfg.Start.Unix(), 10))
 	params.Set("end", strconv.FormatInt(cfg.End.Unix(), 10))
 	params.Set("step", strconv.Itoa(max(1, int(cfg.Step.Seconds()))))
+	parsedBase.RawQuery = params.Encode()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint+"?"+params.Encode(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, parsedBase.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
@@ -176,12 +186,19 @@ func querySingleSeries(ctx context.Context, cfg QueryConfig, promQL string) (map
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("read response: %w", err)
 	}
+	if len(body) > maxResponseBytes {
+		return nil, fmt.Errorf("prometheus response exceeded %d bytes", maxResponseBytes)
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("prometheus HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		msg := strings.TrimSpace(string(body))
+		if len(msg) > 512 {
+			msg = msg[:512] + "..."
+		}
+		return nil, fmt.Errorf("prometheus HTTP %d: %s", resp.StatusCode, msg)
 	}
 
 	var decoded queryRangeResponse

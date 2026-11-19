@@ -51,7 +51,7 @@ Operational commands (policy, gitops, bundle, incident-bundle, support-bundle)
 govern apply-time gating, GitOps drift, and support-data collection.
 
 Experimental commands (capacity, capacity-gap, autoscaler-map, analyze-record,
-flap) are niche investigation tools that may change between releases.
+flap, backtest) are niche investigation tools that may change between releases.
 `,
 		// alpha itself is not hidden; it surfaces in --help so users discover the
 		// grouped commands.

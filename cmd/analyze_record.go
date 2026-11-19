@@ -163,7 +163,12 @@ func writeAnalyzeRecordFlappingText(out io.Writer, result recordAnalysis) error 
 
 func loadAllRecordedTraces(path string) (map[string]hpaanalysis.TimelineTrace, error) {
 	result := map[string]hpaanalysis.TimelineTrace{}
+	totalSnapshots := 0
 	_, err := recordio.ScanTraces(path, func(trace hpaanalysis.TimelineTrace) error {
+		totalSnapshots += len(trace.Snapshots)
+		if totalSnapshots > maxSnapshotsPerTrace {
+			return snapshotLimitError(path)
+		}
 		key := trace.Namespace + "/" + trace.HPAName
 		current := result[key]
 		if current.HPAName == "" {

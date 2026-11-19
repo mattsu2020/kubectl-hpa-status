@@ -68,6 +68,9 @@ func normalizeLangCode(lang string) string {
 	if base, _, ok := strings.Cut(lang, "."); ok {
 		lang = base
 	}
+	if base, _, ok := strings.Cut(lang, "@"); ok {
+		lang = base
+	}
 	lang = strings.ReplaceAll(lang, "_", "-")
 	return strings.ToLower(lang)
 }
@@ -96,7 +99,7 @@ func loadAllBundles() map[string]map[string]string {
 		if !strings.HasSuffix(name, ".yaml") {
 			continue
 		}
-		lang := strings.TrimSuffix(name, ".yaml")
+		lang := normalizeLangCode(strings.TrimSuffix(name, ".yaml"))
 		if lang == "" {
 			continue
 		}

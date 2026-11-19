@@ -158,7 +158,11 @@ func kedaCronTrigger(peak *peakInternals, prescaleMinute int, prescaleDayOfWeek,
 	b.WriteString("triggers:\n")
 	b.WriteString("- type: cron\n")
 	b.WriteString("  metadata:\n")
-	fmt.Fprintf(&b, "    timezone: %s\n", o.Location.String())
+	tz := o.Location.String()
+	if tz == "" || tz == "Local" {
+		tz = "UTC"
+	}
+	fmt.Fprintf(&b, "    timezone: %s\n", tz)
 	fmt.Fprintf(&b, "    start: %s\n", cronAt(prescaleMinute, prescaleDayOfWeek))
 	fmt.Fprintf(&b, "    end: %s\n", cronAt(peak.EndMinute, endDayOfWeek))
 	fmt.Fprintf(&b, "    desiredReplicas: %q\n", strconv.Itoa(int(peak.OnsetDesired)))

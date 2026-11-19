@@ -7,6 +7,7 @@ package tui
 // Used by views where scrollPos addresses the first visible row (history,
 // replay).
 func scrollWindow(scrollPos, total, visibleHeight int) (int, int) {
+	visibleHeight = max(visibleHeight, 0)
 	start := min(max(scrollPos, 0), max(total-visibleHeight, 0))
 	end := min(start+visibleHeight, total)
 	return start, end
@@ -19,9 +20,13 @@ func scrollWindow(scrollPos, total, visibleHeight int) (int, int) {
 // visible row. Used by views where a selectable cursor drives scrolling
 // (list, batch audit).
 func cursorScrollWindow(cursor, total, visibleHeight int) (int, int) {
+	if visibleHeight <= 0 || total <= 0 {
+		return 0, 0
+	}
+	clampedCursor := min(max(cursor, 0), total-1)
 	start := 0
-	if cursor >= visibleHeight {
-		start = cursor - visibleHeight + 1
+	if clampedCursor >= visibleHeight {
+		start = clampedCursor - visibleHeight + 1
 	}
 	end := min(start+visibleHeight, total)
 	return start, end
