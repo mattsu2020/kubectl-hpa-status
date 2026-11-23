@@ -45,7 +45,7 @@ tidy:
 .PHONY: fmt
 fmt:
 	@if command -v golangci-lint >/dev/null 2>&1; then \
-		golangci-lint run --fix ./...; \
+		bash scripts/run-golangci-lint.sh run --fix ./...; \
 	else \
 		echo "golangci-lint not found; falling back to gofmt (install golangci-lint for full fixing)"; \
 		gofmt -w .; \
@@ -60,7 +60,7 @@ fmt-check:
 		exit 1; \
 	fi
 	@if command -v golangci-lint >/dev/null 2>&1; then \
-		golangci-lint fmt --diff ./... || (echo "golangci-lint fmt would reformat files (usually import grouping); run 'make fmt' and commit" && exit 1); \
+		bash scripts/run-golangci-lint.sh fmt --diff ./... || (echo "golangci-lint fmt would reformat files (usually import grouping); run 'make fmt' and commit" && exit 1); \
 	else \
 		echo "golangci-lint not found; verified gofmt only (install golangci-lint to also check import grouping)"; \
 	fi
@@ -72,12 +72,18 @@ coverage:
 
 # coverage-check validates the profile produced by `test-ci` (or `test`).
 # It regenerates the profile only when it is missing, so `make ci` runs the
-# suite exactly once; a bare `make coverage-check` after source edits should
-# run `make test-ci` first to refresh the profile deliberately.
+# suite exactly once. An existing profile that predates the current sources is
+# rejected rather than trusted: run `make test-ci` to refresh it deliberately.
 .PHONY: coverage-check
 coverage-check:
 	@if [ ! -f $(COVERAGE_OUT) ]; then \
 		$(GO) test -coverprofile=$(COVERAGE_OUT) ./...; \
+	else \
+		stale=$$(find . -name '*.go' -newer $(COVERAGE_OUT) -not -path './.git/*' | head -1); \
+		if [ -n "$$stale" ]; then \
+			echo "$(COVERAGE_OUT) is older than $$stale; run 'make test-ci' to refresh it before checking coverage"; \
+			exit 1; \
+		fi; \
 	fi
 	bash scripts/check-coverage.sh $(COVERAGE_OUT)
 
@@ -86,13 +92,16 @@ docs-check:
 	bash scripts/check-readme-sync.sh
 
 .PHONY: lint
+# The linter runs through scripts/run-golangci-lint.sh, which lines the Go
+# toolchain up with the one golangci-lint was built with (a newer local Go
+# makes the linter panic while loading build-tagged dependency files).
 lint:
 	@if command -v golangci-lint >/dev/null 2>&1; then \
-		found=$$(golangci-lint version 2>/dev/null | head -1 | grep -o 'v[0-9]*\.[0-9]*\.[0-9]*' | head -1); \
+		found=v$$(golangci-lint version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1); \
 		if [ "$$found" != "$(GOLANGCI_LINT_VERSION)" ]; then \
 			echo "::warning::golangci-lint $$found found, CI pins $(GOLANGCI_LINT_VERSION); findings may differ from CI"; \
 		fi; \
-		golangci-lint run ./...; \
+		bash scripts/run-golangci-lint.sh run ./...; \
 	else \
 		echo "::error::golangci-lint not found. CI runs $(GOLANGCI_LINT_VERSION); install it (https://golangci-lint.run/welcome/install/) or use 'make ci' inside the dev container."; \
 		exit 1; \

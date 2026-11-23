@@ -91,23 +91,45 @@ func Run(input Input) (*Report, error) {
 
 func validateCandidate(spec CandidateSpec, idx int) error {
 	label := candidateName(spec, idx)
+	for _, check := range []func(CandidateSpec, string) error{
+		validateReplicaBounds,
+		validateStabilizationWindows,
+		validateTargetValues,
+	} {
+		if err := check(spec, label); err != nil {
+			return err
+		}
+	}
+	return validatePrescaleWindows(spec, label)
+}
+
+func validateReplicaBounds(spec CandidateSpec, label string) error {
 	if spec.MaxReplicas <= 0 {
 		return fmt.Errorf("candidate %q: maxReplicas must be > 0 (got %d)", label, spec.MaxReplicas)
 	}
-	if spec.MinReplicas != nil {
-		if *spec.MinReplicas < 0 {
-			return fmt.Errorf("candidate %q: minReplicas must be >= 0 (got %d)", label, *spec.MinReplicas)
-		}
-		if *spec.MinReplicas > spec.MaxReplicas {
-			return fmt.Errorf("candidate %q: minReplicas (%d) exceeds maxReplicas (%d)", label, *spec.MinReplicas, spec.MaxReplicas)
-		}
+	if spec.MinReplicas == nil {
+		return nil
 	}
+	if *spec.MinReplicas < 0 {
+		return fmt.Errorf("candidate %q: minReplicas must be >= 0 (got %d)", label, *spec.MinReplicas)
+	}
+	if *spec.MinReplicas > spec.MaxReplicas {
+		return fmt.Errorf("candidate %q: minReplicas (%d) exceeds maxReplicas (%d)", label, *spec.MinReplicas, spec.MaxReplicas)
+	}
+	return nil
+}
+
+func validateStabilizationWindows(spec CandidateSpec, label string) error {
 	if spec.ScaleUpStabilizationSeconds < 0 || spec.ScaleUpStabilizationSeconds > maxStabilizationWindowSeconds {
 		return fmt.Errorf("candidate %q: scaleUpStabilizationSeconds must be between 0 and %d", label, maxStabilizationWindowSeconds)
 	}
 	if spec.ScaleDownStabilizationSeconds < 0 || spec.ScaleDownStabilizationSeconds > maxStabilizationWindowSeconds {
 		return fmt.Errorf("candidate %q: scaleDownStabilizationSeconds must be between 0 and %d", label, maxStabilizationWindowSeconds)
 	}
+	return nil
+}
+
+func validateTargetValues(spec CandidateSpec, label string) error {
 	if spec.TargetUtilization != nil && *spec.TargetUtilization <= 0 {
 		return fmt.Errorf("candidate %q: targetUtilization must be > 0", label)
 	}
@@ -117,7 +139,7 @@ func validateCandidate(spec CandidateSpec, idx int) error {
 	if math.IsNaN(spec.Tolerance) || math.IsInf(spec.Tolerance, 0) || spec.Tolerance < 0 {
 		return fmt.Errorf("candidate %q: tolerance must be finite and >= 0", label)
 	}
-	return validatePrescaleWindows(spec, label)
+	return nil
 }
 
 func validatePrescaleWindows(spec CandidateSpec, label string) error {
@@ -384,32 +406,33 @@ func effectiveMinReplicas(baseMin int32, windows []PrescaleWindow, ts time.Time)
 	if ts.IsZero() {
 		return eff
 	}
-	minute := ts.Hour()*60 + ts.Minute()
-	day := ts.Weekday()
 	for _, w := range windows {
-		if w.StartMinute == w.EndMinute {
-			continue
-		}
-		if w.StartMinute < w.EndMinute {
-			if len(w.Weekdays) > 0 && !containsWeekday(w.Weekdays, day) {
-				continue
-			}
-			if minute >= w.StartMinute && minute < w.EndMinute && w.MinReplicas > eff {
-				eff = w.MinReplicas
-			}
-			continue
-		}
-		// Overnight window wrapping midnight (StartMinute > EndMinute):
-		// [StartMinute..1440) belongs to `day`; [0..EndMinute) belongs to the
-		// previous weekday `(day + 6) % 7`.
-		prevDay := (day + 6) % 7
-		inMorning := minute < w.EndMinute && (len(w.Weekdays) == 0 || containsWeekday(w.Weekdays, prevDay))
-		inEvening := minute >= w.StartMinute && (len(w.Weekdays) == 0 || containsWeekday(w.Weekdays, day))
-		if (inMorning || inEvening) && w.MinReplicas > eff {
+		if w.MinReplicas > eff && windowActive(w, ts) {
 			eff = w.MinReplicas
 		}
 	}
 	return eff
+}
+
+// windowActive reports whether the prescale window covers ts. An empty window
+// (StartMinute == EndMinute) is never active.
+func windowActive(w PrescaleWindow, ts time.Time) bool {
+	if w.StartMinute == w.EndMinute {
+		return false
+	}
+	minute := ts.Hour()*60 + ts.Minute()
+	day := ts.Weekday()
+	if w.StartMinute < w.EndMinute {
+		return (len(w.Weekdays) == 0 || containsWeekday(w.Weekdays, day)) &&
+			minute >= w.StartMinute && minute < w.EndMinute
+	}
+	// Overnight window wrapping midnight (StartMinute > EndMinute):
+	// [StartMinute..1440) belongs to `day`; [0..EndMinute) belongs to the
+	// previous weekday `(day + 6) % 7`.
+	prevDay := (day + 6) % 7
+	inMorning := minute < w.EndMinute && (len(w.Weekdays) == 0 || containsWeekday(w.Weekdays, prevDay))
+	inEvening := minute >= w.StartMinute && (len(w.Weekdays) == 0 || containsWeekday(w.Weekdays, day))
+	return inMorning || inEvening
 }
 
 func containsWeekday(days []time.Weekday, target time.Weekday) bool {
