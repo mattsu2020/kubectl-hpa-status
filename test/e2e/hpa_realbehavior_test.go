@@ -251,22 +251,30 @@ func TestE2E_MaxReplicasCap(t *testing.T) {
 		t.Fatalf("failed to create load Job: %v", err)
 	}
 
-	// 4. Poll the HPA until it reaches maxReplicas (or the deadline). Real
+	// 4. Poll the HPA until it has reached maxReplicas (or the deadline). Real
 	//    metrics-server + kind takes ~1-2 minutes to populate and scale.
+	//
+	//    Both desired and current replicas must reach the cap. The controller
+	//    sets ScalingLimited as soon as desired hits maxReplicas, while current
+	//    replicas are still converging, and in that window the summary is
+	//    deliberately "HPA currently wants to scale up." with health LIMITED
+	//    (TestAnalyzeReportsMaxReplicasWhileCurrentReplicasConverge). Exiting
+	//    on the condition alone turned the summary assertion below into a race.
 	const (
 		pollInterval = 10 * time.Second
 		pollTimeout  = 4 * time.Minute
 	)
 	deadline := time.Now().Add(pollTimeout)
 	reached := false
-	var lastRepl int32
+	var lastDesired, lastCurrent int32
 	for time.Now().Before(deadline) {
 		pollCtx, pollCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		got, err := client.AutoscalingV2().HorizontalPodAutoscalers(nsName).Get(pollCtx, hpaName, metav1.GetOptions{})
 		pollCancel()
 		if err == nil {
-			lastRepl = got.Status.DesiredReplicas
-			if got.Status.DesiredReplicas >= maxRepl && (got.Status.CurrentReplicas >= maxRepl || hasConditionTrue(got.Status.Conditions, autoscalingv2.ScalingLimited)) {
+			lastDesired = got.Status.DesiredReplicas
+			lastCurrent = got.Status.CurrentReplicas
+			if lastDesired >= maxRepl && lastCurrent >= maxRepl {
 				reached = true
 				break
 			}
@@ -275,9 +283,9 @@ func TestE2E_MaxReplicasCap(t *testing.T) {
 	}
 
 	if !reached {
-		t.Fatalf("HPA did not reach maxReplicas=%d within %s (last desired=%d); "+
+		t.Fatalf("HPA did not reach maxReplicas=%d within %s (last desired=%d current=%d); "+
 			"check metrics-server and load generator logs",
-			maxRepl, pollTimeout, lastRepl)
+			maxRepl, pollTimeout, lastDesired, lastCurrent)
 	}
 	t.Logf("HPA reached maxReplicas=%d", maxRepl)
 
@@ -310,15 +318,6 @@ func TestE2E_MaxReplicasCap(t *testing.T) {
 func conditionPresent(conds []hpaanalysis.Condition, wantType string) bool {
 	for _, c := range conds {
 		if c.Type == wantType {
-			return true
-		}
-	}
-	return false
-}
-
-func hasConditionTrue(conds []autoscalingv2.HorizontalPodAutoscalerCondition, want autoscalingv2.HorizontalPodAutoscalerConditionType) bool {
-	for _, c := range conds {
-		if c.Type == want && c.Status == corev1.ConditionTrue {
 			return true
 		}
 	}

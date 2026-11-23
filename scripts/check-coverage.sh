@@ -7,6 +7,15 @@ statement_coverage() {
   awk -v p="$1" 'NR > 1 && $1 ~ p { total += $2; if ($3 > 0) covered += $2 } END { if (total > 0) printf "%.1f", covered * 100 / total; else print 0 }' "$coverage_file"
 }
 
+# Per-package statement coverage: one "<package path> <percent>" line for each
+# package that has at least one statement. The module root is skipped.
+package_coverage() {
+  awk -v root="$1" 'NR > 1 {
+    dir = $1; sub(/\/[^\/]*$/, "", dir)
+    if (dir != root) { total[dir] += $2; if ($3 > 0) covered[dir] += $2 }
+  } END { for (dir in total) if (total[dir] > 0) printf "%s %.1f\n", dir, covered[dir] * 100 / total[dir] }' "$coverage_file"
+}
+
 check() {
   local name="$1" value="$2" threshold="$3"
   echo "$name coverage: ${value}% (threshold ${threshold}%)"
@@ -52,3 +61,17 @@ check "internal/history" "$(statement_coverage '/internal/history/')" 66
 check "pkg/hpa/policy" "$(statement_coverage '/pkg/hpa/policy/')" 93
 check "pkg/hpa/lint" "$(statement_coverage '/pkg/hpa/lint/')" 90
 check "cmd/bundle" "$(statement_coverage '/cmd/bundle/')" 91
+
+# No single package may sit below this floor. The checks above are averages,
+# so a package with no tests of its own is reported at 0% yet hides under them
+# (pkg/hpa/internal/metricidentity and pkg/hpa/model both did). Raise the floor
+# as weak packages gain tests; exempt a package here only with a reason.
+package_floor=35
+module_root="$(go list -m)"
+below="$(package_coverage "$module_root" | awk -v floor="$package_floor" '$2 < floor { printf "  %.1f%%  %s\n", $2, $1 }' | sort -n)"
+if [ -n "$below" ]; then
+  echo "packages below the ${package_floor}% per-package floor:" >&2
+  echo "$below" >&2
+  exit 1
+fi
+echo "Lowest package coverage: $(package_coverage "$module_root" | awk 'NR == 1 || $2 < low { low = $2 } END { printf "%.1f", low }')% (floor ${package_floor}%)"

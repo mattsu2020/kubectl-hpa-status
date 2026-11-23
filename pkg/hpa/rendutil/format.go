@@ -113,14 +113,17 @@ func progressBar(value, total, width int64, round bool) string {
 	}
 	filled := int64(0)
 	if total > 0 && value > 0 {
-		if value >= total {
+		switch {
+		case value >= total:
 			filled = width
-		} else if width > math.MaxInt64/total {
-			filled = int64(float64(value) / float64(total) * float64(width))
+		case width > math.MaxInt64/total:
+			ratio := float64(value) / float64(total) * float64(width)
 			if round {
-				filled = int64(math.Round(float64(value) / float64(total) * float64(width)))
+				filled = int64(math.Round(ratio))
+			} else {
+				filled = int64(ratio)
 			}
-		} else {
+		default:
 			filled = value * width
 			if round {
 				filled += total / 2

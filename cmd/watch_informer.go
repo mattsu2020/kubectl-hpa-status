@@ -185,39 +185,29 @@ func consumeWatchEvents(
 	onSnapshot func([]autoscalingv2.HorizontalPodAutoscaler) (bool, error),
 ) (resync bool, nextRV string, stop bool, err error) {
 	ch := watcher.ResultChan()
-	var debounceTimer *time.Timer
-	var debounceCh <-chan time.Time
-	defer func() {
-		if debounceTimer != nil {
-			debounceTimer.Stop()
-		}
-	}()
+	debounce := &watchDebouncer{}
+	defer debounce.reset()
+
+	// flush sends the current cache to the consumer. done reports that
+	// consumption must stop, with the stop/err values to return in that case.
+	flush := func() (done, stop bool, err error) {
+		stop, err = onSnapshot(sortedHPACache(cacheMap))
+		return err != nil || stop, stop, err
+	}
 
 	for {
 		select {
 		case <-ctx.Done():
 			return false, rv, false, ctx.Err()
-		case <-debounceCh:
-			debounceCh = nil
-			debounceTimer = nil
-			stop, err := onSnapshot(sortedHPACache(cacheMap))
-			if err != nil || stop {
+		case <-debounce.ch:
+			debounce.expire()
+			if done, stop, err := flush(); done {
 				return false, rv, stop, err
 			}
 		case ev, ok := <-ch:
 			if !ok {
-				if debounceTimer != nil {
-					debounceTimer.Stop()
-					debounceTimer = nil
-					debounceCh = nil
-					if ctx.Err() == nil {
-						stop, err := onSnapshot(sortedHPACache(cacheMap))
-						if err != nil || stop {
-							return false, rv, stop, err
-						}
-					}
-				}
-				return false, rv, false, nil
+				stop, err = flushClosedWatch(ctx, debounce, flush)
+				return false, rv, stop, err
 			}
 			resync, nextRV, emit := handleWatchEvent(ev, rv, cacheMap)
 			rv = nextRV
@@ -228,18 +218,62 @@ func consumeWatchEvents(
 				continue
 			}
 			if informerDebounce <= 0 {
-				stop, err := onSnapshot(sortedHPACache(cacheMap))
-				if err != nil || stop {
+				if done, stop, err := flush(); done {
 					return false, rv, stop, err
 				}
 				continue
 			}
-			if debounceTimer == nil {
-				debounceTimer = time.NewTimer(informerDebounce)
-				debounceCh = debounceTimer.C
+			debounce.arm(informerDebounce)
+		}
+	}
+}
+
+// watchDebouncer coalesces a burst of watch events into one delayed snapshot.
+type watchDebouncer struct {
+	timer *time.Timer
+	ch    <-chan time.Time
+}
+
+// pending reports whether a debounced snapshot is scheduled.
+func (d *watchDebouncer) pending() bool { return d.timer != nil }
+
+// arm schedules a debounced snapshot unless one is already pending.
+func (d *watchDebouncer) arm(after time.Duration) {
+	if d.timer == nil {
+		d.timer = time.NewTimer(after)
+		d.ch = d.timer.C
+	}
+}
+
+// expire clears a debounce window whose timer has fired.
+func (d *watchDebouncer) expire() {
+	d.timer = nil
+	d.ch = nil
+}
+
+// reset cancels any pending debounced snapshot.
+func (d *watchDebouncer) reset() {
+	if d.timer != nil {
+		d.timer.Stop()
+	}
+	d.timer = nil
+	d.ch = nil
+}
+
+// flushClosedWatch handles a closed watch channel. A debounced snapshot that
+// was still pending is flushed first (unless the context is already cancelled)
+// so the events it was holding are not lost before the caller re-establishes
+// the watch. It reports the stop/err values the caller should return.
+func flushClosedWatch(ctx context.Context, debounce *watchDebouncer, flush func() (done, stop bool, err error)) (stop bool, err error) {
+	if debounce.pending() {
+		debounce.reset()
+		if ctx.Err() == nil {
+			if done, stop, err := flush(); done {
+				return stop, err
 			}
 		}
 	}
+	return false, nil
 }
 
 func handleWatchEvent(ev watch.Event, rv string, cacheMap map[string]*autoscalingv2.HorizontalPodAutoscaler) (resync bool, nextRV string, emit bool) {

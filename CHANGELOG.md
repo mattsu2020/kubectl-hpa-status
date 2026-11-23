@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Updated `golang.org/x/net` to v0.60.0**, which fixes five vulnerabilities
+  reachable from the CLI (`GO-2026-6603`, `GO-2026-6610`, `GO-2026-6611`,
+  `GO-2026-6612`, and `GO-2026-6617`).
+
+### Fixed
+
+- **`TestE2E_MaxReplicasCap` no longer races the HPA controller.** It waits
+  for current as well as desired replicas to reach `maxReplicas` before
+  asserting the capped summary; exiting on the `ScalingLimited` condition alone
+  could observe the deliberate "wants to scale up" summary that is emitted
+  while current replicas are still converging.
+
+### Changed
+
+- **`make lint`, `make fmt`, and `make fmt-check` run golangci-lint with a Go
+  toolchain matching the one it was built with.** A newer local Go no longer
+  makes the linter panic while loading build-tagged dependency files.
+- **The coverage gate has a per-package floor (35%).** A package without tests
+  of its own is reported at 0% but used to hide under the tree averages.
+- **`make coverage-check` rejects a profile that is older than the sources.**
+  Run `make test-ci` to refresh it.
+
 ## [5.0.0] - 2026-11-17
 
 ### Added
